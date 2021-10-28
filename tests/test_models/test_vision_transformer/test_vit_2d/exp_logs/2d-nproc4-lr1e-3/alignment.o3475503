@@ -1,0 +1,177 @@
+Tue Aug 31 23:19:11 CDT 2021
+TACC:  Starting up job 3475503 
+TACC:  Starting parallel tasks... 
+warning: variables which starts with __, is a module or class declaration are omitted
+process rank 0 is bound to device 0
+distributed environment is initialzied
+model is created
+warning: variables which starts with __, is a module or class declaration are omitted
+process rank 3 is bound to device 3
+Files already downloaded and verified
+Files already downloaded and verified
+warning: variables which starts with __, is a module or class declaration are omitted
+process rank 2 is bound to device 2
+Files already downloaded and verified
+Files already downloaded and verified
+Files already downloaded and verified
+Files already downloaded and verified
+training and testing dataloaders are created
+loss is created
+optimizer is created
+start training
+warning: variables which starts with __, is a module or class declaration are omitted
+process rank 1 is bound to device 1
+Files already downloaded and verified
+Files already downloaded and verified
+epoch: 0, train loss: 1.9477875804414555
+epoch: 0, eval loss: 1.8044581711292267, correct: 3584, total: 10000, acc = 0.35839998722076416
+epoch: 1, train loss: 1.6170539077447386
+epoch: 2, train loss: 1.4285206673096638
+epoch: 2, eval loss: 1.3448221325874328, correct: 5167, total: 10000, acc = 0.5166999697685242
+epoch: 3, train loss: 1.3227316007322194
+epoch: 4, train loss: 1.2758926104526132
+epoch: 4, eval loss: 1.2780393660068512, correct: 5460, total: 10000, acc = 0.5460000038146973
+epoch: 5, train loss: 1.2221618829941263
+epoch: 6, train loss: 1.1857815640313285
+epoch: 6, eval loss: 1.1175921618938447, correct: 6023, total: 10000, acc = 0.6022999882698059
+epoch: 7, train loss: 1.1659576710389585
+epoch: 8, train loss: 1.1457150134505059
+epoch: 8, eval loss: 1.0789835333824158, correct: 6113, total: 10000, acc = 0.611299991607666
+epoch: 9, train loss: 1.1156543700062498
+epoch: 10, train loss: 1.0950473242876482
+epoch: 10, eval loss: 1.058586174249649, correct: 6170, total: 10000, acc = 0.6169999837875366
+epoch: 11, train loss: 1.0976360866001673
+epoch: 12, train loss: 1.07803391193857
+epoch: 12, eval loss: 1.0039635241031646, correct: 6351, total: 10000, acc = 0.6351000070571899
+epoch: 13, train loss: 1.0680764615535736
+epoch: 14, train loss: 1.0364759442757587
+epoch: 14, eval loss: 0.9748250603675842, correct: 6486, total: 10000, acc = 0.6485999822616577
+epoch: 15, train loss: 1.023898609438721
+epoch: 16, train loss: 0.9982165353638786
+epoch: 16, eval loss: 0.9612966269254685, correct: 6591, total: 10000, acc = 0.6590999960899353
+epoch: 17, train loss: 0.9698412771127662
+epoch: 18, train loss: 0.9523191050607331
+epoch: 18, eval loss: 0.8974281877279282, correct: 6810, total: 10000, acc = 0.6809999942779541
+epoch: 19, train loss: 0.9171817661548147
+epoch: 20, train loss: 0.8905259948603961
+epoch: 20, eval loss: 0.8580602705478668, correct: 6965, total: 10000, acc = 0.6965000033378601
+epoch: 21, train loss: 0.86673782917918
+epoch: 22, train loss: 0.8339344001546198
+epoch: 22, eval loss: 0.8263293951749802, correct: 7107, total: 10000, acc = 0.7106999754905701
+epoch: 23, train loss: 0.8074834510988119
+epoch: 24, train loss: 0.7840324482139276
+epoch: 24, eval loss: 0.752952727675438, correct: 7317, total: 10000, acc = 0.7317000031471252
+epoch: 25, train loss: 0.7541018596717289
+epoch: 26, train loss: 0.7357191905683401
+epoch: 26, eval loss: 0.7338999301195145, correct: 7410, total: 10000, acc = 0.7409999966621399
+epoch: 27, train loss: 0.7107210451242875
+epoch: 28, train loss: 0.6785972909051545
+epoch: 28, eval loss: 0.7020785599946976, correct: 7523, total: 10000, acc = 0.752299964427948
+epoch: 29, train loss: 0.660102152094549
+epoch: 30, train loss: 0.6498027924372225
+epoch: 30, eval loss: 0.6610008627176285, correct: 7661, total: 10000, acc = 0.7660999894142151
+epoch: 31, train loss: 0.6297167344969146
+epoch: 32, train loss: 0.6150159224563715
+epoch: 32, eval loss: 0.6350889533758164, correct: 7802, total: 10000, acc = 0.7802000045776367
+epoch: 33, train loss: 0.5912032842027898
+epoch: 34, train loss: 0.5761601137263435
+epoch: 34, eval loss: 0.6296706795692444, correct: 7786, total: 10000, acc = 0.7785999774932861
+epoch: 35, train loss: 0.5586571322411907
+epoch: 36, train loss: 0.5488096165413759
+epoch: 36, eval loss: 0.6041992783546448, correct: 7913, total: 10000, acc = 0.7912999987602234
+epoch: 37, train loss: 0.5273334958723613
+epoch: 38, train loss: 0.5074144468015555
+epoch: 38, eval loss: 0.5868680268526077, correct: 7984, total: 10000, acc = 0.7983999848365784
+epoch: 39, train loss: 0.4930413775906271
+epoch: 40, train loss: 0.47384805977344513
+epoch: 40, eval loss: 0.6013937592506409, correct: 7945, total: 10000, acc = 0.7944999933242798
+epoch: 41, train loss: 0.4618621742238804
+epoch: 42, train loss: 0.4452754973757024
+epoch: 42, eval loss: 0.5606920897960663, correct: 8093, total: 10000, acc = 0.8093000054359436
+epoch: 43, train loss: 0.4361336164328517
+epoch: 44, train loss: 0.4188923318775333
+epoch: 44, eval loss: 0.5567828729748726, correct: 8042, total: 10000, acc = 0.8041999936103821
+epoch: 45, train loss: 0.4047189655960823
+epoch: 46, train loss: 0.3873833852763079
+epoch: 46, eval loss: 0.5404785141348839, correct: 8166, total: 10000, acc = 0.81659996509552
+epoch: 47, train loss: 0.3707445412874222
+epoch: 48, train loss: 0.3631058514726405
+epoch: 48, eval loss: 0.5541519388556481, correct: 8201, total: 10000, acc = 0.820099949836731
+epoch: 49, train loss: 0.34395075604623676
+epoch: 50, train loss: 0.3290589987015238
+epoch: 50, eval loss: 0.5442438080906868, correct: 8169, total: 10000, acc = 0.8168999552726746
+epoch: 51, train loss: 0.3188562990755451
+epoch: 52, train loss: 0.2986554713273535
+epoch: 52, eval loss: 0.5515974283218383, correct: 8203, total: 10000, acc = 0.8202999830245972
+epoch: 53, train loss: 0.29044121671087886
+epoch: 54, train loss: 0.27310980613134345
+epoch: 54, eval loss: 0.5587902516126633, correct: 8195, total: 10000, acc = 0.8194999694824219
+epoch: 55, train loss: 0.2637303553673686
+epoch: 56, train loss: 0.2521531299060705
+epoch: 56, eval loss: 0.5885633528232574, correct: 8202, total: 10000, acc = 0.8201999664306641
+epoch: 57, train loss: 0.23304983274060853
+epoch: 58, train loss: 0.22784664101746618
+epoch: 58, eval loss: 0.5882876932621002, correct: 8245, total: 10000, acc = 0.8244999647140503
+epoch: 59, train loss: 0.21604956868959932
+epoch: 60, train loss: 0.20325114882113982
+epoch: 60, eval loss: 0.5910753712058068, correct: 8248, total: 10000, acc = 0.8247999548912048
+epoch: 61, train loss: 0.19390226033877353
+epoch: 62, train loss: 0.18323212360240976
+epoch: 62, eval loss: 0.6264512360095977, correct: 8272, total: 10000, acc = 0.8271999955177307
+epoch: 63, train loss: 0.1680474430322647
+epoch: 64, train loss: 0.16121925512442783
+epoch: 64, eval loss: 0.640467157959938, correct: 8283, total: 10000, acc = 0.8282999992370605
+epoch: 65, train loss: 0.14981685054241395
+epoch: 66, train loss: 0.14731310475237516
+epoch: 66, eval loss: 0.6354441046714783, correct: 8303, total: 10000, acc = 0.830299973487854
+epoch: 67, train loss: 0.13300996874364054
+epoch: 68, train loss: 0.12739452506814683
+epoch: 68, eval loss: 0.6673313498497009, correct: 8282, total: 10000, acc = 0.8281999826431274
+epoch: 69, train loss: 0.11627298555507952
+epoch: 70, train loss: 0.10940710728874012
+epoch: 70, eval loss: 0.692647397518158, correct: 8302, total: 10000, acc = 0.8301999568939209
+epoch: 71, train loss: 0.10183572788171623
+epoch: 72, train loss: 0.09634554986746943
+epoch: 72, eval loss: 0.695426219701767, correct: 8299, total: 10000, acc = 0.8298999667167664
+epoch: 73, train loss: 0.09228058896806775
+epoch: 74, train loss: 0.08581420976896675
+epoch: 74, eval loss: 0.694861987233162, correct: 8340, total: 10000, acc = 0.8339999914169312
+epoch: 75, train loss: 0.07914869715364611
+epoch: 76, train loss: 0.0742536057547039
+epoch: 76, eval loss: 0.7130348771810532, correct: 8347, total: 10000, acc = 0.8346999883651733
+epoch: 77, train loss: 0.06935026941402835
+epoch: 78, train loss: 0.0665280031306403
+epoch: 78, eval loss: 0.7465721786022186, correct: 8341, total: 10000, acc = 0.8341000080108643
+epoch: 79, train loss: 0.05928862589050313
+epoch: 80, train loss: 0.05455683164146482
+epoch: 80, eval loss: 0.776301947236061, correct: 8314, total: 10000, acc = 0.8313999772071838
+epoch: 81, train loss: 0.05638634926658504
+epoch: 82, train loss: 0.05360411343221762
+epoch: 82, eval loss: 0.7883096963167191, correct: 8332, total: 10000, acc = 0.8331999778747559
+epoch: 83, train loss: 0.04867944630737207
+epoch: 84, train loss: 0.0474467751931171
+epoch: 84, eval loss: 0.7960963994264603, correct: 8340, total: 10000, acc = 0.8339999914169312
+epoch: 85, train loss: 0.044186076149344444
+epoch: 86, train loss: 0.041499203527156185
+epoch: 86, eval loss: 0.7910951197147369, correct: 8364, total: 10000, acc = 0.8363999724388123
+epoch: 87, train loss: 0.03865447499770291
+epoch: 88, train loss: 0.03929391104195799
+epoch: 88, eval loss: 0.8027831196784974, correct: 8371, total: 10000, acc = 0.8370999693870544
+epoch: 89, train loss: 0.03619915826664287
+epoch: 90, train loss: 0.034103386617284646
+epoch: 90, eval loss: 0.8021850943565368, correct: 8357, total: 10000, acc = 0.8356999754905701
+epoch: 91, train loss: 0.037686211741244306
+epoch: 92, train loss: 0.033469487000636906
+epoch: 92, eval loss: 0.8143919885158539, correct: 8359, total: 10000, acc = 0.8359000086784363
+epoch: 93, train loss: 0.03238337778733397
+epoch: 94, train loss: 0.03141044888987529
+epoch: 94, eval loss: 0.8093269526958465, correct: 8385, total: 10000, acc = 0.8384999632835388
+epoch: 95, train loss: 0.031111840225223984
+epoch: 96, train loss: 0.032168653251945366
+epoch: 96, eval loss: 0.8102991491556167, correct: 8379, total: 10000, acc = 0.8378999829292297
+epoch: 97, train loss: 0.03043455306478605
+epoch: 98, train loss: 0.03200419174925405
+epoch: 98, eval loss: 0.8105081558227539, correct: 8373, total: 10000, acc = 0.8373000025749207
+epoch: 99, train loss: 0.031662615329711416
+finish training
+TACC:  Shutdown complete. Exiting. 
