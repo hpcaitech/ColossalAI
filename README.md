@@ -1,6 +1,6 @@
 # ColossalAI
 
-An integrated large-scale model training framework with efficient parallelization techniques
+An integrated large-scale model training system with efficient parallelization techniques
 
 ## Installation
 
