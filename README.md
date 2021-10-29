@@ -1,6 +1,8 @@
 # ColossalAI
 
-An integrated large-scale model training system with efficient parallelization techniques
+An integrated large-scale model training system with efficient parallelization techniques.
+
+arXiv: [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://arxiv.org/abs/2110.14883)
 
 ## Installation
 

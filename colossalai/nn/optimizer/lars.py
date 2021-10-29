@@ -12,6 +12,7 @@ from colossalai.registry import OPTIMIZERS
 class Lars(Optimizer):
     r"""Implements the LARS optimizer from `"Large batch training of convolutional networks"
     <https://arxiv.org/pdf/1708.03888.pdf>`_.
+
     Args:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups
@@ -35,7 +36,8 @@ class Lars(Optimizer):
         if momentum < 0.0:
             raise ValueError("Invalid momentum value: {}".format(momentum))
         if weight_decay < 0.0:
-            raise ValueError("Invalid weight_decay value: {}".format(weight_decay))
+            raise ValueError(
+                "Invalid weight_decay value: {}".format(weight_decay))
         if eeta <= 0 or eeta > 1:
             raise ValueError("Invalid eeta value: {}".format(eeta))
         if epsilon < 0:
@@ -48,6 +50,7 @@ class Lars(Optimizer):
     @torch.no_grad()
     def step(self, closure=None):
         """Performs a single optimization step.
+
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.

@@ -13,6 +13,7 @@ colossalai.nn.optimizer
    colossalai.nn.optimizer.fused_lamb
    colossalai.nn.optimizer.fused_sgd
    colossalai.nn.optimizer.lamb
+   colossalai.nn.optimizer.lars
    colossalai.nn.optimizer.loss_scaler
    colossalai.nn.optimizer.zero_redundancy_optimizer_level_1
    colossalai.nn.optimizer.zero_redundancy_optimizer_level_2

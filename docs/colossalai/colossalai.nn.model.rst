@@ -7,7 +7,6 @@ colossalai.nn.model
 .. toctree::
    :maxdepth: 2
 
-   colossalai.nn.model.bert
    colossalai.nn.model.vanilla_resnet
    colossalai.nn.model.vision_transformer
 

@@ -16,5 +16,3 @@ colossalai.nn.data
    colossalai.nn.data.base_dataset
    colossalai.nn.data.caltech101_dataset
    colossalai.nn.data.cifar10_dataset
-   colossalai.nn.data.prefetcher
-   colossalai.nn.data.wiki_dataset
