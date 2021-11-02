@@ -1,12 +1,12 @@
-# Add Your Own Parallelism
+# Add your own parallelism
 
 ## Overview
 
 To enable researchers and engineers to extend our framework to other novel large-scale distributed training algorithm
-with less effort, we have decoupled the various components in the training lifecycle. You can implement your own
+with less effort, we have decoupled various components in the training lifecycle. You can implement your own
 parallelism by simply inheriting from the base class.
 
-The main components are
+The main components are:
 
 1. `ProcessGroupInitializer`
 2. `GradientHandler`
@@ -14,14 +14,13 @@ The main components are
 
 ## Process Group Initializer
 
-Parallelism is often managed by process groups where processes involved in parallel computing are placed in the same
+Parallelism is often managed by process groups where processes involved in the same parallel algorithm are placed in the same
 process group. For different parallel algorithms, different process groups need to be created. ColossalAI provides a
-global context for the user to easily manage their process groups. If you wish to add new process group, you can easily
+global context for users to easily manage their process groups. If you wish to add new process group, you can easily
 define a new class and set it in your configuration file. To define your own way of creating process groups, you can
-follow the steps below to create new distributed initialization.
+follow the steps below to create a new distributed initialization.
 
-1. Add your parallel mode in `colossalai.context.parallel_mode.ParallelMode`
-
+1. Add your parallel mode in `colossalai.context.parallel_mode.ParallelMode`.
     ```python
     class ParallelMode(Enum):
         GLOBAL = 'global'
@@ -34,11 +33,10 @@ follow the steps below to create new distributed initialization.
         NEW_MODE = 'new_mode'  # define your mode here
     ```
 
-2. Create a `ProcessGroupInitializer`. You can refer to examples given in `colossal.context.dist_group_initializer`. The
+2. Create a `ProcessGroupInitializer`. You can refer to examples given in `colossalai.context.dist_group_initializer`. The
    first six arguments are fixed. `ParallelContext` will pass in these arguments for you. If you need to set other
    arguments, you can add it behind like the `arg1, arg2` in the example below. Lastly, register your initializer to the
    registry by adding the decorator `@DIST_GROUP_INITIALIZER.register_module`.
-
     ```python
     # sample initializer class
     @DIST_GROUP_INITIALIZER.register_module
@@ -84,17 +82,15 @@ follow the steps below to create new distributed initialization.
 ## Gradient Handler
 
 Gradient handlers are objects which execute the all-reduce operations on parameters' gradients. As different all-reduce
-strategies may be executed for different kinds of parallelism, the user can
-inherit `colossal.engine.gradient_handler.BaseGradientHandler` to implement their strategies. Currently, the library
+strategies may be executed for different kinds of parallelism, users can
+inherit `colossalai.engine.gradient_handler.BaseGradientHandler` to implement their strategies. Currently, the library
 uses the normal data parallel gradient handler which all-reduces the gradients across data parallel ranks. The data
 parallel gradient handler is added to the engine automatically if data parallel is detected. You can add your own
 gradient handler like below:
 
 ```python
-
 from colossalai.registry import GRADIENT_HANDLER
 from colossalai.engine import BaseGradientHandler
-
 
 @GRADIENT_HANDLER.register_module
 class YourGradientHandler(BaseGradientHandler):
@@ -116,5 +112,5 @@ dist_initializer = [
 
 Schedule entails how to execute a forward and backward pass. Currently, ColossalAI provides pipeline and non-pipeline
 schedules. If you want to modify how the forward and backward passes are executed, you can
-inherit `colossalai.engine.BaseSchedule` and implement your idea. You can add your schedule to the engine before
+inherit `colossalai.engine.BaseSchedule` and implement your idea. You can also add your schedule to the engine before
 training.
