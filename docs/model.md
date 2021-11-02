@@ -1,14 +1,16 @@
 # Define your own parallel model
 
-## Write a Simple 2D Parallel Model
+Let's say that you have a huge MLP model with billions of parameters and its extremely large hidden layer size makes it
+impossible to fit into a single GPU. Don't worry, ColossalAI is here to help you sort things out. With the help of ColossalAI, 
+you can write your model in the familiar way in which you used to write models for a single GPU, while ColossalAI automatically 
+splits your model weights and fit them perfectly into a set of GPUs. We give a simple example showing how to write a simple 
+2D parallel model in the ColossalAI context.
 
-Let's say we have a huge MLP model and its very large hidden size makes it difficult to fit into a single GPU. We can
-then distribute the model weights across GPUs in a 2D mesh while you still write your model in a familiar way.
+## Write a simple 2D parallel model
 
 ```python
 from colossalai.nn import Linear2D
 import torch.nn as nn
-
 
 class MLP_2D(nn.Module):
 
@@ -21,8 +23,9 @@ class MLP_2D(nn.Module):
         x = self.linear_1(x)
         x = self.linear_2(x)
         return x
-
 ```
 
 ## Use pre-defined model
-Our Model Zoo supports *BERT*, *VIT*, *MLP-Mixer* of different sizes.
+
+For the sake of your convenience, we kindly provide you in our Model Zoo with some prevalent models such as *BERT*, *VIT*, 
+and *MLP-Mixer*. Feel free to customize them into different sizes to fit into your special needs.
