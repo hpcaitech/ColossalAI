@@ -1,18 +1,25 @@
-# Zero Redundancy Optimizer and Zero Offload
+# Zero Redundancy optimizer and zero offload
 
-The Zero Redundancy Optimizer (ZeRO) removes the memory redundancies across data-parallel processes by partitioning the three model states (optimizer states, gradients, and parameters) across data-parallel processes instead of replicating them. By doing this, it boosts memory efficiency compared to classic data-parallelism while retaining its computational granularity and communication efficiency.
+The Zero Redundancy Optimizer (ZeRO) removes the memory redundancies across data-parallel processes by partitioning three 
+model states (optimizer states, gradients, and parameters) across data-parallel processes instead of replicating them. 
+By doing so, memory efficiency is boosted drastically compared to classic data parallelism while the computational granularity 
+and communication efficiency are retained.
 
-1. **ZeRO Level 1**: The optimizer states (e.g., for [Adam optimizer](https://arxiv.org/abs/1412.6980), 32-bit weights, and the first, and second moment estimates) are partitioned across the processes, so that each process updates only its partition.
-2. **ZeRO Level 2**: The reduced 32-bit gradients for updating the model weights are also partitioned such that each process retains only the gradients corresponding to its portion of the optimizer states.
-3. **ZeRO Level 3**: The 16-bit model parameters are partitioned across the processes. ZeRO-3 will automatically collect and partition them during the forward and backward passes.
+1. **ZeRO Level 1**: The optimizer states (e.g., for [Adam optimizer](https://arxiv.org/abs/1412.6980), 32-bit weights, and the 
+first and second momentum estimates) are partitioned across the processes, so that each process updates only its partition.
+2. **ZeRO Level 2**: The reduced 32-bit gradients for updating the model weights are also partitioned such that each process 
+only stores the gradients corresponding to its partition of the optimizer states.
+3. **ZeRO Level 3**: The 16-bit model parameters are partitioned across the processes. ZeRO-3 will automatically collect and 
+partition them during the forward and backward passes.
 
-## Getting Started
+## Getting Started with ZeRO
 
-Once you are training with ColossalAI, enabling ZeRO-3 offload is as simple as enabling it in your ColossalAI configuration! Below are a few examples of ZeRO-3 configurations. 
+If you are training models with ColossalAI, enabling ZeRO-3 offload is as simple as enabling it in your ColossalAI configuration! 
+Below are a few examples of ZeRO-3 configurations.
 
-### Example ZeRO-3 Configurations
+### Example of ZeRO-3 Configurations
 
-Here we use ``Adam`` as the initial optimizer.
+Here we use `Adam` as the initial optimizer.
 
 1. Use ZeRO to partition the optimizer states (level 1), gradients (level 2), and parameters (level 3).
     ```python
@@ -74,8 +81,8 @@ Here we use ``Adam`` as the initial optimizer.
     )
     ```
 
-Note that ``fp16`` is automatically enabled when using ZeRO. 
+Note that `fp16` is automatically enabled when using ZeRO. 
 
 ### Training
 
-Once you complete your configuration, just use `colossalai.initialize()` to initialize your training. All you need to do is to write your configuration.
+Once you have completed your configuration, just use `colossalai.initialize()` to initialize your training.

@@ -36,7 +36,6 @@ from colossalai.engine import Engine
 from colossalai.logging import get_global_dist_logger
 from colossalai.trainer import Trainer
 
-
 def run_trainer():
     model, train_dataloader, test_dataloader, criterion, optimizer, schedule, lr_scheduler = colossalai.initialize()
     logger = get_global_dist_logger()
@@ -64,7 +63,6 @@ def run_trainer():
         test_interval=2
     )
 
-
 if __name__ == '__main__':
     run_trainer()
 ```
@@ -75,7 +73,7 @@ Zoo. The detailed substitution process is elaborated [here](model.md).
 ## Features
 
 ColossalAI provides a collection of parallel training components for you. We aim to support you with your development of
-distributed deep learning models just like how you write single-GPU deeo learning models. We provide friendly tools to
+distributed deep learning models just like how you write single-GPU deep learning models. We provide friendly tools to
 kickstart distributed training in a few lines.
 
 - [Data Parallelism](parallelization.md)
