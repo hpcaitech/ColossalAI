@@ -166,29 +166,59 @@ class Trainer:
             else:
                 progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
 
+        # metric measured by bian zhengda
+        train_loss = 0
+        batch_cnt = 0
+        num_samples = 0
+        ######
         self._call_hooks('before_train_epoch')
-        self._call_timer(action='start', item='train-epoch')
+        self._call_timer(action='start', item='Train-epoch')
         for i in progress:
             self._call_hooks('before_train_iter')
-            self._call_timer(action='start', item='train-step')
+            self._call_timer(action='start', item='Train-step')
+
+            # metric measured by bian zhengda
+            cur_lr = self._engine.optimizer.param_groups[0]['lr']
+            ######
 
             # run 1 training step
             self.engine.zero_grad()
             logits, label, loss = self.schedule.forward_backward_step(
                 self.engine, data_iter, forward_only=False, return_loss=True)
             self.engine.step()
-            self._call_timer(action='stop', item='train-step', keep_in_history=True)
+            self._call_timer(action='stop', item='Train-step',
+                             keep_in_history=True)
             self._call_hooks('after_train_iter', output=(logits, label, loss))
 
             self._cur_step += 1
+
+            # metric measured by bian zhengda
+            if display_progress:
+                if isinstance(label, (tuple, list)):
+                    batch_size = label[0].size(0)
+                else:
+                    batch_size = label.size(0)
+                batch_size *= gpc.data_parallel_size
+                train_loss += loss.item()
+                num_samples += batch_size
+                batch_cnt += 1
+                batch_time = self._timer.get_timer(
+                    'Train-step').get_elapsed_time()
+                print_features = dict(lr='%g' % cur_lr,
+                                      loss='%.3f' % (train_loss / (i + 1)),
+                                      throughput='%.3f (samples/sec)' %
+                                      (batch_size / (batch_time + 1e-12)))
+                progress.set_postfix(**print_features)
+            ######
 
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
 
-        self._call_timer(action='stop', item='train-epoch', keep_in_history=True)
+        self._call_timer(action='stop', item='Train-epoch',
+                         keep_in_history=True)
         self._call_hooks('after_train_epoch')
-        self._call_timer(action='reset', item='train-step')
+        self._call_timer(action='reset', item='Train-step')
 
     def _eval(self,
               test_dataloader: DataLoader,
@@ -210,21 +240,23 @@ class Trainer:
             progress = tqdm(progress, desc=desc)
 
         self._call_hooks('before_test_epoch')
-        self._call_timer(action='start', item='test-epoch')
+        self._call_timer(action='start', item='Test-epoch')
         with torch.no_grad():
             for _ in progress:
                 self._call_hooks('before_test_iter')
-                self._call_timer(action='start', item='test-step')
+                self._call_timer(action='start', item='Test-step')
                 logits, label, loss = self.schedule.forward_backward_step(
                     self.engine, data_iter, forward_only=True, return_loss=True)
-                self._call_timer(action='stop', item='test-step', keep_in_history=True)
+                self._call_timer(
+                    action='stop', item='Test-step', keep_in_history=True)
                 self._call_hooks('after_test_iter',
                                  output=(logits, label, loss))
-        self._call_timer(action='stop', item='test-epoch', keep_in_history=True)
+        self._call_timer(action='stop', item='Test-epoch',
+                         keep_in_history=True)
         self._call_hooks('after_test_epoch')
         self._call_hooks('after_test')
-        self._call_timer(action='reset', item='test-step')
-        self._call_timer(action='reset', item='test-epoch')
+        self._call_timer(action='reset', item='Test-step')
+        self._call_timer(action='reset', item='Test-epoch')
 
     def _exceed_max_step(self):
         return self._max_steps is not None and self._cur_step >= self._max_steps
@@ -272,7 +304,8 @@ class Trainer:
         # reset hooks
         self._reset_states()
         if hooks is not None:
-            assert isinstance(hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
+            assert isinstance(
+                hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
         else:
             hooks = []
         self.hooks = hooks
@@ -281,7 +314,8 @@ class Trainer:
             for hook in self.hooks:
                 self._logger.info(
                     f'Using {hook.__class__.__name__} for training, priority = {hook.priority}', ranks=[0])
-            self._logger.info("Lower value means higher priority for calling hook function", ranks=[0])
+            self._logger.info(
+                "Lower value means higher priority for calling hook function", ranks=[0])
         self._call_hooks('after_hook_is_attached')
 
         # start train
@@ -317,7 +351,7 @@ class Trainer:
                     ranks=[0])
                 break
         self._call_hooks('after_train')
-        self._call_timer('reset', 'train-epoch')
+        self._call_timer('reset', 'Train-epoch')
 
     def evaluate(self,
                  test_dataloader: DataLoader,
@@ -336,7 +370,8 @@ class Trainer:
         # reset hooks
         self._reset_states()
         if hooks is not None:
-            assert isinstance(hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
+            assert isinstance(
+                hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
         else:
             hooks = []
         self.hooks = hooks
@@ -345,7 +380,8 @@ class Trainer:
             for hook in self.hooks:
                 self._logger.info(
                     f'Using {hook.__class__.__name__} for training, priority = {hook.priority}', ranks=[0])
-            self._logger.info("Lower value means higher priority for calling hook function", ranks=[0])
+            self._logger.info(
+                "Lower value means higher priority for calling hook function", ranks=[0])
         self._call_hooks('after_hook_is_attached')
 
         # eval

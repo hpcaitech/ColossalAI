@@ -5,7 +5,7 @@ from colossalai.logging import get_dist_logger
 import colossalai
 import torch
 import os
-from colossalai.builder import PipelineModelInitializer
+from colossalai.builder import PipelineModel
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_dataloader, MultiTimer
 from colossalai.nn.loss import CrossEntropyLoss2D
@@ -47,8 +47,7 @@ def main():
     #                        suffix='cifar10_2d_vit_ddp1_torch_amp_grad_accum_2_clip_grad_1', mode='w')
 
     # build vit-t-32
-    initializer = PipelineModelInitializer(vit_t_2d.model_cfg, num_chunks=1)
-    model = initializer.initialize()
+    model = PipelineModel(vit_t_2d.model_cfg, num_chunks=1)()
 
     # build dataloaders
     train_dataset = CIFAR10(

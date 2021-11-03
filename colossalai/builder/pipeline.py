@@ -150,7 +150,7 @@ def _partition_balanced(weights, pipeline_parallel_size, num_chunks):
     return parts
 
 
-class PipelineModelInitializer():
+class PipelineModel():
     def __init__(self, config, num_chunks, verbose=False):
         self.num_chunks = num_chunks
         self.ori_model = build_model(config)
@@ -160,7 +160,7 @@ class PipelineModelInitializer():
         self._logger = get_dist_logger()
         self._logger.info(f"The total length of layers is {layer_length}", ranks=[0])
 
-    def initialize(self, partition_method='parameter'):
+    def __call__(self, partition_method='parameter'):
         # Some space for initializing comunication groups
         self._interval = None
         self._partition_layers(method=partition_method)

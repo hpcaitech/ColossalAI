@@ -90,7 +90,9 @@ def build_model(config):
     :return: An object of :class:`nn.Module`
     :rtype: :class:`nn.Module`
     """
-    return build_from_registry(config, MODELS)
+    model =  build_from_registry(config, MODELS)
+    model.build_from_cfg()
+    return model
 
 
 def build_dataset(config):

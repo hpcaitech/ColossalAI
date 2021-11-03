@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from colossalai.initialize import launch, get_default_parser
-
-from test_layer import *
-from test_operation import *
+import torch
+from colossalai.initialize import get_default_parser, launch_from_torch
+# from test_operation import *
 from colossalai.logging import get_dist_logger
 
-CONFIG = dict(parallel=dict(pipeline=1, tensor=dict(mode='3d', size=8)),
-              seed=0)
+from test_layer import *
 
+CONFIG = dict(
+    parallel=dict(
+        pipeline=1,
+        tensor=dict(mode='3d', size=8),
+    ),
+    seed=42,
+)
 
 # def check_operations():
 #     check_AB()
@@ -35,21 +40,12 @@ def check_layer():
     bwd_time = embed_bwd_time + NUM_BLOCKS * block_bwd_time + norm_bwd_time + head_bwd_time + loss_bwd_time
     logger.info('ViT forward time: {:.3f} s | backward time: {:.3f} s'.format(
         fwd_time, bwd_time),
-        ranks=[0])
+                ranks=[0])
 
 
 def _test_main():
     # init dist
-    parser = get_default_parser()
-    args = parser.parse_args()
-    launch(config=CONFIG,
-           rank=args.rank,
-           world_size=args.world_size,
-           host=args.host,
-           port=args.port,
-           backend=args.backend)
-    logger = get_dist_logger()
-    logger.info('Distributed environment is initialzied.', ranks=[0])
+    launch_from_torch(config=CONFIG)
     torch.backends.cudnn.benchmark = True
 
     # check operation
@@ -58,6 +54,7 @@ def _test_main():
     # check layers
     check_layer()
 
+    torch.cuda.synchronize()
 
 if __name__ == '__main__':
     _test_main()

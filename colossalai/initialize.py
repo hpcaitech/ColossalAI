@@ -154,14 +154,14 @@ def launch_from_openmpi(config: Union[str, Path, Config, Dict],
 
 
 def launch_from_torch(config: Union[str, Path, Config, Dict],
-                      host: str,
-                      port: int,
                       backend: str = 'nccl',
                       seed: int = 1024,
                       verbose: bool = True):
     rank = int(os.environ['RANK'])
     local_rank = int(os.environ['LOCAL_RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
+    host = os.environ['MASTER_ADDR']
+    port = int(os.environ['MASTER_PORT'])
     launch(config=config,
            local_rank=local_rank,
            rank=rank,
