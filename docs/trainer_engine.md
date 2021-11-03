@@ -54,7 +54,7 @@ More information regarding the class can be found in the API references.
 To learn how to customize a trainer which meets your needs, let's first give a look at the `Trainer` class. We highly recommend that you read *Get Started* 
 section and *Build your engine* first.
 
-The `Trainer` class enables researchers and engineers to use our framework more conveniently. Instead of having to write your own scripts, you can simply 
+The `Trainer` class enables researchers and engineers to use our system more conveniently. Instead of having to write your own scripts, you can simply 
 construct your own trainer by calling the `Trainer` class, just like what we did in the following code block.
 
 ```python
@@ -86,7 +86,7 @@ accuracy to let users monitor the performance of the model.
 ### Hook
 
 If you have your specific needs, feel free to extend our `BaseHook` class to add your own functions, or our `MetricHook` class to write a metric collector. 
-These hook functions can be called at twelve points in time. Besides, you can define the priorities of all hooks to arrange the execution order of them.
+These hook functions can be called at twelve timing in the trainer's life cycle. Besides, you can define the priorities of all hooks to arrange the execution order of them.
 More information can be found in the API references. 
 
 ### Metric
