@@ -2,7 +2,7 @@
 
 ## Overview
 
-To enable researchers and engineers to extend our framework to other novel large-scale distributed training algorithm
+To enable researchers and engineers to extend our system to other novel large-scale distributed training algorithm
 with less effort, we have decoupled various components in the training lifecycle. You can implement your own
 parallelism by simply inheriting from the base class.
 
@@ -15,7 +15,7 @@ The main components are:
 ## Process Group Initializer
 
 Parallelism is often managed by process groups where processes involved in the same parallel algorithm are placed in the same
-process group. For different parallel algorithms, different process groups need to be created. ColossalAI provides a
+process group. For different parallel algorithms, different process groups need to be created. Colossal-AI provides a
 global context for users to easily manage their process groups. If you wish to add new process group, you can easily
 define a new class and set it in your configuration file. To define your own way of creating process groups, you can
 follow the steps below to create a new distributed initialization.
@@ -110,7 +110,7 @@ dist_initializer = [
 
 ## Schedule
 
-Schedule entails how to execute a forward and backward pass. Currently, ColossalAI provides pipeline and non-pipeline
+Schedule entails how to execute a forward and backward pass. Currently, Colossal-AI provides pipeline and non-pipeline
 schedules. If you want to modify how the forward and backward passes are executed, you can
 inherit `colossalai.engine.BaseSchedule` and implement your idea. You can also add your schedule to the engine before
 training.

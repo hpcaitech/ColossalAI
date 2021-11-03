@@ -1,6 +1,6 @@
 # Mixed precision training
 
-In ColossalAI, we have incorporated different implementations of mixed precision training:
+In Colossal-AI, we have incorporated different implementations of mixed precision training:
 1. torch.cuda.amp
 2. apex.amp
 3. tensor-parallel amp
