@@ -67,7 +67,7 @@ parallel = dict(
 
 ## 梯度处理器
 
-梯度处理器的功能是对模型参数的梯度进行all-reduce操作。由于不同的并行技术可能需要不同的all-reduce操作，用户们可以通过继承`colossalai.engine.gradient_handler.BaseGradientHandler`来执行其个性化操作。目前，Colossal-AI使用普通的数据并行梯度处理器，该处理器在所有的数据并行rank上执行all-reduce操作，且当Colossal-AI监测到当前系统使用了数据并行时，该处理器会被自动创建。您可以使用下方代码块中的代码添加您自定义的梯度处理器：
+梯度处理器的功能是对模型参数的梯度进行all-reduce操作。由于不同的并行技术可能需要不同的all-reduce操作，用户们可以通过继承`colossalai.engine.gradient_handler.BaseGradientHandler`来执行其个性化操作。目前，Colossal-AI使用普通的数据并行梯度处理器，该处理器在所有的数据并行rank上执行all-reduce操作，且当Colossal-AI检测到当前系统使用了数据并行时，该处理器会被自动创建。您可以使用下方代码块中的代码添加您自定义的梯度处理器：
 
 ```python
 from colossalai.registry import GRADIENT_HANDLER

@@ -1,14 +1,14 @@
 # Quick demo
 
-Colossal-AI is an integrated large-scale deep learning system with efficient parallelization techniques. This system 
+Colossal-AI is an integrated large-scale deep learning system with efficient parallelization techniques. The system
 can accelerate model training on distributed systems with multiple GPUs by applying parallelization techniques. The
-framework can also run on systems with only one GPU. Quick demos showing how to use Colossal-AI are given below.
+system can also run on systems with only one GPU. Quick demos showing how to use Colossal-AI are given below.
 
 ## Single GPU
 
 Colossal-AI can be used to train deep learning models on systems with only one GPU and achieve baseline
 performances. [Here](https://colab.research.google.com/drive/1fJnqqFzPuzZ_kn1lwCpG2nh3l2ths0KE?usp=sharing#scrollTo=cQ_y7lBG09LS)
-is an example showing how to train a LeNet model on the CIFAR10 dataset using ColossalAI.
+is an example showing how to train a LeNet model on the CIFAR10 dataset using Colossal-AI.
 
 ## Multiple GPUs
 
