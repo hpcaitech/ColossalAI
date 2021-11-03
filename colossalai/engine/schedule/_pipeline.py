@@ -15,7 +15,7 @@ from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
 from colossalai.utils import get_current_device
 from ._base_schedule import BaseSchedule
 from ._utils import convert_to_fp16
-from ..amp_type import AMP_TYPE
+from ..amp import AMP_TYPE
 
 
 def squeeze(x: Union[Tensor, tuple, list]):
@@ -163,7 +163,7 @@ class PipelineSchedule(BaseSchedule):
             if return_loss:
                 input_tensor, label = self.load_micro_batch()
                 loss_reduced = self.criterion(output_tensor, *
-                label) / self.num_microbatches
+                                              label) / self.num_microbatches
                 return_tensors.append(
                     tuple((output_tensor, label[0], loss_reduced)))
                 return loss_reduced
@@ -200,7 +200,7 @@ class PipelineSchedule(BaseSchedule):
     def forward_backward_step(self, forward_only=True, return_loss=True):
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
-        
+
         :return: (output, label, loss)
         """
 

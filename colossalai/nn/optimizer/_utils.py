@@ -106,7 +106,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
             tensor_parallel_norm = _calc_lp(tensor_parallel_grads, norm_type)
             no_tensor_parallel_grads = _calc_lp(
                 no_tensor_parallel_grads, norm_type)
-        if gpc.is_initialized(ParallelMode.TENSOR):
+        if gpc.is_initialized(ParallelMode.TENSOR) and len(tensor_parallel_grads) > 0:
             # Sum across all model-parallel GPUs.
             torch.distributed.all_reduce(tensor_parallel_norm,
                                          op=torch.distributed.ReduceOp.SUM,
