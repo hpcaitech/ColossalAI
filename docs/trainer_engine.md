@@ -86,7 +86,7 @@ accuracy to let users monitor the performance of the model.
 ### Hook
 
 If you have your specific needs, feel free to extend our `BaseHook` class to add your own functions, or our `MetricHook` class to write a metric collector. 
-These hook functions can be called at twelve points in time. Besides, you can define the priorities of all hooks to arrange the execution order of them.
+These hook functions can be called at twelve timing in the trainer's life cycle. Besides, you can define the priorities of all hooks to arrange the execution order of them.
 More information can be found in the API references. 
 
 ### Metric

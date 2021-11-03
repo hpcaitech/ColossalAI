@@ -1,7 +1,7 @@
 # Define your own parallel model
 
 Let's say that you have a huge MLP model with billions of parameters and its extremely large hidden layer size makes it
-impossible to fit into a single GPU. Don't worry, Colossal-AI is here to help you sort things out. With the help of Colossal-AI, 
+impossible to fit into a single GPU directly. Don't worry, Colossal-AI is here to help you sort things out. With the help of Colossal-AI, 
 you can write your model in the familiar way in which you used to write models for a single GPU, while Colossal-AI automatically 
 splits your model weights and fit them perfectly into a set of GPUs. We give a simple example showing how to write a simple 
 2D parallel model in the Colossal-AI context.
