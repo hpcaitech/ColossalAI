@@ -1,24 +1,24 @@
-# Mixed Precision Training
+# Mixed precision training
 
-In Colossal-AI, we have integrated different implementations of mixed precision training:
+In ColossalAI, we have incorporated different implementations of mixed precision training:
 1. torch.cuda.amp
 2. apex.amp
 3. tensor-parallel amp
 
 The first two rely on the original implementation of [PyTorch](https://pytorch.org/docs/stable/amp.html)
 (version 1.6 and above) and [Nvidia Apex](https://github.com/NVIDIA/apex). However, these two methods are not compatible 
-with tensor parallelism. This is because that tensors are split across devices in tensor parallelism, thus, it is needed 
-to communicate among different processes to check if inf or nan occurs throughout the whole model weights. For the mixed
-precision training with tensor parallel, we adapted this feature from [Megatron-LM](https://github.com/NVIDIA/Megatron-LM). 
+with tensor parallelism. This is because that tensors are split across devices in tensor parallelism, thus, it is required 
+to communicate among different processes to check if `inf` or `nan` occurs in the whole model weights. For the mixed
+precision training with tensor parallelism, we adapted this feature from [Megatron-LM](https://github.com/NVIDIA/Megatron-LM). 
 
-To use mixed precision training, you can easily specify the `fp16` field in the configuration file. Currently, torch and 
-apex amp cannot be guaranteed to work with tensor and pipeline parallelism, thus, only the last one is recommended if you 
+To use mixed precision training, you can easily specify the `fp16` field in the config file to be True. Currently, PyTorch and 
+Apex amp cannot be guaranteed to work with tensor and pipeline parallelism, thus, only the last one is recommended if you 
 are using hybrid parallelism.
 
-## Torch AMP
+## PyTorch AMP
 
-PyTorch provides mixed precision training in version 1.6 and above. It provides an easy way to cast data to fp16 format 
-while keeping some operations such as reductions in fp32. You can configure the gradient scaler in the configuration.
+PyTorch provides mixed precision training in version 1.6 and above. It provides an easy way to cast data to `fp16` format 
+while keeping some operations such as reductions in `fp32`. You can configure the gradient scaler in the config file.
 
 ```python
 from colossalai.engine import AMP_TYPE
@@ -34,13 +34,14 @@ fp16=dict(
 )
 ```
 
-
 ## Apex AMP
 
-For this mode, we rely on the [Apex](https://nvidia.github.io/apex/) implementation for mixed precision training. We supported this plugin because it allows 
-for finer control on the granularity of mixed precision. For example, `O2` level (optimization level 2) will keep batch normalization in fp32.
+For this mode, we rely on the [Apex](https://nvidia.github.io/apex/) implementation for mixed precision training. We support 
+this plugin because it allows for finer control on the granularity of mixed precision. For example, `O2` level (optimization level 2) 
+will keep batch normalization in `fp32`.
 
-The configuration is like below.
+The following code block shows a config file for Apex AMP.
+
 ```python
 from colossalai.engine import AMP_TYPE
 
@@ -64,8 +65,10 @@ fp16 = dict(
 
 ## Tensor Parallel AMP
 
-We leveraged the Megatron-LM implementation to achieve mixed precision training while maintaining compatibility with 
-complex tensor and pipeline parallel.
+We leveraged the Megatron-LM implementation to achieve mixed precision training while maintaining compatibility with complex tensor 
+and pipeline parallelism.
+
+The following conde block show a config file for this mode.
 
 ```python
 from colossalai.engine import AMP_TYPE
