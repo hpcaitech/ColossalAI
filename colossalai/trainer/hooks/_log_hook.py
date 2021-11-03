@@ -61,7 +61,7 @@ class LogMetricByEpochHook(LogByEpochHook):
         for metric_name, metric_calculator in trainer.states['metrics'][mode].items():
             msg.append(
                 f'{metric_name} = {_format_number(metric_calculator.get_accumulated_value())}')
-        msg = ', '.join(msg)
+        msg = ' | '.join(msg)
         return msg
 
     def after_train_epoch(self, trainer):
@@ -70,14 +70,16 @@ class LogMetricByEpochHook(LogByEpochHook):
 
             if self._is_rank_to_log:
                 self.logger.info(
-                    f'Training - Epoch {trainer.cur_epoch} - {self.__class__.__name__}: {msg}')
+                    f'[Epoch {trainer.cur_epoch} / Train]: {msg}')
+                    # f'Training - Epoch {trainer.cur_epoch} - {self.__class__.__name__}: {msg}')
 
     def after_test_epoch(self, trainer):
         if self._is_epoch_to_log(trainer):
             msg = self._get_str(trainer=trainer, mode='test')
             if self._is_rank_to_log:
                 self.logger.info(
-                    f'Testing - Epoch {trainer.cur_epoch} - {self.__class__.__name__}: {msg}')
+                    f'[Epoch {trainer.cur_epoch} / Test]: {msg}')
+                    # f'Testing - Epoch {trainer.cur_epoch} - {self.__class__.__name__}: {msg}')
 
 
 @HOOKS.register_module
@@ -197,40 +199,41 @@ class LogTimingByEpochHook(LogByEpochHook):
         self._ignore_num_train_steps = ignore_num_train_steps
         self._is_train_step_history_trimmed = False
 
-    def _get_message(self):
+    def _get_message(self, mode):
         msg = []
         for timer_name, timer in self._timer:
-            last_elapsed_time = timer.get_elapsed_time()
-            if timer.has_history:
-                if timer_name == 'train-step' and not self._is_train_step_history_trimmed:
-                    timer._history = timer._history[self._ignore_num_train_steps:]
-                    self._is_train_step_history_trimmed = True
-                history_mean = timer.get_history_mean()
-                history_sum = timer.get_history_sum()
-                msg.append(
-                    f'{timer_name}: last = {_format_number(last_elapsed_time)} s, mean = {_format_number(history_mean)} s')
-            else:
-                msg.append(
-                    f'{timer_name}: last = {_format_number(last_elapsed_time)} s')
+            if timer_name.startswith(mode):
+                last_elapsed_time = timer.get_elapsed_time()
+                if timer.has_history:
+                    if timer_name == 'Train-step' and not self._is_train_step_history_trimmed:
+                        timer._history = timer._history[self._ignore_num_train_steps:]
+                        self._is_train_step_history_trimmed = True
+                    history_mean = timer.get_history_mean()
+                    history_sum = timer.get_history_sum()
+                    msg.append(
+                        f'{timer_name}: last = {_format_number(last_elapsed_time)} s, mean = {_format_number(history_mean)} s')
+                else:
+                    msg.append(
+                        f'{timer_name}: last = {_format_number(last_elapsed_time)} s')
 
-        msg = ', '.join(msg)
+        msg = ' | '.join(msg)
         return msg
 
     def after_train_epoch(self, trainer):
         """Writes log after finishing a training epoch.
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log:
-            msg = self._get_message()
+            msg = self._get_message('Train')
             self.logger.info(
-                f'Training - Epoch {trainer.cur_epoch} - {self.__class__.__name__}: {msg}, num steps per epoch={trainer.steps_per_epoch}')
+                f'[Epoch {trainer.cur_epoch} / Train]: {msg}, #steps/epoch = {trainer.steps_per_epoch}')
 
     def after_test_epoch(self, trainer):
         """Writes log after finishing a testing epoch.
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log and self._log_eval:
-            msg = self._get_message()
+            msg = self._get_message('Test')
             self.logger.info(
-                f'Testing - Epoch {trainer.cur_epoch} - {self.__class__.__name__}: {msg}')
+                f'[Epoch {trainer.cur_epoch} / Test]: {msg}')
 
 
 @HOOKS.register_module
@@ -262,14 +265,14 @@ class LogMemoryByEpochHook(LogByEpochHook):
         """Resets before training.
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log:
-            report_memory_usage('before-train', self.logger)
+            report_memory_usage('Before-train', self.logger)
 
     def after_train_epoch(self, trainer):
         """Writes log after finishing a training epoch.
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log:
             report_memory_usage(
-                f'After Train - Epoch {trainer.cur_epoch} - {self.__class__.__name__}',
+                f'[Epoch {trainer.cur_epoch} / Train]',
                 self.logger)
 
     def after_test(self, trainer):
@@ -277,5 +280,5 @@ class LogMemoryByEpochHook(LogByEpochHook):
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log and self._log_eval:
             report_memory_usage(
-                f'After Test - Epoch {trainer.cur_epoch} - {self.__class__.__name__}',
+                f'[Epoch {trainer.cur_epoch} / Test]',
                 self.logger)

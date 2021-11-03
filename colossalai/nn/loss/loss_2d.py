@@ -4,10 +4,12 @@ from torch.nn.modules.loss import _Loss
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.nn.layer.parallel_2d import split_batch_2d, reduce_by_batch_2d
 from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization, get_summa_dim_from_env
 from colossalai.registry import LOSSES
 from colossalai.utils import get_current_device
 from torch.cuda.amp import custom_bwd, custom_fwd
+from torch.nn.functional import cross_entropy
 
 
 class _ParallelCrossEntropyLossFunction_2D(torch.autograd.Function):
@@ -82,28 +84,6 @@ class _ParallelCrossEntropyLossFunction_2D(torch.autograd.Function):
         return grad_input, None
 
 
-class _ReduceByColumn(torch.autograd.Function):
-    """All-reduce the input from the model parallel region."""
-
-    @staticmethod
-    def symbolic(graph, input_):
-        dist.all_reduce(input_, group=gpc.get_group(
-            ParallelMode.PARALLEL_2D_COL))
-        return input_
-
-    @staticmethod
-    @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, input_):
-        dist.all_reduce(input_, group=gpc.get_group(
-            ParallelMode.PARALLEL_2D_COL))
-        return input_
-
-    @staticmethod
-    @custom_bwd
-    def backward(ctx, grad_output):
-        return grad_output
-
-
 @LOSSES.register_module
 class CrossEntropyLoss2D(_Loss):
     """Cross entropy loss for 2D parallelism
@@ -112,20 +92,31 @@ class CrossEntropyLoss2D(_Loss):
     :type reduction: bool, optional
     """
 
-    def __init__(self, reduction=True):
+    def __init__(self, reduction=True, label_smoothing=0.0):
         super().__init__()
         assert_summa_initialization()
         self.summa_dim = get_summa_dim_from_env()
         self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)
+        self.label_smoothing = label_smoothing
         self.reduction_mean = reduction
 
     def forward(self, logits, targets):
-        targets = targets.chunk(self.summa_dim, dim=0)[self.row_rank]
-        loss = _ParallelCrossEntropyLossFunction_2D.apply(
-            logits, targets,
-        )
-        if self.reduction_mean:
-            loss = _ReduceByColumn.apply(loss) / self.summa_dim
-        dist_loss = loss.mean()
+        # targets = targets.chunk(self.summa_dim, dim=0)[self.row_rank]
+        # loss = _ParallelCrossEntropyLossFunction_2D.apply(
+        #     logits, targets,
+        # )
+        # if self.reduction_mean:
+        #     loss = _ReduceByColumn.apply(loss) / self.summa_dim
+        # dist_loss = loss.mean()
 
-        return dist_loss
+        # return dist_loss
+
+        batch_size = targets.size(0)
+        targets = split_batch_2d(targets)
+        loss = cross_entropy(logits, targets, reduction='sum',
+                             label_smoothing=self.label_smoothing)
+        if self.reduction_mean:
+            loss = loss.sum()
+            loss = reduce_by_batch_2d.apply(loss)
+            loss /= batch_size
+        return loss

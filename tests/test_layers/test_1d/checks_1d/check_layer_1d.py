@@ -17,7 +17,8 @@ def check_linear_col():
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
-    layer = Linear1D_Col(INPUT_SIZE, OUTPUT_SIZE, gather_output=True)
+    # layer = Linear1D_Col(INPUT_SIZE, OUTPUT_SIZE, gather_output=True)
+    layer = Linear1D_Col(INPUT_SIZE, OUTPUT_SIZE)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
     A_master = torch.randn(A_shape, dtype=dtype, device=device)
@@ -50,18 +51,22 @@ def check_linear_col():
     B_master = B_master.clone()
     B_master.requires_grad = True
     C_master = torch.matmul(A_master, W_master.transpose(0, 1)) + B_master
-    C = C_master.clone()
+    # C = C_master.clone()
+    C = torch.chunk(C_master, DEPTH, dim=-1)[i]
 
     check_equal(out, C)
-    print_rank_0('linear_col gather_output forward: pass')
+    print_rank_0('linear_col forward: pass')
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
     dist.broadcast(grad_master, src=0)
-    grad = grad_master.detach()
+    # grad = grad_master.detach()
+    grad = torch.chunk(grad_master, DEPTH, dim=-1)[i]
+    grad = grad.clone()
     out.backward(grad)
 
-    C_master.backward(grad)
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
     A_grad = A_master.grad
     check_equal(A_grad, A.grad)
 
@@ -73,7 +78,7 @@ def check_linear_col():
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[i]
     check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('linear_col gather_output backward: pass')
+    print_rank_0('linear_col backward: pass')
 
 
 def check_linear_row():
@@ -84,12 +89,14 @@ def check_linear_row():
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
-    layer = Linear1D_Row(OUTPUT_SIZE, INPUT_SIZE, parallel_input=False)
+    # layer = Linear1D_Row(OUTPUT_SIZE, INPUT_SIZE, parallel_input=False)
+    layer = Linear1D_Row(OUTPUT_SIZE, INPUT_SIZE)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, OUTPUT_SIZE)
     A_master = torch.randn(A_shape, dtype=dtype, device=device)
     dist.broadcast(A_master, src=0)
-    A = A_master.clone()
+    A = torch.chunk(A_master, DEPTH, dim=-1)[i]
+    A = A.clone()
     A.requires_grad = True
 
     W_shape = (INPUT_SIZE, OUTPUT_SIZE)
@@ -119,26 +126,29 @@ def check_linear_row():
     C = C_master.clone()
 
     check_equal(out, C)
-    print_rank_0('linear_row no parallel_input forward: pass')
+    print_rank_0('linear_row forward: pass')
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
     dist.broadcast(grad_master, src=0)
-    grad = grad_master.detach()
+    grad = grad_master.clone()
     out.backward(grad)
 
-    C_master.backward(grad)
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
     A_grad = A_master.grad
+    A_grad = torch.chunk(A_grad, DEPTH, dim=-1)[i]
     check_equal(A_grad, A.grad)
 
     W_grad = W_master.grad
     W_grad = torch.chunk(W_grad, DEPTH, dim=-1)[i]
+    # print(f'\nRank {gpc.get_global_rank()} true:\n{W_grad}\nRank {gpc.get_global_rank()} out:\n{layer.weight.grad}')
     check_equal(W_grad, layer.weight.grad)
 
     B_grad = B_master.grad
     check_equal(B_grad, layer.bias.grad)
 
-    print_rank_0('linear_row no parallel_input backward: pass')
+    print_rank_0('linear_row backward: pass')
 
 
 class Testvithead(torch.nn.Module):

@@ -497,8 +497,7 @@ class ParallelContext:
                 self._logger.info(
                     f"initialized seed on rank {global_rank}, "
                     f"numpy: {seed}, python random: {seed}, {seed_str},"
-                    f"the default parallel seed is {ParallelMode.DATA}.",
-                    ranks=[0])
+                    f"the default parallel seed is {ParallelMode.DATA}.")
         else:
             if self._verbose:
                 self._logger.info(

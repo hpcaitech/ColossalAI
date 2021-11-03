@@ -1,6 +1,6 @@
 import math
 import os
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -8,14 +8,16 @@ from colossalai.constants import (INPUT_GROUP_3D, OUTPUT_GROUP_3D,
                                   WEIGHT_GROUP_3D)
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
+from colossalai.nn.init import init_bias_, init_weight_
 from colossalai.registry import LAYERS
 from colossalai.nn.init import init_bias_, init_weight_
 from colossalai.utils import checkpoint, get_current_device
 from torch import Tensor, dtype, nn
 
-from .._common_utils import ACT2FN, divide, set_tensor_parallel_attribute_by_size, to_2tuple
-from ._utils import get_depth_from_env, get_parallel_mode_from_env, get_last_group
-from .layers import Linear3D
+from .._common_utils import ACT2FN, divide, set_tensor_parallel_attribute_by_partition, to_2tuple
+from ._utils import (get_depth_from_env, get_last_group,
+                     get_parallel_mode_from_env)
+from .layers import Classifier3D, Linear3D, PatchEmbedding3D
 
 
 @LAYERS.register_module
@@ -42,111 +44,33 @@ class ViTPatchEmbedding3D(nn.Module):
                  in_chans: int,
                  embed_size: int,
                  drop_prob: float,
+                 dtype: dtype = None,
                  flatten: bool = True,
                  init_method: str = 'torch'):
         super().__init__()
-        self.depth = get_depth_from_env()
-        self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
-        self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
-        self.output_parallel_mode = get_last_group(self.input_parallel_mode,
-                                                   self.weight_parallel_mode)
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0],
-                          img_size[1] // patch_size[1])
-        self.in_chans = in_chans
-        self.embed_size = embed_size
-        self.embed_size_per_partition = divide(self.embed_size, self.depth)
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
-        self.flatten = flatten
-        self.init_weight = 'torch'
-        self.init_bias = 'torch'
+        init_weight = 'torch'
+        init_bias = 'torch'
         if init_method == 'jax':
-            self.init_weight = 'jax_embed'
-            self.init_bias = 'zero'
+            init_weight = 'jax_embed'
+            init_bias = 'zero'
 
-        self.proj = nn.Conv2d(self.in_chans,
-                              self.embed_size_per_partition,
-                              kernel_size=patch_size,
-                              stride=patch_size)
+        self.patch_embed = PatchEmbedding3D(
+            img_size,
+            patch_size,
+            in_chans,
+            embed_size,
+            dtype=dtype,
+            flatten=flatten,
+            init_weight=init_weight,
+            init_bias=init_bias,
+        )
 
-        self.cls_token = nn.Parameter(
-            torch.zeros(1, 1, self.embed_size_per_partition))
-        self.pos_embed = nn.Parameter(
-            torch.zeros(1, self.num_patches + 1,
-                        self.embed_size_per_partition))
-        self.pos_drop = nn.Dropout(drop_prob)
-
-        self.reset_parameters(self.init_weight, self.init_bias)
-        self._set_tensor_parallel_attributes()
-
-    def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute_by_size(self.proj.weight, self.in_chans * self.embed_size * self.num_patches)
-        set_tensor_parallel_attribute_by_size(self.proj.bias, self.embed_size)
-        set_tensor_parallel_attribute_by_size(self.cls_token, 1 * 1 * self.embed_size)
-        set_tensor_parallel_attribute_by_size(self.pos_embed, 1 * (self.num_patches + 1) * self.embed_size)
-
-    def reset_parameters(self, init_weight, init_bias):
-        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.proj.weight)
-        # std = math.sqrt(1.0 / fan_in)
-        # nn.init.trunc_normal_(self.proj.weight, std=std / .87962566103423978)
-        # nn.init.zeros_(self.proj.bias)
-        if init_weight != 'torch':
-            init_weight_(self.proj.weight, fan_in, init_method=init_weight)
-            init_bias_(self.pos_embed, fan_in, init_method=init_weight)
-        if init_bias != 'torch':
-            init_bias_(self.proj.bias, fan_in, init_method=init_bias)
-
-        self.to(get_current_device())
-        weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
-        dist.broadcast(self.proj.weight,
-                       src=weight_src_rank,
-                       group=gpc.get_group(self.weight_parallel_mode))
-        dist.broadcast(self.proj.bias,
-                       src=weight_src_rank,
-                       group=gpc.get_group(self.weight_parallel_mode))
-        input_src_rank = gpc.get_ranks_in_group(self.input_parallel_mode)[0]
-        dist.broadcast(self.proj.weight,
-                       src=input_src_rank,
-                       group=gpc.get_group(self.input_parallel_mode))
-        dist.broadcast(self.proj.bias,
-                       src=input_src_rank,
-                       group=gpc.get_group(self.input_parallel_mode))
-
-        self.proj.weight.register_hook(self._sync_grad_hook)
-        self.proj.bias.register_hook(self._sync_grad_hook)
-        self.cls_token.register_hook(self._sync_grad_hook)
-        self.pos_embed.register_hook(self._sync_grad_hook)
-
-    def _sync_grad_hook(self, grad) -> None:
-        dist.all_reduce(grad, group=gpc.get_group(self.input_parallel_mode))
-        dist.all_reduce(grad, group=gpc.get_group(self.weight_parallel_mode))
-        return grad
+        self.dropout = nn.Dropout(drop_prob)
 
     def forward(self, x: Tensor) -> Tensor:
-        # split a partition from inputs
-        x = torch.chunk(x, self.depth, dim=0)[gpc.get_local_rank(
-            self.weight_parallel_mode)].contiguous()
-        x = torch.chunk(x, self.depth, dim=0)[gpc.get_local_rank(
-            self.input_parallel_mode)].contiguous()
-
-        B, C, H, W = x.shape
-        assert H == self.img_size[0] and W == self.img_size[1], \
-            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
-        x = self.proj(x)
-        if self.flatten:
-            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
-
-        # add cls token & pos embedding
-        # [b/q^2,s,h/q] --> [b/q^2, 1+s, h/q]
-        cls_token = self.cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_token, x), dim=1)
-
+        x = self.patch_embed(x)
         with seed(ParallelMode.TENSOR):
-            x = self.pos_drop(x + self.pos_embed)
-
+            x = self.dropout(x)
         return x
 
 
@@ -200,23 +124,25 @@ class ViTSelfAttention3D(nn.Module):
             self.init_weight = 'jax'
             self.init_bias = 'zero'
 
-        self.query_key_value = Linear3D(self.hidden_size,
-                                        3 * self.hidden_size,
-                                        # self.input_parallel_mode,
-                                        # self.weight_parallel_mode,
-                                        dtype=dtype,
-                                        bias=bias,
-                                        init_weight=self.init_weight,
-                                        init_bias=self.init_bias)
+        self.query_key_value = Linear3D(
+            self.hidden_size,
+            3 * self.hidden_size,
+            # self.input_parallel_mode,
+            # self.weight_parallel_mode,
+            dtype=dtype,
+            bias=bias,
+            init_weight=self.init_weight,
+            init_bias=self.init_bias)
         self.attention_dropout = nn.Dropout(attention_probs_dropout_prob)
-        self.dense = Linear3D(self.hidden_size,
-                              self.hidden_size,
-                              #   self.output_parallel_mode,
-                              #   self.weight_parallel_mode,
-                              dtype=dtype,
-                              bias=bias,
-                              init_weight=self.init_weight,
-                              init_bias=self.init_bias)
+        self.dense = Linear3D(
+            self.hidden_size,
+            self.hidden_size,
+            #   self.output_parallel_mode,
+            #   self.weight_parallel_mode,
+            dtype=dtype,
+            bias=bias,
+            init_weight=self.init_weight,
+            init_bias=self.init_bias)
         self.dropout = nn.Dropout(hidden_dropout_prob)
         self.softmax = nn.Softmax(dim=-1)
 
@@ -308,23 +234,25 @@ class ViTMLP3D(nn.Module):
         self.init_weight = init_method
         self.init_bias = init_method
 
-        self.dense_1 = Linear3D(self.hidden_size,
-                                self.mlp_ratio * self.hidden_size,
-                                # self.input_parallel_mode,
-                                # self.weight_parallel_mode,
-                                dtype=dtype,
-                                bias=bias,
-                                init_weight=self.init_weight,
-                                init_bias=self.init_bias)
+        self.dense_1 = Linear3D(
+            self.hidden_size,
+            self.mlp_ratio * self.hidden_size,
+            # self.input_parallel_mode,
+            # self.weight_parallel_mode,
+            dtype=dtype,
+            bias=bias,
+            init_weight=self.init_weight,
+            init_bias=self.init_bias)
         self.activation_func = ACT2FN[hidden_act]
-        self.dense_2 = Linear3D(self.mlp_ratio * self.hidden_size,
-                                self.hidden_size,
-                                # self.output_parallel_mode,
-                                # self.weight_parallel_mode,
-                                dtype=dtype,
-                                bias=bias,
-                                init_weight=self.init_weight,
-                                init_bias=self.init_bias)
+        self.dense_2 = Linear3D(
+            self.mlp_ratio * self.hidden_size,
+            self.hidden_size,
+            # self.output_parallel_mode,
+            # self.weight_parallel_mode,
+            dtype=dtype,
+            bias=bias,
+            init_weight=self.init_weight,
+            init_bias=self.init_bias)
         self.dropout = nn.Dropout(hidden_dropout_prob)
 
     # def groups_for_next_layer(self) -> Tuple[ParallelMode, ParallelMode]:
@@ -333,6 +261,8 @@ class ViTMLP3D(nn.Module):
     def _forward(self, hidden_states: Tensor) -> Tensor:
         intermediate_output = self.dense_1(hidden_states)
         intermediate_output = self.activation_func(intermediate_output)
+        with seed(ParallelMode.TENSOR):
+            intermediate_output = self.dropout(intermediate_output)
         output = self.dense_2(intermediate_output)
         with seed(ParallelMode.TENSOR):
             output = self.dropout(output)
@@ -391,14 +321,15 @@ class ViTHead3D(nn.Module):
             self.init_weight = 'zero'
             self.init_bias = 'zero'
 
-        self.linear = Linear3D(self.in_features,
-                               self.num_classes,
-                               #    self.input_parallel_mode,
-                               #    self.weight_parallel_mode,
-                               dtype=dtype,
-                               bias=bias,
-                               init_weight=self.init_weight,
-                               init_bias=self.init_bias)
+        self.linear = Classifier3D(
+            self.in_features,
+            self.num_classes,
+            #    self.input_parallel_mode,
+            #    self.weight_parallel_mode,
+            dtype=dtype,
+            bias=bias,
+            init_weight=self.init_weight,
+            init_bias=self.init_bias)
 
     def forward(self, x: Tensor) -> Tensor:
         # [b/q^2, s, h/q] --> [b/q^2, h/q]

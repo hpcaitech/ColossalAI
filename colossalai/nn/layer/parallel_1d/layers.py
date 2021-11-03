@@ -44,41 +44,35 @@ class Linear1D_Col(ParallelLayer):
                     which is :math:`Y_i = XA_i`, defaults to False
     :type gather_output: bool, optional
     """
-
     def __init__(self,
                  in_features: int,
-                 output_size: int,
+                 out_features: int,
                  bias: bool = True,
                  dtype: torch.dtype = None,
                  gather_output: bool = False,
                  skip_bias_add: bool = False,
                  init_weight='torch',
-                 init_bias='torch'
-                 ):
+                 init_bias='torch'):
         super().__init__()
 
         # Keep input parameters
         self.in_features = in_features
-        self.out_features = output_size
+        self.out_features = out_features
         self.gather_output = gather_output
         self.skip_bias_add = skip_bias_add
 
         if skip_bias_add and not bias:
             raise ValueError('cannot skip bias addition if bias is None')
 
-        self.output_size_per_partition = divide(output_size, gpc.tensor_parallel_size)
+        self.out_features_per_partition = divide(out_features, gpc.tensor_parallel_size)
 
         # Parameters.
         # Initialize weight.
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
-        self.weight = Parameter(torch.empty(
-            self.output_size_per_partition, self.in_features,
-            **factory_kwargs))
+        self.weight = Parameter(torch.empty(self.out_features_per_partition, self.in_features, **factory_kwargs))
 
         if bias:
-            self.bias = Parameter(torch.empty(
-                self.output_size_per_partition,
-                **factory_kwargs))
+            self.bias = Parameter(torch.empty(self.out_features_per_partition, **factory_kwargs))
             # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.zero_()
@@ -133,8 +127,7 @@ class Linear1D_Col(ParallelLayer):
         output_parallel = F.linear(input_parallel, self.weight, bias)
         if self.gather_output:
             # All-gather across the partitions.
-            output = gather_forward_split_backward(
-                output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
+            output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
         else:
             output = output_parallel
         if self.skip_bias_add:
@@ -158,17 +151,15 @@ class Linear1D_Row(ParallelLayer):
     :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
     :type parallel_input: bool, optional
     """
-
     def __init__(self,
                  in_features: int,
                  out_features: int,
                  bias: bool = True,
                  dtype: torch.dtype = None,
-                 parallel_input: bool = False,
+                 parallel_input: bool = True,
                  skip_bias_add: bool = False,
                  init_weight='torch',
-                 init_bias='torch'
-                 ):
+                 init_bias='torch'):
         super().__init__()
 
         # Keep input parameters
@@ -186,16 +177,10 @@ class Linear1D_Row(ParallelLayer):
         # Parameters.
         # Initialize weight.
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
-        self.weight = Parameter(torch.empty(
-            self.out_features,
-            self.input_size_per_partition,
-            **factory_kwargs))
+        self.weight = Parameter(torch.empty(self.out_features, self.input_size_per_partition, **factory_kwargs))
 
         if bias:
-            self.bias = Parameter(torch.empty(
-                self.out_features,
-                **factory_kwargs
-            ))
+            self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
 
             # Always initialize bias to zero.
             with torch.no_grad():
@@ -248,8 +233,7 @@ class Linear1D_Row(ParallelLayer):
         if self.parallel_input:
             input_ = input_
         else:
-            input_ = split_forward_gather_backward(
-                input_, ParallelMode.PARALLEL_1D, dim=-1)
+            input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
         output_parallel = F.linear(input_, self.weight)
         output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
@@ -263,12 +247,11 @@ class Linear1D_Row(ParallelLayer):
 
 @LAYERS.register_module
 class MixedFusedLayerNorm1D(torch.nn.Module):
-
     def __init__(self, normalized_shape, eps=1e-5):
         super(MixedFusedLayerNorm1D, self).__init__()
 
         if isinstance(normalized_shape, numbers.Integral):
-            normalized_shape = (normalized_shape,)
+            normalized_shape = (normalized_shape, )
         self.normalized_shape = torch.Size(normalized_shape)
         self.eps = eps
         self.weight = Parameter(torch.Tensor(*normalized_shape))
@@ -280,5 +263,4 @@ class MixedFusedLayerNorm1D(torch.nn.Module):
         init.zeros_(self.bias)
 
     def forward(self, input):
-        return FusedLayerNormAffineFunction1D.apply(
-            input, self.weight, self.bias, self.normalized_shape, self.eps)
+        return FusedLayerNormAffineFunction1D.apply(input, self.weight, self.bias, self.normalized_shape, self.eps)

@@ -15,7 +15,7 @@ from colossalai.registry import LAYERS
 from colossalai.utils import checkpoint
 from colossalai.utils import get_current_device
 from colossalai.core import global_context as gpc
-from ._operation import AllGatherLast, SplitFirst
+from ._operation import all_gather_weight_2d, SplitFirst
 from .layers import Linear2D
 from .._common_utils import set_tensor_parallel_attribute_by_partition, to_2tuple
 from ..base_layer import ParallelLayer
@@ -324,7 +324,7 @@ class ViTInputSplitter2D(ParallelLayer):
         self.summa_dim = get_summa_dim_from_env()
 
     def forward(self, x: Tensor) -> Tensor:
-        x = AllGatherLast.apply(
+        x = all_gather_weight_2d.apply(
             x, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
         x = SplitFirst.apply(
             x, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
@@ -384,12 +384,12 @@ class ViTTokenFuser2D(ParallelLayer):
 
     def forward(self, x: Tensor) -> Tensor:
         # stole cls_tokens impl from Phil Wang, thanks
-        cls_token = AllGatherLast.apply(
+        cls_token = all_gather_weight_2d.apply(
             self.cls_token, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
         cls_token = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_token, x), dim=1)
 
-        pos_embed = AllGatherLast.apply(
+        pos_embed = all_gather_weight_2d.apply(
             self.pos_embed, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
         x = x + pos_embed
         with seed(ParallelMode.TENSOR):
