@@ -14,7 +14,7 @@ partition them during the forward and backward passes.
 
 ## Getting Started with ZeRO
 
-If you are training models with ColossalAI, enabling ZeRO-3 offload is as simple as enabling it in your ColossalAI configuration! 
+If you are training models with Colossal-AI, enabling ZeRO-3 offload is as simple as enabling it in your Colossal-AI configuration! 
 Below are a few examples of ZeRO-3 configurations.
 
 ### Example of ZeRO-3 Configurations

@@ -1,4 +1,4 @@
-# ColossalAI
+# Colossal-AI
 
 An integrated large-scale model training system with efficient parallelization techniques.
 
@@ -91,14 +91,14 @@ class MLP_2D(nn.Module):
 
 ## Features
 
-ColossalAI provides a collection of parallel training components for you. We aim to support you to write your
+Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
 distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
 distributed training in a few lines.
 
 - [Data Parallelism](./docs/parallelization.md)
 - [Pipeline Parallelism](./docs/parallelization.md)
 - [1D, 2D, 2.5D, 3D and sequence parallelism](./docs/parallelization.md)
-- [friendly trainer and engine](./docs/trainer_engine.md)
+- [Friendly trainer and engine](./docs/trainer_engine.md)
 - [Extensible for new parallelism](./docs/add_your_parallel.md)
 - [Mixed Precision Training](./docs/amp.md)
 - [Zero Redundancy Optimizer (ZeRO)](./docs/zero.md)

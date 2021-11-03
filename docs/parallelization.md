@@ -26,13 +26,13 @@ represents the way of tensor parallelism.
 
 Data parallel is the most common way to distribute your training task by splitting data into several shards and train 
 on a single shard on each device. The configuration for data parallel is detected automatically and set for you. You do 
-not have to explicitly set them in your configurations. When data parallel size is larger than 1, ColossalAI automatically 
+not have to explicitly set them in your configurations. When data parallel size is larger than 1, Colossal-AI automatically 
 adds the distributed data sampler to the dataloader to shard the dataset.
 
 ## 1D, 2D, 2.5D and 3D Parallel
 
 To enable hybrid parallelism, we provide an array of tensor parallelism. We provide the list of papers which match each 
-tensor parallel method. These parallel modes need to work with the distributed layers provided by ColossalAI.
+tensor parallel method. These parallel modes need to work with the distributed layers provided by Colossal-AI.
 - 1D: [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)
 
 - 2D: [An Efficient 2D Method for Training Super-Large Deep Learning Models](https://arxiv.org/abs/2104.05343)  
@@ -84,7 +84,7 @@ and the second layer to the second GPU. This example of course wastes the comput
 the idea of pipeline parallelism. 
 
 As PyTorch is based on dynamic computation graph, the computation flow is not known until execution. To support pipeline 
-parallelism in PyTorch, you may need to add one more attribute, `layers_cfg` in your model class which tells ColossalAI
+parallelism in PyTorch, you may need to add one more attribute, `layers_cfg` in your model class which tells Colossal-AI
 the sequence of execution. One example you can refer is `colossalai.nn.model.VanillaResNet`.
 
 ```python
@@ -192,7 +192,7 @@ class VanillaResNet(BaseModel):
         ]
 ```
 
-You can set the number of pipeline stages in your configuration file. When pipeline size is larger than 1, ColossalAI 
+You can set the number of pipeline stages in your configuration file. When pipeline size is larger than 1, Colossal-AI 
 will automatically creates the pipeline schedule which defines the forward and backward step. You can specify how many microbatches
 to run in each step in the `schedule` configuration.
 

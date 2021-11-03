@@ -54,7 +54,7 @@ More information regarding the class can be found in the API references.
 To learn how to customize a trainer which meets your needs, let's first give a look at the `Trainer` class. We highly recommend that you read *Get Started* 
 section and *Build your engine* first.
 
-The `Trainer` class enables researchers and engineers to use our framework more conveniently. Instead of having to write your own scripts, you can simply 
+The `Trainer` class enables researchers and engineers to use our system more conveniently. Instead of having to write your own scripts, you can simply 
 construct your own trainer by calling the `Trainer` class, just like what we did in the following code block.
 
 ```python

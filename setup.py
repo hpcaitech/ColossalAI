@@ -167,7 +167,7 @@ setup(
                                     'docs',
                                     'tests',
                                     '*.egg-info',)),
-    description='An integrated large-scale model training framework with efficient parallelization techniques',
+    description='An integrated large-scale model training system with efficient parallelization techniques',
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     extras_require=extras,
