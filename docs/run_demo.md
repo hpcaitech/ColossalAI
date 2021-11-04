@@ -1,18 +1,18 @@
 # Quick demo
 
-ColossalAI is an integrated large-scale deep learning framework with efficient parallelization techniques. The framework
+Colossal-AI is an integrated large-scale deep learning system with efficient parallelization techniques. The system
 can accelerate model training on distributed systems with multiple GPUs by applying parallelization techniques. The
-framework can also run on systems with only one GPU. Quick demos showing how to use ColossalAI are given below.
+system can also run on systems with only one GPU. Quick demos showing how to use Colossal-AI are given below.
 
 ## Single GPU
 
-ColossalAI can be used to train deep learning models on systems with only one GPU and achieve baseline
+Colossal-AI can be used to train deep learning models on systems with only one GPU and achieve baseline
 performances. [Here](https://colab.research.google.com/drive/1fJnqqFzPuzZ_kn1lwCpG2nh3l2ths0KE?usp=sharing#scrollTo=cQ_y7lBG09LS)
-is an example showing how to train a LeNet model on the CIFAR10 dataset using ColossalAI.
+is an example showing how to train a LeNet model on the CIFAR10 dataset using Colossal-AI.
 
 ## Multiple GPUs
 
-ColossalAI can be used to train deep learning models on distributed systems with multiple GPUs and accelerate the
+Colossal-AI can be used to train deep learning models on distributed systems with multiple GPUs and accelerate the
 training process drastically by applying efficient parallelization techiniques, which will be elaborated in
 the [Parallelization](parallelization.md) section below. Run the code below on your distributed system with 4 GPUs,
 where `HOST` is the IP address of your system. Note that we use
@@ -23,7 +23,7 @@ HOST=xxx.xxx.xxx.xxx srun ./scripts/slurm_dist_train.sh ./examples/run_trainer.p
 ```
 
 `./configs/vit/vit_2d.py` is a config file, which is introduced in the [Config file](config.md) section below. These
-config files are used by ColossalAI to define all kinds of training arguments, such as the model, dataset and training
+config files are used by Colossal-AI to define all kinds of training arguments, such as the model, dataset and training
 method (optimizer, lr_scheduler, epoch, etc.). Config files are highly customizable and can be modified so as to train
 different models.
 `./examples/run_trainer.py` contains a standard training script and is presented below, it reads the config file and
@@ -72,7 +72,7 @@ Zoo. The detailed substitution process is elaborated [here](model.md).
 
 ## Features
 
-ColossalAI provides a collection of parallel training components for you. We aim to support you with your development of
+Colossal-AI provides a collection of parallel training components for you. We aim to support you with your development of
 distributed deep learning models just like how you write single-GPU deep learning models. We provide friendly tools to
 kickstart distributed training in a few lines.
 

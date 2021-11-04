@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath('..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'ColossalAI'
+project = 'Colossal-AI'
 copyright = '2021, HPC-AI Tech'
 author = 'HPC-AI Technology Inc.'
 
