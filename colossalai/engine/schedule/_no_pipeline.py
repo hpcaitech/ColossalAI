@@ -12,11 +12,12 @@ except:
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine.amp_type import AMP_TYPE
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
                            ZeroRedundancyOptimizer_Level_3)
+from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
 from ._utils import convert_to_fp16
 from ._base_schedule import BaseSchedule
+from ..amp import AMP_TYPE, GradScaler
 
 
 class NoPipelineSchedule(BaseSchedule):
@@ -30,6 +31,7 @@ class NoPipelineSchedule(BaseSchedule):
     :type amp_type: AMP_TYPE
     :type amp_config: dict
     """
+
     def __init__(
             self,
             amp_type: AMP_TYPE = None,
@@ -102,7 +104,7 @@ class NoPipelineSchedule(BaseSchedule):
 
         if self.fp16:
             if self.amp_type == AMP_TYPE.TORCH:
-                self._torch_amp_scaler = torch_amp.GradScaler(**self.amp_cfg)
+                self._torch_amp_scaler = GradScaler(**self.amp_cfg)
             elif self.amp_type == AMP_TYPE.APEX:
                 self.model, self.optimizer = apex_amp.initialize(
                     self.model, self.optimizer, **self.amp_cfg)
@@ -177,7 +179,14 @@ class NoPipelineSchedule(BaseSchedule):
     def step(self):
         # step optimizer
         if self.fp16 and self.amp_type == AMP_TYPE.TORCH:
+            if getattr(gpc.config, 'clip_grad', 0.0) > 0.0:
+                self._torch_amp_scaler.unscale_(self.optimizer)
+                clip_grad_norm_fp32(self.model.parameters(),
+                                    gpc.config.clip_grad)
             self._torch_amp_scaler.step(self.optimizer)
             self._torch_amp_scaler.update()
         else:
+            if not self.fp16 and not self.use_zero_level_2_3 and getattr(gpc.config, 'clip_grad', 0.0) > 0.0:
+                clip_grad_norm_fp32(self.model.parameters(),
+                                    gpc.config.clip_grad)
             self.optimizer.step()
