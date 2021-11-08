@@ -44,7 +44,9 @@ class Engine:
                  criterion: _Loss = None,
                  optimizer: Optimizer = None,
                  lr_scheduler: Optional[_LRScheduler] = None,
-                 schedule: BaseSchedule = None):
+                 schedule: BaseSchedule = None,
+                 gradient_accumulation: int = 1,
+                 lr_scheduler_step: str = 'epoch'):
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
         assert model is not None, "Engine requires a model"
@@ -54,6 +56,11 @@ class Engine:
         self.lr_scheduler = lr_scheduler
         self.schedule = schedule if schedule is not None \
             else NoPipelineSchedule()
+        self.grad_accum_size = gradient_accumulation
+        self.grad_accum_step = 0
+        self.lr_step = 0  # for epoch updating
+        if lr_scheduler_step != 'epoch':
+            self.lr_step = 1
         self._logger = get_global_dist_logger()
 
         # build gradient handler
@@ -89,9 +96,13 @@ class Engine:
             self._gradient_handlers.append(handler)
 
         self.schedule.initialize(self.train_dataloader, self.model,
-                                 self.criterion, self.optimizer,
-                                 self.lr_scheduler)
-        self.forward_only = False
+                                 self.criterion, self.optimizer)
+        self.schedule.grad_accum = self.grad_accum_size
+        # add for robustness
+        if self.optimizer is None:
+            self.forward_only = True
+        else:
+            self.forward_only = False
 
     def handle_gradient(self):
         """Handles all-reduce operations of gradients across different parallel groups.
@@ -116,6 +127,7 @@ class Engine:
         """Returns the neural network model in the engine.
         """
         return self.model
+
     def get_optimizer(self):
         """Returns optimizier in the engine.
         """
@@ -146,7 +158,10 @@ class Engine:
     def get_lr(self):
         """Gets current learning rate.
         """
-        return self.schedule.get_lr()
+        if self.lr_scheduler is not None:
+            return self.lr_scheduler.get_lr()[0]
+        else:
+            return self.optimizer.param_groups[0]['lr']
 
     def step(self, return_loss=True):
         """A running step based on the schedule. Usually, it runs a training or
@@ -156,15 +171,27 @@ class Engine:
         :type return_loss: bool
         :return: (output, lablel, loss)
         """
-        self.schedule.zero_grad(forward_only=self.forward_only)
+        if not self.forward_only and self.grad_accum_step == 0:
+            self.schedule.zero_grad()
 
         output, label, loss = self.schedule.forward_backward_step(
             forward_only=self.forward_only, return_loss=return_loss)
 
         if not self.forward_only:
-            # all reduce gradients
-            self.handle_gradient()
-
-            self.schedule.step()
+            self.grad_accum_step += 1
+            if self.grad_accum_step == self.grad_accum_size:
+                # all reduce gradients
+                self.handle_gradient()
+                self.schedule.step()
+                if self.lr_scheduler is not None and self.lr_step:
+                    self.lr_scheduler.step()
+                self.grad_accum_step = 0
 
         return output, label, loss
+
+    def complete(self):
+        """Updating after a epoch.
+        """
+        self.schedule.consume_batch()
+        if self.lr_scheduler is not None and self.lr_step == 0:
+            self.lr_scheduler.step()
