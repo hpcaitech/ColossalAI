@@ -119,19 +119,20 @@ class PipelineSchedule(BaseSchedule):
 
     @property
     def num_steps(self):
-        return len(self.dataloader)
+        length = len(self.dataloader)
+        if self.training:
+            length -= length % self.grad_accum
+        return length
 
     def initialize(self,
-                   dataloader,
-                   model,
-                   criterion,
-                   optimizer,
-                   lr_scheduler=None):
+                   dataloader=None,
+                   model=None,
+                   criterion=None,
+                   optimizer=None):
         super().initialize(dataloader,
                            model,
                            criterion,
-                           optimizer,
-                           lr_scheduler=lr_scheduler)
+                           optimizer)
         if isinstance(self.optimizer, (ZeroRedundancyOptimizer_Level_2,
                                        ZeroRedundancyOptimizer_Level_3)):
             raise TypeError(
@@ -162,8 +163,7 @@ class PipelineSchedule(BaseSchedule):
         if gpc.is_last_rank(ParallelMode.PIPELINE):
             if return_loss:
                 input_tensor, label = self.load_micro_batch()
-                loss_reduced = self.criterion(output_tensor, *
-                                              label) / self.num_microbatches
+                loss_reduced = self.criterion(output_tensor, *label) / (self.num_microbatches * self.grad_accum)
                 return_tensors.append(
                     tuple((output_tensor, label[0], loss_reduced)))
                 return loss_reduced
@@ -309,7 +309,7 @@ class PipelineSchedule(BaseSchedule):
                 output, label, loss = tuple(map(list, zip(*return_tensors)))
                 return (torch.cat(output, dim=0),
                         torch.cat(label, dim=0),
-                        sum(loss))
+                        sum(loss) * self.grad_accum)
             else:
                 return tuple((torch.cat(return_tensors, dim=0), None, None))
         else:

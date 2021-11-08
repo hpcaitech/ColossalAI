@@ -8,10 +8,10 @@ BATCH_SIZE = 512
 IMG_SIZE = 32
 PATCH_SIZE = 4
 DIM = 512
-NUM_ATTENTION_HEADS = 8
+NUM_ATTENTION_HEADS = 2
 SUMMA_DIM = 2
 NUM_CLASSES = 10
-DEPTH = 6
+DEPTH = 1
 
 train_data = dict(
     dataset=dict(
@@ -127,14 +127,14 @@ hooks = [
     dict(type='LogMetricByEpochHook'),
     dict(type='Accuracy2DHook'),
     dict(type='LossHook'),
-    dict(type='TensorboardHook', log_dir='./tfb_logs'),
+    # dict(type='TensorboardHook', log_dir='./tfb_logs'),
     # dict(type='SaveCheckpointHook', interval=5, checkpoint_dir='./ckpt'),
     # dict(type='LoadCheckpointHook', epoch=20, checkpoint_dir='./ckpt')
 ]
 
 parallel = dict(
     pipeline=dict(size=1),
-    tensor=dict(size=4, mode='2d'),
+    tensor=dict(size=1, mode='2d'),
 )
 
 # for fp16 training
@@ -146,7 +146,8 @@ parallel = dict(
 
 lr_scheduler = dict(
     type='LinearWarmupLR',
-    warmup_epochs=5
+    total_steps=60,
+    warmup_steps=5
 )
 
 # only needed when pipeline parallel is used
