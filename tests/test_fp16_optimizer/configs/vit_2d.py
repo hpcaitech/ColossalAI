@@ -132,9 +132,12 @@ fp16 = dict(
     initial_scale=2 ** 4
 )
 
+num_epochs = 60
+
+
 lr_scheduler = dict(
     type='LinearWarmupLR',
-    warmup_epochs=5
+    warmup_steps=5,
+    total_steps=num_epochs
 )
 
-num_epochs = 60

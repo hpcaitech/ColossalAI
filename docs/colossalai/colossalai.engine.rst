@@ -7,11 +7,6 @@ colossalai.engine
 .. toctree::
    :maxdepth: 2
 
+   colossalai.engine.amp
    colossalai.engine.gradient_handler
    colossalai.engine.schedule
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.engine.amp_type

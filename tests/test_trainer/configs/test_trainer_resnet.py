@@ -3,6 +3,7 @@ from pathlib import Path
 
 BATCH_SIZE = 128
 IMG_SIZE = 32
+num_epochs = 200
 
 # resnet 50
 model = dict(
@@ -77,18 +78,14 @@ hooks = [
     dict(type='AccuracyHook'),
     dict(type='LossHook'),
     dict(type='TensorboardHook', log_dir='./tfb_logs'),
+    dict(
+        type='LRSchedulerHook',
+        by_epoch=True,
+        lr_scheduler_cfg=dict(
+            type='CosineAnnealingLR',
+            warmup_steps=5
+        )
+    ),
     dict(type='SaveCheckpointHook', interval=5, checkpoint_dir='./ckpt'),
-    # dict(type='LoadCheckpointHook', epoch=20, checkpoint_dir='./ckpt')
 ]
 
-# fp16 = dict(
-#     mode=AMP_TYPE.PARALLEL,
-#     initial_scale=1
-# )
-
-lr_scheduler = dict(
-    type='CosineAnnealingLR',
-    T_max=200
-)
-
-num_epochs = 200

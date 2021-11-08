@@ -102,6 +102,6 @@ parallel = dict(
     tensor=dict(size=4, mode='2d'),
 )
 
-lr_scheduler = dict(type='LinearWarmupLR', warmup_epochs=5)
-
 num_epochs = 60
+
+lr_scheduler = dict(type='LinearWarmupLR', warmup_steps=5, total_steps=num_epochs)

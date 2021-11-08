@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-
 import time
 from pathlib import Path
 
 import torch
 from tqdm import tqdm
 
-from colossalai import initialize
+import colossalai
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine import Engine
 from colossalai.logging import get_global_dist_logger
 from colossalai.trainer import Trainer
 from colossalai.trainer.metric import Accuracy3D
@@ -29,7 +27,7 @@ def _train_epoch(epoch, engine):
     num_samples = 0
     now = time.time()
     epoch_start = now
-    progress = range(engine.schedule.num_steps)
+    progress = range(engine._schedule.num_steps)
     if gpc.get_global_rank() == 0:
         progress = tqdm(progress, desc='[Epoch %d]' % epoch, miniters=1)
     for step in progress:
@@ -68,7 +66,7 @@ def _eval(epoch, engine):
                      ParallelMode.PARALLEL_3D_WEIGHT)
     total = 0
     with torch.no_grad():
-        for _ in range(engine.schedule.num_steps):
+        for _ in range(engine._schedule.num_steps):
             outputs, targets, loss = engine.step()
             if isinstance(outputs, (list, tuple)):
                 outputs = outputs[0]
@@ -80,32 +78,25 @@ def _eval(epoch, engine):
 
         print_rank_0(
             '[Epoch %d] Evaluation loss: %.3f | Acc: %.3f%%' %
-            (epoch, eval_loss / engine.schedule.num_steps,
+            (epoch, eval_loss / engine._schedule.num_steps,
              acc.get_accumulated_value() * 100), logger)
 
 
 def train():
-    model, train_dataloader, test_dataloader, criterion, \
-    optimizer, schedule, lr_scheduler = initialize(CONFIG_PATH)
-
+    # init dist
+    engine, train_dataloader, test_dataloader = colossalai.initialize(CONFIG_PATH)
     logger = get_global_dist_logger()
 
-    engine = Engine(model=model,
-                    train_dataloader=train_dataloader,
-                    test_dataloader=test_dataloader,
-                    criterion=criterion,
-                    optimizer=optimizer,
-                    lr_scheduler=lr_scheduler,
-                    schedule=schedule)
     logger.info("Engine is built", ranks=[0])
 
-    trainer = Trainer(engine=engine, hooks_cfg=gpc.config.hooks, verbose=True)
+    trainer = Trainer(engine=engine, verbose=True)
     logger.info("Trainer is built", ranks=[0])
 
     logger.info("Train start", ranks=[0])
     trainer.fit(train_dataloader=train_dataloader,
                 test_dataloader=test_dataloader,
-                max_epochs=gpc.config.num_epochs,
+                epochs=gpc.config.num_epochs,
+                hooks_cfg=gpc.config.hooks,
                 display_progress=True,
                 test_interval=1)
 

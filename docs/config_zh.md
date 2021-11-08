@@ -1,6 +1,6 @@
 # 配置文件
 
-下方代码块中的示例展示了如何在CIFAR10数据集上使用ColossalAI训练ViT模型。
+下方代码块中的示例展示了如何在CIFAR10数据集上使用Colossal-AI训练ViT模型。
 
 ```python
 # build train_dataset and train_dataloader from this dictionary

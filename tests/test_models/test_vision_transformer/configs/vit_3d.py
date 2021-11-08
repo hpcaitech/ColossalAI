@@ -116,9 +116,14 @@ hooks = [
         weight_parallel_mode=ParallelMode.PARALLEL_3D_WEIGHT,
     ),
     dict(type='LossHook'),
-    # dict(type='TensorboardHook', log_dir='./tfb_logs'),
-    # dict(type='SaveCheckpointHook', interval=5, checkpoint_dir='./ckpt'),
-    # dict(type='LoadCheckpointHook', epoch=20, checkpoint_dir='./ckpt')
+    dict(
+        type='LRSchedulerHook',
+        by_epoch=True,
+        lr_scheduler_cfg=dict(
+            type='LinearWarmupLR',
+            warmup_steps=5
+        )
+    ),
 ]
 
 parallel = dict(
@@ -127,12 +132,4 @@ parallel = dict(
     tensor=dict(mode='3d', size=8),
 )
 
-# fp16 = dict(mode=AMP_TYPE.PARALLEL, initial_scale=2 ** 6)
-
-lr_scheduler = dict(type='LinearWarmupLR', warmup_epochs=5)
-
-# schedule = dict(num_microbatches=4)
-
 num_epochs = 60
-
-seed = 42

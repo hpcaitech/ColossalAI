@@ -8,7 +8,6 @@ import torch
 
 from colossalai import initialize
 from colossalai.core import global_context as gpc
-from colossalai.engine import Engine
 from colossalai.logging import get_global_dist_logger
 from colossalai.utils import report_memory_usage
 
@@ -26,21 +25,14 @@ NO_PIPE_CONFIG_PATH = osp.join(DIR_PATH, '../configs/non_pipeline_resnet.py')
 def test_no_pipeline(config):
     print('Test no pipeline engine start')
 
-    model, train_dataloader, test_dataloader, criterion, optimizer, schedule, lr_scheduler = initialize(config)
+    engine, train_dataloader, test_dataloader = initialize(config)
     logger = get_global_dist_logger()
 
     rank = torch.distributed.get_rank()
-    engine = Engine(model=model,
-                    train_dataloader=train_dataloader,
-                    criterion=criterion,
-                    optimizer=optimizer,
-                    schedule=schedule)
 
     engine.train()
-    logger.info('lr = %g' % engine.get_lr())
-    output, label, loss = engine.step()
+    output, label, loss = engine.step(iter(train_dataloader))
     logger.info('Rank {} returns: {}'.format(rank, loss.item()))
-    logger.info('lr = %g' % engine.get_lr())
 
     gpc.destroy()
     logger.info('Test engine finished')

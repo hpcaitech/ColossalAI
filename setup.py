@@ -160,14 +160,14 @@ def fetch_requirements(path):
 install_requires = fetch_requirements('requirements/requirements.txt')
 
 setup(
-    name='colossal-ai',
+    name='colossalai',
     version='0.0.1-beta',
     packages=find_packages(exclude=('csrc',
                                     'tests',
                                     'docs',
                                     'tests',
                                     '*.egg-info',)),
-    description='An integrated large-scale model training framework with efficient parallelization techniques',
+    description='An integrated large-scale model training system with efficient parallelization techniques',
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     extras_require=extras,

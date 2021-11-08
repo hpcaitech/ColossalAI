@@ -1,8 +1,10 @@
-# ColossalAI
+# Colossal-AI
 
 An integrated large-scale model training system with efficient parallelization techniques.
 
-arXiv: [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://arxiv.org/abs/2110.14883)
+Paper: [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://arxiv.org/abs/2110.14883)
+
+Blog: [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://www.hpcaitech.com/blog)
 
 ## Installation
 
@@ -40,26 +42,18 @@ pip install -v --no-cache-dir --global-option="--cuda_ext" .
 
 ```python
 import colossalai
-from colossalai.engine import Engine
 from colossalai.trainer import Trainer
 from colossalai.core import global_context as gpc
 
-model, train_dataloader, test_dataloader, criterion, optimizer, schedule, lr_scheduler = colossalai.initialize()
-engine = Engine(
-    model=model,
-    criterion=criterion,
-    optimizer=optimizer,
-    lr_scheduler=lr_scheduler,
-    schedule=schedule
-)
+engine, train_dataloader, test_dataloader = colossalai.initialize()
 
 trainer = Trainer(engine=engine,
-                  hooks_cfg=gpc.config.hooks,
                   verbose=True)
 trainer.fit(
     train_dataloader=train_dataloader,
     test_dataloader=test_dataloader,
-    max_epochs=gpc.config.num_epochs,
+    epochs=gpc.config.num_epochs,
+    hooks_cfg=gpc.config.hooks,
     display_progress=True,
     test_interval=5
 )
@@ -91,16 +85,25 @@ class MLP_2D(nn.Module):
 
 ## Features
 
-ColossalAI provides a collection of parallel training components for you. We aim to support you to write your
+Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
 distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
 distributed training in a few lines.
 
 - [Data Parallelism](./docs/parallelization.md)
 - [Pipeline Parallelism](./docs/parallelization.md)
 - [1D, 2D, 2.5D, 3D and sequence parallelism](./docs/parallelization.md)
-- [friendly trainer and engine](./docs/trainer_engine.md)
+- [Friendly trainer and engine](./docs/trainer_engine.md)
 - [Extensible for new parallelism](./docs/add_your_parallel.md)
 - [Mixed Precision Training](./docs/amp.md)
 - [Zero Redundancy Optimizer (ZeRO)](./docs/zero.md)
 
+## Cite Us
 
+```
+@article{bian2021colossal,
+  title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
+  author={Bian, Zhengda and Liu, Hongxin and Wang, Boxiang and Huang, Haichen and Li, Yongbin and Wang, Chuanrui and Cui, Fan and You, Yang},
+  journal={arXiv preprint arXiv:2110.14883},
+  year={2021}
+}
+```

@@ -1,6 +1,6 @@
 # Config file
 
-Here is a config file example showing how to train a ViT model on the CIFAR10 dataset using ColossalAI:
+Here is a config file example showing how to train a ViT model on the CIFAR10 dataset using Colossal-AI:
 
 ```python
 # build train_dataset and train_dataloader from this dictionary

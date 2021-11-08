@@ -38,11 +38,9 @@ parallel = dict(
     tensor=dict(size=1, mode=None)
 )
 
-schedule = dict(
-    num_microbatches=4
+engine = dict(
+    schedule=dict(
+        num_microbatches=4
+    )
 )
-num_pipeling_batches = 2
-seed = 1024
-lr_scheduler = dict(type='LinearWarmupLR', warmup_steps=5)
-
 num_epochs = 10
