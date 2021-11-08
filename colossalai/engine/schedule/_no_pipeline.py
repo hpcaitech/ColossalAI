@@ -16,11 +16,21 @@ from typing import Iterable
 import torch.nn as nn
 from torch.optim import Optimizer
 
+<<<<<<< HEAD
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
                            ZeroRedundancyOptimizer_Level_3)
 from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
 from ._base_schedule import BaseSchedule
 from ._utils import convert_to_fp16, convert_to_fp32
+=======
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
+                           ZeroRedundancyOptimizer_Level_3)
+from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
+from ._utils import convert_to_fp16
+from ._base_schedule import BaseSchedule
+>>>>>>> c8cb9f9... fix FP16 optimizer and adapted torch amp with tensor parallel (#18)
 from ..amp import AMP_TYPE, GradScaler
 
 
@@ -191,10 +201,14 @@ class NoPipelineSchedule(BaseSchedule):
     def optimizer_step(self, model: nn.Module, optimizer: Optimizer, grad_clipping: float = 0.0):
         # step optimizer
         if self.fp16 and self.amp_type == AMP_TYPE.TORCH:
-            if grad_clipping > 0.0:
-                self._torch_amp_scaler.unscale_(optimizer)
-                clip_grad_norm_fp32(model.parameters(), grad_clipping)
-            self._torch_amp_scaler.step(optimizer)
+            if getattr(gpc.config, 'clip_grad', 0.0) > 0.0:
+                self._torch_amp_scaler.unscale_(self.optimizer)
+                clip_grad_norm_fp32(self.model.parameters(),
+                                    gpc.config.clip_grad)
+            self._torch_amp_scaler.step(self.optimizer)
             self._torch_amp_scaler.update()
         else:
+            if not self.fp16 and not self.use_zero_level_2_3 and getattr(gpc.config, 'clip_grad', 0.0) > 0.0:
+                clip_grad_norm_fp32(self.model.parameters(),
+                                    gpc.config.clip_grad)
             self.optimizer.step()

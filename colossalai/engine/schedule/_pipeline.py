@@ -163,8 +163,7 @@ class PipelineSchedule(BaseSchedule):
         if gpc.is_last_rank(ParallelMode.PIPELINE):
             if return_loss:
                 input_tensor, label = self.load_micro_batch()
-                loss_reduced = self.criterion(output_tensor, *
-                label) / (self.num_microbatches * self.grad_accum)
+                loss_reduced = self.criterion(output_tensor, *label) / (self.num_microbatches * self.grad_accum)
                 return_tensors.append(
                     tuple((output_tensor, label[0], loss_reduced)))
                 return loss_reduced
