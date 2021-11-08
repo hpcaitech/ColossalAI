@@ -17,7 +17,8 @@ def run_trainer():
         criterion=criterion,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
-        schedule=schedule
+        schedule=schedule,
+        gradient_accumulation=5,
     )
     logger.info("engine is built", ranks=[0])
 

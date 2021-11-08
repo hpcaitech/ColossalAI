@@ -147,6 +147,7 @@ class Trainer:
             if self.exceed_max_step():
                 # stop when max iter is reached
                 break
+        self._engine.complete()
         self._timer.stop('train-epoch', keep_in_history=True)
         self.call_hooks('after_train_epoch')
         self._timer.reset('train-step')

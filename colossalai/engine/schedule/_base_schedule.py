@@ -15,6 +15,8 @@ class BaseSchedule(ABC):
     def __init__(self):
         self.initialized = False
         self.logger = get_global_dist_logger()
+        self.grad_accum = 1
+        self.training = False
 
     @property
     @abstractmethod
@@ -27,15 +29,13 @@ class BaseSchedule(ABC):
                    dataloader=None,
                    model=None,
                    criterion=None,
-                   optimizer=None,
-                   lr_scheduler=None):
+                   optimizer=None):
         """Initializes the schedule and set parameters before running.
 
         :param dataloader: DataLoader in training or evaluation
         :param model: The neural network model
         :param criterion: Criterion for calculating loss
         :param optimizer: Optimizer for updating the parameters
-        :param lr_scheduler: Learning rate scheduler in the process
         """
         self.dataloader = dataloader
         assert model is not None, "Schedule requires a model"
@@ -44,7 +44,6 @@ class BaseSchedule(ABC):
         self.criterion = criterion
         assert optimizer is not None, "Schedule requires an optimizer"
         self.optimizer = optimizer
-        self.lr_scheduler = lr_scheduler
         self.initialized = True
 
     def check_initialized(self):
@@ -65,6 +64,13 @@ class BaseSchedule(ABC):
             raise RuntimeError('Dataloader is not defined.')
         data, label = next(self.data_iter)
         return self._move_to_device(data), self._move_to_device(label)
+
+    def consume_batch(self):
+        while True:
+            try:
+                self.load_batch()
+            except StopIteration:
+                break
 
     def _move_to_device(self, data):
         if isinstance(data, (
@@ -87,6 +93,7 @@ class BaseSchedule(ABC):
         :param mode: If True, the model will set as training mode. Otherwise, evaluation mode.
         """
         self.check_initialized()
+        self.training = mode
         if mode:
             self.model.train()
         else:
@@ -102,22 +109,11 @@ class BaseSchedule(ABC):
             self.check_initialized()
             self.optimizer.zero_grad()
 
-    def get_lr(self):
-        """Returns the current learning rate.
-        """
-        if self.lr_scheduler is not None:
-            return self.lr_scheduler.get_lr()[0]
-        else:
-            return self.optimizer.param_groups[0]['lr']
-
     def step(self):
         """Updates the parameters and learning rate with the optimizer.
         """
         self.check_initialized()
         self.optimizer.step()
-        # update lr scheduler
-        if self.lr_scheduler is not None:
-            self.lr_scheduler.step()
 
     @abstractmethod
     def forward_backward_step(self, forward_only=False, return_loss=True):

@@ -339,16 +339,15 @@ def initialize(config: Union[str, dict] = None,
 
     lr_scheduler = None
     if hasattr(gpc.config, 'lr_scheduler'):
-        if hasattr(gpc.config, 'num_steps'):
-            total_steps = gpc.config.num_steps
-        elif hasattr(gpc.config, 'num_epochs'):
-            total_steps = int(gpc.config.num_epochs * len(train_dataloader))
-        else:
-            raise Exception(
-                'Please specify training stopping criterion num_steps or num_epochs in your configuration.'
-            )
-        lr_scheduler = build_lr_scheduler(gpc.config.lr_scheduler, optimizer,
-                                          total_steps, len(train_dataloader))
+        # if hasattr(gpc.config, 'num_steps'):
+        #     total_steps = gpc.config.num_steps
+        # elif hasattr(gpc.config, 'num_epochs'):
+        #     total_steps = int(gpc.config.num_epochs * len(train_dataloader))
+        # else:
+        #     raise Exception(
+        #         'Please specify training stopping criterion num_steps or num_epochs in your configuration.'
+        #     )
+        lr_scheduler = build_lr_scheduler(gpc.config.lr_scheduler, optimizer)
         logger.info('Learning rate scheduler is created', ranks=[0])
 
     # pipeline or no pipeline schedule

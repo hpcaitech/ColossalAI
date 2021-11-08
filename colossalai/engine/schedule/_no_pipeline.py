@@ -81,19 +81,20 @@ class NoPipelineSchedule(BaseSchedule):
 
     @property
     def num_steps(self):
-        return len(self.dataloader)
+        length = len(self.dataloader)
+        if self.training:
+            length -= length % self.grad_accum
+        return length
 
     def initialize(self,
-                   dataloader,
-                   model,
-                   criterion,
-                   optimizer,
-                   lr_scheduler=None):
+                   dataloader=None,
+                   model=None,
+                   criterion=None,
+                   optimizer=None):
         super().initialize(dataloader,
                            model,
                            criterion,
-                           optimizer,
-                           lr_scheduler=lr_scheduler)
+                           optimizer)
         if isinstance(self.optimizer, (ZeroRedundancyOptimizer_Level_2,
                                        ZeroRedundancyOptimizer_Level_3)):
             self.use_zero_level_2_3 = True
@@ -147,6 +148,7 @@ class NoPipelineSchedule(BaseSchedule):
                 output = (output,)
             if return_loss:
                 loss = self.criterion(*output, *label)
+        loss /= self.grad_accum
 
         if not forward_only:
             # backward
@@ -168,7 +170,7 @@ class NoPipelineSchedule(BaseSchedule):
                 loss.backward()
 
         if return_loss:
-            return output, label, loss
+            return output, label, loss * self.grad_accum
         else:
             return output, None, None
 
@@ -179,7 +181,3 @@ class NoPipelineSchedule(BaseSchedule):
             self._torch_amp_scaler.update()
         else:
             self.optimizer.step()
-
-        # update lr scheduler
-        if self.lr_scheduler is not None:
-            self.lr_scheduler.step()
