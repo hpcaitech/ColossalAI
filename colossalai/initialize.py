@@ -339,7 +339,20 @@ def initialize(config: Union[str, dict] = None,
         optimizer = build_optimizer_wrapper(fp16_cfg, optimizer)
     logger.info('Optimizer is created', ranks=[0])
 
-    # build schedule and engine
+    lr_scheduler = None
+    if hasattr(gpc.config, 'lr_scheduler'):
+        # if hasattr(gpc.config, 'num_steps'):
+        #     total_steps = gpc.config.num_steps
+        # elif hasattr(gpc.config, 'num_epochs'):
+        #     total_steps = int(gpc.config.num_epochs * len(train_dataloader))
+        # else:
+        #     raise Exception(
+        #         'Please specify training stopping criterion num_steps or num_epochs in your configuration.'
+        #     )
+        lr_scheduler = build_lr_scheduler(gpc.config.lr_scheduler, optimizer)
+        logger.info('Learning rate scheduler is created', ranks=[0])
+
+    # pipeline or no pipeline schedule
     if hasattr(gpc.config, 'fp16'):
         amp_type = gpc.config.fp16.mode
         amp_cfg = gpc.config.fp16.copy()

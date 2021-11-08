@@ -32,29 +32,29 @@ class Engine:
     """
 
     def __init__(self,
-                 model: Module,
-                 optimizer: Optimizer,
-                 criterion: _Loss,
-                 step_schedule: BaseSchedule,
-                 gradient_handlers: list = None,
+                 train_dataloader: Optional[DataLoader] = None,
+                 test_dataloader: Optional[DataLoader] = None,
+                 model: Module = None,
+                 criterion: _Loss = None,
+                 optimizer: Optimizer = None,
+                 lr_scheduler: Optional[_LRScheduler] = None,
+                 schedule: BaseSchedule = None,
                  gradient_accumulation: int = 1,
-                 gradient_clipping: float = 0.0,
-                 ):
-        self._model = model
-        self._optimizer = optimizer
-        self._criterion = criterion
-        self._schedule = step_schedule
-
-        # schedule initialize
-        self._schedule.initialize(model, optimizer)
-
-        # state
-        self.training = True  # default
-
-        # gradient accumulation
-        assert gradient_accumulation > 0, 'gradient accumulation size must be larger than 0'
-        self._grad_accum_size = gradient_accumulation
-        self._grad_clip = gradient_clipping
+                 lr_scheduler_step: str = 'epoch'):
+        self.train_dataloader = train_dataloader
+        self.test_dataloader = test_dataloader
+        assert model is not None, "Engine requires a model"
+        self.model = model
+        self.criterion = criterion
+        self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
+        self.schedule = schedule if schedule is not None \
+            else NoPipelineSchedule()
+        self.grad_accum_size = gradient_accumulation
+        self.grad_accum_step = 0
+        self.lr_step = 0  # for epoch updating
+        if lr_scheduler_step != 'epoch':
+            self.lr_step = 1
         self._logger = get_global_dist_logger()
 
         # build gradient handler
@@ -89,9 +89,14 @@ class Engine:
                 handler = build_gradient_handler(cfg, model, optimizer)
                 self._gradient_handlers.append(handler)
 
-    @property
-    def model(self):
-        return self._model
+        self.schedule.initialize(self.train_dataloader, self.model,
+                                 self.criterion, self.optimizer)
+        self.schedule.grad_accum = self.grad_accum_size
+        # add for robustness
+        if self.optimizer is None:
+            self.forward_only = True
+        else:
+            self.forward_only = False
 
     @property
     def optimizer(self):
@@ -105,9 +110,15 @@ class Engine:
     def schedule(self):
         return self._schedule
 
-    @property
-    def gradient_accumulation(self):
-        return self._grad_accum_size
+    def get_model(self):
+        """Returns the neural network model in the engine.
+        """
+        return self.model
+
+    def get_optimizer(self):
+        """Returns optimizier in the engine.
+        """
+        return self.optimizer
 
     def handle_gradient(self):
         """Handles all-reduce operations of gradients across different parallel groups.
@@ -127,10 +138,20 @@ class Engine:
         self.training = False
         self._model.eval()
 
-    def step(self,
-             data_iter,
-             is_last_iteration: bool = False,
-             return_loss=True):
+    def is_train(self):
+        """Returns True if it is in training, otherwise False.
+        """
+        return not self.forward_only
+
+    def get_lr(self):
+        """Gets current learning rate.
+        """
+        if self.lr_scheduler is not None:
+            return self.lr_scheduler.get_lr()[0]
+        else:
+            return self.optimizer.param_groups[0]['lr']
+
+    def step(self, return_loss=True):
         """A running step based on the schedule. Usually, it runs a training or
         evaluation over a batch of dataset.
 
@@ -142,35 +163,27 @@ class Engine:
         :type return_loss: bool, optional
         :return: (output, lablel, loss)
         """
-        if self.training:
-            self._optimizer.zero_grad()
+        if not self.forward_only and self.grad_accum_step == 0:
+            self.schedule.zero_grad()
 
-        # differentiate training and eval with grad accum
-        if self.training:
-            for i in range(self._grad_accum_size):
-                output, label, loss = self._schedule.forward_backward_step(
-                    data_iter, self._model, self._criterion, self._optimizer,
-                    forward_only=False,
-                    grad_accum_size=self._grad_accum_size,
-                    return_loss=return_loss)
+        output, label, loss = self.schedule.forward_backward_step(
+            forward_only=self.forward_only, return_loss=return_loss)
 
-                if i == self._grad_accum_size - 1:
-                    # all reduce gradients
-                    self.handle_gradient()
-                    self._schedule.optimizer_step(self._model, self._optimizer, self._grad_clip)
-        else:
-            output, label, loss = self._schedule.forward_backward_step(
-                data_iter, self._model, self._criterion, self._optimizer,
-                forward_only=True,
-                grad_accum_size=1,
-                return_loss=return_loss)
-
-        # consume the remaining dataset left out due to gradient accumulation
-        if is_last_iteration:
-            while True:
-                try:
-                    _ = next(data_iter)
-                except StopIteration:
-                    break
+        if not self.forward_only:
+            self.grad_accum_step += 1
+            if self.grad_accum_step == self.grad_accum_size:
+                # all reduce gradients
+                self.handle_gradient()
+                self.schedule.step()
+                if self.lr_scheduler is not None and self.lr_step:
+                    self.lr_scheduler.step()
+                self.grad_accum_step = 0
 
         return output, label, loss
+
+    def complete(self):
+        """Updating after a epoch.
+        """
+        self.schedule.consume_batch()
+        if self.lr_scheduler is not None and self.lr_step == 0:
+            self.lr_scheduler.step()

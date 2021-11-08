@@ -181,10 +181,10 @@ class Trainer:
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
-
-        self._call_timer(action='stop', item='train-epoch', keep_in_history=True)
-        self._call_hooks('after_train_epoch')
-        self._call_timer(action='reset', item='train-step')
+        self._engine.complete()
+        self._timer.stop('train-epoch', keep_in_history=True)
+        self.call_hooks('after_train_epoch')
+        self._timer.reset('train-step')
 
     def _eval(self,
               test_dataloader: DataLoader,

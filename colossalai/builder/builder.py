@@ -242,16 +242,8 @@ def build_lr_scheduler(config, optimizer):
     """
     config_ = config.copy()
     mod_type = config_.pop('type')
+    # warmup epochs will overwrite warmup steps
+    # if 'warmup_epochs' in config_:
+    #     warmup_epochs = config_.pop('warmup_epochs')
+    #     config_['warmup_steps'] = int(num_steps_per_epoch * warmup_epochs)
     return LR_SCHEDULERS.get_module(mod_type)(optimizer, **config_)
-
-
-def build_schedule(config):
-    """Returns a schedule of :class:`colossalai.engine.schedule.BaseSchedule`.
-
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`colossalai.engine.schedule.BaseSchedule`
-    :rtype: :class:`colossalai.engine.schedule.BaseSchedule`
-    """
-    return build_from_registry(config, SCHEDULE)

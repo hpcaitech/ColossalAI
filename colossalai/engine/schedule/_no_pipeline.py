@@ -79,9 +79,24 @@ class NoPipelineSchedule(BaseSchedule):
             self.fp16 = False
             self.amp_type = None
 
-    def initialize(self, model: nn.Module, optimizer: Optimizer):
-        if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                  ZeroRedundancyOptimizer_Level_3)):
+    @property
+    def num_steps(self):
+        length = len(self.dataloader)
+        if self.training:
+            length -= length % self.grad_accum
+        return length
+
+    def initialize(self,
+                   dataloader=None,
+                   model=None,
+                   criterion=None,
+                   optimizer=None):
+        super().initialize(dataloader,
+                           model,
+                           criterion,
+                           optimizer)
+        if isinstance(self.optimizer, (ZeroRedundancyOptimizer_Level_2,
+                                       ZeroRedundancyOptimizer_Level_3)):
             self.use_zero_level_2_3 = True
             assert self.amp_type != AMP_TYPE.PARALLEL, \
                 'ZeRO Level 2 and 3 are mutually exclusive with AMP_TYPE.PARALLEL'
@@ -147,9 +162,8 @@ class NoPipelineSchedule(BaseSchedule):
             if not isinstance(output, (tuple, list)):
                 output = (output,)
             if return_loss:
-                loss = criterion(*output, *label)
-
-        loss /= grad_accum_size
+                loss = self.criterion(*output, *label)
+        loss /= self.grad_accum
 
         if not forward_only:
             # backward
@@ -170,7 +184,7 @@ class NoPipelineSchedule(BaseSchedule):
                 loss.backward()
 
         if return_loss:
-            return output, label, loss * grad_accum_size
+            return output, label, loss * self.grad_accum
         else:
             return output, None, None
 
@@ -183,6 +197,4 @@ class NoPipelineSchedule(BaseSchedule):
             self._torch_amp_scaler.step(optimizer)
             self._torch_amp_scaler.update()
         else:
-            if not self.fp16 and not self.use_zero_level_2_3 and grad_clipping > 0.0:
-                clip_grad_norm_fp32(model.parameters(), grad_clipping)
-            optimizer.step()
+            self.optimizer.step()
