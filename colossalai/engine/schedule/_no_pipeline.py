@@ -15,7 +15,7 @@ from colossalai.core import global_context as gpc
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
                            ZeroRedundancyOptimizer_Level_3)
 from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
-from ._utils import convert_to_fp16
+from ._utils import convert_to_fp16, convert_to_fp32
 from ._base_schedule import BaseSchedule
 from ..amp import AMP_TYPE, GradScaler
 
@@ -43,12 +43,6 @@ class NoPipelineSchedule(BaseSchedule):
         assert amp_type is None or isinstance(amp_type, AMP_TYPE), \
             'unrecognised value for argument fp16, it can only be None, torch or apex'
 
-        # LSG: check compatibility
-        # LSG: torch.cuda.amp and apex.amp cannot be used for tensor parallel
-        if gpc.is_initialized(ParallelMode.TENSOR) and gpc.get_world_size(
-                ParallelMode.TENSOR) > 1:
-            assert amp_type != AMP_TYPE.TORCH and amp_type != AMP_TYPE.APEX, \
-                'You can only AMP_TYPE.PARALLEL for tensor parallel training'
         self.use_zero_level_2_3 = False
 
         if amp_type is not None:
@@ -121,18 +115,6 @@ class NoPipelineSchedule(BaseSchedule):
         data, label = self.load_batch()
         loss = None
 
-        # LSG: leave for debug, make sure dataloader is deterministic
-        # if forward_only:
-        #     img = data[0]
-        #     rank = gpc.get_local_rank(ParallelMode.DATA)
-        #     world_size = gpc.get_world_size(ParallelMode.DATA)
-        #     group = gpc.get_group(ParallelMode.DATA)
-        #     input_list = [img.clone() for _ in range(world_size)]
-        #     output_list = [torch.empty_like(img) for _ in range(world_size)]
-        #     output_list[rank] = img.clone()
-        #     dist.all_to_all(output_tensor_list=output_list, input_tensor_list=input_list, group=group)
-        #     assert torch.equal(output_list[0], output_list[1])  # and torch.equal(output_list[1], output_list[2])
-
         # forward
         if self.fp16 and self.amp_type == AMP_TYPE.TORCH:
             with torch_amp.autocast():
@@ -146,6 +128,10 @@ class NoPipelineSchedule(BaseSchedule):
                 data = convert_to_fp16(data)
 
             output = self.model(*data)
+
+            if self.use_zero_level_2_3 or self.amp_type == AMP_TYPE.PARALLEL:
+                output = convert_to_fp32(output)
+
             if not isinstance(output, (tuple, list)):
                 output = (output,)
             if return_loss:

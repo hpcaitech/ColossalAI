@@ -66,11 +66,10 @@ class CosineAnnealingWarmupLR(WarmupScheduler):
     :type last_epoch: int, optional
     """
 
-    def __init__(self, optimizer, total_steps: int, warmup_steps: int = 0, eta_min: int = 0, last_epoch: int = -1,
-                 **kwargs):
+    def __init__(self, optimizer, total_steps: int, warmup_steps: int = 0, eta_min: int = 0, last_epoch: int = -1):
         base_scheduler = _CosineAnnealingLR(
-            optimizer, total_steps - warmup_steps, eta_min=eta_min)
-        super().__init__(optimizer, warmup_steps, base_scheduler, last_epoch=last_epoch)
+            optimizer, total_steps - warmup_steps, eta_min=eta_min, last_epoch=last_epoch)
+        super().__init__(optimizer, warmup_steps, base_scheduler)
 
 
 @LR_SCHEDULERS.register_module
