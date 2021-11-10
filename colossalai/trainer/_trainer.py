@@ -160,26 +160,19 @@ class Trainer:
                 progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
 
         # train 1 epoch
-        self._call_hooks('before_train_epoch')
-        self._call_timer(action='start', item='train-epoch')
-        for i in progress:
-            self._call_hooks('before_train_iter')
-            self._call_timer(action='start', item='train-step')
-
-            if i == self._steps_per_epoch - 1:
-                is_last_iteration = True
-            else:
-                is_last_iteration = False
-
-            # run 1 training step
-            logits, label, loss = self._engine.step(data_iter, is_last_iteration)
-            self._call_timer(action='stop', item='train-step', keep_in_history=True)
-            self._call_hooks('after_train_iter', output=(logits, label, loss))
+        self.call_hooks('before_train_epoch')
+        self._timer.start('train-epoch')
+        for _ in progress:
+            self.call_hooks('before_train_iter')
+            self._timer.start('train-step')
+            logits, label, loss = self._engine.step()
+            self._timer.stop('train-step', keep_in_history=True)
+            self.call_hooks('after_train_iter', output=(logits, label, loss))
 
             self._cur_step += 1
 
-            # stop when max iter is reached
-            if self._exceed_max_step():
+            if self.exceed_max_step():
+                # stop when max iter is reached
                 break
         self._engine.complete()
         self._timer.stop('train-epoch', keep_in_history=True)
@@ -289,7 +282,7 @@ class Trainer:
         if self.cur_epoch != 0:
             self._set_current_step(last_epoch)
 
-        for epoch in range(last_epoch, epochs):
+        for epoch in range(last_epoch, self._max_epochs):
             # train for one epoch
             self._train_epoch(
                 train_dataloader=train_dataloader,
@@ -303,6 +296,8 @@ class Trainer:
                            display_progress=display_progress,
                            epoch=epoch,
                            )
+
+            self._cur_epoch += 1
 
             self._cur_epoch += 1
 

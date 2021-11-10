@@ -16,21 +16,13 @@ from typing import Iterable
 import torch.nn as nn
 from torch.optim import Optimizer
 
-<<<<<<< HEAD
-from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
-                           ZeroRedundancyOptimizer_Level_3)
-from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
-from ._base_schedule import BaseSchedule
-from ._utils import convert_to_fp16, convert_to_fp32
-=======
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
                            ZeroRedundancyOptimizer_Level_3)
 from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
-from ._utils import convert_to_fp16
+from ._utils import convert_to_fp16, convert_to_fp32
 from ._base_schedule import BaseSchedule
->>>>>>> c8cb9f9... fix FP16 optimizer and adapted torch amp with tensor parallel (#18)
 from ..amp import AMP_TYPE, GradScaler
 
 
@@ -164,7 +156,7 @@ class NoPipelineSchedule(BaseSchedule):
             if self.use_zero_level_2_3 or self.amp_type == AMP_TYPE.PARALLEL:
                 data = convert_to_fp16(data)
 
-            output = model(*data)
+            output = self.model(*data)
 
             if self.use_zero_level_2_3 or self.amp_type == AMP_TYPE.PARALLEL:
                 output = convert_to_fp32(output)
