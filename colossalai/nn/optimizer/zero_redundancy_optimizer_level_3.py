@@ -21,7 +21,7 @@ try:
     from deepspeed.runtime.zero.partition_parameters import *
     from deepspeed.runtime.zero.partition_parameters import _init_external_params
 except ImportError:
-    print('DeepSpeed is required if you want to use ZeRO.')
+    pass
 
 from torch._six import inf
 from torch.distributed.distributed_c10d import _get_global_rank

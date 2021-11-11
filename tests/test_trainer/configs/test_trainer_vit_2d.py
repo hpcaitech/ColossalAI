@@ -11,6 +11,7 @@ NUM_ATTENTION_HEADS = 8
 SUMMA_DIM = 2
 NUM_CLASSES = 10
 DEPTH = 6
+num_epochs = 60
 
 train_data = dict(
     dataset=dict(type='CIFAR10Dataset',
@@ -51,13 +52,6 @@ test_data = dict(
 optimizer = dict(type='Adam', lr=0.001, weight_decay=0)
 
 loss = dict(type='CrossEntropyLoss2D', )
-
-# model = dict(
-#     type='VanillaResNet',
-#     block_type='ResNetBasicBlock',
-#     layers=[2, 2, 2, 2],
-#     num_cls=10
-# )
 
 model = dict(
     type='VisionTransformerFromConfig',
@@ -114,8 +108,15 @@ hooks = [
     dict(type='Accuracy2DHook'),
     dict(type='LossHook'),
     dict(type='TensorboardHook', log_dir='./tfb_logs'),
+    dict(
+        type='LRSchedulerHook',
+        by_epoch=True,
+        lr_scheduler_cfg=dict(
+            type='LinearWarmupLR',
+            warmup_steps=5
+        )
+    ),
     dict(type='SaveCheckpointHook', interval=5, checkpoint_dir='./ckpt'),
-    # dict(type='LoadCheckpointHook', epoch=20, checkpoint_dir='./ckpt')
 ]
 
 parallel = dict(
@@ -125,11 +126,8 @@ parallel = dict(
 
 fp16 = dict(mode=AMP_TYPE.PARALLEL, initial_scale=2 ** 8)
 
-lr_scheduler = dict(type='LinearWarmupLR', warmup_epochs=5)
-
-schedule = dict(num_microbatches=1)
-
-num_epochs = 60
-num_microbatches = 1
+engine = dict(
+    schedule=dict(num_microbatches=1)
+)
 
 logging = dict(root_path='./logs')

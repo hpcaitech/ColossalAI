@@ -3,13 +3,13 @@
 
 import os.path as osp
 
-import torch.distributed as dist
-
-from colossalai.checkpointing import get_latest_checkpoint_path, get_checkpoint_path
 from colossalai.registry import HOOKS
-from colossalai.trainer.hooks import BaseHook
 from colossalai.trainer import Trainer
+from colossalai.trainer.hooks import BaseHook
 from colossalai.utils import is_dp_rank_0
+from colossalai.utils.checkpointing import get_latest_checkpoint_path, get_checkpoint_path
+from colossalai.utils.checkpointing import save_checkpoint, load_checkpoint
+from ._lr_scheduler_hook import LRSchedulerHook
 
 
 @HOOKS.register_module
@@ -33,13 +33,23 @@ class SaveCheckpointHook(BaseHook):
                  interval: int = 1,
                  checkpoint_dir: str = None,
                  suffix: str = '',
-                 priority: int = 0):
+                 priority: int = 10):
         super().__init__(trainer=trainer, priority=priority)
         assert isinstance(trainer, Trainer), \
             f'SaveCheckpointHook expects a Trainer, got {type(trainer)}'
         self.interval = interval
         self.checkpoint_dir = checkpoint_dir
         self.suffix = suffix
+
+        # get lr scheduler from the LRSchedulerHook before train
+        self._lr_scheduler = None
+
+    def before_train(self):
+        # check if lr scheduler is present in LRSchedulerHook
+        for hook in self.trainer.hooks:
+            if isinstance(hook, LRSchedulerHook):
+                self._lr_scheduler = hook.lr_scheduler
+                break
 
     def after_train_epoch(self):
         """Saves the model after a training epoch.
@@ -48,13 +58,17 @@ class SaveCheckpointHook(BaseHook):
         if self.trainer.cur_epoch % self.interval == 0:
             # only gpus with data parallel rank equals to 0 write to the disk
             if is_dp_rank_0():
-                self.trainer.save(path=self.checkpoint_dir, suffix=self.suffix)
+                save_path = get_checkpoint_path(self.checkpoint_dir,
+                                                self.trainer.cur_epoch,
+                                                suffix=self.suffix)
+
+                save_checkpoint(save_path,
+                                self.trainer.cur_epoch,
+                                self.trainer.engine.model,
+                                self.trainer.engine.optimizer,
+                                self._lr_scheduler)
                 self.logger.info(
                     f'checkpoint for epoch {self.trainer.cur_epoch} is saved to {self.checkpoint_dir}')
-
-            # wait until everyone is done
-            if dist.is_initialized():
-                dist.barrier()
 
 
 @HOOKS.register_module
@@ -81,30 +95,46 @@ class LoadCheckpointHook(BaseHook):
                  epoch: int = -1,
                  finetune: bool = False,
                  strict: bool = False,
-                 priority: int = 10) -> None:
+                 suffix: str = '',
+                 priority: int = 0) -> None:
+        super().__init__(trainer=trainer, priority=priority)
         assert isinstance(trainer, Trainer), \
             f'LoadLatestCheckpointHook excepts a Trainer, got {type(trainer)}'
         self.epoch = epoch
         self.checkpoint_dir = checkpoint_dir
         self.finetune = finetune
+        self.suffix = suffix
         self.strict = strict
-        super().__init__(trainer=trainer, priority=priority)
 
     def before_train(self):
         """Loads parameters to the model before training.
         """
+        # check if lr scheduler is present in LRSchedulerHook
+        lr_scheduler = None
+        for hook in self.trainer.hooks:
+            if isinstance(hook, LRSchedulerHook):
+                lr_scheduler = hook.lr_scheduler
+                break
+
+        # use latest checkpoint if epoch = -1
         if self.epoch == -1:
-            path = get_latest_checkpoint_path(self.checkpoint_dir)
+            path = get_latest_checkpoint_path(self.checkpoint_dir, suffix=self.suffix)
         else:
-            path = get_checkpoint_path(self.checkpoint_dir, epoch=self.epoch)
+            path = get_checkpoint_path(self.checkpoint_dir, epoch=self.epoch, suffix=self.suffix)
+
         if osp.exists(path):
-            self.trainer.load(
-                path, finetune=self.finetune, strict=self.strict)
+            last_epoch, _ = load_checkpoint(path,
+                                            self.trainer.engine.model,
+                                            self.trainer.engine.optimizer,
+                                            lr_scheduler,
+                                            finetune=self.finetune,
+                                            strict=self.strict)
+            if self.finetune:
+                self.trainer.cur_epoch = 0
+            else:
+                self.trainer.cur_epoch = last_epoch
+
             self.logger.info(
                 f'loaded checkpoint from {path}')
         else:
             raise FileNotFoundError(f'checkpoint is not found at {path}')
-
-        # Some utilities want to load a checkpoint without distributed being initialized
-        if dist.is_initialized():
-            dist.barrier()
