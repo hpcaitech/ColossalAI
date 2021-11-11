@@ -136,17 +136,18 @@ class Trainer:
         self.call_hooks('before_train_epoch')
         self._timer.start('train-epoch')
         for _ in progress:
-            self._cur_step += 1
-
             self.call_hooks('before_train_iter')
             self._timer.start('train-step')
             logits, label, loss = self._engine.step()
             self._timer.stop('train-step', keep_in_history=True)
             self.call_hooks('after_train_iter', output=(logits, label, loss))
 
+            self._cur_step += 1
+
             if self.exceed_max_step():
                 # stop when max iter is reached
                 break
+        self._engine.complete()
         self._timer.stop('train-epoch', keep_in_history=True)
         self.call_hooks('after_train_epoch')
         self._timer.reset('train-step')
@@ -234,14 +235,14 @@ class Trainer:
         last_epoch = self._cur_epoch
 
         for epoch in range(last_epoch, self._max_epochs):
-            self._cur_epoch += 1
-
             # train for one epoch
             self._train_epoch(epoch)
 
             # start eval
             if should_test and epoch % test_interval == 0:
                 self._eval(epoch, return_loss=True)
+
+            self._cur_epoch += 1
 
             # check for termination
             if self.exceed_max_step():

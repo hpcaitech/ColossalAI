@@ -20,6 +20,8 @@ class BaseSchedule(ABC):
 
     def __init__(self):
         self.logger = get_global_dist_logger()
+        self.grad_accum = 1
+        self.training = False
 
     @staticmethod
     def _move_tensor(element):

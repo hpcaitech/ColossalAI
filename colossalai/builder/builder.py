@@ -235,7 +235,7 @@ def build_optimizer_wrapper(config, optimizer, model=None):
         return OPTIMIZER_WRAPPERS.get_module(mod_type)(optimizer, **config_)
 
 
-def build_lr_scheduler(config, optimizer, total_steps, num_steps_per_epoch):
+def build_lr_scheduler(config, optimizer):
     """Returns a learning rate scheduler object of :class:`torch.optim.lr_scheduler` 
     constructed from `config`, `optimizer`, `total_steps` and `num_steps_per_epoch`.
 
@@ -255,8 +255,7 @@ def build_lr_scheduler(config, optimizer, total_steps, num_steps_per_epoch):
     config_ = config.copy()
     mod_type = config_.pop('type')
     # warmup epochs will overwrite warmup steps
-    if 'warmup_epochs' in config_:
-        warmup_epochs = config_.pop('warmup_epochs')
-        config_['warmup_steps'] = int(num_steps_per_epoch * warmup_epochs)
-    return LR_SCHEDULERS.get_module(mod_type)(optimizer, total_steps, num_steps_per_epoch=num_steps_per_epoch,
-                                              **config_)
+    # if 'warmup_epochs' in config_:
+    #     warmup_epochs = config_.pop('warmup_epochs')
+    #     config_['warmup_steps'] = int(num_steps_per_epoch * warmup_epochs)
+    return LR_SCHEDULERS.get_module(mod_type)(optimizer, **config_)
