@@ -4,7 +4,10 @@
 from typing import Union, List
 
 import torch
+import torch.nn as nn
+from torch.nn.modules.loss import _Loss
 from torch import Tensor
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -13,7 +16,7 @@ from colossalai.engine import Engine
 from colossalai.logging import get_global_dist_logger
 from colossalai.nn.data import DataParallelSampler
 from colossalai.utils import MultiTimer
-from colossalai.utils import is_dp_rank_0, is_tp_rank_0, is_no_pp_or_last_stage
+from colossalai.engine import Engine, BaseSchedule
 
 
 class Trainer:
@@ -30,11 +33,20 @@ class Trainer:
     """
 
     def __init__(self,
-                 engine: Engine,
+                 model: nn.Module,
+                 optimizer: Optimizer,
+                 loss: _Loss,
+                 scheule: BaseSchedule,
                  verbose: bool = False,
                  timer: MultiTimer = None):
         # training-ralated params
-        self._engine = engine
+        self._model = model
+        self._optimizer = optimizer
+        self._loss = loss
+        self._engine = Engine(
+            model=model,
+            optimizer=optimizer,
+            schedule=scheule)
         self._max_epochs = 0
         self._cur_epoch = 0
         self._max_steps = 0
@@ -86,12 +98,20 @@ class Trainer:
         return self._steps_per_epoch
 
     @property
-    def engine(self):
-        return self._engine
+    def optimizer(self):
+        return self._optimizer
 
-    @engine.setter
-    def engine(self, engine_: Engine):
-        self._engine = engine_
+    @property
+    def model(self):
+        return self._model
+
+    def set_epoch(self, epoch):
+        """Sets current epoch number.
+
+        :param epoch: Epoch number to be set
+        :type epoch: int
+        """
+        self._cur_epoch = epoch
 
     def _set_current_step(self, epoch: int):
         """Sets current step number.
@@ -102,20 +122,10 @@ class Trainer:
         self._cur_step = epoch * self._steps_per_epoch
 
     def _call_timer(self, action: str, item: str, *args, **kwargs) -> None:
-        """Call timer funciton with a given timer name.
-
-        :param action: Function to be called on timer
-        :type action: str
-        :param item: Name of the timer
-        :type item: str
-        """
-
         if self._timer is not None:
             getattr(self._timer, action)(item, *args, **kwargs)
 
     def _reset_states(self) -> None:
-        """Clear trainer states
-        """
         self.states = dict()
 
     def _call_hooks(self, func, output=None):
@@ -135,14 +145,13 @@ class Trainer:
 
     @staticmethod
     def _should_display_progress(display_progress: bool):
-        """ Only display progress on DP rank 0, TP rank 0 and PP last rank
-        """
         return display_progress and is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
 
     def _train_epoch(self,
-                     train_dataloader: DataLoader,
-                     epoch: int = None,
-                     display_progress: bool = False):
+                    train_dataloader: DataLoader,
+                    epoch: int = None,
+                    max_steps: int = None,
+                    display_progress: bool = False):
         # set sampler epoch
         if epoch is not None and \
                 hasattr(train_dataloader, 'sampler') and \
@@ -152,7 +161,8 @@ class Trainer:
         # set training state
         self._engine.train()
         data_iter = iter(train_dataloader)
-        progress = range(self._steps_per_epoch)
+
+        progress = range(len(train_dataloader))
         if display_progress:
             if epoch is None:
                 progress = tqdm(progress, desc='[Train]')
@@ -160,39 +170,45 @@ class Trainer:
                 progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
 
         # train 1 epoch
-        self.call_hooks('before_train_epoch')
-        self._timer.start('train-epoch')
-        for _ in progress:
-            self.call_hooks('before_train_iter')
-            self._timer.start('train-step')
-            logits, label, loss = self._engine.step()
-            self._timer.stop('train-step', keep_in_history=True)
-            self.call_hooks('after_train_iter', output=(logits, label, loss))
+        self._call_hooks('before_train_epoch')
+        self._call_timer(action='start', item='train-epoch')
+        for i in progress:
+            self._call_hooks('before_train_iter')
+            self._call_timer(action='start', item='train-step')
+
+            # run 1 training step
+            if i == len(train_dataloader) - 1:
+                is_last_iteration = True
+            else:
+                is_last_iteration = False
+            logits, label, loss = self._engine.step(data_iter, self._model, self._criterion, self._optimizer, is_last_iteration)
+            self._call_timer(action='stop', item='train-step', keep_in_history=True)
+            self._call_hooks('after_train_iter', output=(logits, label, loss))
 
             self._cur_step += 1
 
-            if self.exceed_max_step():
-                # stop when max iter is reached
+            # stop when max iter is reached
+            if self._exceed_max_step():
                 break
-        self._engine.complete()
-        self._timer.stop('train-epoch', keep_in_history=True)
-        self.call_hooks('after_train_epoch')
-        self._timer.reset('train-step')
+
+        self._call_timer(action='stop', item='train-epoch', keep_in_history=True)
+        self._call_hooks('after_train_epoch')
+        self._call_timer(action='reset', item='train-step')
 
     def _eval(self,
               test_dataloader: DataLoader,
+              display_progress: bool = False,
               epoch: int = None,
               display_progress: bool = False):
         # switch engine status
         self._engine.eval()
 
         data_iter = iter(test_dataloader)
-        num_steps = len(test_dataloader)
 
         self._call_hooks('before_test')
         with torch.no_grad():
             # prepare progress bar
-            progress = range(num_steps)
+            progress = range(len(test_dataloader))
             if display_progress:
                 desc = 'Evaluation'
                 if epoch is not None:
@@ -204,7 +220,7 @@ class Trainer:
             for _ in progress:
                 self._call_hooks('before_test_iter')
                 self._call_timer(action='start', item='test-step')
-                logits, label, loss = self._engine.step(data_iter, return_loss=True)
+                logits, label, loss = self._engine.step(data_iter, self._model, self._criterion, return_loss=return_loss)
                 self._call_timer(action='stop', item='test-step', keep_in_history=True)
                 self._call_hooks('after_test_iter',
                                  output=(logits, label, loss))
@@ -225,18 +241,18 @@ class Trainer:
             test_interval: int = 1,
             hooks_cfg: dict = None,
             display_progress: bool = False,
-            ):
+            gradient_accumulation: int = 1):
         """Trains the model to fit training data.
 
         :param train_dataloader: DataLoader in training
-        :param epochs: Maximum number of epoches
+        :param max_epochs: Maximum number of epoches
         :param max_steps: Maximum number of running iterations
         :param test_dataloader: DataLoader in testing
         :param test_interval: Interval of testing
         :param hooks_cfg: A list of hook configuration
         :param display_progress: If True, the training progress will be printed
         :type train_dataloader: DataLoader
-        :type epochs: int
+        :type max_epochs: int
         :type max_steps: int
         :type test_dataloader: DataLoader
         :type test_interval: int
@@ -245,10 +261,15 @@ class Trainer:
         :type gradient_accumulation: int
         """
 
-        # set epochs and steps, consider gradient accumulation
-        self._steps_per_epoch = len(train_dataloader) // self._engine.gradient_accumulation
+        # set epochs and steps
+        self._steps_per_epoch = len(train_dataloader) // gradient_accumulation
         self._max_steps = max_steps
         self._max_epochs = epochs
+
+        # recover step value if resuming training
+        last_epoch = self._cur_epoch
+        if self.cur_epoch != 0:
+            self._set_current_step(last_epoch)
 
         # check if testing is required
         should_test = False
@@ -260,7 +281,7 @@ class Trainer:
         # reset hooks
         self._reset_states()
         self.hooks = list()
-
+        
         # build hooks
         if hooks_cfg is not None:
             for cfg in hooks_cfg:
@@ -270,24 +291,19 @@ class Trainer:
         if self._verbose:
             for hook in self.hooks:
                 self._logger.info(
-                    f'build {hook.__class__.__name__} for training, priority = {hook.priority}', ranks=[0])
-            self._logger.info("Lower value means higher priority for calling hook function")
+                    f'build {hook.__class__.__name__} for train, priority = {hook.priority}', ranks=[0])
 
         # start train
         self._engine.train()
         self._call_hooks('before_train')
 
-        # recover step value if resuming training
-        last_epoch = self._cur_epoch
-        if self.cur_epoch != 0:
-            self._set_current_step(last_epoch)
-
-        for epoch in range(last_epoch, self._max_epochs):
+        for epoch in range(last_epoch, epochs):
             # train for one epoch
             self._train_epoch(
-                train_dataloader=train_dataloader,
-                epoch=epoch,
-                display_progress=display_progress
+                    train_dataloader=train_dataloader,
+                    epoch=None,
+                    max_steps=max_steps,
+                    display_progress=display_progress
             )
 
             # start eval
@@ -295,9 +311,8 @@ class Trainer:
                 self._eval(test_dataloader=test_dataloader,
                            display_progress=display_progress,
                            epoch=epoch,
+                           return_loss=True
                            )
-
-            self._cur_epoch += 1
 
             self._cur_epoch += 1
 
@@ -307,7 +322,7 @@ class Trainer:
                     f"Max number of steps {max_steps} has been reached, training is stopped automatically")
                 break
         self._call_hooks('after_train')
-        self._call_timer('reset', 'train-epoch')
+        self._timer.reset('train-epoch')
 
     def evaluate(self,
                  test_dataloader: DataLoader,
@@ -325,6 +340,7 @@ class Trainer:
         # eval
         self._eval(test_dataloader=test_dataloader,
                    display_progress=display_progress,
+                   return_loss=True
                    )
 
     def predict(self, data: Union[Tensor, List[Tensor]]):
@@ -346,5 +362,5 @@ class Trainer:
         # for compatibility with schedule
         simple_dataloader = [(data, None)]
         data_iter = iter(simple_dataloader)
-        output, _, _ = self._engine.step(data_iter, return_loss=False)
+        output, _, _ = self._engine.step(data_iter, self._model, self._criterion, return_loss=False)
         return output
