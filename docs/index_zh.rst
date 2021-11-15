@@ -3,27 +3,27 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Colossal-AI documentation
+夸父AI系统（Colossal-AI）开发文档
 ======================================
 .. toctree::
    :maxdepth: 1
-   :caption: GETTING STARTED
+   :caption: 快速上手指南
 
-   installation.md
-   run_demo.md
+   installation_zh.md
+   run_demo_zh.md
 
 
 .. toctree::
    :maxdepth: 1
-   :caption: CUSTOMIZE YOUR TRAINING
+   :caption: 个性化您的训练
 
-   parallelization.md
-   model.md
-   trainer_engine.md
-   amp.md
-   zero.md
-   add_your_parallel.md
-   config.md
+   parallelization_zh.md
+   model_zh.md
+   trainer_engine_zh.md
+   amp_zh.md
+   zero_zh.md
+   add_your_parallel_zh.md
+   config_zh.md
    
 
 
