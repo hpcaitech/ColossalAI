@@ -12,6 +12,7 @@ NUM_ATTENTION_HEADS = 2
 SUMMA_DIM = 2
 NUM_CLASSES = 10
 DEPTH = 1
+NUM_EPOCHS = 60
 
 train_data = dict(
     dataset=dict(
@@ -127,7 +128,15 @@ hooks = [
     dict(type='LogMetricByEpochHook'),
     dict(type='Accuracy2DHook'),
     dict(type='LossHook'),
-    # dict(type='TensorboardHook', log_dir='./tfb_logs'),
+    dict(
+        type='LRSchedulerHook',
+        by_epoch=True,
+        lr_scheduler_cfg=dict(
+            type='LinearWarmupLR',
+            warmup_steps=5
+        )
+    ),
+    dict(type='TensorboardHook', log_dir='./tb_logs'),
     # dict(type='SaveCheckpointHook', interval=5, checkpoint_dir='./ckpt'),
     # dict(type='LoadCheckpointHook', epoch=20, checkpoint_dir='./ckpt')
 ]
@@ -144,18 +153,11 @@ parallel = dict(
 #     initial_scale=2 ** 8
 # )
 
-lr_scheduler = dict(
-    type='LinearWarmupLR',
-    total_steps=60,
-    warmup_steps=5
-)
-
 # only needed when pipeline parallel is used
 # schedule = dict(
 #     num_microbatches=8
 # )
 
-num_epochs = 60
 
 logging = dict(
     root_path='./logs'

@@ -14,6 +14,7 @@ except:
 
 BATCH_SIZE = 512
 IMG_SIZE = 32
+NUM_EPOCHS = 60
 
 train_data = dict(
     dataset=dict(
@@ -83,6 +84,14 @@ hooks = [
     ),
     dict(type='LossHook'),
     dict(type='TensorboardHook', log_dir='./tfb_logs'),
+    dict(
+        type='LRSchedulerHook',
+        by_epoch=True,
+        lr_scheduler_cfg=dict(
+            type='LinearWarmupLR',
+            warmup_steps=5
+        )
+    ),
     # dict(type='SaveCheckpointHook', interval=5, checkpoint_dir='./ckpt'),
     # dict(type='LoadCheckpointHook', epoch=20, checkpoint_dir='./ckpt')
 ]
@@ -96,13 +105,6 @@ fp16 = dict(
     mode=AMP_TYPE.PARALLEL,
     initial_scale=2 ** 8
 )
-
-lr_scheduler = dict(
-    type='LinearWarmupLR',
-    warmup_epochs=5
-)
-
-num_epochs = 60
 
 logging = dict(
     root_path='./logs'

@@ -4,6 +4,7 @@ import os
 
 IMG_SIZE = 224
 BATCH_SIZE = 256
+NUM_EPOCHS = 100
 
 model = dict(
     type='VanillaResNet',
@@ -66,8 +67,6 @@ optimizer = dict(
 loss = dict(
     type='CrossEntropyLoss'
 )
-
-max_epochs = 100
 
 from colossalai.engine import AMP_TYPE
 
