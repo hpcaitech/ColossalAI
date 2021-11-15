@@ -116,24 +116,8 @@ class PipelineSchedule(BaseSchedule):
         self.batch_pos += self.microbatch_size
         return (data,), (label,)
 
-    @property
-    def num_steps(self):
-        length = len(self.dataloader)
-        if self.training:
-            length -= length % self.grad_accum
-        return length
-
-    def initialize(self,
-                   dataloader=None,
-                   model=None,
-                   criterion=None,
-                   optimizer=None):
-        super().initialize(dataloader,
-                           model,
-                           criterion,
-                           optimizer)
-        if isinstance(self.optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                       ZeroRedundancyOptimizer_Level_3)):
+    def initialize(self, model, optimizer):
+        if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
             raise TypeError(
                 "Pipeline schedule is currently not compatible with ZeRO Level 2 and Level 3"
             )
@@ -163,7 +147,8 @@ class PipelineSchedule(BaseSchedule):
         if gpc.is_last_rank(ParallelMode.PIPELINE):
             if return_loss:
                 input_tensor, label = self.load_micro_batch()
-                loss_reduced = self.criterion(output_tensor, *label) / (self.num_microbatches * self.grad_accum)
+                loss_reduced = criterion(output_tensor, *label) \
+                               / (self.num_microbatches * grad_accum_size)
                 return_tensors.append(
                     tuple((output_tensor, label[0], loss_reduced)))
                 return loss_reduced
@@ -324,7 +309,7 @@ class PipelineSchedule(BaseSchedule):
                 output, label, loss = tuple(map(list, zip(*return_tensors)))
                 return (torch.cat(output, dim=0),
                         torch.cat(label, dim=0),
-                        sum(loss) * self.grad_accum)
+                        sum(loss) * grad_accum_size)
             else:
                 return tuple((torch.cat(return_tensors, dim=0), None, None))
         else:

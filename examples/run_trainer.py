@@ -10,15 +10,8 @@ from colossalai.trainer import Trainer
 def run_trainer():
     engine, train_dataloader, test_dataloader = colossalai.initialize()
     logger = get_global_dist_logger()
-    schedule.data_sync = False
-    engine = Engine(
-        model=model,
-        criterion=criterion,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
-        schedule=schedule,
-        gradient_accumulation=5,
-    )
+    engine.schedule.data_sync = False
+
     logger.info("engine is built", ranks=[0])
 
     trainer = Trainer(engine=engine,

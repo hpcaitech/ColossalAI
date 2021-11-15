@@ -16,13 +16,11 @@ from typing import Iterable
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
                            ZeroRedundancyOptimizer_Level_3)
 from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
-from ._utils import convert_to_fp16, convert_to_fp32
 from ._base_schedule import BaseSchedule
+from ._utils import convert_to_fp16, convert_to_fp32
 from ..amp import AMP_TYPE, GradScaler
 
 
@@ -81,24 +79,9 @@ class NoPipelineSchedule(BaseSchedule):
             self.fp16 = False
             self.amp_type = None
 
-    @property
-    def num_steps(self):
-        length = len(self.dataloader)
-        if self.training:
-            length -= length % self.grad_accum
-        return length
-
-    def initialize(self,
-                   dataloader=None,
-                   model=None,
-                   criterion=None,
-                   optimizer=None):
-        super().initialize(dataloader,
-                           model,
-                           criterion,
-                           optimizer)
-        if isinstance(self.optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                       ZeroRedundancyOptimizer_Level_3)):
+    def initialize(self, model: nn.Module, optimizer: Optimizer):
+        if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2,
+                                  ZeroRedundancyOptimizer_Level_3)):
             self.use_zero_level_2_3 = True
             assert self.amp_type != AMP_TYPE.PARALLEL, \
                 'ZeRO Level 2 and 3 are mutually exclusive with AMP_TYPE.PARALLEL'
@@ -156,7 +139,7 @@ class NoPipelineSchedule(BaseSchedule):
             if self.use_zero_level_2_3 or self.amp_type == AMP_TYPE.PARALLEL:
                 data = convert_to_fp16(data)
 
-            output = self.model(*data)
+            output = model(*data)
 
             if self.use_zero_level_2_3 or self.amp_type == AMP_TYPE.PARALLEL:
                 output = convert_to_fp32(output)
@@ -164,8 +147,9 @@ class NoPipelineSchedule(BaseSchedule):
             if not isinstance(output, (tuple, list)):
                 output = (output,)
             if return_loss:
-                loss = self.criterion(*output, *label)
-        loss /= self.grad_accum
+                loss = criterion(*output, *label)
+
+        loss /= grad_accum_size
 
         if not forward_only:
             # backward
@@ -186,21 +170,19 @@ class NoPipelineSchedule(BaseSchedule):
                 loss.backward()
 
         if return_loss:
-            return output, label, loss * self.grad_accum
+            return output, label, loss * grad_accum_size
         else:
             return output, None, None
 
     def optimizer_step(self, model: nn.Module, optimizer: Optimizer, grad_clipping: float = 0.0):
         # step optimizer
         if self.fp16 and self.amp_type == AMP_TYPE.TORCH:
-            if getattr(gpc.config, 'clip_grad', 0.0) > 0.0:
-                self._torch_amp_scaler.unscale_(self.optimizer)
-                clip_grad_norm_fp32(self.model.parameters(),
-                                    gpc.config.clip_grad)
-            self._torch_amp_scaler.step(self.optimizer)
+            if grad_clipping > 0.0:
+                self._torch_amp_scaler.unscale_(optimizer)
+                clip_grad_norm_fp32(model.parameters(), grad_clipping)
+            self._torch_amp_scaler.step(optimizer)
             self._torch_amp_scaler.update()
         else:
-            if not self.fp16 and not self.use_zero_level_2_3 and getattr(gpc.config, 'clip_grad', 0.0) > 0.0:
-                clip_grad_norm_fp32(self.model.parameters(),
-                                    gpc.config.clip_grad)
-            self.optimizer.step()
+            if not self.fp16 and not self.use_zero_level_2_3 and grad_clipping > 0.0:
+                clip_grad_norm_fp32(model.parameters(), grad_clipping)
+            optimizer.step()
