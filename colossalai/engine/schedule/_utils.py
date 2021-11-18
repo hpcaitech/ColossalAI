@@ -14,3 +14,14 @@ def convert_to_fp16(data: Union[Tensor, List[Tensor]]):
     else:
         raise TypeError(f"Expected argument 'data' to be a Tensor or a list/tuple of Tensor, but got {type(data)}")
     return ret
+
+
+def convert_to_fp32(data: Union[Tensor, List[Tensor]]):
+    if isinstance(data, Tensor):
+        ret = data.float()
+    elif isinstance(data, (list, tuple)):
+        ret = [val.float() for val in data]
+    else:
+        raise TypeError(f"Expected argument 'data' to be a Tensor or a list/tuple of Tensor, but got {type(data)}")
+    return ret
+

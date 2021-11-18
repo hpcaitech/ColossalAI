@@ -1,5 +1,5 @@
 from .cosine import CosineAnnealingLR, CosineAnnealingWarmupLR, FlatAnnealingLR, FlatAnnealingWarmupLR
-from .linear import LinearWarmupLR, LinearWarmupDecay
+from .linear import LinearWarmupLR
 from .multistep import MultiStepLR, MultiStepWarmupLR
 from .onecycle import OneCycleLR
 from .poly import PolynomialLR, PolynomialWarmupLR

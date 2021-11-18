@@ -38,5 +38,3 @@ optimizer = dict(type='Adam', lr=0.001)
 
 loss = dict(type='CrossEntropyLoss')
 
-# set_device_func = lambda global_rank, world_size: global_rank % 4
-seed = 1024

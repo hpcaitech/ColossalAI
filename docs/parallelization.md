@@ -17,38 +17,40 @@ parallel = dict(
 )
 ```
 
-The name of the dictionary variable should be **parallel**. All the arguments even **parallel** itself are optional and data,
-pipeline, tensor parallel size will be set to defaulted value 1. The value of data, pipeline and tensor can be a int
-representing the size of specific parallel dimension or a dictionary with a key called "size". The key "mode"
+The name of the dictionary variable should be **parallel**. All the arguments even **parallel** itself are optional and
+data, pipeline, tensor parallel size will be set to defaulted value 1. The value of data, pipeline and tensor can be a
+int representing the size of specific parallel dimension or a dictionary with a key called "size". The key "mode"
 represents the way of tensor parallelism.
 
 ## Data Parallel
 
-Data parallel is the most common way to distribute your training task by splitting data into several shards and train 
-on a single shard on each device. The configuration for data parallel is detected automatically and set for you. You do 
-not have to explicitly set them in your configurations. When data parallel size is larger than 1, Colossal-AI automatically 
+Data parallel is the most common way to distribute your training task by splitting data into several shards and train on
+a single shard on each device. The configuration for data parallel is detected automatically and set for you. You do not
+have to explicitly set them in your configurations. When data parallel size is larger than 1, Colossal-AI automatically
 adds the distributed data sampler to the dataloader to shard the dataset.
 
 ## 1D, 2D, 2.5D and 3D Parallel
 
-To enable hybrid parallelism, we provide an array of tensor parallelism. We provide the list of papers which match each 
+To enable hybrid parallelism, we provide an array of tensor parallelism. We provide the list of papers which match each
 tensor parallel method. These parallel modes need to work with the distributed layers provided by Colossal-AI.
-- 1D: [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)
+
+-
+1D: [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)
 
 - 2D: [An Efficient 2D Method for Training Super-Large Deep Learning Models](https://arxiv.org/abs/2104.05343)  
-2D parallel relies on the SUMMA matrix multiplication algorithm and splits the input data, 
-model weights and layer outputs along two different dimensions. The tensor chunks are distributed over a 2D mesh of $P = N^2$ 
-devices where $N$ is the number of tensor chunks in a single dimension.
+  2D parallel relies on the SUMMA matrix multiplication algorithm and splits the input data, model weights and layer
+  outputs along two different dimensions. The tensor chunks are distributed over a 2D mesh of $P = N^2$ devices where
+  $N$ is the number of tensor chunks in a single dimension.
 
 - 2.5D: [2.5-dimensional distributed model training](https://arxiv.org/abs/2105.14500)  
-Inspired by the 2.5D matrix multiplication algorithm, 2.5D parallel introduces a novel tensor parallelism which further 
-parallelizes 2D tensor parallelism. An amount of $P = N^2 ∗ d$ processors are arranged into $d$ layers, 
-where each layer performs matrix multiplication operations independently with a dimension $N$.
+  Inspired by the 2.5D matrix multiplication algorithm, 2.5D parallel introduces a novel tensor parallelism which
+  further parallelizes 2D tensor parallelism. An amount of $P = N^2 ∗ d$ processors are arranged into $d$ layers, where
+  each layer performs matrix multiplication operations independently with a dimension $N$.
 
 - 3D: [Maximizing Parallelism in Distributed Training for Huge Neural Networks](https://arxiv.org/abs/2105.14450)  
-We also introduce a 3D tensor parallelism that parallelizes neural networks on a 3D processor cube. This method achieves 
-the optimal, $O(P^{1/3})$ communication overhead on $P$ processors, while both computation and memory usage are evenly distributed 
-through optimized load balancing of parameters as well as activations.
+  We also introduce a 3D tensor parallelism that parallelizes neural networks on a 3D processor cube. This method
+  achieves the optimal, $O(P^{1/3})$ communication overhead on $P$ processors, while both computation and memory usage
+  are evenly distributed through optimized load balancing of parameters as well as activations.
 
 ```python
 # 1D parallel
@@ -78,12 +80,12 @@ parallel = dict(
 
 ## Pipeline Parallel (experimental)
 
-Pipeline parallelism is to split the model into several partitions by layer. For example, let's assume we have a simple 
-model which consists of two linear layer. We have two GPUs, and we can allocate the first linear layer to the first GPU 
+Pipeline parallelism is to split the model into several partitions by layer. For example, let's assume we have a simple
+model which consists of two linear layer. We have two GPUs, and we can allocate the first linear layer to the first GPU
 and the second layer to the second GPU. This example of course wastes the computing resources and is only to demonstrate
-the idea of pipeline parallelism. 
+the idea of pipeline parallelism.
 
-As PyTorch is based on dynamic computation graph, the computation flow is not known until execution. To support pipeline 
+As PyTorch is based on dynamic computation graph, the computation flow is not known until execution. To support pipeline
 parallelism in PyTorch, you may need to add one more attribute, `layers_cfg` in your model class which tells Colossal-AI
 the sequence of execution. One example you can refer is `colossalai.nn.model.VanillaResNet`.
 
@@ -192,9 +194,9 @@ class VanillaResNet(BaseModel):
         ]
 ```
 
-You can set the number of pipeline stages in your configuration file. When pipeline size is larger than 1, Colossal-AI 
-will automatically creates the pipeline schedule which defines the forward and backward step. You can specify how many microbatches
-to run in each step in the `schedule` configuration.
+You can set the number of pipeline stages in your configuration file. When pipeline size is larger than 1, Colossal-AI
+will automatically creates the pipeline schedule which defines the forward and backward step. You can specify how many
+microbatches to run in each step in the `schedule` configuration.
 
 ```python
 parallel = dict(
@@ -206,10 +208,11 @@ schedule = dict(
     num_microbatches = 4 # set the number of microbatches per step
 )
 ```
+
 This feature is still in development and is only experimental for now.
 
 ## Sequence Parallel (experimental)
 
-Sequence parallel is to support long-sequence modelling such as document-level text understanding and medical imaging. 
-This method is proposed in [Sequence Parallelism: Making 4D Parallelism Possible](https://arxiv.org/abs/2105.13120). 
+Sequence parallel is to support long-sequence modelling such as document-level text understanding and medical imaging.
+This method is proposed in [Sequence Parallelism: Making 4D Parallelism Possible](https://arxiv.org/abs/2105.13120).
 This feature is still in development and is only experimental for now.

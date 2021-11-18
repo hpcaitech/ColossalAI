@@ -121,7 +121,7 @@ if "--cuda_ext" in sys.argv:
 install_requires = fetch_requirements('requirements/requirements.txt')
 
 setup(
-    name='colossal-ai',
+    name='colossalai',
     version='0.0.1-beta',
     packages=find_packages(exclude=('csrc',
                                     'tests',

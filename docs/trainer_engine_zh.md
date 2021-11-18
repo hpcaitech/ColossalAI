@@ -14,28 +14,30 @@ def process_function(dataloader, model, criterion, optim):
     optim.setp()
 ```
 
-在`ignite.engine`与`keras.engine`中，进程函数需要由用户提供，然而，用户很难为流水线并行编写进程函数。为了向用户提供方便的混合并行，我们提供了具备强大功能的`Engine`类，该类支持流水线并行，并提供前向传播后向传播不交织的策略。同时，您可以在`Engine`类中使用您事先定义好的学习率调度器来在训练过程中调整学习率。
+在`ignite.engine`与`keras.engine`中，进程函数需要由用户提供，然而，用户很难为流水线并行编写进程函数。为了向用户提供方便的混合并行，我们提供了具备强大功能的`Engine`
+类，该类支持流水线并行，并提供前向传播后向传播不交织的策略。同时，您可以在`Engine`类中使用您事先定义好的学习率调度器来在训练过程中调整学习率。
 
 您在构造引擎时只需要定义`model`、`criterion`、`optimizer`、`lr_scheduler`与`schedule`等变量即可，下面的代码块给出了一个这样的例子。
+**如果你使用`colossalai.initialize`的话，engine会从config文件里自动构建。**
 
 ```python
 import torch
 import torch.nn as nn
 import torchvision.models as models
 import colossalai
+from colossalai.engine import Engine
 
 model = models.resnet18()
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model)
 lr_scheduler = colossalai.nn.lr_scheduler.CosineAnnealingLR(optimizer, 1000)
-schedule = colossalai.engine.schedule.NoPipelineSchedule()
+schedule = colossalai.engine.NoPipelineSchedule()
 
 MyEngine = Engine(
     model=model,
     criterion=criterion,
     optimizer=optimizer,
-    lr_scheduler=lr_scheduler,
-    schedule=schedule
+    step_schedule=schedule
 )
 ```
 
@@ -48,10 +50,12 @@ MyEngine = Engine(
 `Trainer`类旨在让科研工作者和工程师更加方便地使用我们的系统，您不需要自己写脚本，只需要调用`Trainer`类来构造您的训练器即可，就像下面的代码块中所做的。
 
 ```python
-MyTrainer = Trainer(MyEngine)
+MyTrainer = Trainer(my_trainer)
 ```
 
-在此之后，您可以使用`fit`方法来训练或调用您的模型。除此之外，为了让我们的`Trainer`类拥有更强大的功能，我们加入了一系列方便您使用的工具。例如，您可以在训练过程中持续监测并记录模型目前的运行状态和表现，这些功能都是通过钩子函数来实现的。我们提供的`BasicHook`类让您可以在指定时间执行您的钩子函数。如下方的代码块所示，我们事先为您定义好了一些实用的钩子函数，您需要做的就是找到符合您需求的钩子函数。更多该类的相关信息可以在API信息中找到。
+在此之后，您可以使用`fit`方法来训练或调用您的模型。除此之外，为了让我们的`Trainer`
+类拥有更强大的功能，我们加入了一系列方便您使用的工具。例如，您可以在训练过程中持续监测并记录模型目前的运行状态和表现，这些功能都是通过钩子函数来实现的。我们提供的`BasicHook`
+类让您可以在指定时间执行您的钩子函数。如下方的代码块所示，我们事先为您定义好了一些实用的钩子函数，您需要做的就是找到符合您需求的钩子函数。更多该类的相关信息可以在API信息中找到。
 
 ```python
 hooks = [
@@ -70,7 +74,8 @@ hooks = [
 
 ### 钩子函数
 
-如果您有个性化需求，您可以继承我们的`BaseHook`类并添加您的钩子函数，或者继承我们的`MetricHook`来编写您需要的度量标准。这些钩子函数可以在`Trainer`生命周期的12个时间点被执行。更多该类的相关信息可以在API信息中找到。
+如果您有个性化需求，您可以继承我们的`BaseHook`类并添加您的钩子函数，或者继承我们的`MetricHook`来编写您需要的度量标准。这些钩子函数可以在`Trainer`
+生命周期的12个时间点被执行。更多该类的相关信息可以在API信息中找到。
 
 ### 度量标准
 

@@ -124,14 +124,21 @@ parallel = dict(
     tensor=dict(size=4, depth=1, mode='2.5d'),
 )
 
-lr_scheduler = dict(
-    type='LinearWarmupLR',
-    warmup_epochs=5
-)
+hooks = [
+    dict(
+        type='LRSchedulerHook',
+        by_epoch=True,
+        lr_scheduler_cfg=dict(
+            type='LinearWarmupLR',
+            warmup_steps=5
+        )
+    ),
+]
 
+engine = dict(
 schedule = dict(
     num_microbatches=2
 )
+)
 
 num_epochs = 60
-num_microbatches = 1

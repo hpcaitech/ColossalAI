@@ -27,8 +27,6 @@ train_data = dict(
     dataloader=dict(
         batch_size=BATCH_SIZE,
         pin_memory=True,
-        # num_workers=1,
-        # shuffle=True,
     )
 )
 
@@ -62,14 +60,6 @@ optimizer = dict(
 loss = dict(
     type='CrossEntropyLoss2D',
 )
-
-# model = dict(
-#     type='VanillaResNet',
-#     block_type='ResNetBasicBlock',
-#     layers=[2, 2, 2, 2],
-#     num_cls=10
-# )
-
 
 model = dict(
     type='VisionTransformerFromConfig',
@@ -135,25 +125,26 @@ parallel = dict(
 
 fp16 = dict(
     mode=AMP_TYPE.PARALLEL,
-    initial_scale=2 ** 8
 )
 
-# fp16 = dict(
-#     mode=None,
-# )
-
-schedule = dict(
-    num_microbatches=2
-)
-lr_scheduler = dict(
-    type='LinearWarmupLR',
-    warmup_epochs=5
+engine = dict(
+    schedule=dict(
+        num_microbatches=2
+    )
 )
 
+hooks = [
+    dict(
+        type='LRSchedulerHook',
+        by_epoch=True,
+        lr_scheduler_cfg=dict(
+            type='LinearWarmupLR',
+            warmup_steps=5
+        )
+    ),
+]
 num_epochs = 60
 
 logging = dict(
     root_path='test_vit_2d_log'
 )
-
-seed = 100

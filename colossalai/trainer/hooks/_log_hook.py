@@ -5,7 +5,7 @@ import os
 import os.path as osp
 
 import torch
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
@@ -13,7 +13,7 @@ from colossalai.registry import HOOKS
 from colossalai.trainer._trainer import Trainer
 from colossalai.utils import get_global_multitimer, set_global_multitimer_status, report_memory_usage, is_dp_rank_0, \
     is_tp_rank_0, is_no_pp_or_last_stage
-from ._metric_hook import MetricHook
+from ._base_hook import BaseHook
 
 
 def _format_number(val):
@@ -24,7 +24,7 @@ def _format_number(val):
     return val
 
 
-class EpochIntervalHook(MetricHook):
+class EpochIntervalHook(BaseHook):
     def __init__(self, trainer: Trainer, interval: int = 1, priority: int = 1):
         super().__init__(trainer, priority)
         self._interval = interval
@@ -45,7 +45,7 @@ class LogMetricByEpochHook(EpochIntervalHook):
     :type priority: int, optional
     """
 
-    def __init__(self, trainer: Trainer, interval: int = 1, priority: int = 1) -> None:
+    def __init__(self, trainer: Trainer, interval: int = 1, priority: int = 10) -> None:
         super().__init__(trainer=trainer, interval=interval, priority=priority)
         self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
 
@@ -74,7 +74,7 @@ class LogMetricByEpochHook(EpochIntervalHook):
 
 
 @HOOKS.register_module
-class TensorboardHook(MetricHook):
+class TensorboardHook(BaseHook):
     """Specialized Hook to record the metric to Tensorboard.
 
     :param trainer: Trainer attached with current hook
@@ -85,59 +85,71 @@ class TensorboardHook(MetricHook):
     :type priority: int, optional
     """
 
-    def __init__(self, trainer: Trainer, log_dir: str, priority: int = 1) -> None:
+    def __init__(self,
+                 trainer: Trainer,
+                 log_dir: str,
+                 dp_rank_0_only: bool = True,
+                 tp_rank_0_only: bool = True,
+                 priority: int = 10,
+                 ) -> None:
         super().__init__(trainer=trainer, priority=priority)
-        self._is_rank_to_log = is_no_pp_or_last_stage()
 
-        if self._is_rank_to_log:
+        # create log dir
+        if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
+            os.makedirs(log_dir, exist_ok=True)
+
+        # determine the ranks to generate tensorboard logs
+        self._is_valid_rank_to_log = is_no_pp_or_last_stage()
+
+        if dp_rank_0_only:
+            self._is_valid_rank_to_log = self._is_valid_rank_to_log and is_dp_rank_0()
+
+        if tp_rank_0_only:
+            self._is_valid_rank_to_log = self._is_valid_rank_to_log and is_tp_rank_0()
+
+        if self._is_valid_rank_to_log:
             # create workspace on only one rank
             if gpc.is_initialized(ParallelMode.GLOBAL):
                 rank = gpc.get_global_rank()
             else:
                 rank = 0
 
-            log_dir = osp.join(log_dir, f'rank_{rank}')
-
             # create workspace
-            if not osp.exists(log_dir):
-                os.makedirs(log_dir)
+            log_dir = osp.join(log_dir, f'rank_{rank}')
+            os.makedirs(log_dir, exist_ok=True)
 
             self.writer = SummaryWriter(
                 log_dir=log_dir, filename_suffix=f'_rank_{rank}')
 
-    def after_train_iter(self, *args):
-        for metric_name, metric_calculator in self.trainer.states['metrics']['train'].items():
+    def _log_by_iter(self, mode: str):
+        for metric_name, metric_calculator in self.trainer.states['metrics'][mode].items():
             if metric_calculator.epoch_only:
                 continue
             val = metric_calculator.get_last_step_value()
-            if self._is_rank_to_log:
-                self.writer.add_scalar(
-                    f'{metric_name}/train', val, self.trainer.cur_step)
 
-    def after_test_iter(self, *args):
-        for metric_name, metric_calculator in self.trainer.states['metrics']['test'].items():
-            if metric_calculator.epoch_only:
-                continue
-            val = metric_calculator.get_last_step_value()
-            if self._is_rank_to_log:
-                self.writer.add_scalar(f'{metric_name}/test', val,
+            if self._is_valid_rank_to_log:
+                self.writer.add_scalar(f'{metric_name}/{mode}', val,
                                        self.trainer.cur_step)
 
-    def after_test_epoch(self):
-        for metric_name, metric_calculator in self.trainer.states['metrics']['test'].items():
+    def _log_by_epoch(self, mode: str):
+        for metric_name, metric_calculator in self.trainer.states['metrics'][mode].items():
             if metric_calculator.epoch_only:
                 val = metric_calculator.get_accumulated_value()
-                if self._is_rank_to_log:
-                    self.writer.add_scalar(f'{metric_name}/test', val,
+                if self._is_valid_rank_to_log:
+                    self.writer.add_scalar(f'{metric_name}/{mode}', val,
                                            self.trainer.cur_step)
 
+    def after_test_iter(self, *args):
+        self._log_by_iter(mode='test')
+
+    def after_test_epoch(self):
+        self._log_by_epoch(mode='test')
+
+    def after_train_iter(self, *args):
+        self._log_by_iter(mode='train')
+
     def after_train_epoch(self):
-        for metric_name, metric_calculator in self.trainer.states['metrics']['train'].items():
-            if metric_calculator.epoch_only:
-                val = metric_calculator.get_accumulated_value()
-                if self._is_rank_to_log:
-                    self.writer.add_scalar(f'{metric_name}/train', val,
-                                           self.trainer.cur_step)
+        self._log_by_epoch(mode='train')
 
 
 @HOOKS.register_module
@@ -157,7 +169,7 @@ class LogTimingByEpochHook(EpochIntervalHook):
     def __init__(self,
                  trainer: Trainer,
                  interval: int = 1,
-                 priority: int = 1,
+                 priority: int = 10,
                  log_eval: bool = True
                  ) -> None:
         super().__init__(trainer=trainer, interval=interval, priority=priority)
@@ -217,7 +229,7 @@ class LogMemoryByEpochHook(EpochIntervalHook):
     def __init__(self,
                  trainer: Trainer,
                  interval: int = 1,
-                 priority: int = 1,
+                 priority: int = 10,
                  log_eval: bool = True
                  ) -> None:
         super().__init__(trainer=trainer, interval=interval, priority=priority)
