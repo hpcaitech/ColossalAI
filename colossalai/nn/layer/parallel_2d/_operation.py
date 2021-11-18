@@ -20,7 +20,6 @@ def matmul_2d(a,
               col_parallel_mode=ParallelMode.PARALLEL_2D_COL,
               ):
     """Matrix multiplication for 2D parallelism
-
     :param a: matrix :math:`A`
     :type a: torch.tensor
     :param b: matrix :math:`B`
@@ -499,36 +498,61 @@ class _LayerNorm_2D(torch.autograd.Function):
 #         return input_grad, None, None, None, None, None
 
 
-class _ViT_Split_Input_2D(torch.autograd.Function):
+class AllGatherLast(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 inputs: Tensor,
-                batch_size: int,
                 summa_dim: int,
                 col_parallel_mode: ParallelMode) -> Tensor:
-        # inputs: [b, s, h/q]
-        # output: [b/q, s, h/q]
-
-        ctx.BATCH_SIZE = batch_size
         ctx.summa_dim = summa_dim
-        ctx.col_parallel_mode = col_parallel_mode
-        row_rank = gpc.get_local_rank(col_parallel_mode)
-        output = torch.chunk(inputs, summa_dim, dim=0)[row_rank]
-        output = output.clone()
-        return output
+        ctx.row_rank = gpc.get_local_rank(col_parallel_mode)
+
+        last_dim = summa_dim * inputs.size(-1)
+        outputs_shape = (last_dim,) + inputs.shape[:-1]
+        outputs = torch.empty(
+            outputs_shape, dtype=inputs.dtype, device=get_current_device())
+        dist.all_gather(
+            list(outputs.chunk(summa_dim, dim=0)),
+            inputs.permute(2, 0, 1).contiguous(),
+            group=gpc.get_group(col_parallel_mode)
+        )
+        outputs = outputs.permute(1, 2, 0).contiguous()
+        return outputs
 
     @staticmethod
     @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        # output_grad: [b/q, s, h/q]
-        # grads: [b, s, h/q]
-        grads_shape = (ctx.BATCH_SIZE,) + output_grad.shape[1:]
-        grads = torch.empty(grads_shape,
-                            dtype=output_grad.dtype,
-                            device=get_current_device())
-        dist.all_gather(list(grads.chunk(ctx.summa_dim, dim=0)),
-                        output_grad.contiguous(),
-                        group=gpc.get_group(ctx.col_parallel_mode))
-        return grads, None, None, None
+        grad = output_grad.chunk(ctx.summa_dim, dim=-1)[ctx.row_rank]
+        return grad.contiguous(), None, None
+
+
+class SplitFirst(torch.autograd.Function):
+
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
+    def forward(ctx: Any,
+                inputs: Tensor,
+                summa_dim: int,
+                col_parallel_mode: ParallelMode) -> Tensor:
+        ctx.summa_dim = summa_dim
+        ctx.batch_size = inputs.size(0)
+        ctx.para_mode = col_parallel_mode
+        row_rank = gpc.get_local_rank(col_parallel_mode)
+
+        outputs = inputs.chunk(summa_dim, dim=0)[row_rank]
+        return outputs
+
+    @staticmethod
+    @custom_bwd
+    def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
+        grad_shape = (ctx.batch_size,) + output_grad.shape[1:]
+        grad = torch.empty(
+            grad_shape, dtype=output_grad.dtype, device=get_current_device())
+        dist.all_gather(
+            list(grad.chunk(ctx.summa_dim, dim=0)),
+            output_grad.contiguous(),
+            group=gpc.get_group(ctx.para_mode)
+        )
+        return grad, None, None
