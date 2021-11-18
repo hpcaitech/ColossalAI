@@ -21,7 +21,6 @@ colossalai
 .. toctree::
    :maxdepth: 2
 
-   colossalai.checkpointing
    colossalai.constants
    colossalai.core
    colossalai.initialize

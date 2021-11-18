@@ -6,6 +6,7 @@ import math
 
 import torch
 import torch.distributed as dist
+
 try:
     from deepspeed.git_version_info import version
     from deepspeed.moe.utils import is_moe_param
@@ -13,7 +14,7 @@ try:
     from deepspeed.ops.op_builder import UtilsBuilder
     from deepspeed.runtime.zero.config import ZERO_OPTIMIZATION_GRADIENTS
 except ImportError:
-    print('DeepSpeed is required if you want to use ZeRO.')
+    pass
 from packaging import version as pkg_version
 from torch._six import inf
 from torch.distributed.distributed_c10d import _get_global_rank
@@ -251,7 +252,7 @@ class ZeroRedundancyOptimizer_Level_2(Optimizer):
         self.nccl_start_alignment_factor = 2
 
         assert (
-            allgather_bucket_size % self.nccl_start_alignment_factor == 0), f"allgather_bucket_size must be a multiple of nccl_start_alignment_factor, {self.nccl_start_alignment_factor} "
+                allgather_bucket_size % self.nccl_start_alignment_factor == 0), f"allgather_bucket_size must be a multiple of nccl_start_alignment_factor, {self.nccl_start_alignment_factor} "
 
         self.all_reduce_print = False
         self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
@@ -759,7 +760,7 @@ class ZeroRedundancyOptimizer_Level_2(Optimizer):
             elif start_index > current_index and start_index < (current_index +
                                                                 param_size):
                 assert (
-                    first_offset == 0), "This can happen either zero or only once as this must be the first tensor in the partition"
+                        first_offset == 0), "This can happen either zero or only once as this must be the first tensor in the partition"
                 first_offset = start_index - current_index
 
                 set_key_value_list(self.param_to_partition_ids[i],
@@ -803,7 +804,7 @@ class ZeroRedundancyOptimizer_Level_2(Optimizer):
     def report_ipg_memory_usage(self, tag, param_elems):
         elem_count = self.elements_in_ipg_bucket + param_elems
         percent_of_bucket_size = (
-            100.0 * elem_count) // self.reduce_bucket_size
+                                         100.0 * elem_count) // self.reduce_bucket_size
         if self.verbose:
             report_memory_usage(
                 f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}"
@@ -1491,7 +1492,7 @@ class ZeroRedundancyOptimizer_Level_2(Optimizer):
                 params_in_partition.append(tensor)
 
                 assert (
-                    first_offset == 0), "This can happen either zero or only once as this must be the first tensor in the partition"
+                        first_offset == 0), "This can happen either zero or only once as this must be the first tensor in the partition"
                 first_offset = start_index - current_index
 
             else:
@@ -1799,7 +1800,7 @@ class ZeroRedundancyOptimizer_Level_2(Optimizer):
             num_elements = shard_size
 
             assert shard_size * \
-                num_shards <= partitioned_params[partition_id].numel()
+                   num_shards <= partitioned_params[partition_id].numel()
 
             for shard_id in range(num_shards):
 
@@ -2248,7 +2249,7 @@ def estimate_zero2_model_states_mem_needs(total_params,
     if cpu_offload:
         gpu_mem = 2 * total_params
         cpu_mem = total_params * \
-            max(4 * total_gpus, 16) * additional_buffer_factor
+                  max(4 * total_gpus, 16) * additional_buffer_factor
     else:
         gpu_mem = 4 * total_params + int(16 * total_params / total_gpus)
         cpu_mem = total_params * 4 * num_gpus_per_node * additional_buffer_factor

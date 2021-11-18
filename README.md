@@ -42,26 +42,18 @@ pip install -v --no-cache-dir --global-option="--cuda_ext" .
 
 ```python
 import colossalai
-from colossalai.engine import Engine
 from colossalai.trainer import Trainer
 from colossalai.core import global_context as gpc
 
-model, train_dataloader, test_dataloader, criterion, optimizer, schedule, lr_scheduler = colossalai.initialize()
-engine = Engine(
-    model=model,
-    criterion=criterion,
-    optimizer=optimizer,
-    lr_scheduler=lr_scheduler,
-    schedule=schedule
-)
+engine, train_dataloader, test_dataloader = colossalai.initialize()
 
 trainer = Trainer(engine=engine,
-                  hooks_cfg=gpc.config.hooks,
                   verbose=True)
 trainer.fit(
     train_dataloader=train_dataloader,
     test_dataloader=test_dataloader,
-    max_epochs=gpc.config.num_epochs,
+    epochs=gpc.config.num_epochs,
+    hooks_cfg=gpc.config.hooks,
     display_progress=True,
     test_interval=5
 )

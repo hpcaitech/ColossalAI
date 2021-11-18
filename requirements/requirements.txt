@@ -3,5 +3,5 @@ torchvision>=0.9
 numpy
 tqdm
 psutil
-tensorboardX
+tensorboard
 packaging

@@ -126,6 +126,33 @@ class Loss(Metric):
         return a < b
 
 
+class LearningRate(Metric):
+    """A metric collector for learning rate.
+
+    :param epoch_only: Whether the metric only read for the full epoch
+    :type epoch_only: bool
+    """
+
+    def __init__(self, epoch_only: bool, initial_lr: float = 0.):
+        super().__init__(epoch_only=epoch_only)
+        self.lr = 0.
+
+    def reset(self) -> None:
+        pass
+
+    def update(self, lr) -> None:
+        self.lr = lr
+
+    def get_last_step_value(self):
+        return self.lr
+
+    def get_accumulated_value(self):
+        return self.lr
+
+    def is_better(a, b) -> bool:
+        pass
+
+
 class Accuracy(Metric):
     """A metric collector for accuracy. It only works for classification
     tasks.

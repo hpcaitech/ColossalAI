@@ -7,6 +7,7 @@ from torch import Tensor
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
+from torch.cuda.amp import custom_bwd, custom_fwd
 
 
 def matmul_2d(a,
@@ -60,6 +61,7 @@ class Matmul_AB_2D(torch.autograd.Function):
     """Matrix multiplication for :math:`C = AB`
     """
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 A: Tensor,
                 B: Tensor,
@@ -120,32 +122,32 @@ class Matmul_AB_2D(torch.autograd.Function):
         return out
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         A, B = ctx.saved_tensors
-        A_grad = Matmul_ABT_2D.forward(
-            None,
-            output_grad, B,
-            ctx.summa_dim, ctx.A_shape,
-            ctx.row_rank, ctx.col_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
-        B_grad = Matmul_ATB_2D.forward(
-            None,
-            A, output_grad,
-            ctx.summa_dim, ctx.B_shape,
-            ctx.row_rank, ctx.col_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
+        with torch.no_grad():
+            A_grad = Matmul_ABT_2D.apply(
+                output_grad, B,
+                ctx.summa_dim, ctx.A_shape,
+                ctx.row_rank, ctx.col_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
+            B_grad = Matmul_ATB_2D.apply(
+                A, output_grad,
+                ctx.summa_dim, ctx.B_shape,
+                ctx.row_rank, ctx.col_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None
 
 
@@ -153,6 +155,7 @@ class Matmul_ABT_2D(torch.autograd.Function):
     """Matrix multiplication for :math:`C = AB^T`
     """
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 A: Tensor,
                 B: Tensor,
@@ -214,32 +217,33 @@ class Matmul_ABT_2D(torch.autograd.Function):
         return out
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         A, B = ctx.saved_tensors
-        A_grad = Matmul_AB_2D.forward(
-            None,
-            output_grad, B,
-            ctx.summa_dim, ctx.A_shape,
-            ctx.row_rank, ctx.col_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
-        B_grad = Matmul_ATB_2D.forward(
-            None,
-            output_grad, A,
-            ctx.summa_dim, ctx.B_shape,
-            ctx.row_rank, ctx.col_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
+
+        with torch.no_grad():
+            A_grad = Matmul_AB_2D.apply(
+                output_grad, B,
+                ctx.summa_dim, ctx.A_shape,
+                ctx.row_rank, ctx.col_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
+            B_grad = Matmul_ATB_2D.apply(
+                output_grad, A,
+                ctx.summa_dim, ctx.B_shape,
+                ctx.row_rank, ctx.col_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None
 
 
@@ -247,6 +251,7 @@ class Matmul_ATB_2D(torch.autograd.Function):
     """Matrix multiplication for :math:`C = A^TB`
     """
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 A: Tensor,
                 B: Tensor,
@@ -308,32 +313,33 @@ class Matmul_ATB_2D(torch.autograd.Function):
         return out
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         A, B = ctx.saved_tensors
-        A_grad = Matmul_ABT_2D.forward(
-            None,
-            B, output_grad,
-            ctx.summa_dim, ctx.A_shape,
-            ctx.row_rank, ctx.col_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
-        B_grad = Matmul_AB_2D.forward(
-            None,
-            A, output_grad,
-            ctx.summa_dim, ctx.B_shape,
-            ctx.row_rank, ctx.col_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
+
+        with torch.no_grad():
+            A_grad = Matmul_ABT_2D.apply(
+                B, output_grad,
+                ctx.summa_dim, ctx.A_shape,
+                ctx.row_rank, ctx.col_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
+            B_grad = Matmul_AB_2D.apply(
+                A, output_grad,
+                ctx.summa_dim, ctx.B_shape,
+                ctx.row_rank, ctx.col_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None
 
 
@@ -341,6 +347,7 @@ class Add_Bias_2D(torch.autograd.Function):
     """Matrix add bias: :math:`C = A + b`
     """
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 input: Tensor,
                 bias: Tensor,
@@ -384,6 +391,7 @@ class Add_Bias_2D(torch.autograd.Function):
             return output
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         row_rank = ctx.row_rank
         col_rank = ctx.col_rank
@@ -423,6 +431,7 @@ class Add_Bias_2D(torch.autograd.Function):
 class _LayerNorm_2D(torch.autograd.Function):
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx: Any,
                 input: Tensor,
                 E_x: Tensor,
@@ -440,6 +449,7 @@ class _LayerNorm_2D(torch.autograd.Function):
         return output
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         row_parallel_mode = ctx.row_parallel_mode
         col_parallel_mode = ctx.col_parallel_mode
@@ -492,6 +502,7 @@ class _LayerNorm_2D(torch.autograd.Function):
 class _ViT_Split_Input_2D(torch.autograd.Function):
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 inputs: Tensor,
                 batch_size: int,
@@ -509,6 +520,7 @@ class _ViT_Split_Input_2D(torch.autograd.Function):
         return output
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         # output_grad: [b/q, s, h/q]
         # grads: [b, s, h/q]
