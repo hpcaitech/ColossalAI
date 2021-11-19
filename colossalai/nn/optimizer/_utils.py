@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from colossalai.utils.common import print_rank_0
 import torch
 from torch._six import inf
 
@@ -11,7 +12,7 @@ except:
 
 from ..multi_tensor_apply import multi_tensor_applier
 
-from colossalai.constants import IS_TENSOR_PARALLEL, TENSOR_PARALLEL_ATTRIBUTES
+from colossalai.constants import IS_TENSOR_PARALLEL, TENSOR_PARALLEL_ATTRIBUTES, NUM_PARTITIONS
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 
@@ -94,7 +95,8 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
         no_tensor_parallel_grads = []
         for p in params:
             if is_model_parallel_parameter(p):
-                tensor_parallel_grads.append(p.grad.data)
+                reductor = (gpc.get_world_size(ParallelMode.TENSOR) / getattr(p, NUM_PARTITIONS)) ** (1 / norm_type)
+                tensor_parallel_grads.append(p.grad.data / reductor)
             else:
                 no_tensor_parallel_grads.append(p.grad.data)
         if norm_type == 2.0:

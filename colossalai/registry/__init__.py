@@ -2,7 +2,7 @@ import torch.distributed.optim as dist_optim
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as tv_models
-from torchvision.transforms import transforms
+from torchvision import transforms
 
 from .registry import Registry
 

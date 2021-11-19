@@ -68,7 +68,7 @@ class SaveCheckpointHook(BaseHook):
                                 self.trainer.engine.optimizer,
                                 self._lr_scheduler)
                 self.logger.info(
-                    f'checkpoint for epoch {self.trainer.cur_epoch} is saved to {self.checkpoint_dir}')
+                    f'checkpoint for epoch {self.trainer.cur_epoch} is saved to {self.checkpoint_dir}', ranks=[0])
 
 
 @HOOKS.register_module
@@ -135,6 +135,6 @@ class LoadCheckpointHook(BaseHook):
                 self.trainer.cur_epoch = last_epoch
 
             self.logger.info(
-                f'loaded checkpoint from {path}')
+                f'loaded checkpoint from {path}', ranks=[0])
         else:
             raise FileNotFoundError(f'checkpoint is not found at {path}')

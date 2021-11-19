@@ -198,7 +198,7 @@ class ModelInitializer():
                 for st, ed in self.parts[stage]:
                     for idx, layer in enumerate(self.layers[st: ed]):
                         log_str += f'\t{idx + st:2d}: {layer}\n'
-            self._logger.info(log_str)
+            self._logger.info(log_str, ranks=[0])
 
         # Save the partition
         self._interval = self.parts[pipeline_rank]

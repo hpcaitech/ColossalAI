@@ -3,12 +3,14 @@ from abc import ABC, abstractmethod
 
 import torch
 import torch.distributed as dist
-
 from colossalai.communication import all_gather
+from colossalai.constants import (INPUT_GROUP_3D, OUTPUT_GROUP_3D,
+                                  WEIGHT_GROUP_3D)
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn.layer._parallel_utilities import _gather
-from colossalai.nn.layer.parallel_3d._utils import get_last_group
+from colossalai.nn.layer.parallel_3d._utils import (get_last_group,
+                                                    get_parallel_mode_from_env)
 from colossalai.utils import get_current_device
 
 
@@ -22,7 +24,6 @@ class Metric(ABC):
     :param epoch_only: Whether the metric only read for the full epoch
     :type epoch_only: bool
     """
-
     def __init__(self, epoch_only: bool):
         # is the metric only read for the full epoch
         self._epoch_only = epoch_only
@@ -80,7 +81,6 @@ class Loss(Metric):
     :param epoch_only: Whether the metric only read for the full epoch
     :type epoch_only: bool
     """
-
     def __init__(self, epoch_only):
         super().__init__(epoch_only=epoch_only)
         self.last_step_loss = torch.zeros(1, device=get_current_device())
@@ -110,7 +110,8 @@ class Loss(Metric):
         """Returns accumulated loss.
         """
         if gpc.is_initialized(ParallelMode.DATA):
-            dist.all_reduce(self.accum_loss, op=dist.ReduceOp.SUM,
+            dist.all_reduce(self.accum_loss,
+                            op=dist.ReduceOp.SUM,
                             group=gpc.get_group(ParallelMode.DATA))
             self.accum_loss.div_(gpc.get_world_size(ParallelMode.DATA))
 
@@ -132,7 +133,6 @@ class LearningRate(Metric):
     :param epoch_only: Whether the metric only read for the full epoch
     :type epoch_only: bool
     """
-
     def __init__(self, epoch_only: bool, initial_lr: float = 0.):
         super().__init__(epoch_only=epoch_only)
         self.lr = 0.
@@ -160,7 +160,6 @@ class Accuracy(Metric):
     :param epoch_only: Whether the metric only read for the full epoch
     :type epoch_only: bool
     """
-
     def __init__(self, epoch_only: bool):
         super().__init__(epoch_only=epoch_only)
         self.last_step_sum = torch.zeros(1, device=get_current_device())
@@ -220,7 +219,6 @@ class Accuracy2D(Accuracy):
     :param epoch_only: Whether the metric only read for the full epoch
     :type epoch_only: bool
     """
-
     def __init__(self, epoch_only: bool):
         super().__init__(epoch_only=epoch_only)
 
@@ -230,11 +228,7 @@ class Accuracy2D(Accuracy):
         if isinstance(label, (list, tuple)):
             label = label[0]
 
-        logits = _gather(
-            logits,
-            ParallelMode.PARALLEL_2D_ROW,
-            1
-        )
+        logits = _gather(logits, ParallelMode.PARALLEL_2D_ROW, 1)
         logits = _gather(
             logits,
             ParallelMode.PARALLEL_2D_COL,
@@ -259,11 +253,7 @@ class Accuracy2p5D(Accuracy):
         if isinstance(label, (list, tuple)):
             label = label[0]
 
-        logits = _gather(
-            logits,
-            ParallelMode.PARALLEL_2P5D_ROW,
-            1
-        )
+        logits = _gather(logits, ParallelMode.PARALLEL_2P5D_ROW, 1)
         logits = _gather(
             logits,
             ParallelMode.PARALLEL_2P5D_COL,
@@ -298,14 +288,14 @@ class Accuracy3D(Accuracy):
     :param epoch_only: Whether the metric only read for the full epoch
     :type epoch_only: bool
     """
-
-    def __init__(self, epoch_only, input_parallel_mode, weight_parallel_mode):
+    def __init__(self, epoch_only):
+        #  input_parallel_mode, weight_parallel_mode):
         super().__init__(epoch_only=epoch_only)
         self.depth = int(os.environ['DEPTH_3D'])
-        self.input_parallel_mode = input_parallel_mode
-        self.weight_parallel_mode = weight_parallel_mode
-        self.output_parallel_mode = get_last_group(input_parallel_mode,
-                                                   weight_parallel_mode)
+        self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+        self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+        self.output_parallel_mode = get_last_group(self.input_parallel_mode,
+                                                   self.weight_parallel_mode)
 
     def update(self, logits, target):
         if isinstance(logits, (list, tuple)):
@@ -321,6 +311,7 @@ class Accuracy3D(Accuracy):
         target = torch.chunk(target, self.depth, dim=0)[j]
 
         logits = all_gather(logits, -1, self.output_parallel_mode)
+        logits = torch.cat(logits, dim=-1)
         prediction = torch.argmax(logits, dim=-1)
         correct = torch.sum(prediction == target)
 

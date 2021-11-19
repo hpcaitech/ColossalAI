@@ -3,12 +3,12 @@
 
 import math
 
+import numpy as np
+from colossalai.utils.common import print_rank_0
 import torch
-from torch import Tensor
-from torch import nn
+from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS
 from colossalai.utils import checkpoint
-
-from colossalai.constants import IS_TENSOR_PARALLEL
+from torch import Tensor, nn
 
 
 def divide(numerator, denominator):
@@ -30,12 +30,14 @@ def swish(x: Tensor) -> Tensor:
     return x * torch.sigmoid(x)
 
 
-ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
+ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 
-def set_tensor_parallel_attribute(param):
-    if not hasattr(param, IS_TENSOR_PARALLEL):
-        setattr(param, IS_TENSOR_PARALLEL, True)
+def set_tensor_parallel_attribute(param, size):
+    # if not hasattr(param, IS_TENSOR_PARALLEL):
+    setattr(param, IS_TENSOR_PARALLEL, True)
+    # if not hasattr(param, NUM_PARTITIONS):
+    setattr(param, NUM_PARTITIONS, size // np.prod(param.shape))
 
 
 class CheckpointModule(nn.Module):

@@ -15,9 +15,17 @@ def bytes_to_GB(val, decimal=2):
     '''A byte-to-Gigabyte converter, defaultly using binary notation.
 
     :param val: X bytes to convert 
-    :return: X' Gb
+    :return: X' GB
     '''
     return round(val / (1024 * 1024 * 1024), decimal)
+
+def bytes_to_MB(val, decimal=2):
+    '''A byte-to-Megabyte converter, defaultly using binary notation.
+
+    :param val: X bytes to convert 
+    :return: X' MB
+    '''
+    return round(val / (1024 * 1024), decimal)
 
 
 def report_memory_usage(message):
@@ -35,14 +43,14 @@ def report_memory_usage(message):
     vm_stats = psutil.virtual_memory()
     vm_used = bytes_to_GB(vm_stats.total - vm_stats.available)
 
-    gpu_allocated = bytes_to_GB(torch.cuda.memory_allocated())
-    gpu_max_allocated = bytes_to_GB(torch.cuda.max_memory_allocated())
-    gpu_cached = bytes_to_GB(torch.cuda.memory_cached())
-    gpu_max_cached = bytes_to_GB(torch.cuda.max_memory_cached())
+    gpu_allocated = bytes_to_MB(torch.cuda.memory_allocated())
+    gpu_max_allocated = bytes_to_MB(torch.cuda.max_memory_allocated())
+    gpu_cached = bytes_to_MB(torch.cuda.memory_reserved())
+    gpu_max_cached = bytes_to_MB(torch.cuda.max_memory_reserved())
 
     get_global_dist_logger().info(
-        f"{message} - GPU: allocated {gpu_allocated}GB, max allocated {gpu_max_allocated}GB, cached: {gpu_cached} GB, "
-        f"max cached: {gpu_max_cached}GB, CPU Virtual Memory: used = {vm_used}GB, percent = {vm_stats.percent}%")
+        f"{message} - GPU: allocated {gpu_allocated}MB, max allocated {gpu_max_allocated}MB, cached: {gpu_cached} MB, "
+        f"max cached: {gpu_max_cached}MB, CPU Virtual Memory: used = {vm_used}GB, percent = {vm_stats.percent}%")
 
     # get the peak memory to report correct data, so reset the counter for the next call
     if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+

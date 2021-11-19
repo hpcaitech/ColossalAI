@@ -137,15 +137,15 @@ class Accuracy3DHook(MetricHook):
 
     def __init__(self,
                  trainer: Trainer,
-                 input_parallel_mode: ParallelMode,
-                 weight_parallel_mode: ParallelMode,
+                #  input_parallel_mode: ParallelMode,
+                #  weight_parallel_mode: ParallelMode,
                  priority: int = 10):
         super().__init__(trainer, priority)
 
         if self._is_stage_to_compute:
-            self.metric = Accuracy3D(epoch_only=True,
-                                     input_parallel_mode=input_parallel_mode,
-                                     weight_parallel_mode=weight_parallel_mode)
+            self.metric = Accuracy3D(epoch_only=True)
+                                    #  input_parallel_mode=input_parallel_mode,
+                                    #  weight_parallel_mode=weight_parallel_mode)
 
             # register the metric
             self.trainer.states['metrics']['test'][

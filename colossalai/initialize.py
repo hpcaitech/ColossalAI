@@ -42,19 +42,21 @@ def parse_args():
                         type=str,
                         default=None,
                         help='the master port for distributed training')
-    parser.add_argument('--world_size', type=int, help='world size for ')
+    parser.add_argument('--world_size', type=int, help='world size for distributed training')
+    parser.add_argument('--rank', type=int, help='rank for the default process group')
     parser.add_argument('--local_rank',
                         type=int,
-                        help='rank for the default process group')
+                        help='local rank on the node')
     parser.add_argument('--backend',
                         type=str,
                         default='nccl',
-                        help='backend for torch.distributed')
+                        help='backend for distributed communication')
     return parser.parse_args()
 
 
 def init_dist(config: Union[str, dict] = None,
               local_rank: int = None,
+              rank: int = None,
               world_size: int = None,
               host: str = None,
               port: str = None,
@@ -86,6 +88,8 @@ def init_dist(config: Union[str, dict] = None,
         config = args.config
     if local_rank is None:
         local_rank = args.local_rank
+    if rank is None:
+        rank = args.rank
     if world_size is None:
         world_size = args.world_size
     if host is None:
@@ -99,12 +103,14 @@ def init_dist(config: Union[str, dict] = None,
              host=host,
              port=port,
              world_size=world_size,
+             rank=rank,
              local_rank=local_rank,
              backend=backend))
 
     # set distributed settings
     dist_args = Config(
         dict(local_rank=args.local_rank,
+             rank=rank,
              world_size=args.world_size,
              backend=args.backend))
 
@@ -178,6 +184,7 @@ def get_dataloader(dataset, seed=1024, add_sampler_if_possible=False, **kwargs):
 
 def initialize(config: Union[str, dict] = None,
                local_rank: int = None,
+               rank: int = None,
                world_size: int = None,
                host: str = None,
                port: str = None,
@@ -209,6 +216,7 @@ def initialize(config: Union[str, dict] = None,
     # initialize distributed environment
     init_dist(config=config,
               local_rank=local_rank,
+              rank=rank,
               world_size=world_size,
               host=host,
               port=port,
