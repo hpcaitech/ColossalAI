@@ -5,9 +5,9 @@ from typing import Tuple
 
 import torch
 
-from .context import Config
-from .context.parallel_mode import ParallelMode
-from .core import global_context as gpc
+from colossalai.context import Config
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
 
 __all__ = [
     'get_checkpoint_path',

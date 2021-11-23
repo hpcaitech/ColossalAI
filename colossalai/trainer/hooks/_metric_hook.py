@@ -21,9 +21,12 @@ class MetricHook(BaseHook):
     :type priority: int
     """
 
-    def __init__(self, trainer: Trainer, priority: int):
+    def __init__(self,
+                 trainer: Trainer,
+                 priority: int,
+                 ):
         super().__init__(trainer, priority)
-        self._is_stage_to_log = is_no_pp_or_last_stage()
+        self._is_stage_to_compute = is_no_pp_or_last_stage()
         self._check_metric_states_initialization()
 
     def _check_metric_states_initialization(self):
@@ -41,33 +44,34 @@ class LossHook(MetricHook):
     :type priority: int, optional
     """
 
-    def __init__(self, trainer: Trainer, priority: int = 10):
+    def __init__(self, trainer: Trainer, priority: int = 0):
         super().__init__(trainer, priority)
 
-        if self._is_stage_to_log:
-            self.metric = Loss(epoch_only=False)
+        if self._is_stage_to_compute:
+            self.train_loss = Loss(epoch_only=False)
+            self.test_loss = Loss(epoch_only=True)
 
             # register the metric calculator
             self.trainer.states['metrics']['train'][
-                self.metric.__class__.__name__] = self.metric
+                self.train_loss.__class__.__name__] = self.train_loss
             self.trainer.states['metrics']['test'][
-                self.metric.__class__.__name__] = self.metric
+                self.test_loss.__class__.__name__] = self.test_loss
 
     def before_train_epoch(self):
-        if self._is_stage_to_log:
-            self.metric.reset()
+        if self._is_stage_to_compute:
+            self.train_loss.reset()
 
     def after_train_iter(self, logits, label, loss):
-        if self._is_stage_to_log:
-            self.metric.update(loss)
+        if self._is_stage_to_compute:
+            self.train_loss.update(loss)
 
     def before_test_epoch(self):
-        if self._is_stage_to_log:
-            self.metric.reset()
+        if self._is_stage_to_compute:
+            self.test_loss.reset()
 
     def after_test_iter(self, logits, label, loss):
-        if self._is_stage_to_log:
-            self.metric.update(loss)
+        if self._is_stage_to_compute:
+            self.test_loss.update(loss)
 
 
 @HOOKS.register_module
@@ -81,10 +85,10 @@ class Accuracy2DHook(MetricHook):
     :type priority: int, optional
     """
 
-    def __init__(self, trainer: Trainer, priority: int = 10):
+    def __init__(self, trainer: Trainer, priority: int = 0):
         super().__init__(trainer, priority)
 
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric = Accuracy2D(epoch_only=True)
 
             # register the metric
@@ -92,20 +96,20 @@ class Accuracy2DHook(MetricHook):
                 self.metric.__class__.__name__] = self.metric
 
     def before_test(self):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.reset()
 
     def after_test_iter(self, logits, label, *args):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.update(logits, label)
 
 
 @HOOKS.register_module
 class Accuracy2p5DHook(MetricHook):
-    def __init__(self, trainer: Trainer, priority: int = 10):
+    def __init__(self, trainer: Trainer, priority: int = 0):
         super().__init__(trainer, priority)
 
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric = Accuracy2p5D(epoch_only=True)
 
             # register the metric
@@ -113,11 +117,11 @@ class Accuracy2p5DHook(MetricHook):
                 self.metric.__class__.__name__] = self.metric
 
     def before_test(self):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.reset()
 
     def after_test_iter(self, logits, label, *args):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.update(logits, label)
 
 
@@ -138,7 +142,7 @@ class Accuracy3DHook(MetricHook):
                  priority: int = 10):
         super().__init__(trainer, priority)
 
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric = Accuracy3D(epoch_only=True,
                                      input_parallel_mode=input_parallel_mode,
                                      weight_parallel_mode=weight_parallel_mode)
@@ -148,11 +152,11 @@ class Accuracy3DHook(MetricHook):
                 self.metric.__class__.__name__] = self.metric
 
     def before_test(self):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.reset()
 
     def after_test_iter(self, logits, label, *args):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.update(logits, label)
 
 
@@ -166,10 +170,10 @@ class AccuracyHook(MetricHook):
     :type priority: int
     """
 
-    def __init__(self, trainer: Trainer, priority: int = 10):
+    def __init__(self, trainer: Trainer, priority: int = 0):
         super().__init__(trainer, priority)
 
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric = Accuracy(epoch_only=True)
 
             # register the metric
@@ -177,9 +181,9 @@ class AccuracyHook(MetricHook):
                 self.metric.__class__.__name__] = self.metric
 
     def before_test(self):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.reset()
 
     def after_test_iter(self, logits, label, *args):
-        if self._is_stage_to_log:
+        if self._is_stage_to_compute:
             self.metric.update(logits, label)

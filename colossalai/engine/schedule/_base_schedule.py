@@ -5,125 +5,85 @@ from abc import ABC, abstractmethod
 
 import torch
 
+from colossalai.core import global_context as gpc
 from colossalai.logging import get_global_dist_logger
 from colossalai.utils import get_current_device
 
 
 class BaseSchedule(ABC):
     """A basic helper class to control the process of training or evaluation.
+    It mainly composes of forward_backward_step for gradient backward and
+    optimizer_step for parameters update.
+    For the convenience to enable FP16, we aggreate all codes that contain the
+    control of FP16 in class schedule.
     """
+
     def __init__(self):
-        self.initialized = False
         self.logger = get_global_dist_logger()
 
-    @property
-    @abstractmethod
-    def num_steps(self):
-        """The number of batches in training or evaluation.
-        """
-        pass
-
-    def initialize(self,
-                   dataloader=None,
-                   model=None,
-                   criterion=None,
-                   optimizer=None,
-                   lr_scheduler=None):
-        """Initializes the schedule and set parameters before running.
-
-        :param dataloader: DataLoader in training or evaluation
-        :param model: The neural network model
-        :param criterion: Criterion for calculating loss
-        :param optimizer: Optimizer for updating the parameters
-        :param lr_scheduler: Learning rate scheduler in the process
-        """
-        self.dataloader = dataloader
-        assert model is not None, "Schedule requires a model"
-        self.model = model
-        assert criterion is not None, "Schedule requires a criterion"
-        self.criterion = criterion
-        assert optimizer is not None, "Schedule requires an optimizer"
-        self.optimizer = optimizer
-        self.lr_scheduler = lr_scheduler
-        self.initialized = True
-
-    def check_initialized(self):
-        """Checks whether the schedule is initialized.
-        """
-        assert self.initialized, \
-            'Schedule is not initialized. Call schedule.initialize(...) before using it.'
-
-    def load_batch(self):
-        """Loads a batch of dataset. It returns the data and labels which are
-        already in the same GPU as where the model's.
-
-        :return: (data, label)
-        :rtype: (Tensor, Tensor) 
-        """
-        self.check_initialized()
-        if self.data_iter is None:
-            raise RuntimeError('Dataloader is not defined.')
-        data, label = next(self.data_iter)
-        return self._move_to_device(data), self._move_to_device(label)
+    @staticmethod
+    def _move_tensor(element):
+        if torch.is_tensor(element):
+            if not element.is_cuda:
+                return element.to(get_current_device()).detach()
+        return element
 
     def _move_to_device(self, data):
-        if isinstance(data, (
-                tuple,
-                list,
-        )):
-            data = tuple([
-                d.to(get_current_device()).detach() for d in data
-                if torch.is_tensor(d)
-            ])
+        if isinstance(data, (tuple, list)):
+            data = tuple([self._move_tensor(d) for d in data])
         elif torch.is_tensor(data):
             data = data.to(get_current_device()).detach()
         return data
 
-    def train(self, dataloader=None, mode=True):
-        """Sets the dataloader to be used and turn the model to 
-        training or evaluation mode.
+    def load_batch(self, data_iter):
+        """Loads a batch from data iterator. It returns the data and labels which are
+        already in the same GPU as where the model's.
 
-        :param dataloader: Dataloader to be used
-        :param mode: If True, the model will set as training mode. Otherwise, evaluation mode.
+        :return: (data, label)
+        :rtype: (Tensor, Tensor)
         """
-        self.check_initialized()
-        if mode:
-            self.model.train()
-        else:
-            self.model.eval()
-        if dataloader is not None:
-            self.dataloader = dataloader
-            self.data_iter = iter(dataloader)
+        if data_iter is None:
+            raise RuntimeError('Dataloader is not defined.')
+        data, label = next(data_iter)
+        return self._move_to_device(data), self._move_to_device(label)
 
-    def zero_grad(self, forward_only=False):
-        """Cleans gradients with the optimizer.
-        """
-        if not forward_only:
-            self.check_initialized()
-            self.optimizer.zero_grad()
+    def initialize(self, model, optimizer):
+        """Initializes the model and the optimizer before training.
+         This is often used in FP16 training.
 
-    def get_lr(self):
-        """Returns the current learning rate.
+        :param model: The neural network model
+        :param optimizer: Optimizer for updating the parameters
         """
-        if self.lr_scheduler is not None:
-            return self.lr_scheduler.get_lr()[0]
-        else:
-            return self.optimizer.param_groups[0]['lr']
-
-    def step(self):
-        """Updates the parameters and learning rate with the optimizer.
-        """
-        self.check_initialized()
-        self.optimizer.step()
-        # update lr scheduler
-        if self.lr_scheduler is not None:
-            self.lr_scheduler.step()
+        return model, optimizer
 
     @abstractmethod
-    def forward_backward_step(self, forward_only=False, return_loss=True):
+    def forward_backward_step(self,
+                              data_iter,
+                              model,
+                              criterion,
+                              optimizer=None,
+                              forward_only=False,
+                              grad_accum_size: int = 1,
+                              return_loss=True):
         """The process function over a batch of dataset for training or evaluation.
 
-        :param forward_only: If True, the process won't include backward.
-        :param return_loss: If False, the loss won't be returned.
+        :param data_iter: Data iterator of the dataset
+        :param model: Model used in training or evaluation
+        :param optimizer: Optimizer used in training or evaluation
+        :param criterion: Loss function
+        :param forward_only: If True, the process won't include backward
+        :param grad_accum_size: Steps of gradient accumulation
+        :param return_loss: If False, the loss won't be returned
+        """
+        pass
+
+    @abstractmethod
+    def optimizer_step(self, model, optimizer, grad_clipping: float = 0.0):
+        """Updates the parameters with the optimizer.
+
+        :param model: The neural network model
+        :param optimizer: Optimizer for updating the parameters
+        :param grad_clipping: The norm of gradient clipping
+        :type grad_clipping: float, optional
         """
         pass

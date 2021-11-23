@@ -181,18 +181,6 @@ def build_transform(config):
     return build_from_registry(config, TRANSFORMS)
 
 
-def build_pipe_alloc_policy(config):
-    """Returns a pipeline allocation policy object constructed from `config`.
-
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: A pipeline allocation policy object
-    :rtype: 
-    """
-    return build_from_registry(config, PIPE_ALLOC_POLICY)
-
-
 def build_data_sampler(config, dataset):
     """Returns a data sampler object of :class:`colossalai.nn.data.sampler.BaseSampler`
     constructed from `config`.
@@ -235,7 +223,7 @@ def build_optimizer_wrapper(config, optimizer, model=None):
         return OPTIMIZER_WRAPPERS.get_module(mod_type)(optimizer, **config_)
 
 
-def build_lr_scheduler(config, optimizer, total_steps, num_steps_per_epoch):
+def build_lr_scheduler(config, optimizer):
     """Returns a learning rate scheduler object of :class:`torch.optim.lr_scheduler` 
     constructed from `config`, `optimizer`, `total_steps` and `num_steps_per_epoch`.
 
@@ -254,9 +242,16 @@ def build_lr_scheduler(config, optimizer, total_steps, num_steps_per_epoch):
     """
     config_ = config.copy()
     mod_type = config_.pop('type')
-    # warmup epochs will overwrite warmup steps
-    if 'warmup_epochs' in config_:
-        warmup_epochs = config_.pop('warmup_epochs')
-        config_['warmup_steps'] = int(num_steps_per_epoch * warmup_epochs)
-    return LR_SCHEDULERS.get_module(mod_type)(optimizer, total_steps, num_steps_per_epoch=num_steps_per_epoch,
-                                              **config_)
+    return LR_SCHEDULERS.get_module(mod_type)(optimizer, **config_)
+
+
+def build_schedule(config):
+    """Returns a schedule of :class:`colossalai.engine.schedule.BaseSchedule`.
+
+    :param config: A python dict or a :class:`colossalai.context.Config` object
+        containing information used in the construction of the return object
+    :type config: dict or :class:`colossalai.context.Config`
+    :return: An object of :class:`colossalai.engine.schedule.BaseSchedule`
+    :rtype: :class:`colossalai.engine.schedule.BaseSchedule`
+    """
+    return build_from_registry(config, SCHEDULE)

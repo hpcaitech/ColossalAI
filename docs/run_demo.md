@@ -1,59 +1,64 @@
 # Quick demo
 
-ColossalAI is an integrated large-scale deep learning framework with efficient parallelization techniques. The framework
-can accelerate model training on distributed systems with multiple GPUs by applying parallelization techniques. The
-framework can also run on systems with only one GPU. Quick demos showing how to use ColossalAI are given below.
+Colossal-AI is an integrated large-scale deep learning system with efficient parallelization techniques. The system can
+accelerate model training on distributed systems with multiple GPUs by applying parallelization techniques. The system
+can also run on systems with only one GPU. Quick demos showing how to use Colossal-AI are given below.
 
 ## Single GPU
 
-ColossalAI can be used to train deep learning models on systems with only one GPU and achieve baseline
+Colossal-AI can be used to train deep learning models on systems with only one GPU and achieve baseline
 performances. [Here](https://colab.research.google.com/drive/1fJnqqFzPuzZ_kn1lwCpG2nh3l2ths0KE?usp=sharing#scrollTo=cQ_y7lBG09LS)
-is an example showing how to train a LeNet model on the CIFAR10 dataset using ColossalAI.
+is an example showing how to train a LeNet model on the CIFAR10 dataset using Colossal-AI.
 
 ## Multiple GPUs
 
-ColossalAI can be used to train deep learning models on distributed systems with multiple GPUs and accelerate the
+Colossal-AI can be used to train deep learning models on distributed systems with multiple GPUs and accelerate the
 training process drastically by applying efficient parallelization techiniques, which will be elaborated in
 the [Parallelization](parallelization.md) section below. Run the code below on your distributed system with 4 GPUs,
 where `HOST` is the IP address of your system. Note that we use
 the [Slurm](https://slurm.schedmd.com/documentation.html) job scheduling system here.
 
 ```bash
-HOST=xxx.xxx.xxx.xxx srun ./scripts/slurm_dist_train.sh ./example/train_vit_2d.py ./configs/vit/vit_2d.py
+HOST=xxx.xxx.xxx.xxx srun ./scripts/slurm_dist_train.sh ./examples/run_trainer.py ./configs/vit/vit_2d.py
 ```
 
 `./configs/vit/vit_2d.py` is a config file, which is introduced in the [Config file](config.md) section below. These
-config files are used by ColossalAI to define all kinds of training arguments, such as the model, dataset and training
+config files are used by Colossal-AI to define all kinds of training arguments, such as the model, dataset and training
 method (optimizer, lr_scheduler, epoch, etc.). Config files are highly customizable and can be modified so as to train
 different models.
-`./example/run_trainer.py` contains a standard training script and is presented below, it reads the config file and
+`./examples/run_trainer.py` contains a standard training script and is presented below, it reads the config file and
 realizes the training process.
 
 ```python
 import colossalai
-from colossalai.engine import Engine
-from colossalai.trainer import Trainer
 from colossalai.core import global_context as gpc
+from colossalai.logging import get_global_dist_logger
+from colossalai.trainer import Trainer
 
-model, train_dataloader, test_dataloader, criterion, optimizer, schedule, lr_scheduler = colossalai.initialize()
-engine = Engine(
-    model=model,
-    criterion=criterion,
-    optimizer=optimizer,
-    lr_scheduler=lr_scheduler,
-    schedule=schedule
-)
 
-trainer = Trainer(engine=engine,
-                  hooks_cfg=gpc.config.hooks,
-                  verbose=True)
-trainer.fit(
-    train_dataloader=train_dataloader,
-    test_dataloader=test_dataloader,
-    max_epochs=gpc.config.num_epochs,
-    display_progress=True,
-    test_interval=5
-)
+def run_trainer():
+    engine, train_dataloader, test_dataloader = colossalai.initialize()
+    logger = get_global_dist_logger()
+
+    logger.info("engine is built", ranks=[0])
+
+    trainer = Trainer(engine=engine,
+                      verbose=True)
+    logger.info("trainer is built", ranks=[0])
+
+    logger.info("start training", ranks=[0])
+    trainer.fit(
+        train_dataloader=train_dataloader,
+        test_dataloader=test_dataloader,
+        epochs=gpc.config.num_epochs,
+        hooks_cfg=gpc.config.hooks,
+        display_progress=True,
+        test_interval=2
+    )
+
+
+if __name__ == '__main__':
+    run_trainer()
 ```
 
 Alternatively, the `model` variable can be substituted with a self-defined model or a pre-defined model in our Model
@@ -61,9 +66,9 @@ Zoo. The detailed substitution process is elaborated [here](model.md).
 
 ## Features
 
-ColossalAI provides a collection of parallel training components for you. We aim to support you with your development of
-distributed deep learning models just like how you write single-GPU deeo learning models. We provide friendly tools to
-kickstart distributed training in a few lines.
+Colossal-AI provides a collection of parallel training components for you. We aim to support you with your development
+of distributed deep learning models just like how you write single-GPU deep learning models. We provide friendly tools
+to kickstart distributed training in a few lines.
 
 - [Data Parallelism](parallelization.md)
 - [Pipeline Parallelism](parallelization.md)

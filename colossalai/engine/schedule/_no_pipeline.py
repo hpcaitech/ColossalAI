@@ -4,19 +4,24 @@
 try:
     import apex.amp as apex_amp
 except:
-    print('apex is required for mixed precision training')
+    pass
+
 try:
     import torch.cuda.amp as torch_amp
 except:
-    print('PyTorch amp is not supported with the current PyTorch version')
+    pass
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.engine.amp_type import AMP_TYPE
+from typing import Iterable
+
+import torch.nn as nn
+from torch.optim import Optimizer
+
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
                            ZeroRedundancyOptimizer_Level_3)
-from ._utils import convert_to_fp16
+from colossalai.nn.optimizer._utils import clip_grad_norm_fp32
 from ._base_schedule import BaseSchedule
+from ._utils import convert_to_fp16, convert_to_fp32
+from ..amp import AMP_TYPE, GradScaler
 
 
 class NoPipelineSchedule(BaseSchedule):
@@ -30,6 +35,7 @@ class NoPipelineSchedule(BaseSchedule):
     :type amp_type: AMP_TYPE
     :type amp_config: dict
     """
+
     def __init__(
             self,
             amp_type: AMP_TYPE = None,
@@ -41,12 +47,6 @@ class NoPipelineSchedule(BaseSchedule):
         assert amp_type is None or isinstance(amp_type, AMP_TYPE), \
             'unrecognised value for argument fp16, it can only be None, torch or apex'
 
-        # LSG: check compatibility
-        # LSG: torch.cuda.amp and apex.amp cannot be used for tensor parallel
-        if gpc.is_initialized(ParallelMode.TENSOR) and gpc.get_world_size(
-                ParallelMode.TENSOR) > 1:
-            assert amp_type != AMP_TYPE.TORCH and amp_type != AMP_TYPE.APEX, \
-                'You can only AMP_TYPE.PARALLEL for tensor parallel training'
         self.use_zero_level_2_3 = False
 
         if amp_type is not None:
@@ -79,107 +79,110 @@ class NoPipelineSchedule(BaseSchedule):
             self.fp16 = False
             self.amp_type = None
 
-    @property
-    def num_steps(self):
-        return len(self.dataloader)
-
-    def initialize(self,
-                   dataloader,
-                   model,
-                   criterion,
-                   optimizer,
-                   lr_scheduler=None):
-        super().initialize(dataloader,
-                           model,
-                           criterion,
-                           optimizer,
-                           lr_scheduler=lr_scheduler)
-        if isinstance(self.optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                       ZeroRedundancyOptimizer_Level_3)):
+    def initialize(self, model: nn.Module, optimizer: Optimizer):
+        if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2,
+                                  ZeroRedundancyOptimizer_Level_3)):
             self.use_zero_level_2_3 = True
-            assert self.amp_type != AMP_TYPE.PARALLEL, 'ZeRO Level 2 and 3 are mutually exclusive with AMP_TYPE.PARALLEL'
+            assert self.amp_type != AMP_TYPE.PARALLEL, \
+                'ZeRO Level 2 and 3 are mutually exclusive with AMP_TYPE.PARALLEL'
 
         if self.fp16:
             if self.amp_type == AMP_TYPE.TORCH:
-                self._torch_amp_scaler = torch_amp.GradScaler(**self.amp_cfg)
+                self._torch_amp_scaler = GradScaler(**self.amp_cfg)
             elif self.amp_type == AMP_TYPE.APEX:
-                self.model, self.optimizer = apex_amp.initialize(
-                    self.model, self.optimizer, **self.amp_cfg)
+                model, optimizer = apex_amp.initialize(model, optimizer, **self.amp_cfg)
 
-    def forward_backward_step(self, forward_only=False, return_loss=True):
+        return model, optimizer
+
+    def forward_backward_step(self,
+                              data_iter: Iterable,
+                              model: nn.Module,
+                              criterion: nn.modules.loss._Loss,
+                              optimizer: Optimizer = None,
+                              forward_only: bool = False,
+                              grad_accum_size: int = 1,
+                              return_loss: bool = True):
         """The process function that loads loads a batch of dataset and feeds it to the model.
         The returned labels and loss will None if :attr:`return_loss` is False.
 
+        :param data_iter: Data iterator of the dataloader, e.g. iter(dataloader)
+        :param model: Model for training and inference
+        :param criterion: Loss function for training
+        :param optimizer: Optimizer used for training
+        :param forward_only: If True, the model is run for the forward pass, else back propagation will be executed
+        :param grad_accum_size: The number of iterations for gradient accumulation
+        :param return_loss: Loss will be returned if True
+        :type data_iter: Iterator
+        :type model: torch.nn.Module
+        :type criterion: torch.nn.modules.loss._Loss
+        :type optimizer: torch.optim.Optimizer
+        :type forward_only: bool, optional
+        :type grad_accum_size: int
+        :type return_loss: bool, optional
         :return: (output, label, loss)
         """
         assert forward_only or return_loss, \
             'The argument \'return_loss\' has to be True when \'forward_only\' is False, but got False.'
 
-        data, label = self.load_batch()
+        data, label = self.load_batch(data_iter)
         loss = None
-
-        # LSG: leave for debug, make sure dataloader is deterministic
-        # if forward_only:
-        #     img = data[0]
-        #     rank = gpc.get_local_rank(ParallelMode.DATA)
-        #     world_size = gpc.get_world_size(ParallelMode.DATA)
-        #     group = gpc.get_group(ParallelMode.DATA)
-        #     input_list = [img.clone() for _ in range(world_size)]
-        #     output_list = [torch.empty_like(img) for _ in range(world_size)]
-        #     output_list[rank] = img.clone()
-        #     dist.all_to_all(output_tensor_list=output_list, input_tensor_list=input_list, group=group)
-        #     assert torch.equal(output_list[0], output_list[1])  # and torch.equal(output_list[1], output_list[2])
 
         # forward
         if self.fp16 and self.amp_type == AMP_TYPE.TORCH:
             with torch_amp.autocast():
-                output = self.model(*data)
+                output = model(*data)
                 if not isinstance(output, (tuple, list)):
                     output = (output,)
                 if return_loss:
-                    loss = self.criterion(*output, *label)
+                    loss = criterion(*output, *label)
         else:
             if self.use_zero_level_2_3 or self.amp_type == AMP_TYPE.PARALLEL:
                 data = convert_to_fp16(data)
 
-            output = self.model(*data)
+            output = model(*data)
+
+            if self.use_zero_level_2_3 or self.amp_type == AMP_TYPE.PARALLEL:
+                output = convert_to_fp32(output)
+
             if not isinstance(output, (tuple, list)):
                 output = (output,)
             if return_loss:
-                loss = self.criterion(*output, *label)
+                loss = criterion(*output, *label)
+
+        loss /= grad_accum_size
 
         if not forward_only:
             # backward
             if self.use_zero_level_2_3:
-                self.optimizer.backward(loss)
+                optimizer.backward(loss)
             elif self.fp16:
                 if self.amp_type == AMP_TYPE.APEX:
-                    with apex_amp.scale_loss(loss,
-                                             self.optimizer) as scaled_loss:
+                    with apex_amp.scale_loss(loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
                 elif self.amp_type == AMP_TYPE.TORCH:
                     self._torch_amp_scaler.scale(loss).backward()
                 elif self.amp_type == AMP_TYPE.PARALLEL:
-                    loss = self.optimizer.scale_loss(loss)
+                    loss = optimizer.scale_loss(loss)
                     loss.backward()
                     # scale back to display the original value in logs
-                    loss.div_(self.optimizer.grad_scaler.scale)
+                    loss.div_(optimizer.grad_scaler.scale)
             else:
                 loss.backward()
 
         if return_loss:
-            return output, label, loss
+            return output, label, loss * grad_accum_size
         else:
             return output, None, None
 
-    def step(self):
+    def optimizer_step(self, model: nn.Module, optimizer: Optimizer, grad_clipping: float = 0.0):
         # step optimizer
         if self.fp16 and self.amp_type == AMP_TYPE.TORCH:
-            self._torch_amp_scaler.step(self.optimizer)
+            if grad_clipping > 0.0:
+                self._torch_amp_scaler.unscale_(optimizer)
+                clip_grad_norm_fp32(model.parameters(), grad_clipping)
+            self._torch_amp_scaler.step(optimizer)
             self._torch_amp_scaler.update()
         else:
-            self.optimizer.step()
-
-        # update lr scheduler
-        if self.lr_scheduler is not None:
-            self.lr_scheduler.step()
+            if not self.fp16 and not self.use_zero_level_2_3 and grad_clipping > 0.0:
+                clip_grad_norm_fp32(model.parameters(), grad_clipping)
+            optimizer.step()

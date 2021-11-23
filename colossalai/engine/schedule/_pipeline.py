@@ -15,7 +15,7 @@ from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
 from colossalai.utils import get_current_device
 from ._base_schedule import BaseSchedule
 from ._utils import convert_to_fp16
-from ..amp_type import AMP_TYPE
+from ..amp import AMP_TYPE
 
 
 def squeeze(x: Union[Tensor, tuple, list]):
@@ -93,12 +93,11 @@ class PipelineSchedule(BaseSchedule):
             )
 
     # Pipeline schedule just puts data in memory
-    def load_batch(self):
-        self.check_initialized()
-        if self.data_iter is None:
+    def load_batch(self, data_iter):
+        if data_iter is None:
             raise RuntimeError('Dataloader is not defined.')
         self.batch_pos = 0
-        data, label = next(self.data_iter)
+        data, label = next(data_iter)
         self.batch_data, self.batch_label = \
             self._move_to_device(data), self._move_to_device(label)
         batch_size = self.batch_data.shape[0]
@@ -117,23 +116,8 @@ class PipelineSchedule(BaseSchedule):
         self.batch_pos += self.microbatch_size
         return (data,), (label,)
 
-    @property
-    def num_steps(self):
-        return len(self.dataloader)
-
-    def initialize(self,
-                   dataloader,
-                   model,
-                   criterion,
-                   optimizer,
-                   lr_scheduler=None):
-        super().initialize(dataloader,
-                           model,
-                           criterion,
-                           optimizer,
-                           lr_scheduler=lr_scheduler)
-        if isinstance(self.optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                       ZeroRedundancyOptimizer_Level_3)):
+    def initialize(self, model, optimizer):
+        if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
             raise TypeError(
                 "Pipeline schedule is currently not compatible with ZeRO Level 2 and Level 3"
             )
@@ -145,7 +129,8 @@ class PipelineSchedule(BaseSchedule):
                 'default tensor dtype is set to torch.half for fp16 training',
                 ranks=[0])
 
-    def forward_step(self, input_tensor, return_tensors, return_loss=True):
+    def forward_step(self, model, criterion, input_tensor, return_tensors,
+                     grad_accum_size, return_loss=True):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
@@ -156,14 +141,14 @@ class PipelineSchedule(BaseSchedule):
             if self.amp_type == AMP_TYPE.PARALLEL:
                 input_tensor = convert_to_fp16(input_tensor)
         input_tensor = squeeze(input_tensor)
-        output_tensor = self.model(input_tensor)
+        output_tensor = model(input_tensor)
         output_tensor = squeeze(output_tensor)
 
         if gpc.is_last_rank(ParallelMode.PIPELINE):
             if return_loss:
                 input_tensor, label = self.load_micro_batch()
-                loss_reduced = self.criterion(output_tensor, *
-                label) / self.num_microbatches
+                loss_reduced = criterion(output_tensor, *label) \
+                               / (self.num_microbatches * grad_accum_size)
                 return_tensors.append(
                     tuple((output_tensor, label[0], loss_reduced)))
                 return loss_reduced
@@ -174,7 +159,7 @@ class PipelineSchedule(BaseSchedule):
         else:
             return output_tensor
 
-    def backward_step(self, input_tensor, output_tensor, output_tensor_grad):
+    def backward_step(self, optimizer, input_tensor, output_tensor, output_tensor_grad):
         """Backward step through the passed-in output tensor. If it is the last stage, the 
         output_tensor_grad is None, otherwise it is the gradients with respect to stage's output tensor.
         Returns the gradients with respect to the input tensor (None if first stage).
@@ -187,7 +172,7 @@ class PipelineSchedule(BaseSchedule):
 
         # Backward pass.
         if output_tensor_grad is None and self.amp_type == AMP_TYPE.PARALLEL:
-            output_tensor = self.optimizer.scale_loss(output_tensor)
+            output_tensor = optimizer.scale_loss(output_tensor)
         torch.autograd.backward(output_tensor, grad_tensors=output_tensor_grad)
 
         # Collect the grad of the input_tensor.
@@ -197,17 +182,24 @@ class PipelineSchedule(BaseSchedule):
 
         return input_tensor_grad
 
-    def forward_backward_step(self, forward_only=True, return_loss=True):
+    def forward_backward_step(self,
+                              data_iter,
+                              model,
+                              criterion,
+                              optimizer=None,
+                              forward_only=False,
+                              grad_accum_size: int = 1,
+                              return_loss=True):
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
-        
+
         :return: (output, label, loss)
         """
 
         assert forward_only or return_loss, \
             'The argument \'return_loss\' has to be True when \'forward_only\' is False, but got False.'
 
-        self.load_batch()
+        self.load_batch(data_iter)
         num_warmup_microbatches = \
             (gpc.get_world_size(ParallelMode.PIPELINE) -
              gpc.get_local_rank(ParallelMode.PIPELINE) - 1)
@@ -233,9 +225,11 @@ class PipelineSchedule(BaseSchedule):
             if not gpc.is_first_rank(ParallelMode.PIPELINE):
                 ft_shape = recv_tensor_meta(ft_shape)
             input_tensor = recv_forward(ft_shape)
-            output_tensor = self.forward_step(input_tensor,
-                                              return_tensors,
-                                              return_loss=return_loss)
+            output_tensor = self.forward_step(
+                model, criterion,
+                input_tensor, return_tensors,
+                grad_accum_size, return_loss=return_loss
+            )
             if not gpc.is_last_rank(ParallelMode.PIPELINE):
                 bt_shape = output_tensor.shape
                 fs_checker = send_tensor_meta(output_tensor, fs_checker)
@@ -257,9 +251,11 @@ class PipelineSchedule(BaseSchedule):
         for i in range(num_microbatches_remaining):
             last_iteration = (i == (num_microbatches_remaining - 1))
 
-            output_tensor = self.forward_step(input_tensor,
-                                              return_tensors,
-                                              return_loss=return_loss)
+            output_tensor = self.forward_step(
+                model, criterion,
+                input_tensor, return_tensors,
+                grad_accum_size, return_loss=return_loss
+            )
             if forward_only:
                 send_forward(output_tensor)
 
@@ -279,9 +275,11 @@ class PipelineSchedule(BaseSchedule):
                 input_tensor = input_tensors.pop(0)
                 output_tensor = output_tensors.pop(0)
 
-                input_tensor_grad = self.backward_step(input_tensor,
-                                                       output_tensor,
-                                                       output_tensor_grad)
+                input_tensor_grad = self.backward_step(
+                    optimizer,
+                    input_tensor, output_tensor,
+                    output_tensor_grad
+                )
 
                 if last_iteration:
                     input_tensor = None
@@ -298,9 +296,11 @@ class PipelineSchedule(BaseSchedule):
 
                 output_tensor_grad = recv_backward(bt_shape)
 
-                input_tensor_grad = self.backward_step(input_tensor,
-                                                       output_tensor,
-                                                       output_tensor_grad)
+                input_tensor_grad = self.backward_step(
+                    optimizer,
+                    input_tensor, output_tensor,
+                    output_tensor_grad
+                )
 
                 send_backward(input_tensor_grad)
 
@@ -309,8 +309,11 @@ class PipelineSchedule(BaseSchedule):
                 output, label, loss = tuple(map(list, zip(*return_tensors)))
                 return (torch.cat(output, dim=0),
                         torch.cat(label, dim=0),
-                        sum(loss))
+                        sum(loss) * grad_accum_size)
             else:
                 return tuple((torch.cat(return_tensors, dim=0), None, None))
         else:
             return tuple((None, None, None))
+
+    def optimizer_step(self, model, optimizer, grad_clipping: float = 0.0):
+        optimizer.step()
