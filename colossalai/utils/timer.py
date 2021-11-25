@@ -83,9 +83,10 @@ class MultiTimer:
     '''An object contains multiple timers
     '''
 
-    def __init__(self, on: bool = True):
+    def __init__(self, on: bool = True, ignore_initial_steps: int = 0):
         self._on = on
         self._timers = dict()
+        self._ignore_initial_steps = ignore_initial_steps
 
     def start(self, name: str):
         '''Start namely one of the timers
@@ -95,8 +96,10 @@ class MultiTimer:
         '''
         if self._on:
             if name not in self._timers:
-                self._timers[name] = Timer()
-            return self._timers[name].start()
+                self._timers[name] = dict(timer=Timer(), step=0)
+            
+            if self._timers[name]['step'] >= self._ignore_initial_steps:
+                return self._timers[name]['timer'].start()
 
     def stop(self, name: str, keep_in_history: bool):
         '''Stop namely one of the timers.
@@ -106,7 +109,12 @@ class MultiTimer:
         :type keep_in_history: bool
         '''
         if self._on:
-            return self._timers[name].stop(keep_in_history)
+            if self._timers[name]['step'] < self._ignore_initial_steps:
+                out = None
+            else:
+                out = self._timers[name]['timer'].stop(keep_in_history)
+            self._timers[name]['step'] += 1
+            return out
         else:
             return None
 
@@ -117,7 +125,7 @@ class MultiTimer:
         :return: timer with the name you give correctly
         :rtype: Timer 
         '''
-        return self._timers[name]
+        return self._timers[name]['timer']
 
     def reset(self, name=None):
         '''Reset timers.
@@ -126,7 +134,7 @@ class MultiTimer:
         '''
         if self._on:
             if name is not None:
-                self._timers[name].reset()
+                self._timers[name]['timer'].reset()
             else:
                 for timer in self._timers:
                     timer.reset()
@@ -140,4 +148,4 @@ class MultiTimer:
 
     def __iter__(self):
         for name, timer in self._timers.items():
-            yield name, timer
+            yield name, timer['timer']

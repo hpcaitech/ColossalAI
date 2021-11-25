@@ -5,14 +5,16 @@ import os
 import os.path as osp
 
 import torch
-from torch.utils.tensorboard import SummaryWriter
-
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.registry import HOOKS
 from colossalai.trainer._trainer import Trainer
-from colossalai.utils import get_global_multitimer, set_global_multitimer_status, report_memory_usage, is_dp_rank_0, \
-    is_tp_rank_0, is_no_pp_or_last_stage
+from colossalai.utils import (get_global_multitimer, is_dp_rank_0,
+                              is_no_pp_or_last_stage, is_tp_rank_0,
+                              report_memory_usage,
+                              set_global_multitimer_status)
+from torch.utils.tensorboard import SummaryWriter
+
 from ._base_hook import BaseHook
 
 
@@ -183,6 +185,7 @@ class LogTimingByEpochHook(EpochIntervalHook):
         for timer_name, timer in self._global_timer:
             last_elapsed_time = timer.get_elapsed_time()
             if timer.has_history:
+                print(f'history length: {len(timer._history)}')
                 history_mean = timer.get_history_mean()
                 history_sum = timer.get_history_sum()
                 msg.append(
