@@ -33,20 +33,22 @@ class PipelineSchedule(BaseSchedule):
     :param num_microbatches: The number of microbatches
     :param amp_type: The type of automatic mixed precision
     :param amp_config: The configuration of automatic mixed procision
+    :param sync_data: If set to `True`, will sync data every batch over pipeline stages
     :type num_microbatches: int
     :type amp_type: AMP_TYPE
     :type amp_config: dict
+    :type sync_data: bool
     """
 
     def __init__(self,
                  num_microbatches,
                  amp_type: AMP_TYPE = None,
-                 amp_config: dict = None):
+                 amp_config: dict = None,
+                 sync_data: bool = True):
         super().__init__()
 
         self.num_microbatches = num_microbatches
-        self.data_sync = True  # close after making sure data is identical
-
+        self.sync_data = sync_data
         # amp
         # LSGL: amp_config is not used, but leave here for future extension
         self.amp_type = amp_type
@@ -67,30 +69,37 @@ class PipelineSchedule(BaseSchedule):
         return data
 
     def _sync_data(self):
+        reqs = []
         if gpc.is_first_rank(ParallelMode.PIPELINE):
             src_rank = gpc.get_global_rank()
-            dist.broadcast(
+            reqs.append(dist.broadcast(
                 tensor=self.batch_data,
                 src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_PREV)
-            )
-            dist.broadcast(
+                group=gpc.get_group(ParallelMode.PIPELINE_PREV),
+                async_op=True
+            ))
+            reqs.append(dist.broadcast(
                 tensor=self.batch_label,
                 src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_PREV)
-            )
+                group=gpc.get_group(ParallelMode.PIPELINE_PREV),
+                async_op=True
+            ))
         if gpc.is_last_rank(ParallelMode.PIPELINE):
             src_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
-            dist.broadcast(
+            reqs.append(dist.broadcast(
                 tensor=self.batch_data,
                 src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_NEXT)
-            )
-            dist.broadcast(
+                group=gpc.get_group(ParallelMode.PIPELINE_NEXT),
+                async_op=True
+            ))
+            reqs.append(dist.broadcast(
                 tensor=self.batch_label,
                 src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_NEXT)
-            )
+                group=gpc.get_group(ParallelMode.PIPELINE_NEXT),
+                async_op=True
+            ))
+        for req in reqs:
+            req.wait()
 
     # Pipeline schedule just puts data in memory
     def load_batch(self, data_iter):
@@ -104,7 +113,7 @@ class PipelineSchedule(BaseSchedule):
         assert batch_size % self.num_microbatches == 0, \
             "Batch size should divided by the number of microbatches"
         self.microbatch_size = batch_size // self.num_microbatches
-        if self.data_sync:
+        if self.sync_data:
             self._sync_data()
 
     def _get_data_slice(self, tensor):
@@ -148,7 +157,7 @@ class PipelineSchedule(BaseSchedule):
             if return_loss:
                 input_tensor, label = self.load_micro_batch()
                 loss_reduced = criterion(output_tensor, *label) \
-                               / (self.num_microbatches * grad_accum_size)
+                    / (self.num_microbatches * grad_accum_size)
                 return_tensors.append(
                     tuple((output_tensor, label[0], loss_reduced)))
                 return loss_reduced
