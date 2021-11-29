@@ -46,7 +46,7 @@ class Linear2p5D(ParallelLayer):
         self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
         self.col_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
         self.dep_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
-        self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
+        self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
 
         # partitioning dimension
         self.input_size_per_partition = divide(in_features, self.tesseract_dim)
@@ -99,16 +99,15 @@ class Linear2p5D(ParallelLayer):
         # input: [m/dq, n/q, k/q]
         # output: [m/dq, n/q, h/q]
         out_shape = x.shape[:-1] + (self.hidden_size_per_partition,)
+
         output = Matmul_AB_2p5D.apply(
             x,
             self.weight,
             self.tesseract_dim,
-            self.tesseract_dep,
             out_shape,
             self.row_rank, self.col_rank, self.dep_rank,
             ParallelMode.PARALLEL_2P5D_ROW,
             ParallelMode.PARALLEL_2P5D_COL,
-            ParallelMode.PARALLEL_2P5D_DEP,
             self.data_parallel_rank,
             self.pipeline_parallel_rank,
             self.pipeline_parallel_size,
@@ -121,11 +120,9 @@ class Linear2p5D(ParallelLayer):
                     None,
                     self.bias,
                     self.hidden_size_per_partition,
-                    self.tesseract_dim, self.tesseract_dep,
+                    self.tesseract_dim,
                     self.row_rank, self.col_rank, self.dep_rank,
-                    ParallelMode.PARALLEL_2P5D_ROW,
                     ParallelMode.PARALLEL_2P5D_COL,
-                    ParallelMode.PARALLEL_2P5D_DEP,
                     True,
                     self.data_parallel_rank,
                     self.pipeline_parallel_rank,
@@ -138,11 +135,9 @@ class Linear2p5D(ParallelLayer):
                     output,
                     self.bias,
                     self.hidden_size_per_partition,
-                    self.tesseract_dim, self.tesseract_dep,
+                    self.tesseract_dim,
                     self.row_rank, self.col_rank, self.dep_rank,
-                    ParallelMode.PARALLEL_2P5D_ROW,
                     ParallelMode.PARALLEL_2P5D_COL,
-                    ParallelMode.PARALLEL_2P5D_DEP,
                     False,
                     self.data_parallel_rank,
                     self.pipeline_parallel_rank,
@@ -184,7 +179,7 @@ class LayerNorm2p5D(ParallelLayer):
         self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
         self.col_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
         self.dep_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
-        self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
+        self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
 
         # partitioning dimension
         self.partitioned_partition = divide(
@@ -233,16 +228,12 @@ class LayerNorm2p5D(ParallelLayer):
             Var_x = 1.0 / torch.sqrt(Var_x + self.variance_epsilon)
 
         output = _LayerNorm_2p5D.apply(x, E_x, Var_x, self.normalized_shape,
-                                       ParallelMode.PARALLEL_2P5D_ROW,
-                                       ParallelMode.PARALLEL_2P5D_COL,
-                                       ParallelMode.PARALLEL_2P5D_DEP)
+                                       ParallelMode.PARALLEL_2P5D_ROW)
         bias = Add_Bias_2p5D.apply(
             None, self.beta, self.partitioned_partition,
-            self.tesseract_dim, self.tesseract_dep,
+            self.tesseract_dim,
             self.row_rank, self.col_rank, self.dep_rank,
-            ParallelMode.PARALLEL_2P5D_ROW,
             ParallelMode.PARALLEL_2P5D_COL,
-            ParallelMode.PARALLEL_2P5D_DEP,
             True,
             self.data_parallel_rank,
             self.pipeline_parallel_rank,
@@ -251,11 +242,9 @@ class LayerNorm2p5D(ParallelLayer):
         )
         scale = Add_Bias_2p5D.apply(
             None, self.gamma, self.partitioned_partition,
-            self.tesseract_dim, self.tesseract_dep,
+            self.tesseract_dim,
             self.row_rank, self.col_rank, self.dep_rank,
-            ParallelMode.PARALLEL_2P5D_ROW,
             ParallelMode.PARALLEL_2P5D_COL,
-            ParallelMode.PARALLEL_2P5D_DEP,
             True,
             self.data_parallel_rank,
             self.pipeline_parallel_rank,

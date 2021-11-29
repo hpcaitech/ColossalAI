@@ -7,6 +7,7 @@ from torch import Tensor
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device, empty_cache
+from torch.cuda.amp import custom_bwd, custom_fwd
 
 
 def get_parallel_group(parallel_mode: ParallelMode):
@@ -26,18 +27,17 @@ class Matmul_AB_2p5D(torch.autograd.Function):
     """
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 A: Tensor,
                 B: Tensor,
                 tesseract_dim: int,
-                tesseract_dep: int,
                 out_shape: Tuple[int, ...],
                 row_rank: int,
                 col_rank: int,
                 dep_rank: int,
                 row_parallel_mode: ParallelMode,
                 col_parallel_mode: ParallelMode,
-                dep_parallel_mode: ParallelMode,
                 data_parallel_rank: int,
                 pipeline_parallel_rank: int,
                 pipeline_parallel_size: int,
@@ -77,13 +77,11 @@ class Matmul_AB_2p5D(torch.autograd.Function):
 
         if ctx:
             ctx.tesseract_dim = tesseract_dim
-            ctx.tesseract_dep = tesseract_dep
             ctx.row_rank = row_rank
             ctx.col_rank = col_rank
             ctx.dep_rank = dep_rank
             ctx.row_parallel_mode = row_parallel_mode
             ctx.col_parallel_mode = col_parallel_mode
-            ctx.dep_parallel_mode = dep_parallel_mode
             ctx.A_shape = A_shape
             ctx.B_shape = B_shape
             ctx.data_parallel_rank = data_parallel_rank
@@ -94,34 +92,32 @@ class Matmul_AB_2p5D(torch.autograd.Function):
         return out
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         A, B = ctx.saved_tensors
-        A_grad = Matmul_ABT_2p5D.forward(
-            None,
-            output_grad, B,
-            ctx.tesseract_dim, ctx.tesseract_dep, ctx.A_shape,
-            ctx.row_rank, ctx.col_rank, ctx.dep_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.dep_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
-        B_grad = Matmul_ATB_2p5D.forward(
-            None,
-            A, output_grad,
-            ctx.tesseract_dim, ctx.tesseract_dep, ctx.B_shape,
-            ctx.row_rank, ctx.col_rank, ctx.dep_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.dep_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
+        with torch.no_grad():
+            A_grad = Matmul_ABT_2p5D.apply(
+                output_grad, B,
+                ctx.tesseract_dim, ctx.A_shape,
+                ctx.row_rank, ctx.col_rank, ctx.dep_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
+            B_grad = Matmul_ATB_2p5D.apply(
+                A, output_grad,
+                ctx.tesseract_dim, ctx.B_shape,
+                ctx.row_rank, ctx.col_rank, ctx.dep_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
@@ -130,18 +126,17 @@ class Matmul_ABT_2p5D(torch.autograd.Function):
     """
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 A: Tensor,
                 B: Tensor,
                 tesseract_dim: int,
-                tesseract_dep: int,
                 out_shape: Tuple[int, ...],
                 row_rank: int,
                 col_rank: int,
                 dep_rank: int,
                 row_parallel_mode: ParallelMode,
                 col_parallel_mode: ParallelMode,
-                dep_parallel_mode: ParallelMode,
                 data_parallel_rank: int,
                 pipeline_parallel_rank: int,
                 pipeline_parallel_size: int,
@@ -180,13 +175,11 @@ class Matmul_ABT_2p5D(torch.autograd.Function):
 
         if ctx:
             ctx.tesseract_dim = tesseract_dim
-            ctx.tesseract_dep = tesseract_dep
             ctx.row_rank = row_rank
             ctx.col_rank = col_rank
             ctx.dep_rank = dep_rank
             ctx.row_parallel_mode = row_parallel_mode
             ctx.col_parallel_mode = col_parallel_mode
-            ctx.dep_parallel_mode = dep_parallel_mode
             ctx.A_shape = A_shape
             ctx.B_shape = B_shape
             ctx.data_parallel_rank = data_parallel_rank
@@ -197,34 +190,32 @@ class Matmul_ABT_2p5D(torch.autograd.Function):
         return out
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         A, B = ctx.saved_tensors
-        A_grad = Matmul_AB_2p5D.forward(
-            None,
-            output_grad, B,
-            ctx.tesseract_dim, ctx.tesseract_dep, ctx.A_shape,
-            ctx.row_rank, ctx.col_rank, ctx.dep_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.dep_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
-        B_grad = Matmul_ATB_2p5D.forward(
-            None,
-            output_grad, A,
-            ctx.tesseract_dim, ctx.tesseract_dep, ctx.B_shape,
-            ctx.row_rank, ctx.col_rank, ctx.dep_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.dep_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
+        with torch.no_grad():
+            A_grad = Matmul_AB_2p5D.apply(
+                output_grad, B,
+                ctx.tesseract_dim, ctx.A_shape,
+                ctx.row_rank, ctx.col_rank, ctx.dep_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
+            B_grad = Matmul_ATB_2p5D.apply(
+                output_grad, A,
+                ctx.tesseract_dim, ctx.B_shape,
+                ctx.row_rank, ctx.col_rank, ctx.dep_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
@@ -233,18 +224,17 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
     """
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 A: Tensor,
                 B: Tensor,
                 tesseract_dim: int,
-                tesseract_dep: int,
                 out_shape: Tuple[int, ...],
                 row_rank: int,
                 col_rank: int,
                 dep_rank: int,
                 row_parallel_mode: ParallelMode,
                 col_parallel_mode: ParallelMode,
-                dep_parallel_mode: ParallelMode,
                 data_parallel_rank: int,
                 pipeline_parallel_rank: int,
                 pipeline_parallel_size: int,
@@ -284,13 +274,11 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
 
         if ctx:
             ctx.tesseract_dim = tesseract_dim
-            ctx.tesseract_dep = tesseract_dep
             ctx.row_rank = row_rank
             ctx.col_rank = col_rank
             ctx.dep_rank = dep_rank
             ctx.row_parallel_mode = row_parallel_mode
             ctx.col_parallel_mode = col_parallel_mode
-            ctx.dep_parallel_mode = dep_parallel_mode
             ctx.A_shape = A_shape
             ctx.B_shape = B_shape
             ctx.data_parallel_rank = data_parallel_rank
@@ -301,34 +289,32 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
         return out
 
     @staticmethod
+    @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         A, B = ctx.saved_tensors
-        A_grad = Matmul_ABT_2p5D.forward(
-            None,
-            B, output_grad,
-            ctx.tesseract_dim, ctx.tesseract_dep, ctx.A_shape,
-            ctx.row_rank, ctx.col_rank, ctx.dep_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.dep_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
-        B_grad = Matmul_AB_2p5D.forward(
-            None,
-            A, output_grad,
-            ctx.tesseract_dim, ctx.tesseract_dep, ctx.B_shape,
-            ctx.row_rank, ctx.col_rank, ctx.dep_rank,
-            ctx.row_parallel_mode,
-            ctx.col_parallel_mode,
-            ctx.dep_parallel_mode,
-            ctx.data_parallel_rank,
-            ctx.pipeline_parallel_rank,
-            ctx.pipeline_parallel_size,
-            ctx.tensor_parallel_size
-        )
+        with torch.no_grad():
+            A_grad = Matmul_ABT_2p5D.apply(
+                B, output_grad,
+                ctx.tesseract_dim, ctx.A_shape,
+                ctx.row_rank, ctx.col_rank, ctx.dep_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
+            B_grad = Matmul_AB_2p5D.apply(
+                A, output_grad,
+                ctx.tesseract_dim, ctx.B_shape,
+                ctx.row_rank, ctx.col_rank, ctx.dep_rank,
+                ctx.row_parallel_mode,
+                ctx.col_parallel_mode,
+                ctx.data_parallel_rank,
+                ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size,
+                ctx.tensor_parallel_size
+            )
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
@@ -337,18 +323,16 @@ class Add_Bias_2p5D(torch.autograd.Function):
     """
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 input: Tensor,
                 bias: Tensor,
                 output_size_per_partition: int,
                 tesseract_dim: int,
-                tesseract_dep: int,
                 row_rank: int,
                 col_rank: int,
                 dep_rank: int,
-                row_parallel_mode: ParallelMode,
                 col_parallel_mode: ParallelMode,
-                dep_parallel_mode: ParallelMode,
                 skip_bias_add: bool,
                 data_parallel_rank: int,
                 pipeline_parallel_rank: int,
@@ -371,10 +355,7 @@ class Add_Bias_2p5D(torch.autograd.Function):
         ctx.col_rank = col_rank
         ctx.dep_rank = dep_rank
         ctx.tesseract_dim = tesseract_dim
-        ctx.tesseract_dep = tesseract_dep
-        ctx.row_parallel_mode = row_parallel_mode
         ctx.col_parallel_mode = col_parallel_mode
-        ctx.dep_parallel_mode = dep_parallel_mode
         ctx.bias = skip_bias_add
         ctx.data_parallel_rank = data_parallel_rank
         ctx.pipeline_parallel_rank = pipeline_parallel_rank
@@ -388,15 +369,13 @@ class Add_Bias_2p5D(torch.autograd.Function):
             return output
 
     @staticmethod
-    def backward(ctx, output_grad):
+    @custom_bwd
+    def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         row_rank = ctx.row_rank
         col_rank = ctx.col_rank
         dep_rank = ctx.dep_rank
         tesseract_dim = ctx.tesseract_dim
-        tesseract_dep = ctx.tesseract_dep
-        row_parallel_mode = ctx.row_parallel_mode
         col_parallel_mode = ctx.col_parallel_mode
-        dep_parallel_mode = ctx.dep_parallel_mode
         data_parallel_rank = ctx.data_parallel_rank
         pipeline_parallel_rank = ctx.pipeline_parallel_rank
         pipeline_parallel_size = ctx.pipeline_parallel_size
@@ -428,29 +407,25 @@ class Add_Bias_2p5D(torch.autograd.Function):
 
 class _LayerNorm_2p5D(torch.autograd.Function):
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx: Any,
                 input: Tensor,
                 E_x: Tensor,
                 Var_x: Tensor,
                 hidden_size: int,
-                row_parallel_mode: ParallelMode,
-                col_parallel_mode: ParallelMode,
-                dep_parallel_mode: ParallelMode) -> Tensor:
+                row_parallel_mode: ParallelMode) -> Tensor:
         input = input - E_x
         # in here, input = x - E[x], Var_x = 1 / sqrt(Var[x] + eps)
         ctx.hidden_size = hidden_size
         output = input * Var_x
         ctx.save_for_backward(output, Var_x)
         ctx.row_parallel_mode = row_parallel_mode
-        ctx.col_parallel_mode = col_parallel_mode
-        ctx.dep_parallel_mode = dep_parallel_mode
         return output
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, output_grad):
         row_parallel_mode = ctx.row_parallel_mode
-        col_parallel_mode = ctx.col_parallel_mode
-        dep_parallel_mode = ctx.dep_parallel_mode
         x, Var_x = ctx.saved_tensors
         # in here, Var_x = 1 / sqrt(Var[x] + eps), x = (x - E[x]) * Var_x
         with torch.no_grad():
@@ -473,36 +448,37 @@ class _LayerNorm_2p5D(torch.autograd.Function):
         return input_grad, None, None, None, None, None, None
 
 
-class Sum_2p5D(torch.autograd.Function):
-    """Compute the sum of input tensors
-    """
+# class Sum_2p5D(torch.autograd.Function):
+#     """Compute the sum of input tensors
+#     """
 
-    @staticmethod
-    def forward(ctx,
-                inputs,
-                dim,
-                tesseract_dim,
-                row_parallel_mode,
-                keepdim=False):
-        # input: [b/q, s, h/q]
-        empty_cache()
-        ctx.save_for_backward(inputs)
-        # sum: [b/q, s]
-        out = torch.sum(inputs, dim=dim, keepdim=keepdim)
-        torch.distributed.all_reduce(
-            out, group=gpc.get_group(row_parallel_mode))
-        return out
+#     @staticmethod
+#     def forward(ctx,
+#                 inputs,
+#                 dim,
+#                 tesseract_dim,
+#                 row_parallel_mode,
+#                 keepdim=False):
+#         # input: [b/q, s, h/q]
+#         empty_cache()
+#         ctx.save_for_backward(inputs)
+#         # sum: [b/q, s]
+#         out = torch.sum(inputs, dim=dim, keepdim=keepdim)
+#         torch.distributed.all_reduce(
+#             out, group=gpc.get_group(row_parallel_mode))
+#         return out
 
-    @staticmethod
-    def backward(ctx, output_grad):
-        with torch.no_grad():
-            inputs = ctx.saved_tensors
-            input_grad = torch.ones(inputs.shape, dtype=output_grad.dtype)
-        return input_grad, None, None, None, None, None
+#     @staticmethod
+#     def backward(ctx, output_grad):
+#         with torch.no_grad():
+#             inputs = ctx.saved_tensors
+#             input_grad = torch.ones(inputs.shape, dtype=output_grad.dtype)
+#         return input_grad, None, None, None, None, None
 
 
 class _ViT_Split_2p5D(torch.autograd.Function):
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx, inputs, batch_size,
                 tesseract_dim, tesseract_dep,
                 xz_parallel_mode):
@@ -510,7 +486,7 @@ class _ViT_Split_2p5D(torch.autograd.Function):
         # output: [b/dq, s, h/q]
         empty_cache()
 
-        ctx.batch_size = batch_size
+        ctx.BATCH_SIZE = batch_size
         ctx.tesseract_dim = tesseract_dim
         ctx.tesseract_dep = tesseract_dep
         ctx.xz_parallel_mode = xz_parallel_mode
@@ -521,11 +497,12 @@ class _ViT_Split_2p5D(torch.autograd.Function):
         return output
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, output_grad):
         # output_grad: [b/dq, s, h/q]
         # grads: [b, s, h/q]
         # *
-        grads_shape = (ctx.batch_size,) + output_grad.shape[1:]
+        grads_shape = (ctx.BATCH_SIZE,) + output_grad.shape[1:]
         grads = torch.empty(grads_shape,
                             dtype=output_grad.dtype,
                             device=get_current_device())
