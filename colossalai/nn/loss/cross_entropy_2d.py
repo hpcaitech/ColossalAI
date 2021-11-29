@@ -18,9 +18,7 @@ class _ParallelCrossEntropyLossFunction_2D(torch.autograd.Function):
     def forward(ctx, logits, targets):
         # logits: [b/q, h/q]
         # labels: [b/q]
-        # loss: [b/q]
-        # vocab_parallel_logits: [b/q, s, v/q]
-        # target: [b/q, s]
+
         logits_max = torch.max(logits, dim=-1)[0]
         torch.distributed.all_reduce(
             logits_max,
