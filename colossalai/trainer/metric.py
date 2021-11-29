@@ -211,7 +211,6 @@ class Accuracy(Metric):
     def is_better(a, b) -> bool:
         return a > b
 
-
 class Accuracy2D(Accuracy):
     """A metric collector for accuracy. It only works for classification
     tasks. This class is the same as :class:`Accuracy` but used in 2D 
@@ -240,6 +239,38 @@ class Accuracy2D(Accuracy):
             ParallelMode.PARALLEL_2D_COL,
             0,
         )
+        # update
+        preds = torch.argmax(logits, dim=-1)
+        correct = torch.sum(label == preds)
+        self.last_step_sum.fill_(label.size(0))
+        self.last_step_correct.fill_(correct)
+        self.accumulated_sum += self.last_step_sum
+        self.accumulated_correct += self.last_step_correct
+
+class Accuracy1D(Accuracy):
+    """A metric collector for accuracy. It only works for classification
+    tasks. This class is the same as :class:`Accuracy` but used in 2D 
+    model parallelism.
+
+    :param epoch_only: Whether the metric only read for the full epoch
+    :type epoch_only: bool
+    """
+
+    def __init__(self, epoch_only: bool):
+        super().__init__(epoch_only=epoch_only)
+
+    def update(self, logits, label) -> None:
+        if isinstance(logits, (list, tuple)):
+            logits = logits[0]
+        if isinstance(label, (list, tuple)):
+            label = label[0]
+
+        logits = _gather(
+            logits,
+            ParallelMode.PARALLEL_1D,
+            1
+        )
+
         # update
         preds = torch.argmax(logits, dim=-1)
         correct = torch.sum(label == preds)
