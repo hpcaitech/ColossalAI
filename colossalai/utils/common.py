@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 import torch.distributed as dist
-
+from contextlib import contextmanager
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 
@@ -26,17 +26,34 @@ def sync_model_param_in_dp(model):
 
     :param model: A pyTorch nn.model on whose parameters you check the consistency
     '''
-    
+
     if gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1:
         for param in model.parameters():
             ranks = gpc.get_ranks_in_group(ParallelMode.DATA)
-            dist.broadcast(param, src=ranks[0], group=gpc.get_group(ParallelMode.DATA))
+            dist.broadcast(
+                param, src=ranks[0], group=gpc.get_group(ParallelMode.DATA))
+
 
 def is_dp_rank_0():
     return not gpc.is_initialized(ParallelMode.DATA) or gpc.is_first_rank(ParallelMode.DATA)
 
+
 def is_tp_rank_0():
     return not gpc.is_initialized(ParallelMode.TENSOR) or gpc.is_first_rank(ParallelMode.TENSOR)
 
+
 def is_no_pp_or_last_stage():
     return not gpc.is_initialized(ParallelMode.PIPELINE) or gpc.is_last_rank(ParallelMode.PIPELINE)
+
+
+def is_using_ddp():
+    return gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1
+
+
+@contextmanager
+def ConditionalContext(context_manager, enable=True):
+    if enable:
+        with context_manager:
+            yield
+    else:
+        yield

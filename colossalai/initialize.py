@@ -11,7 +11,7 @@ from typing import Tuple
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-
+from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.engine import AMP_TYPE, NoPipelineSchedule, PipelineSchedule
 from colossalai.engine import Engine
 from colossalai.logging import get_global_dist_logger, init_global_dist_logger
@@ -22,7 +22,7 @@ from .builder import (ModelInitializer, build_dataset, build_loss,
                       build_optimizer_wrapper, build_schedule)
 from .context import Config, ParallelMode
 from .core import global_context as gpc
-from .utils import get_current_device, sync_model_param_in_dp
+from .utils import get_current_device, sync_model_param_in_dp, is_using_ddp
 
 
 def parse_args():
@@ -276,6 +276,8 @@ def initialize(config: Union[str, dict] = None,
         model = model.half()
         logger.info("Model is cast to fp16", ranks=[0])
 
+    if is_using_ddp():
+        model = DDP(model, process_group=gpc.get_group(ParallelMode.DATA))
     # training data
     if callable(train_dataloader):
         logger.info(

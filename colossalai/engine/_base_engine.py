@@ -10,7 +10,8 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_global_dist_logger
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
-                           ZeroRedundancyOptimizer_Level_3)
+                           ZeroRedundancyOptimizer_Level_3, model)
+from colossalai.utils import is_using_ddp, ConditionalContext
 from .schedule import BaseSchedule
 
 
@@ -71,13 +72,14 @@ class Engine:
                 "Training with zero is detected, ZeROGradientHandler is automatically "
                 "added even though not specified in the configuration",
                 ranks=[0])
-        elif gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(
-                ParallelMode.DATA) > 1:
-            gradient_handlers = [dict(type='DataParallelGradientHandler')]
-            self._logger.info(
-                "Data parallel training is detected, DataParallelGradientHandler is automatically "
-                "added even though not specified in the configuration",
-                ranks=[0])
+        # elif gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(
+        #         ParallelMode.DATA) > 1:
+        #     gradient_handlers = [dict(type='DataParallelGradientHandler')]
+        #     self._logger.info(
+        #         "Data parallel training is detected, DataParallelGradientHandler is automatically "
+        #         "added even though not specified in the configuration",
+        #         ranks=[0])
+        # FIXME: check compatibility with pipeline
 
         if gradient_handlers is None:
             self._logger.warning(
@@ -147,17 +149,23 @@ class Engine:
 
         # differentiate training and eval with grad accum
         if self.training:
-            for i in range(self._grad_accum_size):
-                output, label, loss = self._schedule.forward_backward_step(
-                    data_iter, self._model, self._criterion, self._optimizer,
-                    forward_only=False,
-                    grad_accum_size=self._grad_accum_size,
-                    return_loss=return_loss)
-
-                if i == self._grad_accum_size - 1:
-                    # all reduce gradients
-                    self.handle_gradient()
-                    self._schedule.optimizer_step(self._model, self._optimizer, self._grad_clip)
+            with ConditionalContext(self._model.no_sync(), enable=is_using_ddp()):
+                for i in range(self._grad_accum_size - 1):
+                    # FIXME: accum output tensors
+                    output, label, loss = self._schedule.forward_backward_step(
+                        data_iter, self._model, self._criterion, self._optimizer,
+                        forward_only=False,
+                        grad_accum_size=self._grad_accum_size,
+                        return_loss=return_loss)
+            output, label, loss = self._schedule.forward_backward_step(
+                data_iter, self._model, self._criterion, self._optimizer,
+                forward_only=False,
+                grad_accum_size=self._grad_accum_size,
+                return_loss=return_loss)
+            # all reduce gradients
+            self.handle_gradient()
+            self._schedule.optimizer_step(
+                self._model, self._optimizer, self._grad_clip)
         else:
             output, label, loss = self._schedule.forward_backward_step(
                 data_iter, self._model, self._criterion, self._optimizer,
