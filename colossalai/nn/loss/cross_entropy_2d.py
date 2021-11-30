@@ -7,18 +7,18 @@ from colossalai.core import global_context as gpc
 from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization, get_summa_dim_from_env
 from colossalai.registry import LOSSES
 from colossalai.utils import get_current_device
+from torch.cuda.amp import custom_bwd, custom_fwd
 
 
 class _ParallelCrossEntropyLossFunction_2D(torch.autograd.Function):
     ### Modified based on megatron.mpu.cross_entropy ###
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, logits, targets):
         # logits: [b/q, h/q]
         # labels: [b/q]
-        # loss: [b/q]
-        # vocab_parallel_logits: [b/q, s, v/q]
-        # target: [b/q, s]
+
         logits_max = torch.max(logits, dim=-1)[0]
         torch.distributed.all_reduce(
             logits_max,
@@ -58,6 +58,7 @@ class _ParallelCrossEntropyLossFunction_2D(torch.autograd.Function):
         return loss
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, output_grad):
         # Retreive tensors from the forward path.
         softmax, target_mask, masked_target = ctx.saved_tensors
@@ -91,12 +92,14 @@ class _ReduceByColumn(torch.autograd.Function):
         return input_
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, input_):
         dist.all_reduce(input_, group=gpc.get_group(
             ParallelMode.PARALLEL_2D_COL))
         return input_
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, grad_output):
         return grad_output
 

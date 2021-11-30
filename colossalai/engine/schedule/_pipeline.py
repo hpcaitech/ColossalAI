@@ -157,7 +157,8 @@ class PipelineSchedule(BaseSchedule):
             if return_loss:
                 input_tensor, label = self.load_micro_batch()
                 loss_reduced = criterion(output_tensor, *label) \
-                    / (self.num_microbatches * grad_accum_size)
+                               / (self.num_microbatches * grad_accum_size)
+
                 return_tensors.append(
                     tuple((output_tensor, label[0], loss_reduced)))
                 return loss_reduced

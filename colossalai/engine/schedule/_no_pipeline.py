@@ -13,6 +13,8 @@ except:
 
 from typing import Iterable
 
+import torch
+
 import torch.nn as nn
 from torch.optim import Optimizer
 
@@ -128,7 +130,14 @@ class NoPipelineSchedule(BaseSchedule):
         loss = None
 
         # forward
-        if self.fp16 and self.amp_type == AMP_TYPE.TORCH:
+        if forward_only:
+            with torch.no_grad():
+                output = model(*data)
+                if not isinstance(output, (tuple, list)):
+                    output = (output,)
+                if return_loss:
+                    loss = criterion(*output, *label)
+        elif self.fp16 and self.amp_type == AMP_TYPE.TORCH:
             with torch_amp.autocast():
                 output = model(*data)
                 if not isinstance(output, (tuple, list)):
