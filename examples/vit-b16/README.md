@@ -47,3 +47,8 @@ Since Mixup is used as data augmentation, we define the loss function of Mixup h
 
 `hooks.py`
 We define hook functions that record running information to help debugging.
+
+# How to build TFRecords dataset
+
+As we use [DALI](https://github.com/NVIDIA/DALI) to read data, we use the TFRecords dataset instead of raw Imagenet dataset. If you don't have TFRecords dataset, follow [imagenet-tools](https://github.com/ver217/imagenet-tools) to build one.
+
