@@ -278,6 +278,8 @@ def initialize(config: Union[str, dict] = None,
 
     if is_using_ddp() and not is_using_pp():
         model = DDP(model, process_group=gpc.get_group(ParallelMode.DATA))
+        logger.info(
+            'Model is using torch.nn.parallel.DistributedDataParallel', ranks=[0])
     # training data
     if callable(train_dataloader):
         logger.info(

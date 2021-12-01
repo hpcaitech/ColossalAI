@@ -152,7 +152,6 @@ class Engine:
             loss = torch.zeros(1, device=get_current_device())
             with ConditionalContext(self._model.no_sync(), enable=is_using_ddp() and not is_using_pp()):
                 for i in range(self._grad_accum_size - 1):
-                    # FIXME: accum output tensors
                     output, label, loss_ = self._schedule.forward_backward_step(
                         data_iter, self._model, self._criterion, self._optimizer,
                         forward_only=False,
