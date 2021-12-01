@@ -292,7 +292,7 @@ def initialize(config: Union[str, dict] = None,
         logger.info('Train dataset is ready.', ranks=[0])
 
         train_dataloader = get_dataloader(train_dataset,
-                                          gpc.config.get('seed', 1024),
+                                          gpc.config.get('seed', 42),
                                           True,
                                           **gpc.config.train_data.dataloader,
                                           )
