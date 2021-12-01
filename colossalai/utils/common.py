@@ -50,6 +50,10 @@ def is_using_ddp():
     return gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1
 
 
+def is_using_pp():
+    return gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1
+
+
 @contextmanager
 def ConditionalContext(context_manager, enable=True):
     if enable:

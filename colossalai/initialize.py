@@ -22,7 +22,7 @@ from .builder import (ModelInitializer, build_dataset, build_loss,
                       build_optimizer_wrapper, build_schedule)
 from .context import Config, ParallelMode
 from .core import global_context as gpc
-from .utils import get_current_device, sync_model_param_in_dp, is_using_ddp
+from .utils import get_current_device, sync_model_param_in_dp, is_using_ddp, is_using_pp
 
 
 def parse_args():
@@ -276,7 +276,7 @@ def initialize(config: Union[str, dict] = None,
         model = model.half()
         logger.info("Model is cast to fp16", ranks=[0])
 
-    if is_using_ddp():
+    if is_using_ddp() and not is_using_pp():
         model = DDP(model, process_group=gpc.get_group(ParallelMode.DATA))
     # training data
     if callable(train_dataloader):

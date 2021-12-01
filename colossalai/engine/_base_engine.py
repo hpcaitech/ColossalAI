@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import torch
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
 from colossalai.builder import build_gradient_handler
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.logging import get_global_dist_logger
 from colossalai.nn import (ZeroRedundancyOptimizer_Level_2,
-                           ZeroRedundancyOptimizer_Level_3, model)
-from colossalai.utils import is_using_ddp, ConditionalContext
+                           ZeroRedundancyOptimizer_Level_3)
+from colossalai.utils import is_using_ddp, ConditionalContext, is_using_pp
+from colossalai.utils.cuda import get_current_device
 from .schedule import BaseSchedule
 
 
@@ -72,14 +72,12 @@ class Engine:
                 "Training with zero is detected, ZeROGradientHandler is automatically "
                 "added even though not specified in the configuration",
                 ranks=[0])
-        # elif gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(
-        #         ParallelMode.DATA) > 1:
-        #     gradient_handlers = [dict(type='DataParallelGradientHandler')]
-        #     self._logger.info(
-        #         "Data parallel training is detected, DataParallelGradientHandler is automatically "
-        #         "added even though not specified in the configuration",
-        #         ranks=[0])
-        # FIXME: check compatibility with pipeline
+        elif is_using_ddp() and is_using_pp():
+            gradient_handlers = [dict(type='DataParallelGradientHandler')]
+            self._logger.info(
+                "Data parallel training is detected when using pipeline parallel, DataParallelGradientHandler is automatically "
+                "added even though not specified in the configuration",
+                ranks=[0])
 
         if gradient_handlers is None:
             self._logger.warning(
@@ -149,19 +147,30 @@ class Engine:
 
         # differentiate training and eval with grad accum
         if self.training:
-            with ConditionalContext(self._model.no_sync(), enable=is_using_ddp()):
+            outputs = []
+            labels = []
+            loss = torch.zeros(1, device=get_current_device())
+            with ConditionalContext(self._model.no_sync(), enable=is_using_ddp() and not is_using_pp()):
                 for i in range(self._grad_accum_size - 1):
                     # FIXME: accum output tensors
-                    output, label, loss = self._schedule.forward_backward_step(
+                    output, label, loss_ = self._schedule.forward_backward_step(
                         data_iter, self._model, self._criterion, self._optimizer,
                         forward_only=False,
                         grad_accum_size=self._grad_accum_size,
                         return_loss=return_loss)
-            output, label, loss = self._schedule.forward_backward_step(
+                    outputs.append(output)
+                    labels.append(label)
+                    loss.add_(loss_)
+            output, label, loss_ = self._schedule.forward_backward_step(
                 data_iter, self._model, self._criterion, self._optimizer,
                 forward_only=False,
                 grad_accum_size=self._grad_accum_size,
                 return_loss=return_loss)
+            outputs.append(output)
+            labels.append(label)
+            loss.add_(loss_)
+            output = self._accum_outputs(outputs)
+            label = self._accum_outputs(labels)
             # all reduce gradients
             self.handle_gradient()
             self._schedule.optimizer_step(
@@ -182,3 +191,7 @@ class Engine:
                     break
 
         return output, label, loss
+
+    @staticmethod
+    def _accum_outputs(tensor_tuples):
+        return tuple([torch.cat(x) for x in zip(*tensor_tuples)])
