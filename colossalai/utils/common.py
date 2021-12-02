@@ -26,7 +26,6 @@ def sync_model_param_in_dp(model):
 
     :param model: A pyTorch nn.model on whose parameters you check the consistency
     '''
-
     if gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1:
         for param in model.parameters():
             ranks = gpc.get_ranks_in_group(ParallelMode.DATA)

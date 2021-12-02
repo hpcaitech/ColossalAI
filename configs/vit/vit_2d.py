@@ -11,7 +11,7 @@ DIM = 512
 NUM_ATTENTION_HEADS = 2
 SUMMA_DIM = 2
 NUM_CLASSES = 10
-DEPTH = 1
+DEPTH = 6
 NUM_EPOCHS = 60
 
 train_data = dict(
@@ -30,6 +30,7 @@ train_data = dict(
     ),
     dataloader=dict(
         batch_size=BATCH_SIZE,
+        drop_last=True,
         pin_memory=True,
         shuffle=True,
     )
@@ -136,7 +137,7 @@ hooks = [
             warmup_steps=5
         )
     ),
-    dict(type='TensorboardHook', log_dir='./tb_logs'),
+    # dict(type='TensorboardHook', log_dir='./tb_logs'),
     # dict(type='SaveCheckpointHook', interval=5, checkpoint_dir='./ckpt'),
     # dict(type='LoadCheckpointHook', epoch=20, checkpoint_dir='./ckpt')
 ]
