@@ -7,47 +7,30 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_global_dist_logger
 from colossalai.trainer import Trainer
 from colossalai.utils import set_global_multitimer_status
-from dataloader.dali_dataloader import DALIDataLoader
+from dataloader.dataloader import CIFAR10Dataset_SimCLR
 
 
 def build_dali_train():
-    root = gpc.config.dali.root
-    train_pat = os.path.join(root, gpc.config.dali.train_path)
-    train_idx_pat = os.path.join(root, gpc.config.dali.train_idx_path)
-    return DALIDataLoader(
-        sorted(glob.glob(train_pat)),
-        sorted(glob.glob(train_idx_pat)),
+    train_dataset = CIFAR10Dataset_SimCLR(gpc.config.transform_cfg,
+                                    root=gpc.config.dali.root, 
+                                    train=True)
+    return torch.utils.data.DataLoader(
+        train_dataset,
+        shuffle=True, 
+        num_workers = 8,
         batch_size=gpc.config.BATCH_SIZE,
-        shard_id=gpc.get_local_rank(ParallelMode.DATA),
-        num_shards=gpc.get_world_size(ParallelMode.DATA),
-        training=True,
-        gpu_aug=gpc.config.dali.gpu_aug,
-        cuda=True,
-        resize=gpc.config.dali.resize,
-        crop=gpc.config.dali.crop,
-        mean_std=gpc.config.dali.mean_std
     )
-
 
 def build_dali_test():
-    root = gpc.config.dali.root
-    val_pat = os.path.join(root, gpc.config.dali.val_path)
-    val_idx_pat = os.path.join(root, gpc.config.dali.val_idx_path)
-    return DALIDataLoader(
-        sorted(glob.glob(val_pat)),
-        sorted(glob.glob(val_idx_pat)),
+    val_dataset = CIFAR10Dataset_SimCLR(gpc.config.transform_cfg,
+                                    root=gpc.config.dali.root, 
+                                    train=False)
+    return torch.utils.data.DataLoader(
+        val_dataset,
+        shuffle=False, 
+        num_workers = 8,
         batch_size=gpc.config.BATCH_SIZE,
-        shard_id=gpc.get_local_rank(ParallelMode.DATA),
-        num_shards=gpc.get_world_size(ParallelMode.DATA),
-        training=False,
-        # gpu_aug=gpc.config.dali.gpu_aug,
-        gpu_aug=False,
-        cuda=True,
-        resize=gpc.config.dali.resize,
-        crop=gpc.config.dali.crop,
-        mean_std=gpc.config.dali.mean_std
     )
-
 
 def main():
     engine, train_dataloader, test_dataloader = colossalai.initialize(
@@ -56,7 +39,7 @@ def main():
     )
 
     ## "LoadCheckpointHook" is not flexible enough to load parameters with a different architecture 
-    engine.model.load_state_dict(torch.load(f'./ckpt/{gpc.config.LOG_NAME}/epoch{gpc.config.PT_EPOCH}-tp0-pp0.pt')['model'], strict=False)
+    engine.model.load_state_dict(torch.load(f'./ckpt/{gpc.config.LOG_NAME}/epoch{gpc.config.EPOCH}-tp0-pp0.pt')['model'], strict=False)
 
     logger = get_global_dist_logger()
     set_global_multitimer_status(True)

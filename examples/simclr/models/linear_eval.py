@@ -12,8 +12,8 @@ class Linear_eval(nn.Module):
         self.backbone.requires_grad_(False)
         self.fc = nn.Linear(self.backbone.output_dim, class_num)
         
-    def forward(self, x, _):
-
-        out = self.backbone(x)
+    def forward(self, x):
+        x[0] = x[0].cuda()
+        out = self.backbone(x[0])
         out = self.fc(out)
         return out

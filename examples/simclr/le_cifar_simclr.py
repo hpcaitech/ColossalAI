@@ -1,15 +1,15 @@
 from colossalai.engine import AMP_TYPE
 from torch.nn import CrossEntropyLoss
 from hooks import TotalBatchsizeHook
+from torchvision.transforms import transforms
 from colossalai.registry import MODELS
 from models.linear_eval import Linear_eval
 
 
 MODELS.register_module(Linear_eval)
 
-LOG_NAME = 'cifar-simclr' # same as the log name of the simclr self-supervised training
-
-PT_EPOCH = 800 # specify which epoch of the pretrained model to load
+LOG_NAME = 'cifar-simclr35'
+EPOCH = 800
 
 BATCH_SIZE = 512
 NUM_EPOCHS = 50
@@ -18,6 +18,18 @@ parallel = dict(
     pipeline=dict(size=1),
     tensor=dict(size=1, mode=None),
 )
+
+transform_cfg = [
+    dict(type='RandomResizedCrop',
+        size=32,
+        scale=(0.2, 1.0)),
+    dict(type='RandomHorizontalFlip'),
+    dict(type='ToTensor'),
+    dict(type='Normalize',
+        mean=[0.4914, 0.4822, 0.4465],
+        std=[0.2023, 0.1994, 0.2010]),
+]
+
 
 optimizer = dict(
     type='FusedSGD',
@@ -66,16 +78,7 @@ logging = dict(
 )
 
 dali = dict(
-    root='../../../../../datasets/cifar10',
-    train_path='cifar10_train.tfrecord',
-    train_idx_path='cifar10_train.tfrecord.idx',
-    val_path='cifar10_test.tfrecord',
-    val_idx_path='cifar10_test.tfrecord.idx',
-    gpu_aug=True,
-    resize=32,
-    crop=32,
-    # mean_std=[[0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010]]
-    mean_std=[[127.5], [127.5]]
+    root='../../../../../datasets',
 )
 
 engine = dict(
