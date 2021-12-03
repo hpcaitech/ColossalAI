@@ -435,15 +435,18 @@ class ParallelContext:
         if torch.cuda.is_available():
             # create random seed for different parallel modes
             # data parallel seed are kept the same
-            tp_rank = self._local_ranks.get(ParallelMode.TENSOR, 0)
-            pp_rank = self._local_ranks.get(ParallelMode.PIPELINE, 0)
-            parallel_seed = seed + tp_rank + pp_rank * 1024
+            parallel_seed = seed
             add_seed(ParallelMode.DATA, parallel_seed)
+
+            # model parallel seeds are different across ranks
+            pipeline_offset = self._local_ranks.get(ParallelMode.PIPELINE, 0)
 
             # add seed for data parallel and tensor parallel only
             if self.is_initialized(ParallelMode.TENSOR):
-                dp_rank = self._local_ranks.get(ParallelMode.DATA, 0) + 1
-                tp_seed = parallel_seed + dp_rank * 128
+                tp_rank = self.get_local_rank(ParallelMode.TENSOR)
+                # 100 is only to increase the diff in seeds between pipeline stages
+                tp_rank_with_offset = tp_rank + pipeline_offset * 1024
+                tp_seed = seed + tp_rank_with_offset
                 add_seed(ParallelMode.TENSOR, tp_seed)
 
             set_mode(ParallelMode.DATA)
