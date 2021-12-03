@@ -6,6 +6,7 @@ from colossalai import context
 
 import torch
 from torch import nn as nn, Tensor, distributed as dist
+from torch.nn.init import _calculate_fan_in_and_fan_out
 
 from colossalai.context import seed, ParallelMode
 from colossalai.core import global_context as gpc
@@ -15,8 +16,8 @@ from colossalai.registry import LAYERS
 from colossalai.utils import checkpoint
 from colossalai.utils import get_current_device
 from .layers import Linear1D_Col, Linear1D_Row
-from .._common_utils import set_tensor_parallel_attribute
 from ..base_layer import ParallelLayer
+from ..fused_bias_gelu import bias_gelu_impl
 
 
 @LAYERS.register_module
@@ -44,7 +45,8 @@ class ViTMLP1D(ParallelLayer):
                  dropout_prob: float = 0.,
                  dtype=None,
                  checkpoint: bool = False,
-                 skip_bias_add: bool = False
+                 skip_bias_add: bool = False,
+                 weight_init='torch'
                  ):
         super().__init__()
 
@@ -52,39 +54,50 @@ class ViTMLP1D(ParallelLayer):
         self.mlp_ratio = mlp_ratio
         self.checkpoint = checkpoint
         self.skip_bias_add = skip_bias_add
-        self.bias = not skip_bias_add
+        assert weight_init in ('torch', 'jax')
+
+        if act_func == 'fused_gelu':
+            self.act = bias_gelu_impl
+            skip_dense_1_add_bias = True
+        else:
+            self.act = ACT2FN[act_func]
+            skip_dense_1_add_bias = False
+
         # Project to mlp_ratio * h.
         self.dense_1 = Linear1D_Col(
             self.in_features,
             int(self.mlp_ratio * self.in_features),
-            bias=not skip_bias_add,
             dtype=dtype,
-            gather_output = False,
+            gather_output=False,
+            skip_bias_add=skip_dense_1_add_bias,
+            init_weight=weight_init, 
+            init_bias=weight_init
         )
 
-        self.act = ACT2FN[act_func]
 
         # Project back to h.
         self.dense_2 = Linear1D_Row(
             int(self.mlp_ratio * self.in_features),
             self.in_features,
-            bias=not skip_bias_add,
             dtype=dtype,
-            parallel_input = True,
+            parallel_input=True,
+            init_weight=weight_init, init_bias=weight_init
         )
 
         self.dropout = nn.Dropout(dropout_prob)
 
     def _forward(self, hidden_states: Tensor) -> Tensor:
-        intermediate_output = self.dense_1(hidden_states)
-        intermediate_output = self.act(intermediate_output)
+        if self.act == bias_gelu_impl:
+            intermediate_output, bias = self.dense_1(hidden_states)
+            intermediate_output = self.act(intermediate_output, bias)
+        else:
+            intermediate_output = self.dense_1(hidden_states)
+            intermediate_output = self.act(intermediate_output)
 
         with seed(ParallelMode.TENSOR):
             intermediate_output = self.dropout(intermediate_output)
         output = self.dense_2(intermediate_output)
-
-        with seed(ParallelMode.TENSOR):
-            output = self.dropout(output)
+        output = self.dropout(output)
         return output
 
     def _checkpoint_forward(self, hidden_states: Tensor) -> Tensor:
@@ -121,7 +134,8 @@ class ViTSelfAttention1D(ParallelLayer):
                  attention_dropout_prob: float,
                  hidden_dropout_prob: float,
                  dtype=None,
-                 checkpoint: bool = False
+                 checkpoint: bool = False,
+                 weight_init='torch'
                  ):
         super().__init__()
 
@@ -131,11 +145,18 @@ class ViTSelfAttention1D(ParallelLayer):
         self.hidden_size_per_partition = divide(hidden_size, gpc.tensor_parallel_size)
 
         self.checkpoint = checkpoint
+        assert weight_init in ('torch', 'jax')
+        if weight_init == 'jax':
+            init_bias = 'zero'
+        else:
+            init_bias = weight_init
 
         self.query_key_value = Linear1D_Col(
             hidden_size,
             3 * hidden_size,
             dtype=dtype,
+            init_weight=weight_init, 
+            init_bias=init_bias
         )
         self.attention_dropout = nn.Dropout(attention_dropout_prob)
         self.dense = Linear1D_Row(
@@ -143,6 +164,7 @@ class ViTSelfAttention1D(ParallelLayer):
             hidden_size,
             dtype=dtype,
             parallel_input=True,
+            init_weight=weight_init, init_bias=init_bias
         )
         self.dropout = nn.Dropout(hidden_dropout_prob)
         self.softmax = nn.Softmax(dim=-1)
@@ -172,8 +194,8 @@ class ViTSelfAttention1D(ParallelLayer):
                                   :-2] + (self.hidden_size_per_partition,)
         context_layer = context_layer.reshape(new_context_layer_shape)
         output = self.dense(context_layer)
-        with seed(ParallelMode.TENSOR):
-            output = self.dropout(output)
+        output = self.dropout(output)
+
         return output
 
     def _checkpoint_forward(self, hidden_states: Tensor) -> Tensor:
@@ -185,82 +207,6 @@ class ViTSelfAttention1D(ParallelLayer):
         else:
             return self._forward(hidden_states)
 
-@LAYERS.register_module
-class ViTSelfAttention1DV2(ParallelLayer):
-    """Self-attention layer for 1D parallel Vision Transformer
-
-    :param hidden_size: hidden size
-    :type hidden_size: int
-    :param num_attention_heads: number of attention heads
-    :type num_attention_heads: int
-    :param attention_dropout_prob: dropout probability for attention layers
-    :type attention_dropout_prob: float
-    :param hidden_dropout_prob: dropout probability for hidden layers
-    :type hidden_dropout_prob: float
-    :param dtype: dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param checkpoint: whether to checkpoint the layer, defaults to False
-    :type checkpoint: bool, optional
-    """
-
-    def __init__(self,
-                 hidden_size: int,
-                 num_attention_heads: int,
-                 attention_dropout_prob: float,
-                 hidden_dropout_prob: float,
-                 dtype=None,
-                 checkpoint: bool = False
-                 ):
-        super().__init__()
-
-        self.hidden_size = hidden_size
-        self.num_attention_heads = divide(num_attention_heads, gpc.tensor_parallel_size)
-        self.attention_head_size = divide(hidden_size, num_attention_heads)
-        self.hidden_size_per_partition = divide(hidden_size, gpc.tensor_parallel_size)
-
-        self.checkpoint = checkpoint
-
-        self.query_key_value = Linear1D_Col(
-            hidden_size,
-            3 * hidden_size,
-            dtype=dtype,
-        )
-        self.attention_dropout = nn.Dropout(attention_dropout_prob)
-        self.dense = Linear1D_Row(
-            hidden_size,
-            hidden_size,
-            dtype=dtype,
-            parallel_input=True,
-        )
-        self.dropout = nn.Dropout(hidden_dropout_prob)
-        self.softmax = nn.Softmax(dim=-1)
-        self.scale = self.num_attention_heads ** -0.5
-
-    def _forward(self, x: Tensor) -> Tensor:
-        B, N, C = x.shape
-        qkv = self.query_key_value(x).reshape(B, N, 3, self.num_attention_heads, C //
-                                  (self.num_attention_heads * gpc.tensor_parallel_size)).permute(2, 0, 3, 1, 4)
-        # make torchscript happy (cannot use tensor as tuple)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
-        with seed(ParallelMode.TENSOR):
-            attn = self.attention_dropout(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C // gpc.tensor_parallel_size)
-        x = self.dense(x)
-        with seed(ParallelMode.TENSOR):
-            x = self.dropout(x)
-        return x
-
-    def _checkpoint_forward(self, hidden_states: Tensor) -> Tensor:
-        return checkpoint(self._forward, hidden_states)
-
-    def forward(self, hidden_states: Tensor) -> Tensor:
-        if self.checkpoint:
-            return self._checkpoint_forward(hidden_states)
-        else:
-            return self._forward(hidden_states)
 
 @LAYERS.register_module
 class ViTHead1D(ParallelLayer):
@@ -278,14 +224,25 @@ class ViTHead1D(ParallelLayer):
                  hidden_size,
                  num_classes,
                  dtype=None,
+                 weight_init='torch'
                  ):
         super().__init__()
+
+        assert weight_init in ('torch', 'jax')
+        if weight_init == 'jax':
+            init_weight = 'zero'
+            init_bias = 'zero'
+        else:
+            init_weight = weight_init
+            init_bias = weight_init
 
         self.linear = Linear1D_Col(
             hidden_size,
             num_classes,
             dtype=dtype,
-            gather_output = True,
+            gather_output=True,
+            init_weight=init_weight,
+            init_bias=init_bias
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -294,7 +251,7 @@ class ViTHead1D(ParallelLayer):
         return x
 
 @LAYERS.register_module
-class ViTHeadNormal(ParallelLayer):
+class ViTHead(ParallelLayer):
     """Output layer for 1D parallel Vision Transformer
 
     :param hidden_size: hidden size
@@ -311,7 +268,6 @@ class ViTHeadNormal(ParallelLayer):
                  dtype=None,
                  ):
         super().__init__()
-
         self.linear = nn.Linear(
             hidden_size,
             num_classes,
@@ -354,7 +310,8 @@ class ViTPatchEmbedding1D(ParallelLayer):
                  patch_size,
                  embed_dim,
                  in_chans=3,
-                 flatten=True):
+                 flatten=True,
+                 weight_init='torch'):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -367,20 +324,20 @@ class ViTPatchEmbedding1D(ParallelLayer):
         self.flatten = flatten
         self.embed_dim = embed_dim
 
-        with seed(ParallelMode.TENSOR):
-            self.proj = nn.Conv2d(in_chans,
-                                  self.embed_dim,
-                                  kernel_size=patch_size,
-                                  stride=patch_size
-                                  )
+        self.proj = nn.Conv2d(in_chans,
+                                self.embed_dim,
+                                kernel_size=patch_size,
+                                stride=patch_size
+                                )
+
+        if weight_init == 'jax':
+            fan_in, _ = _calculate_fan_in_and_fan_out(self.proj.weight)
+            std = math.sqrt(1.0 / fan_in)
+            nn.init.trunc_normal_(self.proj.weight, std=std / .87962566103423978)
+            nn.init.zeros_(self.proj.bias)
 
         # sync
         self._broadcast_conv_params()
-        self._set_tensor_parallel_attribute()
-
-    def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute(self.proj.weight)
-        set_tensor_parallel_attribute(self.proj.bias)
 
     def _broadcast_conv_params(self) -> None:
         self.to(get_current_device())
@@ -435,29 +392,20 @@ class ViTTokenFuser1D(ParallelLayer):
 
         self.cls_token = nn.Parameter(torch.zeros(
             1, 1, self.embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(
+        self.pos_embed = nn.Parameter(torch.empty(
             1, self.num_patches + 1, self.embed_dim))
+        nn.init.trunc_normal_(self.pos_embed, std=.02)
 
         # move to cuda before broadcast
         self.to(get_current_device())
-
-        # sync param in both forward and backward
-        _cls_token = self.cls_token.view(-1)
-        _pos_embed = self.pos_embed.view(-1)
-        self._param = torch.cat([_cls_token, _pos_embed], dim=0)
-
+        dist.broadcast(self.pos_embed, 
+                    src=gpc.get_ranks_in_group(ParallelMode.TENSOR)[0], 
+                    group=gpc.get_group(ParallelMode.TENSOR))
         self.pos_drop = nn.Dropout(p=drop_rate)
-        self._set_tensor_parallel_attribute()
-
-    def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute(self.cls_token)
-        set_tensor_parallel_attribute(self.pos_embed)
 
     def forward(self, x: Tensor) -> Tensor:
-        # stole cls_tokens impl from Phil Wang, thanks
         cls_token = self.cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_token, x), dim=1)
-        with seed(ParallelMode.TENSOR):
-            x = self.pos_drop(x + self.pos_embed)
+        x = torch.cat((cls_token, x), dim=1)        
+        x = self.pos_drop(x + self.pos_embed)
         return x.contiguous()
 

@@ -282,19 +282,21 @@ class ViTPatchEmbedding2D(ParallelLayer):
         self.flatten = flatten
         self.embed_dim = embed_dim // (self.summa_dim ** 2)
 
-        self.proj = nn.Conv2d(in_chans,
-                              self.embed_dim,
-                              kernel_size=patch_size,
-                              stride=patch_size,
-                              device=get_current_device()
-                              )
+        with seed(ParallelMode.TENSOR):
+            self.proj = nn.Conv2d(in_chans,
+                                    self.embed_dim,
+                                    kernel_size=patch_size,
+                                    stride=patch_size,
+                                    device=get_current_device()
+                                    )
         self._set_tensor_parallel_attribute()
 
         if weight_init == 'jax':
-            fan_in, _ = _calculate_fan_in_and_fan_out(self.proj.weight)
-            std = math.sqrt(1.0 / fan_in)
-            nn.init.trunc_normal_(self.proj.weight, std=std / .87962566103423978)
-            nn.init.zeros_(self.proj.bias)
+            with seed(ParallelMode.TENSOR):
+                fan_in, _ = _calculate_fan_in_and_fan_out(self.proj.weight)
+                std = math.sqrt(1.0 / fan_in)
+                nn.init.trunc_normal_(self.proj.weight, std=std / .87962566103423978)
+                nn.init.zeros_(self.proj.bias)
 
     def _set_tensor_parallel_attribute(self):
         set_tensor_parallel_attribute(self.proj.weight)
@@ -368,7 +370,8 @@ class ViTTokenFuser2D(ParallelLayer):
         self.pos_embed = nn.Parameter(torch.empty(
             (1, self.num_patches + 1, self.embed_dim // (self.summa_dim ** 2)),
             device=get_current_device()))
-        nn.init.trunc_normal_(self.pos_embed, std=.02)
+        with seed(ParallelMode.TENSOR):
+            nn.init.trunc_normal_(self.pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
         self._set_tensor_parallel_attribute()
