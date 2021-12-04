@@ -73,7 +73,8 @@ class Linear2D(ParallelLayer):
             self.register_parameter('bias', None)
 
         # initialize parameters
-        self.reset_parameters(init_weight, init_bias)
+        with seed(ParallelMode.TENSOR):
+            self.reset_parameters(init_weight, init_bias)
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):

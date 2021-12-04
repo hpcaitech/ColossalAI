@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-
 import time
-
 from .cuda import synchronize
 
 
@@ -10,7 +8,6 @@ class Timer:
     '''
     A timer object which helps to log the execution times, and provides different tools to assess the times.
     '''
-
     def __init__(self):
         self._started = False
         self._start_time = time.time()
@@ -31,7 +28,6 @@ class Timer:
 
     def stop(self, keep_in_history: bool = False):
         '''Stop the timer and record the start-stop time interval. 
-
         :param keep_in_history: whether does it record into history each start-stop interval, defaults to False
         :type keep_in_history: bool, optional
         :return: start-stop interval
@@ -48,7 +44,6 @@ class Timer:
 
     def get_history_mean(self):
         '''mean of all history start-stop time intervals.
-
         :return: mean of time intervals
         :rtype: int
         '''
@@ -56,7 +51,6 @@ class Timer:
 
     def get_history_sum(self):
         '''add up all the start-stop time intervals.
-
         :return: sum of time intervals
         :rtype: int
         '''
@@ -64,7 +58,6 @@ class Timer:
 
     def get_elapsed_time(self):
         '''return the last start-stop time interval. *use it only when timer is not in progress*
-
         :return: the last time interval
         :rtype: int
         '''
@@ -89,7 +82,6 @@ class MultiTimer:
 
     def start(self, name: str):
         '''Start namely one of the timers
-
         :param name: timer's key
         :type name: str
         '''
@@ -100,7 +92,6 @@ class MultiTimer:
 
     def stop(self, name: str, keep_in_history: bool):
         '''Stop namely one of the timers.
-
         :param name: timer's key
         :param keep_in_history: whether does it record into history each start-stop interval
         :type keep_in_history: bool
@@ -112,7 +103,6 @@ class MultiTimer:
 
     def get_timer(self, name):
         '''Get timer by its name (from multitimer)
-
         :param name: timer's key
         :return: timer with the name you give correctly
         :rtype: Timer 
@@ -121,7 +111,6 @@ class MultiTimer:
 
     def reset(self, name=None):
         '''Reset timers.
-
         :param name: if name is designated, the named timer will be reset and others will not, defaults to None
         '''
         if self._on:
@@ -132,7 +121,6 @@ class MultiTimer:
                     timer.reset()
 
     def is_on(self):
-
         return self._on
 
     def set_status(self, mode: bool):

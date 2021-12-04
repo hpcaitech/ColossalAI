@@ -18,6 +18,7 @@ from ._operation import AllGatherLast, SplitFirst
 from .layers import Linear2D
 from .._common_utils import set_tensor_parallel_attribute
 from ..base_layer import ParallelLayer
+from ..fused_bias_gelu import bias_gelu_impl
 
 
 @LAYERS.register_module
@@ -55,15 +56,22 @@ class ViTMLP2D(ParallelLayer):
         self.checkpoint = checkpoint
         assert weight_init in ('torch', 'jax')
 
+        if act_func == 'fused_gelu':
+            self.act = bias_gelu_impl
+            skip_dense_1_add_bias = True
+        else:
+            self.act = ACT2FN[act_func]
+            skip_dense_1_add_bias = False
+
         # Project to mlp_ratio * h.
         self.dense_1 = Linear2D(
             self.in_features,
             self.mlp_ratio * self.in_features,
             dtype=dtype,
-            init_weight=weight_init, init_bias=weight_init
+            init_weight=weight_init, init_bias=weight_init,
+            skip_bias_add=skip_dense_1_add_bias
         )
 
-        self.act = ACT2FN[act_func]
 
         # Project back to h.
         self.dense_2 = Linear2D(
@@ -75,8 +83,12 @@ class ViTMLP2D(ParallelLayer):
         self.dropout = nn.Dropout(dropout_prob)
 
     def _forward(self, hidden_states: Tensor) -> Tensor:
-        intermediate_output = self.dense_1(hidden_states)
-        intermediate_output = self.act(intermediate_output)
+        if self.act == bias_gelu_impl:
+            intermediate_output, bias = self.dense_1(hidden_states)
+            intermediate_output = self.act(intermediate_output, bias)
+        else:
+            intermediate_output = self.dense_1(hidden_states)
+            intermediate_output = self.act(intermediate_output)
 
         with seed(ParallelMode.TENSOR):
             intermediate_output = self.dropout(intermediate_output)
@@ -270,19 +282,21 @@ class ViTPatchEmbedding2D(ParallelLayer):
         self.flatten = flatten
         self.embed_dim = embed_dim // (self.summa_dim ** 2)
 
-        self.proj = nn.Conv2d(in_chans,
-                              self.embed_dim,
-                              kernel_size=patch_size,
-                              stride=patch_size,
-                              device=get_current_device()
-                              )
+        with seed(ParallelMode.TENSOR):
+            self.proj = nn.Conv2d(in_chans,
+                                    self.embed_dim,
+                                    kernel_size=patch_size,
+                                    stride=patch_size,
+                                    device=get_current_device()
+                                    )
         self._set_tensor_parallel_attribute()
 
         if weight_init == 'jax':
-            fan_in, _ = _calculate_fan_in_and_fan_out(self.proj.weight)
-            std = math.sqrt(1.0 / fan_in)
-            nn.init.trunc_normal_(self.proj.weight, std=std / .87962566103423978)
-            nn.init.zeros_(self.proj.bias)
+            with seed(ParallelMode.TENSOR):
+                fan_in, _ = _calculate_fan_in_and_fan_out(self.proj.weight)
+                std = math.sqrt(1.0 / fan_in)
+                nn.init.trunc_normal_(self.proj.weight, std=std / .87962566103423978)
+                nn.init.zeros_(self.proj.bias)
 
     def _set_tensor_parallel_attribute(self):
         set_tensor_parallel_attribute(self.proj.weight)
@@ -356,7 +370,8 @@ class ViTTokenFuser2D(ParallelLayer):
         self.pos_embed = nn.Parameter(torch.empty(
             (1, self.num_patches + 1, self.embed_dim // (self.summa_dim ** 2)),
             device=get_current_device()))
-        nn.init.trunc_normal_(self.pos_embed, std=.02)
+        with seed(ParallelMode.TENSOR):
+            nn.init.trunc_normal_(self.pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
         self._set_tensor_parallel_attribute()
