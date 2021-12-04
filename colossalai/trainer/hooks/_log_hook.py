@@ -170,19 +170,23 @@ class LogTimingByEpochHook(EpochIntervalHook):
                  trainer: Trainer,
                  interval: int = 1,
                  priority: int = 10,
-                 log_eval: bool = True
+                 log_eval: bool = True,
+                 ignore_num_train_steps: int = 0
                  ) -> None:
         super().__init__(trainer=trainer, interval=interval, priority=priority)
         set_global_multitimer_status(True)
         self._global_timer = get_global_multitimer()
         self._log_eval = log_eval
         self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0()
+        self.ignore_num_train_steps = ignore_num_train_steps
 
     def _get_message(self):
         msg = []
         for timer_name, timer in self._global_timer:
             last_elapsed_time = timer.get_elapsed_time()
             if timer.has_history:
+                if timer_name == 'train-step':
+                    timer._history = timer._history[self.ignore_num_train_steps:]
                 history_mean = timer.get_history_mean()
                 history_sum = timer.get_history_sum()
                 msg.append(
@@ -201,7 +205,7 @@ class LogTimingByEpochHook(EpochIntervalHook):
         if self._is_epoch_to_log() and self._is_rank_to_log:
             msg = self._get_message()
             self.logger.info(
-                f'Training - Epoch {self.trainer.cur_epoch} - {self.__class__.__name__}: {msg}')
+                f'Training - Epoch {self.trainer.cur_epoch} - {self.__class__.__name__}: {msg}, num steps per epoch={self.trainer.steps_per_epoch}')
 
     def after_test_epoch(self):
         """Writes log after finishing a testing epoch.
