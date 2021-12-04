@@ -104,6 +104,7 @@ class Accuracy1DHook(MetricHook):
             self.metric.update(logits, label)
 
 
+
 @HOOKS.register_module
 class Accuracy2DHook(MetricHook):
     """Specialized hook class for :class:`Accuracy2D`.
