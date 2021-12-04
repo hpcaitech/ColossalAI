@@ -144,7 +144,7 @@ hooks = [
 
 parallel = dict(
     pipeline=dict(size=1),
-    tensor=dict(size=1, mode='2d'),
+    tensor=dict(size=4, mode='2d'),
 )
 
 # for fp16 training

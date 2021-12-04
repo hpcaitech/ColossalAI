@@ -113,7 +113,7 @@ class DynamicGradScaler:
             if self._hysteresis_tracker <= 0:
                 self._scale = torch.max(self._scale * self.backoff_factor,
                                         self.min_scale)
-            self._logger.info(f'overflow occurs, loss scale is adjusted to {self._scale}')
+            self._logger.info(f'overflow occurs, loss scale is adjusted to {self._scale}', ranks=[0])
         else:
             # If there is no nan/inf, increment the growth tracker.
             self._growth_tracker += 1
@@ -125,10 +125,10 @@ class DynamicGradScaler:
                 # and scale up the loss scale.
                 if self._max_scale is not None and self._scale >= self._max_scale:
                     self._logger.info(
-                        f'Current loss scale {self._scale} has reached the max scale {self._max_scale} allowed')
+                        f'Current loss scale {self._scale} has reached the max scale {self._max_scale} allowed', ranks=[0])
                 else:
                     self._scale = self._scale * self.growth_factor
-                    self._logger.info(f'no consecutive overflow, loss scale is adjusted to {self._scale}')
+                    self._logger.info(f'no consecutive overflow, loss scale is adjusted to {self._scale}', ranks=[0])
 
     def state_dict(self):
         state_dict = {}

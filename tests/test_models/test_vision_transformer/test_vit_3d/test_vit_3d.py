@@ -1,105 +1,205 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import time
-from pathlib import Path
 
-import torch
-from tqdm import tqdm
+import glob
+import os
 
 import colossalai
+import nvidia.dali.fn as fn
+import nvidia.dali.tfrecord as tfrec
+import torch
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_global_dist_logger
 from colossalai.trainer import Trainer
-from colossalai.trainer.metric import Accuracy3D
-from colossalai.utils import print_rank_0
+from colossalai.utils import (get_global_multitimer,
+                              set_global_multitimer_status)
+from nvidia.dali import types
+from nvidia.dali.pipeline import Pipeline
+from nvidia.dali.plugin.pytorch import DALIClassificationIterator
 
-CONFIG_PATH = Path(__file__).parent.parent.joinpath('configs/vit_3d.py')
+DATASET_PATH = str(os.environ['DATA'])
+# imagenet 100
+# TRAIN_RECS = '/project/scratch/p200012/imagenet-100/train/*'
+# VAL_RECS = '/project/scratch/p200012/imagenet-100/validation/*'
+# TRAIN_IDX = '/project/scratch/p200012/imagenet-100/idx_files/train/*'
+# VAL_IDX = '/project/scratch/p200012/imagenet-100/idx_files/validation/*'
 
-
-def _train_epoch(epoch, engine):
-    logger = get_global_dist_logger()
-    print_rank_0('[Epoch %d] training start' % (epoch), logger)
-    engine.train()
-
-    train_loss = 0
-    batch_cnt = 0
-    num_samples = 0
-    now = time.time()
-    epoch_start = now
-    progress = range(engine._schedule.num_steps)
-    if gpc.get_global_rank() == 0:
-        progress = tqdm(progress, desc='[Epoch %d]' % epoch, miniters=1)
-    for step in progress:
-        cur_lr = engine.get_lr()
-
-        _, targets, loss = engine.step()
-
-        batch_size = targets[0].size(0)
-        train_loss += loss.item()
-        num_samples += batch_size
-        batch_cnt += 1
-
-        batch_time = time.time() - now
-        now = time.time()
-        if gpc.get_global_rank() == 0:
-            print_features = dict(lr='%g' % cur_lr,
-                                  loss='%.3f' % (train_loss / (step + 1)),
-                                  throughput='%.3f (images/sec)' %
-                                             (batch_size / (batch_time + 1e-12)))
-            progress.set_postfix(**print_features)
-
-    epoch_end = time.time()
-    epoch_loss = train_loss / batch_cnt
-    epoch_throughput = num_samples / (epoch_end - epoch_start + 1e-12)
-    print_rank_0(
-        '[Epoch %d] Loss: %.3f | Throughput: %.3f (samples/sec)' %
-        (epoch, epoch_loss, epoch_throughput), logger)
+# imagenet 1000
+TRAIN_RECS = DATASET_PATH + '/train/*'
+VAL_RECS = DATASET_PATH + '/validation/*'
+TRAIN_IDX = DATASET_PATH + '/idx_files/train/*'
+VAL_IDX = DATASET_PATH + '/idx_files/validation/*'
 
 
-def _eval(epoch, engine):
-    logger = get_global_dist_logger()
-    engine.eval()
+class DaliDataloader(DALIClassificationIterator):
+    def __init__(self,
+                 tfrec_filenames,
+                 tfrec_idx_filenames,
+                 shard_id=0,
+                 num_shards=1,
+                 batch_size=128,
+                 num_threads=4,
+                 resize=256,
+                 crop=224,
+                 prefetch=2,
+                 training=True,
+                 gpu_aug=False,
+                 cuda=True):
+        pipe = Pipeline(
+            batch_size=batch_size,
+            num_threads=num_threads,
+            device_id=torch.cuda.current_device() if cuda else None,
+            seed=1024)
+        with pipe:
+            inputs = fn.readers.tfrecord(path=tfrec_filenames,
+                                         index_path=tfrec_idx_filenames,
+                                         random_shuffle=training,
+                                         shard_id=shard_id,
+                                         num_shards=num_shards,
+                                         initial_fill=10000,
+                                         read_ahead=True,
+                                         prefetch_queue_depth=prefetch,
+                                         name='Reader',
+                                         features={
+                                             'image/encoded':
+                                             tfrec.FixedLenFeature(
+                                                 (), tfrec.string, ""),
+                                             'image/class/label':
+                                             tfrec.FixedLenFeature([1],
+                                                                   tfrec.int64,
+                                                                   -1),
+                                         })
+            images = inputs["image/encoded"]
 
-    eval_loss = 0
-    acc = Accuracy3D(True, ParallelMode.PARALLEL_3D_OUTPUT,
-                     ParallelMode.PARALLEL_3D_WEIGHT)
-    total = 0
-    with torch.no_grad():
-        for _ in range(engine._schedule.num_steps):
-            outputs, targets, loss = engine.step()
-            if isinstance(outputs, (list, tuple)):
-                outputs = outputs[0]
-            if isinstance(targets, (list, tuple)):
-                targets = targets[0]
-            eval_loss += loss.item()
-            acc.update(outputs, targets)
-            total += targets.size(0)
+            if training:
+                images = fn.decoders.image(
+                    images,
+                    device='mixed' if gpu_aug else 'cpu',
+                    output_type=types.RGB)
+                images = fn.random_resized_crop(
+                    images, size=crop, device='gpu' if gpu_aug else 'cpu')
+                flip_lr = fn.random.coin_flip(probability=0.5)
+            else:
+                # decode jpeg and resize
+                images = fn.decoders.image(
+                    images,
+                    device='mixed' if gpu_aug else 'cpu',
+                    output_type=types.RGB)
+                images = fn.resize(images,
+                                   device='gpu' if gpu_aug else 'cpu',
+                                   resize_x=resize,
+                                   resize_y=resize,
+                                   dtype=types.FLOAT,
+                                   interp_type=types.INTERP_TRIANGULAR)
+                flip_lr = False
 
-        print_rank_0(
-            '[Epoch %d] Evaluation loss: %.3f | Acc: %.3f%%' %
-            (epoch, eval_loss / engine._schedule.num_steps,
-             acc.get_accumulated_value() * 100), logger)
+            # center crop and normalise
+            images = fn.crop_mirror_normalize(images,
+                                              dtype=types.FLOAT,
+                                              crop=(crop, crop),
+                                              mean=[127.5],
+                                              std=[127.5],
+                                              mirror=flip_lr)
+            label = inputs["image/class/label"] - 1  # 0-999
+            # LSG: element_extract will raise exception, let's flatten outside
+            # label = fn.element_extract(label, element_map=0)  # Flatten
+            if cuda:  # transfer data to gpu
+                pipe.set_outputs(images.gpu(), label.gpu())
+            else:
+                pipe.set_outputs(images, label)
+
+        pipe.build()
+        last_batch_policy = 'DROP' if training else 'PARTIAL'
+        super().__init__(pipe,
+                         reader_name="Reader",
+                         auto_reset=True,
+                         last_batch_policy=last_batch_policy)
+
+    def __iter__(self):
+        # if not reset (after an epoch), reset; if just initialize, ignore
+        if self._counter >= self._size or self._size < 0:
+            self.reset()
+        return self
+
+    def __next__(self):
+        data = super().__next__()
+        img, label = data[0]['data'], data[0]['label']
+        label = label.squeeze()
+        return (img, ), (label, )
 
 
-def train():
+def build_dali_train():
+    return DaliDataloader(sorted(glob.glob(TRAIN_RECS)),
+                          sorted(glob.glob(TRAIN_IDX)),
+                          batch_size=gpc.config.BATCH_SIZE //
+                          gpc.data_parallel_size,
+                          shard_id=gpc.get_local_rank(ParallelMode.DATA),
+                          num_shards=gpc.get_world_size(ParallelMode.DATA),
+                          training=True,
+                          gpu_aug=True,
+                          cuda=True)
+
+
+def build_dali_test():
+    return DaliDataloader(sorted(glob.glob(VAL_RECS)),
+                          sorted(glob.glob(VAL_IDX)),
+                          batch_size=gpc.config.BATCH_SIZE //
+                          gpc.data_parallel_size,
+                          shard_id=gpc.get_local_rank(ParallelMode.DATA),
+                          num_shards=gpc.get_world_size(ParallelMode.DATA),
+                          training=False,
+                          gpu_aug=True,
+                          cuda=True)
+
+
+def train_cifar():
     # init dist
-    engine, train_dataloader, test_dataloader = colossalai.initialize(CONFIG_PATH)
+    engine, train_dataloader, test_dataloader = colossalai.initialize()
     logger = get_global_dist_logger()
+    set_global_multitimer_status(True)
 
     logger.info("Engine is built", ranks=[0])
 
-    trainer = Trainer(engine=engine, verbose=True)
+    trainer = Trainer(engine=engine,
+                      timer=get_global_multitimer(),
+                      verbose=True)
     logger.info("Trainer is built", ranks=[0])
 
     logger.info("Train start", ranks=[0])
     trainer.fit(train_dataloader=train_dataloader,
                 test_dataloader=test_dataloader,
+                # epochs=gpc.config.num_epochs,
+                epochs=5,
+                hooks_cfg=gpc.config.hooks,
+                display_progress=True,
+                test_interval=1)
+
+
+def train_imagenet():
+    # init dist
+    engine, train_dataloader, test_dataloader = colossalai.initialize(
+        train_dataloader=build_dali_train, test_dataloader=build_dali_test)
+    logger = get_global_dist_logger()
+    set_global_multitimer_status(True)
+
+    logger.info("Engine is built", ranks=[0])
+
+    trainer = Trainer(engine=engine,
+                      timer=get_global_multitimer(),
+                      verbose=True)
+    logger.info("Trainer is built", ranks=[0])
+
+    logger.info("Train start", ranks=[0])
+    trainer.fit(train_dataloader=train_dataloader,
+                # test_dataloader=test_dataloader,
                 epochs=gpc.config.num_epochs,
+                max_steps=100,
                 hooks_cfg=gpc.config.hooks,
                 display_progress=True,
                 test_interval=1)
 
 
 if __name__ == '__main__':
-    train()
+    # train_cifar()
+    train_imagenet()
