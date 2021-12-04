@@ -31,14 +31,27 @@ class LRSchedulerHook(MetricHook):
         super().__init__(trainer=trainer, priority=priority)
         self.by_epoch = by_epoch
 
+        assert not ('warmup_epochs' in lr_scheduler_cfg and 'warmup_steps' in lr_scheduler_cfg), \
+            'Do not set both warmup_epochs and warmup_steps for lr_scheduler.'
+        warmup_steps = 0
         if by_epoch:
             total_steps = trainer.max_epochs
+            if 'warmup_epochs' in lr_scheduler_cfg:
+                warmup_steps = lr_scheduler_cfg['warmup_epochs']
+            elif 'warmup_steps' in lr_scheduler_cfg:
+                warmup_steps = lr_scheduler_cfg['warmup_steps']
         else:
             total_steps = trainer.max_epochs * trainer.steps_per_epoch
             if trainer.max_steps is not None:
                 total_steps = min(total_steps, trainer.max_steps)
+            if 'warmup_epochs' in lr_scheduler_cfg:
+                warmup_steps = lr_scheduler_cfg['warmup_epochs'] * trainer.steps_per_epoch
+            elif 'warmup_steps' in lr_scheduler_cfg:
+                warmup_steps = lr_scheduler_cfg['warmup_steps']
 
         lr_scheduler_cfg['total_steps'] = total_steps
+        lr_scheduler_cfg['warmup_steps'] = warmup_steps
+        lr_scheduler_cfg.pop('warmup_epochs', None)
 
         self.lr_scheduler = build_lr_scheduler(
             lr_scheduler_cfg, trainer.engine.optimizer)

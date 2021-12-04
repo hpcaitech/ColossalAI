@@ -10,14 +10,14 @@ CONFIG = dict(parallel=dict(pipeline=1, tensor=dict(mode='3d', size=8)),
               seed=0)
 
 
-def check_operations():
-    check_AB()
-    check_ABT()
-    check_ATB()
-    check_add()
-    check_mul()
-    check_sum()
-    # check_pooler()
+# def check_operations():
+#     check_AB()
+#     check_ABT()
+#     check_ATB()
+#     check_add()
+#     check_mul()
+#     check_sum()
+#     check_pooler()
 
 
 def check_layer():
@@ -48,7 +48,7 @@ def _test_main():
     torch.backends.cudnn.benchmark = True
 
     # check operation
-    check_operations()
+    # check_operations()
 
     # check layers
     check_layer()

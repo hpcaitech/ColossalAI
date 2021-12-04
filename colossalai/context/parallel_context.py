@@ -277,10 +277,18 @@ class ParallelContext:
         :type port: int, optional
         """
         # get config
-        rank = self._dist_args.local_rank
+        local_rank = self._dist_args.local_rank
+        rank = self._dist_args.rank
         world_size = self._dist_args.world_size
+        if local_rank is None:
+            local_rank = os.getenv('LOCAL_RANK')
+        if rank is None:
+            rank = os.getenv('RANK')
+        if world_size is None:
+            world_size = os.getenv('WORLD_SIZE')
         # default env config, overwrite by exporting
         # them in your bash script
+
         addr = os.getenv('MASTER_ADDR', 'localhost') if addr is None else addr
         port = os.getenv('MASTER_PORT', '8008') if port is None else port
         init_method = f'tcp://{addr}:{port}'
@@ -293,7 +301,8 @@ class ParallelContext:
         # None will give the default global process group for pytorch dist operations
         self._register_dist(rank, world_size, None,
                             list(range(world_size)), ParallelMode.GLOBAL)
-        self._global_ranks[ParallelMode.GLOBAL] = rank
+        self.add_global_rank(ParallelMode.GLOBAL, rank)
+        # self._global_ranks[ParallelMode.GLOBAL] = rank
 
     def _register_dist(self, local_rank, world_size,
                        process_group, ranks_in_group, mode):
@@ -426,18 +435,15 @@ class ParallelContext:
         if torch.cuda.is_available():
             # create random seed for different parallel modes
             # data parallel seed are kept the same
-            parallel_seed = seed
+            tp_rank = self._local_ranks.get(ParallelMode.TENSOR, 0)
+            pp_rank = self._local_ranks.get(ParallelMode.PIPELINE, 0)
+            parallel_seed = seed + tp_rank + pp_rank * 1024
             add_seed(ParallelMode.DATA, parallel_seed)
-
-            # model parallel seeds are different across ranks
-            pipeline_offset = self._local_ranks.get(ParallelMode.PIPELINE, 0)
 
             # add seed for data parallel and tensor parallel only
             if self.is_initialized(ParallelMode.TENSOR):
-                tp_rank = self.get_local_rank(ParallelMode.TENSOR)
-                # 100 is only to increase the diff in seeds between pipeline stages
-                tp_rank_with_offset = tp_rank + pipeline_offset * 1024
-                tp_seed = seed + tp_rank_with_offset
+                dp_rank = self._local_ranks.get(ParallelMode.DATA, 0) + 1
+                tp_seed = parallel_seed + dp_rank * 128
                 add_seed(ParallelMode.TENSOR, tp_seed)
 
             set_mode(ParallelMode.DATA)

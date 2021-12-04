@@ -5,7 +5,7 @@ import math
 import os
 
 import torch.distributed as dist
-from colossalai.constants import DEPTH_3D
+from colossalai.constants import DEPTH_3D, INPUT_GROUP_3D, WEIGHT_GROUP_3D, OUTPUT_GROUP_3D
 from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from ..parallel_mode import ParallelMode
@@ -18,7 +18,7 @@ def _check_depth_env_var(depth):
 
     if env_depth:
         assert int(env_depth) == depth, \
-            'SUMMA_DIM has been set in the current environment and ' \
+            'DEPTH_3D has been set in the current environment and ' \
             'does not match with the value passed to this initialized'
     else:
         os.environ[DEPTH_3D] = str(depth)
@@ -43,6 +43,7 @@ class Initializer_3D_Input(ProcessGroupInitializer):
         process_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_INPUT
+        os.environ[INPUT_GROUP_3D] = INPUT_GROUP_3D
 
         for h in range(self.num_group):
             for i in range(self.depth):
@@ -82,6 +83,7 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
         process_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_WEIGHT
+        os.environ[WEIGHT_GROUP_3D] = WEIGHT_GROUP_3D
 
         for h in range(self.num_group):
             for k in range(self.depth):
@@ -121,6 +123,7 @@ class Initializer_3D_Output(ProcessGroupInitializer):
         process_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_OUTPUT
+        os.environ[OUTPUT_GROUP_3D] = OUTPUT_GROUP_3D
 
         for h in range(self.num_group):
             for i in range(self.depth):

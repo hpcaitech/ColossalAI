@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from colossalai.builder import build_hooks
+from colossalai.core import global_context as gpc
 from colossalai.engine import Engine
 from colossalai.logging import get_global_dist_logger
 from colossalai.nn.data import DataParallelSampler
@@ -159,12 +160,21 @@ class Trainer:
             else:
                 progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
 
-        # train 1 epoch
+        # train 1 epoch        
+        # ### metric measured by zbian
+        # train_loss = 0
+        # batch_cnt = 0
+        # num_samples = 0
+        # ######
         self._call_hooks('before_train_epoch')
         self._call_timer(action='start', item='train-epoch')
         for i in progress:
             self._call_hooks('before_train_iter')
             self._call_timer(action='start', item='train-step')
+
+            # ### metric measured by zbian
+            # cur_lr = self._engine.optimizer.param_groups[0]['lr']
+            # ######
 
             if i == self._steps_per_epoch - 1:
                 is_last_iteration = True
@@ -178,6 +188,24 @@ class Trainer:
 
             self._cur_step += 1
 
+            # ### metric measured by zbian
+            # if display_progress:
+            #     if isinstance(label, (tuple, list)):
+            #         batch_size = label[0].size(0)
+            #     else:
+            #         batch_size = label.size(0)
+            #     batch_size *= self._engine._grad_accum_size * gpc.data_parallel_size
+            #     train_loss += loss.item()
+            #     num_samples += batch_size
+            #     batch_cnt += 1
+            #     batch_time = self._timer.get_timer('train-step').get_elapsed_time()
+            #     print_features = dict(lr='%g' % cur_lr,
+            #                         loss='%.3f' % (train_loss / (i + 1)),
+            #                         throughput='%.3f (samples/sec)' %
+            #                         (batch_size / (batch_time + 1e-12)))
+            #     progress.set_postfix(**print_features)
+            # ######
+
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
@@ -185,6 +213,16 @@ class Trainer:
         self._call_timer(action='stop', item='train-epoch', keep_in_history=True)
         self._call_hooks('after_train_epoch')
         self._call_timer(action='reset', item='train-step')
+        # ### metric measured by zbian
+        # if display_progress:
+        #     epoch_time = self._timer.get_timer('train-epoch').get_elapsed_time()
+        #     epoch_loss = train_loss / batch_cnt
+        #     epoch_throughput = num_samples / (epoch_time + 1e-12)
+        #     if display_progress:
+        #         self._logger.info(
+        #             '[Epoch %d] Loss: %.3f | Throughput: %.3f (samples/sec)' %
+        #             (epoch, epoch_loss, epoch_throughput))
+        # ######
 
     def _eval(self,
               test_dataloader: DataLoader,
