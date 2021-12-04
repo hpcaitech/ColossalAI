@@ -13,6 +13,7 @@ except:
 from ..multi_tensor_apply import multi_tensor_applier
 
 from colossalai.constants import IS_TENSOR_PARALLEL, TENSOR_PARALLEL_ATTRIBUTES, NUM_PARTITIONS
+import torch.distributed as dist
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 
@@ -84,11 +85,22 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in params)
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-        if gpc.is_initialized(ParallelMode.TENSOR):
-            # Take max across all model-parallel GPUs.
-            torch.distributed.all_reduce(total_norm_cuda,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=gpc.get_group(ParallelMode.TENSOR))
+        ops = []
+        # Take max across all model-parallel GPUs.
+        if gpc.is_initialized(ParallelMode.TENSOR) and gpc.get_world_size(ParallelMode.TENSOR) > 1:
+            ops.append(dist.all_reduce(total_norm_cuda,
+                                       op=dist.ReduceOp.MAX,
+                                       group=gpc.get_group(
+                                           ParallelMode.TENSOR),
+                                       async_op=True))
+        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
+            ops.append(dist.all_reduce(total_norm_cuda,
+                                       op=dist.ReduceOp.MAX,
+                                       group=gpc.get_group(
+                                           ParallelMode.PIPELINE),
+                                       async_op=True))
+        for req in ops:
+            req.wait()
         total_norm = total_norm_cuda[0].item()
     else:
         tensor_parallel_grads = []
@@ -108,13 +120,17 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
             tensor_parallel_norm = _calc_lp(tensor_parallel_grads, norm_type)
             no_tensor_parallel_grads = _calc_lp(
                 no_tensor_parallel_grads, norm_type)
+        # Sum across all model-parallel GPUs.
         if gpc.is_initialized(ParallelMode.TENSOR) and len(tensor_parallel_grads) > 0:
-            # Sum across all model-parallel GPUs.
-            torch.distributed.all_reduce(tensor_parallel_norm,
-                                         op=torch.distributed.ReduceOp.SUM,
-                                         group=gpc.get_group(ParallelMode.TENSOR))
-        total_norm = (tensor_parallel_norm +
-                      no_tensor_parallel_norm) ** (1.0 / norm_type)
+            dist.all_reduce(tensor_parallel_norm,
+                            op=dist.ReduceOp.SUM,
+                            group=gpc.get_group(ParallelMode.TENSOR))
+        total_norm = tensor_parallel_norm + no_tensor_parallel_norm
+        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
+            dist.all_reduce(total_norm,
+                            op=dist.ReduceOp.SUM,
+                            group=gpc.get_group(ParallelMode.PIPELINE))
+        total_norm = total_norm ** (1.0 / norm_type)
         if type(total_norm) == 'torch.cuda.FloatTensor':
             total_norm = total_norm.item()
 
@@ -149,9 +165,17 @@ def count_zeros_fp32(parameters):
             total_num_zeros = num_zeros + total_num_zeros
 
     # Sum across all model-parallel GPUs.
-    torch.distributed.all_reduce(total_num_zeros,
-                                 op=torch.distributed.ReduceOp.SUM,
-                                 group=gpc.get_group(ParallelMode.TENSOR))
+    ops = []
+    ops.append(dist.all_reduce(total_num_zeros,
+                               op=dist.ReduceOp.SUM,
+                               group=gpc.get_group(ParallelMode.TENSOR),
+                               async_op=True))
+    ops.append(dist.all_reduce(total_num_zeros,
+                               op=dist.ReduceOp.SUM,
+                               group=gpc.get_group(ParallelMode.PIPELINE),
+                               async_op=True))
+    for req in ops:
+        req.wait()
     total_num_zeros = total_num_zeros.item()
 
     return total_num_zeros

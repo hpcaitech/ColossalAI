@@ -85,25 +85,30 @@ class Matmul_AB_2D(torch.autograd.Function):
             ctx.save_for_backward(A, B)
 
         A_shape = A.shape
-        A = A.reshape((-1, A_shape[-1]))
+        A = A.reshape((-1, A_shape[-1])).contiguous()
         B_shape = B.shape
-        B = B.reshape((-1, B_shape[-1]))
+        B = B.reshape((-1, B_shape[-1])).contiguous()
         C_shape = (A.shape[0], B.shape[-1])
         C = torch.zeros(C_shape, dtype=A.dtype, device=get_current_device())
 
-        for i in range(summa_dim):
-            A_temp = A.clone()
-            B_temp = B.clone()
-            src_a = i + summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
-            dist.broadcast(A_temp, src=src_a,
-                           group=gpc.get_group(row_parallel_mode))
-            src_b = col_rank + summa_dim * i + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
-            dist.broadcast(B_temp, src=src_b,
-                           group=gpc.get_group(col_parallel_mode))
-            torch.addmm(C, A_temp, B_temp, out=C)
+        A_list = [torch.empty_like(A) for _ in range(gpc.get_world_size(row_parallel_mode)-1)]
+        B_list = [torch.empty_like(B) for _ in range(gpc.get_world_size(col_parallel_mode)-1)]
+        A_list.insert(gpc.get_local_rank(row_parallel_mode), A)
+        B_list.insert(gpc.get_local_rank(col_parallel_mode), B)
+        op_a = dist.all_gather(A_list, A, group=gpc.get_group(row_parallel_mode), async_op=True)
+        op_a.wait()
+        op_b = dist.all_gather(B_list, B, group=gpc.get_group(col_parallel_mode), async_op=True)
+        for op in [op_a, op_b]:
+            op.wait()
 
+        for i in range(summa_dim):
+            src_a = i + summa_dim * row_rank
+            src_b = i + summa_dim * col_rank
+            src_a = src_a % summa_dim
+            src_b = src_b % summa_dim
+            A_temp = A_list[src_a]
+            B_temp = B_list[src_b]
+            torch.addmm(C, A_temp, B_temp, out=C)
         out = C.reshape(out_shape)
 
         if ctx:

@@ -24,6 +24,8 @@ author = 'HPC-AI Technology Inc.'
 # The full version, including alpha/beta/rc tags
 release = '0.0.1'
 
+if 'SPHINX_LANG' in os.environ:
+    root_doc = f'index_{os.environ["SPHINX_LANG"]}'
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be

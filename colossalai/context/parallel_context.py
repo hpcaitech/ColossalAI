@@ -424,7 +424,7 @@ class ParallelContext:
         if hasattr(self.config, 'seed'):
             seed = getattr(self.config, 'seed')
         else:
-            seed = 2  # default seed
+            seed = 1024  # default seed
 
         random.seed(seed)
         np.random.seed(seed)
