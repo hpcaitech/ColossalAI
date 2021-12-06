@@ -12,10 +12,11 @@ from ._utils import assert_tesseract_initialization, \
     get_tesseract_dim_dep_from_env
 from .layers import Linear2p5D, LayerNorm2p5D
 from .._common_utils import ACT2FN
+from ..base_layer import ParallelLayer
 
 
 @LAYERS.register_module
-class TransformerMLP2p5D(nn.Module):
+class TransformerMLP2p5D(ParallelLayer):
     """
     MLP will take the input with h hidden state, project it to mlp_ratio * h
     hidden dimension, perform nonlinear transformation, and project the
@@ -36,10 +37,11 @@ class TransformerMLP2p5D(nn.Module):
 
     def __init__(self,
                  in_features: int,
-                 mlp_ratio: int,
+                 mlp_ratio: int = 4.0,
                  act_func: str = 'gelu',
                  dropout_prob: float = 0.,
                  dtype=None,
+                 skip_bias_add: bool = False
                  ):
         super().__init__()
         assert_tesseract_initialization()
@@ -49,8 +51,9 @@ class TransformerMLP2p5D(nn.Module):
         # Project to h * mlp_ratio.
         self.dense_1 = Linear2p5D(
             in_features,
-            mlp_ratio * in_features,
-            dtype=dtype
+            int(mlp_ratio * in_features),
+            dtype=dtype,
+            skip_bias_add=self.skip_bias_add
         )
 
         assert act_func in ACT2FN.keys(), f'Invalid value for argument act_func, ' \
@@ -59,24 +62,34 @@ class TransformerMLP2p5D(nn.Module):
 
         # Project back to h.
         self.dense_2 = Linear2p5D(
-            mlp_ratio * in_features,
+            int(mlp_ratio * in_features),
             in_features,
-            dtype=dtype
+            dtype=dtype,
+            skip_bias_add=self.skip_bias_add
         )
         self.dropout = nn.Dropout(dropout_prob)
         self.layernorm = LayerNorm2p5D(in_features, dtype=dtype)
 
     def forward(self, x: Tensor) -> Tensor:
-        intermediate_output = self.dense_1(x)
+        if self.skip_bias_add:
+            intermediate_output, _ = self.dense_1(x)
+        else:
+            intermediate_output = self.dense_1(x)
+
         intermediate_output = self.activation_func(intermediate_output)
-        output = self.dense_2(intermediate_output)
+
+        if self.skip_bias_add:
+            output, _ = self.dense_2(intermediate_output)
+        else:
+            output = self.dense_2(intermediate_output)
+
         output = self.dropout(output)
         output = self.layernorm(x + output)
         return output
 
 
 @LAYERS.register_module
-class TransformerSelfAttention2p5D(nn.Module):
+class TransformerSelfAttention2p5D(ParallelLayer):
     """Self attention layer for 2.5D parallel Transformer
 
     :param hidden_size: hidden size
@@ -92,10 +105,10 @@ class TransformerSelfAttention2p5D(nn.Module):
     """
 
     def __init__(self,
-                 hidden_size,
-                 num_attention_heads,
-                 attention_dropout_prob,
-                 hidden_dropout_prob,
+                 hidden_size: int,
+                 num_attention_heads: int,
+                 attention_dropout_prob: float,
+                 hidden_dropout_prob: float,
                  dtype=None,
                  ):
         super().__init__()
@@ -155,7 +168,7 @@ class TransformerSelfAttention2p5D(nn.Module):
 
 
 @LAYERS.register_module
-class TransformerLayer2p5D(nn.Module):
+class TransformerLayer2p5D(ParallelLayer):
     """Transformer layer which contains a self-attention layer and a MLP layer
 
     :param hidden_size: hidden size
@@ -175,10 +188,10 @@ class TransformerLayer2p5D(nn.Module):
     """
 
     def __init__(self,
-                 hidden_size,
-                 num_attention_heads,
-                 act_func='gelu',
-                 mlp_ratio=4,
+                 hidden_size: int,
+                 num_attention_heads: int,
+                 act_func: str = 'gelu',
+                 mlp_ratio: float = 4.0,
                  attention_dropout_prob: float = 0.,
                  hidden_dropout_prob: float = 0.,
                  dtype=None,
