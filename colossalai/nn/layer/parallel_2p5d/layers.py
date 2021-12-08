@@ -10,7 +10,7 @@ from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
 from ._operation import Matmul_AB_2p5D, Add_Bias_2p5D, _LayerNorm_2p5D
 from ._utils import get_tesseract_dim_dep_from_env, assert_tesseract_initialization
-from .._common_utils import divide, set_tensor_parallel_attribute
+from .._common_utils import divide, set_tensor_parallel_attribute_by_partition
 from ..base_layer import ParallelLayer
 
 
@@ -76,9 +76,10 @@ class Linear2p5D(ParallelLayer):
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.weight)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
         if self.bias is not None:
-            set_tensor_parallel_attribute(self.bias)
+            set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
     def reset_parameters(self, init_weight, init_bias) -> None:
         assert init_weight in ('torch', 'jax', 'zero')
@@ -178,6 +179,7 @@ class LayerNorm2p5D(ParallelLayer):
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     """
+
     def __init__(self,
                  normalized_shape: int,
                  eps: float = 1e-05,
@@ -213,8 +215,9 @@ class LayerNorm2p5D(ParallelLayer):
         self._set_tensor_parallel_attribute()
 
     def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute(self.gamma)
-        set_tensor_parallel_attribute(self.beta)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.gamma, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.beta, num_partition)
 
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():

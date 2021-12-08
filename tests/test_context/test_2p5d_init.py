@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.initialize import init_dist
+from colossalai.initialize import launch
 
 CONFIG_PATH = Path(__file__).parent.joinpath('configs/parallel_2p5d_init.py').absolute()
 
@@ -82,20 +82,21 @@ def check_2p5d_parallel_rank(rank):
             assert xp_rank == i
 
 
-def init_2halfd(local_rank, world_size, backend, port, host):
+def init_2halfd(rank, world_size, backend, port, host):
     dist_args = dict(
         config=CONFIG_PATH,
-        local_rank=local_rank,
+        rank=rank,
         world_size=world_size,
         backend=backend,
         port=port,
-        host=host
+        host=host,
+        verbose=True
     )
-    init_dist(**dist_args)
-    check_data_parallel_rank(local_rank)
-    check_pipeline_parallel_rank(local_rank)
-    check_tensor_parallel_rank(local_rank)
-    check_2p5d_parallel_rank(local_rank)
+    launch(**dist_args)
+    check_data_parallel_rank(rank)
+    check_pipeline_parallel_rank(rank)
+    check_tensor_parallel_rank(rank)
+    check_2p5d_parallel_rank(rank)
     gpc.destroy()
 
 

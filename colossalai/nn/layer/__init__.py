@@ -4,7 +4,5 @@ from .parallel_2d import *
 from .parallel_2p5d import *
 from .parallel_3d import *
 from .parallel_sequence import *
-from .parallel_vision_transformer import *
-from .vanilla_resnet import *
-from .vanilla_vision_transformer import *
+from .non_parallel_layers import *
 from .wrapper import *

@@ -8,7 +8,6 @@ import torch.distributed as dist
 
 from colossalai.constants import TESSERACT_DIM, TESSERACT_DEP
 from colossalai.context import Config
-from colossalai.core import global_context as gpc
 from colossalai.registry import DIST_GROUP_INITIALIZER
 from .process_group_initializer import ProcessGroupInitializer
 from ..parallel_mode import ParallelMode
@@ -42,8 +41,6 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
                  tesseract_dep: int,
                  *args):
         super(Initializer_2p5D_ROW, self).__init__(*args)
-
-        self.tensor_parallel_size = gpc.tensor_parallel_size
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
@@ -66,7 +63,7 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
             for j in range(self.tesseract_dim):
                 for k in range(self.tesseract_dep):
                     ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                            j + self.tesseract_dim * k) for i in range(self.tesseract_dim)]
+                        j + self.tesseract_dim * k) for i in range(self.tesseract_dim)]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -81,13 +78,12 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
 class Initializer_2p5D_Col(ProcessGroupInitializer):
     '''2p5d tensor parallel initialization among cols. 
     '''
+
     def __init__(self,
                  tesseract_dim: int,
                  tesseract_dep: int,
                  *args):
         super(Initializer_2p5D_Col, self).__init__(*args)
-
-        self.tensor_parallel_size = gpc.tensor_parallel_size
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
@@ -110,7 +106,7 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
             for i in range(self.tesseract_dim):
                 for k in range(self.tesseract_dep):
                     ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                            j + self.tesseract_dim * k) for j in range(self.tesseract_dim)]
+                        j + self.tesseract_dim * k) for j in range(self.tesseract_dim)]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -125,13 +121,12 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
 class Initializer_2p5D_Dep(ProcessGroupInitializer):
     '''2p5D tensor parallel initialization among depths. 
     '''
+
     def __init__(self,
                  tesseract_dim: int,
                  tesseract_dep: int,
                  *args):
         super(Initializer_2p5D_Dep, self).__init__(*args)
-
-        self.tensor_parallel_size = gpc.tensor_parallel_size
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
@@ -154,7 +149,7 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
             for i in range(self.tesseract_dim):
                 for j in range(self.tesseract_dim):
                     ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                            j + self.tesseract_dim * k) for k in range(self.tesseract_dep)]
+                        j + self.tesseract_dim * k) for k in range(self.tesseract_dep)]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -170,13 +165,12 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
 class Initializer_2p5D_XZ(ProcessGroupInitializer):
     '''2p5d tensor parallel initialization among cols times dep. 
     '''
+
     def __init__(self,
                  tesseract_dim: int,
                  tesseract_dep: int,
                  *args):
         super(Initializer_2p5D_XZ, self).__init__(*args)
-
-        self.tensor_parallel_size = gpc.tensor_parallel_size
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
@@ -198,8 +192,8 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
         for h in range(self.num_group):
             for i in range(self.tesseract_dim):
                 ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                        j + self.tesseract_dim * k) for k in range(self.tesseract_dep) for j in
-                         range(self.tesseract_dim)]
+                    j + self.tesseract_dim * k) for k in range(self.tesseract_dep) for j in
+                    range(self.tesseract_dim)]
                 group = dist.new_group(ranks)
 
                 if self.rank in ranks:

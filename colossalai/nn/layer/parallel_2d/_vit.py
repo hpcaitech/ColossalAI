@@ -10,13 +10,14 @@ from torch.nn.init import _calculate_fan_in_and_fan_out
 from colossalai.context import seed, ParallelMode
 from colossalai.nn.layer._common_utils import divide, ACT2FN
 from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization, get_summa_dim_from_env
-from colossalai.nn.layer.vanilla_vision_transformer.layers import to_2tuple
+
 from colossalai.registry import LAYERS
 from colossalai.utils import checkpoint
 from colossalai.utils import get_current_device
+from colossalai.core import global_context as gpc
 from ._operation import AllGatherLast, SplitFirst
 from .layers import Linear2D
-from .._common_utils import set_tensor_parallel_attribute
+from .._common_utils import set_tensor_parallel_attribute_by_partition, to_2tuple
 from ..base_layer import ParallelLayer
 from ..fused_bias_gelu import bias_gelu_impl
 
@@ -71,7 +72,6 @@ class ViTMLP2D(ParallelLayer):
             init_weight=weight_init, init_bias=weight_init,
             skip_bias_add=skip_dense_1_add_bias
         )
-
 
         # Project back to h.
         self.dense_2 = Linear2D(
@@ -168,7 +168,7 @@ class ViTSelfAttention2D(ParallelLayer):
     def _forward(self, hidden_states: Tensor) -> Tensor:
         query_key_value = self.query_key_value(hidden_states)
         new_qkv_shape = query_key_value.shape[:-1] + \
-                        (self.num_attention_heads, 3 * self.attention_head_size)
+            (self.num_attention_heads, 3 * self.attention_head_size)
         query_key_value = query_key_value.view(new_qkv_shape)
         query_key_value = query_key_value.permute((0, 2, 1, 3))
         query_layer, key_layer, value_layer = torch.chunk(
@@ -177,7 +177,7 @@ class ViTSelfAttention2D(ParallelLayer):
         attention_scores = torch.matmul(
             query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / \
-                           math.sqrt(self.attention_head_size)
+            math.sqrt(self.attention_head_size)
 
         attention_probs = self.softmax(attention_scores)
 
@@ -187,7 +187,7 @@ class ViTSelfAttention2D(ParallelLayer):
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer = context_layer.transpose(1, 2)
         new_context_layer_shape = context_layer.size()[
-                                  :-2] + (self.all_head_size,)
+            :-2] + (self.all_head_size,)
         context_layer = context_layer.reshape(new_context_layer_shape)
 
         output = self.dense(context_layer)
@@ -284,11 +284,11 @@ class ViTPatchEmbedding2D(ParallelLayer):
 
         with seed(ParallelMode.TENSOR):
             self.proj = nn.Conv2d(in_chans,
-                                    self.embed_dim,
-                                    kernel_size=patch_size,
-                                    stride=patch_size,
-                                    device=get_current_device()
-                                    )
+                                  self.embed_dim,
+                                  kernel_size=patch_size,
+                                  stride=patch_size,
+                                  device=get_current_device()
+                                  )
         self._set_tensor_parallel_attribute()
 
         if weight_init == 'jax':
@@ -299,8 +299,9 @@ class ViTPatchEmbedding2D(ParallelLayer):
                 nn.init.zeros_(self.proj.bias)
 
     def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute(self.proj.weight)
-        set_tensor_parallel_attribute(self.proj.bias)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.proj.weight, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.proj.bias, num_partition)
 
     def forward(self, x: Tensor) -> Tensor:
         B, C, H, W = x.shape
@@ -377,8 +378,9 @@ class ViTTokenFuser2D(ParallelLayer):
         self._set_tensor_parallel_attribute()
 
     def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute(self.cls_token)
-        set_tensor_parallel_attribute(self.pos_embed)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.cls_token, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.pos_embed, num_partition)
 
     def forward(self, x: Tensor) -> Tensor:
         # stole cls_tokens impl from Phil Wang, thanks

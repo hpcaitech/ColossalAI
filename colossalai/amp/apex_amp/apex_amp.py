@@ -1,0 +1,23 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+
+import torch.nn as nn
+try:
+    import apex.amp as apex_amp
+except:
+    pass
+from torch import Tensor
+
+from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.utils import clip_grad_norm_fp32
+
+
+class ApexAMPOptimizer(ColossalaiOptimizer):
+
+    def backward(self, loss: Tensor):
+        with apex_amp.scale_loss(loss, self.optim) as scaled_loss:
+            scaled_loss.backward()
+
+    def clip_grad_norm(self, model: nn.Module, max_norm: float):
+        if max_norm > 0:
+            clip_grad_norm_fp32(apex_amp.master_params(self.optim), max_norm)

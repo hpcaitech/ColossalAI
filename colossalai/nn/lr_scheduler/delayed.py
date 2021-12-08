@@ -48,8 +48,10 @@ class DelayerScheduler(_LRScheduler):
         if self.finished:
             if epoch is None:
                 self.after_scheduler.step(None)
+                self._last_lr = self.after_scheduler.get_last_lr()
             else:
                 self.after_scheduler.step(epoch - self.delay_epochs)
+                self._last_lr = self.after_scheduler.get_last_lr()
         else:
             return super(DelayerScheduler, self).step(epoch)
 
@@ -66,6 +68,7 @@ class WarmupScheduler(_LRScheduler):
     :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional
     """
+
     def __init__(self, optimizer, warmup_epochs, after_scheduler, last_epoch=-1):
         self.warmup_epochs = int(warmup_epochs)
         self.after_scheduler = after_scheduler
@@ -85,8 +88,10 @@ class WarmupScheduler(_LRScheduler):
         if self.finished:
             if epoch is None:
                 self.after_scheduler.step(None)
+                self._last_lr = self.after_scheduler.get_last_lr()
             else:
                 self.after_scheduler.step(epoch - self.warmup_epochs)
+                self._last_lr = self.after_scheduler.get_last_lr()
         else:
             return super().step(epoch)
 
@@ -136,7 +141,9 @@ class WarmupDelayerScheduler(_LRScheduler):
         if self.finished:
             if epoch is None:
                 self.after_scheduler.step(None)
+                self._last_lr = self.after_scheduler.get_last_lr()
             else:
                 self.after_scheduler.step(epoch - self.warmup_epochs)
+                self._last_lr = self.after_scheduler.get_last_lr()
         else:
             return super().step(epoch)

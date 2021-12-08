@@ -47,13 +47,14 @@ class TransformerMLP2p5D(ParallelLayer):
         assert_tesseract_initialization()
         self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
         self.in_features = in_features
+        self.skip_bias_add = skip_bias_add
 
         # Project to h * mlp_ratio.
         self.dense_1 = Linear2p5D(
             in_features,
             int(mlp_ratio * in_features),
             dtype=dtype,
-            skip_bias_add=self.skip_bias_add
+            skip_bias_add=skip_bias_add
         )
 
         assert act_func in ACT2FN.keys(), f'Invalid value for argument act_func, ' \
@@ -65,7 +66,7 @@ class TransformerMLP2p5D(ParallelLayer):
             int(mlp_ratio * in_features),
             in_features,
             dtype=dtype,
-            skip_bias_add=self.skip_bias_add
+            skip_bias_add=skip_bias_add
         )
         self.dropout = nn.Dropout(dropout_prob)
         self.layernorm = LayerNorm2p5D(in_features, dtype=dtype)
@@ -140,7 +141,7 @@ class TransformerSelfAttention2p5D(ParallelLayer):
     def forward(self, hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
         query_key_value = self.query_key_value(hidden_states)
         new_qkv_shape = query_key_value.shape[:-1] + \
-                        (self.num_attention_heads, 3 * self.attention_head_size)
+            (self.num_attention_heads, 3 * self.attention_head_size)
         query_key_value = query_key_value.view(new_qkv_shape)
         query_key_value = query_key_value.permute((0, 2, 1, 3))
         query_layer, key_layer, value_layer = torch.chunk(
@@ -149,7 +150,7 @@ class TransformerSelfAttention2p5D(ParallelLayer):
         attention_scores = torch.matmul(
             query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / \
-                           math.sqrt(self.attention_head_size)
+            math.sqrt(self.attention_head_size)
         attention_scores = attention_scores + attention_mask
         attention_probs = nn.Softmax(dim=-1)(attention_scores)
         attention_probs = self.attention_dropout(attention_probs)
@@ -157,7 +158,7 @@ class TransformerSelfAttention2p5D(ParallelLayer):
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer = context_layer.permute((0, 2, 1, 3)).contiguous()
         new_context_layer_shape = context_layer.size()[
-                                  :-2] + (self.all_head_size,)
+            :-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
         output = self.dense(context_layer)
