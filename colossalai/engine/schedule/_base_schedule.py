@@ -5,8 +5,10 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from colossalai.core import global_context as gpc
-from colossalai.logging import get_global_dist_logger
+from torch import Tensor
+from typing import Iterable, Union, List, Callable
+from .._base_engine import Engine
+from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 
 
@@ -18,8 +20,9 @@ class BaseSchedule(ABC):
     control of FP16 in class schedule.
     """
 
-    def __init__(self):
-        self.logger = get_global_dist_logger()
+    def __init__(self, batch_data_process_func: Callable = None):
+        self.logger = get_dist_logger()
+        self.batch_data_process_func = batch_data_process_func
 
     @staticmethod
     def _move_tensor(element):
@@ -35,6 +38,11 @@ class BaseSchedule(ABC):
             data = data.to(get_current_device()).detach()
         return data
 
+    def _to_list(self, data):
+        if torch.is_tensor(data):
+            return [data]
+        return data
+
     def load_batch(self, data_iter):
         """Loads a batch from data iterator. It returns the data and labels which are
         already in the same GPU as where the model's.
@@ -44,46 +52,34 @@ class BaseSchedule(ABC):
         """
         if data_iter is None:
             raise RuntimeError('Dataloader is not defined.')
-        data, label = next(data_iter)
+        batch_data = next(data_iter)
+
+        if self.batch_data_process_func:
+            data, label = self.batch_data_process_func(batch_data)
+        else:
+            data, label = batch_data
+
+        data, label = self._to_list(data), self._to_list(label)
         return self._move_to_device(data), self._move_to_device(label)
 
-    def initialize(self, model, optimizer):
-        """Initializes the model and the optimizer before training.
-         This is often used in FP16 training.
-
-        :param model: The neural network model
-        :param optimizer: Optimizer for updating the parameters
-        """
-        return model, optimizer
-
-    @abstractmethod
-    def forward_backward_step(self,
-                              data_iter,
-                              model,
-                              criterion,
-                              optimizer=None,
-                              forward_only=False,
-                              grad_accum_size: int = 1,
-                              return_loss=True):
-        """The process function over a batch of dataset for training or evaluation.
-
-        :param data_iter: Data iterator of the dataset
-        :param model: Model used in training or evaluation
-        :param optimizer: Optimizer used in training or evaluation
-        :param criterion: Loss function
-        :param forward_only: If True, the process won't include backward
-        :param grad_accum_size: Steps of gradient accumulation
-        :param return_loss: If False, the loss won't be returned
+    def pre_processing(self, engine: Engine):
+        """To perform actions before running the schedule.
         """
         pass
 
     @abstractmethod
-    def optimizer_step(self, model, optimizer, grad_clipping: float = 0.0):
-        """Updates the parameters with the optimizer.
+    def forward_backward_step(self,
+                              engine: Engine,
+                              data_iter: Iterable,
+                              forward_only: bool,
+                              return_loss: bool = True
+                              ):
+        """The process function over a batch of dataset for training or evaluation.
 
-        :param model: The neural network model
-        :param optimizer: Optimizer for updating the parameters
-        :param grad_clipping: The norm of gradient clipping
-        :type grad_clipping: float, optional
+        :param engine: Colossalai training engine
+        :param inputs: input data
+        :param labels: ground truth
+        :param forward_only: If True, the process won't include backward
+        :param return_loss: If False, the loss won't be returned
         """
         pass

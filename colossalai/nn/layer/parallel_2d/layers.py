@@ -11,7 +11,7 @@ from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
 from ._operation import Matmul_AB_2D, Add_Bias_2D, _LayerNorm_2D
 from ._utils import get_summa_dim_from_env, assert_summa_initialization
-from .._common_utils import divide, set_tensor_parallel_attribute
+from .._common_utils import divide, set_tensor_parallel_attribute_by_partition
 from ..base_layer import ParallelLayer
 
 
@@ -78,9 +78,10 @@ class Linear2D(ParallelLayer):
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.weight)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
         if self.bias is not None:
-            set_tensor_parallel_attribute(self.bias)
+            set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
     def reset_parameters(self, init_weight, init_bias) -> None:
         assert init_weight in ('torch', 'jax', 'zero')
@@ -216,8 +217,9 @@ class LayerNorm2D(ParallelLayer):
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.gamma)
-        set_tensor_parallel_attribute(self.beta)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.gamma, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.beta, num_partition)
 
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():

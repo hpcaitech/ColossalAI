@@ -1,4 +1,3 @@
-from .data import *
 from .layer import *
 from .loss import *
 from .lr_scheduler import *

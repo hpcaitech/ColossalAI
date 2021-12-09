@@ -11,12 +11,12 @@ from torch.nn.init import _calculate_fan_in_and_fan_out
 from colossalai.context import seed, ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn.layer._common_utils import divide, ACT2FN
-from colossalai.nn.layer.vanilla_vision_transformer.layers import to_2tuple
 from colossalai.registry import LAYERS
 from colossalai.utils import checkpoint
 from colossalai.utils import get_current_device
 from .layers import Linear1D_Col, Linear1D_Row
 from ..base_layer import ParallelLayer
+from .._common_utils import to_2tuple
 from ..fused_bias_gelu import bias_gelu_impl
 
 
@@ -70,10 +70,9 @@ class ViTMLP1D(ParallelLayer):
             dtype=dtype,
             gather_output=False,
             skip_bias_add=skip_dense_1_add_bias,
-            init_weight=weight_init, 
+            init_weight=weight_init,
             init_bias=weight_init
         )
-
 
         # Project back to h.
         self.dense_2 = Linear1D_Row(
@@ -155,7 +154,7 @@ class ViTSelfAttention1D(ParallelLayer):
             hidden_size,
             3 * hidden_size,
             dtype=dtype,
-            init_weight=weight_init, 
+            init_weight=weight_init,
             init_bias=init_bias
         )
         self.attention_dropout = nn.Dropout(attention_dropout_prob)
@@ -172,7 +171,7 @@ class ViTSelfAttention1D(ParallelLayer):
     def _forward(self, hidden_states: Tensor) -> Tensor:
         query_key_value = self.query_key_value(hidden_states)
         new_qkv_shape = query_key_value.shape[:-1] + \
-                        (self.num_attention_heads_per_partition, 3 * self.attention_head_size)
+            (self.num_attention_heads_per_partition, 3 * self.attention_head_size)
         query_key_value = query_key_value.view(new_qkv_shape)
         query_key_value = query_key_value.permute((0, 2, 1, 3))
         query_layer, key_layer, value_layer = torch.chunk(
@@ -181,7 +180,7 @@ class ViTSelfAttention1D(ParallelLayer):
         attention_scores = torch.matmul(
             query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / \
-                           math.sqrt(self.attention_head_size)
+            math.sqrt(self.attention_head_size)
 
         attention_probs = self.softmax(attention_scores)
 
@@ -191,7 +190,7 @@ class ViTSelfAttention1D(ParallelLayer):
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer = context_layer.transpose(1, 2)
         new_context_layer_shape = context_layer.size()[
-                                  :-2] + (self.hidden_size_per_partition,)
+            :-2] + (self.hidden_size_per_partition,)
         context_layer = context_layer.reshape(new_context_layer_shape)
         output = self.dense(context_layer)
         output = self.dropout(output)
@@ -250,6 +249,7 @@ class ViTHead1D(ParallelLayer):
         x = self.linear(x)
         return x
 
+
 @LAYERS.register_module
 class ViTHead(ParallelLayer):
     """Output layer for 1D parallel Vision Transformer
@@ -271,10 +271,10 @@ class ViTHead(ParallelLayer):
         self.linear = nn.Linear(
             hidden_size,
             num_classes,
-            dtype = dtype
+            dtype=dtype
         )
         self._broadcast_linear_params()
-    
+
     def _broadcast_linear_params(self) -> None:
         self.to(get_current_device())
         ranks = gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)
@@ -288,6 +288,7 @@ class ViTHead(ParallelLayer):
         x = x[:, 0]
         x = self.linear(x)
         return x
+
 
 @LAYERS.register_module
 class ViTPatchEmbedding1D(ParallelLayer):
@@ -325,10 +326,10 @@ class ViTPatchEmbedding1D(ParallelLayer):
         self.embed_dim = embed_dim
 
         self.proj = nn.Conv2d(in_chans,
-                                self.embed_dim,
-                                kernel_size=patch_size,
-                                stride=patch_size
-                                )
+                              self.embed_dim,
+                              kernel_size=patch_size,
+                              stride=patch_size
+                              )
 
         if weight_init == 'jax':
             fan_in, _ = _calculate_fan_in_and_fan_out(self.proj.weight)
@@ -398,14 +399,13 @@ class ViTTokenFuser1D(ParallelLayer):
 
         # move to cuda before broadcast
         self.to(get_current_device())
-        dist.broadcast(self.pos_embed, 
-                    src=gpc.get_ranks_in_group(ParallelMode.TENSOR)[0], 
-                    group=gpc.get_group(ParallelMode.TENSOR))
+        dist.broadcast(self.pos_embed,
+                       src=gpc.get_ranks_in_group(ParallelMode.TENSOR)[0],
+                       group=gpc.get_group(ParallelMode.TENSOR))
         self.pos_drop = nn.Dropout(p=drop_rate)
 
     def forward(self, x: Tensor) -> Tensor:
         cls_token = self.cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_token, x), dim=1)        
+        x = torch.cat((cls_token, x), dim=1)
         x = self.pos_drop(x + self.pos_embed)
         return x.contiguous()
-

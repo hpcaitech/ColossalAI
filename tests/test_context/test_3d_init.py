@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.initialize import init_dist
+from colossalai.initialize import launch
 
 CONFIG_PATH = Path(__file__).parent.joinpath('configs/parallel_3d_init.py').absolute()
 
@@ -74,21 +74,21 @@ def check_3d_parallel_rank(rank):
             assert op_rank == i
 
 
-def init_3d(local_rank, world_size, backend, port, host):
+def init_3d(rank, world_size, backend, port, host):
     dist_args = dict(
         config=CONFIG_PATH,
-        local_rank=local_rank,
+        rank=rank,
         world_size=world_size,
         backend=backend,
         port=port,
-        host=host
+        host=host,
+        verbose=True
     )
-    init_dist(**dist_args)
-    check_tensor_parallel_rank(local_rank)
-    check_3d_parallel_rank(local_rank)
-    check_data_parallel_rank(local_rank)
-    check_pipeline_parallel_rank(local_rank)
-    print('pass')
+    launch(**dist_args)
+    check_tensor_parallel_rank(rank)
+    check_3d_parallel_rank(rank)
+    check_data_parallel_rank(rank)
+    check_pipeline_parallel_rank(rank)
     gpc.destroy()
 
 

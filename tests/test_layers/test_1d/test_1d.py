@@ -4,7 +4,7 @@
 import pytest
 
 from colossalai.core import global_context as gpc
-from colossalai.initialize import init_dist
+from colossalai.initialize import launch, get_default_parser
 from test_layer import *
 
 CONFIG = dict(
@@ -28,12 +28,19 @@ def check_layer():
     check_embed()
     check_head()
 
+
 @pytest.mark.dist
 @pytest.mark.skip("This test should be invoked by test.sh in the same folder as it runs on multiple gpus")
 def test_1d():
-    init_dist(config=CONFIG)
-    gpc.set_seed()
-    
+    parser = get_default_parser()
+    args = parser.parse_args()
+    launch(config=CONFIG,
+           rank=args.rank,
+           world_size=args.world_size,
+           host=args.host,
+           port=args.port,
+           backend=args.backend)
+
     check_layer()
     gpc.destroy()
 

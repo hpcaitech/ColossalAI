@@ -7,7 +7,7 @@ import time
 import numpy as np
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context
-from colossalai.logging import get_global_dist_logger
+from colossalai.logging import get_dist_logger
 from colossalai.registry import LAYERS, LOSSES
 from colossalai.utils import get_current_device, print_rank_0
 from colossalai.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
@@ -18,7 +18,7 @@ from common import *
 
 def check_linear():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
@@ -34,8 +34,8 @@ def check_linear():
 
     layer = LAYERS.get_module('Linear3D')(INPUT_SIZE,
                                           OUTPUT_SIZE,
-                                        #   ParallelMode.PARALLEL_3D_INPUT,
-                                        #   ParallelMode.PARALLEL_3D_WEIGHT,
+                                          #   ParallelMode.PARALLEL_3D_INPUT,
+                                          #   ParallelMode.PARALLEL_3D_WEIGHT,
                                           dtype=dtype,
                                           bias=True)
     # torch.nn.init.zeros_(layer.bias)
@@ -120,7 +120,7 @@ def check_linear():
 
 def check_layernorm():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
@@ -141,7 +141,7 @@ def check_layernorm():
     norm = norm.to(device)
     norm_master = torch.nn.LayerNorm(INPUT_SIZE, eps=1e-6)
     norm_master = norm_master.to(device)
-    
+
     weight_master = norm_master.weight.data
     torch.distributed.broadcast(weight_master, src=0)
     weight = torch.chunk(weight_master, DEPTH)[k]
@@ -208,7 +208,7 @@ def check_layernorm():
     bias_grad = torch.chunk(bias_grad, DEPTH)[k]
     logger.info('Rank {} layernorm backward (weight_grad): {}'.format(
         rank, check_equal(bias_grad, norm.weight.grad)))
-        
+
     bias_grad = norm_master.bias.grad
     bias_grad = torch.chunk(bias_grad, DEPTH)[k]
     logger.info('Rank {} layernorm backward (bias_grad): {}'.format(
@@ -220,7 +220,7 @@ def check_layernorm():
 def check_attention():
     rank = torch.distributed.get_rank()
     device = get_current_device()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     NUM_ATTENTION_HEADS = 2
@@ -277,7 +277,7 @@ def check_attention():
 def check_mlp():
     rank = torch.distributed.get_rank()
     device = get_current_device()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
 
@@ -337,7 +337,7 @@ class Testvithead(torch.nn.Module):
 
 def check_head():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
@@ -495,7 +495,7 @@ class Testvitembed(torch.nn.Module):
 def check_embed():
     rank = torch.distributed.get_rank()
     device = get_current_device()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float32
 
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -632,7 +632,7 @@ def check_embed():
 
 def check_loss():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
 
@@ -645,7 +645,7 @@ def check_loss():
     k = C_rank = global_context.get_local_rank(output_parallel_mode)
 
     criterion = LOSSES.get_module('CrossEntropyLoss3D')()
-        # ParallelMode.PARALLEL_3D_INPUT, ParallelMode.PARALLEL_3D_WEIGHT)
+    # ParallelMode.PARALLEL_3D_INPUT, ParallelMode.PARALLEL_3D_WEIGHT)
     criterion_master = torch.nn.CrossEntropyLoss()
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)

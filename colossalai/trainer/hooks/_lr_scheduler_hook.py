@@ -3,7 +3,6 @@ from torch import Tensor
 from colossalai.builder import build_lr_scheduler
 from colossalai.registry import HOOKS
 from ._metric_hook import MetricHook
-from .._trainer import Trainer
 from ..metric import LearningRate
 
 
@@ -22,50 +21,26 @@ class LRSchedulerHook(MetricHook):
     """
 
     def __init__(self,
-                 trainer: Trainer,
-                 lr_scheduler_cfg: dict,
-                 by_epoch: bool = True,
+                 lr_scheduler,
+                 by_epoch: bool,
                  store_lr_in_state: bool = True,
                  priority: int = 1,
                  ):
-        super().__init__(trainer=trainer, priority=priority)
+        super().__init__(priority=priority)
         self.by_epoch = by_epoch
+        self.lr_scheduler = lr_scheduler
+        self.store_lr_in_state = store_lr_in_state
 
-        assert not ('warmup_epochs' in lr_scheduler_cfg and 'warmup_steps' in lr_scheduler_cfg), \
-            'Do not set both warmup_epochs and warmup_steps for lr_scheduler.'
-        warmup_steps = 0
-        if by_epoch:
-            total_steps = trainer.max_epochs
-            if 'warmup_epochs' in lr_scheduler_cfg:
-                warmup_steps = lr_scheduler_cfg['warmup_epochs']
-            elif 'warmup_steps' in lr_scheduler_cfg:
-                warmup_steps = lr_scheduler_cfg['warmup_steps']
-        else:
-            total_steps = trainer.max_epochs * trainer.steps_per_epoch
-            if trainer.max_steps is not None:
-                total_steps = min(total_steps, trainer.max_steps)
-            if 'warmup_epochs' in lr_scheduler_cfg:
-                warmup_steps = lr_scheduler_cfg['warmup_epochs'] * trainer.steps_per_epoch
-            elif 'warmup_steps' in lr_scheduler_cfg:
-                warmup_steps = lr_scheduler_cfg['warmup_steps']
+    def after_hook_is_attached(self, trainer):
+        trainer.states['metrics']['train']['lr'] = LearningRate(epoch_only=self.by_epoch,
+                                                                initial_lr=self.lr_scheduler.get_last_lr()[0])
 
-        lr_scheduler_cfg['total_steps'] = total_steps
-        lr_scheduler_cfg['warmup_steps'] = warmup_steps
-        lr_scheduler_cfg.pop('warmup_epochs', None)
-
-        self.lr_scheduler = build_lr_scheduler(
-            lr_scheduler_cfg, trainer.engine.optimizer)
-
-        if store_lr_in_state:
-            self.trainer.states['metrics']['train']['lr'] = LearningRate(epoch_only=by_epoch,
-                                                                         initial_lr=self.lr_scheduler.get_lr()[0])
-
-    def after_train_epoch(self):
+    def after_train_epoch(self, trainer):
         if self.by_epoch:
             self.lr_scheduler.step()
-            self.trainer.states['metrics']['train']['lr'].update(self.lr_scheduler.get_lr()[0])
+            trainer.states['metrics']['train']['lr'].update(self.lr_scheduler.get_last_lr()[0])
 
-    def after_train_iter(self, output: Tensor, label: Tensor, loss: Tensor):
+    def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         if not self.by_epoch:
             self.lr_scheduler.step()
-            self.trainer.states['metrics']['train']['lr'].update(self.lr_scheduler.get_lr()[0])
+            trainer.states['metrics']['train']['lr'].update(self.lr_scheduler.get_last_lr()[0])

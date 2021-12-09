@@ -1,4 +1,3 @@
-from colossalai.nn.optimizer.zero_redundancy_optimizer_level_2 import print_rank_msg
 from tests.test_layers.test_3d.common import IMG_SIZE
 import torch
 import torch.distributed as dist
@@ -142,6 +141,7 @@ def check_linear_row():
 
     print_rank_0('linear_row no parallel_input backward: pass')
 
+
 class Testvithead(torch.nn.Module):
     def __init__(self, in_features, out_features, bias=True):
         super().__init__()
@@ -152,6 +152,7 @@ class Testvithead(torch.nn.Module):
         x = self.linear(x)
         return x
 
+
 def check_head():
     device = get_current_device()
     dtype = torch.float32
@@ -159,7 +160,7 @@ def check_head():
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
-    head = ViTHead1D(INPUT_SIZE,NUM_CLASSES,dtype=dtype)
+    head = ViTHead1D(INPUT_SIZE, NUM_CLASSES, dtype=dtype)
     torch.nn.init.zeros_(head.linear.bias)
     torch.nn.init.ones_(head.linear.weight)
     head = head.to(device)
@@ -185,7 +186,7 @@ def check_head():
     A_master.requires_grad = True
     C_master = layer(A_master)
     # C = torch.chunk(C_master, DEPTH, dim=0)[i]
-    print_rank_msg('Rank {} head forward: {}'.format(i, check_equal(out, C_master)))
+    print_rank_0('Rank {} head forward: {}'.format(i, check_equal(out, C_master)))
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape,
@@ -198,14 +199,13 @@ def check_head():
     out.backward(grad_master)
     # bwd_end = time.time()
     # print_rank_0('head backward: pass | {:.3f} s'.format(bwd_end - bwd_start),
-                #  logger)
+    #  logger)
 
     C_master.backward(grad_master)
     A_grad = A_master.grad
     # if j == 0:
     print_rank_0('Rank {} head backward (input_grad): {}'.format(
         i, check_equal(A_grad, A.grad)))
-
 
 
 class Testvitembed(torch.nn.Module):
@@ -229,6 +229,7 @@ class Testvitembed(torch.nn.Module):
         x = torch.cat((cls_token, x), dim=1)
         x = self.pos_drop(x + self.pos_embed)
         return x
+
 
 def check_embed():
     device = get_current_device()
@@ -276,7 +277,7 @@ def check_embed():
     #     logger.info('Rank {} embed forward (cls): {}'.format(
     #         rank, check_equal(out_cls, C_cls)))
     # C = C_master[:, 1:]
-    print_rank_msg('Rank {} embed forward: {}'.format(i, check_equal(out, C_master)))
+    print_rank_0('Rank {} embed forward: {}'.format(i, check_equal(out, C_master)))
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape,
@@ -297,7 +298,7 @@ def check_embed():
     C_master.backward(grad_master)
 
     A_grad = A_master.grad
-    print_rank_msg('Rank {} embed backward (input_grad): {}'.format(i, check_equal(A_grad, A.grad)))
+    print_rank_0('Rank {} embed backward (input_grad): {}'.format(i, check_equal(A_grad, A.grad)))
 
     print_rank_0('Rank {} embed backward (cls_grad): {}'.format(
         i, check_equal(layer_master.cls_token.grad, layer2.cls_token.grad)))
@@ -305,13 +306,14 @@ def check_embed():
     print_rank_0('Rank {} embed backward (pos_embed_grad): {}'.format(
         i, check_equal(layer_master.pos_embed.grad, layer2.pos_embed.grad)))
 
-    print_rank_msg('Rank {} embed backward (proj_weight_grad): {}'.format(
+    print_rank_0('Rank {} embed backward (proj_weight_grad): {}'.format(
         i, check_equal(layer_master.proj.weight.grad, layer.proj.weight.grad)))
 
-    print_rank_msg('Rank {} embed backward (proj_bias_grad): {}'.format(
+    print_rank_0('Rank {} embed backward (proj_bias_grad): {}'.format(
         i, check_equal(layer_master.proj.bias.grad, layer.proj.bias.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
+
 
 def check_attention():
     device = get_current_device()
@@ -321,10 +323,9 @@ def check_attention():
 
     i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
-    
     layer = ViTSelfAttention1D(
-        HIDDEN_SIZE, 
-        NUM_ATTENTION_HEADS, 
+        HIDDEN_SIZE,
+        NUM_ATTENTION_HEADS,
         0.5,
         0.5
     ).to(device=device)
@@ -379,6 +380,7 @@ def check_mlp():
     assert A.grad.shape == A.shape
     print_rank_0('mlp backward: pass')
 
+
 def check_patch_embedding():
     device = get_current_device()
     dtype = torch.float32
@@ -400,7 +402,7 @@ def check_patch_embedding():
     A.requires_grad = True
 
     out = layer(A)
-    print('output size: ',out.size())
+    print('output size: ', out.size())
     assert out.shape == (BATCH_SIZE, 4, HIDDEN_SIZE)
     print_rank_0('patch embedding forward: pass')
 

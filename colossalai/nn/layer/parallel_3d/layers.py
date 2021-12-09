@@ -19,7 +19,7 @@ from torch import Tensor, dtype
 from torch.nn import Parameter
 from torch.nn import init as init
 
-from .._common_utils import divide, set_tensor_parallel_attribute
+from .._common_utils import divide, set_tensor_parallel_attribute_by_size
 from ._operation import (Add_3D, Matmul_AB_3D, Mul_3D, Sum_3D, layer_norm_3d,
                          linear_3d)
 from ._utils import (get_depth_from_env, get_last_group,
@@ -57,8 +57,8 @@ class LayerNorm3D(nn.Module):
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.weight, self.normalized_shape)
-        set_tensor_parallel_attribute(self.bias, self.normalized_shape)
+        set_tensor_parallel_attribute_by_size(self.weight, self.normalized_shape)
+        set_tensor_parallel_attribute_by_size(self.bias, self.normalized_shape)
 
     def reset_parameters(self):
         init.zeros_(self.bias)
@@ -107,8 +107,8 @@ class Linear3D(nn.Module):
             #  weight_parallel_mode: ParallelMode,
             bias: bool = True,
             dtype: dtype = None,
-            init_weight: str ='torch',
-            init_bias: str ='torch'):
+            init_weight: str = 'torch',
+            init_bias: str = 'torch'):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -142,16 +142,16 @@ class Linear3D(nn.Module):
         swap_in_out_group()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.weight, self.in_features * self.out_features)
+        set_tensor_parallel_attribute_by_size(self.weight, self.in_features * self.out_features)
         if self.bias is not None:
-            set_tensor_parallel_attribute(self.bias, self.out_features)
+            set_tensor_parallel_attribute_by_size(self.bias, self.out_features)
 
     def reset_parameters(self, init_weight, init_bias) -> None:
         # setting
         fan_in, fan_out = self.in_features, self.out_features
         weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
         output_src_rank = gpc.get_ranks_in_group(self.output_parallel_mode)[0]
-        
+
         # init weight
         init_weight_(self.weight, fan_in, fan_out, init_method=init_weight)
         dist.broadcast(self.weight,

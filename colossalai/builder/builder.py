@@ -106,7 +106,7 @@ def build_dataset(config):
     return build_from_registry(config, DATASETS)
 
 
-def build_optimizer(config, model, params: Iterable = None, need_module=False):
+def build_optimizer(config, model):
     """Returns an optimizer object of :class:`torch.optim.Optimizer` constructed from `config`, 
     'model' and 'params'.
 
@@ -115,23 +115,12 @@ def build_optimizer(config, model, params: Iterable = None, need_module=False):
     :type config: dict or :class:`colossalai.context.Config`
     :param model: A model containing parameters for the optimizer 
     :type model: :class:`nn.Module`
-    :param params: A dict containing parameters for the optimizer
-    :type params: dict, optional
-    :param need_module: Indicates whether the optimizer needs a module
-    :type params: bool, optional
-    :raises AssertionError: Raises an AssertionError if both `model` and `params` are None
     :return: An object of :class:`torch.optim.Optimizer`
     :rtype: :class:`torch.optim.Optimizer`
     """
-    assert model is not None or params is not None, 'arguments model and params can not both be None'
-    if need_module:
-        config['module'] = model
-    elif model is not None:
-        config['params'] = model.parameters()
-    elif params is not None:
-        config['params'] = params
-
-    return build_from_registry(config, OPTIMIZERS)
+    config_ = config.copy()
+    config_['params'] = model.parameters()
+    return build_from_registry(config_, OPTIMIZERS)
 
 
 def build_gradient_handler(config, model, optimizer):
@@ -149,8 +138,9 @@ def build_gradient_handler(config, model, optimizer):
     :rtype: :class:`BaseGradientHandler`
     """
     config_ = config.copy()
-    mod_type = config_.pop('type')
-    return GRADIENT_HANDLER.get_module(mod_type)(model, optimizer, **config_)
+    config_['model'] = model
+    config_['optimizer'] = optimizer
+    return build_from_registry(config_, GRADIENT_HANDLER)
 
 
 def build_hooks(config, trainer):
@@ -164,8 +154,9 @@ def build_hooks(config, trainer):
     :return: An object of :class:`BaseHook`
     :rtype: :class:`BaseHook`
     """
-    config['trainer'] = trainer
-    return build_from_registry(config, HOOKS)
+    config_ = config.copy()
+    config_['trainer'] = trainer
+    return build_from_registry(config_, HOOKS)
 
 
 def build_transform(config):
@@ -195,32 +186,8 @@ def build_data_sampler(config, dataset):
     :rtype: :class:`colossalai.nn.data.sampler.BaseSampler`
     """
     config_ = config.copy()
-    mod_type = config_.pop('type')
-    return SAMPLERS.get_module(mod_type)(dataset, **config_)
-
-
-def build_optimizer_wrapper(config, optimizer, model=None):
-    """Returns an optimizer wrapper object of :class:`torch.optim.Optimizer` constructed 
-    from `config`, `model` and `optimizer`.
-
-    :param config: A python dict or a :class:`colossalai.context.Config` object 
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :param optimizer: An optimizer object containing parameters for the gradient handler
-    :type optimizer: :class:`torch.optim.Optimizer`
-    :param model: A model containing parameters for the gradient handler
-    :type model: :class:`nn.Module`, optional
-    :return: An object of :class:`torch.optim.Optimizer`
-    :rtype: :class:`torch.optim.Optimizer`
-    """
-    config_ = config.copy()
-    mod_type = config_.pop('type')
-
-    # LSG: special treatment for zeor level 3
-    if mod_type == 'ZeroRedundancyOptimizer_Level_3':
-        return OPTIMIZER_WRAPPERS.get_module(mod_type)(model, optimizer, **config_)
-    else:
-        return OPTIMIZER_WRAPPERS.get_module(mod_type)(optimizer, **config_)
+    config_['dataset'] = dataset
+    return build_from_registry(config_, DATA_SAMPLERS)
 
 
 def build_lr_scheduler(config, optimizer):
@@ -241,8 +208,8 @@ def build_lr_scheduler(config, optimizer):
     :rtype: :class:`torch.optim.lr_scheduler`
     """
     config_ = config.copy()
-    mod_type = config_.pop('type')
-    return LR_SCHEDULERS.get_module(mod_type)(optimizer, **config_)
+    config_['optimizer'] = optimizer
+    return build_from_registry(config_, LR_SCHEDULERS)
 
 
 def build_schedule(config):

@@ -13,8 +13,7 @@ from colossalai.nn.init import init_bias_, init_weight_
 from colossalai.utils import checkpoint, get_current_device
 from torch import Tensor, dtype, nn
 
-from .._common_utils import ACT2FN, divide, set_tensor_parallel_attribute
-from ..vanilla_vision_transformer.layers import to_2tuple
+from .._common_utils import ACT2FN, divide, set_tensor_parallel_attribute_by_size, to_2tuple
 from ._utils import get_depth_from_env, get_parallel_mode_from_env, get_last_group
 from .layers import Linear3D
 
@@ -36,6 +35,7 @@ class ViTPatchEmbedding3D(nn.Module):
     :param flatten: whether to flatten output tensor, defaults to True
     :type flatten: bool, optional
     """
+
     def __init__(self,
                  img_size: int,
                  patch_size: int,
@@ -43,7 +43,7 @@ class ViTPatchEmbedding3D(nn.Module):
                  embed_size: int,
                  drop_prob: float,
                  flatten: bool = True,
-                 init_method: str ='torch'):
+                 init_method: str = 'torch'):
         super().__init__()
         self.depth = get_depth_from_env()
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -83,10 +83,10 @@ class ViTPatchEmbedding3D(nn.Module):
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.proj.weight, self.in_chans * self.embed_size * self.num_patches)
-        set_tensor_parallel_attribute(self.proj.bias, self.embed_size)
-        set_tensor_parallel_attribute(self.cls_token, 1 * 1 * self.embed_size)
-        set_tensor_parallel_attribute(self.pos_embed, 1 * (self.num_patches + 1) * self.embed_size)
+        set_tensor_parallel_attribute_by_size(self.proj.weight, self.in_chans * self.embed_size * self.num_patches)
+        set_tensor_parallel_attribute_by_size(self.proj.bias, self.embed_size)
+        set_tensor_parallel_attribute_by_size(self.cls_token, 1 * 1 * self.embed_size)
+        set_tensor_parallel_attribute_by_size(self.pos_embed, 1 * (self.num_patches + 1) * self.embed_size)
 
     def reset_parameters(self, init_weight, init_bias):
         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.proj.weight)
@@ -98,7 +98,7 @@ class ViTPatchEmbedding3D(nn.Module):
             init_bias_(self.pos_embed, fan_in, init_method=init_weight)
         if init_bias != 'torch':
             init_bias_(self.proj.bias, fan_in, init_method=init_bias)
-        
+
         self.to(get_current_device())
         weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
         dist.broadcast(self.proj.weight,
@@ -114,7 +114,7 @@ class ViTPatchEmbedding3D(nn.Module):
         dist.broadcast(self.proj.bias,
                        src=input_src_rank,
                        group=gpc.get_group(self.input_parallel_mode))
-        
+
         self.proj.weight.register_hook(self._sync_grad_hook)
         self.proj.bias.register_hook(self._sync_grad_hook)
         self.cls_token.register_hook(self._sync_grad_hook)
@@ -173,6 +173,7 @@ class ViTSelfAttention3D(nn.Module):
     :param bias: whether to add bias, defaults to True
     :type bias: bool, optional
     """
+
     def __init__(self,
                  hidden_size: int,
                  num_attention_heads: int,
@@ -181,7 +182,7 @@ class ViTSelfAttention3D(nn.Module):
                  dtype: dtype = None,
                  bias: bool = True,
                  checkpoint: bool = False,
-                 init_method: str ='torch'):
+                 init_method: str = 'torch'):
         super().__init__()
         self.depth = get_depth_from_env()
         # self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -210,8 +211,8 @@ class ViTSelfAttention3D(nn.Module):
         self.attention_dropout = nn.Dropout(attention_probs_dropout_prob)
         self.dense = Linear3D(self.hidden_size,
                               self.hidden_size,
-                            #   self.output_parallel_mode,
-                            #   self.weight_parallel_mode,
+                              #   self.output_parallel_mode,
+                              #   self.weight_parallel_mode,
                               dtype=dtype,
                               bias=bias,
                               init_weight=self.init_weight,
@@ -225,7 +226,7 @@ class ViTSelfAttention3D(nn.Module):
     def _forward(self, hidden_states: Tensor) -> Tensor:
         query_key_value = self.query_key_value(hidden_states)
         new_qkv_shape = query_key_value.shape[:-1] + \
-                        (self.num_attention_heads, 3 * self.attention_head_size)
+            (self.num_attention_heads, 3 * self.attention_head_size)
         query_key_value = query_key_value.view(new_qkv_shape)
         query_key_value = query_key_value.permute((0, 2, 1, 3))
         query_layer, key_layer, value_layer = torch.chunk(query_key_value,
@@ -285,6 +286,7 @@ class ViTMLP3D(nn.Module):
     :param bias: whether to add bias, defaults to True
     :type bias: bool, optional
     """
+
     def __init__(self,
                  hidden_size: int,
                  mlp_ratio: int,
@@ -365,6 +367,7 @@ class ViTHead3D(nn.Module):
     :param bias: whether to add bias, defaults to True
     :type bias: bool, optional
     """
+
     def __init__(self,
                  in_features: int,
                  num_classes: int,
@@ -387,11 +390,11 @@ class ViTHead3D(nn.Module):
         if init_method == 'jax':
             self.init_weight = 'zero'
             self.init_bias = 'zero'
-        
+
         self.linear = Linear3D(self.in_features,
                                self.num_classes,
-                            #    self.input_parallel_mode,
-                            #    self.weight_parallel_mode,
+                               #    self.input_parallel_mode,
+                               #    self.weight_parallel_mode,
                                dtype=dtype,
                                bias=bias,
                                init_weight=self.init_weight,
