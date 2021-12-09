@@ -7,7 +7,6 @@ from .delayed import WarmupScheduler
 @LR_SCHEDULERS.register_module
 class PolynomialLR(_LRScheduler):
     """Polynomial learning rate scheduler.
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps
@@ -43,7 +42,6 @@ class PolynomialLR(_LRScheduler):
 @LR_SCHEDULERS.register_module
 class PolynomialWarmupLR(WarmupScheduler):
     """Polynomial learning rate scheduler with warmup.
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps

@@ -20,7 +20,6 @@ def matmul_2d(a,
               col_parallel_mode=ParallelMode.PARALLEL_2D_COL,
               ):
     """Matrix multiplication for 2D parallelism
-
     :param a: matrix :math:`A`
     :type a: torch.tensor
     :param b: matrix :math:`B`
@@ -86,25 +85,30 @@ class Matmul_AB_2D(torch.autograd.Function):
             ctx.save_for_backward(A, B)
 
         A_shape = A.shape
-        A = A.reshape((-1, A_shape[-1]))
+        A = A.reshape((-1, A_shape[-1])).contiguous()
         B_shape = B.shape
-        B = B.reshape((-1, B_shape[-1]))
+        B = B.reshape((-1, B_shape[-1])).contiguous()
         C_shape = (A.shape[0], B.shape[-1])
         C = torch.zeros(C_shape, dtype=A.dtype, device=get_current_device())
 
-        for i in range(summa_dim):
-            A_temp = A.clone()
-            B_temp = B.clone()
-            src_a = i + summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
-            dist.broadcast(A_temp, src=src_a,
-                           group=gpc.get_group(row_parallel_mode))
-            src_b = col_rank + summa_dim * i + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
-            dist.broadcast(B_temp, src=src_b,
-                           group=gpc.get_group(col_parallel_mode))
-            torch.addmm(C, A_temp, B_temp, out=C)
+        A_list = [torch.empty_like(A) for _ in range(gpc.get_world_size(row_parallel_mode)-1)]
+        B_list = [torch.empty_like(B) for _ in range(gpc.get_world_size(col_parallel_mode)-1)]
+        A_list.insert(gpc.get_local_rank(row_parallel_mode), A)
+        B_list.insert(gpc.get_local_rank(col_parallel_mode), B)
+        op_a = dist.all_gather(A_list, A, group=gpc.get_group(row_parallel_mode), async_op=True)
+        op_a.wait()
+        op_b = dist.all_gather(B_list, B, group=gpc.get_group(col_parallel_mode), async_op=True)
+        for op in [op_a, op_b]:
+            op.wait()
 
+        for i in range(summa_dim):
+            src_a = i + summa_dim * row_rank
+            src_b = i + summa_dim * col_rank
+            src_a = src_a % summa_dim
+            src_b = src_b % summa_dim
+            A_temp = A_list[src_a]
+            B_temp = B_list[src_b]
+            torch.addmm(C, A_temp, B_temp, out=C)
         out = C.reshape(out_shape)
 
         if ctx:
@@ -499,36 +503,61 @@ class _LayerNorm_2D(torch.autograd.Function):
 #         return input_grad, None, None, None, None, None
 
 
-class _ViT_Split_Input_2D(torch.autograd.Function):
+class AllGatherLast(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any,
                 inputs: Tensor,
-                batch_size: int,
                 summa_dim: int,
                 col_parallel_mode: ParallelMode) -> Tensor:
-        # inputs: [b, s, h/q]
-        # output: [b/q, s, h/q]
-
-        ctx.BATCH_SIZE = batch_size
         ctx.summa_dim = summa_dim
-        ctx.col_parallel_mode = col_parallel_mode
-        row_rank = gpc.get_local_rank(col_parallel_mode)
-        output = torch.chunk(inputs, summa_dim, dim=0)[row_rank]
-        output = output.clone()
-        return output
+        ctx.row_rank = gpc.get_local_rank(col_parallel_mode)
+
+        last_dim = summa_dim * inputs.size(-1)
+        outputs_shape = (last_dim,) + inputs.shape[:-1]
+        outputs = torch.empty(
+            outputs_shape, dtype=inputs.dtype, device=get_current_device())
+        dist.all_gather(
+            list(outputs.chunk(summa_dim, dim=0)),
+            inputs.permute(2, 0, 1).contiguous(),
+            group=gpc.get_group(col_parallel_mode)
+        )
+        outputs = outputs.permute(1, 2, 0).contiguous()
+        return outputs
 
     @staticmethod
     @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        # output_grad: [b/q, s, h/q]
-        # grads: [b, s, h/q]
-        grads_shape = (ctx.BATCH_SIZE,) + output_grad.shape[1:]
-        grads = torch.empty(grads_shape,
-                            dtype=output_grad.dtype,
-                            device=get_current_device())
-        dist.all_gather(list(grads.chunk(ctx.summa_dim, dim=0)),
-                        output_grad.contiguous(),
-                        group=gpc.get_group(ctx.col_parallel_mode))
-        return grads, None, None, None
+        grad = output_grad.chunk(ctx.summa_dim, dim=-1)[ctx.row_rank]
+        return grad.contiguous(), None, None
+
+
+class SplitFirst(torch.autograd.Function):
+
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
+    def forward(ctx: Any,
+                inputs: Tensor,
+                summa_dim: int,
+                col_parallel_mode: ParallelMode) -> Tensor:
+        ctx.summa_dim = summa_dim
+        ctx.batch_size = inputs.size(0)
+        ctx.para_mode = col_parallel_mode
+        row_rank = gpc.get_local_rank(col_parallel_mode)
+
+        outputs = inputs.chunk(summa_dim, dim=0)[row_rank]
+        return outputs
+
+    @staticmethod
+    @custom_bwd
+    def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
+        grad_shape = (ctx.batch_size,) + output_grad.shape[1:]
+        grad = torch.empty(
+            grad_shape, dtype=output_grad.dtype, device=get_current_device())
+        dist.all_gather(
+            list(grad.chunk(ctx.summa_dim, dim=0)),
+            output_grad.contiguous(),
+            group=gpc.get_group(ctx.para_mode)
+        )
+        return grad, None, None

@@ -1,5 +1,5 @@
 from ._base_schedule import BaseSchedule
-from ._no_pipeline import NoPipelineSchedule
-from ._pipeline import PipelineSchedule
+from ._pipeline_schedule import PipelineSchedule
+from ._non_pipeline_schedule import NonPipelineSchedule
 
-__all__ = ['BaseSchedule', 'NoPipelineSchedule', 'PipelineSchedule']
+__all__ = ['BaseSchedule', 'PipelineSchedule', 'NonPipelineSchedule']

@@ -97,3 +97,7 @@ class Config(dict):
             sys.path.pop(0)
 
         return config
+
+
+class ConfigException(Exception):
+    pass

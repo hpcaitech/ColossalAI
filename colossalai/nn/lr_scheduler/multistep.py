@@ -12,7 +12,6 @@ class MultiStepLR(_MultiStepLR):
     number of epoch reaches one of the milestones. Notice that such decay can
     happen simultaneously with other changes to the learning rate from outside
     this scheduler. When last_epoch=-1, sets initial lr as lr.
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps
@@ -34,7 +33,6 @@ class MultiStepLR(_MultiStepLR):
 @LR_SCHEDULERS.register_module
 class MultiStepWarmupLR(WarmupScheduler):
     """Multi-step laerning rate scheduler with warmup.
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps

@@ -4,7 +4,7 @@ import heapq
 from colossalai.builder import build_model, build_layer
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.logging import get_global_dist_logger
+from colossalai.logging import get_dist_logger
 from colossalai.utils import set_to_cuda
 
 
@@ -111,21 +111,21 @@ def _binary_search(weights, num):
     return intervals
 
 
-def _partition_uniform(num_items, num_parts, num_chunks):
+def _partition_uniform(num_items, pipeline_parallel_size, num_chunks):
     assert num_items % num_chunks == 0, \
         "Layer length should be divided by the number of chunks, otherwise parameter method is recomended"
 
-    logger = get_global_dist_logger()
-    parts = [[] for _ in range(num_parts)]
+    logger = get_dist_logger()
+    parts = [[] for _ in range(pipeline_parallel_size)]
     partition_items = num_items // num_chunks
     for idx in range(num_chunks):
         base_idx = idx * partition_items
-        chunk_size = partition_items // num_parts
-        left = num_parts - partition_items % num_parts
+        chunk_size = partition_items // pipeline_parallel_size
+        left = pipeline_parallel_size - partition_items % pipeline_parallel_size
         if chunk_size == 0:
             logger.warning("Some nodes in Pipeline have no requests")
 
-        for p in range(num_parts):
+        for p in range(pipeline_parallel_size):
             st = base_idx
             base_idx += chunk_size + (p >= left)
             parts[p].append((st, base_idx))
@@ -133,34 +133,34 @@ def _partition_uniform(num_items, num_parts, num_chunks):
     return parts
 
 
-def _partition_balanced(weights, num_parts, num_chunks):
-    num_total = num_parts * num_chunks
+def _partition_balanced(weights, pipeline_parallel_size, num_chunks):
+    num_total = pipeline_parallel_size * num_chunks
     num_items = len(weights)
     if num_items <= num_total:
-        return _partition_uniform(num_items, num_parts, num_chunks)
+        return _partition_uniform(num_items, pipeline_parallel_size, num_chunks)
 
     intervals = _binary_search(weights, num_total)
 
     current = 0
-    parts = [[] for _ in range(num_parts)]
+    parts = [[] for _ in range(pipeline_parallel_size)]
     for inter in intervals:
         parts[current].append(inter)
-        current = (current + 1) % num_parts
+        current = (current + 1) % pipeline_parallel_size
 
     return parts
 
 
-class ModelInitializer():
+class PipelineModelInitializer():
     def __init__(self, config, num_chunks, verbose=False):
         self.num_chunks = num_chunks
         self.ori_model = build_model(config)
         self.layers = self.ori_model.layers_cfg
         layer_length = len(self.layers)
         self.verbose = verbose
-        self._logger = get_global_dist_logger()
+        self._logger = get_dist_logger()
         self._logger.info(f"The total length of layers is {layer_length}", ranks=[0])
 
-    def model_initialize(self, partition_method='parameter'):
+    def initialize(self, partition_method='parameter'):
         # Some space for initializing comunication groups
         self._interval = None
         self._partition_layers(method=partition_method)
@@ -198,7 +198,7 @@ class ModelInitializer():
                 for st, ed in self.parts[stage]:
                     for idx, layer in enumerate(self.layers[st: ed]):
                         log_str += f'\t{idx + st:2d}: {layer}\n'
-            self._logger.info(log_str)
+            self._logger.info(log_str, ranks=[0])
 
         # Save the partition
         self._interval = self.parts[pipeline_rank]

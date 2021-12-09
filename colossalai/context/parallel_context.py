@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import os
 import random
 from typing import Union
 
@@ -11,8 +10,8 @@ import torch.distributed as dist
 
 from colossalai.constants import ALLOWED_MODES, INITIALIZER_MAPPING
 from colossalai.context.config import Config
+from colossalai.logging import get_dist_logger
 from colossalai.registry import DIST_GROUP_INITIALIZER
-from ._utils import set_parallel_size
 from .parallel_mode import ParallelMode
 from .random import add_seed, get_seeds, set_mode
 
@@ -21,11 +20,24 @@ class ParallelContext:
     """This class provides interface functions for users to get the parallel context, 
     such as the global rank, the local rank, the world size, etc. of each device.
 
-    :param args: The distributed arguments in the system
-    :type args: dict
     """
 
-    def __init__(self, args=None):
+    __instance = None
+
+    @staticmethod
+    def get_instance():
+        if ParallelContext.__instance is None:
+            ParallelContext()
+        return ParallelContext.__instance
+
+    def __init__(self):
+        # create a singleton instance
+        if ParallelContext.__instance is not None:
+            raise Exception(
+                'ParallelContext is a singleton class, you should get the instance by colossalai.core.global_context')
+        else:
+            ParallelContext.__instance = self
+
         # distributed settings
         self._global_ranks = dict()
         self._local_ranks = dict()
@@ -34,7 +46,6 @@ class ParallelContext:
         self._ranks_in_group = dict()
 
         # load config from file
-        self._dist_args = args
         self._config = None
 
         # default 3D parallel args, will be overwritten during process group intialization
@@ -43,9 +54,21 @@ class ParallelContext:
         self.pipeline_parallel_size = 1
         self.tensor_parallel_size = 1
 
+        # logging
+        self._verbose = False
+        self._logger = get_dist_logger()
+
     @property
     def config(self):
         return self._config
+
+    @property
+    def verbose(self):
+        return self._verbose
+
+    @verbose.setter
+    def verbose(self, verbose_: bool):
+        self._verbose = verbose_
 
     def load_config(self, config: Union[dict, str]):
         """Loads the configuration from either a dict or a file.
@@ -61,14 +84,6 @@ class ParallelContext:
             self._config = Config(config)
         else:
             raise TypeError("Invalid type for config, only dictionary or string is supported")
-
-    def set_dist_args(self, args):
-        """Sets the distributed arguments.
-
-        :param args: The distributed arguments in the system
-        :type args: dict
-        """
-        self._dist_args = args
 
     @staticmethod
     def _check_parallel_mode(parallel_mode: ParallelMode):
@@ -268,32 +283,36 @@ class ParallelContext:
         self._check_parallel_mode(parallel_mode)
         self._ranks_in_group[parallel_mode] = ranks
 
-    def init_global_dist(self, addr=None, port=None):
-        """Initializes the global distributed environment.
-
-        :param addr: The IP address of the current device
-        :type addr: str, optional
-        :param port: The port to be used in the system of the current device
-        :type port: int, optional
+    def init_global_dist(self,
+                         rank: int,
+                         world_size: int,
+                         backend: str,
+                         host: str,
+                         port: int
+                         ):
+        """Initializes the global distributed environment
+        :param rank: rank for the default process group
+        :type rank: int
+        :param world_size: world size of the default process group
+        :type world_size: int
+        :param host: the master address for distributed training
+        :type host: str
+        :param port: the master port for distributed training
+        :type port: str
+        :param backend: backend for torch.distributed
+        :type backend: str
         """
-        # get config
-        rank = self._dist_args.local_rank
-        world_size = self._dist_args.world_size
-        # default env config, overwrite by exporting
-        # them in your bash script
-        addr = os.getenv('MASTER_ADDR', 'localhost') if addr is None else addr
-        port = os.getenv('MASTER_PORT', '8008') if port is None else port
-        init_method = f'tcp://{addr}:{port}'
-
-        dist.init_process_group(backend=self._dist_args.backend,
-                                rank=rank,
+        # initialize the default process group
+        init_method = f'tcp://{host}:{port}'
+        dist.init_process_group(rank=rank,
                                 world_size=world_size,
+                                backend=backend,
                                 init_method=init_method)
 
         # None will give the default global process group for pytorch dist operations
         self._register_dist(rank, world_size, None,
                             list(range(world_size)), ParallelMode.GLOBAL)
-        self._global_ranks[ParallelMode.GLOBAL] = rank
+        self.add_global_rank(ParallelMode.GLOBAL, rank)
 
     def _register_dist(self, local_rank, world_size,
                        process_group, ranks_in_group, mode):
@@ -312,7 +331,20 @@ class ParallelContext:
         pps = self.pipeline_parallel_size
         tps = self.tensor_parallel_size
         ws = self.world_size
-        assert ws == dps * pps * tps, f"Expected the world size {ws} to be equal to data parallel size ({dps}) * pipeline parallel size ({pps}) * tensor parallel size ({tps})"
+        assert ws == dps * pps * \
+            tps, f"Expected the world size {ws} to be equal to data parallel size ({dps}) * pipeline parallel size ({pps}) * tensor parallel size ({tps})"
+
+    def _set_parallel_size_from_config(self, config: dict, key: str, attr_name: str):
+        if key in config:
+            ele = config[key]
+            if isinstance(ele, int):
+                setattr(self, attr_name, ele)
+            elif isinstance(ele, dict):
+                setattr(self, attr_name, ele['size'])
+            else:
+                raise NotImplementedError(
+                    f"Parallel configuration does not support this kind of argument, please use int or dict"
+                )
 
     def init_parallel_groups(self):
         """Initializes the parallel groups.
@@ -325,21 +357,20 @@ class ParallelContext:
         world_size = self.get_world_size(ParallelMode.GLOBAL)
         self.world_size = world_size
 
-        assert hasattr(self.config, 'parallel'), 'Expected the field parallel to be present in the config file'
-
         # set parallel size as attributes for global context
-        parallel_config = self.config.parallel
-        set_parallel_size(self, parallel_config, 'pipeline',
-                          'pipeline_parallel_size')
-        set_parallel_size(self, parallel_config, 'tensor',
-                          'tensor_parallel_size')
+        parallel_config = self.config.get('parallel', None)
+        if parallel_config is not None:
+            self._set_parallel_size_from_config(parallel_config, 'pipeline', 'pipeline_parallel_size')
+            self._set_parallel_size_from_config(parallel_config, 'tensor', 'tensor_parallel_size')
 
         # the user should not set the data parallel size manually
         # instead, it should be calculated based on other parallel config
         self.data_parallel_size = self.world_size // (self.pipeline_parallel_size * self.tensor_parallel_size)
 
         # get the tensor parallel mode and check
-        tensor_parallel_mode = parallel_config['tensor'].get('mode', None)
+        tensor_parallel_mode = None
+        if parallel_config is not None and 'tensor' in parallel_config and 'mode' in parallel_config['tensor']:
+            tensor_parallel_mode = parallel_config['tensor']['mode']
         assert tensor_parallel_mode in ALLOWED_MODES, f"mode in the parallel config must be set to one of {ALLOWED_MODES}"
         self.check_sanity()
 
@@ -400,23 +431,21 @@ class ParallelContext:
         # destroy global process group
         dist.destroy_process_group()
 
-    def set_device(self):
+    def set_device(self, device_ordinal: int = None):
         """Sets distributed processes to be bound to devices.
         """
-        devices_per_node = torch.cuda.device_count()
         global_rank = self.get_global_rank()
-        device = global_rank % devices_per_node
-        torch.cuda.set_device(device)
-        print(f'process rank {global_rank} is bound to device {device}')
+        if device_ordinal is None:
+            devices_per_node = torch.cuda.device_count()
+            device_ordinal = global_rank % devices_per_node
 
-    def set_seed(self):
+        torch.cuda.set_device(device_ordinal)
+        if self._verbose:
+            self._logger.info(f'process rank {global_rank} is bound to device {device_ordinal}')
+
+    def set_seed(self, seed: int):
         """Sets seeds for all random libraries.
         """
-        if hasattr(self.config, 'seed'):
-            seed = getattr(self.config, 'seed')
-        else:
-            seed = 2  # default seed
-
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
@@ -444,11 +473,18 @@ class ParallelContext:
             seeds = get_seeds()
             seed_str = ', '.join([f'{k}: {v}' for k, v in seeds.items()])
 
-            print(f"initialized seed on rank {global_rank}, "
-                  f"numpy: {seed}, python random: {seed}, {seed_str},"
-                  f"the default parallel seed is {ParallelMode.DATA}.", flush=True)
+            if self._verbose:
+                self._logger.info(
+                    f"initialized seed on rank {global_rank}, "
+                    f"numpy: {seed}, python random: {seed}, {seed_str},"
+                    f"the default parallel seed is {ParallelMode.DATA}.",
+                    ranks=[0])
         else:
-            print(f"initialized seed on rank {global_rank}, "
-                  f"numpy: {seed}, python random: {seed}, pytorch: {seed}", flush=True)
-            print('WARNING: CUDA is not available, thus CUDA RNG cannot be used to track CUDA random number states',
-                  flush=True)
+            if self._verbose:
+                self._logger.info(
+                    f"initialized seed on rank {global_rank}, "
+                    f"numpy: {seed}, python random: {seed}, pytorch: {seed}",
+                    ranks=[0])
+                self._logger.info(
+                    'WARNING: CUDA is not available, thus CUDA RNG cannot be used to track CUDA random number states',
+                    ranks=[0])

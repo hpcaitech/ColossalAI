@@ -10,7 +10,6 @@ from colossalai.registry import LR_SCHEDULERS
 class LambdaLR(_LambdaLR):
     """Sets the learning rate of each parameter group to the initial lr
     times a given function. When last_epoch=-1, sets initial lr as lr.
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps
@@ -33,7 +32,6 @@ class LambdaLR(_LambdaLR):
 class MultiplicativeLR(_MultiplicativeLR):
     """Multiply the learning rate of each parameter group by the factor given
     in the specified function. When last_epoch=-1, sets initial lr as lr
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps
@@ -58,7 +56,6 @@ class StepLR(_StepLR):
     step_size epochs. Notice that such decay can happen simultaneously with
     other changes to the learning rate from outside this scheduler. When
     last_epoch=-1, sets initial lr as lr
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps
@@ -82,7 +79,6 @@ class StepLR(_StepLR):
 class ExponentialLR(_ExponentialLR):
     """Decays the learning rate of each parameter group by gamma every epoch.
     When last_epoch=-1, sets initial lr as lr
-
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
     :param total_steps: number of total training steps

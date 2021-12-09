@@ -7,38 +7,54 @@ import time
 import numpy as np
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context
-from colossalai.logging import get_global_dist_logger
+from colossalai.logging import get_dist_logger
 from colossalai.registry import LAYERS, LOSSES
 from colossalai.utils import get_current_device, print_rank_0
+from colossalai.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
+from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D, OUTPUT_GROUP_3D
 
 from common import *
 
 
 def check_linear():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     OUTPUT_SIZE = 2 * HIDDEN_SIZE
 
-    j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
-    i = B_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
-    k = C_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)
+    input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+    weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+    output_parallel_mode = get_parallel_mode_from_env(OUTPUT_GROUP_3D)
+
+    j = A_rank = global_context.get_local_rank(input_parallel_mode)
+    i = B_rank = global_context.get_local_rank(weight_parallel_mode)
+    k = C_rank = global_context.get_local_rank(output_parallel_mode)
 
     layer = LAYERS.get_module('Linear3D')(INPUT_SIZE,
                                           OUTPUT_SIZE,
-                                          ParallelMode.PARALLEL_3D_INPUT,
-                                          ParallelMode.PARALLEL_3D_WEIGHT,
+                                          #   ParallelMode.PARALLEL_3D_INPUT,
+                                          #   ParallelMode.PARALLEL_3D_WEIGHT,
                                           dtype=dtype,
                                           bias=True)
-    torch.nn.init.zeros_(layer.bias)
-    torch.nn.init.ones_(layer.weight)
+    # torch.nn.init.zeros_(layer.bias)
+    # torch.nn.init.ones_(layer.weight)
     layer = layer.to(device)
     layer_master = torch.nn.Linear(INPUT_SIZE, OUTPUT_SIZE)
-    torch.nn.init.zeros_(layer_master.bias)
-    torch.nn.init.ones_(layer_master.weight)
+    # torch.nn.init.zeros_(layer_master.bias)
+    # torch.nn.init.ones_(layer_master.weight)
     layer_master = layer_master.to(device)
+
+    weight_master = layer_master.weight.data.transpose(0, 1)
+    torch.distributed.broadcast(weight_master, src=0)
+    weight = torch.chunk(weight_master, DEPTH, dim=0)[k]
+    weight = torch.chunk(weight, DEPTH, dim=-1)[j]
+    layer.weight = torch.nn.Parameter(weight)
+    bias_master = layer_master.bias.data
+    torch.distributed.broadcast(bias_master, src=0)
+    bias = torch.chunk(bias_master, DEPTH)[j]
+    layer.bias = torch.nn.Parameter(bias)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
     A_master = torch.randn(A_shape, dtype=dtype, device=device)
@@ -89,44 +105,51 @@ def check_linear():
     B_grad = layer_master.weight.grad.transpose(0, 1)
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[k]
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[j]
-    B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
+    # B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
     logger.info('Rank {} linear backward (weight_grad): {}'.format(
         rank, check_equal(B_grad, layer.weight.grad)))
 
-    if j == k:
-        bias_grad = layer_master.bias.grad
-        bias_grad = torch.chunk(bias_grad, DEPTH)[j]
-        bias_grad = torch.chunk(bias_grad, DEPTH)[i]
-        logger.info('Rank {} linear backward (bias_grad): {}'.format(
-            rank, check_equal(bias_grad, layer.bias.grad)))
-    else:
-        logger.info('Rank {} linear backward (bias_grad): {}'.format(
-            rank,
-            # np.count_nonzero(layer.bias.grad.detach().cpu().numpy()) == 0))
-            layer.bias.grad is None))
+    bias_grad = layer_master.bias.grad
+    bias_grad = torch.chunk(bias_grad, DEPTH)[j]
+    logger.info('Rank {} linear backward (bias_grad): {}'.format(
+        rank, check_equal(bias_grad, layer.bias.grad)))
+    # logger.info(f'\nRank {rank} Master:\n{layer_master.bias.grad}\nRank {rank} True:\n{bias_grad}\nRank {rank} Out:\n{layer.bias.grad}')
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
 
 def check_layernorm():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
 
-    j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
-    i = B_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
-    k = C_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)
+    input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+    weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+    output_parallel_mode = get_parallel_mode_from_env(OUTPUT_GROUP_3D)
+
+    j = A_rank = global_context.get_local_rank(input_parallel_mode)
+    i = B_rank = global_context.get_local_rank(weight_parallel_mode)
+    k = C_rank = global_context.get_local_rank(output_parallel_mode)
 
     norm = LAYERS.get_module('LayerNorm3D')(INPUT_SIZE,
-                                            ParallelMode.PARALLEL_3D_INPUT,
-                                            ParallelMode.PARALLEL_3D_WEIGHT,
+                                            # ParallelMode.PARALLEL_3D_INPUT,
+                                            # ParallelMode.PARALLEL_3D_WEIGHT,
                                             eps=1e-6,
                                             dtype=dtype)
     norm = norm.to(device)
     norm_master = torch.nn.LayerNorm(INPUT_SIZE, eps=1e-6)
     norm_master = norm_master.to(device)
+
+    weight_master = norm_master.weight.data
+    torch.distributed.broadcast(weight_master, src=0)
+    weight = torch.chunk(weight_master, DEPTH)[k]
+    norm.weight = torch.nn.Parameter(weight)
+    bias_master = norm_master.bias.data
+    torch.distributed.broadcast(bias_master, src=0)
+    bias = torch.chunk(bias_master, DEPTH)[k]
+    norm.bias = torch.nn.Parameter(bias)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
     A_master = torch.randn(A_shape, dtype=dtype, device=device)
@@ -181,29 +204,15 @@ def check_layernorm():
     logger.info('Rank {} layernorm backward (input_grad): {}'.format(
         rank, check_equal(A_grad, A.grad)))
 
-    if j == k:
-        bias_grad = norm_master.weight.grad
-        bias_grad = torch.chunk(bias_grad, DEPTH)[j]
-        bias_grad = torch.chunk(bias_grad, DEPTH)[i]
-        logger.info('Rank {} linear backward (weight_grad): {}'.format(
-            rank, check_equal(bias_grad, norm.weight.grad)))
-    else:
-        logger.info('Rank {} linear backward (weight_grad): {}'.format(
-            rank,
-            # np.count_nonzero(layer.bias.grad.detach().cpu().numpy()) == 0))
-            norm.weight.grad is None))
+    bias_grad = norm_master.weight.grad
+    bias_grad = torch.chunk(bias_grad, DEPTH)[k]
+    logger.info('Rank {} layernorm backward (weight_grad): {}'.format(
+        rank, check_equal(bias_grad, norm.weight.grad)))
 
-    if j == k:
-        bias_grad = norm_master.bias.grad
-        bias_grad = torch.chunk(bias_grad, DEPTH)[j]
-        bias_grad = torch.chunk(bias_grad, DEPTH)[i]
-        logger.info('Rank {} linear backward (bias_grad): {}'.format(
-            rank, check_equal(bias_grad, norm.bias.grad)))
-    else:
-        logger.info('Rank {} linear backward (bias_grad): {}'.format(
-            rank,
-            # np.count_nonzero(layer.bias.grad.detach().cpu().numpy()) == 0))
-            norm.bias.grad is None))
+    bias_grad = norm_master.bias.grad
+    bias_grad = torch.chunk(bias_grad, DEPTH)[k]
+    logger.info('Rank {} layernorm backward (bias_grad): {}'.format(
+        rank, check_equal(bias_grad, norm.bias.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
@@ -211,14 +220,18 @@ def check_layernorm():
 def check_attention():
     rank = torch.distributed.get_rank()
     device = get_current_device()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
     NUM_ATTENTION_HEADS = 2
 
-    j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
-    i = B_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
-    k = C_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)
+    input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+    weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+    output_parallel_mode = get_parallel_mode_from_env(OUTPUT_GROUP_3D)
+
+    j = A_rank = global_context.get_local_rank(input_parallel_mode)
+    i = B_rank = global_context.get_local_rank(weight_parallel_mode)
+    k = C_rank = global_context.get_local_rank(output_parallel_mode)
 
     layer = LAYERS.get_module('ViTSelfAttention3D')(HIDDEN_SIZE,
                                                     NUM_ATTENTION_HEADS,
@@ -264,13 +277,17 @@ def check_attention():
 def check_mlp():
     rank = torch.distributed.get_rank()
     device = get_current_device()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
 
-    j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
-    i = B_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
-    k = C_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)
+    input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+    weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+    output_parallel_mode = get_parallel_mode_from_env(OUTPUT_GROUP_3D)
+
+    j = A_rank = global_context.get_local_rank(input_parallel_mode)
+    i = B_rank = global_context.get_local_rank(weight_parallel_mode)
+    k = C_rank = global_context.get_local_rank(output_parallel_mode)
 
     layer = LAYERS.get_module('ViTMLP3D')(HIDDEN_SIZE,
                                           1,
@@ -320,27 +337,41 @@ class Testvithead(torch.nn.Module):
 
 def check_head():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
     INPUT_SIZE = HIDDEN_SIZE
 
-    j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
-    i = B_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
-    k = C_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)
+    input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+    weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+    output_parallel_mode = get_parallel_mode_from_env(OUTPUT_GROUP_3D)
+
+    j = A_rank = global_context.get_local_rank(input_parallel_mode)
+    i = B_rank = global_context.get_local_rank(weight_parallel_mode)
+    k = C_rank = global_context.get_local_rank(output_parallel_mode)
 
     head = LAYERS.get_module('ViTHead3D')(INPUT_SIZE,
                                           NUM_CLASSES,
                                           dtype=dtype,
                                           bias=True)
-    torch.nn.init.zeros_(head.linear.bias)
-    torch.nn.init.ones_(head.linear.weight)
+    # torch.nn.init.zeros_(head.linear.bias)
+    # torch.nn.init.ones_(head.linear.weight)
     head = head.to(device)
 
     layer = Testvithead(INPUT_SIZE, NUM_CLASSES, bias=True)
-    torch.nn.init.zeros_(layer.linear.bias)
-    torch.nn.init.ones_(layer.linear.weight)
+    # torch.nn.init.zeros_(layer.linear.bias)
+    # torch.nn.init.ones_(layer.linear.weight)
     layer = layer.to(device)
+
+    weight_master = layer.linear.weight.data.transpose(0, 1)
+    torch.distributed.broadcast(weight_master, src=0)
+    weight = torch.chunk(weight_master, DEPTH, dim=0)[k]
+    weight = torch.chunk(weight, DEPTH, dim=-1)[j]
+    head.linear.weight = torch.nn.Parameter(weight)
+    bias_master = layer.linear.bias.data
+    torch.distributed.broadcast(bias_master, src=0)
+    bias = torch.chunk(bias_master, DEPTH)[j]
+    head.linear.bias = torch.nn.Parameter(bias)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
     A_master = torch.randn(A_shape, dtype=dtype, device=device)
@@ -397,31 +428,43 @@ def check_head():
     B_grad = layer.linear.weight.grad.transpose(0, 1)
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[k]
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[j]
-    pad_shape = (B_grad.shape[0], math.ceil(B_grad.shape[-1] / DEPTH) * DEPTH -
-                 B_grad.shape[-1])
-    B_grad = torch.cat(
-        [B_grad, torch.zeros(pad_shape, dtype=dtype, device=device)], dim=-1)
-    B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
+    # B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
     logger.info('Rank {} head backward (weight_grad): {}'.format(
         rank, check_equal(B_grad, head.linear.weight.grad)))
 
-    if j == k:
-        bias_grad = layer.linear.bias.grad
-        bias_grad = torch.chunk(bias_grad, DEPTH)[j]
-        pad_shape = (math.ceil(bias_grad.shape[0] / DEPTH) * DEPTH -
-                     bias_grad.shape[0], )
-        bias_grad = torch.cat(
-            [bias_grad,
-             torch.zeros(pad_shape, dtype=dtype, device=device)])
-        bias_grad = torch.chunk(bias_grad, DEPTH)[i]
-        logger.info('Rank {} head backward (bias_grad): {}'.format(
-            rank, check_equal(bias_grad, head.linear.bias.grad)))
-    else:
-        logger.info('Rank {} head backward (bias_grad): {}'.format(
-            rank,
-            # np.count_nonzero(
-            #     head.linear.bias.grad.detach().cpu().numpy()) == 0))
-            head.linear.bias.grad is None))
+    bias_grad = layer.linear.bias.grad
+    bias_grad = torch.chunk(bias_grad, DEPTH)[j]
+    logger.info('Rank {} head backward (bias_grad): {}'.format(
+        rank, check_equal(bias_grad, head.linear.bias.grad)))
+
+    # B_grad = layer.linear.weight.grad.transpose(0, 1)
+    # B_grad = torch.chunk(B_grad, DEPTH, dim=0)[k]
+    # B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[j]
+    # pad_shape = (B_grad.shape[0], math.ceil(B_grad.shape[-1] / DEPTH) * DEPTH -
+    #              B_grad.shape[-1])
+    # B_grad = torch.cat(
+    #     [B_grad, torch.zeros(pad_shape, dtype=dtype, device=device)], dim=-1)
+    # B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
+    # logger.info('Rank {} head backward (weight_grad): {}'.format(
+    #     rank, check_equal(B_grad, head.linear.weight.grad)))
+
+    # if j == k:
+    #     bias_grad = layer.linear.bias.grad
+    #     bias_grad = torch.chunk(bias_grad, DEPTH)[j]
+    #     pad_shape = (math.ceil(bias_grad.shape[0] / DEPTH) * DEPTH -
+    #                  bias_grad.shape[0], )
+    #     bias_grad = torch.cat(
+    #         [bias_grad,
+    #          torch.zeros(pad_shape, dtype=dtype, device=device)])
+    #     bias_grad = torch.chunk(bias_grad, DEPTH)[i]
+    #     logger.info('Rank {} head backward (bias_grad): {}'.format(
+    #         rank, check_equal(bias_grad, head.linear.bias.grad)))
+    # else:
+    #     logger.info('Rank {} head backward (bias_grad): {}'.format(
+    #         rank,
+    #         # np.count_nonzero(
+    #         #     head.linear.bias.grad.detach().cpu().numpy()) == 0))
+    #         head.linear.bias.grad is None))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
@@ -452,12 +495,16 @@ class Testvitembed(torch.nn.Module):
 def check_embed():
     rank = torch.distributed.get_rank()
     device = get_current_device()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float32
 
-    j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
-    i = B_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
-    k = C_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)
+    input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+    weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+    output_parallel_mode = get_parallel_mode_from_env(OUTPUT_GROUP_3D)
+
+    j = A_rank = global_context.get_local_rank(input_parallel_mode)
+    i = B_rank = global_context.get_local_rank(weight_parallel_mode)
+    k = C_rank = global_context.get_local_rank(output_parallel_mode)
 
     layer = LAYERS.get_module('ViTPatchEmbedding3D')(IMG_SIZE, 4, 3,
                                                      HIDDEN_SIZE, 0.)
@@ -585,16 +632,20 @@ def check_embed():
 
 def check_loss():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float32
 
-    j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
-    i = B_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
-    k = C_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)
+    input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+    weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+    output_parallel_mode = get_parallel_mode_from_env(OUTPUT_GROUP_3D)
 
-    criterion = LOSSES.get_module('CrossEntropyLoss3D')(
-        ParallelMode.PARALLEL_3D_INPUT, ParallelMode.PARALLEL_3D_WEIGHT)
+    j = A_rank = global_context.get_local_rank(input_parallel_mode)
+    i = B_rank = global_context.get_local_rank(weight_parallel_mode)
+    k = C_rank = global_context.get_local_rank(output_parallel_mode)
+
+    criterion = LOSSES.get_module('CrossEntropyLoss3D')()
+    # ParallelMode.PARALLEL_3D_INPUT, ParallelMode.PARALLEL_3D_WEIGHT)
     criterion_master = torch.nn.CrossEntropyLoss()
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
