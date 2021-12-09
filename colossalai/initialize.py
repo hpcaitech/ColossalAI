@@ -43,8 +43,10 @@ def get_default_parser():
     parser.add_argument('--port',
                         type=int,
                         help='the master port for distributed training')
-    parser.add_argument('--world_size', type=int, help='world size for distributed training')
-    parser.add_argument('--rank', type=int, help='rank for the default process group')
+    parser.add_argument('--world_size', type=int,
+                        help='world size for distributed training')
+    parser.add_argument('--rank', type=int,
+                        help='rank for the default process group')
     parser.add_argument('--local_rank',
                         type=int,
                         help='local rank on the node')
@@ -176,8 +178,10 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
 def initialize(model: Union[nn.Module, List[nn.Module]],
                optimizer: Union[Optimizer, List[Optimizer]],
                criterion: Union[_Loss, List[_Loss]],
-               train_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
-               test_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
+               train_dataloader: Optional[Union[Iterable,
+                                                List[Iterable]]] = None,
+               test_dataloader: Optional[Union[Iterable,
+                                               List[Iterable]]] = None,
                lr_scheduler: _LRScheduler = None,
                verbose: bool = True
                ) -> Tuple[Engine, DataLoader, DataLoader]:
@@ -220,7 +224,9 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
 
     # first sync model across dp ranks
     model.to(get_current_device())
-    sync_model_param_in_dp(model)
+    use_zero3 = hasattr(gpc.config, 'zero') and gpc.config.zero.level == 3
+    if not use_zero3:
+        sync_model_param_in_dp(model)
 
     # check amp and zero
     fp16_cfg = gpc.config.get('fp16', None)
@@ -291,7 +297,8 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                 "to all-reduce the gradients after a training step.",
                 ranks=[0])
     else:
-        gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
+        gradient_handlers = [build_gradient_handler(
+            cfg, model, optimizer) for cfg in gradient_handler_cfg]
 
     # check if optimizer is ColossalaiOptimizer
     if not isinstance(optimizer, (ColossalaiOptimizer, ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):

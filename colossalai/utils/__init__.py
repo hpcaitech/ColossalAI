@@ -22,5 +22,5 @@ __all__ = ['checkpoint',
            'Timer', 'MultiTimer',
            'multi_tensor_applier',
            'accumulate_gradient',
-           'DataParallelSampler', 'get_dataloader'
+           'DataParallelSampler', 'get_dataloader',
            ]

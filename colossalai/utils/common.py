@@ -164,7 +164,8 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
         no_tensor_parallel_grads = []
         for p in params:
             if is_model_parallel_parameter(p):
-                reductor = (gpc.get_world_size(ParallelMode.TENSOR) / getattr(p, NUM_PARTITIONS)) ** (1 / norm_type)
+                reductor = (gpc.get_world_size(ParallelMode.TENSOR) /
+                            getattr(p, NUM_PARTITIONS)) ** (1 / norm_type)
                 tensor_parallel_grads.append(p.grad.data / reductor)
             else:
                 no_tensor_parallel_grads.append(p.grad.data)
