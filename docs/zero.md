@@ -30,7 +30,7 @@ Here we use `Adam` as the initial optimizer.
     )
 
     zero = dict(
-        type='ZeroRedundancyOptimizer_Level_3',
+        level=3,
         dynamic_loss_scale=True,
         clip_grad=1.0
     )
@@ -84,5 +84,14 @@ Here we use `Adam` as the initial optimizer.
 Note that `fp16` is automatically enabled when using ZeRO. 
 
 ### Training
+
+Note that if your model is too large to fit within the memory when using ZeRO-3, you should use `colossalai.zero.zero3_model_context` to construct your model:
+
+```python
+from colossalai.zero import zero3_model_context
+
+with zero3_model_context():
+    model = Model()
+```
 
 Once you have completed your configuration, just use `colossalai.initialize()` to initialize your training.

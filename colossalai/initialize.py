@@ -220,7 +220,9 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
 
     # first sync model across dp ranks
     model.to(get_current_device())
-    sync_model_param_in_dp(model)
+    use_zero3 = hasattr(gpc.config, 'zero') and gpc.config.zero.level == 3
+    if not use_zero3:
+        sync_model_param_in_dp(model)
 
     # check amp and zero
     fp16_cfg = gpc.config.get('fp16', None)
