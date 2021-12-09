@@ -1,27 +1,27 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from colossalai.initialize import init_dist
+from colossalai.initialize import launch, get_default_parser
 
 from test_layer import *
 from test_operation import *
+from colossalai.logging import get_dist_logger
 
 CONFIG = dict(parallel=dict(pipeline=1, tensor=dict(mode='3d', size=8)),
               seed=0)
 
 
-def check_operations():
-    check_AB()
-    check_ABT()
-    check_ATB()
-    check_add()
-    check_mul()
-    check_sum()
-    # check_pooler()
+# def check_operations():
+#     check_AB()
+#     check_ABT()
+#     check_ATB()
+#     check_add()
+#     check_mul()
+#     check_sum()
 
 
 def check_layer():
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     liear_fwd_time, linear_bwd_time = check_linear()
     norm_fwd_time, norm_bwd_time = check_layernorm()
     attn_fwd_time, attn_bwd_time = check_attention()
@@ -40,15 +40,20 @@ def check_layer():
 
 def _test_main():
     # init dist
-    init_dist(CONFIG)
-    logger = get_global_dist_logger()
+    parser = get_default_parser()
+    args = parser.parse_args()
+    launch(config=CONFIG,
+           rank=args.rank,
+           world_size=args.world_size,
+           host=args.host,
+           port=args.port,
+           backend=args.backend)
+    logger = get_dist_logger()
     logger.info('Distributed environment is initialzied.', ranks=[0])
-
-    global_context.set_seed()
     torch.backends.cudnn.benchmark = True
 
     # check operation
-    check_operations()
+    # check_operations()
 
     # check layers
     check_layer()

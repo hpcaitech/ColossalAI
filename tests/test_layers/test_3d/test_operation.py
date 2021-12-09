@@ -3,7 +3,7 @@
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context
-from colossalai.logging import get_global_dist_logger
+from colossalai.logging import get_dist_logger
 from colossalai.nn.layer.parallel_3d._operation import *
 from colossalai.utils import get_current_device
 
@@ -12,7 +12,7 @@ from common import *
 
 def check_AB():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float
     j = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
     i = global_context.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)
@@ -83,7 +83,7 @@ def check_AB():
 
 def check_ABT():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float
 
     j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
@@ -152,7 +152,7 @@ def check_ABT():
 
 def check_ATB():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     device = get_current_device()
     dtype = torch.float
 
@@ -222,7 +222,7 @@ def check_ATB():
 
 def check_add():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float
 
     j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
@@ -296,7 +296,7 @@ def check_add():
 
 def check_mul():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float
 
     j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
@@ -370,7 +370,7 @@ def check_mul():
 
 def check_sum():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float
 
     j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)
@@ -417,7 +417,7 @@ def check_sum():
 
 def check_reduce():
     rank = torch.distributed.get_rank()
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     dtype = torch.float
 
     j = A_rank = global_context.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)

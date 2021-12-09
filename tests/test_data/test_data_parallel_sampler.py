@@ -12,54 +12,54 @@ import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
 
 import colossalai
-from colossalai.builder import build_dataset, build_data_sampler
-from colossalai.context.parallel_mode import ParallelMode
+from colossalai.builder import build_dataset, build_data_sampler, build_transform
+from torchvision import transforms
+from colossalai.context import ParallelMode, Config
 from colossalai.core import global_context as gpc
+from colossalai.utils import get_dataloader
 
-CONFIG = dict(
-    train_data=dict(
-        dataset=dict(
-            type='CIFAR10Dataset',
-            root=Path(os.environ['DATA']),
-            train=True,
-            download=True,
+CONFIG = Config(
+    dict(
+        train_data=dict(
+            dataset=dict(
+                type='CIFAR10',
+                root=Path(os.environ['DATA']),
+                train=True,
+                download=True,
+            ),
+            dataloader=dict(
+                batch_size=8,
+            ),
             transform_pipeline=[
                 dict(type='ToTensor'),
                 dict(type='Normalize', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
             ]
         ),
-        dataloader=dict(
-            num_workers=2,
-            batch_size=8,
-            sampler=dict(
-                type='DataParallelSampler',
-            )
-        )
-    ),
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(size=1, mode=None),
-    ),
-    seed=1024,
-)
+        parallel=dict(
+            pipeline=dict(size=1),
+            tensor=dict(size=1, mode=None),
+        ),
+        seed=1024,
+    ))
 
 
-def run_data_sampler(local_rank, world_size):
+def run_data_sampler(rank, world_size):
     dist_args = dict(
         config=CONFIG,
-        local_rank=local_rank,
+        rank=rank,
         world_size=world_size,
         backend='gloo',
         port='29503',
         host='localhost'
     )
-    colossalai.init_dist(**dist_args)
+    colossalai.launch(**dist_args)
     print('finished initialization')
 
+    transform_pipeline = [build_transform(cfg) for cfg in gpc.config.train_data.transform_pipeline]
+    transform_pipeline = transforms.Compose(transform_pipeline)
+    gpc.config.train_data.dataset['transform'] = transform_pipeline
     dataset = build_dataset(gpc.config.train_data.dataset)
-    sampler_cfg = gpc.config.train_data.dataloader.pop('sampler')
-    sampler = build_data_sampler(sampler_cfg, dataset)
-    dataloader = DataLoader(dataset=dataset, sampler=sampler, **gpc.config.train_data.dataloader)
+    dataloader = get_dataloader(dataset, **gpc.config.train_data.dataloader)
     data_iter = iter(dataloader)
     img, label = data_iter.next()
     img = img[0]

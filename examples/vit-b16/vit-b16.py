@@ -73,6 +73,6 @@ dali = dict(
 engine = dict(
     schedule=None,
     gradient_handlers=None,
-    gradient_accumulation=32,
+    gradient_accumulation=16,
     gradient_clipping=1.0,
 )

@@ -2,40 +2,14 @@
 # -*- encoding: utf-8 -*-
 
 import math
-
+import collections.abc
+from itertools import repeat
+import numpy as np
+from colossalai.utils.common import print_rank_0
 import torch
-from torch import Tensor
-from torch import nn
+from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS
 from colossalai.utils import checkpoint
-
-from colossalai.constants import IS_TENSOR_PARALLEL
-
-
-def divide(numerator, denominator):
-    """ only allow exact division """
-    assert numerator % denominator == 0, \
-        '{} is not divisible by {}'.format(numerator, denominator)
-    return numerator // denominator
-
-
-def gelu(x: Tensor) -> Tensor:
-    """Implementation of the gelu activation function.
-        For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
-        0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
-    """
-    return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
-
-
-def swish(x: Tensor) -> Tensor:
-    return x * torch.sigmoid(x)
-
-
-ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
-
-
-def set_tensor_parallel_attribute(param):
-    if not hasattr(param, IS_TENSOR_PARALLEL):
-        setattr(param, IS_TENSOR_PARALLEL, True)
+from torch import Tensor, nn
 
 
 class CheckpointModule(nn.Module):
@@ -44,15 +18,15 @@ class CheckpointModule(nn.Module):
         self.checkpoint = checkpoint
         self._use_checkpoint = checkpoint
 
-    def _forward(self, *args):
+    def _forward(self, *args, **kwargs):
         raise NotImplementedError(
             'CheckpointModule should implement _forward method instead of origin forward')
 
-    def forward(self, *args):
+    def forward(self, *args, **kwargs):
         if self._use_checkpoint:
-            return checkpoint(self._forward, *args)
+            return checkpoint(self._forward, *args, **kwargs)
         else:
-            return self._forward(*args)
+            return self._forward(*args, **kwargs)
 
     def train(self, mode: bool = True):
         self._use_checkpoint = self.checkpoint
@@ -61,3 +35,38 @@ class CheckpointModule(nn.Module):
     def eval(self):
         self._use_checkpoint = False
         return super().eval()
+
+def divide(numerator, denominator):
+    """ only allow exact division """
+    assert numerator % denominator == 0, \
+        '{} is not divisible by {}'.format(numerator, denominator)
+    return numerator // denominator
+
+
+def swish(x: Tensor) -> Tensor:
+    return x * torch.sigmoid(x)
+
+
+ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
+
+
+def set_tensor_parallel_attribute_by_size(param, size):
+    setattr(param, IS_TENSOR_PARALLEL, True)
+    setattr(param, NUM_PARTITIONS, size // np.prod(param.shape))
+
+
+def set_tensor_parallel_attribute_by_partition(param, num_partitions):
+    setattr(param, IS_TENSOR_PARALLEL, True)
+    setattr(param, NUM_PARTITIONS, num_partitions)
+
+# From PyTorch internals
+def _ntuple(n):
+    def parse(x):
+        if isinstance(x, collections.abc.Iterable):
+            return x
+        return tuple(repeat(x, n))
+
+    return parse
+
+
+to_2tuple = _ntuple(2)

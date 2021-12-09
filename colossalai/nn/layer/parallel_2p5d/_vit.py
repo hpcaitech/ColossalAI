@@ -5,22 +5,25 @@ import math
 
 import torch
 from torch import nn as nn, Tensor, distributed as dist
+from torch.nn.init import _calculate_fan_in_and_fan_out
 
-from colossalai.context.parallel_mode import ParallelMode
+from colossalai.context import seed, ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.vanilla_vision_transformer.layers import to_2tuple
 from colossalai.registry import LAYERS
+from colossalai.utils import checkpoint
 from colossalai.utils import get_current_device
-from ._operation import _ViT_Split_2p5D
+from ._operation import AllGatherLast, SplitFirst
 from ._utils import assert_tesseract_initialization, \
     get_tesseract_dim_dep_from_env
 from .layers import Linear2p5D
-from .._common_utils import ACT2FN, divide, CheckpointModule
-from .._common_utils import set_tensor_parallel_attribute
+from ..base_layer import ParallelLayer
+from ..fused_bias_gelu import bias_gelu_impl
+from .._common_utils import (ACT2FN, divide, to_2tuple,
+                             set_tensor_parallel_attribute_by_partition)
 
 
 @LAYERS.register_module
-class ViTMLP2p5D(CheckpointModule):
+class ViTMLP2p5D(ParallelLayer):
     """MLP layer for 2.5D parallel Vision Transformer
 
     :param in_features: size of each input sample
@@ -43,19 +46,32 @@ class ViTMLP2p5D(CheckpointModule):
                  act_func: str = 'gelu',
                  dropout_prob: float = 0.,
                  dtype=None,
-                 checkpoint: bool = False
+                 checkpoint: bool = False,
+                 weight_init='torch'
                  ):
-        super().__init__(checkpoint=checkpoint)
+        super().__init__()
 
         assert_tesseract_initialization()
         self.in_features = in_features
         self.mlp_ratio = mlp_ratio
+        self.checkpoint = checkpoint
+        assert weight_init in ('torch', 'jax')
+
+        if act_func == 'fused_gelu':
+            self.act = bias_gelu_impl
+            skip_dense_1_add_bias = True
+        else:
+            self.act = ACT2FN[act_func]
+            skip_dense_1_add_bias = False
 
         # Project to mlp_ratio * h.
         self.dense_1 = Linear2p5D(
             self.in_features,
             self.mlp_ratio * self.in_features,
             dtype=dtype,
+            init_weight=weight_init,
+            init_bias=weight_init,
+            skip_bias_add=skip_dense_1_add_bias
         )
 
         self.act = ACT2FN[act_func]
@@ -65,20 +81,39 @@ class ViTMLP2p5D(CheckpointModule):
             self.mlp_ratio * self.in_features,
             self.in_features,
             dtype=dtype,
+            init_weight=weight_init,
+            init_bias=weight_init
         )
         self.dropout = nn.Dropout(dropout_prob)
 
     def _forward(self, hidden_states: Tensor) -> Tensor:
-        intermediate_output = self.dense_1(hidden_states)
-        intermediate_output = self.act(intermediate_output)
-        intermediate_output = self.dropout(intermediate_output)
+        if self.act == bias_gelu_impl:
+            intermediate_output, bias = self.dense_1(hidden_states)
+            intermediate_output = self.act(intermediate_output, bias)
+        else:
+            intermediate_output = self.dense_1(hidden_states)
+            intermediate_output = self.act(intermediate_output)
+
+        with seed(ParallelMode.TENSOR):
+            intermediate_output = self.dropout(intermediate_output)
         output = self.dense_2(intermediate_output)
-        output = self.dropout(output)
+
+        with seed(ParallelMode.TENSOR):
+            output = self.dropout(output)
         return output
+
+    def _checkpoint_forward(self, hidden_states: Tensor) -> Tensor:
+        return checkpoint(self._forward, hidden_states)
+
+    def forward(self, hidden_states: Tensor) -> Tensor:
+        if self.checkpoint:
+            return self._checkpoint_forward(hidden_states)
+        else:
+            return self._forward(hidden_states)
 
 
 @LAYERS.register_module
-class ViTSelfAttention2p5D(CheckpointModule):
+class ViTSelfAttention2p5D(ParallelLayer):
     """Self-attention layer for 2.5D parallel Vision Transformer
 
     :param hidden_size: hidden size
@@ -101,9 +136,10 @@ class ViTSelfAttention2p5D(CheckpointModule):
                  attention_dropout_prob,
                  hidden_dropout_prob,
                  dtype=None,
-                 checkpoint: bool = False
+                 checkpoint: bool = False,
+                 weight_init='torch'
                  ):
-        super().__init__(checkpoint=checkpoint)
+        super().__init__()
 
         assert_tesseract_initialization()
         self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
@@ -112,19 +148,30 @@ class ViTSelfAttention2p5D(CheckpointModule):
             num_attention_heads, self.tesseract_dim)  # *
         self.attention_head_size = divide(hidden_size, num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
+        self.checkpoint = checkpoint
+        assert weight_init in ('torch', 'jax')
+        if weight_init == 'jax':
+            self.init_bias = 'zero'
+        else:
+            self.init_bias = weight_init
 
         self.query_key_value = Linear2p5D(
             hidden_size,
             3 * hidden_size,
             dtype=dtype,
+            init_weight=weight_init,
+            init_bias=self.init_bias
         )
         self.attention_dropout = nn.Dropout(attention_dropout_prob)
         self.dense = Linear2p5D(
             hidden_size,
             hidden_size,
             dtype=dtype,
+            init_weight=weight_init,
+            init_bias=self.init_bias
         )
         self.dropout = nn.Dropout(hidden_dropout_prob)
+        self.softmax = nn.Softmax(dim=-1)
 
     def _forward(self, hidden_states: Tensor) -> Tensor:
         query_key_value = self.query_key_value(hidden_states)
@@ -140,8 +187,10 @@ class ViTSelfAttention2p5D(CheckpointModule):
         attention_scores = attention_scores / \
             math.sqrt(self.attention_head_size)
 
-        attention_probs = nn.Softmax(dim=-1)(attention_scores)
-        attention_probs = self.attention_dropout(attention_probs)
+        attention_probs = self.softmax(attention_scores)
+
+        with seed(ParallelMode.TENSOR):
+            attention_probs = self.attention_dropout(attention_probs)
 
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer = context_layer.transpose(1, 2)
@@ -150,12 +199,22 @@ class ViTSelfAttention2p5D(CheckpointModule):
         context_layer = context_layer.reshape(new_context_layer_shape)
 
         output = self.dense(context_layer)
-        output = self.dropout(output)
+        with seed(ParallelMode.TENSOR):
+            output = self.dropout(output)
         return output
+
+    def _checkpoint_forward(self, hidden_states: Tensor) -> Tensor:
+        return checkpoint(self._forward, hidden_states)
+
+    def forward(self, hidden_states: Tensor) -> Tensor:
+        if self.checkpoint:
+            return self._checkpoint_forward(hidden_states)
+        else:
+            return self._forward(hidden_states)
 
 
 @LAYERS.register_module
-class ViTHead2p5D(nn.Module):
+class ViTHead2p5D(ParallelLayer):
     """Output layer for 2.5D parallel Vision Transformer
 
     :param hidden_size: hidden size
@@ -170,13 +229,24 @@ class ViTHead2p5D(nn.Module):
                  hidden_size,
                  num_classes,
                  dtype=None,
+                 weight_init='torch'
                  ):
         super().__init__()
         assert_tesseract_initialization()
+        assert weight_init in ('torch', 'jax')
+        if weight_init == 'jax':
+            self.init_weight = 'zero'
+            self.init_bias = 'zero'
+        else:
+            self.init_weight = weight_init
+            self.init_bias = weight_init
+
         self.linear = Linear2p5D(
             hidden_size,
             num_classes,
             dtype=dtype,
+            init_weight=self.init_weight,
+            init_bias=self.init_bias
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -186,7 +256,7 @@ class ViTHead2p5D(nn.Module):
 
 
 @LAYERS.register_module
-class ViTPatchEmbedding2p5D(nn.Module):
+class ViTPatchEmbedding2p5D(ParallelLayer):
     """ 2.5D Image to Patch Embedding
 
     :param img_size: iamge size
@@ -206,7 +276,8 @@ class ViTPatchEmbedding2p5D(nn.Module):
                  patch_size,
                  embed_dim,
                  in_chans=3,
-                 flatten=True):
+                 flatten=True,
+                 weight_init='torch'):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -219,34 +290,28 @@ class ViTPatchEmbedding2p5D(nn.Module):
                           img_size[1] // patch_size[1])
         self.num_patches = self.grid_size[0] * self.grid_size[1]
         self.flatten = flatten
-        self.embed_dim = embed_dim // self.tesseract_dim  # *
+        self.embed_dim = embed_dim // (self.tesseract_dep * self.tesseract_dim ** 2)  # *
 
-        self.proj = nn.Conv2d(in_chans,
-                              self.embed_dim,
-                              kernel_size=patch_size,
-                              stride=patch_size,
-                              )
+        with seed(ParallelMode.TENSOR):
+            self.proj = nn.Conv2d(in_chans,
+                                  self.embed_dim,
+                                  kernel_size=patch_size,
+                                  stride=patch_size,
+                                  device=get_current_device()
+                                  )
+        self._set_tensor_parallel_attribute()
 
-        # move self to cuda before sync
-        self.to(get_current_device())
+        if weight_init == 'jax':
+            with seed(ParallelMode.TENSOR):
+                fan_in, _ = _calculate_fan_in_and_fan_out(self.proj.weight)
+                std = math.sqrt(1.0 / fan_in)
+                nn.init.trunc_normal_(self.proj.weight, std=std / .87962566103423978)
+                nn.init.zeros_(self.proj.bias)
 
-        # sync
-        self._broadcast_conv_params()
-        self.proj.weight.register_hook(self._sync_grad_during_backward)
-        self.proj.bias.register_hook(self._sync_grad_during_backward)
-
-    def _broadcast_conv_params(self) -> None:
-        xz_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2P5D_XZ)
-        dist.broadcast(self.proj.weight, src=xz_rank[0],
-                       group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
-        dist.broadcast(self.proj.bias, src=xz_rank[0],
-                       group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
-
-    def _sync_grad_during_backward(self, grad: Tensor) -> None:
-        dist.all_reduce(grad, group=gpc.get_group(
-            ParallelMode.PARALLEL_2P5D_XZ))
-        grad = grad / self.tesseract_dim / self.tesseract_dep  # *
-        return grad
+    def _set_tensor_parallel_attribute(self):
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.proj.weight, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.proj.bias, num_partition)
 
     def forward(self, x: Tensor) -> Tensor:
         B, C, H, W = x.shape
@@ -259,7 +324,25 @@ class ViTPatchEmbedding2p5D(nn.Module):
 
 
 @LAYERS.register_module
-class ViTTokenFuser2p5D(nn.Module):
+class ViTInputSplitter2p5D(ParallelLayer):
+    """Split the input tensor for 2D parallel Vision Transformer
+    """
+
+    def __init__(self):
+        super().__init__()
+        assert_tesseract_initialization()
+        self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = AllGatherLast.apply(
+            x, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
+        x = SplitFirst.apply(
+            x, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
+        return x
+
+
+@LAYERS.register_module
+class ViTTokenFuser2p5D(ParallelLayer):
     """
     Fuse cls token and pos embedding to the input
 
@@ -293,59 +376,46 @@ class ViTTokenFuser2p5D(nn.Module):
         self.embed_dim = embed_dim
 
         self.cls_token = nn.Parameter(torch.zeros(
-            1, 1, self.embed_dim // self.tesseract_dim))  # *
-        self.pos_embed = nn.Parameter(torch.zeros(
-            1, self.num_patches + 1, self.embed_dim // self.tesseract_dim))  # *
+            (1, 1, self.embed_dim // (self.tesseract_dep * self.tesseract_dim ** 2)),
+            device=get_current_device()))
+        self.pos_embed = nn.Parameter(torch.empty(
+            (1, self.num_patches + 1, self.embed_dim // (self.tesseract_dep * self.tesseract_dim ** 2)),
+            device=get_current_device()))
+        with seed(ParallelMode.TENSOR):
+            nn.init.trunc_normal_(self.pos_embed, std=.02)
 
-        # move to cuda before broadcast
-        self.to(get_current_device())
-
-        self._broadcast_params()
-        self.cls_token.register_hook(self._sync_grad_hook)
-        self.pos_embed.register_hook(self._sync_grad_hook)
         self.pos_drop = nn.Dropout(p=drop_rate)
         self._set_tensor_parallel_attribute()
 
     def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute(self.cls_token)
-        set_tensor_parallel_attribute(self.pos_embed)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.cls_token, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.pos_embed, num_partition)
 
-    def _broadcast_params(self) -> None:
+    def _broadcast_params(self, param) -> None:
         " broadcast to all column ranks for data consistency "
-        xz_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2P5D_XZ)
-        dist.broadcast(self.cls_token, src=xz_rank[0],
-                       group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
-        dist.broadcast(self.pos_embed, src=xz_rank[0],
-                       group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
+        if self.tesseract_dep > 1:
+            xz_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2P5D_XZ)
+            xz_group = gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ)
+            dist.broadcast(param, src=xz_rank[0],
+                           group=xz_group)
 
     def _sync_grad_hook(self, grad) -> None:
         dist.all_reduce(grad, group=gpc.get_group(
             ParallelMode.PARALLEL_2P5D_XZ))
-        grad = grad / self.tesseract_dim / self.tesseract_dep  # *
+        grad = grad / self.tesseract_dim  # / self.tesseract_dep  # *
         return grad
 
     def forward(self, x: Tensor) -> Tensor:
         # stole cls_tokens impl from Phil Wang, thanks
-        cls_token = self.cls_token.expand(x.shape[0], -1, -1)
+        cls_token = AllGatherLast.apply(
+            self.cls_token, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
+        cls_token = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_token, x), dim=1)
-        x = self.pos_drop(x + self.pos_embed)
+
+        pos_embed = AllGatherLast.apply(
+            self.pos_embed, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
+        x = x + pos_embed
+        with seed(ParallelMode.TENSOR):
+            x = self.pos_drop(x)
         return x
-
-
-@LAYERS.register_module
-class ViTInputSplitter2p5D(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-        assert_tesseract_initialization()
-        self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
-
-    def forward(self, x: Tensor) -> Tensor:
-        batch_size = x.size(0)
-        return _ViT_Split_2p5D.apply(
-            x,
-            batch_size,
-            self.tesseract_dim,
-            self.tesseract_dep,
-            ParallelMode.PARALLEL_2P5D_XZ,
-        )

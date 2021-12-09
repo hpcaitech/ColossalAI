@@ -12,10 +12,11 @@ from ._utils import assert_tesseract_initialization, \
     get_tesseract_dim_dep_from_env
 from .layers import Linear2p5D, LayerNorm2p5D
 from .._common_utils import ACT2FN
+from ..base_layer import ParallelLayer
 
 
 @LAYERS.register_module
-class TransformerMLP2p5D(nn.Module):
+class TransformerMLP2p5D(ParallelLayer):
     """
     MLP will take the input with h hidden state, project it to mlp_ratio * h
     hidden dimension, perform nonlinear transformation, and project the
@@ -36,21 +37,24 @@ class TransformerMLP2p5D(nn.Module):
 
     def __init__(self,
                  in_features: int,
-                 mlp_ratio: int,
+                 mlp_ratio: int = 4.0,
                  act_func: str = 'gelu',
                  dropout_prob: float = 0.,
                  dtype=None,
+                 skip_bias_add: bool = False
                  ):
         super().__init__()
         assert_tesseract_initialization()
         self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
         self.in_features = in_features
+        self.skip_bias_add = skip_bias_add
 
         # Project to h * mlp_ratio.
         self.dense_1 = Linear2p5D(
             in_features,
-            mlp_ratio * in_features,
-            dtype=dtype
+            int(mlp_ratio * in_features),
+            dtype=dtype,
+            skip_bias_add=skip_bias_add
         )
 
         assert act_func in ACT2FN.keys(), f'Invalid value for argument act_func, ' \
@@ -59,24 +63,34 @@ class TransformerMLP2p5D(nn.Module):
 
         # Project back to h.
         self.dense_2 = Linear2p5D(
-            mlp_ratio * in_features,
+            int(mlp_ratio * in_features),
             in_features,
-            dtype=dtype
+            dtype=dtype,
+            skip_bias_add=skip_bias_add
         )
         self.dropout = nn.Dropout(dropout_prob)
         self.layernorm = LayerNorm2p5D(in_features, dtype=dtype)
 
     def forward(self, x: Tensor) -> Tensor:
-        intermediate_output = self.dense_1(x)
+        if self.skip_bias_add:
+            intermediate_output, _ = self.dense_1(x)
+        else:
+            intermediate_output = self.dense_1(x)
+
         intermediate_output = self.activation_func(intermediate_output)
-        output = self.dense_2(intermediate_output)
+
+        if self.skip_bias_add:
+            output, _ = self.dense_2(intermediate_output)
+        else:
+            output = self.dense_2(intermediate_output)
+
         output = self.dropout(output)
         output = self.layernorm(x + output)
         return output
 
 
 @LAYERS.register_module
-class TransformerSelfAttention2p5D(nn.Module):
+class TransformerSelfAttention2p5D(ParallelLayer):
     """Self attention layer for 2.5D parallel Transformer
 
     :param hidden_size: hidden size
@@ -92,10 +106,10 @@ class TransformerSelfAttention2p5D(nn.Module):
     """
 
     def __init__(self,
-                 hidden_size,
-                 num_attention_heads,
-                 attention_dropout_prob,
-                 hidden_dropout_prob,
+                 hidden_size: int,
+                 num_attention_heads: int,
+                 attention_dropout_prob: float,
+                 hidden_dropout_prob: float,
                  dtype=None,
                  ):
         super().__init__()
@@ -127,7 +141,7 @@ class TransformerSelfAttention2p5D(nn.Module):
     def forward(self, hidden_states: Tensor, attention_mask: Tensor) -> Tensor:
         query_key_value = self.query_key_value(hidden_states)
         new_qkv_shape = query_key_value.shape[:-1] + \
-                        (self.num_attention_heads, 3 * self.attention_head_size)
+            (self.num_attention_heads, 3 * self.attention_head_size)
         query_key_value = query_key_value.view(new_qkv_shape)
         query_key_value = query_key_value.permute((0, 2, 1, 3))
         query_layer, key_layer, value_layer = torch.chunk(
@@ -136,7 +150,7 @@ class TransformerSelfAttention2p5D(nn.Module):
         attention_scores = torch.matmul(
             query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / \
-                           math.sqrt(self.attention_head_size)
+            math.sqrt(self.attention_head_size)
         attention_scores = attention_scores + attention_mask
         attention_probs = nn.Softmax(dim=-1)(attention_scores)
         attention_probs = self.attention_dropout(attention_probs)
@@ -144,7 +158,7 @@ class TransformerSelfAttention2p5D(nn.Module):
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer = context_layer.permute((0, 2, 1, 3)).contiguous()
         new_context_layer_shape = context_layer.size()[
-                                  :-2] + (self.all_head_size,)
+            :-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
         output = self.dense(context_layer)
@@ -155,7 +169,7 @@ class TransformerSelfAttention2p5D(nn.Module):
 
 
 @LAYERS.register_module
-class TransformerLayer2p5D(nn.Module):
+class TransformerLayer2p5D(ParallelLayer):
     """Transformer layer which contains a self-attention layer and a MLP layer
 
     :param hidden_size: hidden size
@@ -175,10 +189,10 @@ class TransformerLayer2p5D(nn.Module):
     """
 
     def __init__(self,
-                 hidden_size,
-                 num_attention_heads,
-                 act_func='gelu',
-                 mlp_ratio=4,
+                 hidden_size: int,
+                 num_attention_heads: int,
+                 act_func: str = 'gelu',
+                 mlp_ratio: float = 4.0,
                  attention_dropout_prob: float = 0.,
                  hidden_dropout_prob: float = 0.,
                  dtype=None,

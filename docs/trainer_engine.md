@@ -36,7 +36,7 @@ from colossalai.engine import Engine
 model = models.resnet18()
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters())
-schedule = colossalai.engine.NoPipelineSchedule()
+schedule = colossalai.engine.NonPipelineSchedule()
 
 MyEngine = Engine(
     model=model,

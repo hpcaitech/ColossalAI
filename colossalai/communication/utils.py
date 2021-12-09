@@ -6,7 +6,7 @@ from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
 
 
-def send_tensor_meta(tensor, need_meta=True, down_group=None):
+def send_tensor_meta(tensor, need_meta=True, next_rank=None):
     """Sends tensor meta information before sending a specific tensor. 
     Since the recipient must know the shape of the tensor in p2p communications,
     meta information of the tensor should be sent before communications. This function
@@ -14,31 +14,34 @@ def send_tensor_meta(tensor, need_meta=True, down_group=None):
 
     :param tensor: Tensor to be sent
     :param need_meta: If False, meta information won't be sent
-    :param down_group: Communication group including the next member in pipeline parallel group
+    :param next_rank: The rank of the next member in pipeline parallel group
     :type tensor: Tensor
     :type need_meta: bool, optional
-    :type down_group: ProcessGroup, optional
+    :type next_rank: int
     :return: False
     :rtype: bool
     """
     if need_meta:
-        rank = gpc.get_global_rank()
-
-        if down_group is None:
-            down_group = gpc.get_group(ParallelMode.PIPELINE_NEXT)
+        if next_rank is None:
+            next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
 
         tensor_kwargs = {'dtype': torch.long, 'device': get_current_device()}
 
         send_shape = torch.tensor(tensor.size(), **tensor_kwargs)
         send_ndims = torch.tensor(len(tensor.size()), **tensor_kwargs)
-
-        dist.broadcast(send_ndims, src=rank, group=down_group)
-        dist.broadcast(send_shape, src=rank, group=down_group)
+        ops = [
+            dist.P2POp(dist.isend, send_ndims, next_rank),
+            dist.P2POp(dist.isend, send_shape, next_rank)
+        ]
+        reqs = dist.batch_isend_irecv(ops)
+        for req in reqs:
+            req.wait()
+        torch.cuda.synchronize()
 
     return False
 
 
-def recv_tensor_meta(tensor_shape, prev_rank=None, up_group=None):
+def recv_tensor_meta(tensor_shape, prev_rank=None):
     """Recieves tensor meta information before recieving a specific tensor. 
     Since the recipient must know the shape of the tensor in p2p communications,
     meta information of the tensor should be recieved before communications. This function
@@ -46,27 +49,21 @@ def recv_tensor_meta(tensor_shape, prev_rank=None, up_group=None):
 
     :param tensor_shape: The shape of the tensor to be recieved
     :param prev_rank: The rank of the source of the tensor
-    :param up_group: Communication group including the previous member in pipeline parallel group
     :type tensor_shape: torch.Size
     :type prev_rank: int, optional
-    :type up_group: ProcessGroup, optional
     :return: The shape of the tensor to be recieved
     :rtype: torch.Size
     """
     if tensor_shape is None:
         if prev_rank is None:
-            prev_rank = gpc.get_prev_global_rank(
-                ParallelMode.PIPELINE)
-        if up_group is None:
-            up_group = gpc.get_group(ParallelMode.PIPELINE_PREV)
+            prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
 
         tensor_kwargs = {'dtype': torch.long, 'device': get_current_device()}
 
         recv_ndims = torch.empty((), **tensor_kwargs)
-        dist.broadcast(recv_ndims, src=prev_rank, group=up_group)
-
+        dist.recv(recv_ndims, prev_rank)
         recv_shape = torch.empty(recv_ndims, **tensor_kwargs)
-        dist.broadcast(recv_shape, src=prev_rank, group=up_group)
+        dist.recv(recv_shape, prev_rank)
 
         tensor_shape = torch.Size(recv_shape)
 

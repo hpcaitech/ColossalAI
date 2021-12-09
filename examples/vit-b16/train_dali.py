@@ -3,7 +3,7 @@ import os
 import colossalai
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.logging import get_global_dist_logger
+from colossalai.logging import get_dist_logger
 from colossalai.trainer import Trainer
 from colossalai.utils import set_global_multitimer_status
 from dataloader.imagenet_dali_dataloader import DaliDataloader
@@ -49,7 +49,7 @@ def main():
         train_dataloader=build_dali_train,
         test_dataloader=build_dali_test
     )
-    logger = get_global_dist_logger()
+    logger = get_dist_logger()
     set_global_multitimer_status(True)
     timer = colossalai.utils.get_global_multitimer()
     trainer = Trainer(engine=engine,
