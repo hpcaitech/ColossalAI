@@ -142,3 +142,6 @@ tests/launcher/log
 tests/launcher/personal
 
 docs/.build
+AutoAugment4DG/
+examples/RetinalVesselSegmentation-demo/deprecated/
+nohup.out

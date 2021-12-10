@@ -9,7 +9,7 @@ from colossalai.trainer import Trainer
 
 def run_trainer():
     engine, train_dataloader, test_dataloader = colossalai.initialize()
-    logger = get_dist_logger()
+    logger = get_dist_logger('root')
     engine.schedule.data_sync = False
 
     logger.info("engine is built", ranks=[0])
