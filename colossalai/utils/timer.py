@@ -74,6 +74,9 @@ class Timer:
 
 class MultiTimer:
     '''An object contains multiple timers
+
+    :param on: whether the timer is enabled. Default is True
+    :type on: bool
     '''
 
     def __init__(self, on: bool = True):

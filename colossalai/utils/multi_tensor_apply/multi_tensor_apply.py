@@ -2,6 +2,13 @@
 
 
 class MultiTensorApply(object):
+    """
+    Apply an operation to a list of tensors efficiently
+
+    :param chunk_size: size of a chunk
+    :type chunk_size: int
+    """
+
     available = False
     warned = False
 

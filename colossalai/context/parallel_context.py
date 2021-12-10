@@ -433,6 +433,9 @@ class ParallelContext:
 
     def set_device(self, device_ordinal: int = None):
         """Sets distributed processes to be bound to devices.
+
+        :param device_ordinal: the device id to be bound to
+        :type device_ordinal: int
         """
         global_rank = self.get_global_rank()
         if device_ordinal is None:
@@ -445,6 +448,9 @@ class ParallelContext:
 
     def set_seed(self, seed: int):
         """Sets seeds for all random libraries.
+
+        :param seed: seed for random states
+        :type seed: int
         """
         random.seed(seed)
         np.random.seed(seed)

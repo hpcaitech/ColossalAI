@@ -109,15 +109,15 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     added functionality to handle model parallel parameters. Note that
     the gradients are modified in place.
 
-    Arguments:
-        parameters (Iterable[Tensor] or Tensor): an iterable of Tensors or a
-            single Tensor that will have gradients normalized
-        max_norm (float or int): max norm of the gradients
-        norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for
-            infinity norm.
+    :param parameters: an iterable of Tensors or a single Tensor that will have gradients normalized
+    :type parameters: (Iterable[Tensor] or Tensor)
+    :param max_norm: max norm of the gradients
+    :type max_norm: float or int
+    :param norm_type: type of the used p-norm. Can be ``'inf'`` for infinity norm.
+    :type norm_type: float or int 
 
-    Returns:
-        Total norm of the parameters (viewed as a single vector).
+    :return: Total norm of the parameters (viewed as a single vector).
+    :rtype: float
     """
 
     if isinstance(parameters, torch.Tensor):

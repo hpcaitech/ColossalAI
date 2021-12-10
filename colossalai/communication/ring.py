@@ -14,10 +14,10 @@ def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode):
 
     :param tensor_send_next: Tensor sent to next member
     :param parallel_mode: Parallel group mode used in this communication
-    :type tensor_send_next: Tensor
-    :type parallel_mode: ParallelMode
+    :type tensor_send_next: :class:`torch.Tensor`
+    :type parallel_mode: :class:`colossalai.context.ParallelMode`
     :return: The tensor recieved from the previous
-    :rtype: Tensor
+    :rtype: :class:`torch.Tensor`
     """
     buffer_shape = tensor_send_next.size()
 

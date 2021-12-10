@@ -48,7 +48,7 @@ class BaseSchedule(ABC):
         already in the same GPU as where the model's.
 
         :return: (data, label)
-        :rtype: (Tensor, Tensor)
+        :rtype: (:class:`Tensor`, :class:`torch.Tensor`)
         """
         if data_iter is None:
             raise RuntimeError('Dataloader is not defined.')

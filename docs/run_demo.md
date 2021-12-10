@@ -7,51 +7,92 @@ can also run on systems with only one GPU. Quick demos showing how to use Coloss
 ## Single GPU
 
 Colossal-AI can be used to train deep learning models on systems with only one GPU and achieve baseline
-performances. [Here](https://colab.research.google.com/drive/1fJnqqFzPuzZ_kn1lwCpG2nh3l2ths0KE?usp=sharing#scrollTo=cQ_y7lBG09LS)
-is an example showing how to train a LeNet model on the CIFAR10 dataset using Colossal-AI.
+performances. We provided an example to train ResNet on CIFAR10 data with only one GPU. You can find this example in 
+`examples\resnet_cifar10_data_parallel` in the repository. Detailed instructions can be found in its `README.md`.
 
 ## Multiple GPUs
 
 Colossal-AI can be used to train deep learning models on distributed systems with multiple GPUs and accelerate the
 training process drastically by applying efficient parallelization techiniques, which will be elaborated in
-the [Parallelization](parallelization.md) section below. Run the code below on your distributed system with 4 GPUs,
-where `HOST` is the IP address of your system. Note that we use
-the [Slurm](https://slurm.schedmd.com/documentation.html) job scheduling system here.
+the [Parallelization](parallelization.md) section below. 
 
-```bash
-HOST=xxx.xxx.xxx.xxx srun ./scripts/slurm_dist_train.sh ./examples/run_trainer.py ./configs/vit/vit_2d.py
-```
+You can turn the resnet example mentioned above into a multi-GPU training by setting `--nproc_per_node` to be the number of 
+GPUs you have on your system. We also provide an example of Vision Transformer which relies on
+training with more GPUs. You can visit this example in `examples\vit_b16_imagenet_data_parallel`. It has a detailed instructional 
+`README.md` for you too.
 
-`./configs/vit/vit_2d.py` is a config file, which is introduced in the [Config file](config.md) section below. These
-config files are used by Colossal-AI to define all kinds of training arguments, such as the model, dataset and training
-method (optimizer, lr_scheduler, epoch, etc.). Config files are highly customizable and can be modified so as to train
-different models.
-`./examples/run_trainer.py` contains a standard training script and is presented below, it reads the config file and
-realizes the training process.
+
+## Sample Training Script
+
+Below is a typical way of how you train the model using 
 
 ```python
 import colossalai
-from colossalai.core import global_context as gpc
+from colossalai.amp import AMP_TYPE
 from colossalai.logging import get_dist_logger
-from colossalai.trainer import Trainer
+from colossalai.trainer import Trainer, hooks
+from colossalai.utils import get_dataloader
 
+
+CONFIG = dict(
+    parallel=dict(
+        pipeline=1,
+        tensor=1, mode=None
+    ),
+    fp16 = dict(
+        mode=AMP_TYPE.TORCH
+    ),
+    gradient_accumulation=4,
+    clip_grad_norm=1.0
+)
 
 def run_trainer():
-    engine, train_dataloader, test_dataloader = colossalai.initialize()
+    parser = colossalai.get_default_parser()
+    args = parser.parse_args()
+    colossalai.launch(config=CONFIG,
+                      rank=args.rank,
+                      world_size=args.world_size,
+                      host=args.host,
+                      port=args.port,
+                      backend=args.backend)
+
     logger = get_dist_logger()
 
-    logger.info("engine is built", ranks=[0])
+    # instantiate your compoentns
+    model = MyModel()
+    optimizer = MyOptimizer(model.parameters(), ...)
+    train_dataset = TrainDataset()
+    test_dataset = TestDataset()
+    train_dataloader = get_dataloader(train_dataset, ...)
+    test_dataloader = get_dataloader(test_dataset, ...)
+    lr_scheduler = MyScheduler()
+    logger.info("components are built")
+
+    engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(model, 
+                                                                                    optimizer, 
+                                                                                    criterion, 
+                                                                                    train_dataloader, 
+                                                                                    test_dataloader, 
+                                                                                    lr_scheduler)
 
     trainer = Trainer(engine=engine,
                       verbose=True)
-    logger.info("trainer is built", ranks=[0])
 
-    logger.info("start training", ranks=[0])
+    hook_list = [
+        hooks.LossHook(),
+        hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=False),
+        hooks.AccuracyHook(),
+        hooks.TensorboardHook(log_dir='./tb_logs', ranks=[0]),
+        hooks.LogMetricByEpochHook(logger),
+        hooks.LogMemoryByEpochHook(logger),
+        hooks.SaveCheckpointHook(checkpoint_dir='./ckpt')
+    ]
+
     trainer.fit(
         train_dataloader=train_dataloader,
         test_dataloader=test_dataloader,
-        epochs=gpc.config.num_epochs,
-        hooks_cfg=gpc.config.hooks,
+        epochs=NUM_EPOCH,
+        hooks=hook_list,
         display_progress=True,
         test_interval=2
     )

@@ -57,38 +57,61 @@ class Engine:
 
     @property
     def model(self):
+        """model attached to the engine"""
         return self._model
 
     @property
     def optimizer(self):
+        """optimizer attached to the engine"""
         return self._optimizer
 
     @property
     def criterion(self):
+        """criterion attached to the engine"""
         return self._criterion
 
-    @property
-    def schedule(self):
-        return self._schedule
-
     def zero_grad(self):
+        """set the gradient of parameters to zero
+        """
         self.optimizer.zero_grad()
 
     def step(self):
+        """execute parameter update
+        """
         self._all_reduce_gradients()
         self.optimizer.clip_grad_norm(self.model, self._clip_grad_norm)
         self.optimizer.step()
 
     def backward(self, loss: Tensor):
+        """Start backward propagation given the loss value computed by a loss function
+        
+        :param loss: loss value computed by a loss function
+        :type loss: :class:`torch.Tensor`
+        """
         return self.optimizer.backward(loss)
 
     def backward_by_grad(self, tensor, grad):
+        """Start backward propagation given the gradient of the output tensor
+        
+        :param loss: output tensor
+        :type loss: :class:`torch.Tensor`
+        :param grad: gradient passed back to the output
+        :type grad: :class:`torch.Tensor`
+        """
         return self.optimizer.backward_by_grad(tensor, grad)
 
     def calc_loss(self, *args, **kwargs):
+        """compute the loss value
+        :return: the loss value
+        :rtype: :class:`torch.Tensor`
+        """
         return self.criterion(*args, **kwargs)
 
     def __call__(self, *args, **kwargs):
+        """run the forward step for the model
+        :return: output the model
+        :rtype: Tuple[:class:`torch.Tensor`] or :class:`torch.Tensor`
+        """
         return self.model(*args, **kwargs)
 
     def _all_reduce_gradients(self):

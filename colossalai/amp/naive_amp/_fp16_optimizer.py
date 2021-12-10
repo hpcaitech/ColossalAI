@@ -146,26 +146,22 @@ class DynamicGradScaler:
 class FP16Optimizer(Optimizer):
     """Float16 optimizer for fp16 and bf16 data types.
 
-    Arguments:
-        optimizer: base optimizer such as Adam or SGD
-        clip_grad: clip gradeints with this global L2 norm. Note
-            that clipping is ignored if clip_grad == 0
-        log_num_zeros_in_grad: return number of zeros in the gradients.
-        params_have_main_grad: flag indicating if parameters have
-            a `main_grad` field. If this is set, we are assuming
-            that the model parameters are store in the `main_grad`
-            field instead of the typical `grad` field. This happens
-            for the DDP cases where there is a contihuous buffer
-            holding the gradients. For example for bfloat16, we want
-            to do gradient accumulation and all-reduces in float32
-            and as a result we store those gradients in the main_grad.
-            Note that main grad is not necessarily in float32.
-        bf16: if true, the model is running in bfloat16.
-        grad_scaler: used for scaling gradients. Note that this can be
-            None. This case happens when `bf16 = True` and we don't
-            use any loss scale. Note that for `bf16 = True`, we can have
-            a constnat gradient scaler. Also for `bf16 = False`, we
-            always require a grad scaler.
+    :param optimizer: base optimizer such as Adam or SGD
+    :type optimizer: torch.optim.Optimizer
+    :param clip_grad: clip gradeints with this global L2 norm. Note that clipping is ignored if clip_grad == 0
+    :type param clip_grad: float
+    :param log_num_zeros_in_grad: return number of zeros in the gradients.
+    :type log_num_zeros_in_grad: bool
+    :param initial_scale: initial scale of gradient scaler
+    :type initial_scale: int
+    :param growth_factor: the growth rate of loss scale
+    :type growth_factor: int
+    :param backoff_factor: the decrease rate of loss scale
+    :type backoff_factor: float
+    :param hysterisis: delay shift in dynamic loss scaling
+    :type hysterisis: int
+    :param max_scale: maximum loss scale allowed
+    :type max_scale: int
     """
 
     def __init__(self,
