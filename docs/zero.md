@@ -83,4 +83,13 @@ Note that `fp16` is automatically enabled when using ZeRO. This relies on `AMP_T
 
 ### Training
 
+Note that if your model is too large to fit within the memory when using ZeRO-3, you should use `colossalai.zero.zero3_model_context` to construct your model:
+
+```python
+from colossalai.zero import zero3_model_context
+
+with zero3_model_context():
+    model = Model()
+```
+
 Once you have completed your configuration, just use `colossalai.initialize()` to initialize your training.
