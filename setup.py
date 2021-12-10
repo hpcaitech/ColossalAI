@@ -93,7 +93,7 @@ if "--cuda_ext" in sys.argv:
         raise RuntimeError(
             "--cuda_ext was requested, but nvcc was not found.  Are you sure your environment has nvcc available?  If you're installing within a container from https://hub.docker.com/r/pytorch/pytorch, only images whose names contain 'devel' will provide nvcc.")
     else:
-        check_cuda_torch_binary_vs_bare_metal(CUDA_HOME)
+        # check_cuda_torch_binary_vs_bare_metal(CUDA_HOME)
 
         def cuda_ext_helper(name, sources, extra_cuda_flags):
             return CUDAExtension(name=name,
