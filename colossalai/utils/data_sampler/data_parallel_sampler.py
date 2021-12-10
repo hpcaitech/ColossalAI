@@ -108,7 +108,14 @@ class DataParallelSampler(Sampler):
         self.epoch = epoch
 
 
-def get_dataloader(dataset, shuffle=False, seed=1024, add_sampler=True, **kwargs):
+def get_dataloader(dataset,
+                   shuffle=False,
+                   seed=1024, 
+                   add_sampler=True, 
+                   drop_last=False,
+                   pin_memory=False,
+                   num_workers=0,
+                   **kwargs):
     '''Set up a deterministic dataloader (also configure seed workers, samplers and whether shuffle or not)
 
     .. note: when pipeline parallel is enabled, shuffle cannot be True
@@ -141,9 +148,15 @@ def get_dataloader(dataset, shuffle=False, seed=1024, add_sampler=True, **kwargs
         return DataLoader(dataset,
                           worker_init_fn=seed_worker,
                           shuffle=shuffle,
+                          drop_last=drop_last,
+                          pin_memory=pin_memory,
+                          num_workers=num_workers,
                           **_kwargs)
     else:
         return DataLoader(dataset,
                           sampler=sampler,
                           worker_init_fn=seed_worker,
+                          drop_last=drop_last,
+                          pin_memory=pin_memory,
+                          num_workers=num_workers,
                           **_kwargs)
