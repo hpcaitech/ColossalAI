@@ -637,7 +637,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                  postscale_gradients=True,
                  gradient_predivide_factor=1.0,
                  gradient_accumulation_steps=1,
-                 aio_config=None):
+                 aio_config=None,
+                 dtype=torch.half):
         # mpu = None
         # mpu is removed from the parameter list
         # tensor parallel will be automatically detected later
@@ -682,13 +683,25 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         util_ops = UtilsBuilder().load()
         self.flatten = util_ops.flatten
         self.unflatten = util_ops.unflatten
-        self.dtype = self.optimizer.param_groups[0]['params'][0].dtype
+        self.dtype = dtype
 
         if not all(is_zero_param(p) for p in module.parameters()):
+            ds_config = {
+                "train_micro_batch_size_per_gpu": 1,
+                "gradient_accumulation_steps": 1,
+                "zero_optimization": {
+                    "offload_param": offload_param_config,
+                    "offload_optimizer": offload_optimizer_config,
+                },
+                "aio": aio_config
+            }
+            remote_device = offload_param_config['device']
             group = None
             if gpc.is_initialized(ParallelMode.DATA):
                 group = gpc.get_group(ParallelMode.DATA)
-            Init(module=module, data_parallel_group=group, dtype=self.dtype)
+            Init(module=module, data_parallel_group=group, dtype=self.dtype,
+                 remote_device=remote_device, config_dict_or_path=ds_config,
+                 pin_memory=offload_optimizer_config[OFFLOAD_OPTIMIZER_PIN_MEMORY])
 
         for m in module.modules():
             _init_external_params(m)
