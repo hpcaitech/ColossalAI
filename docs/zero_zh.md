@@ -23,7 +23,7 @@ ZeRO优化器可以切分三种模型状态（优化器状态、梯度、参数�
     )
 
     zero = dict(
-        type='ZeroRedundancyOptimizer_Level_3',
+        level=3,
         dynamic_loss_scale=True,
         clip_grad=1.0
     )
@@ -77,5 +77,14 @@ ZeRO优化器可以切分三种模型状态（优化器状态、梯度、参数�
 请注意使用ZeRO时`fp16`将会被自动激活。
 
 ### 使用ZeRO优化器进行训练
+
+注意，当使用ZeRO-3时，如果您的模型过大以至于无法放入内存, 您应该使用`colossalai.zero.zero3_model_context`来构建您的模型:
+
+```python
+from colossalai.zero import zero3_model_context
+
+with zero3_model_context():
+    model = Model()
+```
 
 如果您完成了上述配置，可以运行`colossalai.initialize()`来开始您的训练。
