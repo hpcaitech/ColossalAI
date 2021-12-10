@@ -1,7 +1,7 @@
 # Zero Redundancy optimizer and zero offload
 
 The Zero Redundancy Optimizer (ZeRO) removes the memory redundancies across data-parallel processes by partitioning three 
-model states (optimizer states, gradients, and parameters) across data-parallel processes instead of replicating them. 
+model states (optimizer states, gradients, and parameters) instead of replicating them. 
 By doing so, memory efficiency is boosted drastically compared to classic data parallelism while the computational granularity 
 and communication efficiency are retained.
 
@@ -14,30 +14,26 @@ partition them during the forward and backward passes.
 
 ## Getting Started with ZeRO
 
-If you are training models with Colossal-AI, enabling ZeRO-3 offload is as simple as enabling it in your Colossal-AI configuration! 
+If you are training models with Colossal-AI, enabling ZeRO DP and Offloading is easy by addding several lines in your configuration file. We support configration for level 2 and 3. You have use [PyTorch native implementation](https://pytorch.org/tutorials/recipes/zero_redundancy_optimizer.html) for level 1 optimizer.
 Below are a few examples of ZeRO-3 configurations.
 
 ### Example of ZeRO-3 Configurations
 
 Here we use `Adam` as the initial optimizer.
 
-1. Use ZeRO to partition the optimizer states (level 1), gradients (level 2), and parameters (level 3).
+1. Use ZeRO to partition the optimizer states, gradients (level 2), and parameters (level 3).
     ```python
-    optimizer = dict(
-        type='Adam',
-        lr=0.001,
-        weight_decay=0
-    )
-
     zero = dict(
-        type='ZeroRedundancyOptimizer_Level_3',
+        level=3,
         dynamic_loss_scale=True,
         clip_grad=1.0
     )
     ```
+
 2. Additionally offload the optimizer states and computations to the CPU.
     ```python
     zero = dict(
+        level=3,
         offload_optimizer_config=dict(
             device='cpu',
             pin_memory=True,
@@ -49,6 +45,7 @@ Here we use `Adam` as the initial optimizer.
 3. Save even more memory by offloading parameters to the CPU memory.
     ```python
     zero = dict(
+        level=3,
         offload_optimizer_config=dict(
             device='cpu',
             pin_memory=True,
@@ -65,6 +62,7 @@ Here we use `Adam` as the initial optimizer.
 4. Save even MORE memory by offloading to NVMe (if available on your system):
     ```python
     zero = dict(
+        level=3,
         offload_optimizer_config=dict(
             device='nvme',
             pin_memory=True,
@@ -81,7 +79,7 @@ Here we use `Adam` as the initial optimizer.
     )
     ```
 
-Note that `fp16` is automatically enabled when using ZeRO. 
+Note that `fp16` is automatically enabled when using ZeRO. This relies on `AMP_TYPE.NAIVE` in Colossal-AI AMP module.
 
 ### Training
 
