@@ -20,6 +20,10 @@ pip install .
 
 Install and enable CUDA kernel fusion (compulsory installation when using fused optimizer)
 
-```
+```shell
 pip install -v --no-cache-dir --global-option="--cuda_ext" .
+
+# install with editable enabled
+pip install -v --no-cache-dir --global-option="--cuda_ext" -e .
 ```
+

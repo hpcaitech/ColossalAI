@@ -3,17 +3,31 @@
 In Colossal-AI, we have incorporated different implementations of mixed precision training:
 1. torch.cuda.amp
 2. apex.amp
-3. tensor-parallel amp
+3. naive amp
 
 The first two rely on the original implementation of [PyTorch](https://pytorch.org/docs/stable/amp.html)
-(version 1.6 and above) and [Nvidia Apex](https://github.com/NVIDIA/apex). However, these two methods are not compatible 
-with tensor parallelism. This is because that tensors are split across devices in tensor parallelism, thus, it is required 
-to communicate among different processes to check if `inf` or `nan` occurs in the whole model weights. For the mixed
-precision training with tensor parallelism, we adapted this feature from [Megatron-LM](https://github.com/NVIDIA/Megatron-LM). 
+(version 1.6 and above) and [Nvidia Apex](https://github.com/NVIDIA/apex). The last mehtod is simialr to Apex O2 level.
+
+Among these methods, apex.amp is not compatible with tensor parallelism. This is because that tensors are split across devices 
+in tensor parallelism, thus, it is required to communicate among different processes to check if `inf` or `nan` occurs in the 
+whole model weights. **We modified the torch amp implementation so that it is compatible with tensor parallelism now.**
 
 To use mixed precision training, you can easily specify the `fp16` field in the config file to be True. Currently, PyTorch and 
-Apex amp cannot be guaranteed to work with tensor and pipeline parallelism, thus, only the last one is recommended if you 
-are using hybrid parallelism.
+Apex amp cannot be guaranteed to work with tensor and pipeline parallelism. We recommend you to use torch amp as it generally 
+gives better accuracy than naive amp.
+
+The AMP module is designed to be completely modular and can be used independently from other colossalai modules.
+If you wish to only use amp in your code base without `colossalai.initialize`, you can use `colossalai.amp.convert_to_amp`.
+
+```python
+from colossalai.amp import AMP_TYPE
+
+# exmaple of using torch amp
+model, optimizer, criterion = colossalai.amp.convert_to_amp(model, 
+                                                            optimizer, 
+                                                            criterion,
+                                                            AMP_TYPE.TORCH)
+```
 
 ## PyTorch AMP
 
@@ -21,7 +35,7 @@ PyTorch provides mixed precision training in version 1.6 and above. It provides 
 while keeping some operations such as reductions in `fp32`. You can configure the gradient scaler in the config file.
 
 ```python
-from colossalai.engine import AMP_TYPE
+from colossalai.amp import AMP_TYPE
 
 fp16=dict(
     mode=AMP_TYPE.TORCH,
@@ -43,7 +57,7 @@ will keep batch normalization in `fp32`.
 The following code block shows a config file for Apex AMP.
 
 ```python
-from colossalai.engine import AMP_TYPE
+from colossalai.amp import AMP_TYPE
 
 fp16 = dict(
     mode=AMP_TYPE.APEX,
@@ -71,10 +85,10 @@ and pipeline parallelism.
 The following conde block show a config file for this mode.
 
 ```python
-from colossalai.engine import AMP_TYPE
+from colossalai.amp import AMP_TYPE
 
 fp16 = dict(
-    mode=AMP_TYPE.PARALLEL,
+    mode=AMP_TYPE.NAIVE,
     # below are the default values
     clip_grad=0,
     log_num_zeros_in_grad=False,
