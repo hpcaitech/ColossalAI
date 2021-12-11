@@ -4,38 +4,78 @@
 
 We support multiple parallelization in our library.
 
-Hybrid parallelism in our codebase, namely data parallelism, pipeline parallelism and tensor parallelism (
-1D, 2D, 2.5D, 3D). You can initialize the corresponding process group by setting `parallel` in our config. The parallel
-configuration can be easily deployed by a dictionary in configuration file. The configuration dictionary must obey the
-following format. Data parallel size will be inferred automatically based on your inputs to pipeline parallelism and
-tensor parallelism.
+Hybrid parallelism in our codebase refers to namely the combination of data parallelism, pipeline parallelism 
+and tensor parallelism (1D, 2D, 2.5D, 3D). Each parallelism requires different network topology and thus 
+different initializers for distributed process group. You can initialize the corresponding process group by 
+setting `parallel` in our config. The parallel configuration can be easily deployed by a dictionary in 
+configuration file. The configuration dictionary must obey the following format. Data parallel size will be 
+inferred automatically based on your inputs to pipeline parallelism and tensor parallelism. The distributed 
+environment will set up by `colossalai.launch`.
 
 ```python
+# sampler format
 parallel = dict(
     pipeline=dict("size": int),
     tensor=dict("size": int, "mode": '1d' or '2d' or '2.5d' or '3d', "kwargs": Any)
 )
+
+# this is ok
+parallel = dict(
+    pipeline=dict(size=2),
+    tensor=dict(size=4, mode='2d')
+)
+
+# this is ok
+parallel = dict(
+    pipeline=2,
+    tensor=dict(size=4, mode='2d')
+)
+
+# this is not ok
+# as you need to specify the mode for tensor parallelism
+parallel = dict(
+    pipeline=2,
+    tensor=4
+)
+
+# this is ok as well as tensor will be default to size 1 
+# and mode None
+parallel = dict(
+    pipeline=2
+)
+
+# this is ok as well as pipeline will default to size 1
+parallel = dict(
+    tensor=dict(size=4, mode='2d')
+)
+
 ```
 
 The name of the dictionary variable should be **parallel**. All the arguments even **parallel** itself are optional and
 data, pipeline, tensor parallel size will be set to defaulted value 1. The value of data, pipeline and tensor can be a
 int representing the size of specific parallel dimension or a dictionary with a key called "size". The key "mode"
-represents the way of tensor parallelism.
+represents the way of tensor parallelism. 
+
+**You can choose to not have 'parallel' in your configuration and both pipelineand tensor will default to size 1.**
+
 
 ## Data Parallel
 
 Data parallel is the most common way to distribute your training task by splitting data into several shards and train on
 a single shard on each device. The configuration for data parallel is detected automatically and set for you. You do not
-have to explicitly set them in your configurations. When data parallel size is larger than 1, Colossal-AI automatically
-adds the distributed data sampler to the dataloader to shard the dataset.
+have to explicitly set them in your configurations. There are two ways to handle the all-reduce in data parallel in Colossal-AI.
+
+1. If you specify gradient handlers, gradients will be all-reduced according to the gradient handlers
+2. Otherwise, PyTorch DistributedDataParallel will be used
+
+In most cases, you will be using the second mode unless you have complex handling of the gradients.
 
 ## 1D, 2D, 2.5D and 3D Parallel
 
 To enable hybrid parallelism, we provide an array of tensor parallelism. We provide the list of papers which match each
 tensor parallel method. These parallel modes need to work with the distributed layers provided by Colossal-AI.
 
--
-1D: [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)
+- 1D: [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)
 
 - 2D: [An Efficient 2D Method for Training Super-Large Deep Learning Models](https://arxiv.org/abs/2104.05343)  
   2D parallel relies on the SUMMA matrix multiplication algorithm and splits the input data, model weights and layer
@@ -55,158 +95,134 @@ tensor parallel method. These parallel modes need to work with the distributed l
 ```python
 # 1D parallel
 parallel = dict(
-    pipeline=dict(size=1), # number of pipeline stages
     tensor=dict(size=4, mode='1d')
 )
 
 # 2D parallel
 parallel = dict(
-    pipeline=dict(size=1), # number of pipeline stages
     tensor=dict(size=4, mode='2d')
 )
 
 # 2.5D parallel
 parallel = dict(
-    pipeline=dict(size=1), # number of pipeline stages
     tensor=dict(size=8, mode='2.5d', depth=2)
 )
 
 # 3D parallel
 parallel = dict(
-    pipeline=dict(size=1), # number of pipeline stages
     tensor=dict(size=8, mode='3d')
 )
 ```
+
+Once you specify the tensor parallel mode in your configuration, you can proceed to use its corresponding distributed 
+operator. For example, if you mode is '2d', you can use `colossalai.nn.Linear2D` in you model construction.
+
 
 ## Pipeline Parallel (experimental)
 
 Pipeline parallelism is to split the model into several partitions by layer. For example, let's assume we have a simple
 model which consists of two linear layer. We have two GPUs, and we can allocate the first linear layer to the first GPU
-and the second layer to the second GPU. This example of course wastes the computing resources and is only to demonstrate
-the idea of pipeline parallelism.
-
-As PyTorch is based on dynamic computation graph, the computation flow is not known until execution. To support pipeline
-parallelism in PyTorch, you may need to add one more attribute, `layers_cfg` in your model class which tells Colossal-AI
-the sequence of execution. One example you can refer is `colossalai.nn.model.VanillaResNet`.
-
-```python
-from colossalai.nn import BaseModel
-import torch
-
-class VanillaResNet(BaseModel):
-
-    def __init__(
-            self,
-            num_cls: int,
-            block_type: str,
-            layers: List[int],
-            norm_layer_type: str = 'BatchNorm2d',
-            in_channels: int = 3,
-            groups: int = 1,
-            width_per_group: int = 64,
-            zero_init_residual: bool = False,
-            replace_stride_with_dilation: Optional[List[bool]] = None,
-            dilations=(1, 1, 1, 1)
-    ) -> None:
-        super().__init__()
-        
-        ... # some model params
-        
-        self.layers_cfg = [
-            # conv1
-            dict(type='Conv2d',
-                 in_channels=in_channels,
-                 out_channels=self.inplanes,
-                 kernel_size=7,
-                 stride=2,
-                 padding=3,
-                 bias=False),
-            # bn1
-            dict(
-                type=norm_layer_type,
-                num_features=self.inplanes
-            ),
-            # relu
-            dict(
-                type='ReLU',
-                inplace=True
-            ),
-            # maxpool
-            dict(
-                type='MaxPool2d',
-                kernel_size=3,
-                stride=2,
-                padding=1
-            ),
-            # layer 1
-            dict(
-                inplanes=self.inplanes,
-                planes=64,
-                blocks=self.blocks[0],
-                dilation=self.dilations[0],
-                **self.reslayer_common_cfg
-            ),
-            # layer 2
-            dict(
-                inplanes=64 * self.block_expansion,
-                planes=128,
-                blocks=self.blocks[1],
-                stride=2,
-                dilate=replace_stride_with_dilation[0],
-                dilation=self.dilations[1],
-                **self.reslayer_common_cfg
-            ),
-            # layer  3
-            dict(
-                inplanes=128 * self.block_expansion,
-                planes=256,
-                blocks=layers[2],
-                stride=2,
-                dilate=replace_stride_with_dilation[1],
-                dilation=self.dilations[2],
-                **self.reslayer_common_cfg
-            ),
-            # layer 4
-            dict(
-                inplanes=256 * self.block_expansion,
-                planes=512,
-                blocks=layers[3], stride=2,
-                dilate=replace_stride_with_dilation[2],
-                dilation=self.dilations[3],
-                **self.reslayer_common_cfg
-            ),
-            # avg pool
-            dict(
-                type='AdaptiveAvgPool2d',
-                output_size=(1, 1)
-            ),
-            # flatten
-            dict(
-                type='LambdaWrapper',
-                func=lambda mod, x: torch.flatten(x, 1)
-            ),
-            # linear
-            dict(
-                type='Linear',
-                in_features=512 * self.block_expansion,
-                out_features=num_cls
-            )
-        ]
-```
+and the second layer to the second GPU. 
 
 You can set the number of pipeline stages in your configuration file. When pipeline size is larger than 1, Colossal-AI
-will automatically creates the pipeline schedule which defines the forward and backward step. You can specify how many
-microbatches to run in each step in the `schedule` configuration.
+will automatically creates the pipeline schedule which defines the forward and backward step. 
 
 ```python
 parallel = dict(
-    pipeline=dict(size=1), # number of pipeline stages
-    tensor=dict(size=1, mode=None)
+    pipeline=dict(size=4), # number of pipeline stages
+)
+```
+
+As PyTorch is based on dynamic computation graph, the computation flow is not known until execution. To support pipeline parallelism, you have the following two ways to split your model,
+
+1. Split your model directly. Below is an exmaple of resnet split into two pipeline stages.
+```python
+from torchvision.models import resnet18
+from colossalai.core import global_context as gpc
+
+model = resnet18(num_classes=10)
+
+if gpc.get_local_rank(ParallelMode.PIPELINE) == 0:
+    model = nn.Sequential(
+        model.conv1,
+        model.bn1,
+        model.relu,
+        model.maxpool,
+        model.layer1,
+        model.layer2
+    )
+elif gpc.get_local_rank(ParallelMode.PIPELINE) == 1:
+    from functools import partial
+
+    class Flatten(nn.Module):
+
+        def forward(self, x):
+            return torch.flatten(x, 1)
+
+    model = nn.Sequential(
+        model.layer3,
+        model.layer4,
+        model.avgpool,
+        Flatten(),
+        model.fc
+    )
+```
+
+
+2. Make sure your model inherit `colossalai.nn.model.ModelFromConfig` and registered into the
+`MODELS` registry. Define the `self.layers_cfg` attribute. 
+Pass in a dict/Config object which specifies the parameters of your model. 
+Use `colossalai.builder.pipeline.PipelineModelInitializer` to partition the layers.
+
+```python
+from colossalai.builder import PipelineModelInitializer
+from colossalai.nn.model import ModelFromConfig
+from colossalai.registry import MODELS
+
+
+@MODELS.register_module
+class MyModel(ModelFromConfig):
+
+    def __init__(self, arg1, arg2, ...):
+        ...
+        self.layers_cfg = [
+            dict(type='Linear', in_features=3, out_features=512),
+            dict(type='Linear', in_features=512, out_features=512),
+            ...
+        ]
+
+
+model_cfg = dict(
+    type='MyModel',
+    arg1=1,
+    arg2=2
+    ...
 )
 
-schedule = dict(
-    num_microbatches = 4 # set the number of microbatches per step
-)
+initializer = PipelineModelInitializer(model_cfg, num_chunks=1)
+model = initializer.initialize()
+
+```
+
+When your model is split into partitions, you can use PipelineSchedule to execute training.
+
+```python
+import colossalai
+from colossalai.engine.schedule import PipelineSchedule
+
+engine, train_dataloader, _, _ = colossalai.initialize(model, optimizer, criterion, train_dataloader) 
+
+schedule = PipelineSchedule(num_microbatches=4)
+
+# execute a training epoch
+data_iter = iter(train_dataloader)
+
+for i in range(len(train_dataloader)):
+    output, label, loss = schedule.forward_backward_step(engine,
+                                                        data_iter,
+                                                        forward_only=False,
+                                                        )
+
 ```
 
 This feature is still in development and is only experimental for now.

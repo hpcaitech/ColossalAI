@@ -10,7 +10,7 @@ from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
 from ._operation import Matmul_AB_2p5D, Add_Bias_2p5D, _LayerNorm_2p5D
 from ._utils import get_tesseract_dim_dep_from_env, assert_tesseract_initialization
-from .._common_utils import divide, set_tensor_parallel_attribute
+from .._common_utils import divide, set_tensor_parallel_attribute_by_partition
 from ..base_layer import ParallelLayer
 
 
@@ -33,7 +33,9 @@ class Linear2p5D(ParallelLayer):
                  out_features: int,
                  bias: bool = True,
                  dtype=None,
-                 skip_bias_add: bool = False
+                 skip_bias_add: bool = False,
+                 init_weight='torch',
+                 init_bias='torch'
                  ):
         super().__init__()
 
@@ -46,7 +48,7 @@ class Linear2p5D(ParallelLayer):
         self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
         self.col_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
         self.dep_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
-        self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
+        self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
 
         # partitioning dimension
         self.input_size_per_partition = divide(in_features, self.tesseract_dim)
@@ -69,46 +71,59 @@ class Linear2p5D(ParallelLayer):
             self.register_parameter('bias', None)
 
         # initialize parameters
-        self.reset_parameters()
+        with seed(ParallelMode.TENSOR):
+            self.reset_parameters(init_weight, init_bias)
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.weight)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
         if self.bias is not None:
-            set_tensor_parallel_attribute(self.bias)
+            set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
-    def reset_parameters(self) -> None:
+    def reset_parameters(self, init_weight, init_bias) -> None:
+        assert init_weight in ('torch', 'jax', 'zero')
+        assert init_bias in ('torch', 'jax', 'zero')
         # setting
-        fan_in = self.in_features
-        a = math.sqrt(5)
-        nonlinearity = 'leaky_relu'
+        fan_in, fan_out = self.in_features, self.out_features
 
         # init weight
-        std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
-        bound = math.sqrt(3.0) * std
-        with seed(ParallelMode.TENSOR):
+        if init_weight == 'torch':
+            a = math.sqrt(5)
+            nonlinearity = 'leaky_relu'
+            std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
+            bound = math.sqrt(3.0) * std
             init.uniform_(self.weight, -bound, bound)
+        elif init_weight == 'jax':
+            std = math.sqrt(2.0 / float(fan_in + fan_out))
+            a = math.sqrt(3.0) * std
+            init.uniform_(self.weight, -a, a)
+        elif init_weight == 'zero':
+            init.zeros_(self.weight)
 
         # init bias
         if self.bias is not None:
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            with seed(ParallelMode.TENSOR):
+            if init_bias == 'torch':
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
                 init.uniform_(self.bias, -bound, bound)
+            elif init_bias == 'jax':
+                init.normal_(self.bias, std=1e-6)
+            elif init_bias == 'zero':
+                init.zeros_(self.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         # input: [m/dq, n/q, k/q]
         # output: [m/dq, n/q, h/q]
         out_shape = x.shape[:-1] + (self.hidden_size_per_partition,)
+
         output = Matmul_AB_2p5D.apply(
             x,
             self.weight,
             self.tesseract_dim,
-            self.tesseract_dep,
             out_shape,
             self.row_rank, self.col_rank, self.dep_rank,
             ParallelMode.PARALLEL_2P5D_ROW,
             ParallelMode.PARALLEL_2P5D_COL,
-            ParallelMode.PARALLEL_2P5D_DEP,
             self.data_parallel_rank,
             self.pipeline_parallel_rank,
             self.pipeline_parallel_size,
@@ -121,11 +136,9 @@ class Linear2p5D(ParallelLayer):
                     None,
                     self.bias,
                     self.hidden_size_per_partition,
-                    self.tesseract_dim, self.tesseract_dep,
+                    self.tesseract_dim,
                     self.row_rank, self.col_rank, self.dep_rank,
-                    ParallelMode.PARALLEL_2P5D_ROW,
                     ParallelMode.PARALLEL_2P5D_COL,
-                    ParallelMode.PARALLEL_2P5D_DEP,
                     True,
                     self.data_parallel_rank,
                     self.pipeline_parallel_rank,
@@ -138,11 +151,9 @@ class Linear2p5D(ParallelLayer):
                     output,
                     self.bias,
                     self.hidden_size_per_partition,
-                    self.tesseract_dim, self.tesseract_dep,
+                    self.tesseract_dim,
                     self.row_rank, self.col_rank, self.dep_rank,
-                    ParallelMode.PARALLEL_2P5D_ROW,
                     ParallelMode.PARALLEL_2P5D_COL,
-                    ParallelMode.PARALLEL_2P5D_DEP,
                     False,
                     self.data_parallel_rank,
                     self.pipeline_parallel_rank,
@@ -168,6 +179,7 @@ class LayerNorm2p5D(ParallelLayer):
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     """
+
     def __init__(self,
                  normalized_shape: int,
                  eps: float = 1e-05,
@@ -184,7 +196,7 @@ class LayerNorm2p5D(ParallelLayer):
         self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
         self.col_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
         self.dep_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
-        self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
+        self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
 
         # partitioning dimension
         self.partitioned_partition = divide(
@@ -193,27 +205,19 @@ class LayerNorm2p5D(ParallelLayer):
         # create parameters
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
 
-        if self.row_rank == 0:
-            self.gamma = Parameter(torch.ones(
-                self.partitioned_partition,
-                **factory_kwargs))
-            self.beta = Parameter(torch.zeros(
-                self.partitioned_partition,
-                **factory_kwargs))
-        else:
-            self.gamma = Parameter(torch.tensor(
-                1.0,
-                requires_grad=True,
-                **factory_kwargs))
-            self.beta = Parameter(torch.tensor(
-                1.0,
-                requires_grad=True,
-                **factory_kwargs))
+        self.gamma = Parameter(torch.ones(
+            self.partitioned_partition,
+            **factory_kwargs))
+        self.beta = Parameter(torch.zeros(
+            self.partitioned_partition,
+            **factory_kwargs))
+
         self._set_tensor_parallel_attribute()
 
     def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute(self.gamma)
-        set_tensor_parallel_attribute(self.beta)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.gamma, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.beta, num_partition)
 
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():
@@ -233,16 +237,12 @@ class LayerNorm2p5D(ParallelLayer):
             Var_x = 1.0 / torch.sqrt(Var_x + self.variance_epsilon)
 
         output = _LayerNorm_2p5D.apply(x, E_x, Var_x, self.normalized_shape,
-                                       ParallelMode.PARALLEL_2P5D_ROW,
-                                       ParallelMode.PARALLEL_2P5D_COL,
-                                       ParallelMode.PARALLEL_2P5D_DEP)
+                                       ParallelMode.PARALLEL_2P5D_ROW)
         bias = Add_Bias_2p5D.apply(
             None, self.beta, self.partitioned_partition,
-            self.tesseract_dim, self.tesseract_dep,
+            self.tesseract_dim,
             self.row_rank, self.col_rank, self.dep_rank,
-            ParallelMode.PARALLEL_2P5D_ROW,
             ParallelMode.PARALLEL_2P5D_COL,
-            ParallelMode.PARALLEL_2P5D_DEP,
             True,
             self.data_parallel_rank,
             self.pipeline_parallel_rank,
@@ -251,11 +251,9 @@ class LayerNorm2p5D(ParallelLayer):
         )
         scale = Add_Bias_2p5D.apply(
             None, self.gamma, self.partitioned_partition,
-            self.tesseract_dim, self.tesseract_dep,
+            self.tesseract_dim,
             self.row_rank, self.col_rank, self.dep_rank,
-            ParallelMode.PARALLEL_2P5D_ROW,
             ParallelMode.PARALLEL_2P5D_COL,
-            ParallelMode.PARALLEL_2P5D_DEP,
             True,
             self.data_parallel_rank,
             self.pipeline_parallel_rank,

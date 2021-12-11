@@ -16,7 +16,7 @@ def check_AB():
     pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
         ParallelMode.PIPELINE)
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
-    
+
     dtype = torch.float
     i = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
@@ -41,11 +41,10 @@ def check_AB():
     out_shape = (BATCH_SIZE // TESSERACT_DIM, SEQ_LENGTH, 4 * HIDDEN_SIZE // TESSERACT_DIM)
     out = Matmul_AB_2p5D.apply(
         A, B,
-        TESSERACT_DIM, TESSERACT_DEP, out_shape,
+        TESSERACT_DIM, out_shape,
         i, j, k,
         ParallelMode.PARALLEL_2P5D_ROW,
         ParallelMode.PARALLEL_2P5D_COL,
-        ParallelMode.PARALLEL_2P5D_DEP,
         data_parallel_rank,
         pipeline_parallel_rank,
         pipeline_parallel_size,
@@ -93,7 +92,7 @@ def check_ABT():
     pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
         ParallelMode.PIPELINE)
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
-    
+
     dtype = torch.float
     device = get_current_device()
 
@@ -119,11 +118,10 @@ def check_ABT():
 
     out = Matmul_ABT_2p5D.apply(
         C, B,
-        TESSERACT_DIM, TESSERACT_DEP, (BATCH_SIZE // TESSERACT_DIM, SEQ_LENGTH, HIDDEN_SIZE // TESSERACT_DIM),
+        TESSERACT_DIM, (BATCH_SIZE // TESSERACT_DIM, SEQ_LENGTH, HIDDEN_SIZE // TESSERACT_DIM),
         i, j, k,
         ParallelMode.PARALLEL_2P5D_ROW,
         ParallelMode.PARALLEL_2P5D_COL,
-        ParallelMode.PARALLEL_2P5D_DEP,
         data_parallel_rank,
         pipeline_parallel_rank,
         pipeline_parallel_size,
@@ -169,7 +167,7 @@ def check_ATB():
     pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
         ParallelMode.PIPELINE)
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
-    
+
     device = get_current_device()
     dtype = torch.float
 
@@ -195,11 +193,10 @@ def check_ATB():
 
     out = Matmul_ATB_2p5D.apply(
         A, C,
-        TESSERACT_DIM, TESSERACT_DEP, (HIDDEN_SIZE // TESSERACT_DIM, 4 * HIDDEN_SIZE // TESSERACT_DIM),
+        TESSERACT_DIM, (HIDDEN_SIZE // TESSERACT_DIM, 4 * HIDDEN_SIZE // TESSERACT_DIM),
         i, j, k,
         ParallelMode.PARALLEL_2P5D_ROW,
         ParallelMode.PARALLEL_2P5D_COL,
-        ParallelMode.PARALLEL_2P5D_DEP,
         data_parallel_rank,
         pipeline_parallel_rank,
         pipeline_parallel_size,

@@ -103,7 +103,7 @@ class YourGradientHandler(BaseGradientHandler):
 Afterwards, you can specify the gradient handler you want to use in your configuration file.
 
 ```python
-dist_initializer = [
+gradient_handlers = [
     dict(type='YourGradientHandler'),
 ]
 ```
@@ -112,5 +112,4 @@ dist_initializer = [
 
 Schedule entails how to execute a forward and backward pass. Currently, Colossal-AI provides pipeline and non-pipeline
 schedules. If you want to modify how the forward and backward passes are executed, you can
-inherit `colossalai.engine.BaseSchedule` and implement your idea. You can also add your schedule to the engine before
-training.
+inherit `colossalai.engine.schedule.BaseSchedule` and implement the `forward_back_step` function.

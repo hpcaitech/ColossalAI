@@ -11,7 +11,7 @@ from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
 from ._operation import Matmul_AB_2D, Add_Bias_2D, _LayerNorm_2D
 from ._utils import get_summa_dim_from_env, assert_summa_initialization
-from .._common_utils import divide, set_tensor_parallel_attribute
+from .._common_utils import divide, set_tensor_parallel_attribute_by_partition
 from ..base_layer import ParallelLayer
 
 
@@ -36,8 +36,9 @@ class Linear2D(ParallelLayer):
                  out_features: int,
                  bias: bool = True,
                  dtype=None,
-                 skip_bias_add: bool = False
-                 ):
+                 skip_bias_add: bool = False,
+                 init_weight='torch',
+                 init_bias='torch'):
         super().__init__()
 
         self.in_features = in_features
@@ -72,31 +73,45 @@ class Linear2D(ParallelLayer):
             self.register_parameter('bias', None)
 
         # initialize parameters
-        self.reset_parameters()
+        with seed(ParallelMode.TENSOR):
+            self.reset_parameters(init_weight, init_bias)
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.weight)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
         if self.bias is not None:
-            set_tensor_parallel_attribute(self.bias)
+            set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
-    def reset_parameters(self) -> None:
+    def reset_parameters(self, init_weight, init_bias) -> None:
+        assert init_weight in ('torch', 'jax', 'zero')
+        assert init_bias in ('torch', 'jax', 'zero')
         # setting
-        fan_in = self.in_features
-        a = math.sqrt(5)
-        nonlinearity = 'leaky_relu'
+        fan_in, fan_out = self.in_features, self.out_features
 
         # init weight
-        std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
-        bound = math.sqrt(3.0) * std
-        with seed(ParallelMode.TENSOR):
+        if init_weight == 'torch':
+            a = math.sqrt(5)
+            nonlinearity = 'leaky_relu'
+            std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
+            bound = math.sqrt(3.0) * std
             init.uniform_(self.weight, -bound, bound)
+        elif init_weight == 'jax':
+            std = math.sqrt(2.0 / float(fan_in + fan_out))
+            a = math.sqrt(3.0) * std
+            init.uniform_(self.weight, -a, a)
+        elif init_weight == 'zero':
+            init.zeros_(self.weight)
 
         # init bias
         if self.bias is not None:
-            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            with seed(ParallelMode.TENSOR):
+            if init_bias == 'torch':
+                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
                 init.uniform_(self.bias, -bound, bound)
+            elif init_bias == 'jax':
+                init.normal_(self.bias, std=1e-6)
+            elif init_bias == 'zero':
+                init.zeros_(self.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         # input: [m/q, n/q, k/q]
@@ -192,28 +207,19 @@ class LayerNorm2D(ParallelLayer):
         # create parameters
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
 
-        if self.row_rank == 0:
-            self.gamma = Parameter(torch.ones(
-                self.partitioned_partition,
-                **factory_kwargs))
-            self.beta = Parameter(torch.zeros(
-                self.partitioned_partition,
-                **factory_kwargs))
-        else:
-            self.gamma = Parameter(torch.tensor(
-                1.0,
-                requires_grad=True,
-                **factory_kwargs))
-            self.beta = Parameter(torch.tensor(
-                1.0,
-                requires_grad=True,
-                **factory_kwargs))
+        self.gamma = Parameter(torch.ones(
+            self.partitioned_partition,
+            **factory_kwargs))
+        self.beta = Parameter(torch.zeros(
+            self.partitioned_partition,
+            **factory_kwargs))
 
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute(self.gamma)
-        set_tensor_parallel_attribute(self.beta)
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        set_tensor_parallel_attribute_by_partition(self.gamma, num_partition)
+        set_tensor_parallel_attribute_by_partition(self.beta, num_partition)
 
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():

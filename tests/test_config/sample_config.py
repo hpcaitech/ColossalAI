@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-import os
-from pathlib import Path
 
 train_data = dict(
     dataset=dict(
         type='CIFAR10Dataset',
-        root=Path(os.environ['DATA']),
+        root='/path/to/data',
         download=True,
         transform_pipeline=[
             dict(type='RandomResizedCrop', size=224),

@@ -2,7 +2,7 @@
 import torch
 
 from colossalai.registry import OPTIMIZERS
-from ..multi_tensor_apply import multi_tensor_applier
+from colossalai.utils import multi_tensor_applier
 
 
 @OPTIMIZERS.register_module

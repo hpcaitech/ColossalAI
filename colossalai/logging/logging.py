@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import colossalai
 import logging
 from pathlib import Path
+from typing import Union
 
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
+
 
 _FORMAT = 'colossalai - %(name)s - %(asctime)s %(levelname)s: %(message)s'
 logging.basicConfig(level=logging.INFO, format=_FORMAT)
@@ -16,40 +18,92 @@ class DistributedLogger:
 
     :param name: The name of the logger
     :type name: str
-    :param level: The threshold for the logger. Logging messages which are less severe than `level`
-        will be ignored
-    :type level: str
-    :param root_path: The root path where logs are stored
-    :type root_path: str, optional
-    :param mode: The mode that the file is opened in. Defaults to 'a'
-    :type mode: str, optional
     """
 
-    def __init__(self, name, level='INFO', root_path: str = None, mode='a'):
-        self._logger = logging.getLogger(name)
+    __instances = dict()
+
+    @staticmethod
+    def get_instance(name: str):
+        """Get the unique single logger instance based on name.
+        :param name: The name of the logger
+        :type name: str
+        :return: a DistributedLogger object
+        :rtype: DistributedLogger
+        """
+        if name in DistributedLogger.__instances:
+            return DistributedLogger.__instances[name]
+        else:
+            logger = DistributedLogger(name=name)
+            return logger
+
+    def __init__(self, name):
+        if name in DistributedLogger.__instances:
+            raise Exception('Logger with the same name has been created, you should use colossalai.logging.get_dist_logger')
+        else:
+            self._name = name
+            self._logger = logging.getLogger(name)
+            DistributedLogger.__instances[name] = self
+
+    @staticmethod
+    def _check_valid_logging_level(level: str):
+        assert level in ['INFO', 'DEBUG', 'WARNING', 'ERROR'], 'found invalid logging level'
+
+    def set_level(self, level: str):
+        """Set the logging level
+        :param level: can only be INFO, DEBUG, WARNING and ERROR
+        :type level: str
+        """
+        self._check_valid_logging_level(level)
         self._logger.setLevel(getattr(logging, level))
 
-        if root_path is not None:
-            log_root_path = Path(root_path)
-            # create path if not exists
-            log_root_path.mkdir(parents=True, exist_ok=True)
-            log_path = log_root_path.joinpath(f'{name}.log')
-            file_handler = logging.FileHandler(log_path, mode)
-            file_handler.setLevel(getattr(logging, level))
-            formatter = logging.Formatter(_FORMAT)
-            file_handler.setFormatter(formatter)
-            self._logger.addHandler(file_handler)
+    def log_to_file(self,
+                    path: Union[str, Path],
+                    mode: str = 'a',
+                    level: str = 'INFO',
+                    suffix: str = None):
+        """Save the logs to file
+        :param path: the file to save the log
+        :type path: a string or pathlib.Path object
+        :param mode: the mode to write log into the file
+        :type mode: str
+        :param level: can only be INFO, DEBUG, WARNING and ERROR
+        :type level: str
+        """
+        assert isinstance(path, (str, Path)), \
+            f'expected argument path to be type str or Path, but got {type(path)}'
+        self._check_valid_logging_level(level)
+        if isinstance(path, str):
+            path = Path(path)
+
+        # set the default file name if path is a directory
+        if not colossalai.core.global_context.is_initialized(ParallelMode.GLOBAL):
+            rank = 0
+        else:
+            rank = colossalai.core.global_context.get_global_rank()
+
+        if suffix is not None:
+            log_file_name = f'rank_{rank}_{suffix}.log'
+        else:
+            log_file_name = f'rank_{rank}.log'
+        path = path.joinpath(log_file_name)
+
+        # add file handler
+        file_handler = logging.FileHandler(path, mode)
+        file_handler.setLevel(getattr(logging, level))
+        formatter = logging.Formatter(_FORMAT)
+        file_handler.setFormatter(formatter)
+        self._logger.addHandler(file_handler)
 
     def _log(self, level, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
         if ranks is None:
             getattr(self._logger, level)(message)
         else:
-            local_rank = gpc.get_local_rank(parallel_mode)
+            local_rank = colossalai.core.global_context.get_local_rank(parallel_mode)
             if local_rank in ranks:
                 getattr(self._logger, level)(message)
 
     def info(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Stores an info log message.
+        """Log an info message.
 
         :param message:
         :type message:
@@ -61,7 +115,7 @@ class DistributedLogger:
         self._log('info', message, parallel_mode, ranks)
 
     def warning(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Stores a warning log message.
+        """Log a warning message.
 
         :param message: The message to be logged
         :type message: str
@@ -73,7 +127,7 @@ class DistributedLogger:
         self._log('warning', message, parallel_mode, ranks)
 
     def debug(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Stores a debug log message.
+        """Log a debug message.
 
         :param message: The message to be logged
         :type message: str
@@ -85,7 +139,7 @@ class DistributedLogger:
         self._log('debug', message, parallel_mode, ranks)
 
     def error(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Stores an error log message.
+        """Log an error message.
 
         :param message: The message to be logged
         :type message: str

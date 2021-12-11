@@ -5,9 +5,6 @@ from abc import ABC
 
 from torch import Tensor
 
-from colossalai.logging import get_global_dist_logger
-from .._trainer import Trainer
-
 
 class BaseHook(ABC):
     """This class allows users to add desired actions in specific time points
@@ -18,27 +15,31 @@ class BaseHook(ABC):
     :type trainer: Trainer
     :type priority: int
     """
-    def __init__(self, trainer: Trainer, priority: int) -> None:
-        self.trainer = trainer
-        self.priority = priority
-        self.logger = get_global_dist_logger()
 
-    def before_train(self):
+    def __init__(self, priority: int) -> None:
+        self.priority = priority
+
+    def after_hook_is_attached(self, trainer):
+        """Actions after hooks are attached to trainer.
+        """
+        pass
+
+    def before_train(self, trainer):
         """Actions before training.
         """
         pass
 
-    def after_train(self):
+    def after_train(self, trainer):
         """Actions after training.
         """
         pass
 
-    def before_train_iter(self):
+    def before_train_iter(self, trainer):
         """Actions before running a training iteration.
         """
         pass
 
-    def after_train_iter(self, output: Tensor, label: Tensor, loss: Tensor):
+    def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a training iteration.
 
         :param output: Output of the model
@@ -50,42 +51,42 @@ class BaseHook(ABC):
         """
         pass
 
-    def before_train_epoch(self):
+    def before_train_epoch(self, trainer):
         """Actions before starting a training epoch.
         """
         pass
 
-    def after_train_epoch(self):
+    def after_train_epoch(self, trainer):
         """Actions after finishing a training epoch.
         """
         pass
 
-    def before_test(self):
+    def before_test(self, trainer):
         """Actions before evaluation.
         """
         pass
 
-    def after_test(self):
+    def after_test(self, trainer):
         """Actions after evaluation.
         """
         pass
 
-    def before_test_epoch(self):
+    def before_test_epoch(self, trainer):
         """Actions before starting a testing epoch.
         """
         pass
 
-    def after_test_epoch(self):
+    def after_test_epoch(self, trainer):
         """Actions after finishing a testing epoch.
         """
         pass
 
-    def before_test_iter(self):
+    def before_test_iter(self, trainer):
         """Actions before running a testing iteration.
         """
         pass
 
-    def after_test_iter(self, output: Tensor, label: Tensor, loss: Tensor):
+    def after_test_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a testing iteration.
 
         :param output: Output of the model
@@ -97,11 +98,11 @@ class BaseHook(ABC):
         """
         pass
 
-    def init_runner_states(self, key, val):
+    def init_runner_states(self, trainer, key, val):
         """Initializes trainer's state.
 
         :param key: Key of reseting state
         :param val: Value of reseting state
         """
-        if key not in self.trainer.states:
-            self.trainer.states[key] = val
+        if key not in trainer.states:
+            trainer.states[key] = val
