@@ -8,7 +8,7 @@ from models.linear_eval import Linear_eval
 
 MODELS.register_module(Linear_eval)
 
-LOG_NAME = 'cifar-simclr35'
+LOG_NAME = 'cifar-simclr'
 EPOCH = 800
 
 BATCH_SIZE = 512
@@ -54,7 +54,7 @@ hooks = [
     dict(type='LossHook'),
     dict(type='TotalBatchsizeHook'),
     dict(type='TensorboardHook', log_dir=f'./tb_logs/{LOG_NAME}-eval'),
-    dict(type='SaveCheckpointHook', interval=20,
+    dict(type='SaveCheckpointHook', interval=10,
          checkpoint_dir=f'./ckpt/{LOG_NAME}-eval'),
     # dict(type='LoadCheckpointHook', epoch=750,
     #      checkpoint_dir=f'./ckpt/{LOG_NAME}'),

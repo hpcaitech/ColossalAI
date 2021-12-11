@@ -10,7 +10,7 @@ from models.simclr import SimCLR
 
 MODELS.register_module(SimCLR)
 
-LOG_NAME = 'cifar-simclr35'  # 'debug' #  
+LOG_NAME = 'cifar-simclr'  # 'debug' #  
 
 BATCH_SIZE = 512
 NUM_EPOCHS = 801
@@ -82,14 +82,14 @@ hooks = [
         by_epoch=True,
         lr_scheduler_cfg=dict(
             type='CosineAnnealingWarmupLR',
-            warmup_steps=50
+            warmup_steps=10
         )
     ),
 ]
 
-# fp16 = dict(
-#     mode=AMP_TYPE.TORCH,
-# )
+fp16 = dict(
+    mode=AMP_TYPE.TORCH,
+)
 
 logging = dict(
     root_path=f"./logs/{LOG_NAME}"
@@ -102,6 +102,6 @@ dali = dict(
 engine = dict(
     schedule=None,
     gradient_handlers=None,
-    gradient_accumulation=1,
+    gradient_accumulation=2,
     gradient_clipping=1.0,
 )

@@ -1,6 +1,6 @@
 # Overview
 
-Here is an example of applying PreAct-ResNet18 to train SimCLR on CIFAR10. We use 1x RTX 3090 in this example. 
+Here is an example of applying PreAct-ResNet18 to train SimCLR on CIFAR10. We use 1x RTX 3090 in this example. The training process consists of two phases: (1) self-supervised training; and (2) linear evaluation.
 
 # How to run
 Specified in:

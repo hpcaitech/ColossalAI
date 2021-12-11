@@ -14,6 +14,7 @@ def build_dali_train():
     train_dataset = CIFAR10Dataset_SimCLR(gpc.config.transform_cfg,
                                     root=gpc.config.dali.root, 
                                     train=True)
+                         
     return torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True, 
@@ -25,6 +26,7 @@ def build_dali_test():
     val_dataset = CIFAR10Dataset_SimCLR(gpc.config.transform_cfg,
                                     root=gpc.config.dali.root, 
                                     train=False)
+    
     return torch.utils.data.DataLoader(
         val_dataset,
         shuffle=False, 

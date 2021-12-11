@@ -5,11 +5,15 @@ import torch
 import torch.distributed as dist
 from torchvision.datasets import CIFAR10
 
+import numpy as np
+from tfrecord import reader
+from tfrecord import iterator_utils
+
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.registry import DATASETS
 from .base_dataset import BaseDataset
-
+from tfrecord.torch.dataset import TFRecordDataset
 
 @DATASETS.register_module
 class CIFAR10Dataset_SimCLR(BaseDataset):
@@ -27,6 +31,7 @@ class CIFAR10Dataset_SimCLR(BaseDataset):
         self._dataset = CIFAR10(transform=self._transform_pipeline,
                                 *args,
                                 **kwargs)
+
         if gpc.is_initialized(ParallelMode.GLOBAL) and gpc.get_global_rank() == 0:
             dist.barrier()
 
