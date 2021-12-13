@@ -151,6 +151,28 @@ def _partition_balanced(weights, pipeline_parallel_size, num_chunks):
 
 
 class PipelineModelInitializer():
+    """An intializer to split the model into different stages for pipeline parallelism.
+
+    An example for the model config is shown below. The class VisionTransformerFromConfig should
+    inherit colossalai.nn.model.ModelFromConfig to allow this initializer to build model from a sequence
+    of layer configurations.
+
+    model_config = dict(
+        type='VisionTransformerFromConfig',
+        embedding_cfg=dict(...),
+        ...
+    )
+
+    :param config: configuration of the model
+    :type config: dict
+    :param num_chunks: the number of chunks you want to have on the current stage. This value should be 1
+                        in most cases unless you are using virutal pipeline parallelism.
+    :type num_chunks: int
+    :param verbose: whether to print the logs
+    :type verbose: bool
+
+    """
+
     def __init__(self, config, num_chunks, verbose=False):
         self.num_chunks = num_chunks
         self.ori_model = build_model(config)
@@ -161,6 +183,13 @@ class PipelineModelInitializer():
         self._logger.info(f"The total length of layers is {layer_length}", ranks=[0])
 
     def initialize(self, partition_method='parameter'):
+        """Initialize the model object from the config passed
+
+        :param partition_method: this parameter determines how you want to split your model layers into stages,
+                                you can set it as 'layer' or 'parameter'
+        :type partition_method: str
+        
+        """
         # Some space for initializing comunication groups
         self._interval = None
         self._partition_layers(method=partition_method)
@@ -183,7 +212,7 @@ class PipelineModelInitializer():
             # print_rank_0(param_counts)
             self.parts = _partition_balanced(param_counts, pipeline_parallel_size, self.num_chunks)
         else:
-            assert method == 'layer', "Method should be a pre-set string"
+            raise ValueError("Method should be a pre-set string in [layer, parameter]")
 
         # Display the partition
         if gpc.get_global_rank() == 0 and self.verbose:

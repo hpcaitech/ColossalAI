@@ -14,10 +14,12 @@ Blog: [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Trai
 pip install colossalai
 ```
 
-### Install From Source
+### Install From Source (Recommended)
+
+> We **recommend** you to install from source as the Colossal-AI is updating frequently in the early versions. The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
 
 ```shell
-git clone git@github.com:hpcaitech/ColossalAI.git
+git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
 # install dependency
 pip install -r requirements/requirements.txt
@@ -64,8 +66,8 @@ model = ...
 # sampler by default
 train_dataset = ... 
 train_dataloader = get_dataloader(dataset=dataset,
-                            shuffle=True,
-                            )
+                                shuffle=True,
+                                )
 
 
 # build your 

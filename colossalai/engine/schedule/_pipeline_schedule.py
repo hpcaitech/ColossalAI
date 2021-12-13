@@ -133,6 +133,16 @@ class PipelineSchedule(BaseSchedule):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
+
+        :param engine: your engine object
+        :type engine: colossalai.engine.Engine
+        :param input_tensor: input tensor for this pipeline stage
+        :type input_tensor: :class:`torch.Tensor`
+        :param return_tensors: a list of tensors to return
+        :type return_tensors: List[:class:`torch.Tensor`]
+        
+        :return: output or the loss value of the current pipeline stage
+        :rtype: :class:`torch.Tensor`
         """
 
         if input_tensor is None:
@@ -162,6 +172,18 @@ class PipelineSchedule(BaseSchedule):
         output_tensor_grad is None, otherwise it is the gradients with respect to stage's output tensor.
         Returns the gradients with respect to the input tensor (None if first stage).
         This is a helper function and can be ignored by users.
+
+        :param engine: your engine object
+        :type engine: colossalai.engine.Engine
+        :param input_tensor: input tensor for this pipeline stage
+        :type input_tensor: :class:`torch.Tensor`
+        :param output_tensor: output tensor for this pipeline stage
+        :type output_tensor: :class:`torch.Tensor`
+        :param output_tensor_grad: gradient of output tensor for this pipeline stage
+        :type output_tensor_grad: :class:`torch.Tensor`
+
+        :return: gradient of input tensor
+        :rtype: :class:`torch.Tensor`
         """
 
         # Retain the grad on the input_tensor.
@@ -189,7 +211,17 @@ class PipelineSchedule(BaseSchedule):
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
+        :param engine: your engine object
+        :type engine: colossalai.engine.Engine
+        :param data_iter: dataloader as the form of an iterator, obtained by calling iter(dataloader)
+        :type data_iter: Iterable
+        :param forward_only: whether run forward step only. Default is false. If true, no backward will be run.
+        :type forward_only: bool
+        :param return_loss: whether returns the loss value. Default is true.
+        :type return_loss: bool
+
         :return: (output, label, loss)
+        :rtype: Tuple[:class:`torch.Tensor`]
         """
 
         assert forward_only or return_loss, \

@@ -123,12 +123,23 @@ def get_dataloader(dataset,
         stage and label on the last stage
 
     :param dataset: a :class:utils.data.dataset dataset
+    :param shuffle: whether to shuffle the dataset
     :param seed: random worker seed, defaults to 1024
-    :type seed: int, optional
-    :param add_sampler_if_possible: [description], defaults to False
-    :type add_sampler_if_possible: bool, optional
-    :return: a :class:utils.data.dataset dataloader
-    :rtype: torch.utils.data.dataset
+    :param add_sampler: add DistributedDataParallelSampelr to the dataset
+    :param drop_last: drop the last incomplete batch of data
+    :param pin_memory: whether to pin memory address in CPU memory
+    :param num_workers: number of worker threads for this dataloader
+
+    :type dataset: :class:`torch.utils.data.Dataset`
+    :type shuffle: bool, optional. Default is False
+    :type seed: int, optional. Default is 1024
+    :type add_sampler: bool, optional. Default is True
+    :type drop_last: bool, optional. Default is False
+    :type pin_memory: bool, optional. Default is False
+    :type num_workers: int, optional. Default is 0
+
+    :return: a object of :class:`torch.utils.data.DataLoader`
+    :rtype: :class:`torch.utils.data.DataLoader`
     '''
     _kwargs = kwargs.copy()
 
