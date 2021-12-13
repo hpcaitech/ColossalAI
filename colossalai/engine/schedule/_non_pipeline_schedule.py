@@ -38,7 +38,9 @@ class NonPipelineSchedule(BaseSchedule):
         :type data_iter: Iterator
         :type forward_only: bool, optional
         :type return_loss: bool, optional
+        
         :return: (output, label, loss)
+        :rtype: Tuple[:class:`torch.Tensor`]
         """
         assert forward_only or return_loss, \
             "The argument 'return_loss' has to be True when 'forward_only' is False, but got False."

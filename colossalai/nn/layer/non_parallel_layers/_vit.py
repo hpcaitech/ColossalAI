@@ -47,9 +47,24 @@ class ViTBlock(nn.Module):
 @LAYERS.register_module
 class VanillaViTPatchEmbedding(nn.Module):
     """ 2D Image to Patch Embedding
+
+    :param img_size: image size
+    :type img_size: int
+    :param patch_size: size of a patch
+    :type patch_size: int
+    :param in_chans: input channels
+    :type in_chans: int
+    :param embed_dim: embedding dimension
+    :type embed_dim: int
+    :param norm_layer: layer norm class, defaults to None
+    :type norm_layer: Callable
+    :param flattern: whether flatten the output
+    :type flatten: bool
+    :param drop: dropout rate
+    :type drop: float
     """
 
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, norm_layer=None, flatten=True, drop=0.):
+    def __init__(self, img_size, patch_size, in_chans, embed_dim, norm_layer=None, flatten=True, drop=0.):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -84,12 +99,22 @@ class VanillaViTPatchEmbedding(nn.Module):
 @LAYERS.register_module
 class VanillaViTMLP(nn.Module):
     """ MLP as used in Vision Transformer, MLP-Mixer and related networks
+
+    :param in_features: input channels
+    :type in_features: int
+    :param hidden_features: channels of the output of the first dense layer
+    :type hidden_features: int
+    :param hidden_features: channels of the output of the second dense layer
+    :type hidden_features: int
+    :param act_layer: activation function
+    :type act_layer: Callable
+    :param drop: dropout rate
+    :type drop: float
+
     """
 
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(self, in_features, hidden_features, out_features, act_layer=nn.GELU, drop=0.):
         super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
         self.fc1 = nn.Linear(in_features, hidden_features)
         self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
@@ -113,6 +138,11 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
     changing the layer and argument names to 'drop path' rather than mix DropConnect as a layer name and use
     'survival rate' as the argument.
 
+    :param drop_prob: probability for dropout
+    :type drop_prob: float
+    :param training: whether it is training mode
+    :type training: bool
+
     """
     if drop_prob == 0. or not training:
         return x
@@ -129,6 +159,9 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
 @LAYERS.register_module
 class VanillaViTDropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+
+    :param drop_prob: probability for dropout
+    :type drop_path: float
     """
 
     def __init__(self, drop_prob=0.):
@@ -145,7 +178,7 @@ class VanillaViTAttention(nn.Module):
 
     :param dim: dimension of input tensor
     :type dim: int
-    :param num_heads: number of attention heads, defaults to 8
+    :param num_heads: number of attention heads
     :type num_heads: int, optional
     :param qkv_bias: enable bias for qkv if True, defaults to False
     :type qkv_bias: bool, optional
@@ -155,7 +188,7 @@ class VanillaViTAttention(nn.Module):
     :type proj_drop: float, optional
     """
 
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads, qkv_bias=False, attn_drop=0., proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads

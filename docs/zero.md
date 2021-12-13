@@ -19,6 +19,7 @@ Below are a few examples of ZeRO-3 configurations.
 
 ### Example of ZeRO-3 Configurations
 
+You can refer to the [DeepSpeed configuration](https://www.deepspeed.ai/docs/config-json/#zero-optimizations-for-fp16-training) for details. 
 Here we use `Adam` as the initial optimizer.
 
 1. Use ZeRO to partition the optimizer states, gradients (level 2), and parameters (level 3).

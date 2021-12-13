@@ -13,6 +13,20 @@ def accumulate_gradient(model: nn.Module,
                         accumulate_size: int,
                         gradient_handlers: List[BaseGradientHandler] = None,
                         lr_scheduler: _LRScheduler = None):
+    """
+    :param model: your model object
+    :type model: :class:`torch.nn.Module`
+    :param optimizer: your optimizer object
+    :type optimizer: :class:`torch.optim.Optimizer`
+    :param dataloader: your dataloader object
+    :type dataloader: Iterable
+    :param accumulate_size: the number of steps to accumulate gradients
+    :type accumulate_size: int
+    :param gradient_handlers: list of gradient handler objects. Default is None
+    :type gradient_handlers: List[:class:`colossalai.engine.BaseGradientHandler`]
+    :param lr_scheduler: your lr scheduler object. Default is None
+    :type lr_scheduler: `torch.optim.lr_scheduler._LRScheduler`
+    """
     optimizer = GradAccumOptimizer(optimizer, accumulate_size=accumulate_size, model=model)
     dataloader = GradAccumDataloader(dataloader, accumulate_size=accumulate_size)
 

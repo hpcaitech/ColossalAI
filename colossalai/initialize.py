@@ -82,6 +82,8 @@ def launch(config: Union[str, Path, Config, Dict],
     :param local_rank: rank for the process on the node and is used to set the default CUDA device,
     defaults to None. If local_rank = None, the default device ordinal will be calculated automatically
     :type local_rank: int, optional
+    :param verbose: whether to print logs
+    :type verbose: bool
     :raises Exception: raise exception when config type is wrong
     '''
     gpc.verbose = verbose
@@ -121,6 +123,20 @@ def launch_from_slurm(config: Union[str, Path, Config, Dict],
                       backend: str = 'nccl',
                       seed: int = 1024,
                       verbose: bool = True):
+    '''A wrapper for colossalai.launch for SLURM launcher by reading rank and world size from the environment variables
+    set by SLURM
+
+    :param config: config file or config file path are both acceptable
+    :type config: Union[str, dict, Config]
+    :param host: the master address for distributed training
+    :type host: str
+    :param port: the master port for distributed training
+    :type port: str
+    :param backend: backend for torch.distributed
+    :type backend: str
+    :param verbose: whether to print logs
+    :type verbose: bool
+    '''
     rank = int(os.environ['SLURM_PROCID'])
     world_size = int(os.environ['SLURM_NPROCS'])
     launch(config=config,
@@ -139,6 +155,20 @@ def launch_from_openmpi(config: Union[str, Path, Config, Dict],
                         backend: str = 'nccl',
                         seed: int = 1024,
                         verbose: bool = True):
+    '''A wrapper for colossalai.launch for OpenMPI launcher by reading rank and world size from the environment variables
+    set by OpenMPI
+
+    :param config: config file or config file path are both acceptable
+    :type config: Union[str, dict, Config]
+    :param host: the master address for distributed training
+    :type host: str
+    :param port: the master port for distributed training
+    :type port: str
+    :param backend: backend for torch.distributed
+    :type backend: str
+    :param verbose: whether to print logs
+    :type verbose: bool
+    '''
     rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
     local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
     world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
@@ -159,6 +189,20 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
                       backend: str = 'nccl',
                       seed: int = 1024,
                       verbose: bool = True):
+    '''A wrapper for colossalai.launch for torchrun or torch.distributed.launch by reading rank and world size 
+    from the environment variables set by PyTorch
+
+    :param config: config file or config file path are both acceptable
+    :type config: Union[str, dict, Config]
+    :param host: the master address for distributed training
+    :type host: str
+    :param port: the master port for distributed training
+    :type port: str
+    :param backend: backend for torch.distributed
+    :type backend: str
+    :param verbose: whether to print logs
+    :type verbose: bool
+    '''
     rank = int(os.environ['RANK'])
     local_rank = int(os.environ['LOCAL_RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
@@ -184,16 +228,20 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
     ''' Core function to wrap the essential training components with our functionality based on the config which is loaded into gpc.config.
 
     :param model: your model instance
-    :type model: a single or a list of ``torch.nn.Module`` objects
+    :type model: :class:`torch.nn.Module`
     :param optimizer: your optimizer instance
-    :type optimizer: a single or a list of ``torch.optim.optimizer.Optimizer`` objects
+    :type optimizer: :class:`torch.optim.optimizer.Optimizer`
     :param criterion: your criterion instance
-    :type criterion: a single or a list of ``torch.nn.modules.loss._Loss`` objects
-    :param train_dataloader: dataloaders for training data
-    :type train_dataloader: a single or a list of ``torch.utils.data.DataLoader`` objects, defaults to None
-    :param train_dataloader: dataloaders for testing data
-    :type train_dataloader: a single or a list of ``torch.utils.data.DataLoader`` objects, defaults to None
-    :return: (engine, criterion, train_dataloader, test_dataloader)
+    :type criterion: :class:`torch.nn.modules.loss._Loss`
+    :param train_dataloader: dataloader for training data
+    :type train_dataloader: :class:`torch.utils.data.DataLoader`
+    :param train_dataloader: dataloader for testing data
+    :type train_dataloader: :class:`torch.utils.data.DataLoader`
+    :param lr_scheduler: your lr scheduler instance
+    :type lr_scheduler: :class:`torch.nn.lr_scheduler._LRScheduler`
+    :param verbose: whether to print logs
+    :type verbose: bool
+    :return: (engine, train_dataloader, test_dataloader, lr_scheduler)
     :rtype: tuple
     '''
     # get logger

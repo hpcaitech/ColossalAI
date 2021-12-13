@@ -77,10 +77,10 @@ fp16 = dict(
 )
 ```
 
-## Tensor Parallel AMP
+## Naive AMP
 
 We leveraged the Megatron-LM implementation to achieve mixed precision training while maintaining compatibility with complex tensor 
-and pipeline parallelism.
+and pipeline parallelism. This AMP mode will cast all operations into fp16.
 
 The following conde block show a config file for this mode.
 

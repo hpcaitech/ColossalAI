@@ -14,6 +14,21 @@ def convert_to_zero(model: nn.Module,
                     optimizer: Optimizer,
                     level: int,
                     zero_config):
+    """
+    A helper function to integrate the model and optimizer with ZeRO optimizer and off-loading
+
+    :param model: your model object
+    :type model: :class:`torch.nn.Module`
+    :param optimizer: your optimizer object
+    :type optimizer: :class:`torch.optim.Optimizer`
+    :param level: optimizer level, can be 2 or 3
+    :type level: int
+    :param zero_config: configuration for zero
+    :type zero_config: dict
+
+    :return: (model, optimizer)
+    :rtype: Tuple
+    """
     assert level == 2 or level == 3, 'Only ZERO Optimizer Level 2 and 3 are provided'
     if level == 2:
         if is_no_pp_or_last_stage():
