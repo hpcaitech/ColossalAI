@@ -7,11 +7,31 @@ from torch.utils.checkpoint import check_backward_validity, detach_variable
 from colossalai.context.random import get_states, get_current_mode, set_seed_states, set_mode, sync_states
 
 
+def offload_activation_checkpoint_tensor(tensor: torch.Tensor, enable=True):
+    """
+    Make a cpu copy of activation checkpoint tensor
+    """
+    if enable and tensor.is_floating_point():
+        return tensor.to('cpu')
+    return tensor
+
+
+def restore_activation_checkpoint_tensor(tensor: torch.Tensor, enable=True):
+    """
+    Move cpu activatation checkpoint data to gpu
+    """
+    if enable and tensor.is_floating_point():
+        device_copy = tensor.to(torch.cuda.current_device())
+        tensor.data = device_copy.data
+    return tensor
+
+
 class CheckpointFunction(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, run_function, *args):
+    def forward(ctx, run_function, cpu_offload, *args):
         check_backward_validity(args)
+        ctx.cpu_offload = cpu_offload
         ctx.run_function = run_function
 
         # preserve rng states
@@ -32,7 +52,7 @@ class CheckpointFunction(torch.autograd.Function):
         tensor_inputs = []
         for i, arg in enumerate(args):
             if torch.is_tensor(arg):
-                tensor_inputs.append(arg)
+                tensor_inputs.append(offload_activation_checkpoint_tensor(arg, enable=cpu_offload))
                 ctx.tensor_indices.append(i)
                 ctx.inputs.append(None)
             else:
@@ -42,6 +62,8 @@ class CheckpointFunction(torch.autograd.Function):
 
         with torch.no_grad():
             outputs = run_function(*args)
+        if cpu_offload:
+            del args
         return outputs
 
     @staticmethod
@@ -70,7 +92,7 @@ class CheckpointFunction(torch.autograd.Function):
 
         # Fill in inputs with appropriate saved tensors.
         for i, idx in enumerate(tensor_indices):
-            inputs[idx] = tensors[i]
+            inputs[idx] = restore_activation_checkpoint_tensor(tensors[i], enable=ctx.cpu_offload)
 
         detached_inputs = detach_variable(tuple(inputs))
         if ctx.had_autocast_in_fwd:
@@ -104,14 +126,17 @@ class CheckpointFunction(torch.autograd.Function):
         grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None
                       for inp in detached_inputs)
 
-        return (None,) + grads
+        return (None, None) + grads
 
 
-def checkpoint(function, *args):
+def checkpoint(function, *args, **kwargs):
     '''Checkpoint the computation while preserve the rng states, modified from Pytorch torch.utils.checkpoint
 
     :param function: describe the forward pass function. It should know how to handle the input tuples.
     :param args: tuple containing inputs to the function
     :return: Output of running function on \*args
     '''
-    return CheckpointFunction.apply(function, *args)
+    cpu_offload = kwargs.pop('cpu_offload', False)
+    if kwargs:
+        raise ValueError("Unexpected keyword arguments: " + ",".join(arg for arg in kwargs))
+    return CheckpointFunction.apply(function, cpu_offload, *args)
