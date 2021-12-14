@@ -5,7 +5,7 @@ import torch
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
 
-from colossalai.builder.pipeline import PipelineModelInitializer
+from colossalai.builder.pipeline import build_pipeline_model_from_cfg
 from colossalai.core import global_context
 from colossalai.initialize import launch
 from colossalai.logging import get_dist_logger
@@ -28,7 +28,7 @@ def run_partition(rank, world_size):
     logger.info('finished initialization')
 
     # build model
-    model = PipelineModelInitializer(global_context.config.model, 1, verbose=True).initialize()
+    model = build_pipeline_model_from_cfg(global_context.config.model, 1, verbose=True)
     assert isinstance(model, torch.nn.Module)
     logger.info('model is created')
 

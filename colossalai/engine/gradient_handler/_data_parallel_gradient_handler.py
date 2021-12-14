@@ -32,7 +32,7 @@ class DataParallelGradientHandler(BaseGradientHandler):
                     if tp not in buckets:
                         buckets[tp] = []
                     buckets[tp].append(param)
-                    param.main_grad = param.grad
+                    # param.main_grad = param.grad
 
             # For each bucket, all-reduce and copy all-reduced grads.
             for tp in buckets:
