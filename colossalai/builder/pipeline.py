@@ -1,6 +1,7 @@
 import copy
 import heapq
 
+
 from colossalai.builder import build_model, build_layer
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
@@ -237,7 +238,7 @@ class PipelineModelInitializer():
         """
         models = []
         for st, ed in self._interval:
-            model = copy.copy(self.ori_model)
+            model = copy.deepcopy(self.ori_model)
             model.build_from_cfg(st, ed)
             models.append(model)
 

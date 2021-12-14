@@ -249,3 +249,13 @@ def param_is_not_tensor_parallel_duplicate(param):
     return (hasattr(param, IS_TENSOR_PARALLEL) and
             getattr(param, IS_TENSOR_PARALLEL)) or (
         gpc.get_local_rank(ParallelMode.TENSOR) == 0)
+
+
+@contextmanager
+def switch_virtual_pipeline_parallel_rank(rank):
+    prev_rank = gpc.virtual_pipeline_parallel_rank
+    try:
+        gpc.set_virtual_pipeline_parallel_rank(rank)
+        yield
+    finally:
+        gpc.set_virtual_pipeline_parallel_rank(prev_rank)

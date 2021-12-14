@@ -29,14 +29,8 @@ def send_tensor_meta(tensor, need_meta=True, next_rank=None):
 
         send_shape = torch.tensor(tensor.size(), **tensor_kwargs)
         send_ndims = torch.tensor(len(tensor.size()), **tensor_kwargs)
-        ops = [
-            dist.P2POp(dist.isend, send_ndims, next_rank),
-            dist.P2POp(dist.isend, send_shape, next_rank)
-        ]
-        reqs = dist.batch_isend_irecv(ops)
-        for req in reqs:
-            req.wait()
-        torch.cuda.synchronize()
+        dist.send(send_ndims, next_rank)
+        dist.send(send_shape, next_rank)
 
     return False
 
