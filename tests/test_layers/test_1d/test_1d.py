@@ -2,10 +2,13 @@
 # -*- encoding: utf-8 -*-
 
 import pytest
+import torch
+import torch.multiprocessing as mp
 
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch, get_default_parser
-from test_layer import *
+from functools import partial
+from checks_1d.check_layer_1d import *
 
 CONFIG = dict(
     parallel=dict(
@@ -18,8 +21,14 @@ CONFIG = dict(
 )
 
 
-def check_layer():
-    # print_rank_0('start check_linear_col')
+def check_layer(rank, world_size):
+    launch(config=CONFIG,
+           rank=rank,
+           world_size=world_size,
+           host='localhost',
+           port=29920,
+           backend='nccl')
+
     check_linear_col()
     check_linear_row()
     check_attention()
@@ -28,21 +37,15 @@ def check_layer():
     check_embed()
     check_head()
 
+    gpc.destroy()
+    torch.cuda.empty_cache()
+
 
 @pytest.mark.dist
-@pytest.mark.skip("This test should be invoked by test.sh in the same folder as it runs on multiple gpus")
 def test_1d():
-    parser = get_default_parser()
-    args = parser.parse_args()
-    launch(config=CONFIG,
-           rank=args.rank,
-           world_size=args.world_size,
-           host=args.host,
-           port=args.port,
-           backend=args.backend)
-
-    check_layer()
-    gpc.destroy()
+    world_size = 2
+    run_func = partial(check_layer, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':

@@ -5,6 +5,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+import torch
 import torch.multiprocessing as mp
 
 from colossalai.context.parallel_mode import ParallelMode
@@ -98,6 +99,7 @@ def init_2halfd(rank, world_size, backend, port, host):
     check_tensor_parallel_rank(rank)
     check_2p5d_parallel_rank(rank)
     gpc.destroy()
+    torch.cuda.empty_cache()
 
 
 @pytest.mark.cpu
@@ -109,7 +111,7 @@ def test_2halfd_init():
     test_fn = partial(init_2halfd,
                       world_size=world_size,
                       backend='gloo',
-                      port='29501',
+                      port='29901',
                       host='localhost'
                       )
     mp.spawn(test_fn, nprocs=world_size)

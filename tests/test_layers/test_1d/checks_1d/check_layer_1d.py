@@ -1,4 +1,3 @@
-from tests.test_layers.test_3d.common import IMG_SIZE
 import torch
 import torch.distributed as dist
 from torch.nn import Parameter
@@ -7,7 +6,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn import Linear1D_Col, Linear1D_Row, TransformerMLP1D, TransformerSelfAttention1D, ViTMLP1D, ViTSelfAttention1D, ViTPatchEmbedding1D, ViTHead1D, ViTTokenFuser1D
 from colossalai.utils import get_current_device, print_rank_0
-from common import HIDDEN_SIZE, DEPTH, BATCH_SIZE, SEQ_LENGTH, NUM_CLASSES, check_equal, IMG_SIZE
+from .common import HIDDEN_SIZE, DEPTH, BATCH_SIZE, SEQ_LENGTH, NUM_CLASSES, check_equal, IMG_SIZE
 
 
 def check_linear_col():

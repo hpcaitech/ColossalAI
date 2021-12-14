@@ -7,7 +7,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.layer.parallel_3d._operation import *
 from colossalai.utils import get_current_device
 
-from common import *
+from .common import *
 
 
 def check_AB():

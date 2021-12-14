@@ -13,7 +13,7 @@ from colossalai.utils import get_current_device, print_rank_0
 from colossalai.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D, OUTPUT_GROUP_3D
 
-from common import *
+from .common import *
 
 
 def check_linear():
