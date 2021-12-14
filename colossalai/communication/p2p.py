@@ -98,7 +98,7 @@ def recv_forward(input_tensor_shape, prev_rank=None):
     :return: The input tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
-    if gpc.is_first_rank(ParallelMode.PIPELINE):
+    if gpc.is_pipeline_first_stage():
         input_tensor = None
     else:
         input_tensor, _ = _communicate(recv_prev=True,
@@ -117,7 +117,7 @@ def recv_backward(output_grad_shape, next_rank=None):
     :return: The grad of output tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
-    if gpc.is_last_rank(ParallelMode.PIPELINE):
+    if gpc.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
         _, output_tensor_grad = _communicate(recv_next=True,
@@ -134,7 +134,7 @@ def send_forward(output_tensor, next_rank=None):
     :type output_tensor: :class:`torch.Tensor`
     :type next_rank: int, optional
     """
-    if not gpc.is_last_rank(ParallelMode.PIPELINE):
+    if not gpc.is_pipeline_last_stage():
         _communicate(tensor_send_next=output_tensor,
                      next_rank=next_rank)
 
@@ -147,7 +147,7 @@ def send_backward(input_tensor_grad, prev_rank=None):
     :type input_tensor_grad: :class:`torch.Tensor`
     :type prev_rank: int, optional
     """
-    if not gpc.is_first_rank(ParallelMode.PIPELINE):
+    if not gpc.is_pipeline_first_stage():
         _communicate(tensor_send_prev=input_tensor_grad,
                      prev_rank=prev_rank)
 
@@ -167,7 +167,7 @@ def send_forward_recv_backward(output_tensor,
     :return: The grad of output tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
-    if gpc.is_last_rank(ParallelMode.PIPELINE):
+    if gpc.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
         _, output_tensor_grad = _communicate(tensor_send_next=output_tensor,
@@ -192,7 +192,7 @@ def send_backward_recv_forward(input_tensor_grad,
     :return: The input tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
-    if gpc.is_first_rank(ParallelMode.PIPELINE):
+    if gpc.is_pipeline_first_stage():
         input_tensor = None
     else:
         input_tensor, _ = _communicate(tensor_send_prev=input_tensor_grad,
