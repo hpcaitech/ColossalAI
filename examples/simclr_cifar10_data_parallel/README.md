@@ -10,19 +10,19 @@ The training commands are specified in:
 bash train.sh
 ```  
 
-Besides linear evaluation, you can also visualize the learned representations by (remember modifying 'log_name' and 'epoch' in advance):  
-'''python 
+Besides linear evaluation, you can also visualize the learned representations by (remember modifying `log_name` and `epoch` in advance):  
+```python 
 python visualization.py
-'''
+```
 
 # Results
 The loss curve of SimCLR self-supervised training is as follows:  
-![SimCLR Loss Curve](./results/ssl_loss.png)
+![SimCLR Loss Curve](./results/ssl_loss.png)  
 The loss curve of linear evaluation is as follows:  
-![Linear Evaluation Loss Curve](./results/linear_eval_loss.png)
+![Linear Evaluation Loss Curve](./results/linear_eval_loss.png)  
 The accuracy curve of linear evaluation is as follows:  
-![Linear Evaluation Accuracy](./results/linear_eval_acc.png)
+![Linear Evaluation Accuracy](./results/linear_eval_acc.png)  
 The t-SNE of the training set of CIFAR10 is as follows:  
-![train tSNE](./results/train_tsne.png)
+![train tSNE](./results/train_tsne.png)  
 The t-SNE of the test set of CIFAR10 is as follows:  
-![test tSNE](./results/test_tsne.png)
+![test tSNE](./results/test_tsne.png)  
