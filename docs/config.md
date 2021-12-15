@@ -19,6 +19,15 @@ fp16 = dict(
 )
 
 # optional
+# configuration for zero
+# you can refer to the Zero Redundancy optimizer and zero offload section for details
+# https://www.colossalai.org/zero.html
+zero = dict(
+    level=<int>,
+    ...
+)
+
+# optional
 # if you are using complex gradient handling
 # otherwise, you do not need this in your config file
 # default gradient_handlers = None
