@@ -13,7 +13,7 @@ class Linear_eval(nn.Module):
         self.fc = nn.Linear(self.backbone.output_dim, class_num)
         
     def forward(self, x):
-        x[0] = x[0].cuda()
-        out = self.backbone(x[0])
+
+        out = self.backbone(x)
         out = self.fc(out)
         return out

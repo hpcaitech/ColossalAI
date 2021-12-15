@@ -1,6 +1,3 @@
-from pickle import load
-from numpy.lib.function_base import extract
-from scipy.spatial import transform
 import torch
 import numpy as np
 from sklearn.manifold import TSNE
@@ -51,7 +48,7 @@ if tsne_flag:
     train_embedded = TSNE(n_components=2).fit_transform(train_fea)
     test_fea, test_targets = feature_extractor(net, test_dataloader)
     test_embedded = TSNE(n_components=2).fit_transform(test_fea)
-    np.savez('embedding.npz', train_embedded=train_embedded, train_targets=train_targets, test_embedded=test_embedded, test_targets=test_targets)
+    np.savez('results/embedding.npz', train_embedded=train_embedded, train_targets=train_targets, test_embedded=test_embedded, test_targets=test_targets)
 
 if plot_flag: 
     npz = np.load('embedding.npz')
@@ -65,11 +62,11 @@ if plot_flag:
         plt.scatter(train_embedded[train_targets==i,0], train_embedded[train_targets==i,1], label=i)
     plt.title('train')
     plt.legend()
-    plt.savefig('train_tsne.png')
+    plt.savefig('results/train_tsne.png')
 
     plt.figure(figsize=(16,16))
     for i in range(len(np.unique(test_targets))):
         plt.scatter(test_embedded[test_targets==i,0], test_embedded[test_targets==i,1], label=i)
     plt.title('test')
     plt.legend()
-    plt.savefig('test_tsne.png')
+    plt.savefig('results/test_tsne.png')

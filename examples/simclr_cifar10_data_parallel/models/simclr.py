@@ -29,20 +29,8 @@ class SimCLR(nn.Module):
             self.projector
         )
         
-    def forward(self, x):
+    def forward(self, x1, x2):
 
-        x[0] = x[0].cuda()
-        x[1] = x[1].cuda()
-
-        z1 = self.encoder(x[0])
-        z2 = self.encoder(x[1])
+        z1 = self.encoder(x1)
+        z2 = self.encoder(x2)
         return z1, z2
-
-
-if __name__=='__main__':
-    net = SimCLR()
-    x1 = torch.randn([4,3,32,32])
-    x2 = torch.randn([4,3,32,32])
-    data = [x1,x2]
-    y = net(*data)
-    print(len(y))
