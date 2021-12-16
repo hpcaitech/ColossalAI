@@ -16,7 +16,7 @@ fp16 = dict(
 )
 
 dataset = dict(
-    root='../../../../../datasets',
+    root='./dataset',
 )
 
 gradient_accumulation=1

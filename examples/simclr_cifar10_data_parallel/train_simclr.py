@@ -15,7 +15,8 @@ def build_dataset_train():
     augment = SimCLRTransform()
     train_dataset = CIFAR10(root=gpc.config.dataset.root, 
                                     transform=augment,
-                                    train=True)
+                                    train=True,
+                                    download=True)
                          
     return get_dataloader(
         dataset=train_dataset,

@@ -24,10 +24,10 @@ if fea_flag:
         transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010])
     ])
 
-    train_dataset = CIFAR10(root='../../../../../datasets', train=True, transform=transform_eval)
+    train_dataset = CIFAR10(root='./dataset', train=True, transform=transform_eval)
     train_dataloader = DataLoader(train_dataset, batch_size=256, shuffle=False, num_workers=4)
 
-    test_dataset = CIFAR10(root='../../../../../datasets', train=False, transform=transform_eval)
+    test_dataset = CIFAR10(root='./dataset', train=False, transform=transform_eval)
     test_dataloader = DataLoader(test_dataset, batch_size=256, shuffle=False, num_workers=4)
 
 def feature_extractor(model, loader):
