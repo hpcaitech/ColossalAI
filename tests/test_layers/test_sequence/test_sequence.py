@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import pytest
+import torch
+import torch.multiprocessing as mp
 from colossalai.initialize import launch, get_default_parser
 from colossalai.logging import get_dist_logger
-from test_layer import *
+from checks_seq.check_layer_seq import *
+from functools import partial
+
 
 CONFIG = dict(
     parallel=dict(
@@ -17,24 +22,28 @@ def check_layer():
     check_selfattention()
 
 
-def _test_main():
+def run_check_sequence(rank, world_size):
     # init dist
-    parser = get_default_parser()
-    args = parser.parse_args()
     launch(config=CONFIG,
-           rank=args.rank,
-           world_size=args.world_size,
-           host=args.host,
-           port=args.port,
-           backend=args.backend)
+           rank=rank,
+           world_size=world_size,
+           host='localhost',
+           port=29924,
+           backend='nccl')
     logger = get_dist_logger()
     logger.info('Distributed environment is initialzied.', ranks=[0])
 
-    torch.backends.cudnn.benchmark = True
-
     # check layers
     check_layer()
+    torch.cuda.empty_cache()
+
+
+@pytest.mark.dist
+def test_sequence():
+    world_size = 4
+    run_func = partial(run_check_sequence, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    _test_main()
+    test_sequence()

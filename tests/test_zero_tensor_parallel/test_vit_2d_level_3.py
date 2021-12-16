@@ -6,23 +6,34 @@ from pathlib import Path
 
 import pytest
 import torch.autograd
+import torch.multiprocessing as mp
 
 import colossalai
 import torch
-from colossalai.initialize import get_default_parser
-from colossalai.builder import build_model
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.builder import build_model
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_dataloader
 from colossalai.nn.layer._parallel_utilities import _gather
 from colossalai.nn import CrossEntropyLoss2D
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
+from functools import partial
 from components import *
 
-level = os.environ['LEVEL']
-CONFIG_PATH = Path(__file__).parent.parent.joinpath(f'configs/vit_2d_zero{level}.py')
+
+CONFIG = dict(
+    parallel=dict(
+        pipeline=dict(size=1),
+        tensor=dict(size=4, mode='2d'),
+    ),
+    fp16=dict(
+        mode=None,
+    ),
+    zero=dict(
+        level=3
+    )
+)
 
 
 def train_epoch(engine, train_dataloader):
@@ -37,18 +48,14 @@ def train_epoch(engine, train_dataloader):
     return avg_loss
 
 
-@pytest.mark.dist
-@pytest.mark.skip("This test should be invoked by test.sh in the same folder as it runs on multiple gpus")
-def test_2d_parallel_vision_transformer():
-    parser = get_default_parser()
-    args = parser.parse_args()
+def run_2d_parallel_vision_transformer_level_3(rank, world_size):
     colossalai.launch(
-        config=CONFIG_PATH,
-        rank=args.rank,
-        world_size=args.world_size,
-        host=args.host,
-        port=args.port,
-        backend=args.backend
+        config=CONFIG,
+        rank=rank,
+        world_size=world_size,
+        host='localhost',
+        port=29951,
+        backend='nccl'
     )
 
     # build model
@@ -70,7 +77,6 @@ def test_2d_parallel_vision_transformer():
     train_dataloader = get_dataloader(dataset=train_dataset,
                                       shuffle=True,
                                       batch_size=BATCH_SIZE,
-                                      num_workers=1,
                                       pin_memory=True,
                                       drop_last=True)
 
@@ -97,6 +103,17 @@ def test_2d_parallel_vision_transformer():
         engine.step()
         break
 
+    gpc.destroy()
+    torch.cuda.empty_cache()
+
+
+@pytest.mark.dist
+@pytest.mark.skip("Level 3 has unknown bug so skip this test for now")
+def test_3d_vit_zero_level_3():
+    world_size = 8
+    run_func = partial(run_2d_parallel_vision_transformer_level_3, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
+
 
 if __name__ == '__main__':
-    test_2d_parallel_vision_transformer()
+    test_3d_vit_zero_level_3()

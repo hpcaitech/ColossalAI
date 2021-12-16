@@ -8,6 +8,7 @@ import torch
 import os.path as osp
 from pathlib import Path
 import torch.nn as nn
+import torch.multiprocessing as mp
 
 from torchvision import transforms
 from torch.optim import Adam
@@ -15,9 +16,9 @@ from colossalai.core import global_context as gpc
 from colossalai.amp import AMP_TYPE
 from colossalai.logging import get_dist_logger
 from colossalai.utils import report_memory_usage, get_dataloader
-from colossalai.initialize import get_default_parser
 from torchvision.models import resnet18
 from torchvision.datasets import CIFAR10
+from functools import partial
 
 
 # Config
@@ -37,18 +38,15 @@ CONFIG = dict(
 )
 
 
-def run_no_pipeline():
-    parser = get_default_parser()
-    args = parser.parse_args()
-
+def run_engine(rank, world_size):
     # init dist env
     colossalai.launch(
         config=CONFIG,
-        rank=args.rank,
-        world_size=args.world_size,
-        host=args.host,
-        port=args.port,
-        backend=args.backend
+        rank=rank,
+        world_size=world_size,
+        host='localhost',
+        port=29910,
+        backend='nccl'
     )
 
     # build model
@@ -69,8 +67,6 @@ def run_no_pipeline():
     train_dataloader = get_dataloader(dataset=train_dataset,
                                       shuffle=True,
                                       batch_size=BATCH_SIZE,
-                                      num_workers=1,
-                                      pin_memory=True,
                                       drop_last=True)
 
     # build optimizer
@@ -102,12 +98,14 @@ def run_no_pipeline():
     gpc.destroy()
     logger.info('Test engine finished')
     report_memory_usage("After testing")
+    torch.cuda.empty_cache()
 
 
-@pytest.mark.skip("This test should be invoked using the test.sh provided")
 @pytest.mark.dist
 def test_engine():
-    run_no_pipeline()
+    world_size = 4
+    run_func = partial(run_engine, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
