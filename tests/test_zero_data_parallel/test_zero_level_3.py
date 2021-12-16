@@ -89,10 +89,10 @@ def run_dist(rank, world_size):
     model.train()
     for idx, (data, label) in enumerate(train_dataloader):
         engine.zero_grad()
-        data = data.cuda().half()
+        data = data.cuda()
         label = label.cuda()
 
-        output = engine(data).float()
+        output = engine(data)
         loss = engine.criterion(output, label)
 
         engine.backward(loss)
@@ -104,7 +104,6 @@ def run_dist(rank, world_size):
 
 
 @pytest.mark.dist
-@pytest.mark.skip("Level 3 has unknown bug so skip this test for now")
 def test_zero_level_3():
     world_size = 4
     run_func = partial(run_dist, world_size=world_size)

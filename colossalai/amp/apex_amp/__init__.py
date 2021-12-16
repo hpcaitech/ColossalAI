@@ -1,7 +1,6 @@
 from .apex_amp import ApexAMPOptimizer
 import torch.nn as nn
 from torch.optim import Optimizer
-import apex.amp as apex_amp
 
 
 def convert_to_apex_amp(model: nn.Module,
@@ -19,6 +18,7 @@ def convert_to_apex_amp(model: nn.Module,
     :return: (model, optimizer)
     :rtype: Tuple
     """
+    import apex.amp as apex_amp
     model, optimizer = apex_amp.initialize(model, optimizer, **amp_config)
     optimizer = ApexAMPOptimizer(optimizer)
     return model, optimizer
