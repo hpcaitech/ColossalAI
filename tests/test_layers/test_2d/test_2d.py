@@ -2,11 +2,15 @@
 # -*- encoding: utf-8 -*-
 
 import pytest
+import torch
+import torch.multiprocessing as mp
 
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch, get_default_parser
-from test_layer import check_linear, check_layernorm, check_attention, check_mlp, check_transformerlayer
-from test_operation import check_AB, check_ABT, check_ATB
+from checks_2d.check_layer_2d import check_linear, check_layernorm, check_attention, check_mlp, check_transformerlayer
+from checks_2d.check_operation_2d import check_AB, check_ABT, check_ATB
+from functools import partial
+
 
 CONFIG = dict(
     parallel=dict(
@@ -33,20 +37,25 @@ def check_layer():
     check_transformerlayer()
 
 
-@pytest.mark.dist
-@pytest.mark.skip("This test should be invoked by test.sh in the same folder as it runs on multiple gpus")
-def test_2d():
-    parser = get_default_parser()
-    args = parser.parse_args()
+def check_layer_and_operation(rank, world_size):
     launch(config=CONFIG,
-           rank=args.rank,
-           world_size=args.world_size,
-           host=args.host,
-           port=args.port,
-           backend=args.backend)
+           rank=rank,
+           world_size=world_size,
+           host='localhost',
+           port=29921,
+           backend='nccl')
+
     check_operations()
     check_layer()
     gpc.destroy()
+    torch.cuda.empty_cache()
+
+
+@pytest.mark.dist
+def test_2d():
+    world_size = 4
+    run_func = partial(check_layer_and_operation, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':

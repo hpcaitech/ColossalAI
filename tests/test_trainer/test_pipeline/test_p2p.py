@@ -4,6 +4,7 @@
 import pytest
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 
 from colossalai.communication import (recv_backward, recv_forward,
                                       recv_tensor_meta, send_backward,
@@ -12,13 +13,14 @@ from colossalai.communication import (recv_backward, recv_forward,
                                       send_tensor_meta)
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.initialize import init_dist, parse_args
+from colossalai.initialize import launch
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
+from functools import partial
 
-BATCH_SIZE = 32
-SEQ_LENGTH = 128
-HIDDEN_SIZE = 512
+BATCH_SIZE = 16
+SEQ_LENGTH = 64
+HIDDEN_SIZE = 128
 
 CONFIG = dict(
     parallel=dict(
@@ -106,7 +108,7 @@ def check_op(size, rank, prev_rank, next_rank, up_group, down_group, logger):
         rank, check_equal(tensor, out)))
 
 
-def test_comm(size, rank, prev_rank, next_rank, up_group, down_group, logger):
+def check_comm(size, rank, prev_rank, next_rank, up_group, down_group, logger):
     dtype = torch.float32
     device = get_current_device()
     tensor_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
@@ -121,13 +123,15 @@ def test_comm(size, rank, prev_rank, next_rank, up_group, down_group, logger):
     check_forward_backward(tensor, grad, rank, logger)
 
 
-@pytest.mark.skip("This test should be invoked using the test.sh provided")
-@pytest.mark.dist
-def test_main():
-    args = parse_args()
-    world_size = args.world_size
-
-    init_dist(CONFIG)
+def run_check(rank, world_size):
+    launch(
+        config=CONFIG,
+        rank=rank,
+        world_size=world_size,
+        host='localhost',
+        port=29932,
+        backend='nccl'
+    )
     logger = get_dist_logger()
     rank = gpc.get_global_rank()
     prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
@@ -141,9 +145,18 @@ def test_main():
             rank, prev_rank, up_ranks, next_rank, down_ranks))
     logger.info('Distributed environment is initialzied.')
 
-    test_comm(world_size, rank, prev_rank, next_rank, up_group, down_group,
-              logger)
+    check_comm(world_size, rank, prev_rank, next_rank, up_group, down_group,
+               logger)
+    gpc.destroy()
+    torch.cuda.empty_cache()
+
+
+@pytest.mark.dist
+def test_p2p():
+    world_size = 4
+    run_func = partial(run_check, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_main()
+    test_p2p()
