@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-
+import pytest
+import torch
+import torch.multiprocessing as mp
 from colossalai.initialize import launch, get_default_parser
 
-from test_layer import *
-from test_operation import *
+from checks_3d.check_layer_3d import *
+from checks_3d.check_operation_3d import *
 from colossalai.logging import get_dist_logger
+from functools import partial
 
 CONFIG = dict(parallel=dict(pipeline=1, tensor=dict(mode='3d', size=8)),
               seed=0)
@@ -38,26 +41,25 @@ def check_layer():
         ranks=[0])
 
 
-def _test_main():
-    # init dist
-    parser = get_default_parser()
-    args = parser.parse_args()
+def check_layer_and_operation(rank, world_size):
     launch(config=CONFIG,
-           rank=args.rank,
-           world_size=args.world_size,
-           host=args.host,
-           port=args.port,
-           backend=args.backend)
-    logger = get_dist_logger()
-    logger.info('Distributed environment is initialzied.', ranks=[0])
-    torch.backends.cudnn.benchmark = True
+           rank=rank,
+           world_size=world_size,
+           host='localhost',
+           port=29923,
+           backend='nccl')
 
-    # check operation
-    # check_operations()
-
-    # check layers
     check_layer()
+    gpc.destroy()
+    torch.cuda.empty_cache()
+
+
+@pytest.mark.dist
+def test_3d():
+    world_size = 8
+    run_func = partial(check_layer_and_operation, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    _test_main()
+    test_3d()

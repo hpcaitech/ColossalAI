@@ -4,51 +4,28 @@
 import os
 import pytest
 import torch
-
+import torch.multiprocessing as mp
 from pathlib import Path
 
 import colossalai
-from colossalai.initialize import get_default_parser
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_dataloader
 from torchvision import transforms
 from torchvision.models import resnet18
 from torchvision.datasets import CIFAR10
+from functools import partial
 
-BATCH_SIZE = 128
+BATCH_SIZE = 16
 IMG_SIZE = 224
-NUM_CLS = 1000
 
 CONFIG = dict(
     fp16=dict(
         mode=None,
     ),
     zero=dict(
-        # ==============
-        # level 2 config
-        # ==============
-        # level=2,
-        # cpu_offload=True,
-        # verbose=False,
-
-        # ==============
-        # level 3 config
-        # ==============
-        level=3,
+        level=2,
+        cpu_offload=True,
         verbose=False,
-        offload_optimizer_config=dict(
-            device='cpu',
-            pin_memory=True,
-            buffer_count=5,
-            fast_init=False
-        ),
-        offload_param_config=dict(
-            device='cpu',
-            pin_memory=True,
-            buffer_count=5,
-            buffer_size=1e8,
-            max_in_cpu=1e9
-        )
     ),
     parallel=dict(
         pipeline=dict(size=1),
@@ -57,16 +34,13 @@ CONFIG = dict(
 )
 
 
-def run_dist():
-    parser = get_default_parser()
-    args = parser.parse_args()
-
+def run_dist(rank, world_size):
     colossalai.launch(config=CONFIG,
-                         rank=args.rank,
-                         world_size=args.world_size,
-                         host=args.host,
-                         port=args.port,
-                         backend=args.backend)
+                      rank=rank,
+                      world_size=world_size,
+                      host='localhost',
+                      port=29940,
+                      backend='nccl')
 
     # build model
     model = resnet18(num_classes=10)
@@ -86,7 +60,6 @@ def run_dist():
     train_dataloader = get_dataloader(dataset=train_dataset,
                                       shuffle=True,
                                       batch_size=BATCH_SIZE,
-                                      num_workers=1,
                                       pin_memory=True,
                                       drop_last=True)
 
@@ -114,12 +87,16 @@ def run_dist():
         engine.step()
         break
 
+    gpc.destroy()
+    torch.cuda.empty_cache()
 
-@pytest.mark.skip("This test should be invoked manually using the script provided")
+
 @pytest.mark.dist
-def test_zero():
-    run_dist()
+def test_zero_level_2():
+    world_size = 4
+    run_func = partial(run_dist, world_size=world_size)
+    mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_zero()
+    test_zero_level_2()

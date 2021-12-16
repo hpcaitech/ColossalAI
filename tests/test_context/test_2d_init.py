@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from functools import partial
-from pathlib import Path
-
 import pytest
+import torch
 import torch.multiprocessing as mp
 
 from colossalai import launch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from functools import partial
+from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent.joinpath('configs/parallel_2d_init.py').absolute()
 
@@ -75,6 +75,7 @@ def init_2d(rank, world_size, backend, port, host):
     check_2d_parallel_rank(rank)
     check_pipeline_parallel_rank(rank)
     gpc.destroy()
+    torch.cuda.empty_cache()
 
 
 @pytest.mark.cpu
@@ -86,7 +87,7 @@ def test_2d_init():
     test_fn = partial(init_2d,
                       world_size=world_size,
                       backend='gloo',
-                      port='29500',
+                      port='29900',
                       host='localhost'
                       )
     mp.spawn(test_fn, nprocs=world_size)

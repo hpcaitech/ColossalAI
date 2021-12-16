@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 from colossalai.amp.amp_type import AMP_TYPE
 from colossalai.context.parallel_mode import ParallelMode
@@ -34,7 +35,9 @@ CONFIG = dict(
 )
 
 
-def main():
+@pytest.mark.dist
+@pytest.mark.skip("This test requires more than 8 GPUs, you should invoke this test script using test.sh provided manually")
+def test_hybrid_parallel():
     parser = colossalai.get_default_parser()
     args = parser.parse_args()
     colossalai.launch_from_slurm(config=CONFIG,
