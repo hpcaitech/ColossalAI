@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import time
+from typing import Tuple
 from .cuda import synchronize
 
 
@@ -8,6 +9,7 @@ class Timer:
     '''
     A timer object which helps to log the execution times, and provides different tools to assess the times.
     '''
+
     def __init__(self):
         self._started = False
         self._start_time = time.time()
@@ -129,6 +131,6 @@ class MultiTimer:
     def set_status(self, mode: bool):
         self._on = mode
 
-    def __iter__(self):
+    def __iter__(self) -> Tuple[str, Timer]:
         for name, timer in self._timers.items():
             yield name, timer

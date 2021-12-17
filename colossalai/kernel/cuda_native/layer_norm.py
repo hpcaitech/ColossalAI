@@ -6,6 +6,7 @@ import numbers
 import torch
 from torch.nn.parameter import Parameter
 from torch.nn import init
+from torch.cuda.amp import custom_fwd, custom_bwd
 import importlib
 
 global colossal_layer_norm_cuda
@@ -15,6 +16,7 @@ colossal_layer_norm_cuda = None
 class FusedLayerNormAffineFunction(torch.autograd.Function):
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, input, weight, bias, normalized_shape, eps):
 
         ctx.normalized_shape = normalized_shape
@@ -29,6 +31,7 @@ class FusedLayerNormAffineFunction(torch.autograd.Function):
         return output
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, grad_output):
 
         input_, weight_, bias_, mean, invvar = ctx.saved_tensors
@@ -71,3 +74,6 @@ class MixedFusedLayerNorm(torch.nn.Module):
 
         return FusedLayerNormAffineFunction.apply(input, self.weight, self.bias,
                                                   self.normalized_shape, self.eps)
+
+    def __repr__(self):
+        return f'MixedFusedLayerNorm(normalized_shape={self.normalized_shape}, eps={self.eps})'

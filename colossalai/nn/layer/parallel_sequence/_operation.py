@@ -9,6 +9,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn.layer.parallel_sequence._utils import _calc_incoming_device_range, _calc_current_device_range
 from colossalai.utils import get_current_device
+from torch.cuda.amp import custom_bwd, custom_fwd
 
 
 class RingQK(torch.autograd.Function):
@@ -17,6 +18,7 @@ class RingQK(torch.autograd.Function):
     """
 
     @staticmethod
+    @custom_fwd
     def forward(ctx,
                 sub_q,
                 sub_k,
@@ -54,6 +56,7 @@ class RingQK(torch.autograd.Function):
         return attention_score
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, grad_output):
         sub_q, sub_k, = ctx.saved_tensors
         local_rank = gpc.get_local_rank(ParallelMode.SEQUENCE)
@@ -64,6 +67,7 @@ class RingQK(torch.autograd.Function):
             grad_output.transpose(2, 1),
             sub_q
         )
+
         dist.all_reduce(grad_k, group=gpc.get_group(ParallelMode.SEQUENCE))
         grad_k = grad_k[:, local_rank * ctx.sub_seq_length: (local_rank + 1) * ctx.sub_seq_length]
         grad_k /= local_world_size
@@ -94,6 +98,7 @@ class RingAV(torch.autograd.Function):
     """
 
     @staticmethod
+    @custom_fwd
     def forward(ctx,
                 attention_score,
                 sub_v,
@@ -131,6 +136,7 @@ class RingAV(torch.autograd.Function):
         return sub_attention_result
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, grad_output):
         local_rank = gpc.get_local_rank(ParallelMode.SEQUENCE)
         local_world_size = gpc.get_world_size(ParallelMode.SEQUENCE)

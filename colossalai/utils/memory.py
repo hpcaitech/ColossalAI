@@ -40,8 +40,6 @@ def report_memory_usage(message, logger=None, report_cpu=False):
     :type report_cpu: bool
     :raises EnvironmentError: raise error if no distributed environment has been initialized
     '''
-    if not gpc.is_initialized(ParallelMode.GLOBAL):
-        raise EnvironmentError("No distributed environment is initialized")
 
     gpu_allocated = bytes_to_MB(torch.cuda.memory_allocated())
     gpu_max_allocated = bytes_to_MB(torch.cuda.max_memory_allocated())

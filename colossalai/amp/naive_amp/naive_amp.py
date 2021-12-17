@@ -32,7 +32,7 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
         loss.backward()
 
     def step(self):
-        self.optim.step()
+        return self.optim.step()
 
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
         pass

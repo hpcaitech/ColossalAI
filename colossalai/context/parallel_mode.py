@@ -26,6 +26,7 @@ class ParallelMode(Enum):
 
     # sequence parallel
     SEQUENCE = 'sequence'
+    SEQUENCE_DP = 'sequence_dp'
 
     # 1D Parallel
     PARALLEL_1D = '1d'
