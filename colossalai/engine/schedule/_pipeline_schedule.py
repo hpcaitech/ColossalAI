@@ -46,6 +46,7 @@ class PipelineSchedule(BaseSchedule):
 
         self.num_microbatches = num_microbatches
         self.sync_data = sync_data
+        self.dtype = torch.float
 
     def _move_to_device(self, data):
         if isinstance(data, (
@@ -121,12 +122,8 @@ class PipelineSchedule(BaseSchedule):
                 "Pipeline schedule is currently not compatible with ZeRO Level 2 and Level 3"
             )
 
-        # LSG: set default dtype to fp16 for communication
         if isinstance(engine.model, NaiveAMPModel):
-            torch.set_default_dtype(torch.half)
-            self.logger.warning(
-                'default tensor dtype is set to torch.half for fp16 training',
-                ranks=[0])
+            self.dtype = torch.half
 
     def forward_step(self, engine, input_tensor, return_tensors, return_loss=True):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
@@ -251,7 +248,7 @@ class PipelineSchedule(BaseSchedule):
         for i in range(num_warmup_microbatches):
             if not gpc.is_first_rank(ParallelMode.PIPELINE):
                 ft_shape = recv_tensor_meta(ft_shape)
-            input_tensor = recv_forward(ft_shape)
+            input_tensor = recv_forward(ft_shape, dtype=self.dtype)
             output_tensor = self.forward_step(
                 engine, input_tensor, return_tensors,
                 return_loss=return_loss
@@ -271,7 +268,7 @@ class PipelineSchedule(BaseSchedule):
         if num_microbatches_remaining > 0:
             if not gpc.is_first_rank(ParallelMode.PIPELINE):
                 ft_shape = recv_tensor_meta(ft_shape)
-            input_tensor = recv_forward(ft_shape)
+            input_tensor = recv_forward(ft_shape, dtype=self.dtype)
 
         # Run 1F1B in steady state.
         for i in range(num_microbatches_remaining):
@@ -285,11 +282,11 @@ class PipelineSchedule(BaseSchedule):
                 send_forward(output_tensor)
 
                 if not last_iteration:
-                    input_tensor = recv_forward(ft_shape)
+                    input_tensor = recv_forward(ft_shape, dtype=self.dtype)
 
             else:
                 output_tensor_grad = send_forward_recv_backward(
-                    output_tensor, bt_shape)
+                    output_tensor, bt_shape, dtype=self.dtype)
 
                 # Add input_tensor and output_tensor to end of list.
                 input_tensors.append(input_tensor)
@@ -311,7 +308,7 @@ class PipelineSchedule(BaseSchedule):
                     send_backward(input_tensor_grad)
                 else:
                     input_tensor = send_backward_recv_forward(
-                        input_tensor_grad, ft_shape)
+                        input_tensor_grad, ft_shape, dtype=self.dtype)
 
         # Run cooldown backward passes.
         if not forward_only:
@@ -319,7 +316,7 @@ class PipelineSchedule(BaseSchedule):
                 input_tensor = input_tensors.pop(0)
                 output_tensor = output_tensors.pop(0)
 
-                output_tensor_grad = recv_backward(bt_shape)
+                output_tensor_grad = recv_backward(bt_shape, dtype=self.dtype)
 
                 input_tensor_grad = self.backward_step(
                     engine,
@@ -348,6 +345,15 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         super().__init__(num_microbatches, sync_data=sync_data)
         gpc.set_virtual_pipeline_parallel_size(num_model_chunks)
         gpc.set_virtual_pipeline_parallel_rank(0)
+
+    def pre_processing(self, engine):
+        if isinstance(engine.optimizer, (ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
+            raise TypeError(
+                "Pipeline schedule is currently not compatible with ZeRO Level 2 and Level 3"
+            )
+
+        if isinstance(engine.model[0], NaiveAMPModel):
+            self.dtype = torch.half
 
     def forward_step(self, engine, model, input_tensor, return_tensors, return_loss=True):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
@@ -476,7 +482,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         gpc.set_virtual_pipeline_parallel_rank(0)
         if not gpc.is_pipeline_first_stage():
             input_tensor_shapes[0] = recv_tensor_meta(input_tensor_shapes[0])
-        input_tensors[0].append(recv_forward(input_tensor_shapes[0]))
+        input_tensors[0].append(recv_forward(input_tensor_shapes[0], dtype=self.dtype))
 
         for k in range(num_warmup_microbatches):
             model_chunk_id = get_model_chunk_id(k, forward=True)
@@ -517,14 +523,16 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                         output_tensor, input_tensor_grad,
                         input_shape,
                         output_shape,
-                        recv_prev=recv_prev, recv_next=recv_next)
+                        recv_prev=recv_prev, recv_next=recv_next,
+                        dtype=self.dtype)
                 output_tensor_grads[num_model_chunks-1].append(output_tensor_grad)
             else:
                 input_tensor = \
                     send_forward_recv_forward(
                         output_tensor,
                         input_shape,
-                        recv_prev=recv_prev)
+                        recv_prev=recv_prev,
+                        dtype=self.dtype)
             input_tensors[next_forward_model_chunk_id].append(input_tensor)
 
         # Run 1F1B in steady state.
@@ -591,7 +599,8 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                     output_tensor, input_tensor_grad,
                     input_shape,
                     output_shape,
-                    recv_prev=recv_prev, recv_next=recv_next)
+                    recv_prev=recv_prev, recv_next=recv_next,
+                    dtype=self.dtype)
 
             # Put input_tensor and output_tensor_grad in data structures in the
             # right location.
@@ -620,7 +629,8 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                     send_backward_recv_backward(
                         input_tensor_grad,
                         output_shape,
-                        recv_next=recv_next))
+                        recv_next=recv_next,
+                        dtype=self.dtype))
 
         if len(return_tensors) > 0:
             if return_loss:

@@ -290,6 +290,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
     # initialize amp
     amp_mode = None
     if fp16_cfg is not None and fp16_cfg.mode is not None:
+        # TODO: pipeline only support NAIVE AMP
         cfg_ = fp16_cfg.copy()
         amp_mode = cfg_.pop('mode')
         if amp_mode == AMP_TYPE.NAIVE:
