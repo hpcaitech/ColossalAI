@@ -20,10 +20,16 @@ def convert_to_naive_amp(model: nn.Module,
     :return: (model, optimizer)
     :rtype: Tuple
     """
-    if is_no_pp_or_last_stage():
-        model = NaiveAMPModel(model, output_to_fp32=True)
+    if isinstance(model, nn.ModuleList):
+        # interleaved pipeline
+        module_list = []
+        for chunk, m in enumerate(model):
+            output_to_fp32 = is_no_pp_or_last_stage() and chunk == len(model) - 1
+            module_list.append(NaiveAMPModel(m, output_to_fp32=output_to_fp32))
+        model = nn.ModuleList(module_list)
     else:
-        model = NaiveAMPModel(model, output_to_fp32=False)
+        output_to_fp32 = is_no_pp_or_last_stage()
+        model = NaiveAMPModel(model, output_to_fp32=output_to_fp32)
 
     optimizer = NaiveAMPOptimizer(optimizer, **amp_config)
     return model, optimizer

@@ -6,7 +6,7 @@ from colossalai.logging import get_dist_logger
 import colossalai
 import torch
 import os
-from colossalai.builder import PipelineModelInitializer
+from colossalai.builder import build_pipeline_model_from_cfg
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_dataloader, MultiTimer
 from colossalai.nn.loss import CrossEntropyLoss2D
@@ -50,8 +50,7 @@ def test_hybrid_parallel():
     #                        suffix='cifar10_2d_vit_ddp1_torch_amp_grad_accum_2_clip_grad_1', mode='w')
 
     # build vit-t-32
-    initializer = PipelineModelInitializer(vit_t_2d.model_cfg, num_chunks=1)
-    model = initializer.initialize()
+    model = build_pipeline_model_from_cfg(vit_t_2d.model_cfg, num_chunks=1)
 
     # build dataloaders
     train_dataset = CIFAR10(
@@ -139,4 +138,4 @@ def test_hybrid_parallel():
 
 
 if __name__ == '__main__':
-    main()
+    test_hybrid_parallel()

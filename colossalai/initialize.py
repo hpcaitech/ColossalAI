@@ -280,11 +280,21 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         raise ConfigException(
             "It is not allowed to set fp16 and zero configuration in your config file at the same time")
 
+    # clip grad norm
+    clip_grad_norm = gpc.config.get('clip_grad_norm', 0.0)
+    if clip_grad_norm > 0:
+        if zero_cfg is not None:
+            raise ConfigException(
+                "clip_grad_norm should be specified with zero, you should specify clip_grad in zero configuration")
+
     # initialize amp
     amp_mode = None
     if fp16_cfg is not None and fp16_cfg.mode is not None:
+        # TODO: pipeline only support NAIVE AMP
         cfg_ = fp16_cfg.copy()
         amp_mode = cfg_.pop('mode')
+        if amp_mode == AMP_TYPE.NAIVE:
+            cfg_['clip_grad'] = clip_grad_norm
         model, optimizer, criterion = convert_to_amp(model=model,
                                                      optimizer=optimizer,
                                                      criterion=criterion,
@@ -356,16 +366,6 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                                                                                            accumulate_size=grad_accum_size,
                                                                                            gradient_handlers=gradient_handlers,
                                                                                            lr_scheduler=lr_scheduler)
-
-    # clip grad norm
-    clip_grad_norm = gpc.config.get('clip_grad_norm', 0.0)
-    if clip_grad_norm > 0:
-        if zero_cfg is not None:
-            raise ConfigException(
-                "clip_grad_norm should be specified with zero, you should specify clip_grad in zero configuration")
-        elif fp16_cfg is not None and fp16_cfg.mode == AMP_TYPE.NAIVE:
-            raise ConfigException(
-                "clip_grad_norm should be specified with AMP_TYPE.NAIVE, you should specify clip_grad in fp16 configuration")
 
     engine = Engine(
         model=model,

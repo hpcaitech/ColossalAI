@@ -172,10 +172,10 @@ elif gpc.get_local_rank(ParallelMode.PIPELINE) == 1:
 2. Make sure your model inherit `colossalai.nn.model.ModelFromConfig` and registered into the
 `MODELS` registry. Define the `self.layers_cfg` attribute. 
 Pass in a dict/Config object which specifies the parameters of your model. 
-Use `colossalai.builder.pipeline.PipelineModelInitializer` to partition the layers.
+Use `colossalai.builder.pipeline.build_pipeline_model_from_cfg` to partition the layers.
 
 ```python
-from colossalai.builder import PipelineModelInitializer
+from colossalai.builder import build_pipeline_model_from_cfg
 from colossalai.nn.model import ModelFromConfig
 from colossalai.registry import MODELS
 
@@ -199,8 +199,11 @@ model_cfg = dict(
     ...
 )
 
-initializer = PipelineModelInitializer(model_cfg, num_chunks=1)
-model = initializer.initialize()
+# from config 
+model = build_pipeline_model_from_cfg(model_cfg, num_chunks=1)
+
+# from torch.nn.Sequential
+# model = build_pipeline_model(sequential_model, num_model_chunks)
 
 ```
 
@@ -213,6 +216,9 @@ from colossalai.engine.schedule import PipelineSchedule
 engine, train_dataloader, _, _ = colossalai.initialize(model, optimizer, criterion, train_dataloader) 
 
 schedule = PipelineSchedule(num_microbatches=4)
+
+# interleaved pipeline
+# schedule = InterleavedPipelineSchedule(num_microbatches=4, num_model_chunks=2)
 
 # execute a training epoch
 data_iter = iter(train_dataloader)
