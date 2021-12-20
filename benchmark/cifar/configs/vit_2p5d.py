@@ -9,6 +9,9 @@ NUM_ATTENTION_HEADS = 8
 SUMMA_DIM = 2
 NUM_CLASSES = 10
 DEPTH = 6
+DATA = '/project/scratch/p200012/dataset/cifar-10/'
+RANK = int(os.environ['SLURM_PROCID']) % 4
+LOG_NAME = 'vit_s_2p5d_imagenet_100_ddp2'
 
 train_data = dict(
     dataset=dict(

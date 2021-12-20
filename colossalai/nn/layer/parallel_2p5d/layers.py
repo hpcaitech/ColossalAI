@@ -342,15 +342,15 @@ class PatchEmbedding2p5D(ParallelLayer):
 
         input_ = split_batch_2p5d(input_)
 
-        weight = all_gather_weight_2p5d.apply(self.weight, self.tesseract_dim, ParallelMode.PARALLEL_2D_COL)
-        bias = all_gather_weight_2p5d.apply(self.bias, self.tesseract_dim, ParallelMode.PARALLEL_2D_COL)
+        weight = all_gather_weight_2p5d.apply(self.weight, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
+        bias = all_gather_weight_2p5d.apply(self.bias, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
 
         output = F.conv2d(input_, weight, bias, stride=self.patch_size)
         if self.flatten:
             output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
 
-        cls_token = all_gather_weight_2p5d.apply(self.cls_token, self.tesseract_dim, ParallelMode.PARALLEL_2D_COL)
-        pos_embed = all_gather_weight_2p5d.apply(self.pos_embed, self.tesseract_dim, ParallelMode.PARALLEL_2D_COL)
+        cls_token = all_gather_weight_2p5d.apply(self.cls_token, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
+        pos_embed = all_gather_weight_2p5d.apply(self.pos_embed, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
         cls_token = cls_token.expand(output.shape[0], -1, -1)
         output = torch.cat((cls_token, output), dim=1)
         output = output + pos_embed
@@ -402,42 +402,41 @@ class Classifier2p5D(ParallelLayer):
     def reset_parameters(self, init_weight, init_bias) -> None:
         with seed(ParallelMode.TENSOR):
             fan_in, fan_out = self.in_features, self.num_classes
-            col_src_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2D_COL)[0]
-            row_src_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2D_ROW)[0]
+            col_src_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2P5D_COL)[0]
+            row_src_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2P5D_ROW)[0]
 
             if self.has_weight:
                 init_weight_(self.weight, fan_in, fan_out, init_method=init_weight)
-                broadcast(self.weight, col_src_rank, ParallelMode.PARALLEL_2D_COL)
 
             if self.bias is not None:
                 init_bias_(self.bias, fan_in, init_method=init_bias)
-                broadcast(self.bias, col_src_rank, ParallelMode.PARALLEL_2D_COL)
-                broadcast(self.bias, row_src_rank, ParallelMode.PARALLEL_2D_ROW)
+                broadcast(self.bias, col_src_rank, ParallelMode.PARALLEL_2P5D_COL)
+                broadcast(self.bias, row_src_rank, ParallelMode.PARALLEL_2P5D_ROW)
 
     def forward(self, input_: Tensor) -> Tensor:
         # input: [m/q, n/q, k/q]
         # output: [m/q, n/q, h/q]
         out_shape = input_.shape[:-1] + (self.num_classes, )
 
-        # output = Matmul_ABT_2D.apply(input_, self.weight, self.summa_dim, out_shape, self.row_rank, self.col_rank,
-        #                             ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
+        # output = Matmul_ABT_2P5D.apply(input_, self.weight, self.summa_dim, out_shape, self.row_rank, self.col_rank,
+        #                             ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL, self.data_parallel_rank,
         #                             self.pipeline_parallel_rank, self.pipeline_parallel_size, self.tensor_parallel_size)
 
         # if self.bias is not None:
         #     if self.skip_bias_add:
-        #         bias = add_bias_2d.apply(None, self.bias, self.num_classes, self.row_rank, self.col_rank,
-        #                                  ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, True,
+        #         bias = add_bias_2p5d.apply(None, self.bias, self.num_classes, self.row_rank, self.col_rank,
+        #                                  ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL, True,
         #                                  self.data_parallel_rank, self.pipeline_parallel_rank,
         #                                  self.pipeline_parallel_size, self.tensor_parallel_size)
         #         return output, bias
         #     else:
-        #         output = add_bias_2d.apply(output, self.bias, self.num_classes, self.row_rank,
-        #                                    self.col_rank, ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL,
+        #         output = add_bias_2p5d.apply(output, self.bias, self.num_classes, self.row_rank,
+        #                                    self.col_rank, ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL,
         #                                    False, self.data_parallel_rank, self.pipeline_parallel_rank,
         #                                    self.pipeline_parallel_size, self.tensor_parallel_size)
         #         return output
         # else:
         #     return output
-        return classifier_2p5d.apply(input_, self.weight, self.bias, out_shape, self.row_rank, self.col_rank,
-                                   ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
+        return classifier_2p5d.apply(input_, self.weight, self.bias, self.tesseract_dim, out_shape, self.row_rank, self.col_rank,
+                                   ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL, self.data_parallel_rank,
                                    self.pipeline_parallel_rank, self.pipeline_parallel_size, self.tensor_parallel_size)

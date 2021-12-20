@@ -4,16 +4,20 @@ from torch.nn.modules.loss import _Loss
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.nn.layer.parallel_2p5d import split_batch_2p5d, reduce_by_batch_2p5d
 from colossalai.nn.layer.parallel_2p5d._utils import assert_tesseract_initialization, \
     get_tesseract_dim_dep_from_env
 from colossalai.registry import LOSSES
 from colossalai.utils import get_current_device
+from torch.cuda.amp import custom_bwd, custom_fwd
+from torch.nn.functional import cross_entropy
 
 
 class _ParallelCrossEntropyLossFunction_2p5D(torch.autograd.Function):
     ### Modified based on megatron.mpu.cross_entropy ###
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, logits, targets):
         # logits: [b/dq, h/q]
         # loss: [b/dq]
@@ -54,6 +58,7 @@ class _ParallelCrossEntropyLossFunction_2p5D(torch.autograd.Function):
         return loss
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, output_grad):
         # Retreive tensors from the forward path.
         softmax, target_mask, masked_target = ctx.saved_tensors
@@ -77,48 +82,74 @@ class _ParallelCrossEntropyLossFunction_2p5D(torch.autograd.Function):
         return grad_input, None
 
 
-class _ReduceByColDep(torch.autograd.Function):
-    """All-reduce the input from the model parallel region."""
+# class _ReduceByColDep(torch.autograd.Function):
+#     """All-reduce the input from the model parallel region."""
 
-    @staticmethod
-    def symbolic(graph, input_):
-        dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
-        return input_
+#     @staticmethod
+#     def symbolic(graph, input_):
+#         dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
+#         return input_
 
-    @staticmethod
-    def forward(ctx, input_):
-        dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
-        return input_
+#     @staticmethod
+#     def forward(ctx, input_):
+#         dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_XZ))
+#         return input_
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        return grad_output
+#     @staticmethod
+#     def backward(ctx, grad_output):
+#         return grad_output
 
+
+# @LOSSES.register_module
+# class CrossEntropyLoss2p5D(_Loss):
+#     """Cross entropy loss for 2.5D parallelism
+
+#     :param reduction: whether to average the loss, defaults to True
+#     :type reduction: bool, optional
+#     """
+
+#     def __init__(self, reduction=True):
+#         super().__init__()
+#         assert_tesseract_initialization()
+#         self.xz_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_XZ)
+#         self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
+#         self.reduction_mean = reduction
+
+#     def forward(self, logits, targets):
+#         targets = targets.chunk(self.tesseract_dim *
+#                                 self.tesseract_dep, dim=0)[self.xz_rank]
+#         loss = _ParallelCrossEntropyLossFunction_2p5D.apply(
+#             logits, targets,
+#         )
+#         if self.reduction_mean:
+#             loss = _ReduceByColDep.apply(
+#                 loss) / self.tesseract_dim / self.tesseract_dep
+#         dist_loss = loss.mean()
+
+#         return dist_loss
 
 @LOSSES.register_module
 class CrossEntropyLoss2p5D(_Loss):
     """Cross entropy loss for 2.5D parallelism
-
     :param reduction: whether to average the loss, defaults to True
     :type reduction: bool, optional
     """
 
-    def __init__(self, reduction=True):
+    def __init__(self, reduction=True, label_smoothing=0.0):
         super().__init__()
         assert_tesseract_initialization()
-        self.xz_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_XZ)
-        self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
+        self.tesseract_dim = get_tesseract_dim_dep_from_env()
+        self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_XZ)
+        self.label_smoothing = label_smoothing
         self.reduction_mean = reduction
 
     def forward(self, logits, targets):
-        targets = targets.chunk(self.tesseract_dim *
-                                self.tesseract_dep, dim=0)[self.xz_rank]
-        loss = _ParallelCrossEntropyLossFunction_2p5D.apply(
-            logits, targets,
-        )
+        batch_size = targets.size(0)
+        targets = split_batch_2p5d(targets)
+        loss = cross_entropy(logits, targets, reduction='sum',
+                             label_smoothing=self.label_smoothing)
         if self.reduction_mean:
-            loss = _ReduceByColDep.apply(
-                loss) / self.tesseract_dim / self.tesseract_dep
-        dist_loss = loss.mean()
-
-        return dist_loss
+            loss = loss.sum()
+            loss = reduce_by_batch_2p5d.apply(loss)
+            loss /= batch_size
+        return loss

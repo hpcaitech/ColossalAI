@@ -37,7 +37,7 @@ class classifier_2p5d(torch.autograd.Function):
         ctx: Any,
         A: Tensor,
         B: Tensor,
-        bias: Optional[Tensor],
+        bias,
         tesseract_dim: int,
         out_shape: Tuple[int, ...],
         row_rank: int,
@@ -70,17 +70,16 @@ class classifier_2p5d(torch.autograd.Function):
         #     if i == col_rank:
         #         C = C_temp.clone()
         B_temp = all_gather(B, -1, col_parallel_mode)
-
         if ctx:
             ctx.save_for_backward(A, B_temp)
 
         C = torch.matmul(A, B_temp.transpose(0, 1))
 
+        C = all_reduce(C, row_parallel_mode)
+
         ctx.use_bias = bias is not None
         if bias is not None:
             C = C + bias
-
-        C = all_reduce(C, row_parallel_mode)
 
         out = C.reshape(out_shape)
 
@@ -665,3 +664,30 @@ class SplitFirst(torch.autograd.Function):
             group=gpc.get_group(ctx.para_mode)
         )
         return grad, None, None
+
+
+def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+    return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
+                       dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
+
+
+class reduce_by_batch_2p5d(torch.autograd.Function):
+    """All-reduce the input from the model parallel region."""
+
+    @staticmethod
+    def symbolic(graph, input_):
+        dist.all_reduce(input_, group=gpc.get_group(
+            ParallelMode.PARALLEL_2P5D_COL))
+        return input_
+
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
+    def forward(ctx, input_):
+        dist.all_reduce(input_, group=gpc.get_group(
+            ParallelMode.PARALLEL_2P5D_COL))
+        return input_.clone()
+
+    @staticmethod
+    @custom_bwd
+    def backward(ctx, grad_output):
+        return grad_output
