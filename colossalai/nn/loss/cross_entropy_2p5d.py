@@ -14,6 +14,7 @@ class _ParallelCrossEntropyLossFunction_2p5D(torch.autograd.Function):
     ### Modified based on megatron.mpu.cross_entropy ###
 
     @staticmethod
+    @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, logits, targets):
         # logits: [b/dq, h/q]
         # loss: [b/dq]
@@ -54,6 +55,7 @@ class _ParallelCrossEntropyLossFunction_2p5D(torch.autograd.Function):
         return loss
 
     @staticmethod
+    @custom_bwd
     def backward(ctx, output_grad):
         # Retreive tensors from the forward path.
         softmax, target_mask, masked_target = ctx.saved_tensors

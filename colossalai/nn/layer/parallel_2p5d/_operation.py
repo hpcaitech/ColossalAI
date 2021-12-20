@@ -5,6 +5,8 @@ import torch.distributed as dist
 from torch import Tensor
 
 from colossalai.context.parallel_mode import ParallelMode
+from colossalai.communication.collective import (all_gather, all_reduce,
+                                                 reduce, reduce_scatter)
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
 from torch.cuda.amp import custom_bwd, custom_fwd
@@ -20,6 +22,100 @@ def get_global_rank():
 
 def get_parallel_rank(parallel_mode: ParallelMode):
     return gpc.get_local_rank(parallel_mode)
+
+def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+    return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
+                       dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
+
+
+class classifier_2p5d(torch.autograd.Function):
+    """Matrix multiplication for :math:`C = AB`
+    """
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
+    def forward(
+        ctx: Any,
+        A: Tensor,
+        B: Tensor,
+        bias: Optional[Tensor],
+        tesseract_dim: int,
+        out_shape: Tuple[int, ...],
+        row_rank: int,
+        col_rank: int,
+        row_parallel_mode: ParallelMode,
+        col_parallel_mode: ParallelMode,
+        data_parallel_rank: int,
+        pipeline_parallel_rank: int,
+        pipeline_parallel_size: int,
+        tensor_parallel_size: int,
+    ) -> Tensor:
+
+        A_shape = A.shape
+        A = A.reshape((-1, A_shape[-1]))
+        B_shape = B.shape
+        B = B.reshape((-1, B_shape[-1]))
+        # C_shape = (A.shape[0], B.shape[0])
+        # C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
+
+        # for i in range(tesseract_dim):
+        #     B_temp = B.clone()
+        #     # C_temp = torch.zeros(C_shape, dtype=C.dtype, device=get_current_device())
+        #     src_b = col_rank + tesseract_dim * i + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+        #         pipeline_parallel_rank * tensor_parallel_size
+        #     dist.broadcast(B_temp, src=src_b, group=gpc.get_group(col_parallel_mode))
+        #     C_temp = torch.matmul(A, B_temp.transpose(0, 1))
+        #     src_c = i + tesseract_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+        #         pipeline_parallel_rank * tensor_parallel_size
+        #     dist.reduce(C_temp, dst=src_c, group=gpc.get_group(row_parallel_mode))
+        #     if i == col_rank:
+        #         C = C_temp.clone()
+        B_temp = all_gather(B, -1, col_parallel_mode)
+
+        if ctx:
+            ctx.save_for_backward(A, B_temp)
+
+        C = torch.matmul(A, B_temp.transpose(0, 1))
+
+        ctx.use_bias = bias is not None
+        if bias is not None:
+            C = C + bias
+
+        C = all_reduce(C, row_parallel_mode)
+
+        out = C.reshape(out_shape)
+
+        if ctx:
+            ctx.tesseract_dim = tesseract_dim
+            ctx.row_rank = row_rank
+            ctx.col_rank = col_rank
+            ctx.row_parallel_mode = row_parallel_mode
+            ctx.col_parallel_mode = col_parallel_mode
+            ctx.A_shape = A_shape
+            ctx.B_shape = B_shape
+            ctx.data_parallel_rank = data_parallel_rank
+            ctx.pipeline_parallel_rank = pipeline_parallel_rank
+            ctx.pipeline_parallel_size = pipeline_parallel_size
+            ctx.tensor_parallel_size = tensor_parallel_size
+
+        return out
+
+    @staticmethod
+    @custom_bwd
+    def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
+        A, B = ctx.saved_tensors
+
+        with torch.no_grad():
+            A_grad = torch.matmul(output_grad, B)
+            A_grad = A_grad.reshape(ctx.A_shape)
+            B_grad = torch.matmul(output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1), A)
+            B_grad = reduce_scatter(B_grad, -1, ctx.col_parallel_mode)
+            B_grad = B_grad.reshape(ctx.B_shape)
+
+            bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
+            bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
+
+        return A_grad, B_grad, bias_grad, None, None, None, None, None, None, None, None, None, None
+
 
 
 class Matmul_AB_2p5D(torch.autograd.Function):
@@ -511,7 +607,7 @@ class _LayerNorm_2p5D(torch.autograd.Function):
 #                         group=get_parallel_group(ctx.xz_parallel_mode))
 #         return grads, None, None, None, None
 
-class AllGatherLast(torch.autograd.Function):
+class all_gather_weight_2p5d(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
