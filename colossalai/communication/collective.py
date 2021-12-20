@@ -32,16 +32,24 @@ def all_gather(tensor: Tensor,
         out = [tensor]
         work = None
     else:
-        temp = tensor.clone()
-        shape = [1] * len(tensor.shape)
-        shape[dim] = depth
-        out = tensor.repeat(shape)
-        out = list(
-            map(lambda x: x.contiguous(), torch.chunk(out, depth, dim=dim)))
-        work = dist.all_gather(tensor_list=out,
-                               tensor=temp,
+        # temp = tensor.clone()
+        # shape = [1] * len(tensor.shape)
+        # shape[dim] = depth
+        # out = tensor.repeat(shape)
+        # temp = list(map(lambda x: x.contiguous(), torch.chunk(out, depth, dim=dim)))
+        shape = list(tensor.shape)
+        # shape[dim] *= depth
+        shape[0], shape[dim] = shape[dim], shape[0]
+        shape[0] *= depth
+        # dim = dim % len(tensor.shape)
+        # shape = shape + tensor.shape[dim + 1:]
+        out = torch.empty(shape, dtype=tensor.dtype, device=get_current_device())
+        temp = list(torch.chunk(out, depth, dim=0))
+        work = dist.all_gather(tensor_list=temp,
+                               tensor=tensor.transpose(0, dim).contiguous(),
                                group=gpc.get_group(parallel_mode),
                                async_op=async_op)
+        out = torch.transpose(out, 0, dim)
     if async_op:
         return out, work
     else:
