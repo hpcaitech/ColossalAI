@@ -36,11 +36,11 @@ from .wrapper import *
 
 _parallel_linear = {'1d_col': Linear1D_Col, '1d_row': Linear1D_Row, '2d': Linear2D, '2.5d': Linear2p5D, '3d': Linear3D}
 
-_parallel_classifier = {'2d': Classifier2D, '3d': Classifier3D}
+_parallel_classifier = {'2d': Classifier2D, '2.5d': Classifier2p5D, '3d': Classifier3D}
 
-_parallel_layernorm = {'2d': LayerNorm2D, '2p5d': LayerNorm2p5D, '3d': LayerNorm3D}
+_parallel_layernorm = {'2d': LayerNorm2D, '2.5d': LayerNorm2p5D, '3d': LayerNorm3D}
 
-_parallel_patchembedding = {'2d': PatchEmbedding2D, '3d': PatchEmbedding3D}
+_parallel_patchembedding = {'2d': PatchEmbedding2D, '2.5d': PatchEmbedding2p5D, '3d': PatchEmbedding3D}
 
 
 class Linear(nn.Module):

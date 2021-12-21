@@ -265,6 +265,8 @@ class PatchEmbedding2D(ParallelLayer):
     def _set_tensor_parallel_attribute(self):
         set_tensor_parallel_attribute_by_partition(self.weight, self.summa_dim**2)
         set_tensor_parallel_attribute_by_partition(self.bias, self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.cls_token, self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.pos_embed, self.summa_dim**2)
 
     def reset_parameters(self, init_weight, init_bias):
         with seed(ParallelMode.TENSOR):

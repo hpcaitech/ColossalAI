@@ -9,7 +9,7 @@ from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization, 
 from colossalai.registry import LOSSES
 from colossalai.utils import get_current_device
 from torch.cuda.amp import custom_bwd, custom_fwd
-from torch.nn.functional import cross_entropy
+from torch.nn import CrossEntropyLoss
 
 
 class _ParallelCrossEntropyLossFunction_2D(torch.autograd.Function):
@@ -92,13 +92,13 @@ class CrossEntropyLoss2D(_Loss):
     :type reduction: bool, optional
     """
 
-    def __init__(self, reduction=True, label_smoothing=0.0):
+    def __init__(self, reduction=True, *args, **kwargs):
         super().__init__()
         assert_summa_initialization()
         self.summa_dim = get_summa_dim_from_env()
         self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)
-        self.label_smoothing = label_smoothing
         self.reduction_mean = reduction
+        self.loss = CrossEntropyLoss(reduction='sum', *args, **kwargs)
 
     def forward(self, logits, targets):
         # targets = targets.chunk(self.summa_dim, dim=0)[self.row_rank]
@@ -113,8 +113,7 @@ class CrossEntropyLoss2D(_Loss):
 
         batch_size = targets.size(0)
         targets = split_batch_2d(targets)
-        loss = cross_entropy(logits, targets, reduction='sum',
-                             label_smoothing=self.label_smoothing)
+        loss = self.loss(logits, targets)
         if self.reduction_mean:
             loss = loss.sum()
             loss = reduce_by_batch_2d.apply(loss)

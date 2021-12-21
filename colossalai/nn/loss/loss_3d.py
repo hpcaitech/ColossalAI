@@ -10,7 +10,7 @@ from colossalai.nn.layer.parallel_3d._utils import (get_depth_from_env, get_last
 from colossalai.registry import LOSSES
 from colossalai.utils import get_current_device
 from torch.cuda.amp import custom_bwd, custom_fwd
-from torch.nn.functional import cross_entropy
+from torch.nn import CrossEntropyLoss
 from torch.nn.modules.loss import _Loss
 
 # class _ParallelCrossEntropyLossFunction_3D(torch.autograd.Function):
@@ -98,7 +98,7 @@ class CrossEntropyLoss3D(_Loss):
     :param reduction: whether to average the loss, defaults to True
     :type reduction: bool, optional
     """
-    def __init__(self, reduction=True, label_smoothing=0.0):
+    def __init__(self, reduction=True, *args, **kwargs):
         super().__init__()
         self.depth = get_depth_from_env()
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -107,7 +107,7 @@ class CrossEntropyLoss3D(_Loss):
         # self.input_rank = gpc.get_local_rank(self.input_parallel_mode)
         # self.weight_rank = gpc.get_local_rank(self.weight_parallel_mode)
         self.reduction_mean = reduction
-        self.label_smoothing = label_smoothing
+        self.loss = CrossEntropyLoss(reduction='sum', *args, **kwargs)
 
     def forward(self, logits, targets):
         # split label partition from the entire batch
@@ -118,7 +118,7 @@ class CrossEntropyLoss3D(_Loss):
         # loss = _ParallelCrossEntropyLossFunction_3D.apply(
         #     logits, targets, self.depth, self.output_parallel_mode)
         # logits = gather_3d.apply(logits, -1, self.output_parallel_mode)
-        loss = cross_entropy(logits, targets, reduction='sum', label_smoothing=self.label_smoothing)
+        loss = self.loss(logits, targets)
         if self.reduction_mean:
             loss = loss.sum()
             loss = reduce_by_batch_3d.apply(loss, self.input_parallel_mode, self.weight_parallel_mode)

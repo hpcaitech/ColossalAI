@@ -14,13 +14,13 @@ _parallel_cross_entropy = {
 
 
 class CrossEntropyLoss(_Loss):
-    def __init__(self, reduction: bool = True, label_smoothing: float = 0.0, tensor_parallel: str = None):
+    def __init__(self, reduction: bool = True, tensor_parallel: str = None, *args, **kwargs):
         super().__init__()
         if tensor_parallel in [None, '1d']:
             reduction = 'mean' if reduction else 'none'
-            self.loss = nn.CrossEntropyLoss(reduction=reduction, label_smoothing=label_smoothing)
+            self.loss = nn.CrossEntropyLoss(reduction=reduction, *args, **kwargs)
         else:
-            self.loss = _parallel_cross_entropy[tensor_parallel](reduction=reduction, label_smoothing=label_smoothing)
+            self.loss = _parallel_cross_entropy[tensor_parallel](reduction=reduction, *args, **kwargs)
 
     def forward(self, *args):
         return self.loss(*args)

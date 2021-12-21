@@ -10,11 +10,9 @@ import pytest
 import torch
 import torch.autograd
 import torch.multiprocessing as mp
-from colossalai.builder import build_model
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.nn import CrossEntropyLoss, CrossEntropyLoss2D
-from colossalai.nn.layer._parallel_utilities import _gather
+from colossalai.nn import CrossEntropyLoss
 from colossalai.utils import get_dataloader
 from model_zoo.vit import vit_lite_7_patch4_32
 from torchvision import transforms

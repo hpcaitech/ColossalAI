@@ -270,37 +270,37 @@ class AccuracyMetric(Metric):
 #         self.accumulated_correct += self.last_step_correct
 
 
-class Accuracy2p5D(AccuracyMetric):
-    def __init__(self, epoch_only: bool):
-        super().__init__(epoch_only=epoch_only)
+# class Accuracy2p5D(AccuracyMetric):
+#     def __init__(self, epoch_only: bool):
+#         super().__init__(epoch_only=epoch_only)
 
-    def update(self, logits, label) -> None:
-        if isinstance(logits, (list, tuple)):
-            logits = logits[0]
-        if isinstance(label, (list, tuple)):
-            label = label[0]
+#     def update(self, logits, label) -> None:
+#         if isinstance(logits, (list, tuple)):
+#             logits = logits[0]
+#         if isinstance(label, (list, tuple)):
+#             label = label[0]
 
-        logits = _gather(logits, ParallelMode.PARALLEL_2P5D_ROW, 1)
-        logits = _gather(
-            logits,
-            ParallelMode.PARALLEL_2P5D_COL,
-            0,
-        )
-        logits = _gather(
-            logits,
-            ParallelMode.PARALLEL_2P5D_DEP,
-            0,
-        )
-        # update
-        preds = torch.argmax(logits, dim=-1)
-        correct = torch.sum(label == preds)
-        self.last_step_sum.fill_(label.size(0))
-        self.last_step_correct.fill_(correct)
-        self.accumulated_sum += self.last_step_sum
-        self.accumulated_correct += self.last_step_correct
+#         logits = _gather(logits, ParallelMode.PARALLEL_2P5D_ROW, 1)
+#         logits = _gather(
+#             logits,
+#             ParallelMode.PARALLEL_2P5D_COL,
+#             0,
+#         )
+#         logits = _gather(
+#             logits,
+#             ParallelMode.PARALLEL_2P5D_DEP,
+#             0,
+#         )
+#         # update
+#         preds = torch.argmax(logits, dim=-1)
+#         correct = torch.sum(label == preds)
+#         self.last_step_sum.fill_(label.size(0))
+#         self.last_step_correct.fill_(correct)
+#         self.accumulated_sum += self.last_step_sum
+#         self.accumulated_correct += self.last_step_correct
 
-    def is_better(a, b) -> bool:
-        return a > b
+#     def is_better(a, b) -> bool:
+#         return a > b
 
 
 # class Accuracy3D(Accuracy):
@@ -479,26 +479,26 @@ class LossHook(MetricHook):
 #             self.metric.update(logits, label)
 
 
-@HOOKS.register_module
-class Accuracy2p5DHook(MetricHook):
-    def __init__(self, priority: int = 0):
-        super().__init__(priority)
+# @HOOKS.register_module
+# class Accuracy2p5DHook(MetricHook):
+#     def __init__(self, priority: int = 0):
+#         super().__init__(priority)
 
-    def after_hook_is_attached(self, trainer):
-        self._check_metric_states_initialization(trainer)
-        if self._is_stage_to_compute:
-            self.metric = Accuracy2p5D(epoch_only=True)
+#     def after_hook_is_attached(self, trainer):
+#         self._check_metric_states_initialization(trainer)
+#         if self._is_stage_to_compute:
+#             self.metric = Accuracy2p5D(epoch_only=True)
 
-            # register the metric
-            trainer.states['metrics']['test'][self.metric.__class__.__name__] = self.metric
+#             # register the metric
+#             trainer.states['metrics']['test'][self.metric.__class__.__name__] = self.metric
 
-    def before_test(self, trainer):
-        if self._is_stage_to_compute:
-            self.metric.reset()
+#     def before_test(self, trainer):
+#         if self._is_stage_to_compute:
+#             self.metric.reset()
 
-    def after_test_iter(self, trainer, logits, label, *args):
-        if self._is_stage_to_compute:
-            self.metric.update(logits, label)
+#     def after_test_iter(self, trainer, logits, label, *args):
+#         if self._is_stage_to_compute:
+#             self.metric.update(logits, label)
 
 
 # @HOOKS.register_module
