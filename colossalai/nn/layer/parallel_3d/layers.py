@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from colossalai.nn.layer.base_layer import ParallelLayer
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from colossalai.communication import all_reduce, broadcast
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.nn.init import init_bias_, init_weight_
+from colossalai.nn.layer.base_layer import ParallelLayer
 from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
 from torch import Tensor, dtype
@@ -18,7 +19,6 @@ from torch.nn import init as init
 from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
 from ._operation import *
 from ._utils import (get_depth_from_env, get_last_group, get_parallel_mode_from_env, swap_in_out_group)
-import torch.nn.functional as F
 
 
 @LAYERS.register_module
@@ -49,7 +49,7 @@ class LayerNorm3D(ParallelLayer):
 
     def forward(self, input_: Tensor) -> Tensor:
         return layernorm_3d.apply(input_, self.weight, self.bias, self.normalized_shape, self.variance_epsilon,
-                                   self.input_parallel_mode, self.weight_parallel_mode, self.output_parallel_mode)
+                                  self.input_parallel_mode, self.weight_parallel_mode, self.output_parallel_mode)
 
 
 @LAYERS.register_module
@@ -258,4 +258,50 @@ class PatchEmbedding3D(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding3D(ParallelLayer):
-    pass
+    def __init__(self,
+                 num_embeddings: int,
+                 embedding_dim: int,
+                 dtype: dtype = None,
+                 init_weight: str = 'torch',
+                 *args,
+                 **kwargs):
+        super().__init__()
+        self.depth = get_depth_from_env()
+        self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+        self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+        self.output_parallel_mode = get_last_group(self.input_parallel_mode, self.weight_parallel_mode)
+
+        embed_dim_per_partition = divide(embedding_dim, self.depth)
+        self.embed_args = args
+        self.embed_kwargs = kwargs
+
+        with seed(ParallelMode.TENSOR):
+            self.weight = nn.Parameter(
+                torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype))
+
+        self.reset_parameters(init_weight)
+        self._set_tensor_parallel_attributes()
+
+    def _set_tensor_parallel_attributes(self):
+        set_tensor_parallel_attribute_by_partition(self.weight, self.depth)
+
+    def reset_parameters(self) -> None:
+        with seed(ParallelMode.TENSOR):
+            init.normal_(self.weight)
+            self._fill_padding_idx_with_zero()
+        weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
+        broadcast(self.weight, weight_src_rank, self.weight_parallel_mode)
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None:
+            with torch.no_grad():
+                self.weight[self.padding_idx].fill_(0)
+
+    def forward(self, input_: Tensor) -> Tensor:
+        input_ = split_batch_3d(input_, self.input_parallel_mode, self.weight_parallel_mode)
+
+        weight = broadcast_weight_3d_from_diagonal.apply(self.weight, self.input_parallel_mode,
+                                                         self.weight_parallel_mode, self.output_parallel_mode)
+        output = F.embedding(input_, weight, *self.embed_args, **self.embed_kwargs)
+
+        return output

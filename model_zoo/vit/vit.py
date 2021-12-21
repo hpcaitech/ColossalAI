@@ -4,7 +4,7 @@ from typing import Callable
 import torch
 from colossalai import nn as col_nn
 from colossalai.context import ParallelMode, seed
-from colossalai.registry import MODELS
+from colossalai.registry import LAYERS, MODELS
 from colossalai.utils import checkpoint
 from torch import dtype, nn
 
@@ -29,7 +29,8 @@ __all__ = [
 ]
 
 
-class ViTPatchEmbedding(nn.Module):
+@LAYERS.register_module
+class ViTEmbedding(nn.Module):
     def __init__(self,
                  img_size: int,
                  patch_size: int,
@@ -65,6 +66,7 @@ class ViTPatchEmbedding(nn.Module):
         return x
 
 
+@LAYERS.register_module
 class ViTSelfAttention(nn.Module):
     def __init__(self,
                  dim: int,
@@ -139,6 +141,7 @@ class ViTSelfAttention(nn.Module):
             return self._forward(x)
 
 
+@LAYERS.register_module
 class ViTMLP(nn.Module):
     def __init__(self,
                  dim: int,
@@ -192,6 +195,7 @@ class ViTMLP(nn.Module):
             return self._forward(x)
 
 
+@LAYERS.register_module
 class ViTHead(nn.Module):
     def __init__(self,
                  dim: int,
@@ -221,6 +225,7 @@ class ViTHead(nn.Module):
         return x
 
 
+@LAYERS.register_module
 class ViTBlock(nn.Module):
     def __init__(self,
                  dim: int,
@@ -286,46 +291,65 @@ class VisionTransformer(nn.Module):
                  tensor_parallel: str = None):
         super().__init__()
 
-        self.patch_embed = ViTPatchEmbedding(img_size=img_size,
-                                             patch_size=patch_size,
-                                             in_chans=in_chans,
-                                             embedding_dim=dim,
-                                             dropout=dropout,
-                                             dtype=dtype,
-                                             init_method=init_method,
-                                             tensor_parallel=tensor_parallel)
+        embed = ViTEmbedding(
+            img_size=img_size,
+            patch_size=patch_size,
+            in_chans=in_chans,
+            embedding_dim=dim,
+            dropout=dropout,
+            dtype=dtype,
+            init_method=init_method,
+            tensor_parallel=tensor_parallel,
+        )
 
         # stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path, depth)]
-        self.blocks = nn.Sequential(*[
-            ViTBlock(dim=dim,
-                     num_heads=num_heads,
-                     mlp_ratio=mlp_ratio,
-                     attention_dropout=attention_dropout,
-                     dropout=dropout,
-                     drop_path=dpr[i],
-                     activation=activation,
-                     dtype=dtype,
-                     bias=bias,
-                     checkpoint=checkpoint,
-                     init_method=init_method,
-                     tensor_parallel=tensor_parallel) for i in range(depth)
-        ])
+        blocks = [
+            ViTBlock(
+                dim=dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                attention_dropout=attention_dropout,
+                dropout=dropout,
+                drop_path=dpr[i],
+                activation=activation,
+                dtype=dtype,
+                bias=bias,
+                checkpoint=checkpoint,
+                init_method=init_method,
+                tensor_parallel=tensor_parallel,
+            ) for i in range(depth)
+        ]
 
-        self.norm = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype, tensor_parallel=tensor_parallel)
+        norm = col_nn.LayerNorm(
+            normalized_shape=dim,
+            eps=1e-6,
+            dtype=dtype,
+            tensor_parallel=tensor_parallel,
+        )
 
-        self.head = ViTHead(dim=dim,
-                            num_classes=num_classes,
-                            dtype=dtype,
-                            bias=bias,
-                            init_method=init_method,
-                            tensor_parallel=tensor_parallel)
+        head = ViTHead(
+            dim=dim,
+            num_classes=num_classes,
+            dtype=dtype,
+            bias=bias,
+            init_method=init_method,
+            tensor_parallel=tensor_parallel,
+        )
+
+        self.layers = nn.Sequential(
+            embed,
+            *blocks,
+            norm,
+            head,
+        )
 
     def forward(self, x):
-        x = self.patch_embed(x)
-        x = self.blocks(x)
-        x = self.norm(x)
-        x = self.head(x)
+        # x = self.embed(x)
+        # x = self.blocks(x)
+        # x = self.norm(x)
+        # x = self.head(x)
+        x = self.layers(x)
         return x
 
 

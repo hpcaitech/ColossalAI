@@ -1,20 +1,22 @@
 import math
 
 import torch
-from torch import Tensor, dtype
-from torch.nn import Parameter, init as init
 import torch.nn.functional as F
-
-from colossalai.communication import all_reduce, broadcast
-from colossalai.context import seed, ParallelMode
+from colossalai.communication import broadcast
+from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
-from colossalai.registry import LAYERS
 from colossalai.nn.init import init_bias_, init_weight_
+from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
-from ._operation import Matmul_AB_2p5D, Add_Bias_2p5D, _LayerNorm_2p5D, all_gather_weight_2p5d, split_batch_2p5d, classifier_2p5d
-from ._utils import get_tesseract_dim_dep_from_env, assert_tesseract_initialization
-from .._common_utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
+from torch import Tensor, dtype
+from torch.nn import Parameter
+from torch.nn import init as init
+
+from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
 from ..base_layer import ParallelLayer
+from ._operation import (Add_Bias_2p5D, Matmul_AB_2p5D, all_gather_weight_2p5d, classifier_2p5d, layernorm_2p5d,
+                         split_batch_2p5d)
+from ._utils import (assert_tesseract_initialization, get_tesseract_dim_dep_from_env)
 
 
 @LAYERS.register_module
@@ -205,7 +207,7 @@ class LayerNorm2p5D(ParallelLayer):
             # this time 1/sqrt(Var_x + epsilon)
             Var_x = 1.0 / torch.sqrt(Var_x + self.variance_epsilon)
 
-        output = _LayerNorm_2p5D.apply(x, E_x, Var_x, self.normalized_shape, ParallelMode.PARALLEL_2P5D_ROW)
+        output = layernorm_2p5d.apply(x, E_x, Var_x, self.normalized_shape, ParallelMode.PARALLEL_2P5D_ROW)
         bias = Add_Bias_2p5D.apply(None, self.beta, self.partitioned_partition, self.tesseract_dim, self.row_rank,
                                    self.col_rank, self.dep_rank, ParallelMode.PARALLEL_2P5D_COL, True,
                                    self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
@@ -369,25 +371,6 @@ class Classifier2p5D(ParallelLayer):
         # output: [m/q, n/q, h/q]
         out_shape = input_.shape[:-1] + (self.num_classes, )
 
-        # output = Matmul_ABT_2P5D.apply(input_, self.weight, self.summa_dim, out_shape, self.row_rank, self.col_rank,
-        #                             ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL, self.data_parallel_rank,
-        #                             self.pipeline_parallel_rank, self.pipeline_parallel_size, self.tensor_parallel_size)
-
-        # if self.bias is not None:
-        #     if self.skip_bias_add:
-        #         bias = add_bias_2p5d.apply(None, self.bias, self.num_classes, self.row_rank, self.col_rank,
-        #                                  ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL, True,
-        #                                  self.data_parallel_rank, self.pipeline_parallel_rank,
-        #                                  self.pipeline_parallel_size, self.tensor_parallel_size)
-        #         return output, bias
-        #     else:
-        #         output = add_bias_2p5d.apply(output, self.bias, self.num_classes, self.row_rank,
-        #                                    self.col_rank, ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL,
-        #                                    False, self.data_parallel_rank, self.pipeline_parallel_rank,
-        #                                    self.pipeline_parallel_size, self.tensor_parallel_size)
-        #         return output
-        # else:
-        #     return output
         return classifier_2p5d.apply(input_, self.weight, self.bias, self.tesseract_dim, out_shape, self.row_rank,
                                      self.col_rank, ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL,
                                      self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,

@@ -51,49 +51,6 @@ def build_cifar(batch_size):
     return train_dataloader, test_dataloader
 
 
-def train_epoch(engine, schedule, train_dataloader, epoch: int = None):
-    # set training state
-    engine.train()
-    data_iter = iter(train_dataloader)
-    progress = range(len(train_dataloader))
-    if gpc.get_global_rank() == 0:
-        progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
-
-    # metric measured by bian zhengda
-    train_loss = 0
-    batch_cnt = 0
-    num_samples = 0
-    ######
-    for i in progress:
-        # metric measured by bian zhengda
-        cur_lr = engine.optimizer.param_groups[0]['lr']
-        ######
-
-        # run 1 training step
-        batch_start = time.time()
-        engine.zero_grad()
-        _, label, loss = schedule.forward_backward_step(engine, data_iter, forward_only=False, return_loss=True)
-        engine.step()
-        batch_end = time.time()
-
-        # metric measured by bian zhengda
-        if gpc.get_global_rank() == 0:
-            if isinstance(label, (tuple, list)):
-                batch_size = label[0].size(0)
-            else:
-                batch_size = label.size(0)
-            batch_size *= gpc.data_parallel_size
-            train_loss += loss.item()
-            num_samples += batch_size
-            batch_cnt += 1
-            batch_time = batch_end - batch_start
-            print_features = dict(lr='%g' % cur_lr,
-                                  loss='%.3f' % (train_loss / (i + 1)),
-                                  throughput='%.3f (samples/sec)' % (batch_size / (batch_time + 1e-12)))
-            progress.set_postfix(**print_features)
-        ######
-
-
 def train_cifar():
     args = colossalai.get_default_parser().parse_args()
     colossalai.launch_from_torch(config=args.config)
@@ -135,10 +92,6 @@ def train_cifar():
                                                                                     lr_scheduler=lr_scheduler)
 
     logger.info("Engine is built", ranks=[0])
-
-    # sched = schedule.NonPipelineSchedule()
-    # for epoch in range(gpc.config.num_epochs):
-    #     train_epoch(engine, sched, train_dataloader, epoch)
 
     timer = MultiTimer()
 

@@ -1,21 +1,20 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import Union, List
-from colossalai import engine
-from colossalai.context.parallel_mode import ParallelMode
+from typing import List, Union
 
 import torch
+from colossalai import engine
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.engine import Engine
+from colossalai.engine.schedule import BaseSchedule, NonPipelineSchedule
+from colossalai.logging import DistributedLogger
+from colossalai.utils import MultiTimer, is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0
 from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from colossalai.core import global_context as gpc
-from colossalai.engine import Engine
-from colossalai.engine.schedule import NonPipelineSchedule, BaseSchedule
-from colossalai.logging import DistributedLogger
-from colossalai.utils import MultiTimer
-from colossalai.utils import is_dp_rank_0, is_tp_rank_0, is_no_pp_or_last_stage
 from .hooks import BaseHook
 
 
@@ -31,7 +30,6 @@ class Trainer:
     :type hoooks_cfg: Config, optional
     :type verbose: bool, optional
     """
-
     def __init__(self,
                  engine: Engine,
                  schedule: BaseSchedule = None,
@@ -152,10 +150,7 @@ class Trainer:
         """
         return display_progress and is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
 
-    def _train_epoch(self,
-                     train_dataloader: DataLoader,
-                     epoch: int = None,
-                     display_progress: bool = False):
+    def _train_epoch(self, train_dataloader: DataLoader, epoch: int = None, display_progress: bool = False):
         # set training state
         self._engine.train()
         data_iter = iter(train_dataloader)
@@ -166,64 +161,33 @@ class Trainer:
             else:
                 progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
 
-        # metric measured by bian zhengda
-        train_loss = 0
-        batch_cnt = 0
-        num_samples = 0
-        ######
         self._call_hooks('before_train_epoch')
         self._call_timer(action='start', item='Train-epoch')
         for i in progress:
             self._call_hooks('before_train_iter')
             self._call_timer(action='start', item='Train-step')
 
-            # metric measured by bian zhengda
-            cur_lr = self._engine.optimizer.param_groups[0]['lr']
-            ######
-
             # run 1 training step
             self.engine.zero_grad()
-            logits, label, loss = self.schedule.forward_backward_step(
-                self.engine, data_iter, forward_only=False, return_loss=True)
+            logits, label, loss = self.schedule.forward_backward_step(self.engine,
+                                                                      data_iter,
+                                                                      forward_only=False,
+                                                                      return_loss=True)
             self.engine.step()
-            self._call_timer(action='stop', item='Train-step',
-                             keep_in_history=True)
+            self._call_timer(action='stop', item='Train-step', keep_in_history=True)
             self._call_hooks('after_train_iter', output=(logits, label, loss))
 
             self._cur_step += 1
-
-            # metric measured by bian zhengda
-            if display_progress:
-                if isinstance(label, (tuple, list)):
-                    batch_size = label[0].size(0)
-                else:
-                    batch_size = label.size(0)
-                batch_size *= gpc.data_parallel_size
-                train_loss += loss.item()
-                num_samples += batch_size
-                batch_cnt += 1
-                batch_time = self._timer.get_timer(
-                    'Train-step').get_elapsed_time()
-                print_features = dict(lr='%g' % cur_lr,
-                                      loss='%.3f' % (train_loss / (i + 1)),
-                                      throughput='%.3f (samples/sec)' %
-                                      (batch_size / (batch_time + 1e-12)))
-                progress.set_postfix(**print_features)
-            ######
 
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
 
-        self._call_timer(action='stop', item='Train-epoch',
-                         keep_in_history=True)
+        self._call_timer(action='stop', item='Train-epoch', keep_in_history=True)
         self._call_hooks('after_train_epoch')
         self._call_timer(action='reset', item='Train-step')
 
-    def _eval(self,
-              test_dataloader: DataLoader,
-              epoch: int = None,
-              display_progress: bool = False):
+    def _eval(self, test_dataloader: DataLoader, epoch: int = None, display_progress: bool = False):
         # switch engine status
         self._engine.eval()
 
@@ -245,14 +209,13 @@ class Trainer:
             for _ in progress:
                 self._call_hooks('before_test_iter')
                 self._call_timer(action='start', item='Test-step')
-                logits, label, loss = self.schedule.forward_backward_step(
-                    self.engine, data_iter, forward_only=True, return_loss=True)
-                self._call_timer(
-                    action='stop', item='Test-step', keep_in_history=True)
-                self._call_hooks('after_test_iter',
-                                 output=(logits, label, loss))
-        self._call_timer(action='stop', item='Test-epoch',
-                         keep_in_history=True)
+                logits, label, loss = self.schedule.forward_backward_step(self.engine,
+                                                                          data_iter,
+                                                                          forward_only=True,
+                                                                          return_loss=True)
+                self._call_timer(action='stop', item='Test-step', keep_in_history=True)
+                self._call_hooks('after_test_iter', output=(logits, label, loss))
+        self._call_timer(action='stop', item='Test-epoch', keep_in_history=True)
         self._call_hooks('after_test_epoch')
         self._call_hooks('after_test')
         self._call_timer(action='reset', item='Test-step')
@@ -261,15 +224,16 @@ class Trainer:
     def _exceed_max_step(self):
         return self._max_steps is not None and self._cur_step >= self._max_steps
 
-    def fit(self,
-            train_dataloader: DataLoader,
-            epochs: int,
-            max_steps: int = None,
-            test_dataloader: DataLoader = None,
-            test_interval: int = 1,
-            hooks: List[BaseHook] = None,
-            display_progress: bool = False,
-            ):
+    def fit(
+        self,
+        train_dataloader: DataLoader,
+        epochs: int,
+        max_steps: int = None,
+        test_dataloader: DataLoader = None,
+        test_interval: int = 1,
+        hooks: List[BaseHook] = None,
+        display_progress: bool = False,
+    ):
         """Trains the model to fit training data.
 
         :param train_dataloader: DataLoader in training
@@ -304,18 +268,16 @@ class Trainer:
         # reset hooks
         self._reset_states()
         if hooks is not None:
-            assert isinstance(
-                hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
+            assert isinstance(hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
         else:
             hooks = []
         self.hooks = hooks
         self.hooks.sort(key=lambda hook: hook.priority)
         if self._verbose:
             for hook in self.hooks:
-                self._logger.info(
-                    f'Using {hook.__class__.__name__} for training, priority = {hook.priority}', ranks=[0])
-            self._logger.info(
-                "Lower value means higher priority for calling hook function", ranks=[0])
+                self._logger.info(f'Using {hook.__class__.__name__} for training, priority = {hook.priority}',
+                                  ranks=[0])
+            self._logger.info("Lower value means higher priority for calling hook function", ranks=[0])
         self._call_hooks('after_hook_is_attached')
 
         # start train
@@ -329,34 +291,27 @@ class Trainer:
 
         for epoch in range(last_epoch, epochs):
             # train for one epoch
-            self._train_epoch(
-                train_dataloader=train_dataloader,
-                epoch=epoch,
-                display_progress=display_progress
-            )
+            self._train_epoch(train_dataloader=train_dataloader, epoch=epoch, display_progress=display_progress)
 
             # start eval
             if should_test and epoch % test_interval == 0:
-                self._eval(test_dataloader=test_dataloader,
-                           display_progress=display_progress,
-                           epoch=epoch,
-                           )
+                self._eval(
+                    test_dataloader=test_dataloader,
+                    display_progress=display_progress,
+                    epoch=epoch,
+                )
 
             self._cur_epoch += 1
 
             # check for termination
             if self._exceed_max_step():
                 self._logger.info(
-                    f"Max number of steps {max_steps} has been reached, training is stopped automatically",
-                    ranks=[0])
+                    f"Max number of steps {max_steps} has been reached, training is stopped automatically", ranks=[0])
                 break
         self._call_hooks('after_train')
         self._call_timer('reset', 'Train-epoch')
 
-    def evaluate(self,
-                 test_dataloader: DataLoader,
-                 hooks: List[BaseHook] = None,
-                 display_progress: bool = False):
+    def evaluate(self, test_dataloader: DataLoader, hooks: List[BaseHook] = None, display_progress: bool = False):
         """Evaluates the model with testing data.
 
         :param test_dataloader: DataLoader in testing
@@ -370,24 +325,23 @@ class Trainer:
         # reset hooks
         self._reset_states()
         if hooks is not None:
-            assert isinstance(
-                hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
+            assert isinstance(hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
         else:
             hooks = []
         self.hooks = hooks
         self.hooks.sort(key=lambda hook: hook.priority)
         if self._verbose:
             for hook in self.hooks:
-                self._logger.info(
-                    f'Using {hook.__class__.__name__} for training, priority = {hook.priority}', ranks=[0])
-            self._logger.info(
-                "Lower value means higher priority for calling hook function", ranks=[0])
+                self._logger.info(f'Using {hook.__class__.__name__} for training, priority = {hook.priority}',
+                                  ranks=[0])
+            self._logger.info("Lower value means higher priority for calling hook function", ranks=[0])
         self._call_hooks('after_hook_is_attached')
 
         # eval
-        self._eval(test_dataloader=test_dataloader,
-                   display_progress=display_progress,
-                   )
+        self._eval(
+            test_dataloader=test_dataloader,
+            display_progress=display_progress,
+        )
 
     def predict(self, data: Union[Tensor, List[Tensor]]):
         """Uses trained model to make a prediction for a tensor or a tensor list.
@@ -408,6 +362,5 @@ class Trainer:
         # for compatibility with schedule
         simple_dataloader = [(data, None)]
         data_iter = iter(simple_dataloader)
-        output, _, _ = self.schedule.forward_backward_step(
-            self.engine, data_iter, forward_only=True, return_loss=False)
+        output, _, _ = self.schedule.forward_backward_step(self.engine, data_iter, forward_only=True, return_loss=False)
         return output

@@ -1,9 +1,8 @@
 import math
 
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
-from colossalai.communication import all_reduce, broadcast
+from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.nn.init import init_bias_, init_weight_
@@ -15,8 +14,7 @@ from torch.nn import init as init
 
 from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
 from ..base_layer import ParallelLayer
-from ._operation import (Matmul_AB_2D, Matmul_ABT_2D, add_bias_2d, all_gather_weight_2d, layernorm_2d, split_batch_2d,
-                         classifier_2d)
+from ._operation import (Matmul_AB_2D, add_bias_2d, all_gather_weight_2d, classifier_2d, layernorm_2d, split_batch_2d)
 from ._utils import assert_summa_initialization, get_summa_dim_from_env
 
 
@@ -358,26 +356,7 @@ class Classifier2D(ParallelLayer):
         # input: [m/q, n/q, k/q]
         # output: [m/q, n/q, h/q]
         out_shape = input_.shape[:-1] + (self.num_classes, )
-
-        # output = Matmul_ABT_2D.apply(input_, self.weight, self.summa_dim, out_shape, self.row_rank, self.col_rank,
-        #                             ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
-        #                             self.pipeline_parallel_rank, self.pipeline_parallel_size, self.tensor_parallel_size)
-
-        # if self.bias is not None:
-        #     if self.skip_bias_add:
-        #         bias = add_bias_2d.apply(None, self.bias, self.num_classes, self.row_rank, self.col_rank,
-        #                                  ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, True,
-        #                                  self.data_parallel_rank, self.pipeline_parallel_rank,
-        #                                  self.pipeline_parallel_size, self.tensor_parallel_size)
-        #         return output, bias
-        #     else:
-        #         output = add_bias_2d.apply(output, self.bias, self.num_classes, self.row_rank,
-        #                                    self.col_rank, ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL,
-        #                                    False, self.data_parallel_rank, self.pipeline_parallel_rank,
-        #                                    self.pipeline_parallel_size, self.tensor_parallel_size)
-        #         return output
-        # else:
-        #     return output
+        
         return classifier_2d.apply(input_, self.weight, self.bias, self.summa_dim, out_shape, self.row_rank,
                                    self.col_rank, ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL,
                                    self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,

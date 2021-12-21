@@ -6,7 +6,7 @@ import torch
 import torch.multiprocessing as mp
 
 from colossalai.core import global_context as gpc
-from colossalai.initialize import launch, get_default_parser
+from colossalai.initialize import launch
 from checks_2d.check_layer_2d import *
 from checks_2d.check_operation_2d import *
 from functools import partial
@@ -23,19 +23,16 @@ CONFIG = dict(
 )
 
 
-# def check_operations():
-#     check_AB()
-#     check_ABT()
-#     check_ATB()
+def check_operations():
+    check_AB()
+    check_ABT()
+    check_ATB()
 
 
 def check_layer():
     check_linear()
     check_layernorm()
     check_classifier()
-    # check_attention()
-    # check_mlp()
-    # check_transformerlayer()
 
 def check_layer_and_operation(rank, world_size):
     launch(config=CONFIG,

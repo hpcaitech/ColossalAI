@@ -44,8 +44,6 @@ def run_2d_parallel_vision_transformer_level_2(rank, world_size):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=29950, backend='nccl')
 
     # build model
-    # model = build_model(model_cfg)
-    # model.build_from_cfg()
     model = vit_lite_7_patch4_32(tensor_parallel='2d')
 
     # build dataloader# build dataloaders

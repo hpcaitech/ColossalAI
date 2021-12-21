@@ -247,6 +247,8 @@ class Linear1D_Row(ParallelLayer):
 
 @LAYERS.register_module
 class MixedFusedLayerNorm1D(torch.nn.Module):
+    """ Experimental
+    """
     def __init__(self, normalized_shape, eps=1e-5):
         super(MixedFusedLayerNorm1D, self).__init__()
 

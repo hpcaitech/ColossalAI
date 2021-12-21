@@ -2,12 +2,11 @@ from typing import Any, Tuple
 
 import torch
 import torch.distributed as dist
-from torch import Tensor
-
+from colossalai.communication.collective import (all_gather, all_reduce, reduce_scatter)
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.communication.collective import (all_gather, all_reduce, reduce, reduce_scatter)
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
+from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 
 
@@ -54,21 +53,6 @@ class classifier_2p5d(torch.autograd.Function):
         A = A.reshape((-1, A_shape[-1]))
         B_shape = B.shape
         B = B.reshape((-1, B_shape[-1]))
-        # C_shape = (A.shape[0], B.shape[0])
-        # C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
-
-        # for i in range(tesseract_dim):
-        #     B_temp = B.clone()
-        #     # C_temp = torch.zeros(C_shape, dtype=C.dtype, device=get_current_device())
-        #     src_b = col_rank + tesseract_dim * i + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-        #         pipeline_parallel_rank * tensor_parallel_size
-        #     dist.broadcast(B_temp, src=src_b, group=gpc.get_group(col_parallel_mode))
-        #     C_temp = torch.matmul(A, B_temp.transpose(0, 1))
-        #     src_c = i + tesseract_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-        #         pipeline_parallel_rank * tensor_parallel_size
-        #     dist.reduce(C_temp, dst=src_c, group=gpc.get_group(row_parallel_mode))
-        #     if i == col_rank:
-        #         C = C_temp.clone()
         B_temp = all_gather(B, -1, col_parallel_mode)
         if ctx:
             ctx.save_for_backward(A, B_temp)
@@ -408,7 +392,7 @@ class Add_Bias_2p5D(torch.autograd.Function):
                 return output_grad, reduce_tmp, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
-class _LayerNorm_2p5D(torch.autograd.Function):
+class layernorm_2p5d(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx: Any, input: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int,
@@ -444,67 +428,6 @@ class _LayerNorm_2p5D(torch.autograd.Function):
         return input_grad, None, None, None, None, None, None
 
 
-# class Sum_2p5D(torch.autograd.Function):
-#     """Compute the sum of input tensors
-#     """
-
-#     @staticmethod
-#     def forward(ctx,
-#                 inputs,
-#                 dim,
-#                 tesseract_dim,
-#                 row_parallel_mode,
-#                 keepdim=False):
-#         # input: [b/q, s, h/q]
-#         ctx.save_for_backward(inputs)
-#         # sum: [b/q, s]
-#         out = torch.sum(inputs, dim=dim, keepdim=keepdim)
-#         torch.distributed.all_reduce(
-#             out, group=gpc.get_group(row_parallel_mode))
-#         return out
-
-#     @staticmethod
-#     def backward(ctx, output_grad):
-#         with torch.no_grad():
-#             inputs = ctx.saved_tensors
-#             input_grad = torch.ones(inputs.shape, dtype=output_grad.dtype)
-#         return input_grad, None, None, None, None, None
-
-# class _ViT_Split_2p5D(torch.autograd.Function):
-#     @staticmethod
-#     @custom_fwd(cast_inputs=torch.float16)
-#     def forward(ctx, inputs, batch_size,
-#                 tesseract_dim, tesseract_dep,
-#                 xz_parallel_mode):
-#         # inputs: [b, s, h/q]
-#         # output: [b/dq, s, h/q]
-
-#         ctx.BATCH_SIZE = batch_size
-#         ctx.tesseract_dim = tesseract_dim
-#         ctx.tesseract_dep = tesseract_dep
-#         ctx.xz_parallel_mode = xz_parallel_mode
-#         xz_rank = gpc.get_local_rank(xz_parallel_mode)
-#         output = torch.chunk(inputs, tesseract_dep *
-#                              tesseract_dim, dim=0)[xz_rank]
-#         output = output.clone()
-#         return output
-
-#     @staticmethod
-#     @custom_bwd
-#     def backward(ctx, output_grad):
-#         # output_grad: [b/dq, s, h/q]
-#         # grads: [b, s, h/q]
-#         # *
-#         grads_shape = (ctx.BATCH_SIZE,) + output_grad.shape[1:]
-#         grads = torch.empty(grads_shape,
-#                             dtype=output_grad.dtype,
-#                             device=get_current_device())
-#         dist.all_gather(list(grads.chunk(ctx.tesseract_dim * ctx.tesseract_dep, dim=0)),
-#                         output_grad.contiguous(),
-#                         group=get_parallel_group(ctx.xz_parallel_mode))
-#         return grads, None, None, None, None
-
-
 class all_gather_weight_2p5d(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -513,16 +436,6 @@ class all_gather_weight_2p5d(torch.autograd.Function):
         ctx.tesseract_dim = tesseract_dim
         ctx.row_rank = gpc.get_local_rank(col_parallel_mode)
 
-        # last_dim = tesseract_dim * inputs.size(-1)
-        # outputs_shape = (last_dim,) + inputs.shape[:-1]
-        # outputs = torch.empty(
-        #     outputs_shape, dtype=inputs.dtype, device=get_current_device())
-        # dist.all_gather(
-        #     list(outputs.chunk(tesseract_dim, dim=0)),
-        #     inputs.permute(2, 0, 1).contiguous(),
-        #     group=gpc.get_group(col_parallel_mode)
-        # )
-        # outputs = outputs.permute(1, 2, 0).contiguous()
         outputs = all_gather(inputs, dim, col_parallel_mode)
         return outputs
 

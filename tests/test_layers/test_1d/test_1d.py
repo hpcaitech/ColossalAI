@@ -6,7 +6,7 @@ import torch
 import torch.multiprocessing as mp
 
 from colossalai.core import global_context as gpc
-from colossalai.initialize import launch, get_default_parser
+from colossalai.initialize import launch
 from functools import partial
 from checks_1d.check_layer_1d import *
 
@@ -31,11 +31,6 @@ def check_layer(rank, world_size):
 
     check_linear_col()
     check_linear_row()
-    # check_attention()
-    # check_mlp()
-    # check_patch_embedding()
-    # check_embed()
-    # check_head()
 
     gpc.destroy()
     torch.cuda.empty_cache()

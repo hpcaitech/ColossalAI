@@ -1,9 +1,3 @@
-from ._vit import (ViTBlock, VanillaViTAttention, VanillaViTBlock, VanillaViTDropPath,
-                   VanillaViTHead, VanillaViTMLP, VanillaViTPatchEmbedding)
-from .layers import VanillaPatchEmbedding, VanillaClassifier
+from .layers import VanillaClassifier, VanillaPatchEmbedding
 
-__all__ = [
-    'ViTBlock', 'VanillaViTAttention', 'VanillaViTBlock', 'VanillaViTDropPath',
-    'VanillaViTHead', 'VanillaViTMLP', 'VanillaViTPatchEmbedding',
-    'VanillaPatchEmbedding', 'VanillaClassifier'
-]
+__all__ = ['VanillaPatchEmbedding', 'VanillaClassifier']

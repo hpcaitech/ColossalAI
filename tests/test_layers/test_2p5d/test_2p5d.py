@@ -27,9 +27,6 @@ def check_layer():
     check_linear()
     check_layernorm()
     check_classifier()
-    # check_attention()
-    # check_mlp()
-    # check_transformerlayer()
 
 
 def check_layer_and_operation(rank, world_size):
