@@ -5,9 +5,7 @@ from typing import Iterable
 
 import torch
 
-import torch.nn as nn
 from colossalai.engine import Engine
-from torch.optim import Optimizer
 from ._base_schedule import BaseSchedule
 from colossalai.utils import conditional_context
 
@@ -38,7 +36,7 @@ class NonPipelineSchedule(BaseSchedule):
         :type data_iter: Iterator
         :type forward_only: bool, optional
         :type return_loss: bool, optional
-        
+
         :return: (output, label, loss)
         :rtype: Tuple[:class:`torch.Tensor`]
         """
@@ -48,11 +46,9 @@ class NonPipelineSchedule(BaseSchedule):
 
         # forward
         with conditional_context(torch.no_grad(), enable=forward_only):
-            output = engine(*data)
-            if not isinstance(output, (tuple, list)):
-                output = (output,)
+            output = self._call_engine(engine, data)
             if return_loss:
-                loss = engine.criterion(*output, *label)
+                loss = self._call_engine_criterion(engine, output, label)
 
         if not forward_only:
             engine.backward(loss)

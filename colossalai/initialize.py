@@ -338,6 +338,19 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                     "Data parallel training is detected when using pipeline parallel, DataParallelGradientHandler is automatically "
                     "added even though not specified in the configuration",
                     ranks=[0])
+        # add pipeline parallel gradient handler, if pipeline shared module is detected
+        for param in model.parameters():
+            if getattr(param, 'pipeline_shared_module_pg', None) is not None:
+                if gradient_handler_cfg is None:
+                    gradient_handler_cfg = [dict(type='PipelineParallelGradientHandler')]
+                else:
+                    gradient_handler_cfg.append(dict(type='PipelineParallelGradientHandler'))
+                if verbose:
+                    logger.info(
+                        "pipeline_shared_module is detected, PipelineParallelGradientHandler is automatically "
+                        "added even though not specified in the configuration",
+                        ranks=[0])
+                break
     else:
         if not isinstance(gradient_handler_cfg, list):
             raise ConfigException(
