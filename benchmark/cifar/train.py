@@ -2,10 +2,8 @@
 # -*- encoding: utf-8 -*-
 
 import os
-import time
 
 import colossalai
-from colossalai.engine import schedule
 import torch
 import torchvision
 from colossalai.builder import *
@@ -14,12 +12,11 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn import Accuracy, CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.trainer import Trainer
-from colossalai.trainer.hooks import (AccuracyHook, LogMemoryByEpochHook, LogMetricByEpochHook, LogTimingByEpochHook,
-                                      LossHook, LRSchedulerHook, ThroughputHook)
+from colossalai.trainer.hooks import (AccuracyHook, LogMemoryByEpochHook, LogMetricByEpochHook, LogMetricByStepHook,
+                                      LogTimingByEpochHook, LossHook, LRSchedulerHook, ThroughputHook)
 from colossalai.utils import MultiTimer, get_dataloader
 from model_zoo.vit import vit_lite_7_patch4_32
 from torchvision import transforms
-from tqdm import tqdm
 
 DATASET_PATH = str(os.environ['DATA'])
 
@@ -47,7 +44,7 @@ def build_cifar(batch_size):
                                       batch_size=batch_size,
                                       num_workers=4,
                                       pin_memory=True)
-    test_dataloader = get_dataloader(dataset=test_dataset, batch_size=batch_size, pin_memory=True)
+    test_dataloader = get_dataloader(dataset=test_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
     return train_dataloader, test_dataloader
 
 
@@ -61,9 +58,9 @@ def train_cifar():
     #                   host=args.host,
     #                   port=args.port)
     logger = get_dist_logger()
-    if hasattr(gpc.config, 'log_path'):
+    if hasattr(gpc.config, 'LOG_PATH'):
         if gpc.get_global_rank() == 0:
-            log_path = gpc.config.log_path
+            log_path = gpc.config.LOG_PATH
             if not os.path.exists(log_path):
                 os.mkdir(log_path)
             logger.log_to_file(log_path)
@@ -81,8 +78,8 @@ def train_cifar():
     steps_per_epoch = len(train_dataloader) // gpc.config.gradient_accumulation
 
     lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
-                                           total_steps=gpc.config.num_epochs * steps_per_epoch,
-                                           warmup_steps=gpc.config.warmup_epochs * steps_per_epoch)
+                                           total_steps=gpc.config.NUM_EPOCHS * steps_per_epoch,
+                                           warmup_steps=gpc.config.WARMUP_EPOCHS * steps_per_epoch)
 
     engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(model=model,
                                                                                     optimizer=optimizer,
@@ -100,6 +97,7 @@ def train_cifar():
 
     hooks = [
         LogMetricByEpochHook(logger=logger),
+        LogMetricByStepHook(),
         # LogTimingByEpochHook(timer=timer, logger=logger),
         # LogMemoryByEpochHook(logger=logger),
         AccuracyHook(accuracy_func=Accuracy(tensor_parallel=tp)),
@@ -111,7 +109,7 @@ def train_cifar():
     logger.info("Train start", ranks=[0])
     trainer.fit(train_dataloader=train_dataloader,
                 test_dataloader=test_dataloader,
-                epochs=gpc.config.num_epochs,
+                epochs=gpc.config.NUM_EPOCHS,
                 hooks=hooks,
                 display_progress=True,
                 test_interval=1)

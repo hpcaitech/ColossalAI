@@ -4,7 +4,6 @@
 from typing import List, Union
 
 import torch
-from colossalai import engine
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.engine import Engine
@@ -179,6 +178,10 @@ class Trainer:
 
             self._cur_step += 1
 
+            if display_progress:
+                if 'step_metrics' in self.states:
+                    progress.set_postfix(**self.states['step_metrics'])
+
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
@@ -215,6 +218,11 @@ class Trainer:
                                                                           return_loss=True)
                 self._call_timer(action='stop', item='Test-step', keep_in_history=True)
                 self._call_hooks('after_test_iter', output=(logits, label, loss))
+                
+                if display_progress:
+                    if 'step_metrics' in self.states:
+                        progress.set_postfix(**self.states['step_metrics'])
+
         self._call_timer(action='stop', item='Test-epoch', keep_in_history=True)
         self._call_hooks('after_test_epoch')
         self._call_hooks('after_test')

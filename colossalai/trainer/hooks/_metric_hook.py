@@ -9,7 +9,6 @@ import torch.distributed as dist
 from colossalai.communication import all_reduce
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer._parallel_utilities import _gather
 from colossalai.registry import HOOKS
 from colossalai.utils import get_current_device, is_no_pp_or_last_stage
 
@@ -135,7 +134,7 @@ class LearningRateMetric(Metric):
     """
     def __init__(self, epoch_only: bool, initial_lr: float = 0.):
         super().__init__(epoch_only=epoch_only)
-        self.lr = 0.
+        self.lr = initial_lr
 
     def reset(self) -> None:
         pass
@@ -186,8 +185,6 @@ class AccuracyMetric(Metric):
         if isinstance(targets, (list, tuple)):
             targets = targets[0]
         # update
-        # preds = torch.argmax(logits, dim=-1)
-        # correct = torch.sum(label == preds)
         with torch.no_grad():
             correct = self.acc(logits, targets)
 
@@ -199,7 +196,7 @@ class AccuracyMetric(Metric):
     def get_last_step_value(self):
         self.last_step_sum = all_reduce(self.last_step_sum, ParallelMode.DATA)
         self.last_step_correct = all_reduce(self.last_step_correct, ParallelMode.DATA)
-        return (self.last_step_sum / self.last_step_correct).item()
+        return (self.last_step_correct / self.last_step_sum).item()
 
     def get_accumulated_value(self):
         self.accumulated_sum = all_reduce(self.accumulated_sum, ParallelMode.DATA)
@@ -208,152 +205,6 @@ class AccuracyMetric(Metric):
 
     def is_better(a, b) -> bool:
         return a > b
-
-
-# class Accuracy2D(AccuracyMetric):
-#     """A metric collector for accuracy. It only works for classification
-#     tasks. This class is the same as :class:`Accuracy` but used in 2D
-#     model parallelism.
-
-#     :param epoch_only: Whether the metric only read for the full epoch
-#     :type epoch_only: bool
-#     """
-#     def __init__(self, epoch_only: bool):
-#         super().__init__(epoch_only=epoch_only)
-
-#     def update(self, logits, label) -> None:
-#         if isinstance(logits, (list, tuple)):
-#             logits = logits[0]
-#         if isinstance(label, (list, tuple)):
-#             label = label[0]
-
-#         logits = _gather(logits, ParallelMode.PARALLEL_2D_ROW, 1)
-#         logits = _gather(
-#             logits,
-#             ParallelMode.PARALLEL_2D_COL,
-#             0,
-#         )
-#         # update
-#         preds = torch.argmax(logits, dim=-1)
-#         correct = torch.sum(label == preds)
-#         self.last_step_sum.fill_(label.size(0))
-#         self.last_step_correct.fill_(correct)
-#         self.accumulated_sum += self.last_step_sum
-#         self.accumulated_correct += self.last_step_correct
-
-
-# class Accuracy1D(AccuracyMetric):
-#     """A metric collector for accuracy. It only works for classification
-#     tasks. This class is the same as :class:`Accuracy` but used in 2D
-#     model parallelism.
-
-#     :param epoch_only: Whether the metric only read for the full epoch
-#     :type epoch_only: bool
-#     """
-#     def __init__(self, epoch_only: bool):
-#         super().__init__(epoch_only=epoch_only)
-
-#     def update(self, logits, label) -> None:
-#         if isinstance(logits, (list, tuple)):
-#             logits = logits[0]
-#         if isinstance(label, (list, tuple)):
-#             label = label[0]
-
-#         logits = _gather(logits, ParallelMode.PARALLEL_1D, 1)
-
-#         # update
-#         preds = torch.argmax(logits, dim=-1)
-#         correct = torch.sum(label == preds)
-#         self.last_step_sum.fill_(label.size(0))
-#         self.last_step_correct.fill_(correct)
-#         self.accumulated_sum += self.last_step_sum
-#         self.accumulated_correct += self.last_step_correct
-
-
-# class Accuracy2p5D(AccuracyMetric):
-#     def __init__(self, epoch_only: bool):
-#         super().__init__(epoch_only=epoch_only)
-
-#     def update(self, logits, label) -> None:
-#         if isinstance(logits, (list, tuple)):
-#             logits = logits[0]
-#         if isinstance(label, (list, tuple)):
-#             label = label[0]
-
-#         logits = _gather(logits, ParallelMode.PARALLEL_2P5D_ROW, 1)
-#         logits = _gather(
-#             logits,
-#             ParallelMode.PARALLEL_2P5D_COL,
-#             0,
-#         )
-#         logits = _gather(
-#             logits,
-#             ParallelMode.PARALLEL_2P5D_DEP,
-#             0,
-#         )
-#         # update
-#         preds = torch.argmax(logits, dim=-1)
-#         correct = torch.sum(label == preds)
-#         self.last_step_sum.fill_(label.size(0))
-#         self.last_step_correct.fill_(correct)
-#         self.accumulated_sum += self.last_step_sum
-#         self.accumulated_correct += self.last_step_correct
-
-#     def is_better(a, b) -> bool:
-#         return a > b
-
-
-# class Accuracy3D(Accuracy):
-#     """A metric collector for accuracy. It only works for classification
-#     tasks. This class is the same as :class:`Accuracy` but used in 3D
-#     model parallelism.
-
-#     :param input_parallel_mode: The parallel mode of the input, generally it should be `ParallelMode.PARALLEL_3D_OUTPUT`
-#     :type input_parallel_mode: `ParallelMode`
-#     :param weight_parallel_mode: The parallel mode of the weight, generally it should be `ParallelMode.PARALLEL_3D_WEIGHT`
-#     :type weight_parallel_mode: `ParallelMode`
-#     :param epoch_only: Whether the metric only read for the full epoch
-#     :type epoch_only: bool
-#     """
-#     def __init__(self, epoch_only):
-#         #  input_parallel_mode, weight_parallel_mode):
-#         super().__init__(epoch_only=epoch_only)
-#         # self.depth = int(os.environ['DEPTH_3D'])
-#         # self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
-#         # self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
-#         # self.output_parallel_mode = get_last_group(self.input_parallel_mode,
-#         #                                            self.weight_parallel_mode)
-#         from colossalai.nn.loss.cross_entropy_3d import Accuracy_3D
-#         self.acc = Accuracy_3D()
-
-#     def update(self, logits, targets):
-#         # if isinstance(logits, (list, tuple)):
-#         #     logits = logits[0]
-#         # if isinstance(target, (list, tuple)):
-#         #     target = target[0]
-
-#         # batch_size = target.size(0)
-
-#         # j = gpc.get_local_rank(self.input_parallel_mode)
-#         # i = gpc.get_local_rank(self.weight_parallel_mode)
-#         # target = torch.chunk(target, self.depth, dim=0)[i]
-#         # target = torch.chunk(target, self.depth, dim=0)[j]
-
-#         # logits = all_gather(logits, -1, self.output_parallel_mode)
-#         # logits = torch.cat(logits, dim=-1)
-#         # prediction = torch.argmax(logits, dim=-1)
-#         # correct = torch.sum(prediction == target)
-
-#         # dist.all_reduce(correct, group=gpc.get_group(self.input_parallel_mode))
-#         # dist.all_reduce(correct,
-#         #                 group=gpc.get_group(self.weight_parallel_mode))
-#         with torch.no_grad():
-#             correct, batch_size = self.acc(logits, targets)
-
-#         self.last_step_sum.fill_(batch_size)
-#         self.last_step_correct.fill_(correct)
-#         self.accumulated_sum += self.last_step_sum
-#         self.accumulated_correct += self.last_step_correct
 
 
 class MetricHook(BaseHook):
@@ -419,116 +270,6 @@ class LossHook(MetricHook):
             self.test_loss.update(loss)
 
 
-# @HOOKS.register_module
-# class Accuracy1DHook(MetricHook):
-#     """Specialized hook class for :class:`Accuracy1D`.
-#     It acts the same as :class:`AccuracyHook`.
-
-#     :param trainer: Trainer attached with current hook
-#     :param priority: Priority in the printing, hooks with small priority will be printed in front
-#     :type trainer: Trainer
-#     :type priority: int, optional
-#     """
-#     def __init__(self, priority: int = 10):
-#         super().__init__(priority)
-
-#     def after_hook_is_attached(self, trainer):
-#         self._check_metric_states_initialization(trainer)
-#         if self._is_stage_to_compute:
-#             self.metric = Accuracy1D(epoch_only=True)
-
-#             # register the metric
-#             trainer.states['metrics']['test'][self.metric.__class__.__name__] = self.metric
-
-#     def before_test(self, trainer):
-#         if self._is_stage_to_compute:
-#             self.metric.reset()
-
-#     def after_test_iter(self, trainer, logits, label, *args):
-#         if self._is_stage_to_compute:
-#             self.metric.update(logits, label)
-
-
-# @HOOKS.register_module
-# class Accuracy2DHook(MetricHook):
-#     """Specialized hook class for :class:`Accuracy2D`.
-#     It acts the same as :class:`AccuracyHook`.
-
-#     :param trainer: Trainer attached with current hook
-#     :param priority: Priority in the printing, hooks with small priority will be printed in front
-#     :type trainer: Trainer
-#     :type priority: int, optional
-#     """
-#     def __init__(self, priority: int = 0):
-#         super().__init__(priority)
-
-#     def after_hook_is_attached(self, trainer):
-#         self._check_metric_states_initialization(trainer)
-#         if self._is_stage_to_compute:
-#             self.metric = Accuracy2D(epoch_only=True)
-
-#             # register the metric
-#             trainer.states['metrics']['test'][self.metric.__class__.__name__] = self.metric
-
-#     def before_test(self, trainer):
-#         if self._is_stage_to_compute:
-#             self.metric.reset()
-
-#     def after_test_iter(self, trainer, logits, label, *args):
-#         if self._is_stage_to_compute:
-#             self.metric.update(logits, label)
-
-
-# @HOOKS.register_module
-# class Accuracy2p5DHook(MetricHook):
-#     def __init__(self, priority: int = 0):
-#         super().__init__(priority)
-
-#     def after_hook_is_attached(self, trainer):
-#         self._check_metric_states_initialization(trainer)
-#         if self._is_stage_to_compute:
-#             self.metric = Accuracy2p5D(epoch_only=True)
-
-#             # register the metric
-#             trainer.states['metrics']['test'][self.metric.__class__.__name__] = self.metric
-
-#     def before_test(self, trainer):
-#         if self._is_stage_to_compute:
-#             self.metric.reset()
-
-#     def after_test_iter(self, trainer, logits, label, *args):
-#         if self._is_stage_to_compute:
-#             self.metric.update(logits, label)
-
-
-# @HOOKS.register_module
-# class Accuracy3DHook(MetricHook):
-#     """Specialized hook class for :class:`Accuracy3D`.
-
-#     :param trainer: Trainer attached with current hook
-#     :param priority: Priority in the printing, hooks with small priority will be printed in front
-#     :type trainer: Trainer
-#     :type priority: int
-#     """
-#     def __init__(self, priority: int = 10):
-#         super().__init__(priority)
-
-#     def after_hook_is_attached(self, trainer):
-#         if self._is_stage_to_compute:
-#             self.metric = Accuracy3D(epoch_only=True)
-
-#             # register the metric
-#             trainer.states['metrics']['test'][self.metric.__class__.__name__] = self.metric
-
-#     def before_test(self, trainer):
-#         if self._is_stage_to_compute:
-#             self.metric.reset()
-
-#     def after_test_iter(self, trainer, logits, label, *args):
-#         if self._is_stage_to_compute:
-#             self.metric.update(logits, label)
-
-
 @HOOKS.register_module
 class AccuracyHook(MetricHook):
     """Specialized hook class for :class:`Accuracy`.
@@ -576,22 +317,22 @@ class ThroughputMetric(Metric):
     def update(self, tensor, time) -> None:
         if isinstance(tensor, (list, tuple)):
             tensor = tensor[0]
-        self.accumulated_num_samples += tensor.size(0)
-        self.last_step_num_samples += tensor.size(0)
-        self.accumulated_used_time += time
-        self.last_step_used_time += time
+        self.last_step_num_samples.fill_(tensor.size(0))
+        self.last_step_used_time.fill_(time)
+        self.accumulated_num_samples += self.last_step_num_samples
+        self.accumulated_used_time += self.last_step_used_time
 
     def get_last_step_value(self):
-        self.last_step_used_time = all_reduce(self.last_epoch_ulast_step_used_timesed_time,
-                                              ParallelMode.DATA) / gpc.get_world_size(ParallelMode.DATA)
+        self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
+            gpc.get_world_size(ParallelMode.DATA)
         self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
-        return (self.last_step_num_samples / self.last_step_used_time).item()
+        return (self.last_step_num_samples / (self.last_step_used_time + 1e-12)).item()
 
     def get_accumulated_value(self):
-        self.accumulated_used_time = all_reduce(self.accumulated_used_time, ParallelMode.DATA) / gpc.get_world_size(
-            ParallelMode.DATA)
+        self.accumulated_used_time = all_reduce(self.accumulated_used_time, ParallelMode.DATA) / \
+            gpc.get_world_size(ParallelMode.DATA)
         self.accumulated_num_samples = all_reduce(self.accumulated_num_samples, ParallelMode.DATA)
-        return (self.accumulated_num_samples / self.accumulated_used_time).item()
+        return (self.accumulated_num_samples / (self.accumulated_used_time + 1e-12)).item()
 
     def is_better(a, b) -> bool:
         pass
@@ -609,9 +350,16 @@ class ThroughputHook(MetricHook):
 
             # register the metric
             trainer.states['metrics']['train']['Throughput'] = self.metric
+            trainer.states['metrics']['test']['Throughput'] = self.metric
 
     def before_train_epoch(self, trainer):
         self.metric.reset()
 
     def after_train_iter(self, trainer, logits, targets, *args):
         self.metric.update(targets, trainer._timer.get_timer('Train-step').get_elapsed_time())
+
+    def before_test(self, trainer):
+        self.metric.reset()
+
+    def after_test_iter(self, trainer, logits, targets, *args):
+        self.metric.update(targets, trainer._timer.get_timer('Test-step').get_elapsed_time())

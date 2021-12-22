@@ -8,19 +8,23 @@ import colossalai
 import nvidia.dali.fn as fn
 import nvidia.dali.tfrecord as tfrec
 import torch
+from colossalai.builder import *
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.logging import get_global_dist_logger
+from colossalai.logging import get_dist_logger
+from colossalai.nn import Accuracy, CrossEntropyLoss
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.trainer import Trainer
-from colossalai.utils import (get_global_multitimer,
-                              set_global_multitimer_status)
+from colossalai.trainer.hooks import (AccuracyHook, LogMemoryByEpochHook, LogMetricByEpochHook, LogMetricByStepHook,
+                                      LogTimingByEpochHook, LossHook, LRSchedulerHook, ThroughputHook)
+from colossalai.utils import MultiTimer
+from model_zoo.vit import vit_small_patch16_224
 from nvidia.dali import types
 from nvidia.dali.pipeline import Pipeline
 from nvidia.dali.plugin.pytorch import DALIClassificationIterator
 
 DATASET_PATH = str(os.environ['DATA'])
 
-# imagenet 1000
 TRAIN_RECS = DATASET_PATH + '/train/*'
 VAL_RECS = DATASET_PATH + '/validation/*'
 TRAIN_IDX = DATASET_PATH + '/idx_files/train/*'
@@ -41,11 +45,10 @@ class DaliDataloader(DALIClassificationIterator):
                  training=True,
                  gpu_aug=False,
                  cuda=True):
-        pipe = Pipeline(
-            batch_size=batch_size,
-            num_threads=num_threads,
-            device_id=torch.cuda.current_device() if cuda else None,
-            seed=1024)
+        pipe = Pipeline(batch_size=batch_size,
+                        num_threads=num_threads,
+                        device_id=torch.cuda.current_device() if cuda else None,
+                        seed=1024)
         with pipe:
             inputs = fn.readers.tfrecord(path=tfrec_filenames,
                                          index_path=tfrec_idx_filenames,
@@ -57,30 +60,18 @@ class DaliDataloader(DALIClassificationIterator):
                                          prefetch_queue_depth=prefetch,
                                          name='Reader',
                                          features={
-                                             'image/encoded':
-                                             tfrec.FixedLenFeature(
-                                                 (), tfrec.string, ""),
-                                             'image/class/label':
-                                             tfrec.FixedLenFeature([1],
-                                                                   tfrec.int64,
-                                                                   -1),
+                                             'image/encoded': tfrec.FixedLenFeature((), tfrec.string, ""),
+                                             'image/class/label': tfrec.FixedLenFeature([1], tfrec.int64, -1),
                                          })
             images = inputs["image/encoded"]
 
             if training:
-                images = fn.decoders.image(
-                    images,
-                    device='mixed' if gpu_aug else 'cpu',
-                    output_type=types.RGB)
-                images = fn.random_resized_crop(
-                    images, size=crop, device='gpu' if gpu_aug else 'cpu')
+                images = fn.decoders.image(images, device='mixed' if gpu_aug else 'cpu', output_type=types.RGB)
+                images = fn.random_resized_crop(images, size=crop, device='gpu' if gpu_aug else 'cpu')
                 flip_lr = fn.random.coin_flip(probability=0.5)
             else:
                 # decode jpeg and resize
-                images = fn.decoders.image(
-                    images,
-                    device='mixed' if gpu_aug else 'cpu',
-                    output_type=types.RGB)
+                images = fn.decoders.image(images, device='mixed' if gpu_aug else 'cpu', output_type=types.RGB)
                 images = fn.resize(images,
                                    device='gpu' if gpu_aug else 'cpu',
                                    resize_x=resize,
@@ -106,10 +97,7 @@ class DaliDataloader(DALIClassificationIterator):
 
         pipe.build()
         last_batch_policy = 'DROP' if training else 'PARTIAL'
-        super().__init__(pipe,
-                         reader_name="Reader",
-                         auto_reset=True,
-                         last_batch_policy=last_batch_policy)
+        super().__init__(pipe, reader_name="Reader", auto_reset=True, last_batch_policy=last_batch_policy)
 
     def __iter__(self):
         # if not reset (after an epoch), reset; if just initialize, ignore
@@ -124,12 +112,11 @@ class DaliDataloader(DALIClassificationIterator):
         return (img, ), (label, )
 
 
-def build_dali_train():
+def build_dali_train(batch_size):
     return DaliDataloader(
         sorted(glob.glob(TRAIN_RECS)),
         sorted(glob.glob(TRAIN_IDX)),
-        batch_size=gpc.config.BATCH_SIZE //
-        (gpc.data_parallel_size * gpc.config.engine.gradient_accumulation),
+        batch_size=batch_size,
         shard_id=gpc.get_local_rank(ParallelMode.DATA),
         num_shards=gpc.get_world_size(ParallelMode.DATA),
         training=True,
@@ -138,12 +125,11 @@ def build_dali_train():
     )
 
 
-def build_dali_test():
+def build_dali_test(batch_size):
     return DaliDataloader(
         sorted(glob.glob(VAL_RECS)),
         sorted(glob.glob(VAL_IDX)),
-        batch_size=gpc.config.BATCH_SIZE //
-        (gpc.data_parallel_size * gpc.config.engine.gradient_accumulation),
+        batch_size=batch_size,
         shard_id=gpc.get_local_rank(ParallelMode.DATA),
         num_shards=gpc.get_world_size(ParallelMode.DATA),
         training=False,
@@ -153,26 +139,67 @@ def build_dali_test():
 
 
 def train_imagenet():
-    # init dist
-    engine, train_dataloader, test_dataloader = colossalai.initialize(
-        train_dataloader=build_dali_train, test_dataloader=build_dali_test)
-    logger = get_global_dist_logger()
-    logger.info(f'{len(train_dataloader)}, {len(test_dataloader)}', ranks=[0])
-    set_global_multitimer_status(True)
+    args = colossalai.get_default_parser().parse_args()
+    colossalai.launch_from_torch(config=args.config)
+    # colossalai.launch(config=args.config,
+    #                   rank=args.rank,
+    #                   world_size=args.world_size,
+    #                   local_rank=args.local_rank,
+    #                   host=args.host,
+    #                   port=args.port)
+    logger = get_dist_logger()
+    if hasattr(gpc.config, 'LOG_PATH'):
+        if gpc.get_global_rank() == 0:
+            log_path = gpc.config.LOG_PATH
+            if not os.path.exists(log_path):
+                os.mkdir(log_path)
+            logger.log_to_file(log_path)
+
+    tp = gpc.config.parallel.tensor.mode
+
+    model = vit_small_patch16_224(tensor_parallel=tp, num_classes=100, init_method='jax')
+
+    train_dataloader = build_dali_train(gpc.config.BATCH_SIZE // gpc.data_parallel_size)
+    test_dataloader = build_dali_test(gpc.config.BATCH_SIZE // gpc.data_parallel_size)
+
+    criterion = CrossEntropyLoss(label_smoothing=0.1, tensor_parallel=tp)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
+
+    lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
+                                           total_steps=gpc.config.NUM_EPOCHS,
+                                           warmup_steps=gpc.config.WARMUP_EPOCHS)
+
+    engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(model=model,
+                                                                                    optimizer=optimizer,
+                                                                                    criterion=criterion,
+                                                                                    train_dataloader=train_dataloader,
+                                                                                    test_dataloader=test_dataloader,
+                                                                                    lr_scheduler=lr_scheduler)
 
     logger.info("Engine is built", ranks=[0])
 
-    trainer = Trainer(engine=engine,
-                      timer=get_global_multitimer(),
-                      verbose=True)
+    timer = MultiTimer()
+
+    trainer = Trainer(engine=engine, logger=logger, timer=timer)
     logger.info("Trainer is built", ranks=[0])
+
+    hooks = [
+        LogMetricByEpochHook(logger=logger),
+        LogMetricByStepHook(),
+        # LogTimingByEpochHook(timer=timer, logger=logger),
+        # LogMemoryByEpochHook(logger=logger),
+        AccuracyHook(accuracy_func=Accuracy(tensor_parallel=tp)),
+        LossHook(),
+        ThroughputHook(),
+        LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=True)
+    ]
 
     logger.info("Train start", ranks=[0])
     trainer.fit(train_dataloader=train_dataloader,
                 test_dataloader=test_dataloader,
-                epochs=gpc.config.num_epochs,
-                max_steps=150 * len(train_dataloader) // gpc.config.engine.gradient_accumulation,
-                hooks_cfg=gpc.config.hooks,
+                epochs=150,
+                hooks=hooks,
                 display_progress=True,
                 test_interval=1)
 
