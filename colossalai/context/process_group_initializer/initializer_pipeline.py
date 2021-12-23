@@ -36,28 +36,4 @@ class Initializer_Pipeline(ProcessGroupInitializer):
                                process_group, ranks_in_group,
                                ParallelMode.PIPELINE)))
 
-                for k in range(pipe_group_size):
-                    first = pipe_ranks[k]
-                    second = pipe_ranks[(k + 1) % pipe_group_size]
-                    ranks = [first, second]
-                    group = dist.new_group(ranks)
-                    if self.rank == first:
-                        local_rank = 0
-                        group_world_size = 2
-                        process_group = group
-                        ranks_in_group = ranks
-                        dist_settings.append(
-                            tuple((local_rank, group_world_size,
-                                   process_group, ranks_in_group,
-                                   ParallelMode.PIPELINE_NEXT)))
-                    elif self.rank == second:
-                        local_rank = 1
-                        group_world_size = 2
-                        process_group = group
-                        ranks_in_group = ranks
-                        dist_settings.append(
-                            tuple((local_rank, group_world_size,
-                                   process_group, ranks_in_group,
-                                   ParallelMode.PIPELINE_PREV)))
-
         return dist_settings
