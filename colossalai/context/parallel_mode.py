@@ -20,8 +20,6 @@ class ParallelMode(Enum):
 
     # pipeline parallel
     PIPELINE = 'pipe'
-    PIPELINE_PREV = 'pipe_prev'
-    PIPELINE_NEXT = 'pipe_next'
 
     # containing all ranks in tensor parallel
     TENSOR = 'tensor'

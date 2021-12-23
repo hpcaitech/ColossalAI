@@ -4,7 +4,6 @@
 from typing import Union, Callable
 import inspect
 import torch.cuda
-import torch.distributed as dist
 from torch import Tensor
 
 from colossalai.communication import *
@@ -30,60 +29,20 @@ class PipelineSchedule(BaseSchedule):
     :class:`NonPipelineSchedule`.
 
     :param num_microbatches: The number of microbatches
-    :param amp_type: The type of automatic mixed precision
-    :param amp_config: The configuration of automatic mixed procision
-    :param sync_data: If set to `True`, will sync data every batch over pipeline stages
     :type num_microbatches: int
-    :type amp_type: AMP_TYPE
-    :type amp_config: dict
-    :type sync_data: bool
+    :param batch_data_process_func: The preprocessing function which receives a batch of data, and it will be executed in `load_batch`
+    :type batch_data_process_func: Callable
     """
 
     def __init__(self,
                  num_microbatches,
-                 sync_data: bool = True,
                  batch_data_process_func: Callable = None):
         super().__init__(batch_data_process_func=batch_data_process_func)
-
         self.num_microbatches = num_microbatches
-        self.sync_data = sync_data
         self.dtype = torch.float
 
-    def _sync_data(self):
-        reqs = []
-        if gpc.is_first_rank(ParallelMode.PIPELINE):
-            src_rank = gpc.get_global_rank()
-            reqs.append(dist.broadcast(
-                tensor=self.batch_data,
-                src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_PREV),
-                async_op=True
-            ))
-            reqs.append(dist.broadcast(
-                tensor=self.batch_label,
-                src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_PREV),
-                async_op=True
-            ))
-        if gpc.is_last_rank(ParallelMode.PIPELINE):
-            src_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
-            reqs.append(dist.broadcast(
-                tensor=self.batch_data,
-                src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_NEXT),
-                async_op=True
-            ))
-            reqs.append(dist.broadcast(
-                tensor=self.batch_label,
-                src=src_rank,
-                group=gpc.get_group(ParallelMode.PIPELINE_NEXT),
-                async_op=True
-            ))
-        for req in reqs:
-            req.wait()
-
-    # Pipeline schedule just puts data in memory
     def load_batch(self, data_iter):
+        # Pipeline schedule just puts data in memory
         self.batch_data, self.batch_label = super().load_batch(data_iter)
         self.microbatch_offset = 0
         if isinstance(self.batch_data, torch.Tensor):
@@ -93,8 +52,6 @@ class PipelineSchedule(BaseSchedule):
         assert batch_size % self.num_microbatches == 0, \
             "Batch size should divided by the number of microbatches"
         self.microbatch_size = batch_size // self.num_microbatches
-        if self.sync_data:
-            self._sync_data()
 
     def _get_data_slice(self, data, offset):
         if isinstance(data, torch.Tensor):
@@ -352,10 +309,21 @@ class PipelineSchedule(BaseSchedule):
 
 
 class InterleavedPipelineSchedule(PipelineSchedule):
-    def __init__(self, num_microbatches, num_model_chunks, sync_data: bool = True, batch_data_process_func: Callable = None):
+    def __init__(self, num_microbatches, num_model_chunks, batch_data_process_func: Callable = None):
+        """A helper schedule class for pipeline parallelism running environment.
+        It uses interleaved 1F1B strategy. Other properties are similar as
+        :class:`NonPipelineSchedule`.
+
+        :param num_microbatches: The number of microbatches
+        :type num_microbatches: int
+        :param num_model_chunks: The number of model chunks
+        :type num_model_chunks: int
+        :param batch_data_process_func: The preprocessing function which receives a batch of data, and it will be executed in `load_batch`
+        :type batch_data_process_func: Callable
+        """
         assert num_microbatches % gpc.get_world_size(ParallelMode.PIPELINE) == 0, \
             'num_microbatches must be an integer multiple of pipeline parallel world size'
-        super().__init__(num_microbatches, sync_data=sync_data, batch_data_process_func=batch_data_process_func)
+        super().__init__(num_microbatches, batch_data_process_func=batch_data_process_func)
         gpc.set_virtual_pipeline_parallel_size(num_model_chunks)
         gpc.set_virtual_pipeline_parallel_rank(0)
         self.num_model_chunks = num_model_chunks
