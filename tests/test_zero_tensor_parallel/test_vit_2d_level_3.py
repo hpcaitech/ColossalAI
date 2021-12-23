@@ -14,7 +14,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn import CrossEntropyLoss
 from colossalai.utils import get_dataloader
-from model_zoo.vit import vit_lite_7_patch4_32
+from model_zoo.vit import vit_lite_depth7_patch4_32
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 
@@ -44,7 +44,7 @@ def run_2d_parallel_vision_transformer_level_3(rank, world_size):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=29951, backend='nccl')
 
     # build model
-    model = vit_lite_7_patch4_32(tensor_parallel='2d')
+    model = vit_lite_depth7_patch4_32(tensor_parallel='2d')
 
     # build dataloader# build dataloaders
     train_dataset = CIFAR10(root=Path(os.environ['DATA']),

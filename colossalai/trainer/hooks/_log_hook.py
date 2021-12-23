@@ -25,7 +25,10 @@ def _format_number(val, prec=5):
 
 
 class LogByEpochHook(BaseHook):
-    def __init__(self, logger, interval: int = 1, priority: int = 1):
+    def __init__(self,
+                 logger,
+                 interval: int = 1,
+                 priority: int = 1):
         super().__init__(priority)
         self.logger = logger
         self._interval = interval
@@ -63,14 +66,19 @@ class LogMetricByEpochHook(LogByEpochHook):
     :param priority: Priority in the printing, hooks with small priority will be printed in front
     :type priority: int, optional
     """
-    def __init__(self, logger, interval: int = 1, priority: int = 10) -> None:
+
+    def __init__(self,
+                 logger,
+                 interval: int = 1,
+                 priority: int = 10) -> None:
         super().__init__(logger, interval, priority)
         self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
 
     def _get_str(self, trainer, mode):
         msg = []
         for metric_name, metric_calculator in trainer.states['metrics'][mode].items():
-            msg.append(f'{metric_name} = {_format_number(metric_calculator.get_accumulated_value())}')
+            msg.append(
+                f'{metric_name} = {_format_number(metric_calculator.get_accumulated_value())}')
         msg = ' | '.join(msg)
         return msg
 
@@ -101,13 +109,13 @@ class TensorboardHook(BaseHook):
     :param priority: Priority in the printing, hooks with small priority will be printed in front
     :type priority: int, optional
     """
-    def __init__(
-        self,
-        log_dir: str,
-        ranks: List = None,
-        parallel_mode: ParallelMode = ParallelMode.GLOBAL,
-        priority: int = 10,
-    ) -> None:
+
+    def __init__(self,
+                 log_dir: str,
+                 ranks: List = None,
+                 parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+                 priority: int = 10,
+                 ) -> None:
         super().__init__(priority=priority)
         from torch.utils.tensorboard import SummaryWriter
 

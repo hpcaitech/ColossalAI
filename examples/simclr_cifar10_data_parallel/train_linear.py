@@ -1,3 +1,4 @@
+from colossalai.nn.metric import Accuracy
 import torch
 import colossalai
 from colossalai.core import global_context as gpc
@@ -40,9 +41,7 @@ def build_dataset_test():
     )
 
 def main():
-    colossalai.launch_from_torch(config='./le_config.py',
-                                 host='localhost',
-                                 port=29500)
+    colossalai.launch_from_torch(config='./le_config.py')
 
     # get logger
     logger = get_dist_logger()
@@ -81,7 +80,7 @@ def main():
     # build hooks
     hook_list = [
         hooks.LossHook(),
-        hooks.AccuracyHook(),
+        hooks.AccuracyHook(accuracy_func=Accuracy()),
         hooks.LogMetricByEpochHook(logger),
         hooks.LRSchedulerHook(lr_scheduler, by_epoch=True),
         TotalBatchsizeHook(),

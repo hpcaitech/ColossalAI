@@ -13,9 +13,7 @@ from tqdm import tqdm
 
 
 def main():
-    colossalai.launch_from_torch(config='./config.py',
-                                 host='localhost',
-                                 port=29500)
+    colossalai.launch_from_torch(config='./config.py')
 
     logger = get_dist_logger()
 

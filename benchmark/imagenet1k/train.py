@@ -140,13 +140,17 @@ def build_dali_test(batch_size):
 
 def train_imagenet():
     args = colossalai.get_default_parser().parse_args()
-    colossalai.launch_from_torch(config=args.config)
+    # standard launch
     # colossalai.launch(config=args.config,
     #                   rank=args.rank,
     #                   world_size=args.world_size,
     #                   local_rank=args.local_rank,
     #                   host=args.host,
     #                   port=args.port)
+
+    # launch from torchrun
+    colossalai.launch_from_torch(config=args.config)
+
     logger = get_dist_logger()
     if hasattr(gpc.config, 'LOG_PATH'):
         if gpc.get_global_rank() == 0:
@@ -170,12 +174,11 @@ def train_imagenet():
                                            total_steps=gpc.config.NUM_EPOCHS,
                                            warmup_steps=gpc.config.WARMUP_EPOCHS)
 
-    engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(model=model,
-                                                                                    optimizer=optimizer,
-                                                                                    criterion=criterion,
-                                                                                    train_dataloader=train_dataloader,
-                                                                                    test_dataloader=test_dataloader,
-                                                                                    lr_scheduler=lr_scheduler)
+    engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model=model,
+                                                                         optimizer=optimizer,
+                                                                         criterion=criterion,
+                                                                         train_dataloader=train_dataloader,
+                                                                         test_dataloader=test_dataloader)
 
     logger.info("Engine is built", ranks=[0])
 
@@ -198,7 +201,7 @@ def train_imagenet():
     logger.info("Train start", ranks=[0])
     trainer.fit(train_dataloader=train_dataloader,
                 test_dataloader=test_dataloader,
-                epochs=80,
+                epochs=gpc.config.NUM_EPOCHS,
                 hooks=hooks,
                 display_progress=True,
                 test_interval=1)

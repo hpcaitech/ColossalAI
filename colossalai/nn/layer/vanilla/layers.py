@@ -1,11 +1,45 @@
-import torch.nn.functional as F
+import math
+from typing import Callable
+
 import torch
-from torch import nn as nn
-from torch import dtype, Tensor
+import torch.nn.functional as F
+from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from .._common_utils import to_2tuple
 from colossalai.utils import get_current_device
-from colossalai.nn.init import init_weight_, init_bias_
+from torch import Tensor, dtype
+from torch import nn as nn
+
+from .._common_utils import to_2tuple
+
+
+def drop_path(x, drop_prob: float = 0., training: bool = False):
+    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
+    This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
+    the original name is misleading as 'Drop Connect' is a different form of dropout in a separate paper...
+    See discussion: https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956 ... I've opted for
+    changing the layer and argument names to 'drop path' rather than mix DropConnect as a layer name and use
+    'survival rate' as the argument.
+    """
+    if drop_prob == 0. or not training:
+        return x
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0], ) + (1, ) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+    random_tensor.floor_()  # binarize
+    output = x.div(keep_prob) * random_tensor
+    return output
+
+
+class DropPath(nn.Module):
+    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    Adapted from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers/drop.py
+    """
+    def __init__(self, drop_prob=None):
+        super(DropPath, self).__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x):
+        return drop_path(x, self.drop_prob, self.training)
 
 
 @LAYERS.register_module
@@ -19,8 +53,9 @@ class VanillaPatchEmbedding(nn.Module):
                  embed_size: int,
                  dtype: dtype = None,
                  flatten: bool = True,
-                 init_weight: str = 'torch',
-                 init_bias: str = 'torch'):
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 position_embed_initializer: Callable = init.zeros_()):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -36,14 +71,13 @@ class VanillaPatchEmbedding(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_size))
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_size))
 
-        self.reset_parameters(init_weight, init_bias)
+        self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
 
-    def reset_parameters(self, init_weight, init_bias):
+    def reset_parameters(self, weight_initializer, bias_initializer, position_embed_initializer):
         fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(self.weight)
-        init_weight_(self.weight, fan_in, fan_out, init_method=init_weight)
-        init_bias_(self.bias, fan_in, init_method=init_bias)
-        init_pos_embed = None if init_weight == 'torch' else init_weight
-        init_bias_(self.pos_embed, fan_in, init_method=init_pos_embed)
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        bias_initializer(self.bias, fan_in=fan_in)
+        position_embed_initializer(self.pos_embed)
 
     def forward(self, input_: Tensor) -> Tensor:
         B, C, H, W = input_.shape
@@ -67,8 +101,8 @@ class VanillaClassifier(nn.Module):
                  weight: nn.Parameter = None,
                  bias: bool = True,
                  dtype: dtype = None,
-                 init_weight: str = 'torch',
-                 init_bias: str = 'torch'):
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
         self.in_features = in_features
         self.num_classes = num_classes
@@ -85,16 +119,16 @@ class VanillaClassifier(nn.Module):
         else:
             self.bias = None
 
-        self.reset_parameters(init_weight, init_bias)
+        self.reset_parameters(weight_initializer, bias_initializer)
 
-    def reset_parameters(self, init_weight, init_bias) -> None:
+    def reset_parameters(self, weight_initializer, bias_initializer):
         fan_in, fan_out = self.in_features, self.num_classes
 
         if self.has_weight:
-            init_weight_(self.weight, fan_in, fan_out, init_method=init_weight)
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
 
         if self.bias is not None:
-            init_bias_(self.bias, fan_in, init_method=init_bias)
+            bias_initializer(self.bias, fan_in=fan_in)
 
     def forward(self, input_: Tensor) -> Tensor:
         return F.linear(input_, self.weight, self.bias)

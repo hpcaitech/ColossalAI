@@ -12,10 +12,13 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn import Accuracy, CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.trainer import Trainer
-from colossalai.trainer.hooks import (AccuracyHook, LogMemoryByEpochHook, LogMetricByEpochHook, LogMetricByStepHook,
-                                      LogTimingByEpochHook, LossHook, LRSchedulerHook, ThroughputHook)
+from colossalai.trainer.hooks import (AccuracyHook, LogMemoryByEpochHook,
+                                      LogMetricByEpochHook,
+                                      LogMetricByStepHook,
+                                      LogTimingByEpochHook, LossHook,
+                                      LRSchedulerHook, ThroughputHook)
 from colossalai.utils import MultiTimer, get_dataloader
-from model_zoo.vit import vit_lite_7_patch4_32
+from model_zoo.vit import vit_lite_depth7_patch4_32
 from torchvision import transforms
 
 DATASET_PATH = str(os.environ['DATA'])
@@ -50,13 +53,17 @@ def build_cifar(batch_size):
 
 def train_cifar():
     args = colossalai.get_default_parser().parse_args()
-    colossalai.launch_from_torch(config=args.config)
+    # standard launch
     # colossalai.launch(config=args.config,
     #                   rank=args.rank,
     #                   world_size=args.world_size,
     #                   local_rank=args.local_rank,
     #                   host=args.host,
     #                   port=args.port)
+
+    # launch from torchrun
+    colossalai.launch_from_torch(config=args.config)
+
     logger = get_dist_logger()
     if hasattr(gpc.config, 'LOG_PATH'):
         if gpc.get_global_rank() == 0:
@@ -67,7 +74,7 @@ def train_cifar():
 
     tp = gpc.config.parallel.tensor.mode
 
-    model = vit_lite_7_patch4_32(tensor_parallel=tp)
+    model = vit_lite_depth7_patch4_32(tensor_parallel=tp)
 
     train_dataloader, test_dataloader = build_cifar(gpc.config.BATCH_SIZE // gpc.data_parallel_size)
 
@@ -75,7 +82,7 @@ def train_cifar():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
 
-    steps_per_epoch = len(train_dataloader) // gpc.config.gradient_accumulation
+    steps_per_epoch = len(train_dataloader)
 
     lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer,
                                            total_steps=gpc.config.NUM_EPOCHS * steps_per_epoch,

@@ -10,7 +10,7 @@ from torch import dtype, nn
 
 __all__ = [
     'VisionTransformer',
-    'vit_lite_7_patch4_32',
+    'vit_lite_depth7_patch4_32',
     'vit_tiny_patch4_32',
     'vit_tiny_patch16_224',
     'vit_tiny_patch16_384',
@@ -28,6 +28,39 @@ __all__ = [
     'vit_large_patch32_384',
 ]
 
+_init_rules = dict(
+    torch=dict(
+        embed=dict(
+            weight_initializer=col_nn.init.kaiming_uniform_(a=math.sqrt(5)),
+            bias_initializer=col_nn.init.xavier_uniform_(a=1, scale=1),
+            position_embed_initializer=col_nn.init.zeros_(),
+        ),
+        transformer=dict(
+            weight_initializer=col_nn.init.kaiming_uniform_(a=math.sqrt(5)),
+            bias_initializer=col_nn.init.xavier_uniform_(a=1, scale=1),
+        ),
+        head=dict(
+            weight_initializer=col_nn.init.kaiming_uniform_(a=math.sqrt(5)),
+            bias_initializer=col_nn.init.xavier_uniform_(a=1, scale=1),
+        ),
+    ),
+    jax=dict(
+        embed=dict(
+            weight_initializer=col_nn.init.lecun_normal_(),
+            bias_initializer=col_nn.init.zeros_(),
+            position_embed_initializer=col_nn.init.trunc_normal_(std=.02),
+        ),
+        transformer=dict(
+            weight_initializer=col_nn.init.xavier_uniform_(),
+            bias_initializer=col_nn.init.normal_(std=1e-6),
+        ),
+        head=dict(
+            weight_initializer=col_nn.init.zeros_(),
+            bias_initializer=col_nn.init.zeros_(),
+        ),
+    ),
+)
+
 
 @LAYERS.register_module
 class ViTEmbedding(nn.Module):
@@ -42,21 +75,14 @@ class ViTEmbedding(nn.Module):
                  init_method: str = 'torch',
                  tensor_parallel: str = None):
         super().__init__()
-        init_weight = init_method
-        init_bias = init_method
-        if init_method == 'jax':
-            init_weight = 'jax_embed'
-            init_bias = 'zero'
-
         self.patch_embed = col_nn.PatchEmbedding(img_size,
                                                  patch_size,
                                                  in_chans,
                                                  embedding_dim,
                                                  dtype=dtype,
                                                  flatten=flatten,
-                                                 init_weight=init_weight,
-                                                 init_bias=init_bias,
-                                                 tensor_parallel=tensor_parallel)
+                                                 tensor_parallel=tensor_parallel,
+                                                 **_init_rules[init_method]['embed'])
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -81,26 +107,21 @@ class ViTSelfAttention(nn.Module):
         super().__init__()
         self.attention_head_size = dim // num_heads
         self.checkpoint = checkpoint
-        init_weight = init_method
-        init_bias = init_method
-        if init_method == 'jax':
-            init_bias = 'zero'
+        self.tensor_parallel = tensor_parallel
 
         self.query_key_value = col_nn.Linear(dim,
                                              3 * dim,
                                              dtype=dtype,
                                              bias=bias,
-                                             init_weight=init_weight,
-                                             init_bias=init_bias,
-                                             tensor_parallel='1d_col' if tensor_parallel == '1d' else tensor_parallel)
+                                             tensor_parallel='1d_col' if tensor_parallel == '1d' else tensor_parallel,
+                                             **_init_rules[init_method]['transformer'])
         self.attention_dropout = nn.Dropout(attention_dropout)
         self.dense = col_nn.Linear(dim,
                                    dim,
                                    dtype=dtype,
                                    bias=True,
-                                   init_weight=init_weight,
-                                   init_bias=init_bias,
-                                   tensor_parallel='1d_row' if tensor_parallel == '1d' else tensor_parallel)
+                                   tensor_parallel='1d_row' if tensor_parallel == '1d' else tensor_parallel,
+                                   **_init_rules[init_method]['transformer'])
         self.dropout = nn.Dropout(dropout)
         self.softmax = nn.Softmax(dim=-1)
 
@@ -126,8 +147,11 @@ class ViTSelfAttention(nn.Module):
         x = x.reshape(new_context_layer_shape)
 
         x = self.dense(x)
-        with seed(ParallelMode.TENSOR):
+        if self.tensor_parallel == '1d':
             x = self.dropout(x)
+        else:
+            with seed(ParallelMode.TENSOR):
+                x = self.dropout(x)
 
         return x
 
@@ -155,24 +179,21 @@ class ViTMLP(nn.Module):
                  tensor_parallel: str = None):
         super().__init__()
         self.checkpoint = checkpoint
-        init_weight = init_method
-        init_bias = init_method
+        self.tensor_parallel = tensor_parallel
 
         self.dense_1 = col_nn.Linear(dim,
                                      mlp_ratio * dim,
                                      dtype=dtype,
                                      bias=bias,
-                                     init_weight=init_weight,
-                                     init_bias=init_bias,
-                                     tensor_parallel='1d_col' if tensor_parallel == '1d' else tensor_parallel)
+                                     tensor_parallel='1d_col' if tensor_parallel == '1d' else tensor_parallel,
+                                     **_init_rules[init_method]['transformer'])
         self.activation = activation
         self.dense_2 = col_nn.Linear(mlp_ratio * dim,
                                      dim,
                                      dtype=dtype,
                                      bias=bias,
-                                     init_weight=init_weight,
-                                     init_bias=init_bias,
-                                     tensor_parallel='1d_row' if tensor_parallel == '1d' else tensor_parallel)
+                                     tensor_parallel='1d_row' if tensor_parallel == '1d' else tensor_parallel,
+                                     **_init_rules[init_method]['transformer'])
         self.dropout = nn.Dropout(dropout)
 
     def _forward(self, x):
@@ -181,8 +202,12 @@ class ViTMLP(nn.Module):
         with seed(ParallelMode.TENSOR):
             x = self.dropout(x)
         x = self.dense_2(x)
-        with seed(ParallelMode.TENSOR):
+        if self.tensor_parallel == '1d':
             x = self.dropout(x)
+        else:
+            with seed(ParallelMode.TENSOR):
+                x = self.dropout(x)
+
         return x
 
     def _checkpoint_forward(self, x):
@@ -200,27 +225,37 @@ class ViTHead(nn.Module):
     def __init__(self,
                  dim: int,
                  num_classes: int,
+                 representation_size: int = None,
                  dtype: dtype = None,
                  bias: bool = True,
                  init_method: str = 'torch',
                  tensor_parallel: str = None):
         super().__init__()
-        init_weight = init_method
-        init_bias = init_method
-        if init_method == 'jax':
-            init_weight = 'zero'
-            init_bias = 'zero'
+        if representation_size:
+            tensor_parallel_kwargs = {'tensor_parallel': '1d_col' if tensor_parallel == '1d' else tensor_parallel}
+            if tensor_parallel == '1d':
+                tensor_parallel_kwargs['gather_output'] = True
+            self.representation = col_nn.Linear(dim,
+                                                representation_size,
+                                                bias=bias,
+                                                dtype=dtype,
+                                                **_init_rules[init_method]['head'],
+                                                **tensor_parallel_kwargs)
+        else:
+            self.representation = None
+            representation_size = dim
 
-        self.linear = col_nn.Classifier(dim,
+        self.linear = col_nn.Classifier(representation_size,
                                         num_classes,
                                         dtype=dtype,
                                         bias=bias,
-                                        init_weight=init_weight,
-                                        init_bias=init_bias,
-                                        tensor_parallel=tensor_parallel)
+                                        tensor_parallel=tensor_parallel,
+                                        **_init_rules[init_method]['head'])
 
     def forward(self, x):
         x = x[:, 0]
+        if self.representation is not None:
+            x = self.representation(x)
         x = self.linear(x)
         return x
 
@@ -251,7 +286,7 @@ class ViTBlock(nn.Module):
                                      checkpoint=checkpoint,
                                      init_method=init_method,
                                      tensor_parallel=tensor_parallel)
-        self.drop_path = col_nn.VanillaViTDropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = col_nn.DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype, tensor_parallel=tensor_parallel)
         self.mlp = ViTMLP(dim=dim,
                           mlp_ratio=mlp_ratio,
@@ -284,6 +319,7 @@ class VisionTransformer(nn.Module):
                  dropout: float = 0.1,
                  drop_path: float = 0.,
                  activation: Callable = nn.functional.gelu,
+                 representation_size: int = None,
                  dtype: dtype = None,
                  bias: bool = True,
                  checkpoint: bool = False,
@@ -331,6 +367,7 @@ class VisionTransformer(nn.Module):
         head = ViTHead(
             dim=dim,
             num_classes=num_classes,
+            representation_size=representation_size,
             dtype=dtype,
             bias=bias,
             init_method=init_method,
@@ -345,10 +382,6 @@ class VisionTransformer(nn.Module):
         )
 
     def forward(self, x):
-        # x = self.embed(x)
-        # x = self.blocks(x)
-        # x = self.norm(x)
-        # x = self.head(x)
         x = self.layers(x)
         return x
 
@@ -359,7 +392,7 @@ def _create_vit_model(**model_kwargs):
 
 
 @MODELS.register_module
-def vit_lite_7_patch4_32(**kwargs):
+def vit_lite_depth7_patch4_32(**kwargs):
     model_kwargs = dict(img_size=32, patch_size=4, dim=256, depth=7, num_heads=4, mlp_ratio=2, num_classes=10, **kwargs)
     return _create_vit_model(**model_kwargs)
 

@@ -3,25 +3,24 @@
 
 import math
 import numbers
+from typing import Callable, Tuple
+
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.init as init
-from torch import Tensor
-from torch.nn.parameter import Parameter
-from typing import Tuple
-import importlib
-
-from colossalai.context import seed, ParallelMode
+from colossalai.communication import broadcast
+from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
+from colossalai.nn import init as init
 from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
-from ._operation import FusedLayerNormAffineFunction1D
+from torch import Tensor
+from torch.nn.parameter import Parameter
+
 from .._common_utils import divide, set_tensor_parallel_attribute_by_partition
-from .._parallel_utilities import reduce_grad, reduce_input, gather_forward_split_backward, \
-    split_forward_gather_backward
 from ..base_layer import ParallelLayer
+from ._operation import FusedLayerNormAffineFunction1D
+from ._utils import (gather_forward_split_backward, reduce_grad, reduce_input, split_forward_gather_backward)
 
 
 @LAYERS.register_module
@@ -51,8 +50,8 @@ class Linear1D_Col(ParallelLayer):
                  dtype: torch.dtype = None,
                  gather_output: bool = False,
                  skip_bias_add: bool = False,
-                 init_weight='torch',
-                 init_bias='torch'):
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
 
         # Keep input parameters
@@ -73,44 +72,17 @@ class Linear1D_Col(ParallelLayer):
 
         if bias:
             self.bias = Parameter(torch.empty(self.out_features_per_partition, **factory_kwargs))
-            # Always initialize bias to zero.
-            with torch.no_grad():
-                self.bias.zero_()
         else:
-            self.register_parameter('bias', None)
+            self.bias = None
         with seed(ParallelMode.TENSOR):
-            self.reset_parameters(init_weight, init_bias)
+            self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
 
-    def reset_parameters(self, init_weight, init_bias) -> None:
-        assert init_weight in ('torch', 'jax', 'zero')
-        assert init_bias in ('torch', 'jax', 'zero')
-        # setting
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
-
-        # init weight
-        if init_weight == 'torch':
-            a = math.sqrt(5)
-            nonlinearity = 'leaky_relu'
-            std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
-            bound = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -bound, bound)
-        elif init_weight == 'jax':
-            std = math.sqrt(2.0 / float(fan_in + fan_out))
-            a = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -a, a)
-        elif init_weight == 'zero':
-            init.zeros_(self.weight)
-
-        # init bias
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
         if self.bias is not None:
-            if init_bias == 'torch':
-                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-                init.uniform_(self.bias, -bound, bound)
-            elif init_bias == 'jax':
-                init.normal_(self.bias, std=1e-6)
-            elif init_bias == 'zero':
-                init.zeros_(self.bias)
+            bias_initializer(self.bias, fan_in=fan_in)
 
     def _set_tensor_parallel_attributes(self):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)
@@ -158,8 +130,8 @@ class Linear1D_Row(ParallelLayer):
                  dtype: torch.dtype = None,
                  parallel_input: bool = True,
                  skip_bias_add: bool = False,
-                 init_weight='torch',
-                 init_bias='torch'):
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
 
         # Keep input parameters
@@ -181,48 +153,18 @@ class Linear1D_Row(ParallelLayer):
 
         if bias:
             self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
-
-            # Always initialize bias to zero.
-            with torch.no_grad():
-                self.bias.zero_()
         else:
-            self.register_parameter('bias', None)
+            self.bias = None
         with seed(ParallelMode.TENSOR):
-            self.reset_parameters(init_weight, init_bias)
+            self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
 
-    def reset_parameters(self, init_weight, init_bias) -> None:
-        assert init_weight in ('torch', 'jax', 'zero')
-        assert init_bias in ('torch', 'jax', 'zero')
-        # setting
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
-
-        # init weight
-        if init_weight == 'torch':
-            a = math.sqrt(5)
-            nonlinearity = 'leaky_relu'
-            std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
-            bound = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -bound, bound)
-        elif init_weight == 'jax':
-            std = math.sqrt(2.0 / float(fan_in + fan_out))
-            a = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -a, a)
-        elif init_weight == 'zero':
-            init.zeros_(self.weight)
-
-        # init bias
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
         if self.bias is not None:
-            if init_bias == 'torch':
-                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-                init.uniform_(self.bias, -bound, bound)
-            elif init_bias == 'jax':
-                init.normal_(self.bias, std=1e-6)
-            elif init_bias == 'zero':
-                init.zeros_(self.bias)
-        dist.broadcast(self.bias,
-                       src=gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0],
-                       group=gpc.get_group(ParallelMode.PARALLEL_1D))
+            bias_initializer(self.bias, fan_in=fan_in)
+        broadcast(self.bias, gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0], ParallelMode.PARALLEL_1D)
 
     def _set_tensor_parallel_attributes(self):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)

@@ -1,4 +1,6 @@
 from ._operation import reduce_by_batch_3d, split_batch_3d
-from .layers import Classifier3D, LayerNorm3D, Linear3D, PatchEmbedding3D
+from .layers import Classifier3D, Embedding3D, LayerNorm3D, Linear3D, PatchEmbedding3D
 
-__all__ = ['reduce_by_batch_3d', 'split_batch_3d', 'Linear3D', 'LayerNorm3D', 'PatchEmbedding3D', 'Classifier3D']
+__all__ = [
+    'reduce_by_batch_3d', 'split_batch_3d', 'Linear3D', 'LayerNorm3D', 'PatchEmbedding3D', 'Classifier3D', 'Embedding3D'
+]

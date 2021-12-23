@@ -185,8 +185,7 @@ class AccuracyMetric(Metric):
         if isinstance(targets, (list, tuple)):
             targets = targets[0]
         # update
-        with torch.no_grad():
-            correct = self.acc(logits, targets)
+        correct = self.acc(logits, targets)
 
         self.last_step_sum.fill_(targets.size(0))
         self.last_step_correct.fill_(correct)

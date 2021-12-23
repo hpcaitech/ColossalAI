@@ -39,11 +39,7 @@ In your training script:
 # initialize distributed setting
 parser = colossalai.get_default_parser()
 args = parser.parse_args()
-colossalai.launch_from_torch(config=args.config,
-                  host=args.host,
-                  port=args.port,
-                  backend=args.backend
-                  )
+colossalai.launch_from_torch(config=args.config)
 ```
 
 In your terminal
