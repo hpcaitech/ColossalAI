@@ -37,6 +37,12 @@ def check_pipeline_parallel_rank(rank):
         assert ppr == 1
 
 
+def check_model_parallel_rank(rank):
+    for i in range(16):
+        if rank in [i, i+16]:
+            assert gpc.get_local_rank(ParallelMode.MODEL) == i
+
+
 def check_tensor_parallel_rank(rank):
     tp_rank = gpc.get_local_rank(ParallelMode.TENSOR)
 
@@ -98,6 +104,7 @@ def init_2halfd(rank, world_size, backend, port, host):
     check_pipeline_parallel_rank(rank)
     check_tensor_parallel_rank(rank)
     check_2p5d_parallel_rank(rank)
+    check_model_parallel_rank(rank)
     gpc.destroy()
     torch.cuda.empty_cache()
 

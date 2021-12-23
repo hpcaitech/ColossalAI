@@ -13,7 +13,8 @@ INITIALIZER_MAPPING = {
     '2d': 'Initializer_2D',
     '2.5d': 'Initializer_2p5D',
     '3d': 'Initializer_3D',
-    'sequence': 'Initializer_Sequence'
+    'sequence': 'Initializer_Sequence',
+    'model': 'Initializer_Model'
 }
 
 # 2D paralllel
