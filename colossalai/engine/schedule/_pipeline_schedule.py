@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import Union
-
+from typing import Union, Callable
+import inspect
 import torch.cuda
 import torch.distributed as dist
 from torch import Tensor
@@ -13,7 +13,7 @@ from colossalai.core import global_context as gpc
 from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.zero import (ZeroRedundancyOptimizer_Level_2,
                              ZeroRedundancyOptimizer_Level_3)
-from colossalai.utils import get_current_device, switch_virtual_pipeline_parallel_rank
+from colossalai.utils import switch_virtual_pipeline_parallel_rank
 from ._base_schedule import BaseSchedule
 
 
@@ -41,23 +41,13 @@ class PipelineSchedule(BaseSchedule):
 
     def __init__(self,
                  num_microbatches,
-                 sync_data: bool = True):
-        super().__init__()
+                 sync_data: bool = True,
+                 batch_data_process_func: Callable = None):
+        super().__init__(batch_data_process_func=batch_data_process_func)
 
         self.num_microbatches = num_microbatches
         self.sync_data = sync_data
         self.dtype = torch.float
-
-    def _move_to_device(self, data):
-        if isinstance(data, (
-                tuple,
-                list,
-        )):
-            assert len(data) == 1, "Data tuple's length in pipeline should be 1"
-            data = data[0]
-        assert torch.is_tensor(data), "Data in pipeline should be tensor"
-        data = data.to(get_current_device()).detach()
-        return data
 
     def _sync_data(self):
         reqs = []
@@ -94,36 +84,67 @@ class PipelineSchedule(BaseSchedule):
 
     # Pipeline schedule just puts data in memory
     def load_batch(self, data_iter):
-        if data_iter is None:
-            raise RuntimeError('Dataloader is not defined.')
-        self.batch_pos = 0
-        data, label = next(data_iter)
-        self.batch_data, self.batch_label = \
-            self._move_to_device(data), self._move_to_device(label)
-        batch_size = self.batch_data.shape[0]
+        self.batch_data, self.batch_label = super().load_batch(data_iter)
+        self.microbatch_offset = 0
+        if isinstance(self.batch_data, torch.Tensor):
+            batch_size = self.batch_data.size(0)
+        else:
+            batch_size = next(iter(self.batch_data.values())).size(0)
         assert batch_size % self.num_microbatches == 0, \
             "Batch size should divided by the number of microbatches"
         self.microbatch_size = batch_size // self.num_microbatches
         if self.sync_data:
             self._sync_data()
 
-    def _get_data_slice(self, tensor):
-        return tensor[self.batch_pos: self.batch_pos + self.microbatch_size]
+    def _get_data_slice(self, data, offset):
+        if isinstance(data, torch.Tensor):
+            return data[offset: offset + self.microbatch_size]
+        else:
+            return {k: v[offset:offset + self.microbatch_size] for k, v in data.items()}
 
     def load_micro_batch(self):
-        data = self._get_data_slice(self.batch_data)
-        label = self._get_data_slice(self.batch_label)
-        self.batch_pos += self.microbatch_size
-        return (data,), (label,)
+        data = self._get_data_slice(self.batch_data, self.microbatch_offset)
+        label = self._get_data_slice(self.batch_label, self.microbatch_offset)
+        self.microbatch_offset += self.microbatch_size
+        return data, label
 
     def pre_processing(self, engine):
         if isinstance(engine.optimizer, (ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
             raise TypeError(
                 "Pipeline schedule is currently not compatible with ZeRO Level 2 and Level 3"
             )
-
-        if isinstance(engine.model, NaiveAMPModel):
+        model = engine.model
+        if isinstance(model, NaiveAMPModel):
             self.dtype = torch.half
+            model = model.model
+        sig = inspect.signature(model.forward)
+        for p in sig.parameters.values():
+            assert p.kind != inspect.Parameter.VAR_POSITIONAL, 'var positional argument is not supported'
+
+    @staticmethod
+    def _call_engine(model, input_tensor, batch_data):
+        if isinstance(model, NaiveAMPModel):
+            sig = inspect.signature(model.model.forward)
+        else:
+            sig = inspect.signature(model.forward)
+        if isinstance(batch_data, torch.Tensor):
+            if input_tensor is None:
+                return model(batch_data)
+            elif len(sig.parameters) > 1:
+                return model(input_tensor, batch_data)
+            else:
+                return model(input_tensor)
+        else:
+            filter_batch = True
+            for p in sig.parameters.values():
+                if p.kind == inspect.Parameter.VAR_KEYWORD:
+                    filter_batch = False
+            if filter_batch:
+                batch_data = {k: v for k, v in batch_data.items() if k in sig.parameters}
+            if input_tensor is None:
+                return model(**batch_data)
+            else:
+                return model(input_tensor, **batch_data)
 
     def forward_step(self, engine, input_tensor, return_tensors, return_loss=True):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
@@ -140,26 +161,18 @@ class PipelineSchedule(BaseSchedule):
         :return: output or the loss value of the current pipeline stage
         :rtype: :class:`torch.Tensor`
         """
-
-        if input_tensor is None:
-            input_tensor, label = self.load_micro_batch()
-        input_tensor = squeeze(input_tensor)
-        output_tensor = engine(input_tensor)
+        data, label = self.load_micro_batch()
+        output_tensor = self._call_engine(engine.model, input_tensor, data)
         output_tensor = squeeze(output_tensor)
 
         if gpc.is_last_rank(ParallelMode.PIPELINE):
             if return_loss:
-                input_tensor, label = self.load_micro_batch()
-                loss_reduced = engine.criterion(output_tensor, *label) \
-                    / self.num_microbatches
-
-                return_tensors.append(
-                    tuple((output_tensor, label[0], loss_reduced)))
+                loss_reduced = self._call_engine_criterion(engine, output_tensor, label) / self.num_microbatches
+                return_tensors.append(tuple((output_tensor, label, loss_reduced)))
                 return loss_reduced
             else:
                 return_tensors.append(output_tensor)
                 return output_tensor
-
         else:
             return output_tensor
 
@@ -339,12 +352,13 @@ class PipelineSchedule(BaseSchedule):
 
 
 class InterleavedPipelineSchedule(PipelineSchedule):
-    def __init__(self, num_microbatches, num_model_chunks, sync_data: bool = True):
+    def __init__(self, num_microbatches, num_model_chunks, sync_data: bool = True, batch_data_process_func: Callable = None):
         assert num_microbatches % gpc.get_world_size(ParallelMode.PIPELINE) == 0, \
             'num_microbatches must be an integer multiple of pipeline parallel world size'
-        super().__init__(num_microbatches, sync_data=sync_data)
+        super().__init__(num_microbatches, sync_data=sync_data, batch_data_process_func=batch_data_process_func)
         gpc.set_virtual_pipeline_parallel_size(num_model_chunks)
         gpc.set_virtual_pipeline_parallel_rank(0)
+        self.num_model_chunks = num_model_chunks
 
     def pre_processing(self, engine):
         if isinstance(engine.optimizer, (ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
@@ -355,24 +369,37 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         if isinstance(engine.model[0], NaiveAMPModel):
             self.dtype = torch.half
 
-    def forward_step(self, engine, model, input_tensor, return_tensors, return_loss=True):
+        for model in engine.model:
+            if isinstance(model, NaiveAMPModel):
+                model = model.model
+            sig = inspect.signature(model.forward)
+            for p in sig.parameters.values():
+                assert p.kind != inspect.Parameter.VAR_POSITIONAL, 'var positional argument is not supported'
+
+    def load_batch(self, data_iter):
+        super().load_batch(data_iter)
+        # overwrite microbatch_offset, since model chunks load the same microbatch, and should tract the offset
+        self.microbatch_offset = [0 for _ in range(self.num_model_chunks)]
+
+    def load_micro_batch(self, model_chunk_id):
+        data = self._get_data_slice(self.batch_data, self.microbatch_offset[model_chunk_id])
+        label = self._get_data_slice(self.batch_label, self.microbatch_offset[model_chunk_id])
+        self.microbatch_offset[model_chunk_id] += self.microbatch_size
+        return data, label
+
+    def forward_step(self, engine, model_chunk_id, input_tensor, return_tensors, return_loss=True):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
         """
-
-        if input_tensor is None:
-            input_tensor, label = self.load_micro_batch()
-        input_tensor = squeeze(input_tensor)
-        output_tensor = model(input_tensor)
+        data, label = self.load_micro_batch(model_chunk_id)
+        output_tensor = self._call_engine(engine.model[model_chunk_id], input_tensor, data)
         output_tensor = squeeze(output_tensor)
 
         if gpc.is_pipeline_last_stage():
             if return_loss:
-                input_tensor, label = self.load_micro_batch()
-                loss_reduced = engine.criterion(output_tensor, *label) / self.num_microbatches
-                return_tensors.append(
-                    tuple((output_tensor, label[0], loss_reduced)))
+                loss_reduced = self._call_engine_criterion(engine, output_tensor, label) / self.num_microbatches
+                return_tensors.append(tuple((output_tensor, label, loss_reduced)))
                 return loss_reduced
             else:
                 return_tensors.append(output_tensor)
@@ -450,8 +477,8 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                         len(output_tensors[model_chunk_id]):
                     input_tensors[model_chunk_id].append(None)
             input_tensor = input_tensors[model_chunk_id][-1]
-            output_tensor = self.forward_step(
-                engine, model[model_chunk_id], input_tensor, return_tensors, return_loss=return_loss)
+            output_tensor = self.forward_step(engine, model_chunk_id, input_tensor,
+                                              return_tensors, return_loss=return_loss)
             output_tensors[model_chunk_id].append(output_tensor)
 
             # if forward-only, no need to save tensors for a backward pass

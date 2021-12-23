@@ -5,8 +5,7 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from torch import Tensor
-from typing import Iterable, Union, List, Callable
+from typing import Iterable,  Callable
 from .._base_engine import Engine
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
@@ -32,16 +31,15 @@ class BaseSchedule(ABC):
         return element
 
     def _move_to_device(self, data):
-        if isinstance(data, (tuple, list)):
-            data = tuple([self._move_tensor(d) for d in data])
-        elif torch.is_tensor(data):
-            data = data.to(get_current_device()).detach()
+        if isinstance(data, dict):
+            data = {k: self._move_tensor(v) for k, v in data.items()}
+        else:
+            data = self._move_tensor(data)
         return data
 
-    def _to_list(self, data):
-        if torch.is_tensor(data):
-            return [data]
-        return data
+    @staticmethod
+    def _check_sanity(data, tag):
+        assert isinstance(data, (torch.Tensor, dict)), f'{tag} must be torch.Tensor or dict'
 
     def load_batch(self, data_iter):
         """Loads a batch from data iterator. It returns the data and labels which are
@@ -58,8 +56,8 @@ class BaseSchedule(ABC):
             data, label = self.batch_data_process_func(batch_data)
         else:
             data, label = batch_data
-
-        data, label = self._to_list(data), self._to_list(label)
+        self._check_sanity(data, 'data')
+        self._check_sanity(label, 'label')
         return self._move_to_device(data), self._move_to_device(label)
 
     def pre_processing(self, engine: Engine):
@@ -83,3 +81,21 @@ class BaseSchedule(ABC):
         :param return_loss: If False, the loss won't be returned
         """
         pass
+
+    @staticmethod
+    def _call_engine(engine, inputs):
+        if isinstance(inputs, torch.Tensor):
+            return engine(inputs)
+        else:
+            return engine(**inputs)
+
+    @staticmethod
+    def _call_engine_criterion(engine, outputs, labels):
+        assert isinstance(outputs, (torch.Tensor, list, tuple)
+                          ), f'Expect output of model is (torch.Tensor, list, tuple), got {type(outputs)}'
+        if isinstance(outputs, torch.Tensor):
+            outputs = (outputs, )
+        if isinstance(labels, torch.Tensor):
+            return engine.criterion(*outputs, labels)
+        else:
+            return engine.criterion(*outputs, **labels)
