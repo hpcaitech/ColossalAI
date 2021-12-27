@@ -144,4 +144,5 @@ tests/launcher/personal
 docs/.build
 AutoAugment4DG/
 examples/RetinalVesselSegmentation-demo/deprecated/
+examples/moe_pytorch
 nohup.out
