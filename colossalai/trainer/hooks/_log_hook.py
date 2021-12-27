@@ -5,7 +5,6 @@ import os
 import os.path as osp
 
 import torch
-from torch.utils.tensorboard import SummaryWriter
 from typing import List
 from decimal import Decimal
 from colossalai.context import ParallelMode
@@ -100,6 +99,7 @@ class TensorboardHook(BaseHook):
                  priority: int = 10,
                  ) -> None:
         super().__init__(priority=priority)
+        from torch.utils.tensorboard import SummaryWriter
 
         # create log dir
         if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:

@@ -6,7 +6,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
-import torch.cuda
+import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torchvision import transforms
@@ -52,11 +52,10 @@ def run_data_sampler(rank, world_size):
         rank=rank,
         world_size=world_size,
         backend='gloo',
-        port='29499',
+        port='29904',
         host='localhost'
     )
     colossalai.launch(**dist_args)
-    print('finished initialization')
 
     dataset_cfg = gpc.config.train_data.dataset
     dataloader_cfg = gpc.config.train_data.dataloader
@@ -88,6 +87,7 @@ def run_data_sampler(rank, world_size):
         # this should be false if data parallel sampler to given to the dataloader
         assert torch.equal(img,
                            img_to_compare), 'Same image was distributed across ranks and expected it to be the same'
+    torch.cuda.empty_cache()
 
 
 @pytest.mark.cpu

@@ -131,5 +131,6 @@ setup(
     description='An integrated large-scale model training system with efficient parallelization techniques',
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
+    package_data={'colossalai': ['kernel/cuda_native/csrc/*']},
     install_requires=install_requires,
 )

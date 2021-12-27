@@ -104,13 +104,14 @@ def run_no_pipeline(rank, world_size):
         'param should be the same in the first few iterations and only changed in the last iteration'
 
     gpc.destroy()
+    torch.cuda.empty_cache()
 
 
-@pytest.mark.skip("This test should be invoked using the test.sh provided")
 @pytest.mark.dist
 def test_engine():
-    func = partial(run_no_pipeline, world_size=4)
-    mp.spawn(func, nprocs=4)
+    world_size = 4
+    func = partial(run_no_pipeline, world_size=world_size)
+    mp.spawn(func, nprocs=world_size)
 
 
 if __name__ == '__main__':

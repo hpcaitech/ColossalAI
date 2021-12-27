@@ -14,6 +14,17 @@ from colossalai.engine import BaseGradientHandler
 
 
 class GradAccumOptimizer(ColossalaiOptimizer):
+    """A wrapper for the optimizer to enable gradient accumulation by skipping the steps 
+    before accumulation size is reached
+
+    :param optim: your optimizer object
+    :type optim: :class:`torch.optim.Optimizer`
+    :param accumulate_size: the number of steps to accumulate gradients
+    :type accumualate_size: int
+    :param model: your model object to check if it is DDP for special handling of no_sync() context
+    :type model: :class:`torch.nn.Module`
+
+    """
 
     def __init__(self, optim: Optimizer, accumulate_size: int, model: nn.Module = None):
         super().__init__(optim)
@@ -64,6 +75,19 @@ class GradAccumOptimizer(ColossalaiOptimizer):
 
 
 class GradAccumDataloader():
+    """A wrapper for dataloder to enable gradient accumulation by dropping the last incomplete steps.
+
+    For example, if a dataloader has 10 batches of data and accumulate size is 4. The model paramters will 
+    be update only twice at step 4 and step 8. The last two batches of data do not form a complete 4-step cycle.
+    Thus, they will be automatically skipped by this class. If the dataloader is not standard PyTorch dataloader, 
+    (e.g. Dali dataloader), this class will automatically consume (load data for nothing) the remaining 2 batches.
+    
+    :param dataloader: your dataloader object
+    :type dataloader: Iterable
+    :param accumulate_size: the number of steps to accumulate gradients
+    :type accumualate_size: int
+
+    """
 
     def __init__(self, dataloader: Iterable, accumulate_size: int) -> None:
         self.dataloader = dataloader
@@ -99,6 +123,15 @@ class GradAccumDataloader():
 
 
 class GradAccumLrSchedulerByStep(_LRScheduler):
+    """A wrapper for the LR scheduler to enable gradient accumulation by skipping the steps 
+    before accumulation size is reached
+
+    :param lr_scheduler: your lr scheduler object
+    :type lr_scheduler: :class:`torch.optim.lr_scheduler._LRScheduler`    
+    :param accumulate_size: the number of steps to accumulate gradients
+    :type accumualate_size: int
+
+    """
 
     def __init__(self, lr_scheduler: _LRScheduler, accumulate_size: int) -> None:
         self.lr_scheduler = lr_scheduler
@@ -137,6 +170,15 @@ class GradAccumLrSchedulerByStep(_LRScheduler):
 
 
 class GradAccumGradientHandler():
+    """A wrapper for the gradient handler to enable gradient accumulation by skipping the steps 
+    before accumulation size is reached
+
+    :param grad_handler: your gradient handler object
+    :type grad_handler: :class:`colossalai.engine.BaseGradientHandler`    
+    :param accumulate_size: the number of steps to accumulate gradients
+    :type accumualate_size: int
+
+    """
 
     def __init__(self, grad_handler: BaseGradientHandler, accumulate_size: int) -> None:
         assert isinstance(grad_handler, BaseGradientHandler), \

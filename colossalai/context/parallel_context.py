@@ -53,6 +53,8 @@ class ParallelContext:
         self.data_parallel_size = 1
         self.pipeline_parallel_size = 1
         self.tensor_parallel_size = 1
+        self.virtual_pipeline_parallel_size = None
+        self.virtual_pipeline_parallel_rank = None
 
         # logging
         self._verbose = False
@@ -204,6 +206,18 @@ class ParallelContext:
         rank = self.get_local_rank(parallel_mode)
         world_size = self.get_world_size(parallel_mode)
         return rank == world_size - 1
+
+    def is_pipeline_first_stage(self, ignore_virtual=False):
+        if not ignore_virtual:
+            if self.virtual_pipeline_parallel_size is not None and self.virtual_pipeline_parallel_rank != 0:
+                return False
+        return self.is_first_rank(ParallelMode.PIPELINE)
+
+    def is_pipeline_last_stage(self, ignore_virtual=False):
+        if not ignore_virtual:
+            if self.virtual_pipeline_parallel_size is not None and self.virtual_pipeline_parallel_rank != self.virtual_pipeline_parallel_size - 1:
+                return False
+        return self.is_last_rank(ParallelMode.PIPELINE)
 
     def get_world_size(self, parallel_mode: ParallelMode):
         """Returns the world size for `parallel_mode`.
@@ -433,6 +447,9 @@ class ParallelContext:
 
     def set_device(self, device_ordinal: int = None):
         """Sets distributed processes to be bound to devices.
+
+        :param device_ordinal: the device id to be bound to
+        :type device_ordinal: int
         """
         global_rank = self.get_global_rank()
         if device_ordinal is None:
@@ -445,6 +462,9 @@ class ParallelContext:
 
     def set_seed(self, seed: int):
         """Sets seeds for all random libraries.
+
+        :param seed: seed for random states
+        :type seed: int
         """
         random.seed(seed)
         np.random.seed(seed)
@@ -488,3 +508,9 @@ class ParallelContext:
                 self._logger.info(
                     'WARNING: CUDA is not available, thus CUDA RNG cannot be used to track CUDA random number states',
                     ranks=[0])
+
+    def set_virtual_pipeline_parallel_size(self, size):
+        self.virtual_pipeline_parallel_size = size
+
+    def set_virtual_pipeline_parallel_rank(self, rank):
+        self.virtual_pipeline_parallel_rank = rank

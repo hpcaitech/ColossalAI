@@ -16,6 +16,22 @@ def convert_to_amp(model: nn.Module,
                    criterion: _Loss,
                    mode: AMP_TYPE,
                    amp_config: Config = None):
+    """A helper function to wrap training components with Torch AMP modules
+
+    :param model: your model object
+    :type model: :class:`torch.nn.Module`
+    :param optimizer: your optimizer object
+    :type optimizer: :class:`torch.optim.Optimzer`
+    :param criterion: your loss function object
+    :type criterion: :class:`torch.nn.modules.loss._Loss`
+    :param mode: amp mode
+    :type mode: :class:`colossalai.amp.AMP_TYPE`
+    :param amp_config: configuration for different amp modes
+    :type amp_config: :class:`colossalai.context.Config` or dict
+
+    :return: (model, optimizer, criterion)
+    :rtype: Tuple
+    """
     assert isinstance(mode, AMP_TYPE), \
         f'expected the argument mode be AMP_TYPE, but got {type(mode)}'
 

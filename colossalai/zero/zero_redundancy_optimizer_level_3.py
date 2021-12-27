@@ -695,13 +695,23 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 },
                 "aio": aio_config
             }
-            remote_device = offload_param_config['device']
+
+            if offload_param_config is not None:
+                remote_device = offload_param_config['device']
+            else:
+                remote_device = None
+
+            if offload_optimizer_config is not None:
+                pin_memory = offload_optimizer_config.get(OFFLOAD_OPTIMIZER_PIN_MEMORY, False)
+            else:
+                pin_memory = False
+
             group = None
             if gpc.is_initialized(ParallelMode.DATA):
                 group = gpc.get_group(ParallelMode.DATA)
             Init(module=module, data_parallel_group=group, dtype=self.dtype,
                  remote_device=remote_device, config_dict_or_path=ds_config,
-                 pin_memory=offload_optimizer_config[OFFLOAD_OPTIMIZER_PIN_MEMORY])
+                 pin_memory=pin_memory)
 
         for m in module.modules():
             _init_external_params(m)

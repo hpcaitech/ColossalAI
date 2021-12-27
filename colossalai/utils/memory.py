@@ -34,6 +34,10 @@ def report_memory_usage(message, logger=None, report_cpu=False):
 
     :param message: a prefix message to add in the log
     :type message: str
+    :param logger: an instance of :class:`colossalai.logging.DistributedLogger`
+    :type logger: :class:`colossalai.logging.DistributedLogger`
+    :param report_cpu: whether to report CPU memory
+    :type report_cpu: bool
     :raises EnvironmentError: raise error if no distributed environment has been initialized
     '''
     if not gpc.is_initialized(ParallelMode.GLOBAL):

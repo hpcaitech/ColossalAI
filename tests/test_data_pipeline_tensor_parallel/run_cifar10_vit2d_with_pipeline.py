@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 from colossalai.amp.amp_type import AMP_TYPE
 from colossalai.context.parallel_mode import ParallelMode
@@ -5,7 +6,7 @@ from colossalai.logging import get_dist_logger
 import colossalai
 import torch
 import os
-from colossalai.builder import PipelineModelInitializer
+from colossalai.builder import build_pipeline_model_from_cfg
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_dataloader, MultiTimer
 from colossalai.nn.loss import CrossEntropyLoss2D
@@ -34,7 +35,9 @@ CONFIG = dict(
 )
 
 
-def main():
+@pytest.mark.dist
+@pytest.mark.skip("This test requires more than 8 GPUs, you should invoke this test script using test.sh provided manually")
+def test_hybrid_parallel():
     parser = colossalai.get_default_parser()
     args = parser.parse_args()
     colossalai.launch_from_slurm(config=CONFIG,
@@ -47,8 +50,7 @@ def main():
     #                        suffix='cifar10_2d_vit_ddp1_torch_amp_grad_accum_2_clip_grad_1', mode='w')
 
     # build vit-t-32
-    initializer = PipelineModelInitializer(vit_t_2d.model_cfg, num_chunks=1)
-    model = initializer.initialize()
+    model = build_pipeline_model_from_cfg(vit_t_2d.model_cfg, num_chunks=1)
 
     # build dataloaders
     train_dataset = CIFAR10(
@@ -136,4 +138,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    test_hybrid_parallel()
