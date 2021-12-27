@@ -43,7 +43,7 @@ class PipelineSchedule(BaseSchedule):
 
     def load_batch(self, data_iter):
         # Pipeline schedule just puts data in memory
-        self.batch_data, self.batch_label = super().load_batch(data_iter)
+        self.batch_data, self.batch_label = super().load_batch(data_iter, to_gpu=False)
         self.microbatch_offset = 0
         if isinstance(self.batch_data, torch.Tensor):
             batch_size = self.batch_data.size(0)
@@ -63,7 +63,7 @@ class PipelineSchedule(BaseSchedule):
         data = self._get_data_slice(self.batch_data, self.microbatch_offset)
         label = self._get_data_slice(self.batch_label, self.microbatch_offset)
         self.microbatch_offset += self.microbatch_size
-        return data, label
+        return self._move_to_device(data), self._move_to_device(label)
 
     def pre_processing(self, engine):
         if isinstance(engine.optimizer, (ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
@@ -353,7 +353,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         data = self._get_data_slice(self.batch_data, self.microbatch_offset[model_chunk_id])
         label = self._get_data_slice(self.batch_label, self.microbatch_offset[model_chunk_id])
         self.microbatch_offset[model_chunk_id] += self.microbatch_size
-        return data, label
+        return self._move_to_device(data), self._move_to_device(label)
 
     def forward_step(self, engine, model_chunk_id, input_tensor, return_tensors, return_loss=True):
         """Forward step for passed-in model. If it is the first stage, the input tensor 

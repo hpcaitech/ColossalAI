@@ -41,7 +41,7 @@ class BaseSchedule(ABC):
     def _check_sanity(data, tag):
         assert isinstance(data, (torch.Tensor, dict)), f'{tag} must be torch.Tensor or dict'
 
-    def load_batch(self, data_iter):
+    def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are
         already in the same GPU as where the model's.
 
@@ -58,7 +58,9 @@ class BaseSchedule(ABC):
             data, label = batch_data
         self._check_sanity(data, 'data')
         self._check_sanity(label, 'label')
-        return self._move_to_device(data), self._move_to_device(label)
+        if to_gpu:
+            return self._move_to_device(data), self._move_to_device(label)
+        return data, label
 
     def pre_processing(self, engine: Engine):
         """To perform actions before running the schedule.
