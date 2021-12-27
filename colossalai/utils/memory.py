@@ -48,14 +48,14 @@ def report_memory_usage(message, logger=None, report_cpu=False):
     gpu_cached = bytes_to_MB(torch.cuda.memory_reserved())
     gpu_max_cached = bytes_to_MB(torch.cuda.max_memory_reserved())
 
-    full_log = f"{message} - GPU: allocated {gpu_allocated} MB, max allocated {gpu_max_allocated} MB, \
-        cached: {gpu_cached} MB, max cached: {gpu_max_cached} MB"
+    full_log = f"{message}: GPU: allocated {gpu_allocated} MB, max allocated {gpu_max_allocated} MB, " \
+        + f"cached: {gpu_cached} MB, max cached: {gpu_max_cached} MB"
 
     if report_cpu:
         # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
         gc.collect()
-        vm_stats=psutil.virtual_memory()
-        vm_used=bytes_to_MB(vm_stats.total - vm_stats.available)
+        vm_stats = psutil.virtual_memory()
+        vm_used = bytes_to_MB(vm_stats.total - vm_stats.available)
         full_log += f", CPU Virtual Memory: used = {vm_used} MB, percent = {vm_stats.percent}%"
 
     if logger is None:

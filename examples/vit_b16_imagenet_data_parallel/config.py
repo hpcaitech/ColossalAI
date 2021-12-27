@@ -11,7 +11,7 @@ fp16 = dict(
 )
 
 gradient_accumulation = 16
-gradient_clipping = 1.0
+clip_grad_norm = 1.0
 
 dali = dict(
     # root='./dataset/ILSVRC2012_1k',

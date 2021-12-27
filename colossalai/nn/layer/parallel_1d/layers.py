@@ -3,25 +3,24 @@
 
 import math
 import numbers
+from typing import Callable, Tuple
+
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.init as init
-from torch import Tensor
-from torch.nn.parameter import Parameter
-from typing import Tuple
-import importlib
-
-from colossalai.context import seed, ParallelMode
+from colossalai.communication import broadcast
+from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
+from colossalai.nn import init as init
 from colossalai.registry import LAYERS
 from colossalai.utils import get_current_device
-from ._operation import FusedLayerNormAffineFunction1D
+from torch import Tensor
+from torch.nn.parameter import Parameter
+
 from .._common_utils import divide, set_tensor_parallel_attribute_by_partition
-from .._parallel_utilities import reduce_grad, reduce_input, gather_forward_split_backward, \
-    split_forward_gather_backward
 from ..base_layer import ParallelLayer
+from ._operation import FusedLayerNormAffineFunction1D
+from ._utils import (gather_forward_split_backward, reduce_grad, reduce_input, split_forward_gather_backward)
 
 
 @LAYERS.register_module
@@ -44,79 +43,46 @@ class Linear1D_Col(ParallelLayer):
                     which is :math:`Y_i = XA_i`, defaults to False
     :type gather_output: bool, optional
     """
-
     def __init__(self,
                  in_features: int,
-                 output_size: int,
+                 out_features: int,
                  bias: bool = True,
                  dtype: torch.dtype = None,
                  gather_output: bool = False,
                  skip_bias_add: bool = False,
-                 init_weight='torch',
-                 init_bias='torch'
-                 ):
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
 
         # Keep input parameters
         self.in_features = in_features
-        self.out_features = output_size
+        self.out_features = out_features
         self.gather_output = gather_output
         self.skip_bias_add = skip_bias_add
 
         if skip_bias_add and not bias:
             raise ValueError('cannot skip bias addition if bias is None')
 
-        self.output_size_per_partition = divide(output_size, gpc.tensor_parallel_size)
+        self.out_features_per_partition = divide(out_features, gpc.tensor_parallel_size)
 
         # Parameters.
         # Initialize weight.
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
-        self.weight = Parameter(torch.empty(
-            self.output_size_per_partition, self.in_features,
-            **factory_kwargs))
+        self.weight = Parameter(torch.empty(self.out_features_per_partition, self.in_features, **factory_kwargs))
 
         if bias:
-            self.bias = Parameter(torch.empty(
-                self.output_size_per_partition,
-                **factory_kwargs))
-            # Always initialize bias to zero.
-            with torch.no_grad():
-                self.bias.zero_()
+            self.bias = Parameter(torch.empty(self.out_features_per_partition, **factory_kwargs))
         else:
-            self.register_parameter('bias', None)
+            self.bias = None
         with seed(ParallelMode.TENSOR):
-            self.reset_parameters(init_weight, init_bias)
+            self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
 
-    def reset_parameters(self, init_weight, init_bias) -> None:
-        assert init_weight in ('torch', 'jax', 'zero')
-        assert init_bias in ('torch', 'jax', 'zero')
-        # setting
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
-
-        # init weight
-        if init_weight == 'torch':
-            a = math.sqrt(5)
-            nonlinearity = 'leaky_relu'
-            std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
-            bound = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -bound, bound)
-        elif init_weight == 'jax':
-            std = math.sqrt(2.0 / float(fan_in + fan_out))
-            a = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -a, a)
-        elif init_weight == 'zero':
-            init.zeros_(self.weight)
-
-        # init bias
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
         if self.bias is not None:
-            if init_bias == 'torch':
-                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-                init.uniform_(self.bias, -bound, bound)
-            elif init_bias == 'jax':
-                init.normal_(self.bias, std=1e-6)
-            elif init_bias == 'zero':
-                init.zeros_(self.bias)
+            bias_initializer(self.bias, fan_in=fan_in)
 
     def _set_tensor_parallel_attributes(self):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)
@@ -133,8 +99,7 @@ class Linear1D_Col(ParallelLayer):
         output_parallel = F.linear(input_parallel, self.weight, bias)
         if self.gather_output:
             # All-gather across the partitions.
-            output = gather_forward_split_backward(
-                output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
+            output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
         else:
             output = output_parallel
         if self.skip_bias_add:
@@ -158,17 +123,15 @@ class Linear1D_Row(ParallelLayer):
     :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
     :type parallel_input: bool, optional
     """
-
     def __init__(self,
                  in_features: int,
                  out_features: int,
                  bias: bool = True,
                  dtype: torch.dtype = None,
-                 parallel_input: bool = False,
+                 parallel_input: bool = True,
                  skip_bias_add: bool = False,
-                 init_weight='torch',
-                 init_bias='torch'
-                 ):
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
 
         # Keep input parameters
@@ -186,58 +149,22 @@ class Linear1D_Row(ParallelLayer):
         # Parameters.
         # Initialize weight.
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
-        self.weight = Parameter(torch.empty(
-            self.out_features,
-            self.input_size_per_partition,
-            **factory_kwargs))
+        self.weight = Parameter(torch.empty(self.out_features, self.input_size_per_partition, **factory_kwargs))
 
         if bias:
-            self.bias = Parameter(torch.empty(
-                self.out_features,
-                **factory_kwargs
-            ))
-
-            # Always initialize bias to zero.
-            with torch.no_grad():
-                self.bias.zero_()
+            self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
         else:
-            self.register_parameter('bias', None)
+            self.bias = None
         with seed(ParallelMode.TENSOR):
-            self.reset_parameters(init_weight, init_bias)
+            self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
 
-    def reset_parameters(self, init_weight, init_bias) -> None:
-        assert init_weight in ('torch', 'jax', 'zero')
-        assert init_bias in ('torch', 'jax', 'zero')
-        # setting
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
-
-        # init weight
-        if init_weight == 'torch':
-            a = math.sqrt(5)
-            nonlinearity = 'leaky_relu'
-            std = init.calculate_gain(nonlinearity, a) / math.sqrt(fan_in)
-            bound = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -bound, bound)
-        elif init_weight == 'jax':
-            std = math.sqrt(2.0 / float(fan_in + fan_out))
-            a = math.sqrt(3.0) * std
-            init.uniform_(self.weight, -a, a)
-        elif init_weight == 'zero':
-            init.zeros_(self.weight)
-
-        # init bias
+        weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
         if self.bias is not None:
-            if init_bias == 'torch':
-                bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-                init.uniform_(self.bias, -bound, bound)
-            elif init_bias == 'jax':
-                init.normal_(self.bias, std=1e-6)
-            elif init_bias == 'zero':
-                init.zeros_(self.bias)
-        dist.broadcast(self.bias,
-                       src=gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0],
-                       group=gpc.get_group(ParallelMode.PARALLEL_1D))
+            bias_initializer(self.bias, fan_in=fan_in)
+        broadcast(self.bias, gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0], ParallelMode.PARALLEL_1D)
 
     def _set_tensor_parallel_attributes(self):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)
@@ -248,8 +175,7 @@ class Linear1D_Row(ParallelLayer):
         if self.parallel_input:
             input_ = input_
         else:
-            input_ = split_forward_gather_backward(
-                input_, ParallelMode.PARALLEL_1D, dim=-1)
+            input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
         output_parallel = F.linear(input_, self.weight)
         output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
@@ -263,12 +189,13 @@ class Linear1D_Row(ParallelLayer):
 
 @LAYERS.register_module
 class MixedFusedLayerNorm1D(torch.nn.Module):
-
+    """ Experimental
+    """
     def __init__(self, normalized_shape, eps=1e-5):
         super(MixedFusedLayerNorm1D, self).__init__()
 
         if isinstance(normalized_shape, numbers.Integral):
-            normalized_shape = (normalized_shape,)
+            normalized_shape = (normalized_shape, )
         self.normalized_shape = torch.Size(normalized_shape)
         self.eps = eps
         self.weight = Parameter(torch.Tensor(*normalized_shape))
@@ -280,5 +207,4 @@ class MixedFusedLayerNorm1D(torch.nn.Module):
         init.zeros_(self.bias)
 
     def forward(self, input):
-        return FusedLayerNormAffineFunction1D.apply(
-            input, self.weight, self.bias, self.normalized_shape, self.eps)
+        return FusedLayerNormAffineFunction1D.apply(input, self.weight, self.bias, self.normalized_shape, self.eps)

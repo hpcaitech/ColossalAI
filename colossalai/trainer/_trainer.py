@@ -164,31 +164,35 @@ class Trainer:
             if epoch is None:
                 progress = tqdm(progress, desc='[Train]')
             else:
-                progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
+                progress = tqdm(progress, desc=f'[Epoch {epoch} / Train]')
 
         self._call_hooks('before_train_epoch')
-        self._call_timer(action='start', item='train-epoch')
+        self._call_timer(action='start', item='Train-epoch')
         for i in progress:
             self._call_hooks('before_train_iter')
-            self._call_timer(action='start', item='train-step')
+            self._call_timer(action='start', item='Train-step')
 
             # run 1 training step
             self.engine.zero_grad()
             logits, label, loss = self.schedule.forward_backward_step(
                 self.engine, data_iter, forward_only=False, return_loss=True)
             self.engine.step()
-            self._call_timer(action='stop', item='train-step', keep_in_history=True)
+            self._call_timer(action='stop', item='Train-step', keep_in_history=True)
             self._call_hooks('after_train_iter', output=(logits, label, loss))
 
             self._cur_step += 1
+
+            if display_progress:
+                if 'step_metrics' in self.states:
+                    progress.set_postfix(**self.states['step_metrics'])
 
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
 
-        self._call_timer(action='stop', item='train-epoch', keep_in_history=True)
+        self._call_timer(action='stop', item='Train-epoch', keep_in_history=True)
         self._call_hooks('after_train_epoch')
-        self._call_timer(action='reset', item='train-step')
+        self._call_timer(action='reset', item='Train-step')
 
     def _eval(self,
               test_dataloader: DataLoader,
@@ -206,25 +210,30 @@ class Trainer:
         if display_progress:
             desc = 'Evaluation'
             if epoch is not None:
-                desc = '[Epoch %d val]' % epoch
+                desc = '[Epoch %d / Test]' % epoch
             progress = tqdm(progress, desc=desc)
 
         self._call_hooks('before_test_epoch')
-        self._call_timer(action='start', item='test-epoch')
+        self._call_timer(action='start', item='Test-epoch')
         with torch.no_grad():
             for _ in progress:
                 self._call_hooks('before_test_iter')
-                self._call_timer(action='start', item='test-step')
+                self._call_timer(action='start', item='Test-step')
                 logits, label, loss = self.schedule.forward_backward_step(
                     self.engine, data_iter, forward_only=True, return_loss=True)
-                self._call_timer(action='stop', item='test-step', keep_in_history=True)
+                self._call_timer(action='stop', item='Test-step', keep_in_history=True)
                 self._call_hooks('after_test_iter',
                                  output=(logits, label, loss))
-        self._call_timer(action='stop', item='test-epoch', keep_in_history=True)
+
+                if display_progress:
+                    if 'step_metrics' in self.states:
+                        progress.set_postfix(**self.states['step_metrics'])
+
+        self._call_timer(action='stop', item='Test-epoch', keep_in_history=True)
         self._call_hooks('after_test_epoch')
         self._call_hooks('after_test')
-        self._call_timer(action='reset', item='test-step')
-        self._call_timer(action='reset', item='test-epoch')
+        self._call_timer(action='reset', item='Test-step')
+        self._call_timer(action='reset', item='Test-epoch')
 
     def _exceed_max_step(self):
         return self._max_steps is not None and self._cur_step >= self._max_steps
@@ -317,7 +326,7 @@ class Trainer:
                     ranks=[0])
                 break
         self._call_hooks('after_train')
-        self._call_timer('reset', 'train-epoch')
+        self._call_timer('reset', 'Train-epoch')
 
     def evaluate(self,
                  test_dataloader: DataLoader,
