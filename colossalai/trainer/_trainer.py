@@ -223,7 +223,7 @@ class Trainer:
                 self._call_timer(action='start', item='Test-step')
                 logits, label, loss = self.schedule.forward_backward_step(
                     self.engine, data_iter, forward_only=True, return_loss=True, return_output_label=return_output_label)
-                self._call_timer(action='stop', item='test-step', keep_in_history=True)
+                self._call_timer(action='stop', item='Test-step', keep_in_history=True)
                 self._call_hooks('after_test_iter',
                                  output=(logits, label, loss))
 
