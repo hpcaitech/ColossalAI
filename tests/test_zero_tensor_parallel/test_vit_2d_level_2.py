@@ -41,10 +41,10 @@ def train_epoch(engine, train_dataloader):
 
 
 def run_2d_parallel_vision_transformer_level_2(rank, world_size):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=29950, backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=39950, backend='nccl')
 
     # build model
-    model = vit_lite_depth7_patch4_32(tensor_parallel='2d')
+    model = vit_lite_depth7_patch4_32()
 
     # build dataloader# build dataloaders
     train_dataset = CIFAR10(root=Path(os.environ['DATA']),
@@ -62,7 +62,7 @@ def run_2d_parallel_vision_transformer_level_2(rank, world_size):
 
     # build optimizer and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = CrossEntropyLoss(tensor_parallel='2d')
+    criterion = CrossEntropyLoss()
 
     engine, train_dataloader, *args = colossalai.initialize(model=model,
                                                             optimizer=optimizer,

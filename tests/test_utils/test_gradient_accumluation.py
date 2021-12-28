@@ -11,8 +11,7 @@ from torchvision import transforms
 from torch.optim import Adam
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.utils import report_memory_usage, get_dataloader
-from colossalai.initialize import get_default_parser
+from colossalai.utils import get_dataloader
 from torchvision.models import resnet18
 from torchvision.datasets import CIFAR10
 
@@ -40,7 +39,7 @@ def run_no_pipeline(rank, world_size):
         rank=rank,
         world_size=world_size,
         host='localhost',
-        port=29500,
+        port=39501,
         backend='nccl'
     )
 

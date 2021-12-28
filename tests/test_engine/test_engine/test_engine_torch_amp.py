@@ -2,7 +2,6 @@ import colossalai
 import os
 import pytest
 import torch
-import os.path as osp
 from pathlib import Path
 import torch.nn as nn
 import torch.multiprocessing as mp
@@ -13,7 +12,6 @@ from colossalai.core import global_context as gpc
 from colossalai.amp import AMP_TYPE
 from colossalai.logging import get_dist_logger
 from colossalai.utils import report_memory_usage, get_dataloader
-from colossalai.initialize import get_default_parser
 from torchvision.models import resnet18
 from torchvision.datasets import CIFAR10
 from functools import partial
@@ -43,7 +41,7 @@ def run_engine(rank, world_size):
         rank=rank,
         world_size=world_size,
         host='localhost',
-        port=29913,
+        port=39913,
         backend='nccl'
     )
 

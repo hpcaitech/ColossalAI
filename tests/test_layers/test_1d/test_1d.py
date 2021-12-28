@@ -26,7 +26,7 @@ def check_layer(rank, world_size):
            rank=rank,
            world_size=world_size,
            host='localhost',
-           port=29920,
+           port=39920,
            backend='nccl')
 
     check_linear_col()

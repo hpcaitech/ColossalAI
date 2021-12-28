@@ -35,7 +35,7 @@ def run_schedule(rank, world_size):
            rank=rank,
            world_size=world_size,
            host='localhost',
-           port=29934,
+           port=39934,
            backend='nccl')
 
     # build model

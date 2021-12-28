@@ -17,9 +17,9 @@ from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch.nn import Parameter
 
-from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
+from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ._operation import *
-from ._utils import (get_depth_from_env, get_last_group, get_parallel_mode_from_env, swap_in_out_group)
+from ._utils import get_depth_from_env, get_last_group, get_parallel_mode_from_env, swap_in_out_group
 
 
 @LAYERS.register_module

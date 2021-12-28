@@ -28,11 +28,11 @@ CONFIG = dict(parallel=dict(pipeline=2, tensor=dict(size=2, mode='1d')),
 
 
 def run_trainer(rank, world_size):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=30000, backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=40001, backend='nccl')
 
     logger = get_dist_logger()
 
-    model = vit_tiny_patch4_32(tensor_parallel='1d')
+    model = vit_tiny_patch4_32()
     pipe_model = build_pipeline_model(model.layers, num_chunks=1)
 
     # build dataloaders
@@ -54,7 +54,7 @@ def run_trainer(rank, world_size):
     test_dataloader = get_dataloader(dataset=test_dataset, batch_size=BATCH_SIZE, pin_memory=True)
 
     # build criterion
-    criterion = CrossEntropyLoss(tensor_parallel='1d')
+    criterion = CrossEntropyLoss()
 
     # optimizer
     optimizer = torch.optim.Adam(pipe_model.parameters(), lr=0.001, weight_decay=0)
@@ -78,7 +78,7 @@ def run_trainer(rank, world_size):
     hook_list = [
         hooks.LossHook(),
         hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=False),
-        hooks.AccuracyHook(accuracy_func=Accuracy(tensor_parallel='1d')),
+        hooks.AccuracyHook(accuracy_func=Accuracy()),
         hooks.LogMetricByEpochHook(logger),
     ]
 

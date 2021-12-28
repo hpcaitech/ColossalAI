@@ -13,9 +13,9 @@ from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch.nn import Parameter
 
-from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
+from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ..base_layer import ParallelLayer
-from ._operation import (Matmul_AB_2D, add_bias_2d, all_gather_weight_2d, classifier_2d, layernorm_2d, split_batch_2d)
+from ._operation import Matmul_AB_2D, add_bias_2d, all_gather_weight_2d, classifier_2d, layernorm_2d, split_batch_2d
 from ._utils import assert_summa_initialization, get_summa_dim_from_env
 
 

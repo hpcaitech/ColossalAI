@@ -21,7 +21,7 @@ def run_partition(rank, world_size):
            rank=rank,
            world_size=world_size,
            host='localhost',
-           port=29933,
+           port=39933,
            backend='nccl'
            )
     logger = get_dist_logger()

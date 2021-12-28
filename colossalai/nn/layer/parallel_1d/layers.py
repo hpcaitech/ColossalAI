@@ -6,21 +6,131 @@ import numbers
 from typing import Callable, Tuple
 
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils import get_current_device
-from torch import Tensor
+from colossalai.utils import get_current_device, conditional_context
+from torch import Tensor, dtype
 from torch.nn.parameter import Parameter
 
-from .._common_utils import divide, set_tensor_parallel_attribute_by_partition
+from ..utils import divide, set_tensor_parallel_attribute_by_partition
 from ..base_layer import ParallelLayer
 from ._operation import FusedLayerNormAffineFunction1D
-from ._utils import (gather_forward_split_backward, reduce_grad, reduce_input, split_forward_gather_backward)
+from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
+                     split_forward_gather_backward)
+
+
+@LAYERS.register_module
+class Linear1D(torch.nn.Module):
+    def __init__(self,
+                 in_features: int,
+                 out_features: int,
+                 bias: bool = True,
+                 dtype: torch.dtype = None,
+                 gather_output: bool = False,
+                 skip_bias_add: bool = False,
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+        super().__init__()
+        parallel_input = get_parallel_input()
+        if not parallel_input:
+            self.layer = Linear1D_Col(in_features,
+                                      out_features,
+                                      bias=bias,
+                                      dtype=dtype,
+                                      gather_output=gather_output,
+                                      skip_bias_add=skip_bias_add,
+                                      weight_initializer=weight_initializer,
+                                      bias_initializer=bias_initializer)
+            set_parallel_input(True)
+        else:
+            self.layer = Linear1D_Row(in_features,
+                                      out_features,
+                                      bias=bias,
+                                      dtype=dtype,
+                                      parallel_input=parallel_input,
+                                      skip_bias_add=skip_bias_add,
+                                      weight_initializer=weight_initializer,
+                                      bias_initializer=bias_initializer)
+            set_parallel_input(False)
+
+    @property
+    def weight(self):
+        return self.layer.weight
+
+    @property
+    def bias(self):
+        return self.layer.bias
+
+    def forward(self, *args):
+        return self.layer(*args)
+
+
+@LAYERS.register_module
+class Classifier1D(ParallelLayer):
+    """RowLinear with given weight"""
+    def __init__(self,
+                 in_features: int,
+                 num_classes: int,
+                 weight: Parameter = None,
+                 bias: bool = True,
+                 dtype: dtype = None,
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+        super().__init__()
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.parallel_input = get_parallel_input()
+
+        # Divide the weight matrix along the last dimension.
+        self.input_size_per_partition = divide(in_features, gpc.tensor_parallel_size)
+
+        # Parameters.
+        # Initialize weight.
+        factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
+        if weight is not None:
+            self.weight = weight
+            self.has_weight = False
+        else:
+            self.weight = Parameter(torch.empty(self.num_classes, self.input_size_per_partition, **factory_kwargs))
+            self.has_weight = True
+        if bias:
+            self.bias = Parameter(torch.empty(self.num_classes, **factory_kwargs))
+        else:
+            self.bias = None
+        with seed(ParallelMode.TENSOR):
+            self.reset_parameters(weight_initializer, bias_initializer)
+        self._set_tensor_parallel_attributes()
+        set_parallel_input(False)
+
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
+        fan_in, fan_out = self.in_features, self.num_classes
+        if self.has_weight:
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        if self.bias is not None:
+            bias_initializer(self.bias, fan_in=fan_in)
+            broadcast(self.bias, gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0], ParallelMode.PARALLEL_1D)
+
+    def _set_tensor_parallel_attributes(self):
+        if self.has_weight:
+            num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+            set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
+
+    def forward(self, input_: Tensor) -> Tensor:
+        # Set up backprop all-reduce.
+        if self.parallel_input:
+            input_ = input_
+        else:
+            input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
+
+        output_parallel = F.linear(input_, self.weight)
+        output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
+
+        output = output + self.bias
+        return output
 
 
 @LAYERS.register_module
@@ -208,3 +318,67 @@ class MixedFusedLayerNorm1D(torch.nn.Module):
 
     def forward(self, input):
         return FusedLayerNormAffineFunction1D.apply(input, self.weight, self.bias, self.normalized_shape, self.eps)
+
+
+@LAYERS.register_module
+class Embedding1D(ParallelLayer):
+    def __init__(self,
+                 num_embeddings: int,
+                 embedding_dim: int,
+                 padding_idx: int = None,
+                 dtype: dtype = None,
+                 weight_initializer: Callable = init.normal_(),
+                 *args,
+                 **kwargs):
+        super().__init__()
+
+        self.num_embeddings = num_embeddings
+        self.embed_dim = embedding_dim
+        embed_dim_per_partition = divide(embedding_dim, gpc.tensor_parallel_size)
+
+        self.padding_idx = padding_idx
+        self.embed_args = args
+        self.embed_kwargs = kwargs
+
+        self.weight = Parameter(
+            torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype))
+
+        self.reset_parameters(weight_initializer)
+        self._set_tensor_parallel_attributes()
+        set_parallel_input(False)
+
+    def _set_tensor_parallel_attributes(self):
+        set_tensor_parallel_attribute_by_partition(self.weight, gpc.tensor_parallel_size)
+
+    def reset_parameters(self, weight_initializer) -> None:
+        with seed(ParallelMode.TENSOR):
+            fan_in, fan_out = self.num_embeddings, self.embed_dim
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+            self._fill_padding_idx_with_zero()
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None:
+            with torch.no_grad():
+                self.weight[self.padding_idx].fill_(0)
+
+    def forward(self, input_: Tensor) -> Tensor:
+
+        output_parallel = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+
+        output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
+
+        return output
+
+
+@LAYERS.register_module
+class Dropout1D(ParallelLayer):
+    def __init__(self, p: float = 0.5, inplace: bool = False):
+        super().__init__()
+        self.parallel_input = get_parallel_input()
+        self.p = p
+        self.inplace = inplace
+
+    def forward(self, input_: Tensor) -> Tensor:
+        with conditional_context(seed(ParallelMode.TENSOR), enable=self.parallel_input):
+            output = F.dropout(input_, self.p, self.training, self.inplace)
+        return output

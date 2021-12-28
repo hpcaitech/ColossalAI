@@ -13,11 +13,11 @@ from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch.nn import Parameter
 
-from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
+from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ..base_layer import ParallelLayer
 from ._operation import (Add_Bias_2p5D, Matmul_AB_2p5D, all_gather_weight_2p5d, classifier_2p5d, layernorm_2p5d,
                          split_batch_2p5d)
-from ._utils import (assert_tesseract_initialization, get_tesseract_dim_dep_from_env)
+from ._utils import assert_tesseract_initialization, get_tesseract_dim_dep_from_env
 
 
 @LAYERS.register_module

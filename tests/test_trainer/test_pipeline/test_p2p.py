@@ -129,7 +129,7 @@ def run_check(rank, world_size):
         rank=rank,
         world_size=world_size,
         host='localhost',
-        port=29932,
+        port=39932,
         backend='nccl'
     )
     logger = get_dist_logger()

@@ -4,7 +4,7 @@
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.initialize import launch, get_default_parser
+from colossalai.initialize import launch
 from colossalai.logging import get_dist_logger
 from checks_seq.check_layer_seq import *
 from functools import partial
@@ -28,7 +28,7 @@ def run_check_sequence(rank, world_size):
            rank=rank,
            world_size=world_size,
            host='localhost',
-           port=29924,
+           port=39924,
            backend='nccl')
     logger = get_dist_logger()
     logger.info('Distributed environment is initialzied.', ranks=[0])

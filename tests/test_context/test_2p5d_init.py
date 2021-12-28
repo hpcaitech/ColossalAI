@@ -111,7 +111,7 @@ def test_2halfd_init():
     test_fn = partial(init_2halfd,
                       world_size=world_size,
                       backend='gloo',
-                      port='29901',
+                      port='39901',
                       host='localhost'
                       )
     mp.spawn(test_fn, nprocs=world_size)

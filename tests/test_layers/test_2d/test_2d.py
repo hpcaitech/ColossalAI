@@ -39,7 +39,7 @@ def check_layer_and_operation(rank, world_size):
            rank=rank,
            world_size=world_size,
            host='localhost',
-           port=29921,
+           port=39921,
            backend='nccl')
 
     # check_operations()

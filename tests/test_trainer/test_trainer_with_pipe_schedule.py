@@ -26,7 +26,7 @@ CONFIG = dict(parallel=dict(pipeline=2, ), )
 
 
 def run_trainer_with_pipeline(rank, world_size):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=29931, backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=39931, backend='nccl')
 
     # build model
     model = resnet18(num_classes=10)

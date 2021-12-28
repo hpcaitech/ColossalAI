@@ -51,7 +51,7 @@ def run_dist(rank, world_size):
                       rank=rank,
                       world_size=world_size,
                       host='localhost',
-                      port=29941,
+                      port=39941,
                       backend='nccl')
 
     # build model

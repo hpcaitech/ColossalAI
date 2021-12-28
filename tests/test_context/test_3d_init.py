@@ -104,7 +104,7 @@ def test_3d_init():
     test_fn = partial(init_3d,
                       world_size=world_size,
                       backend='gloo',
-                      port='29902',
+                      port='39902',
                       host='localhost'
                       )
     mp.spawn(test_fn, nprocs=world_size)

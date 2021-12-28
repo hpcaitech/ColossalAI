@@ -28,7 +28,7 @@ def check_layer():
 
 
 def check_layer_and_operation(rank, world_size):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=29923, backend='nccl')
+    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=39923, backend='nccl')
     check_layer()
     gpc.destroy()
     torch.cuda.empty_cache()
