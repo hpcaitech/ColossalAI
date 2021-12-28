@@ -72,7 +72,8 @@ class BaseSchedule(ABC):
                               engine: Engine,
                               data_iter: Iterable,
                               forward_only: bool,
-                              return_loss: bool = True
+                              return_loss: bool = True,
+                              return_output_label: bool = True
                               ):
         """The process function over a batch of dataset for training or evaluation.
 
@@ -81,6 +82,7 @@ class BaseSchedule(ABC):
         :param labels: ground truth
         :param forward_only: If True, the process won't include backward
         :param return_loss: If False, the loss won't be returned
+        :param return_output_label: If False, the output and label won't be returned
         """
         pass
 
