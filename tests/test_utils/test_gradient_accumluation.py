@@ -1,20 +1,19 @@
-import colossalai
 import os
+from functools import partial
+from pathlib import Path
+
+import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-
-from functools import partial
-from pathlib import Path
-from torchvision import transforms
-from torch.optim import Adam
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_dataloader
-from torchvision.models import resnet18
+from colossalai.utils import free_port, get_dataloader
+from torch.optim import Adam
+from torchvision import transforms
 from torchvision.datasets import CIFAR10
-
+from torchvision.models import resnet18
 
 # Config
 BATCH_SIZE = 16
@@ -31,7 +30,7 @@ CONFIG = dict(
 )
 
 
-def run_no_pipeline(rank, world_size):
+def run_no_pipeline(rank, world_size, port):
 
     # init dist env
     colossalai.launch(
@@ -39,7 +38,7 @@ def run_no_pipeline(rank, world_size):
         rank=rank,
         world_size=world_size,
         host='localhost',
-        port=39501,
+        port=port,
         backend='nccl'
     )
 
@@ -109,7 +108,7 @@ def run_no_pipeline(rank, world_size):
 @pytest.mark.dist
 def test_engine():
     world_size = 4
-    func = partial(run_no_pipeline, world_size=world_size)
+    func = partial(run_no_pipeline, world_size=world_size, port=free_port())
     mp.spawn(func, nprocs=world_size)
 
 

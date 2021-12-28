@@ -65,8 +65,8 @@ class Linear1D(torch.nn.Module):
     def bias(self):
         return self.layer.bias
 
-    def forward(self, *args):
-        return self.layer(*args)
+    def forward(self, input_: Tensor) -> Tensor:
+        return self.layer(input_)
 
 
 @LAYERS.register_module

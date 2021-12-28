@@ -1,4 +1,5 @@
 import os
+import model
 from pathlib import Path
 
 BATCH_SIZE = 128
