@@ -14,9 +14,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn import Accuracy, CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
-from colossalai.trainer import Trainer
-from colossalai.trainer.hooks import (AccuracyHook, LogMemoryByEpochHook, LogMetricByEpochHook, LogMetricByStepHook,
-                                      LogTimingByEpochHook, LossHook, LRSchedulerHook, ThroughputHook)
+from colossalai.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer
 from model_zoo.vit import vit_small_patch16_224
 from nvidia.dali import types
@@ -185,22 +183,22 @@ def train_imagenet():
     trainer = Trainer(engine=engine, logger=logger, timer=timer)
     logger.info("Trainer is built", ranks=[0])
 
-    hooks = [
-        LogMetricByEpochHook(logger=logger),
-        LogMetricByStepHook(),
-        # LogTimingByEpochHook(timer=timer, logger=logger),
-        # LogMemoryByEpochHook(logger=logger),
-        AccuracyHook(accuracy_func=Accuracy()),
-        LossHook(),
-        ThroughputHook(),
-        LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=True)
+    hook_list = [
+        hooks.LogMetricByEpochHook(logger=logger),
+        hooks.LogMetricByStepHook(),
+        # hooks.LogTimingByEpochHook(timer=timer, logger=logger),
+        # hooks.LogMemoryByEpochHook(logger=logger),
+        hooks.AccuracyHook(accuracy_func=Accuracy()),
+        hooks.LossHook(),
+        hooks.ThroughputHook(),
+        hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=True)
     ]
 
     logger.info("Train start", ranks=[0])
     trainer.fit(train_dataloader=train_dataloader,
                 test_dataloader=test_dataloader,
                 epochs=gpc.config.NUM_EPOCHS,
-                hooks=hooks,
+                hooks=hook_list,
                 display_progress=True,
                 test_interval=1)
 
