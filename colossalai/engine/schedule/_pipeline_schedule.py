@@ -10,6 +10,7 @@ from colossalai.communication import *
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.amp.naive_amp import NaiveAMPModel
+from colossalai.utils.cuda import get_current_device
 from colossalai.zero import (ZeroRedundancyOptimizer_Level_2,
                              ZeroRedundancyOptimizer_Level_3)
 from colossalai.utils import switch_virtual_pipeline_parallel_rank
@@ -103,7 +104,7 @@ class PipelineSchedule(BaseSchedule):
             else:
                 return model(input_tensor, **batch_data)
 
-    def forward_step(self, engine, input_tensor, return_tensors, return_loss=True):
+    def forward_step(self, engine, input_tensor, return_tensors, return_output_label=True, accum_loss=None):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
@@ -123,12 +124,13 @@ class PipelineSchedule(BaseSchedule):
         output_tensor = squeeze(output_tensor)
 
         if gpc.is_last_rank(ParallelMode.PIPELINE):
-            if return_loss:
+            if return_output_label:
+                return_tensors.append(tuple((output_tensor, label)))
+            if accum_loss is not None:
                 loss_reduced = self._call_engine_criterion(engine, output_tensor, label) / self.num_microbatches
-                return_tensors.append(tuple((output_tensor, label, loss_reduced)))
+                accum_loss.add_(loss_reduced.detach())
                 return loss_reduced
             else:
-                return_tensors.append(output_tensor)
                 return output_tensor
         else:
             return output_tensor
@@ -173,7 +175,8 @@ class PipelineSchedule(BaseSchedule):
                               engine,
                               data_iter,
                               forward_only=False,
-                              return_loss=True):
+                              return_loss=True,
+                              return_output_label=True):
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
@@ -185,6 +188,8 @@ class PipelineSchedule(BaseSchedule):
         :type forward_only: bool
         :param return_loss: whether returns the loss value. Default is true.
         :type return_loss: bool
+        :param return_output_label: If False, the output and label won't be returned
+        :type return_output_label: bool
 
         :return: (output, label, loss)
         :rtype: Tuple[:class:`torch.Tensor`]
@@ -208,7 +213,10 @@ class PipelineSchedule(BaseSchedule):
             input_tensors = []
             output_tensors = []
         return_tensors = []
-
+        if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True):
+            accum_loss = torch.zeros(1, device=get_current_device())
+        else:
+            accum_loss = None
         # Used for tensor meta information communication
         ft_shape = None
         bt_shape = None
@@ -221,7 +229,8 @@ class PipelineSchedule(BaseSchedule):
             input_tensor = recv_forward(ft_shape, dtype=self.dtype)
             output_tensor = self.forward_step(
                 engine, input_tensor, return_tensors,
-                return_loss=return_loss
+                return_output_label=return_output_label,
+                accum_loss=accum_loss
             )
             if not gpc.is_last_rank(ParallelMode.PIPELINE):
                 bt_shape = output_tensor.shape
@@ -246,7 +255,8 @@ class PipelineSchedule(BaseSchedule):
 
             output_tensor = self.forward_step(
                 engine, input_tensor, return_tensors,
-                return_loss=return_loss
+                return_output_label=return_output_label,
+                accum_loss=accum_loss
             )
             if forward_only:
                 send_forward(output_tensor)
@@ -297,15 +307,12 @@ class PipelineSchedule(BaseSchedule):
                 send_backward(input_tensor_grad)
 
         if len(return_tensors) > 0:
-            if return_loss:
-                output, label, loss = tuple(map(list, zip(*return_tensors)))
-                return (torch.cat(output, dim=0),
-                        torch.cat(label, dim=0),
-                        sum(loss))
-            else:
-                return tuple((torch.cat(return_tensors, dim=0), None, None))
+            output, label = tuple(map(list, zip(*return_tensors)))
+            return (torch.cat(output, dim=0),
+                    torch.cat(label, dim=0),
+                    accum_loss)
         else:
-            return tuple((None, None, None))
+            return tuple((None, None, accum_loss))
 
 
 class InterleavedPipelineSchedule(PipelineSchedule):
@@ -355,7 +362,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         self.microbatch_offset[model_chunk_id] += self.microbatch_size
         return self._move_to_device(data), self._move_to_device(label)
 
-    def forward_step(self, engine, model_chunk_id, input_tensor, return_tensors, return_loss=True):
+    def forward_step(self, engine, model_chunk_id, input_tensor, return_tensors, return_output_label=True, accum_loss=None):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
@@ -365,17 +372,18 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         output_tensor = squeeze(output_tensor)
 
         if gpc.is_pipeline_last_stage():
-            if return_loss:
+            if return_output_label:
+                return_tensors.append(tuple(output_tensor, label))
+            if accum_loss is not None:
                 loss_reduced = self._call_engine_criterion(engine, output_tensor, label) / self.num_microbatches
-                return_tensors.append(tuple((output_tensor, label, loss_reduced)))
+                accum_loss.add_(loss_reduced.detach())
                 return loss_reduced
             else:
-                return_tensors.append(output_tensor)
                 return output_tensor
         else:
             return output_tensor
 
-    def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True):
+    def forward_backward_step(self, engine, data_iter, forward_only=False, return_loss=True, return_output_label=True):
         """Run interleaved 1F1B schedule (model split into model chunks), with
         communication between pipeline stages as needed.
 
@@ -389,6 +397,10 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         return_tensors = []
         if not forward_only:
             output_tensor_grads = [[] for _ in range(len(model))]
+        if return_loss and gpc.is_pipeline_last_stage(ignore_virtual=True):
+            accum_loss = torch.zeros(1, device=get_current_device())
+        else:
+            accum_loss = None
 
         # Used for tensor meta information communication
         input_tensor_shapes = [None for _ in range(len(model))]
@@ -446,7 +458,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                     input_tensors[model_chunk_id].append(None)
             input_tensor = input_tensors[model_chunk_id][-1]
             output_tensor = self.forward_step(engine, model_chunk_id, input_tensor,
-                                              return_tensors, return_loss=return_loss)
+                                              return_tensors, return_output_label=return_output_label, accum_loss=accum_loss)
             output_tensors[model_chunk_id].append(output_tensor)
 
             # if forward-only, no need to save tensors for a backward pass
@@ -628,12 +640,9 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                         dtype=self.dtype))
 
         if len(return_tensors) > 0:
-            if return_loss:
-                output, label, loss = tuple(map(list, zip(*return_tensors)))
-                return (torch.cat(output, dim=0),
-                        torch.cat(label, dim=0),
-                        sum(loss))
-            else:
-                return tuple((torch.cat(return_tensors, dim=0), None, None))
+            output, label = tuple(map(list, zip(*return_tensors)))
+            return (torch.cat(output, dim=0),
+                    torch.cat(label, dim=0),
+                    accum_loss)
         else:
-            return tuple((None, None, None))
+            return tuple((None, None, accum_loss))
