@@ -5,6 +5,7 @@ TESSERACT_DEP = 2
 BATCH_SIZE = 8
 SEQ_LENGTH = 8
 HIDDEN_SIZE = 8
+NUM_CLASSES = 3
 
 
 def check_equal(A, B):

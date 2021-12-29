@@ -4,7 +4,7 @@ import torch.multiprocessing as mp
 
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
-from checks_2p5d.check_layer_2p5d import check_linear, check_layernorm, check_attention, check_mlp, check_transformerlayer
+from checks_2p5d.check_layer_2p5d import check_linear, check_layernorm, check_classifier
 from checks_2p5d.check_operation_2p5d import check_AB, check_ABT, check_ATB
 from functools import partial
 
@@ -12,7 +12,7 @@ from functools import partial
 CONFIG = dict(
     parallel=dict(
         pipeline=dict(size=1),
-        tensor=dict(size=8, mode='2.5d', depth=2),
+        tensor=dict(size=4, mode='2.5d', depth=1),
     ),
 )
 
@@ -26,9 +26,7 @@ def check_operations():
 def check_layer():
     check_linear()
     check_layernorm()
-    check_attention()
-    check_mlp()
-    check_transformerlayer()
+    check_classifier()
 
 
 def check_layer_and_operation(rank, world_size):
@@ -47,7 +45,7 @@ def check_layer_and_operation(rank, world_size):
 
 @pytest.mark.dist
 def test_2p5d():
-    world_size = 8
+    world_size = 4
     run_func = partial(check_layer_and_operation, world_size=world_size)
     mp.spawn(run_func, nprocs=world_size)
 

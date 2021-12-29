@@ -6,9 +6,9 @@ import torch
 import torch.multiprocessing as mp
 
 from colossalai.core import global_context as gpc
-from colossalai.initialize import launch, get_default_parser
-from checks_2d.check_layer_2d import check_linear, check_layernorm, check_attention, check_mlp, check_transformerlayer
-from checks_2d.check_operation_2d import check_AB, check_ABT, check_ATB
+from colossalai.initialize import launch
+from checks_2d.check_layer_2d import *
+from checks_2d.check_operation_2d import *
 from functools import partial
 
 
@@ -32,10 +32,7 @@ def check_operations():
 def check_layer():
     check_linear()
     check_layernorm()
-    check_attention()
-    check_mlp()
-    check_transformerlayer()
-
+    check_classifier()
 
 def check_layer_and_operation(rank, world_size):
     launch(config=CONFIG,
@@ -45,7 +42,7 @@ def check_layer_and_operation(rank, world_size):
            port=29921,
            backend='nccl')
 
-    check_operations()
+    # check_operations()
     check_layer()
     gpc.destroy()
     torch.cuda.empty_cache()

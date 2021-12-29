@@ -1,22 +1,22 @@
+import os
 from pathlib import Path
-from colossalai.logging import get_dist_logger
+
 import colossalai
 import torch
-import os
 from colossalai.core import global_context as gpc
-from colossalai.utils import get_dataloader, MultiTimer
+from colossalai.logging import get_dist_logger
+from colossalai.nn import CosineAnnealingLR
+from colossalai.nn.metric import Accuracy
+from colossalai.trainer import Trainer, hooks
+from colossalai.utils import MultiTimer, get_dataloader
 from torchvision import transforms
-from colossalai.trainer import hooks, Trainer
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet34
-from colossalai.nn import CosineAnnealingLR
 from tqdm import tqdm
 
 
 def main():
-    colossalai.launch_from_torch(config='./config.py',
-                                 host='localhost',
-                                 port=29500)
+    colossalai.launch_from_torch(config='./config.py')
 
     logger = get_dist_logger()
 
@@ -93,7 +93,7 @@ def main():
     hook_list = [
         hooks.LossHook(),
         hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=True),
-        hooks.AccuracyHook(),
+        hooks.AccuracyHook(accuracy_func=Accuracy()),
         hooks.LogMetricByEpochHook(logger),
         hooks.LogMemoryByEpochHook(logger),
         hooks.LogTimingByEpochHook(timer, logger),
