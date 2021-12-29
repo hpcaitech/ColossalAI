@@ -23,7 +23,7 @@ BATCH_SIZE = 16
 NUM_EPOCHS = 60
 WARMUP_EPOCHS = 5
 CONFIG = dict(parallel=dict(pipeline=2, tensor=dict(size=2, mode='1d')),
-              fp16=dict(mode=AMP_TYPE.TORCH),
+              fp16=dict(mode=AMP_TYPE.NAIVE),
               gradient_accumulation=2)
 
 

@@ -65,6 +65,7 @@ class GradAccumOptimizer(ColossalaiOptimizer):
             self.optim.backward(scaled_loss)
 
     def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+        self.accumulate_step += 1
         no_sync = self.is_torch_ddp and self.accumulate_step < self.accumulate_size
 
         if no_sync:
@@ -81,7 +82,7 @@ class GradAccumDataloader():
     be update only twice at step 4 and step 8. The last two batches of data do not form a complete 4-step cycle.
     Thus, they will be automatically skipped by this class. If the dataloader is not standard PyTorch dataloader, 
     (e.g. Dali dataloader), this class will automatically consume (load data for nothing) the remaining 2 batches.
-    
+
     :param dataloader: your dataloader object
     :type dataloader: Iterable
     :param accumulate_size: the number of steps to accumulate gradients
