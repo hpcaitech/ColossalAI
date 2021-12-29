@@ -1,4 +1,4 @@
-from colossalai.nn.layer.parallel_2p5d import reduce_by_batch_2p5d, split_batch_2p5d
+from colossalai.nn.layer.parallel_2p5d import reduce_by_batch_2p5d
 from colossalai.nn.layer.parallel_2p5d._utils import assert_tesseract_initialization
 from colossalai.registry import LOSSES
 from torch.nn.functional import cross_entropy
@@ -19,11 +19,8 @@ class CrossEntropyLoss2p5D(_Loss):
         self.loss_kwargs = kwargs
 
     def forward(self, logits, targets):
-        batch_size = targets.size(0)
-        targets = split_batch_2p5d(targets)
-        loss = cross_entropy(logits, targets, reduction='sum', *self.loss_args, **self.loss_kwargs)
+        loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
         if self.reduction_mean:
-            loss = loss.sum()
-            loss = reduce_by_batch_2p5d.apply(loss)
-            loss /= batch_size
+            loss = loss.mean()
+            loss = reduce_by_batch_2p5d.apply(loss, True)
         return loss

@@ -2,6 +2,7 @@ from torch import nn
 from torch.nn.modules.loss import *
 from torch.nn.modules.loss import _Loss
 
+from colossalai.nn.layer.utils import get_tensor_parallel_mode 
 from .loss_2d import CrossEntropyLoss2D
 from .loss_2p5d import CrossEntropyLoss2p5D
 from .loss_3d import CrossEntropyLoss3D
@@ -14,9 +15,10 @@ _parallel_cross_entropy = {
 
 
 class CrossEntropyLoss(_Loss):
-    def __init__(self, reduction: bool = True, tensor_parallel: str = None, *args, **kwargs):
+    def __init__(self, reduction: bool = True, *args, **kwargs):
         super().__init__()
-        if tensor_parallel in [None, '1d']:
+        tensor_parallel = get_tensor_parallel_mode()
+        if tensor_parallel in ['None', '1d']:
             reduction = 'mean' if reduction else 'none'
             self.loss = nn.CrossEntropyLoss(reduction=reduction, *args, **kwargs)
         else:

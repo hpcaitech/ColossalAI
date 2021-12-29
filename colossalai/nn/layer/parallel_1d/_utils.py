@@ -1,12 +1,21 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import os
 
 import torch
 import torch.distributed as dist
-
+from colossalai.constants import PARALLEL_INPUT_1D
 from colossalai.core import global_context as gpc
 
-from .._common_utils import divide
+from ..utils import divide
+
+
+def set_parallel_input(input_parallel: bool):
+    os.environ[PARALLEL_INPUT_1D] = 'true' if input_parallel else ''
+
+
+def get_parallel_input():
+    return bool(os.environ[PARALLEL_INPUT_1D])
 
 
 def vocab_range_from_per_partition_vocab_size(per_partition_vocab_size, rank):

@@ -2,18 +2,18 @@
 # -*- encoding: utf-8 -*-
 
 import os
-import pytest
-import torch
-import torch.multiprocessing as mp
+from functools import partial
 from pathlib import Path
 
 import colossalai
+import pytest
+import torch
+import torch.multiprocessing as mp
 from colossalai.core import global_context as gpc
-from colossalai.utils import get_dataloader
+from colossalai.utils import free_port, get_dataloader
 from torchvision import transforms
-from torchvision.models import resnet18
 from torchvision.datasets import CIFAR10
-from functools import partial
+from torchvision.models import resnet18
 
 BATCH_SIZE = 16
 IMG_SIZE = 224
@@ -46,12 +46,12 @@ CONFIG = dict(
 )
 
 
-def run_dist(rank, world_size):
+def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG,
                       rank=rank,
                       world_size=world_size,
                       host='localhost',
-                      port=29941,
+                      port=port,
                       backend='nccl')
 
     # build model
@@ -106,7 +106,7 @@ def run_dist(rank, world_size):
 @pytest.mark.dist
 def test_zero_level_3():
     world_size = 4
-    run_func = partial(run_dist, world_size=world_size)
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

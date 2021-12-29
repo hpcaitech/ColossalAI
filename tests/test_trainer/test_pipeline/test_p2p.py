@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from functools import partial
+
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-
 from colossalai.communication import (recv_backward, recv_forward,
                                       recv_tensor_meta, send_backward,
                                       send_backward_recv_forward, send_forward,
@@ -15,8 +16,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
-from functools import partial
+from colossalai.utils import free_port, get_current_device
 
 BATCH_SIZE = 16
 SEQ_LENGTH = 64
@@ -123,13 +123,13 @@ def check_comm(size, rank, prev_rank, next_rank, up_group, down_group, logger):
     check_forward_backward(tensor, grad, rank, logger)
 
 
-def run_check(rank, world_size):
+def run_check(rank, world_size, port):
     launch(
         config=CONFIG,
         rank=rank,
         world_size=world_size,
         host='localhost',
-        port=29932,
+        port=port,
         backend='nccl'
     )
     logger = get_dist_logger()
@@ -154,7 +154,7 @@ def run_check(rank, world_size):
 @pytest.mark.dist
 def test_p2p():
     world_size = 4
-    run_func = partial(run_check, world_size=world_size)
+    run_func = partial(run_check, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

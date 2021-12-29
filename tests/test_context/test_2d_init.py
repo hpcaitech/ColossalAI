@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from functools import partial
+from pathlib import Path
+
 import pytest
 import torch
 import torch.multiprocessing as mp
-
 from colossalai import launch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from functools import partial
-from pathlib import Path
+from colossalai.utils import free_port
 
 CONFIG_PATH = Path(__file__).parent.joinpath('configs/parallel_2d_init.py').absolute()
 
@@ -87,7 +88,7 @@ def test_2d_init():
     test_fn = partial(init_2d,
                       world_size=world_size,
                       backend='gloo',
-                      port='29900',
+                      port=free_port(),
                       host='localhost'
                       )
     mp.spawn(test_fn, nprocs=world_size)

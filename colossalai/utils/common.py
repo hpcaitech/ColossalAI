@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import random
+import socket
 
 import torch
 from torch._six import inf
@@ -9,15 +11,14 @@ try:
 except:
     pass
 
-import torch.distributed as dist
 from contextlib import contextmanager
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from .multi_tensor_apply import multi_tensor_applier
-from colossalai.constants import IS_TENSOR_PARALLEL, TENSOR_PARALLEL_ATTRIBUTES, NUM_PARTITIONS
+
 import torch.distributed as dist
+from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+
+from .multi_tensor_apply import multi_tensor_applier
 
 
 def print_rank_0(msg: str, logger=None):
@@ -31,6 +32,18 @@ def print_rank_0(msg: str, logger=None):
             print(msg, flush=True)
         else:
             logger.info(msg)
+
+
+def free_port():
+    while True:
+        try:
+            sock = socket.socket()
+            port = random.randint(20000, 65000)
+            sock.bind(('localhost', port))
+            sock.close()
+            return port
+        except Exception:
+            continue
 
 
 def sync_model_param_in_dp(model):

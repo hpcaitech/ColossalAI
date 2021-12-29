@@ -159,14 +159,12 @@ def train_imagenet():
                 os.mkdir(log_path)
             logger.log_to_file(log_path)
 
-    tp = gpc.config.parallel.tensor.mode
-
-    model = vit_small_patch16_224(tensor_parallel=tp, num_classes=100, init_method='jax')
+    model = vit_small_patch16_224(num_classes=100, init_method='jax')
 
     train_dataloader = build_dali_train(gpc.config.BATCH_SIZE // gpc.data_parallel_size)
     test_dataloader = build_dali_test(gpc.config.BATCH_SIZE // gpc.data_parallel_size)
 
-    criterion = CrossEntropyLoss(label_smoothing=0.1, tensor_parallel=tp)
+    criterion = CrossEntropyLoss(label_smoothing=0.1)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=gpc.config.LEARNING_RATE, weight_decay=gpc.config.WEIGHT_DECAY)
 
@@ -192,7 +190,7 @@ def train_imagenet():
         LogMetricByStepHook(),
         # LogTimingByEpochHook(timer=timer, logger=logger),
         # LogMemoryByEpochHook(logger=logger),
-        AccuracyHook(accuracy_func=Accuracy(tensor_parallel=tp)),
+        AccuracyHook(accuracy_func=Accuracy()),
         LossHook(),
         ThroughputHook(),
         LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=True)
