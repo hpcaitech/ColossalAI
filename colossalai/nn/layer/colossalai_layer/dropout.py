@@ -1,16 +1,11 @@
-from typing import Optional
+from contextlib import nullcontext
 
 import torch.nn as nn
 from colossalai.context import ParallelMode, seed
 from colossalai.utils import conditional_context
 
-from ... import init as init
 from ..parallel_1d import *
-from ..parallel_2d import *
-from ..parallel_2p5d import *
-from ..parallel_3d import *
 from ..utils import get_tensor_parallel_mode
-from ..vanilla import *
 
 
 class Dropout(nn.Module):
@@ -23,5 +18,6 @@ class Dropout(nn.Module):
             self.drop = nn.Dropout(p, inplace)
 
     def forward(self, *args):
-        with conditional_context(seed(ParallelMode.TENSOR), enable=self.tensor_parallel not in ['None', '1d']):
+        cm = nullcontext() if self.tensor_parallel in ['None', '1d'] else seed(ParallelMode.TENSOR)
+        with cm:
             return self.drop(*args)

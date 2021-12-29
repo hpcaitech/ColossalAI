@@ -3,6 +3,7 @@
 
 import math
 import numbers
+from contextlib import nullcontext
 from typing import Callable, Tuple
 
 import torch
@@ -12,12 +13,12 @@ from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils import get_current_device, conditional_context
+from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch.nn.parameter import Parameter
 
-from ..utils import divide, set_tensor_parallel_attribute_by_partition
 from ..base_layer import ParallelLayer
+from ..utils import divide, set_tensor_parallel_attribute_by_partition
 from ._operation import FusedLayerNormAffineFunction1D
 from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
                      split_forward_gather_backward)
@@ -45,7 +46,6 @@ class Linear1D(torch.nn.Module):
                                       skip_bias_add=skip_bias_add,
                                       weight_initializer=weight_initializer,
                                       bias_initializer=bias_initializer)
-            set_parallel_input(True)
         else:
             self.layer = Linear1D_Row(in_features,
                                       out_features,
@@ -55,7 +55,6 @@ class Linear1D(torch.nn.Module):
                                       skip_bias_add=skip_bias_add,
                                       weight_initializer=weight_initializer,
                                       bias_initializer=bias_initializer)
-            set_parallel_input(False)
 
     @property
     def weight(self):
@@ -187,6 +186,7 @@ class Linear1D_Col(ParallelLayer):
         with seed(ParallelMode.TENSOR):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
+        set_parallel_input(True)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
@@ -268,6 +268,7 @@ class Linear1D_Row(ParallelLayer):
         with seed(ParallelMode.TENSOR):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
+        set_parallel_input(False)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
@@ -379,6 +380,7 @@ class Dropout1D(ParallelLayer):
         self.inplace = inplace
 
     def forward(self, input_: Tensor) -> Tensor:
-        with conditional_context(seed(ParallelMode.TENSOR), enable=self.parallel_input):
+        cm = nullcontext() if not self.parallel_input else seed(ParallelMode.TENSOR)
+        with cm:
             output = F.dropout(input_, self.p, self.training, self.inplace)
         return output

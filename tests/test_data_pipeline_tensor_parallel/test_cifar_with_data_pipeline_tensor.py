@@ -78,7 +78,6 @@ def run_trainer(rank, world_size, port):
     hook_list = [
         hooks.LossHook(),
         hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=False),
-        hooks.AccuracyHook(accuracy_func=Accuracy()),
         hooks.LogMetricByEpochHook(logger),
     ]
 

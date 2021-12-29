@@ -13,11 +13,10 @@ from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch.nn import Parameter
 
-from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ..base_layer import ParallelLayer
-from ._operation import (Add_Bias_2p5D, Matmul_AB_2p5D, all_gather_weight_2p5d, classifier_2p5d, layernorm_2p5d,
-                         split_batch_2p5d)
-from ._utils import assert_tesseract_initialization, get_tesseract_dim_dep_from_env
+from ..utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
+from ._operation import (Add_Bias_2p5D, Matmul_AB_2p5D, all_gather_weight_2p5d, classifier_2p5d, layernorm_2p5d)
+from ._utils import (assert_tesseract_initialization, get_tesseract_dim_dep_from_env)
 
 
 @LAYERS.register_module
@@ -269,8 +268,6 @@ class PatchEmbedding2p5D(ParallelLayer):
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-        input_ = split_batch_2p5d(input_)
-
         weight = all_gather_weight_2p5d.apply(self.weight, 0, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
         bias = all_gather_weight_2p5d.apply(self.bias, 0, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
 
@@ -330,8 +327,6 @@ class Embedding2p5D(ParallelLayer):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_batch_2p5d(input_)
-
         weight = all_gather_weight_2p5d.apply(self.weight, -1, self.tesseract_dim, ParallelMode.PARALLEL_2P5D_COL)
 
         output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)

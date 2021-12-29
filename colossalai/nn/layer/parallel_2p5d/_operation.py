@@ -22,7 +22,7 @@ def get_parallel_rank(parallel_mode: ParallelMode):
     return gpc.get_local_rank(parallel_mode)
 
 
-def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
     return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
                        dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
 
@@ -151,10 +151,7 @@ class Matmul_AB_2p5D(torch.autograd.Function):
         for i in range(tesseract_dim):
             if i != tesseract_dim - 1:
                 A_list[1 - cur].copy_(A)
-                opa[1 - cur] = dist.broadcast(A_list[1 - cur],
-                                              src=src_a + 1,
-                                              group=row_group,
-                                              async_op=True)
+                opa[1 - cur] = dist.broadcast(A_list[1 - cur], src=src_a + 1, group=row_group, async_op=True)
                 B_list[1 - cur].copy_(B)
                 opb[1 - cur] = dist.broadcast(B_list[1 - cur],
                                               src=src_b + tesseract_dim,
@@ -356,10 +353,7 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
         for i in range(tesseract_dim):
             if i != tesseract_dim - 1:
                 A_list[1 - cur].copy_(A)
-                opa[1 - cur] = dist.broadcast(A_list[1 - cur],
-                                              src=src_a + 1,
-                                              group=row_group,
-                                              async_op=True)
+                opa[1 - cur] = dist.broadcast(A_list[1 - cur], src=src_a + 1, group=row_group, async_op=True)
 
             if opr[cur] is not None:
                 opr[cur].wait()
@@ -564,7 +558,9 @@ class SplitFirst(torch.autograd.Function):
         return grad, None, None
 
 
-def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+    if input_.size(dim) <= 1:
+        return input_
     return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
                        dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
 
@@ -572,17 +568,28 @@ def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
 class reduce_by_batch_2p5d(torch.autograd.Function):
     """All-reduce the input from the model parallel region."""
     @staticmethod
-    def symbolic(graph, input_):
-        dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_COL))
-        return input_
+    def symbolic(graph, input_, reduce_mean: bool = False):
+        output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)
+        if reduce_mean:
+            reduce_size = gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL)
+            return output / reduce_size
+        return output
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, input_):
-        dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_COL))
-        return input_.clone()
+    def forward(ctx, input_, reduce_mean: bool = False):
+        output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)
+        ctx.reduce_mean = reduce_mean
+        if reduce_mean:
+            reduce_size = gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL)
+            ctx.reduce_size = reduce_size
+            return output.clone() / reduce_size
+        return output.clone()
 
     @staticmethod
     @custom_bwd
-    def backward(ctx, grad_output):
-        return grad_output
+    def backward(ctx, output_grad):
+        if ctx.reduce_mean:
+            return output_grad / ctx.reduce_size, None
+        else:
+            return output_grad, None

@@ -7,7 +7,7 @@ from itertools import repeat
 
 import numpy as np
 import torch
-from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_MODE
+from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_MODE)
 from colossalai.utils import checkpoint
 from torch import Tensor, nn
 

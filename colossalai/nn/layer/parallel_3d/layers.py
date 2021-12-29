@@ -241,8 +241,6 @@ class PatchEmbedding3D(ParallelLayer):
         self.pos_embed.register_hook(self._sync_grad_hook)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_batch_3d(input_, self.input_parallel_mode, self.weight_parallel_mode)
-
         weight = broadcast_weight_3d_from_diagonal.apply(self.weight, self.input_parallel_mode,
                                                          self.weight_parallel_mode, self.output_parallel_mode)
         output = F.conv2d(input_, weight, self.bias, stride=self.patch_size)
@@ -302,8 +300,6 @@ class Embedding3D(ParallelLayer):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_batch_3d(input_, self.input_parallel_mode, self.weight_parallel_mode)
-
         weight = broadcast_weight_3d_from_diagonal.apply(self.weight, self.input_parallel_mode,
                                                          self.weight_parallel_mode, self.output_parallel_mode)
         output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)

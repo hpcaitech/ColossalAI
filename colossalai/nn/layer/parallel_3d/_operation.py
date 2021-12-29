@@ -175,10 +175,12 @@ class layernorm_3d(torch.autograd.Function):
         return input_grad, weight_grad, bias_grad, None, None, None, None, None
 
 
-def split_batch_3d(input_: Tensor,
-                   input_parallel_mode: ParallelMode,
-                   weight_parallel_mode: ParallelMode,
-                   dim: int = 0) -> Tensor:
+def split_tensor_3d(input_: Tensor,
+                   dim: int = 0,
+                   input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
+                   weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT) -> Tensor:
+    if input_.size(dim) <= 1:
+        return input_
     output = torch.chunk(input_, gpc.get_world_size(weight_parallel_mode),
                          dim=dim)[gpc.get_local_rank(weight_parallel_mode)].contiguous()
     output = torch.chunk(output, gpc.get_world_size(input_parallel_mode),
@@ -189,15 +191,27 @@ def split_batch_3d(input_: Tensor,
 class reduce_by_batch_3d(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, input_: Tensor, input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode) -> Tensor:
+    def forward(ctx,
+                input_: Tensor,
+                input_parallel_mode: ParallelMode,
+                weight_parallel_mode: ParallelMode,
+                reduce_mean: bool = False) -> Tensor:
         output = all_reduce(input_, input_parallel_mode)
         output = all_reduce(output, weight_parallel_mode)
+        ctx.reduce_mean = reduce_mean
+        if reduce_mean:
+            reduce_size = gpc.get_world_size(input_parallel_mode) * gpc.get_world_size(weight_parallel_mode)
+            ctx.reduce_size = reduce_size
+            return output.clone() / reduce_size
         return output.clone()
 
     @staticmethod
     @custom_bwd
     def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        return output_grad, None, None
+        if ctx.reduce_mean:
+            return output_grad / ctx.reduce_size, None, None, None
+        else:
+            return output_grad, None, None, None
 
 
 class broadcast_weight_3d_from_diagonal(torch.autograd.Function):
