@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import Union, Callable
+from typing import List, Tuple, Union, Callable
 import inspect
 import torch.cuda
 from torch import Tensor
@@ -37,10 +37,12 @@ class PipelineSchedule(BaseSchedule):
 
     def __init__(self,
                  num_microbatches,
-                 batch_data_process_func: Callable = None):
+                 batch_data_process_func: Callable = None,
+                 tensor_shape: Union[torch.Size, List[int], Tuple[int]] = None):
         super().__init__(batch_data_process_func=batch_data_process_func)
         self.num_microbatches = num_microbatches
         self.dtype = torch.float
+        self.tensor_shape = tensor_shape
 
     def load_batch(self, data_iter):
         # Pipeline schedule just puts data in memory
@@ -218,9 +220,9 @@ class PipelineSchedule(BaseSchedule):
         else:
             accum_loss = None
         # Used for tensor meta information communication
-        ft_shape = None
+        ft_shape = self.tensor_shape
         bt_shape = None
-        fs_checker = True
+        fs_checker = self.tensor_shape is None
 
         # Run warmup forward passes.
         for i in range(num_warmup_microbatches):
@@ -316,7 +318,11 @@ class PipelineSchedule(BaseSchedule):
 
 
 class InterleavedPipelineSchedule(PipelineSchedule):
-    def __init__(self, num_microbatches, num_model_chunks, batch_data_process_func: Callable = None):
+    def __init__(self,
+                 num_microbatches,
+                 num_model_chunks,
+                 batch_data_process_func: Callable = None,
+                 tensor_shape: Union[torch.Size, List[int], Tuple[int]] = None):
         """A helper schedule class for pipeline parallelism running environment.
         It uses interleaved 1F1B strategy. Other properties are similar as
         :class:`NonPipelineSchedule`.
@@ -330,7 +336,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         """
         assert num_microbatches % gpc.get_world_size(ParallelMode.PIPELINE) == 0, \
             'num_microbatches must be an integer multiple of pipeline parallel world size'
-        super().__init__(num_microbatches, batch_data_process_func=batch_data_process_func)
+        super().__init__(num_microbatches, batch_data_process_func=batch_data_process_func, tensor_shape=tensor_shape)
         gpc.set_virtual_pipeline_parallel_size(num_model_chunks)
         gpc.set_virtual_pipeline_parallel_rank(0)
         self.num_model_chunks = num_model_chunks
@@ -403,9 +409,9 @@ class InterleavedPipelineSchedule(PipelineSchedule):
             accum_loss = None
 
         # Used for tensor meta information communication
-        input_tensor_shapes = [None for _ in range(len(model))]
+        input_tensor_shapes = [self.tensor_shape for _ in range(len(model))]
         output_tensor_shapes = [None for _ in range(len(model))]
-        send_tensor_shape_flags = [True for _ in range(len(model))]
+        send_tensor_shape_flags = [self.tensor_shape is None for _ in range(len(model))]
 
         pipeline_parallel_size = gpc.get_world_size(ParallelMode.PIPELINE)
         pipeline_parallel_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
