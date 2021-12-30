@@ -10,12 +10,13 @@ fp16 = dict(
     mode=AMP_TYPE.TORCH,
 )
 
-gradient_accumulation = 16
+gradient_accumulation = 2
 clip_grad_norm = 1.0
 
 dali = dict(
     # root='./dataset/ILSVRC2012_1k',
-    root='/project/scratch/p200012/dataset/ILSVRC2012_1k',
+    #root='/project/scratch/p200012/dataset/ILSVRC2012_1k',
+    root='/project/scratch/p200012/dataset/imagenet-100',
     gpu_aug=True,
     mixup_alpha=0.2
 )

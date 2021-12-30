@@ -2,7 +2,6 @@ import glob
 from math import log
 import os
 import colossalai
-from colossalai.nn.metric import Accuracy
 import torch
 
 from colossalai.context import ParallelMode
@@ -10,9 +9,10 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.trainer import Trainer, hooks
 from colossalai.nn.lr_scheduler import LinearWarmupLR
-from dataloader.imagenet_dali_dataloader import DaliDataloader
+from colossalai.nn.metric import Accuracy
+from dataloader.dali_dataloader import DaliDataloader
 from mixup import MixupLoss
-from timm.models import vit_base_patch16_224
+from timm.models import vit_small_patch16_224
 from myhooks import TotalBatchsizeHook
 
 
@@ -29,6 +29,7 @@ def build_dali_train():
         training=True,
         gpu_aug=gpc.config.dali.gpu_aug,
         cuda=True,
+        rand_aug=True,
         mixup_alpha=gpc.config.dali.mixup_alpha
     )
 
@@ -53,24 +54,29 @@ def build_dali_test():
 
 def main():
     # initialize distributed setting
-    parser = colossalai.get_default_parser()
-    args = parser.parse_args()
+    #os.environ['MASTER_ADDR'] = 'localhost'
+    #os.environ['MASTER_PORT'] = '12355npr'
 
-    # launch from slurm batch job
-    colossalai.launch_from_slurm(config=args.config,
-                                 host=args.host,
-                                 port=args.port,
-                                 backend=args.backend
-                                 )
-    # launch from torch    
-    # colossalai.launch_from_torch(config=args.config)
+
+    parser = colossalai.get_default_parser()
+    parser.add_argument('--from_torch', default=False, action='store_true')
+    args = parser.parse_args()
+    if args.from_torch:
+        colossalai.launch_from_torch(config=args.config,
+                                     host=os.environ['MASTER_ADDR'],
+                                     port=os.environ['MASTER_PORT'])
+    else:
+        colossalai.launch_from_slurm(config=args.config,
+                                     host=args.host,
+                                     port=29500,
+                                     seed=42)
 
     # get logger
     logger = get_dist_logger()
     logger.info("initialized distributed environment", ranks=[0])
 
     # build model
-    model = vit_base_patch16_224(drop_rate=0.1)
+    model = vit_small_patch16_224(drop_rate=0.1)
 
     # build dataloader
     train_dataloader = build_dali_train()
