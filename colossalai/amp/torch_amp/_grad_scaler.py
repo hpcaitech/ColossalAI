@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from colossalai.context import ParallelMode
 import torch.distributed as dist
 from colossalai.core import global_context as gpc
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 
 class _MultiDeviceReplicator(object):
@@ -247,10 +248,14 @@ class GradScaler(object):
                                                                          device),
                                                                      per_device_inv_scale.get(device))
         # For tensor parallel paramters it should be all-reduced over tensor parallel process group
-        if gpc.is_initialized(ParallelMode.TENSOR) and gpc.get_world_size(ParallelMode.TENSOR) > 1:
-            for tensor in per_device_found_inf._per_device_tensors.values():
-                dist.all_reduce(tensor, op=dist.ReduceOp.MAX,
-                                group=gpc.get_group(ParallelMode.TENSOR))
+        if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
+            vals = [val for val in per_device_found_inf._per_device_tensors.values()]
+            coalesced = _flatten_dense_tensors(vals)
+            dist.all_reduce(coalesced,
+                            op=dist.ReduceOp.MAX,
+                            group=gpc.get_group(ParallelMode.MODEL))
+            for buf, synced in zip(vals, _unflatten_dense_tensors(coalesced, vals)):
+                buf.copy_(synced)
         return per_device_found_inf._per_device_tensors
 
     def unscale_(self, optimizer):

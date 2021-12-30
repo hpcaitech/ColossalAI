@@ -5,8 +5,7 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from torch import Tensor
-from typing import Iterable, Union, List, Callable
+from typing import Iterable,  Callable
 from .._base_engine import Engine
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
@@ -32,18 +31,17 @@ class BaseSchedule(ABC):
         return element
 
     def _move_to_device(self, data):
-        if isinstance(data, (tuple, list)):
-            data = tuple([self._move_tensor(d) for d in data])
-        elif torch.is_tensor(data):
-            data = data.to(get_current_device()).detach()
+        if isinstance(data, dict):
+            data = {k: self._move_tensor(v) for k, v in data.items()}
+        else:
+            data = self._move_tensor(data)
         return data
 
-    def _to_list(self, data):
-        if torch.is_tensor(data):
-            return [data]
-        return data
+    @staticmethod
+    def _check_sanity(data, tag):
+        assert isinstance(data, (torch.Tensor, dict)), f'{tag} must be torch.Tensor or dict'
 
-    def load_batch(self, data_iter):
+    def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are
         already in the same GPU as where the model's.
 
@@ -58,13 +56,17 @@ class BaseSchedule(ABC):
             data, label = self.batch_data_process_func(batch_data)
         else:
             data, label = batch_data
-
-        if isinstance(label, (tuple, list)):
-            self.batch_size = label[0].size(0)
+        self._check_sanity(data, 'data')
+        self._check_sanity(label, 'label')
+        if isinstance(data, torch.Tensor):
+            self.batch_size = data.size(0)
         else:
-            self.batch_size = label.size(0)
-        data, label = self._to_list(split_batch(data)), self._to_list(split_batch(label))
-        return self._move_to_device(data), self._move_to_device(label)
+            self.batch_size = next(iter(data.values())).size(0)    
+        data, label = split_batch(data), split_batch(label)
+        if to_gpu:
+            return self._move_to_device(data), self._move_to_device(label)
+        return data, label
+
 
     def pre_processing(self, engine: Engine):
         """To perform actions before running the schedule.
@@ -76,7 +78,8 @@ class BaseSchedule(ABC):
                               engine: Engine,
                               data_iter: Iterable,
                               forward_only: bool,
-                              return_loss: bool = True
+                              return_loss: bool = True,
+                              return_output_label: bool = True
                               ):
         """The process function over a batch of dataset for training or evaluation.
 
@@ -85,5 +88,24 @@ class BaseSchedule(ABC):
         :param labels: ground truth
         :param forward_only: If True, the process won't include backward
         :param return_loss: If False, the loss won't be returned
+        :param return_output_label: If False, the output and label won't be returned
         """
         pass
+
+    @staticmethod
+    def _call_engine(engine, inputs):
+        if isinstance(inputs, torch.Tensor):
+            return engine(inputs)
+        else:
+            return engine(**inputs)
+
+    @staticmethod
+    def _call_engine_criterion(engine, outputs, labels):
+        assert isinstance(outputs, (torch.Tensor, list, tuple)
+                          ), f'Expect output of model is (torch.Tensor, list, tuple), got {type(outputs)}'
+        if isinstance(outputs, torch.Tensor):
+            outputs = (outputs, )
+        if isinstance(labels, torch.Tensor):
+            return engine.criterion(*outputs, labels)
+        else:
+            return engine.criterion(*outputs, **labels)

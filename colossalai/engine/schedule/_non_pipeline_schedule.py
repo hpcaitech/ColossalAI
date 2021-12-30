@@ -5,9 +5,7 @@ from typing import Iterable
 
 import torch
 
-import torch.nn as nn
 from colossalai.engine import Engine
-from torch.optim import Optimizer
 from ._base_schedule import BaseSchedule
 from colossalai.utils import conditional_context
 
@@ -27,18 +25,21 @@ class NonPipelineSchedule(BaseSchedule):
                               engine: Engine,
                               data_iter: Iterable,
                               forward_only: bool = False,
-                              return_loss: bool = True):
+                              return_loss: bool = True,
+                              return_output_label: bool = True):
         """The process function that loads loads a batch of dataset and feeds it to the model.
         The returned labels and loss will None if :attr:`return_loss` is False.
         :param engine: Model for training and inference
         :param data_iter: Data iterator of the dataloader, e.g. iter(dataloader)
         :param forward_only: If True, the model is run for the forward pass, else back propagation will be executed
         :param return_loss: Loss will be returned if True
+        :param return_output_label: Output and label will be returned if True
         :type engine: Iterator
         :type data_iter: Iterator
         :type forward_only: bool, optional
         :type return_loss: bool, optional
-        
+        :type return_output_label: bool, optional
+
         :return: (output, label, loss)
         :rtype: Tuple[:class:`torch.Tensor`]
         """
@@ -48,16 +49,20 @@ class NonPipelineSchedule(BaseSchedule):
 
         # forward
         with conditional_context(torch.no_grad(), enable=forward_only):
-            output = engine(*data)
-            if not isinstance(output, (tuple, list)):
-                output = (output,)
+            output = self._call_engine(engine, data)
             if return_loss:
-                loss = engine.criterion(*output, *label)
+                loss = self._call_engine_criterion(engine, output, label)
 
         if not forward_only:
             engine.backward(loss)
 
-        if return_loss:
-            return output, label, loss
+        if return_output_label:
+            if return_loss:
+                return output, label, loss
+            else:
+                return output, label, None
         else:
-            return output, None, None
+            if return_loss:
+                return None, None, loss
+            else:
+                return None, None, None

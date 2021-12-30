@@ -14,10 +14,12 @@ class ParallelMode(Enum):
     # common parallel
     DATA = 'data'
 
+    # model parallel - containing tensor and pipeline parallel groups
+    # this is added to facilitate amp and grad clipping in hybrid parallel
+    MODEL = 'model'
+
     # pipeline parallel
     PIPELINE = 'pipe'
-    PIPELINE_PREV = 'pipe_prev'
-    PIPELINE_NEXT = 'pipe_next'
 
     # containing all ranks in tensor parallel
     TENSOR = 'tensor'

@@ -359,12 +359,7 @@ class FP16Optimizer(Optimizer):
         # Update across all model parallel instances.
         torch.distributed.all_reduce(self.found_inf,
                                      op=torch.distributed.ReduceOp.MAX,
-                                     group=gpc.get_group(ParallelMode.TENSOR))
-
-        if is_using_pp():
-            torch.distributed.all_reduce(self.found_inf,
-                                         op=torch.distributed.ReduceOp.MAX,
-                                         group=gpc.get_group(ParallelMode.PIPELINE))
+                                     group=gpc.get_group(ParallelMode.MODEL))
 
         # Check for nan.
         found_inf_flag = (self.found_inf.item() > 0)

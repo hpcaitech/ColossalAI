@@ -112,7 +112,7 @@ def _binary_search(weights, num):
     return intervals
 
 
-def _partition_uniform(num_items, pipeline_parallel_size, num_chunks):
+def partition_uniform(num_items, pipeline_parallel_size, num_chunks):
     assert num_items % num_chunks == 0, \
         "Layer length should be divided by the number of chunks, otherwise parameter method is recomended"
 
@@ -134,11 +134,11 @@ def _partition_uniform(num_items, pipeline_parallel_size, num_chunks):
     return parts
 
 
-def _partition_balanced(weights, pipeline_parallel_size, num_chunks):
+def partition_balanced(weights, pipeline_parallel_size, num_chunks):
     num_total = pipeline_parallel_size * num_chunks
     num_items = len(weights)
     if num_items <= num_total:
-        return _partition_uniform(num_items, pipeline_parallel_size, num_chunks)
+        return partition_uniform(num_items, pipeline_parallel_size, num_chunks)
 
     intervals = _binary_search(weights, num_total)
 
@@ -151,7 +151,7 @@ def _partition_balanced(weights, pipeline_parallel_size, num_chunks):
     return parts
 
 
-def _count_layer_params(layers):
+def count_layer_params(layers):
     """Count the number of parameters in each layer
     """
     param_counts = [0] * len(layers)
@@ -201,11 +201,11 @@ def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method:
     # Make a partition
     if method == 'layer':
         num_layers = len(layers)
-        parts = _partition_uniform(num_layers, pipeline_parallel_size, num_chunks)
+        parts = partition_uniform(num_layers, pipeline_parallel_size, num_chunks)
     elif method == 'parameter':
-        param_counts = _count_layer_params(layers)
+        param_counts = count_layer_params(layers)
         # print_rank_0(param_counts)
-        parts = _partition_balanced(param_counts, pipeline_parallel_size, num_chunks)
+        parts = partition_balanced(param_counts, pipeline_parallel_size, num_chunks)
     else:
         raise ValueError("Method should be a pre-set string in [layer, parameter]")
 
@@ -250,7 +250,7 @@ def build_pipeline_model(layers: nn.Sequential, num_chunks: int = 1, verbose: bo
     """
     pipeline_parallel_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-    partitions = _partition_uniform(len(layers), pipeline_parallel_size, num_chunks)
+    partitions = partition_uniform(len(layers), pipeline_parallel_size, num_chunks)
     module_list = []
     for start, end in partitions[pipeline_rank]:
         module_list.append(nn.Sequential(*layers[start:end]))

@@ -394,6 +394,9 @@ class ParallelContext:
         # LSG: init data parallel process group for compatibility with other parallel module such as zero
         pg_init.append(dict(type=INITIALIZER_MAPPING['data']))
 
+        # LSG: init model parallel process group for compatibility with amp and clip grad
+        pg_init.append(dict(type=INITIALIZER_MAPPING['model']))
+
         if self.pipeline_parallel_size > 1:
             pg_init.append(dict(type=INITIALIZER_MAPPING['pipeline']))
         pg_init.append(dict(type=INITIALIZER_MAPPING['tensor']))

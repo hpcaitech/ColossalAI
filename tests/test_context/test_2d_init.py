@@ -33,6 +33,12 @@ def check_pipeline_parallel_rank(rank):
         assert gpc.get_local_rank(ParallelMode.PIPELINE) == 1
 
 
+def check_model_parallel_rank(rank):
+    for i in range(8):
+        if rank in [i, i+8]:
+            assert gpc.get_local_rank(ParallelMode.MODEL) == i
+
+
 def check_tensor_parallel_rank(rank):
     if rank in [0, 4, 8, 12]:
         assert gpc.get_local_rank(ParallelMode.TENSOR) == 0
@@ -75,6 +81,7 @@ def init_2d(rank, world_size, backend, port, host):
     check_data_parallel_rank(rank)
     check_2d_parallel_rank(rank)
     check_pipeline_parallel_rank(rank)
+    check_model_parallel_rank(rank)
     gpc.destroy()
     torch.cuda.empty_cache()
 

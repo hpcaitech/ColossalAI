@@ -155,22 +155,12 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in params)
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-        ops = []
         # Take max across all model-parallel GPUs.
-        if gpc.is_initialized(ParallelMode.TENSOR) and gpc.get_world_size(ParallelMode.TENSOR) > 1:
-            ops.append(dist.all_reduce(total_norm_cuda,
-                                       op=dist.ReduceOp.MAX,
-                                       group=gpc.get_group(
-                                           ParallelMode.TENSOR),
-                                       async_op=True))
-        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
-            ops.append(dist.all_reduce(total_norm_cuda,
-                                       op=dist.ReduceOp.MAX,
-                                       group=gpc.get_group(
-                                           ParallelMode.PIPELINE),
-                                       async_op=True))
-        for req in ops:
-            req.wait()
+        if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=gpc.get_group(ParallelMode.MODEL),
+                            async_op=False)
         total_norm = total_norm_cuda[0].item()
     else:
         tensor_parallel_grads = []
