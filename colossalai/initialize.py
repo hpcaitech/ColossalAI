@@ -342,12 +342,12 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         for param in model.parameters():
             if getattr(param, 'pipeline_shared_module_pg', None) is not None:
                 if gradient_handler_cfg is None:
-                    gradient_handler_cfg = [dict(type='PipelineParallelGradientHandler')]
+                    gradient_handler_cfg = [dict(type='PipelineSharedModuleGradientHandler')]
                 else:
-                    gradient_handler_cfg.append(dict(type='PipelineParallelGradientHandler'))
+                    gradient_handler_cfg.append(dict(type='PipelineSharedModuleGradientHandler'))
                 if verbose:
                     logger.info(
-                        "pipeline_shared_module is detected, PipelineParallelGradientHandler is automatically "
+                        "pipeline_shared_module is detected, PipelineSharedModuleGradientHandler is automatically "
                         "added even though not specified in the configuration",
                         ranks=[0])
                 break

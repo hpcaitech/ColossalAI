@@ -75,7 +75,7 @@ class PipelineSchedule(BaseSchedule):
             model = model.model
         sig = inspect.signature(model.forward)
         for p in sig.parameters.values():
-            assert p.kind != inspect.Parameter.VAR_POSITIONAL, 'var positional argument is not supported'
+            assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
 
     @staticmethod
     def _call_engine(model, input_tensor, batch_data):
@@ -351,7 +351,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
                 model = model.model
             sig = inspect.signature(model.forward)
             for p in sig.parameters.values():
-                assert p.kind != inspect.Parameter.VAR_POSITIONAL, 'var positional argument is not supported'
+                assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
 
     def load_batch(self, data_iter):
         super().load_batch(data_iter)

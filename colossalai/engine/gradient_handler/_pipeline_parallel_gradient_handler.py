@@ -10,7 +10,7 @@ from collections import defaultdict
 
 
 @GRADIENT_HANDLER.register_module
-class PipelineParallelGradientHandler(BaseGradientHandler):
+class PipelineSharedModuleGradientHandler(BaseGradientHandler):
     """A helper class to handle all-reduce operations in sub parallel groups.
     A all-reduce collective communication will be operated in 
     :func:`handle_gradient` among all sub pipeline parallel groups.
