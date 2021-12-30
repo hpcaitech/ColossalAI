@@ -89,7 +89,7 @@ class ViTEmbedding(nn.Module):
 
 
 @LAYERS.register_module
-class ViTSelfAttention(CheckpointModule):
+class ViTSelfAttention(nn.Module):
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -97,9 +97,8 @@ class ViTSelfAttention(CheckpointModule):
                  dropout: float,
                  bias: bool = True,
                  dtype: dtype = None,
-                 checkpoint: bool = False,
                  init_method: str = 'torch'):
-        super().__init__(checkpoint)
+        super().__init__()
         self.attention_head_size = dim // num_heads
         self.query_key_value = col_nn.Linear(dim,
                                              3 * dim,
@@ -111,7 +110,7 @@ class ViTSelfAttention(CheckpointModule):
         self.dropout = col_nn.Dropout(dropout)
         self.softmax = nn.Softmax(dim=-1)
 
-    def _forward(self, x):
+    def forward(self, x):
         qkv = self.query_key_value(x)
         all_head_size = qkv.shape[-1] // 3
         num_attention_heads = all_head_size // self.attention_head_size
@@ -138,7 +137,7 @@ class ViTSelfAttention(CheckpointModule):
 
 
 @LAYERS.register_module
-class ViTMLP(CheckpointModule):
+class ViTMLP(nn.Module):
     def __init__(self,
                  dim: int,
                  mlp_ratio: int,
@@ -146,9 +145,8 @@ class ViTMLP(CheckpointModule):
                  dropout: float,
                  dtype: dtype = None,
                  bias: bool = True,
-                 checkpoint: bool = False,
                  init_method: str = 'torch'):
-        super().__init__(checkpoint)
+        super().__init__()
         self.dense_1 = col_nn.Linear(dim,
                                      mlp_ratio * dim,
                                      dtype=dtype,
@@ -163,7 +161,7 @@ class ViTMLP(CheckpointModule):
                                      **_init_rules[init_method]['transformer'])
         self.dropout_2 = col_nn.Dropout(dropout)
 
-    def _forward(self, x):
+    def forward(self, x):
         x = self.dense_1(x)
         x = self.activation(x)
         x = self.dropout_1(x)
@@ -192,22 +190,22 @@ class ViTHead(nn.Module):
             self.representation = None
             representation_size = dim
 
-        self.linear = col_nn.Classifier(representation_size,
-                                        num_classes,
-                                        dtype=dtype,
-                                        bias=bias,
-                                        **_init_rules[init_method]['head'])
+        self.dense = col_nn.Classifier(representation_size,
+                                       num_classes,
+                                       dtype=dtype,
+                                       bias=bias,
+                                       **_init_rules[init_method]['head'])
 
     def forward(self, x):
         x = x[:, 0]
         if self.representation is not None:
             x = self.representation(x)
-        x = self.linear(x)
+        x = self.dense(x)
         return x
 
 
 @LAYERS.register_module
-class ViTBlock(nn.Module):
+class ViTBlock(CheckpointModule):
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -216,32 +214,31 @@ class ViTBlock(nn.Module):
                  attention_dropout: float = 0.,
                  dropout: float = 0.,
                  drop_path: float = 0.,
+                 layernorm_epsilon: float = 1e-6,
                  dtype: dtype = None,
                  bias: bool = True,
                  checkpoint: bool = False,
                  init_method: str = 'torch'):
-        super().__init__()
-        self.norm1 = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype)
+        super().__init__(checkpoint)
+        self.norm1 = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
         self.attn = ViTSelfAttention(dim=dim,
                                      num_heads=num_heads,
                                      attention_dropout=attention_dropout,
                                      dropout=dropout,
                                      bias=bias,
                                      dtype=dtype,
-                                     checkpoint=checkpoint,
                                      init_method=init_method)
         self.drop_path = col_nn.DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.norm2 = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype)
+        self.norm2 = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
         self.mlp = ViTMLP(dim=dim,
                           mlp_ratio=mlp_ratio,
                           activation=activation,
                           dropout=dropout,
                           dtype=dtype,
                           bias=bias,
-                          checkpoint=checkpoint,
                           init_method=init_method)
 
-    def forward(self, x):
+    def _forward(self, x):
         x = x + self.drop_path(self.attn(self.norm1(x)))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
@@ -261,6 +258,7 @@ class VisionTransformer(nn.Module):
                  attention_dropout: float = 0.,
                  dropout: float = 0.1,
                  drop_path: float = 0.,
+                 layernorm_epsilon: float = 1e-6,
                  activation: Callable = nn.functional.gelu,
                  representation_size: int = None,
                  dtype: dtype = None,
@@ -295,7 +293,7 @@ class VisionTransformer(nn.Module):
             ) for i in range(depth)
         ]
 
-        norm = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype)
+        norm = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
 
         head = ViTHead(dim=dim,
                        num_classes=num_classes,
