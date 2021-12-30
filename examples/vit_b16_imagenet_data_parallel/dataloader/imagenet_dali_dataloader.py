@@ -104,9 +104,9 @@ class DaliDataloader(DALIClassificationIterator):
                 img = lam * img + (1 - lam) * img[idx, :]
                 label_a, label_b = label, label[idx]
                 lam = torch.tensor([lam], device=img.device, dtype=img.dtype)
-                label = (label_a, label_b, lam)
+                label = {'targets_a': label_a, 'targets_b': label_b, 'lam': lam}
             else:
-                label = (label, label, torch.ones(
-                    1, device=img.device, dtype=img.dtype))
-            return (img,), label
-        return (img,), (label,)
+                label = {'targets_a': label, 'targets_b': label,
+                         'lam': torch.ones(1, device=img.device, dtype=img.dtype)}
+            return img, label
+        return img, label
