@@ -1,7 +1,7 @@
 name: Build
 on:
   pull_request:
-    types: [review_requested]
+    types: [review_requested, synchronize]
     branches:
       - "*"
 
@@ -13,7 +13,7 @@ jobs:
       image: nvcr.io/nvidia/pytorch:21.07-py3
       options: --gpus all --rm --ipc=host -v /data/cifar-10:/data/cifar-10
     timeout-minutes: 1200
-    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && toJson(github.event.pull_request.requested_reviewers) != '[]'
     steps:
       - name: Setup Environment
         run: |
