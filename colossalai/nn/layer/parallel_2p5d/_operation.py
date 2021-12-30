@@ -22,7 +22,7 @@ def get_parallel_rank(parallel_mode: ParallelMode):
     return gpc.get_local_rank(parallel_mode)
 
 
-def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
     return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
                        dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
 
@@ -120,30 +120,53 @@ class Matmul_AB_2p5D(torch.autograd.Function):
             ctx.save_for_backward(A, B)
 
         A_shape = A.shape
-        A = A.reshape((-1, A_shape[-1])).contiguous()
+        A = A.reshape((-1, A_shape[-1]))
         B_shape = B.shape
-        B = B.reshape((-1, B_shape[-1])).contiguous()
+        B = B.reshape((-1, B_shape[-1]))
         C_shape = (A.shape[0], B.shape[-1])
         C = torch.zeros(C_shape, dtype=A.dtype, device=get_current_device())
 
-        A_list = [torch.empty_like(A) for _ in range(gpc.get_world_size(row_parallel_mode) - 1)]
-        B_list = [torch.empty_like(B) for _ in range(gpc.get_world_size(col_parallel_mode) - 1)]
-        A_list.insert(gpc.get_local_rank(row_parallel_mode), A)
-        B_list.insert(gpc.get_local_rank(col_parallel_mode), B)
-        op_a = dist.all_gather(A_list, A, group=gpc.get_group(row_parallel_mode), async_op=True)
-        op_a.wait()
-        op_b = dist.all_gather(B_list, B, group=gpc.get_group(col_parallel_mode), async_op=True)
-        for op in [op_a, op_b]:
-            op.wait()
+        # use circular buffer to store the communication tensor
+        # 2 is enough for all cases
+        A_list = [torch.empty_like(A) for _ in range(2)]
+        B_list = [torch.empty_like(B) for _ in range(2)]
+
+        row_group = gpc.get_group(row_parallel_mode)
+        col_group = gpc.get_group(col_parallel_mode)
+
+        src_a = tesseract_dim * row_rank + tesseract_dim ** 2 * dep_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+                pipeline_parallel_rank * tensor_parallel_size
+        src_b = col_rank + tesseract_dim ** 2 * dep_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+                pipeline_parallel_rank * tensor_parallel_size
+
+        opa = [None] * 2
+        opb = [None] * 2
+
+        A_list[0].copy_(A)
+        B_list[0].copy_(B)
+        opa[0] = dist.broadcast(A_list[0], src=src_a, group=row_group, async_op=True)
+        opb[0] = dist.broadcast(B_list[0], src=src_b, group=col_group, async_op=True)
+        cur = 0
 
         for i in range(tesseract_dim):
-            src_a = i + tesseract_dim * row_rank
-            src_b = i + tesseract_dim * col_rank
-            src_a = src_a % tesseract_dim
-            src_b = src_b % tesseract_dim
-            A_temp = A_list[src_a]
-            B_temp = B_list[src_b]
-            torch.addmm(C, A_temp, B_temp, out=C)
+            if i != tesseract_dim - 1:
+                A_list[1 - cur].copy_(A)
+                opa[1 - cur] = dist.broadcast(A_list[1 - cur], src=src_a + 1, group=row_group, async_op=True)
+                B_list[1 - cur].copy_(B)
+                opb[1 - cur] = dist.broadcast(B_list[1 - cur],
+                                              src=src_b + tesseract_dim,
+                                              group=col_group,
+                                              async_op=True)
+
+            if opa[cur] is not None:
+                opa[cur].wait()
+            if opb[cur] is not None:
+                opb[cur].wait()
+
+            torch.addmm(C, A_list[cur], B_list[cur], out=C)
+            cur = 1 - cur
+            src_a += 1
+            src_b += tesseract_dim
         out = C.reshape(out_shape)
 
         if ctx:
@@ -201,20 +224,55 @@ class Matmul_ABT_2p5D(torch.autograd.Function):
         C_shape = (A.shape[0], B.shape[0])
         C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
 
-        for i in range(tesseract_dim):
-            B_temp = B.clone()
-            src_b = col_rank + i * tesseract_dim + dep_rank * (
-                        tesseract_dim ** 2) + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                    pipeline_parallel_rank * tensor_parallel_size
-            dist.broadcast(B_temp, src=src_b, group=gpc.get_group(col_parallel_mode))
-            C_temp = torch.matmul(A, B_temp.transpose(0, 1))
-            src_c = i + row_rank * tesseract_dim + dep_rank * (
-                        tesseract_dim ** 2) + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                    pipeline_parallel_rank * tensor_parallel_size
-            dist.reduce(C_temp, dst=src_c, group=gpc.get_group(row_parallel_mode))
-            if i == col_rank:
-                C = C_temp.clone()
+        # use circular buffer to store the communication tensor
+        # 2 is enough for all cases
+        B_list = [torch.empty_like(B) for _ in range(2)]
+        C_list = [torch.empty_like(C) for _ in range(2)]
 
+        row_group = gpc.get_group(row_parallel_mode)
+        col_group = gpc.get_group(col_parallel_mode)
+
+        src_b = col_rank + tesseract_dim ** 2 * dep_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+                pipeline_parallel_rank * tensor_parallel_size
+        src_c = tesseract_dim * row_rank + tesseract_dim ** 2 * dep_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+                pipeline_parallel_rank * tensor_parallel_size
+
+        opb = [None] * 2
+        opr = [None] * 2
+
+        B_list[0].copy_(B)
+        opb[0] = dist.broadcast(B_list[0], src=src_b, group=col_group, async_op=True)
+        cur = 0
+
+        for i in range(tesseract_dim):
+            if i != tesseract_dim - 1:
+                B_list[1 - cur].copy_(B)
+                opb[1 - cur] = dist.broadcast(B_list[1 - cur],
+                                              src=src_b + tesseract_dim,
+                                              group=col_group,
+                                              async_op=True)
+
+            if opr[cur] is not None:
+                opr[cur].wait()
+                if i - 2 == col_rank:
+                    C.copy_(C_list[cur])
+
+            if opb[cur] is not None:
+                opb[cur].wait()
+
+            torch.matmul(A, B_list[cur].transpose(0, 1), out=C_list[cur])
+            opr[cur] = dist.reduce(C_list[cur], dst=src_c, group=row_group, async_op=True)
+            cur = 1 - cur
+            src_b += tesseract_dim
+            src_c += 1
+
+        for op in opr:
+            op.wait()
+
+        if tesseract_dim - 2 == col_rank:
+            C.copy_(C_list[cur])
+        if tesseract_dim - 1 == col_rank:
+            C.copy_(C_list[1 - cur])
         out = C.reshape(out_shape)
 
         if ctx:
@@ -272,20 +330,52 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
         C_shape = (A.shape[-1], B.shape[-1])
         C = torch.empty(C_shape, dtype=A.dtype, device=get_current_device())
 
-        for i in range(tesseract_dim):
-            A_temp = A.clone()
-            src_a = i + row_rank * tesseract_dim + dep_rank * (
-                        tesseract_dim ** 2) + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                    pipeline_parallel_rank * tensor_parallel_size
-            dist.broadcast(A_temp, src=src_a, group=get_parallel_group(row_parallel_mode))
-            C_temp = torch.matmul(A_temp.transpose(0, 1), B)
-            src_c = col_rank + i * tesseract_dim + dep_rank * (
-                        tesseract_dim ** 2) + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                    pipeline_parallel_rank * tensor_parallel_size
-            dist.reduce(C_temp, dst=src_c, group=get_parallel_group(col_parallel_mode))
-            if i == row_rank:
-                C = C_temp.clone()
+        # use circular buffer to store the communication tensor
+        # 2 is enough for all cases
+        A_list = [torch.empty_like(A) for _ in range(2)]
+        C_list = [torch.empty_like(C) for _ in range(2)]
 
+        row_group = gpc.get_group(row_parallel_mode)
+        col_group = gpc.get_group(col_parallel_mode)
+
+        src_a = tesseract_dim * row_rank + tesseract_dim ** 2 * dep_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+                pipeline_parallel_rank * tensor_parallel_size
+        src_c = col_rank + tesseract_dim ** 2 * dep_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+                pipeline_parallel_rank * tensor_parallel_size
+
+        opa = [None] * 2
+        opr = [None] * 2
+
+        A_list[0].copy_(A)
+        opa[0] = dist.broadcast(A_list[0], src=src_a, group=row_group, async_op=True)
+        cur = 0
+
+        for i in range(tesseract_dim):
+            if i != tesseract_dim - 1:
+                A_list[1 - cur].copy_(A)
+                opa[1 - cur] = dist.broadcast(A_list[1 - cur], src=src_a + 1, group=row_group, async_op=True)
+
+            if opr[cur] is not None:
+                opr[cur].wait()
+                if i - 2 == row_rank:
+                    C.copy_(C_list[cur])
+
+            if opa[cur] is not None:
+                opa[cur].wait()
+
+            torch.matmul(A_list[cur].transpose(0, 1), B, out=C_list[cur])
+            opr[cur] = dist.reduce(C_list[cur], dst=src_c, group=col_group, async_op=True)
+            cur = 1 - cur
+            src_a += 1
+            src_c += tesseract_dim
+
+        for op in opr:
+            op.wait()
+
+        if tesseract_dim - 2 == row_rank:
+            C.copy_(C_list[cur])
+        if tesseract_dim - 1 == row_rank:
+            C.copy_(C_list[1 - cur])
         out = C.reshape(out_shape)
 
         if ctx:
@@ -333,8 +423,7 @@ class Add_Bias_2p5D(torch.autograd.Function):
             bias_temp = bias.clone()
         else:
             bias_temp = torch.zeros(output_size_per_partition, dtype=bias.dtype, device=get_current_device())
-        src_rank = col_rank + dep_rank * (
-                    tesseract_dim ** 2) + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
+        src_rank = col_rank + dep_rank * tesseract_dim ** 2 + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
                    pipeline_parallel_rank * tensor_parallel_size
         dist.broadcast(bias_temp, src=src_rank, group=get_parallel_group(col_parallel_mode))
 
@@ -469,7 +558,9 @@ class SplitFirst(torch.autograd.Function):
         return grad, None, None
 
 
-def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+    if input_.size(dim) <= 1:
+        return input_
     return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
                        dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
 
@@ -477,17 +568,28 @@ def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
 class reduce_by_batch_2p5d(torch.autograd.Function):
     """All-reduce the input from the model parallel region."""
     @staticmethod
-    def symbolic(graph, input_):
-        dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_COL))
-        return input_
+    def symbolic(graph, input_, reduce_mean: bool = False):
+        output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)
+        if reduce_mean:
+            reduce_size = gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL)
+            return output / reduce_size
+        return output
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, input_):
-        dist.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_COL))
-        return input_.clone()
+    def forward(ctx, input_, reduce_mean: bool = False):
+        output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)
+        ctx.reduce_mean = reduce_mean
+        if reduce_mean:
+            reduce_size = gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL)
+            ctx.reduce_size = reduce_size
+            return output.clone() / reduce_size
+        return output.clone()
 
     @staticmethod
     @custom_bwd
-    def backward(ctx, grad_output):
-        return grad_output
+    def backward(ctx, output_grad):
+        if ctx.reduce_mean:
+            return output_grad / ctx.reduce_size, None
+        else:
+            return output_grad, None

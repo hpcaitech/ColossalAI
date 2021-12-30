@@ -11,7 +11,7 @@ from colossalai.amp.amp_type import AMP_TYPE
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.trainer import Trainer
-from colossalai.utils import MultiTimer, get_dataloader
+from colossalai.utils import MultiTimer, free_port, get_dataloader
 from torch.optim import Adam
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
@@ -26,8 +26,8 @@ CONFIG = dict(
     fp16=dict(mode=AMP_TYPE.TORCH))
 
 
-def run_trainer_no_pipeline(rank, world_size):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=29930, backend='nccl')
+def run_trainer_no_pipeline(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # build model
     model = resnet18(num_classes=10)
@@ -88,7 +88,7 @@ def run_trainer_no_pipeline(rank, world_size):
 @pytest.mark.dist
 def test_trainer_no_pipeline():
     world_size = 4
-    run_func = partial(run_trainer_no_pipeline, world_size=world_size)
+    run_func = partial(run_trainer_no_pipeline, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

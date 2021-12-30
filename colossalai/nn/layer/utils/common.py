@@ -2,11 +2,12 @@
 # -*- encoding: utf-8 -*-
 
 import collections.abc
+import os
 from itertools import repeat
 
 import numpy as np
 import torch
-from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS
+from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_MODE)
 from colossalai.utils import checkpoint
 from torch import Tensor, nn
 
@@ -57,6 +58,10 @@ def set_tensor_parallel_attribute_by_size(param, size):
 def set_tensor_parallel_attribute_by_partition(param, num_partitions):
     setattr(param, IS_TENSOR_PARALLEL, True)
     setattr(param, NUM_PARTITIONS, num_partitions)
+
+
+def get_tensor_parallel_mode():
+    return os.environ[TENSOR_PARALLEL_MODE]
 
 
 # From PyTorch internals

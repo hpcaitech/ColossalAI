@@ -9,7 +9,7 @@ from typing import Iterable,  Callable
 from .._base_engine import Engine
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
-
+from colossalai.nn.layer import split_batch
 
 class BaseSchedule(ABC):
     """A basic helper class to control the process of training or evaluation.
@@ -58,9 +58,15 @@ class BaseSchedule(ABC):
             data, label = batch_data
         self._check_sanity(data, 'data')
         self._check_sanity(label, 'label')
+        if isinstance(data, torch.Tensor):
+            self.batch_size = data.size(0)
+        else:
+            self.batch_size = next(iter(data.values())).size(0)    
+        data, label = split_batch(data), split_batch(label)
         if to_gpu:
             return self._move_to_device(data), self._move_to_device(label)
         return data, label
+
 
     def pre_processing(self, engine: Engine):
         """To perform actions before running the schedule.

@@ -13,9 +13,9 @@ from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch.nn import Parameter
 
-from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
+from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ..base_layer import ParallelLayer
-from ._operation import (Matmul_AB_2D, add_bias_2d, all_gather_weight_2d, classifier_2d, layernorm_2d, split_batch_2d)
+from ._operation import Matmul_AB_2D, add_bias_2d, all_gather_weight_2d, classifier_2d, layernorm_2d
 from ._utils import assert_summa_initialization, get_summa_dim_from_env
 
 
@@ -257,8 +257,6 @@ class PatchEmbedding2D(ParallelLayer):
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-        input_ = split_batch_2d(input_)
-
         weight = all_gather_weight_2d.apply(self.weight, 0, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
         bias = all_gather_weight_2d.apply(self.bias, 0, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
 
@@ -318,8 +316,6 @@ class Embedding2D(ParallelLayer):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_batch_2d(input_)
-
         weight = all_gather_weight_2d.apply(self.weight, -1, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
 
         output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)

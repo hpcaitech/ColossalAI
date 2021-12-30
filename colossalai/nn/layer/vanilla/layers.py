@@ -9,7 +9,7 @@ from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch import nn as nn
 
-from .._common_utils import to_2tuple
+from ..utils import to_2tuple
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):

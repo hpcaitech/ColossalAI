@@ -1,4 +1,3 @@
-import time
 from functools import partial
 
 import pytest
@@ -9,7 +8,7 @@ from colossalai.communication import all_gather, all_reduce, reduce_scatter
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
-from colossalai.utils import get_current_device
+from colossalai.utils import free_port, get_current_device
 
 CONFIG = dict(parallel=dict(data=8, pipeline=1, tensor=dict(mode=None, size=1)))
 
@@ -49,8 +48,8 @@ def check_all_reduce():
     torch.cuda.synchronize()
 
 
-def check_layer(rank, world_size):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=30010, backend='nccl')
+def check_layer(rank, world_size, port):
+    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     assert dist.get_rank() == gpc.get_global_rank()
     print('Rank {} / {}'.format(dist.get_rank(), dist.get_world_size()))
@@ -66,7 +65,7 @@ def check_layer(rank, world_size):
 @pytest.mark.dist
 def test_comm():
     world_size = 4
-    run_func = partial(check_layer, world_size=world_size)
+    run_func = partial(check_layer, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

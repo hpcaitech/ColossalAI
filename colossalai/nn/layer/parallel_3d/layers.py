@@ -17,9 +17,9 @@ from colossalai.utils import get_current_device
 from torch import Tensor, dtype
 from torch.nn import Parameter
 
-from .._common_utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
+from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ._operation import *
-from ._utils import (get_depth_from_env, get_last_group, get_parallel_mode_from_env, swap_in_out_group)
+from ._utils import get_depth_from_env, get_last_group, get_parallel_mode_from_env, swap_in_out_group
 
 
 @LAYERS.register_module
@@ -241,8 +241,6 @@ class PatchEmbedding3D(ParallelLayer):
         self.pos_embed.register_hook(self._sync_grad_hook)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_batch_3d(input_, self.input_parallel_mode, self.weight_parallel_mode)
-
         weight = broadcast_weight_3d_from_diagonal.apply(self.weight, self.input_parallel_mode,
                                                          self.weight_parallel_mode, self.output_parallel_mode)
         output = F.conv2d(input_, weight, self.bias, stride=self.patch_size)
@@ -302,8 +300,6 @@ class Embedding3D(ParallelLayer):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_batch_3d(input_, self.input_parallel_mode, self.weight_parallel_mode)
-
         weight = broadcast_weight_3d_from_diagonal.apply(self.weight, self.input_parallel_mode,
                                                          self.weight_parallel_mode, self.output_parallel_mode)
         output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)

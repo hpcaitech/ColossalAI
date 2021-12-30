@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 ALLOWED_MODES = [None, '1d', '2d', '2.5d', '3d', 'sequence']
+TENSOR_PARALLEL_MODE = 'tensor_parallel_mode'
 
 # intializer
 INITIALIZER_MAPPING = {
@@ -16,6 +17,9 @@ INITIALIZER_MAPPING = {
     'sequence': 'Initializer_Sequence',
     'model': 'Initializer_Model'
 }
+
+# 1D parallel
+PARALLEL_INPUT_1D = 'parallel_input_1d'
 
 # 2D paralllel
 SUMMA_DIM = 'SUMMA_DIM'
