@@ -25,6 +25,22 @@ _parallel_classifier = {
 
 
 class Linear(nn.Module):
+    """
+    Linear layer of colossalai
+
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param out_features: size of each output sample
+    :type out_features: int
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    """
     def __init__(self,
                  in_features: int,
                  out_features: int,
@@ -64,6 +80,22 @@ class Linear(nn.Module):
 
 
 class Classifier(nn.Module):
+    """
+    Classifier layer of colossalai
+
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param num_classes: number of total classes for the dataset
+    :type num_classes: int
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    """
     def __init__(
         self,
         in_features: int,

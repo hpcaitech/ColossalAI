@@ -20,7 +20,8 @@ def matmul_2d(
     row_parallel_mode=ParallelMode.PARALLEL_2D_ROW,
     col_parallel_mode=ParallelMode.PARALLEL_2D_COL,
 ):
-    """Matrix multiplication for 2D parallelism
+    """
+    Matrix multiplication for 2D parallelism
     :param a: matrix :math:`A`
     :type a: torch.tensor
     :param b: matrix :math:`B`
@@ -56,7 +57,35 @@ def matmul_2d(
 
 
 class classifier_2d(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = AB`
+    """
+    Classifier
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param summa_dim: dimension of SUMMA fo 2D parallelism
+    :type summa_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -130,7 +159,33 @@ class classifier_2d(torch.autograd.Function):
 
 
 class Matmul_AB_2D(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = AB`
+    """
+    Matrix multiplication for :math:`C = AB`
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param summa_dim: dimension of SUMMA fo 2D parallelism
+    :type summa_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -238,7 +293,33 @@ class Matmul_AB_2D(torch.autograd.Function):
 
 
 class Matmul_ABT_2D(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = AB^T`
+    """
+    Matrix multiplication for :math:`C = AB^T`
+    
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param summa_dim: dimension of SUMMA fo 2D parallelism
+    :type summa_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -352,7 +433,33 @@ class Matmul_ABT_2D(torch.autograd.Function):
 
 
 class Matmul_ATB_2D(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = A^TB`
+    """
+    Matrix multiplication for :math:`C = A^TB`
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param summa_dim: dimension of SUMMA fo 2D parallelism
+    :type summa_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -466,7 +573,33 @@ class Matmul_ATB_2D(torch.autograd.Function):
 
 
 class add_bias_2d(torch.autograd.Function):
-    """Matrix add bias: :math:`C = A + b`
+    """
+    Matrix add bias: :math:`C = A + b`
+
+    :param input_: matrix :math:`A`
+    :type input_: torch.tensor
+    :param bias: matrix :math:`b`
+    :type bias: torch.tensor
+    :param output_size_per_partition: size of ouput per partition
+    :type output_size_per_partition: int
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion
+    :type skip_bias_add: bool
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -519,9 +652,30 @@ class add_bias_2d(torch.autograd.Function):
 
 
 class layernorm_2d(torch.autograd.Function):
+    """
+    Layernorm
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param E_x: mean
+    :type E_x: torch.tensor
+    :param Var_x: variance
+    :type Var_x: torch.tensor
+    :param hidden_size: hidden size
+    :type hidden_size: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx: Any, input_: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int, row_parallel_mode: ParallelMode,
+    def forward(ctx: Any, 
+                input_: Tensor, 
+                E_x: Tensor, 
+                Var_x: Tensor, 
+                hidden_size: int, 
+                row_parallel_mode: ParallelMode,
                 col_parallel_mode: ParallelMode) -> Tensor:
         input_ = input_ - E_x
         # in here, input = x - E[x], Var_x = 1 / sqrt(Var[x] + eps)
@@ -556,6 +710,18 @@ class layernorm_2d(torch.autograd.Function):
 
 
 class all_gather_weight_2d(torch.autograd.Function):
+    """
+    all gather the weight of 2D parallelism
+
+    :param inputs: input maxtrix
+    :type inputs: torch.tensor
+    :param dim: dimension of all gather
+    :type dim: int
+    :param summa_dim: dimension of SUMMA fo 2D parallelism
+    :type summa_dim: int
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any, inputs: Tensor, dim: int, summa_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
@@ -574,6 +740,14 @@ class all_gather_weight_2d(torch.autograd.Function):
 
 
 class SplitFirst(torch.autograd.Function):
+    """
+    :param inputs: input maxtrix
+    :type inputs: torch.tensor
+    :param summa_dim: dimension of SUMMA fo 2D parallelism
+    :type summa_dim: int
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any, inputs: Tensor, summa_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
@@ -604,7 +778,14 @@ def split_tensor_2d(input_: Tensor, dim: int = 0) -> Tensor:
 
 
 class reduce_by_batch_2d(torch.autograd.Function):
-    """All-reduce the input from the model parallel region."""
+    """
+    All-reduce the input from the model parallel region.
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
+    :type reduce_mean: int, optional
+    """
     @staticmethod
     def symbolic(graph, input_, reduce_mean: bool = False):
         output = all_reduce(input_, ParallelMode.PARALLEL_2D_COL)

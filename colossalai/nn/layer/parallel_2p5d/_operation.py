@@ -28,7 +28,35 @@ def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
 
 
 class classifier_2p5d(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = AB`
+    """
+    Classifier
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -101,7 +129,35 @@ class classifier_2p5d(torch.autograd.Function):
 
 
 class Matmul_AB_2p5D(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = AB`
+    """
+    Matrix multiplication for :math:`C = AB`
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param dep_rank: the rank of depth
+    :type dep_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -202,7 +258,35 @@ class Matmul_AB_2p5D(torch.autograd.Function):
 
 
 class Matmul_ABT_2p5D(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = AB^T`
+    """
+    Matrix multiplication for :math:`C = AB^T`
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param dep_rank: the rank of depth
+    :type dep_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -308,7 +392,35 @@ class Matmul_ABT_2p5D(torch.autograd.Function):
 
 
 class Matmul_ATB_2p5D(torch.autograd.Function):
-    """Matrix multiplication for :math:`C = A^TB`
+    """
+    Matrix multiplication for :math:`C = A^TB`
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param dep_rank: the rank of depth
+    :type dep_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -411,7 +523,35 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
 
 
 class Add_Bias_2p5D(torch.autograd.Function):
-    """Matrix add bias: :math:`C = A + b`
+    """
+    Matrix add bias: :math:`C = A + b`
+
+    :param input: matrix :math:`A`
+    :type input: torch.tensor
+    :param bias: matrix :math:`b`
+    :type bias: torch.tensor
+    :param output_size_per_partition: output size in each partition
+    :type output_size_per_partition: int
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion
+    :type skip_bias_add: bool
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -482,6 +622,20 @@ class Add_Bias_2p5D(torch.autograd.Function):
 
 
 class layernorm_2p5d(torch.autograd.Function):
+    """
+    Layernorm
+
+    :param input: input maxtrix
+    :type input: torch.tensor
+    :param E_x: mean
+    :type E_x: torch.tensor
+    :param Var_x: variance
+    :type Var_x: torch.tensor
+    :param hidden_size: hidden size
+    :type hidden_size: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx: Any, input: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int,
@@ -518,6 +672,18 @@ class layernorm_2p5d(torch.autograd.Function):
 
 
 class all_gather_weight_2p5d(torch.autograd.Function):
+    """
+    all gather the weight of 2.5D parallelism
+
+    :param inputs: input maxtrix
+    :type inputs: torch.tensor
+    :param dim: dimension of all gather
+    :type dim: int
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any, inputs: Tensor, dim: int, tesseract_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
@@ -536,6 +702,14 @@ class all_gather_weight_2p5d(torch.autograd.Function):
 
 
 class SplitFirst(torch.autograd.Function):
+    """
+    :param inputs: input maxtrix
+    :type inputs: torch.tensor
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any, inputs: Tensor, tesseract_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
@@ -566,7 +740,14 @@ def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
 
 
 class reduce_by_batch_2p5d(torch.autograd.Function):
-    """All-reduce the input from the model parallel region."""
+    """
+    All-reduce the input from the model parallel region.
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
+    :type reduce_mean: int, optional
+    """
     @staticmethod
     def symbolic(graph, input_, reduce_mean: bool = False):
         output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)

@@ -16,14 +16,15 @@ from ._lr_scheduler_hook import LRSchedulerHook
 class SaveCheckpointHook(BaseHook):
     """Saves the model by interval in training process.
 
-    :param interval: Saving interval 
-    :param checkpoint_dir: Directory of saving checkpoint 
-    :param suffix: Saving suffix of the file
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
+    :param interval: Saving interval, defaults to 1
     :type interval: int, optional
-    :type checkpoint_dir: int, optional
+    :param checkpoint_dir: Directory of saving checkpoint, defaults to None
+    :type checkpoint_dir: str, optional
+    :param suffix: Saving suffix of the file, defaults to ''
     :type suffix: str, optional
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
+    :param trainer: Trainer attached with current hook
     """
 
     def __init__(self,
@@ -71,16 +72,19 @@ class SaveCheckpointHook(BaseHook):
 class LoadCheckpointHook(BaseHook):
     """Loads the model before training process.
 
-    :param checkpoint_dir: Directory of saving checkpoint 
-    :param epoch: Epoch number to be set
-    :param finetune: Whether allows to load a part of the model
-    :param strict: Whether loads a model that has the same shape of parameters 
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
+    :param checkpoint_dir: Directory of saving checkpoint, defaults to None
     :type checkpoint_dir: str, optional
+    :param epoch: Epoch number to be set, defaults to -1
     :type epoch: str, optional
+    :param finetune: Whether allows to load a part of the model, defaults to False
     :type finetune: bool, optional
+    :param strict: Whether loads a model that has the same shape of parameters, defaults to False
     :type strict: bool, optional
+    :param suffix: Suffic, defaults to ''
+    :type suffix: str, optional
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 0
     :type priority: int, optional
+    :param trainer: Trainer attached with current hook
     """
 
     def __init__(self,

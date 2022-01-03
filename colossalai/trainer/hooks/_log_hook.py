@@ -25,6 +25,15 @@ def _format_number(val, prec=5):
 
 
 class LogByEpochHook(BaseHook):
+    """hook to log by epoch
+
+    :param logger: logger for the log
+    :param interval: Recording interval, defaults to 1
+    :type interval: int, optional
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 1
+    :type priority: int, optional
+    :param trainer: Trainer attached with current hook
+    """
     def __init__(self,
                  logger,
                  interval: int = 1,
@@ -39,6 +48,12 @@ class LogByEpochHook(BaseHook):
 
 @HOOKS.register_module
 class LogMetricByStepHook(BaseHook):
+    """hook to log metric by step
+
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
+    :type priority: int, optional
+    :param trainer: Trainer attached with current hook
+    """
     def __init__(self, priority: int = 10):
         super().__init__(priority)
 
@@ -59,12 +74,13 @@ class LogMetricByStepHook(BaseHook):
 class LogMetricByEpochHook(LogByEpochHook):
     """Specialized Hook to record the metric to log.
 
-    :param trainer: Trainer attached with current hook
-    :type trainer: Trainer
-    :param interval: Recording interval
+    :param logger: logger for the log
+    :param interval: Recording interval, defaults to 1
     :type interval: int, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
+    :param trainer: Trainer attached with current hook
+    :param mode: Mode of metrics, 'train' and 'test'
     """
 
     def __init__(self,
@@ -102,12 +118,17 @@ class LogMetricByEpochHook(LogByEpochHook):
 class TensorboardHook(BaseHook):
     """Specialized Hook to record the metric to Tensorboard.
 
-    :param trainer: Trainer attached with current hook
-    :type trainer: Trainer
     :param log_dir: Directory of log
-    :type log_dir: str, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
+    :type log_dir: str
+    :param ranks: ranks of processors
+    :type ranks: typing.List
+    :param parallel_mode: Parallel mode, defaults to colossalai.context.parallel_mode.ParallelMode.GLOBAL
+    :type parallel_mode: colossalai.context.parallel_mode.ParallelMode, optional
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
+    :param trainer: Trainer attached with current hook
+    :param mode: Mode of metrics, 'train' and 'test'
+    :type mode: str
     """
 
     def __init__(self,
@@ -184,14 +205,20 @@ class TensorboardHook(BaseHook):
 class LogTimingByEpochHook(LogByEpochHook):
     """Specialized Hook to write timing record to log.
 
-    :param trainer: Trainer attached with current hook
-    :type trainer: Trainer
-    :param interval: Recording interval
+    :param timer: Timer for the hook
+    :type timer: colossalai.utils.MultiTimer
+    :param logger: Logger for the log
+    :type logger: colossalai.logging.DistributedLogger
+    :param interval: Recording interval, defaults to 1
     :type interval: int, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
-    :param log_eval: Whether writes in evaluation
+    :param log_eval: Whether writes in evaluation, defaults to True
     :type log_eval: bool, optional
+    :param ignore_num_train_steps: Number of training steps to ignore, defaults to 0
+    :type ignore_num_train_steps: int, optional
+    :param mode: Mode of metrics, 'train' and 'test'
+    :param trainer: Trainer attached with current hook
     """
     def __init__(self,
                  timer: MultiTimer,
@@ -249,13 +276,13 @@ class LogTimingByEpochHook(LogByEpochHook):
 class LogMemoryByEpochHook(LogByEpochHook):
     """Specialized Hook to write memory usage record to log.
 
-    :param trainer: Trainer attached with current hook
-    :type trainer: Trainer
-    :param interval: Recording interval
+    :param logger: Logger for the log
+    :type logger: colossalai.logging.DistributedLogger
+    :param interval: Recording interval, defaults to 1
     :type interval: int, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
-    :param log_eval: Whether writes in evaluation
+    :param log_eval: Whether writes in evaluation, defaults to True
     :type log_eval: bool, optional
     """
     def __init__(self,
@@ -263,7 +290,8 @@ class LogMemoryByEpochHook(LogByEpochHook):
                  interval: int = 1,
                  priority: int = 10,
                  log_eval: bool = True,
-                 report_cpu: bool = False) -> None:
+                 report_cpu: bool = False, # no reference
+                 ) -> None:
         super().__init__(logger=logger, interval=interval, priority=priority)
         self._log_eval = log_eval
         self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0()
