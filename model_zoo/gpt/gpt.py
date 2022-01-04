@@ -133,7 +133,7 @@ class GPTBlock(CheckpointModule):
                  dtype: dtype = None,
                  bias: bool = True,
                  checkpoint: bool = False):
-        super().__init__()
+        super().__init__(checkpoint=checkpoint)
         self.norm1 = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype)
         self.attn = GPTSelfAttention(dim=dim,
                                      num_heads=num_heads,
