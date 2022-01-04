@@ -71,6 +71,7 @@ class Linear1D(torch.nn.Module):
 @LAYERS.register_module
 class Classifier1D(ParallelLayer):
     """RowLinear with given weight"""
+
     def __init__(self,
                  in_features: int,
                  num_classes: int,
@@ -127,8 +128,8 @@ class Classifier1D(ParallelLayer):
 
         output_parallel = F.linear(input_, self.weight)
         output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
-
-        output = output + self.bias
+        if self.bias is not None:
+            output = output + self.bias
         return output
 
 
@@ -152,6 +153,7 @@ class Linear1D_Col(ParallelLayer):
                     which is :math:`Y_i = XA_i`, defaults to False
     :type gather_output: bool, optional
     """
+
     def __init__(self,
                  in_features: int,
                  out_features: int,
@@ -233,6 +235,7 @@ class Linear1D_Row(ParallelLayer):
     :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
     :type parallel_input: bool, optional
     """
+
     def __init__(self,
                  in_features: int,
                  out_features: int,
@@ -302,6 +305,7 @@ class Linear1D_Row(ParallelLayer):
 class MixedFusedLayerNorm1D(torch.nn.Module):
     """ Experimental
     """
+
     def __init__(self, normalized_shape, eps=1e-5):
         super(MixedFusedLayerNorm1D, self).__init__()
 
