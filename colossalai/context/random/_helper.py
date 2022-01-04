@@ -49,7 +49,7 @@ def get_current_mode():
     return _SEED_MANAGER.current_mode
 
 
-def add_seed(parallel_mode: ParallelMode, seed: int):
+def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
     """Adds a seed to the seed manager for `parallel_mode`.
 
     :param parallel_mode: The chosen parallel mode
@@ -59,7 +59,7 @@ def add_seed(parallel_mode: ParallelMode, seed: int):
     :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of 
         :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
     """
-    _SEED_MANAGER.add_seed(parallel_mode, seed)
+    _SEED_MANAGER.add_seed(parallel_mode, seed, overwrite)
 
 
 def set_mode(parallel_mode: ParallelMode):

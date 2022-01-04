@@ -10,6 +10,7 @@ from torch import Tensor, dtype
 from torch import nn as nn
 
 from ..utils import to_2tuple
+from colossalai.context import seed
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
@@ -40,6 +41,129 @@ class DropPath(nn.Module):
 
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
+
+
+class WrappedDropout(nn.Module):
+    """Same as torch.nn.Dropout. But it is wrapped with the context of seed manager.
+    """
+    def __init__(self, p: float = 0.5, inplace: bool = False, mode=None):
+        super().__init__()
+        if p < 0 or p > 1:
+            raise ValueError("dropout probability has to be between 0 and 1, "
+                             "but got {}".format(p))
+        self.p = p
+        self.inplace = inplace
+        if mode is None:
+            self.func = self.nonefunc
+        else:
+            self.func = self.normalfunc
+            self.mode = mode
+
+    def nonefunc(self, inputs):
+        return F.dropout(inputs, self.p, self.training, self.inplace)
+
+    def normalfunc(self, inputs):
+        with seed(self.mode):
+            return F.dropout(inputs, self.p, self.training, self.inplace)
+
+    def forward(self, inputs):
+        return self.func(inputs)
+
+
+class WrappedDropPath(nn.Module):
+    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    Here, it is wrapped with the context of seed manager.
+    """
+    def __init__(self, p: float = 0., mode=None):
+        super().__init__()
+        self.p = p
+        self.mode = mode
+        if self.mode is None:
+            self.func = self.nonefunc
+        else:
+            self.func = self.normalfunc
+            self.mode = mode
+
+    def nonefunc(self, inputs):
+        return drop_path(inputs, self.p, self.training)
+
+    def normalfunc(self, inputs):
+        with seed(self.mode):
+            return drop_path(inputs, self.p, self.training)
+
+    def forward(self, inputs):
+        return self.func(inputs)
+
+
+@LAYERS.register_module
+class VanillaSelfAttention(nn.Module):
+    """Standard ViT self attention.
+    """
+    def __init__(self,
+                 d_model: int,
+                 n_heads: int,
+                 d_kv: int,
+                 attention_drop: float = 0,
+                 drop_rate: float = 0,
+                 bias: bool = True,
+                 dropout1=None,
+                 dropout2=None):
+        super().__init__()
+        self.n_heads = n_heads
+        self.d_kv = d_kv
+        self.scale = 1.0 / math.sqrt(self.d_kv)
+
+        self.dense1 = nn.Linear(d_model, 3 * n_heads * d_kv, bias, device=get_current_device())
+        self.softmax = nn.Softmax(dim=-1)
+        self.atten_drop = nn.Dropout(attention_drop) if dropout1 is None else dropout1
+        self.dense2 = nn.Linear(n_heads * d_kv, d_model, device=get_current_device())
+        self.dropout = nn.Dropout(drop_rate) if dropout2 is None else dropout2
+
+    def forward(self, x):
+        qkv = self.dense1(x)
+        new_shape = qkv.shape[:2] + (3, self.n_heads, self.d_kv)
+        qkv = qkv.view(*new_shape)
+        qkv = qkv.permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[:]
+
+        x = torch.matmul(q, k.transpose(-2, -1)) * self.scale
+        x = self.atten_drop(self.softmax(x))
+
+        x = torch.matmul(x, v)
+        x = x.transpose(1, 2)
+        new_shape = x.shape[:2] + (self.n_heads * self.d_kv,)
+        x = x.reshape(*new_shape)
+        x = self.dense2(x)
+        x = self.dropout(x)
+
+        return x
+
+
+@LAYERS.register_module
+class VanillaFFN(nn.Module):
+    """FFN composed with two linear layers, also called MLP.
+    """
+    def __init__(self,
+                 d_model: int,
+                 d_ff: int,
+                 activation=None,
+                 drop_rate: float = 0,
+                 bias: bool = True,
+                 dropout1=None,
+                 dropout2=None):
+        super().__init__()
+        dense1 = nn.Linear(d_model, d_ff, bias, device=get_current_device())
+        act = nn.GELU() if activation is None else activation
+        dense2 = nn.Linear(d_ff, d_model, bias, device=get_current_device())
+        drop1 = nn.Dropout(drop_rate) if dropout1 is None else dropout1
+        drop2 = nn.Dropout(drop_rate) if dropout2 is None else dropout2
+
+        self.ffn = nn.Sequential(
+            dense1, act, drop1,
+            dense2, drop2)
+
+    def forward(self, x):
+        return self.ffn(x)
 
 
 @LAYERS.register_module
