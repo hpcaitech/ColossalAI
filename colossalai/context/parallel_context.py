@@ -15,6 +15,7 @@ from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from .parallel_mode import ParallelMode
 from .random import add_seed, get_seeds, set_mode
+from colossalai.global_variables import moe_env
 
 
 class ParallelContext:
@@ -411,6 +412,13 @@ class ParallelContext:
 
             # add this config to initialize later
             pg_init.append(dict(type=INITIALIZER_MAPPING[tensor_parallel_mode.lower()], **tensor_parallel_cfg))
+
+        # initialization for moe environment
+        if parallel_config is not None and 'moe' in parallel_config:
+            param = parallel_config['moe']
+            assert 'size' in param, "Moe model parallel size should be given"
+            moe_env.setup(param['size'])
+            pg_init.append(dict(type=INITIALIZER_MAPPING['moe']))
 
         # run initialization of different process groups
         for initializer_cfg in pg_init:
