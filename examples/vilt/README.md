@@ -1,63 +1,60 @@
-# ViLT
+# Train ViLT on COCO dataset with Colossal-AI
 
-Code for the ICML 2021 (long talk) paper: "[ViLT: Vision-and-Language Transformer Without Convolution or Region Supervision](https://arxiv.org/abs/2102.03334)"
+Colossal-AI implementation for the ICML 2021 (long talk) paper: "[ViLT: Vision-and-Language Transformer Without Convolution or Region Supervision](https://arxiv.org/abs/2102.03334)"
 
 ---
 <p align="center">
   <img align="middle" src="./assets/vilt.png" alt="The main figure"/>
 </p>
 
-## Install
+
+
+## Prepare Environment
 ```bash
 pip install -r requirements.txt
-pip install -e .
 ```
 
-## Download Pretrained Weights
-We provide five pretrained weights
-1. ViLT-B/32 Pretrained with MLM+ITM for 200k steps on GCC+SBU+COCO+VG (ViLT-B/32 200k) [link](https://github.com/dandelin/ViLT/releases/download/200k/vilt_200k_mlm_itm.ckpt)
-2. ViLT-B/32 200k finetuned on VQAv2 [link](https://github.com/dandelin/ViLT/releases/download/200k/vilt_vqa.ckpt)
-3. ViLT-B/32 200k finetuned on NLVR2 [link](https://github.com/dandelin/ViLT/releases/download/200k/vilt_nlvr2.ckpt)
-4. ViLT-B/32 200k finetuned on COCO IR/TR [link](https://github.com/dandelin/ViLT/releases/download/200k/vilt_irtr_coco.ckpt)
-5. ViLT-B/32 200k finetuned on F30K IR/TR [link](https://github.com/dandelin/ViLT/releases/download/200k/vilt_irtr_f30k.ckpt)
+## Prepare Dataset
+In this example we use the COCO Captions (COCO) dataset.
 
-## Out-of-the-box MLM + Visualization Demo
-<p align="center">
-  <img align="middle" src="./assets/mlm.png" alt="MLM + Visualization"/>
-</p>
+We do not distribute datasets because of the license issue.
+Please download the datasets by yourself.
+We use `pyarrow` to serialize the datasets, conversion scripts are located in `vilt/utils/write_*.py`.
+Please organize the datasets as follows and run `make_arrow` functions to convert the dataset to pyarrow binary file.
+
+
+https://cocodataset.org/#download
+
+Download [2014 train images](http://images.cocodataset.org/zips/train2014.zip), [2014 val images](http://images.cocodataset.org/zips/val2014.zip) and [karpathy split](https://cs.stanford.edu/people/karpathy/deepimagesent/caption_datasets.zip)
+
+    root
+    ├── train2014            
+    │   ├── COCO_train2014_000000000009.jpg                
+    |   └── ...
+    ├── val2014              
+    |   ├── COCO_val2014_000000000042.jpg
+    |   └── ...          
+    └── karpathy
+        └── dataset_coco.json
+
+```python
+from vilt.utils.write_coco_karpathy import make_arrow
+make_arrow(root, arrows_root)
+```
+
+## Train image text matching (ITM) and masked language (MLM) Models
 
 ```bash
-pip install gradio==1.6.4
-python demo.py with num_gpus=<0 if you have no gpus else 1> load_path="<YOUR_WEIGHT_ROOT>/vilt_200k_mlm_itm.ckpt"
+
+mpirun -np <NUM_GPUS> python run.py with data_root=<ARROW_ROOT> num_gpus=<NUM_GPUS> num_nodes=<NUM_NODES> task_mlm_itm whole_word_masking=True step200k per_gpu_batchsize=<BS_FITS_YOUR_GPU>
 
 ex)
-python demo.py with num_gpus=0 load_path="weights/vilt_200k_mlm_itm.ckpt"
+mpirun -np 4 python runcai.py with data_root=/work/zhangyq/vilt_data/arrow_coco num_gpus=1 num_nodes=1 task_mlm_itm_s whole_word_masking=True step200k per_gpu_batchsize=96
 ```
 
-## Out-of-the-box VQA Demo
-<p align="center">
-  <img align="middle" src="./assets/vqa.png" alt="VQA"/>
-</p>
-
-```bash
-pip install gradio==1.6.4
-python demo_vqa.py with num_gpus=<0 if you have no gpus else 1> load_path="<YOUR_WEIGHT_ROOT>/vilt_vqa.ckpt" test_only=True
-
-ex)
-python demo_vqa.py with num_gpus=0 load_path="weights/vilt_vqa.ckpt" test_only=True
-```
-
-## Dataset Preparation
-See [`DATA.md`](DATA.md)
-
-## Train New Models
-See [`TRAIN.md`](TRAIN.md)
-
-## Evaluation
-See [`EVAL.md`](EVAL.md)
 
 ## Citation
-If you use any part of this code and pretrained weights for your own purpose, please cite our [paper](https://arxiv.org/abs/2102.03334).
+If you use any part of this code and pretrained weights for your own purpose, please cite the original [paper](https://arxiv.org/abs/2102.03334).
 ```
 @InProceedings{pmlr-v139-kim21k,
   title = 	 {ViLT: Vision-and-Language Transformer Without Convolution or Region Supervision},
@@ -76,7 +73,4 @@ If you use any part of this code and pretrained weights for your own purpose, pl
 }
 ```
 
-## Contact for Issues
-- [Wonjae Kim](https://wonjae.kim/)
-- [Bokyung Son](https://bo-son.github.io/)
-- [Ildoo Kim](https://www.linkedin.com/in/ildoo-kim-56962034/)
+

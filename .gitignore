@@ -145,7 +145,6 @@ docs/.build
 AutoAugment4DG/
 examples/RetinalVesselSegmentation-demo/deprecated/
 examples/moe_pytorch
-nohup.out
 tb_logs
 lightning_logs/
 __pycache__/
@@ -164,3 +163,4 @@ demos/
 *.out
 *.err
 *.pbs
+examples/vilt/baseline_vqa.sh
