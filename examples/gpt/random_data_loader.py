@@ -18,7 +18,7 @@ def get_random_data_loader(
         dtype=torch.long,
     )
     train_label = torch.randint(
-        low=0, high=2, size=(total_samples,), device=device, dtype=torch.long
+        low=0, high=2, size=(total_samples, sequence_length), device=device, dtype=torch.long
     )
     train_dataset = torch.utils.data.TensorDataset(train_data, train_label)
     if is_distrbuted:

@@ -55,7 +55,7 @@ def train_gpt():
     # with cm:
     #     model = gpc.config.model.pop('type')(**gpc.config.model)
 
-    model = gpt2_medium(vocab_size=gpc.config.VOCAB_SIZE,
+    model = gpt2_small(vocab_size=gpc.config.VOCAB_SIZE,
                         max_position_embeddings=gpc.config.SEQ_LENGTH,
                         checkpoint=True)
     model_numel, param_cnt = get_model_numel(model)
