@@ -147,4 +147,3 @@ examples/RetinalVesselSegmentation-demo/deprecated/
 examples/moe_pytorch
 nohup.out
 tb_logs
-examples/vilt
