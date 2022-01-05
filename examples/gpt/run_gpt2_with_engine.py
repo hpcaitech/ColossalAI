@@ -39,7 +39,7 @@ def train_gpt():
             logger.log_to_file(log_path)
 
     # train_dataset = WebtextDataset(os.environ['DATA'], seq_len=gpc.config.SEQ_LENGTH)
-    train_dataloader = get_random_data_loader(gpc.config.BATCH_SIZE, gpc.config.SEQ_LENGTH * 10, gpc.config.SEQ_LENGTH, torch.device('cpu'), torch.float)
+    train_dataloader = get_random_data_loader(gpc.config.BATCH_SIZE, gpc.config.SEQ_LENGTH * 3, gpc.config.SEQ_LENGTH, torch.device('cpu'), torch.float)
     # print(f'train_dataset len {len(train_dataset)} bs {gpc.config.BATCH_SIZE}')
     # train_dataloader = get_dataloader(train_dataset,
     #                                   seed=42,
@@ -55,7 +55,7 @@ def train_gpt():
     # with cm:
     #     model = gpc.config.model.pop('type')(**gpc.config.model)
 
-    model = gpt2_small(vocab_size=gpc.config.VOCAB_SIZE,
+    model = gpt2_large(vocab_size=gpc.config.VOCAB_SIZE,
                         max_position_embeddings=gpc.config.SEQ_LENGTH,
                         checkpoint=True)
     model_numel, param_cnt = get_model_numel(model)

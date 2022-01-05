@@ -3,18 +3,18 @@ from colossalai.amp import AMP_TYPE
 VOCAB_SIZE = 50304
 SEQ_LENGTH = 1024
 
-TOTAL_BATCH_SIZE = 32
+TOTAL_BATCH_SIZE = 8 
 LEARNING_RATE = 0.00015
 WEIGHT_DECAY = 1e-2
 
-TENSOR_PARALLEL_SIZE = 1
+TENSOR_PARALLEL_SIZE = 4 
 TENSOR_PARALLEL_MODE = '1d'
 
 NUM_EPOCHS = 2
 WARMUP_EPOCHS = int(NUM_EPOCHS * 0.36)
 
 parallel = dict(
-    pipeline=1,
+    # pipeline=8,
     tensor=dict(mode=TENSOR_PARALLEL_MODE, size=TENSOR_PARALLEL_SIZE),
 )
 
