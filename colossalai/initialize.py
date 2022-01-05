@@ -184,8 +184,6 @@ def launch_from_openmpi(config: Union[str, Path, Config, Dict],
 
 
 def launch_from_torch(config: Union[str, Path, Config, Dict],
-                      host: str,
-                      port: int,
                       backend: str = 'nccl',
                       seed: int = 1024,
                       verbose: bool = True):
@@ -206,6 +204,8 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
     rank = int(os.environ['RANK'])
     local_rank = int(os.environ['LOCAL_RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
+    host = os.environ['MASTER_ADDR']
+    port = int(os.environ['MASTER_PORT'])
     launch(config=config,
            local_rank=local_rank,
            rank=rank,
@@ -338,6 +338,19 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                     "Data parallel training is detected when using pipeline parallel, DataParallelGradientHandler is automatically "
                     "added even though not specified in the configuration",
                     ranks=[0])
+        # add pipeline parallel gradient handler, if pipeline shared module is detected
+        for param in model.parameters():
+            if getattr(param, 'pipeline_shared_module_pg', None) is not None:
+                if gradient_handler_cfg is None:
+                    gradient_handler_cfg = [dict(type='PipelineSharedModuleGradientHandler')]
+                else:
+                    gradient_handler_cfg.append(dict(type='PipelineSharedModuleGradientHandler'))
+                if verbose:
+                    logger.info(
+                        "pipeline_shared_module is detected, PipelineSharedModuleGradientHandler is automatically "
+                        "added even though not specified in the configuration",
+                        ranks=[0])
+                break
     else:
         if not isinstance(gradient_handler_cfg, list):
             raise ConfigException(

@@ -19,5 +19,5 @@ dataset = dict(
 )
 
 gradient_accumulation=2
-gradient_clipping=1.0
+clip_grad_norm=1.0
 

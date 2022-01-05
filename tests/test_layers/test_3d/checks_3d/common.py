@@ -4,12 +4,14 @@
 import torch
 
 DEPTH = 2
-BATCH_SIZE = 512
-SEQ_LENGTH = 128
-HIDDEN_SIZE = 512
-NUM_CLASSES = 1000
-NUM_BLOCKS = 6
-IMG_SIZE = 224
+BATCH_SIZE = 8
+SEQ_LENGTH = 8
+HIDDEN_SIZE = 8
+NUM_CLASSES = 8
+NUM_BLOCKS = 2
+IMG_SIZE = 16
 
 def check_equal(A, B):
-    return torch.allclose(A, B, rtol=1e-4, atol=1e-2)
+    eq = torch.allclose(A, B, rtol=1e-3, atol=1e-2)
+    assert eq
+    return eq

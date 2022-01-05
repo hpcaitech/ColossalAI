@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 import torch
 import torch.multiprocessing as mp
-
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
+from colossalai.utils import free_port
 
 CONFIG_PATH = Path(__file__).parent.joinpath('configs/parallel_2p5d_init.py').absolute()
 
@@ -35,6 +35,12 @@ def check_pipeline_parallel_rank(rank):
         assert ppr == 0
     elif rank in list(range(24, 32)):
         assert ppr == 1
+
+
+def check_model_parallel_rank(rank):
+    for i in range(16):
+        if rank in [i, i+16]:
+            assert gpc.get_local_rank(ParallelMode.MODEL) == i
 
 
 def check_tensor_parallel_rank(rank):
@@ -98,6 +104,7 @@ def init_2halfd(rank, world_size, backend, port, host):
     check_pipeline_parallel_rank(rank)
     check_tensor_parallel_rank(rank)
     check_2p5d_parallel_rank(rank)
+    check_model_parallel_rank(rank)
     gpc.destroy()
     torch.cuda.empty_cache()
 
@@ -111,7 +118,7 @@ def test_2halfd_init():
     test_fn = partial(init_2halfd,
                       world_size=world_size,
                       backend='gloo',
-                      port='29901',
+                      port=free_port(),
                       host='localhost'
                       )
     mp.spawn(test_fn, nprocs=world_size)

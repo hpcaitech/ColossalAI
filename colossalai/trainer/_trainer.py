@@ -155,7 +155,8 @@ class Trainer:
     def _train_epoch(self,
                      train_dataloader: DataLoader,
                      epoch: int = None,
-                     display_progress: bool = False):
+                     display_progress: bool = False,
+                     return_output_label: bool = True):
         # set training state
         self._engine.train()
         data_iter = iter(train_dataloader)
@@ -164,36 +165,41 @@ class Trainer:
             if epoch is None:
                 progress = tqdm(progress, desc='[Train]')
             else:
-                progress = tqdm(progress, desc=f'[Epoch {epoch} train]')
+                progress = tqdm(progress, desc=f'[Epoch {epoch} / Train]')
 
         self._call_hooks('before_train_epoch')
-        self._call_timer(action='start', item='train-epoch')
+        self._call_timer(action='start', item='Train-epoch')
         for i in progress:
             self._call_hooks('before_train_iter')
-            self._call_timer(action='start', item='train-step')
+            self._call_timer(action='start', item='Train-step')
 
             # run 1 training step
             self.engine.zero_grad()
             logits, label, loss = self.schedule.forward_backward_step(
-                self.engine, data_iter, forward_only=False, return_loss=True)
+                self.engine, data_iter, forward_only=False, return_loss=True, return_output_label=return_output_label)
             self.engine.step()
-            self._call_timer(action='stop', item='train-step', keep_in_history=True)
+            self._call_timer(action='stop', item='Train-step', keep_in_history=True)
             self._call_hooks('after_train_iter', output=(logits, label, loss))
 
             self._cur_step += 1
+
+            if display_progress:
+                if 'step_metrics' in self.states:
+                    progress.set_postfix(**self.states['step_metrics'])
 
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
 
-        self._call_timer(action='stop', item='train-epoch', keep_in_history=True)
+        self._call_timer(action='stop', item='Train-epoch', keep_in_history=True)
         self._call_hooks('after_train_epoch')
-        self._call_timer(action='reset', item='train-step')
+        self._call_timer(action='reset', item='Train-step')
 
     def _eval(self,
               test_dataloader: DataLoader,
               epoch: int = None,
-              display_progress: bool = False):
+              display_progress: bool = False,
+              return_output_label: bool = True):
         # switch engine status
         self._engine.eval()
 
@@ -206,25 +212,30 @@ class Trainer:
         if display_progress:
             desc = 'Evaluation'
             if epoch is not None:
-                desc = '[Epoch %d val]' % epoch
+                desc = '[Epoch %d / Test]' % epoch
             progress = tqdm(progress, desc=desc)
 
         self._call_hooks('before_test_epoch')
-        self._call_timer(action='start', item='test-epoch')
+        self._call_timer(action='start', item='Test-epoch')
         with torch.no_grad():
             for _ in progress:
                 self._call_hooks('before_test_iter')
-                self._call_timer(action='start', item='test-step')
+                self._call_timer(action='start', item='Test-step')
                 logits, label, loss = self.schedule.forward_backward_step(
-                    self.engine, data_iter, forward_only=True, return_loss=True)
-                self._call_timer(action='stop', item='test-step', keep_in_history=True)
+                    self.engine, data_iter, forward_only=True, return_loss=True, return_output_label=return_output_label)
+                self._call_timer(action='stop', item='Test-step', keep_in_history=True)
                 self._call_hooks('after_test_iter',
                                  output=(logits, label, loss))
-        self._call_timer(action='stop', item='test-epoch', keep_in_history=True)
+
+                if display_progress:
+                    if 'step_metrics' in self.states:
+                        progress.set_postfix(**self.states['step_metrics'])
+
+        self._call_timer(action='stop', item='Test-epoch', keep_in_history=True)
         self._call_hooks('after_test_epoch')
         self._call_hooks('after_test')
-        self._call_timer(action='reset', item='test-step')
-        self._call_timer(action='reset', item='test-epoch')
+        self._call_timer(action='reset', item='Test-step')
+        self._call_timer(action='reset', item='Test-epoch')
 
     def _exceed_max_step(self):
         return self._max_steps is not None and self._cur_step >= self._max_steps
@@ -237,6 +248,7 @@ class Trainer:
             test_interval: int = 1,
             hooks: List[BaseHook] = None,
             display_progress: bool = False,
+            return_output_label: bool = True,
             ):
         """Trains the model to fit training data.
 
@@ -247,6 +259,8 @@ class Trainer:
         :param test_interval: Interval of testing
         :param hooks_cfg: A list of hook configuration
         :param display_progress: If True, the training progress will be printed
+        :param return_output_label: If True, the output of model and the label will be returned
+        :type return_output_label: bool
         :type train_dataloader: DataLoader
         :type epochs: int
         :type max_steps: int
@@ -298,7 +312,8 @@ class Trainer:
             self._train_epoch(
                 train_dataloader=train_dataloader,
                 epoch=epoch,
-                display_progress=display_progress
+                display_progress=display_progress,
+                return_output_label=return_output_label
             )
 
             # start eval
@@ -306,6 +321,7 @@ class Trainer:
                 self._eval(test_dataloader=test_dataloader,
                            display_progress=display_progress,
                            epoch=epoch,
+                           return_output_label=return_output_label
                            )
 
             self._cur_epoch += 1
@@ -317,18 +333,21 @@ class Trainer:
                     ranks=[0])
                 break
         self._call_hooks('after_train')
-        self._call_timer('reset', 'train-epoch')
+        self._call_timer('reset', 'Train-epoch')
 
     def evaluate(self,
                  test_dataloader: DataLoader,
                  hooks: List[BaseHook] = None,
-                 display_progress: bool = False):
+                 display_progress: bool = False,
+                 return_output_label: bool = True):
         """Evaluates the model with testing data.
 
         :param test_dataloader: DataLoader in testing
         :param display_progress: If True, the evaluation progress will be printed
+        :param return_output_label: If True, the output of model and the label will be returned
         :type test_dataloader: DataLoader
         :type display_progress: bool, optional
+        :type return_output_label: bool
         """
         # set display
         display_progress = self._should_display_progress(display_progress)
@@ -351,6 +370,7 @@ class Trainer:
         # eval
         self._eval(test_dataloader=test_dataloader,
                    display_progress=display_progress,
+                   return_output_label=return_output_label
                    )
 
     def predict(self, data: Union[Tensor, List[Tensor]]):

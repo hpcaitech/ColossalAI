@@ -5,6 +5,7 @@ import inspect
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from colossalai.logging import get_dist_logger
 
 
 class Config(dict):
@@ -88,8 +89,8 @@ class Config(dict):
             else:
                 config._add_item(k, v)
 
-        # TODO: replace with logger warning here when logger is done
-        print('warning: variables which starts with __, is a module or class declaration are omitted')
+        logger = get_dist_logger()
+        logger.debug('variables which starts with __, is a module or class declaration are omitted in config file')
 
         # remove module
         del sys.modules[module_name]

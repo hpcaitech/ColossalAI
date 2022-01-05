@@ -1,23 +1,20 @@
-import colossalai
 import os
+from functools import partial
+from pathlib import Path
+
+import colossalai
 import pytest
 import torch
-import os.path as osp
-from pathlib import Path
-import torch.nn as nn
 import torch.multiprocessing as mp
-
-from torchvision import transforms
-from torch.optim import Adam
-from colossalai.core import global_context as gpc
+import torch.nn as nn
 from colossalai.amp import AMP_TYPE
+from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.utils import report_memory_usage, get_dataloader
-from colossalai.initialize import get_default_parser
-from torchvision.models import resnet18
+from colossalai.utils import free_port, get_dataloader, report_memory_usage
+from torch.optim import Adam
+from torchvision import transforms
 from torchvision.datasets import CIFAR10
-from functools import partial
-
+from torchvision.models import resnet18
 
 # Config
 BATCH_SIZE = 128
@@ -36,14 +33,14 @@ CONFIG = dict(
 )
 
 
-def run_engine(rank, world_size):
+def run_engine(rank, world_size, port):
     # init dist env
     colossalai.launch(
         config=CONFIG,
         rank=rank,
         world_size=world_size,
         host='localhost',
-        port=29913,
+        port=port,
         backend='nccl'
     )
 
@@ -102,7 +99,7 @@ def run_engine(rank, world_size):
 @pytest.mark.dist
 def test_engine():
     world_size = 4
-    run_func = partial(run_engine, world_size=world_size)
+    run_func = partial(run_engine, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

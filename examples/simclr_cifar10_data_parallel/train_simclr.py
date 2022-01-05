@@ -41,9 +41,7 @@ def build_dataset_test():
     )
 
 def main():
-    colossalai.launch_from_torch(config='./config.py',
-                                 host='localhost',
-                                 port=29500)
+    colossalai.launch_from_torch(config='./config.py')
     
     # get logger
     logger = get_dist_logger()

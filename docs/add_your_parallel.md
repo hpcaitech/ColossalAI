@@ -26,8 +26,6 @@ follow the steps below to create a new distributed initialization.
         GLOBAL = 'global'
         DATA = 'data'
         PIPELINE = 'pipe'
-        PIPELINE_PREV = 'pipe_prev'
-        PIPELINE_NEXT = 'pipe_next'
         ...
 
         NEW_MODE = 'new_mode'  # define your mode here

@@ -6,10 +6,11 @@ from .initializer_data import Initializer_Data
 from .initializer_pipeline import Initializer_Pipeline
 from .initializer_sequence import Initializer_Sequence
 from .initializer_tensor import Initializer_Tensor
+from .initializer_model import Initializer_Model
 from .process_group_initializer import ProcessGroupInitializer
 
 __all__ = [
     'Initializer_Tensor', 'Initializer_Sequence', 'Initializer_Pipeline',
     'Initializer_Data', 'Initializer_2p5D', 'Initializer_2D', 'Initializer_3D',
-    'Initializer_1D', 'ProcessGroupInitializer'
+    'Initializer_1D', 'ProcessGroupInitializer', 'Initializer_Model'
 ]

@@ -2,15 +2,12 @@
 # -*- encoding: utf-8 -*-
 
 
-import torch
 from typing import List
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 
-from colossalai.builder import build_gradient_handler
 from colossalai.logging import get_dist_logger
-from colossalai.utils import is_using_ddp, is_using_pp
 from torch import Tensor
 
 
@@ -84,7 +81,7 @@ class Engine:
 
     def backward(self, loss: Tensor):
         """Start backward propagation given the loss value computed by a loss function
-        
+
         :param loss: loss value computed by a loss function
         :type loss: :class:`torch.Tensor`
         """
@@ -92,7 +89,7 @@ class Engine:
 
     def backward_by_grad(self, tensor, grad):
         """Start backward propagation given the gradient of the output tensor
-        
+
         :param loss: output tensor
         :type loss: :class:`torch.Tensor`
         :param grad: gradient passed back to the output

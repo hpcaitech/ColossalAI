@@ -2,37 +2,30 @@
 # -*- encoding: utf-8 -*-
 
 import os
+from functools import partial
 from pathlib import Path
 
+import colossalai
 import pytest
+import torch
 import torch.autograd
 import torch.multiprocessing as mp
-
-import colossalai
-import torch
-from colossalai.builder import build_model
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_dataloader
-from colossalai.nn.layer._parallel_utilities import _gather
-from colossalai.nn import CrossEntropyLoss2D
+from colossalai.nn import CrossEntropyLoss
+from colossalai.utils import free_port, get_dataloader
+from model_zoo.vit import vit_lite_depth7_patch4_32
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
-from components import *
-from functools import partial
 
-CONFIG = dict(
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(size=4, mode='2d'),
-    ),
-    fp16=dict(
-        mode=None,
-    ),
-    zero=dict(
-        level=2
-    )
-)
+from components import *
+
+CONFIG = dict(parallel=dict(
+    pipeline=dict(size=1),
+    tensor=dict(size=4, mode='2d'),
+),
+              fp16=dict(mode=None, ),
+              zero=dict(level=2))
 
 
 def train_epoch(engine, train_dataloader):
@@ -47,32 +40,20 @@ def train_epoch(engine, train_dataloader):
     return avg_loss
 
 
-def run_2d_parallel_vision_transformer_level_2(rank, world_size):
-    colossalai.launch(
-        config=CONFIG,
-        rank=rank,
-        world_size=world_size,
-        host='localhost',
-        port=29950,
-        backend='nccl'
-    )
+def run_2d_parallel_vision_transformer_level_2(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # build model
-    model = build_model(model_cfg)
-    model.build_from_cfg()
+    model = vit_lite_depth7_patch4_32()
 
     # build dataloader# build dataloaders
-    train_dataset = CIFAR10(
-        root=Path(os.environ['DATA']),
-        download=True,
-        transform=transforms.Compose(
-            [
-                transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-            ]
-        )
-    )
+    train_dataset = CIFAR10(root=Path(os.environ['DATA']),
+                            download=True,
+                            transform=transforms.Compose([
+                                transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+                            ]))
     train_dataloader = get_dataloader(dataset=train_dataset,
                                       shuffle=True,
                                       batch_size=BATCH_SIZE,
@@ -81,7 +62,7 @@ def run_2d_parallel_vision_transformer_level_2(rank, world_size):
 
     # build optimizer and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = CrossEntropyLoss2D()
+    criterion = CrossEntropyLoss()
 
     engine, train_dataloader, *args = colossalai.initialize(model=model,
                                                             optimizer=optimizer,
@@ -109,7 +90,7 @@ def run_2d_parallel_vision_transformer_level_2(rank, world_size):
 @pytest.mark.dist
 def test_2d_vit_zero_level_2():
     world_size = 8
-    run_func = partial(run_2d_parallel_vision_transformer_level_2, world_size=world_size)
+    run_func = partial(run_2d_parallel_vision_transformer_level_2, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import random
+import socket
 
 import torch
 from torch._six import inf
@@ -9,15 +11,14 @@ try:
 except:
     pass
 
-import torch.distributed as dist
 from contextlib import contextmanager
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from .multi_tensor_apply import multi_tensor_applier
-from colossalai.constants import IS_TENSOR_PARALLEL, TENSOR_PARALLEL_ATTRIBUTES, NUM_PARTITIONS
+
 import torch.distributed as dist
+from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+
+from .multi_tensor_apply import multi_tensor_applier
 
 
 def print_rank_0(msg: str, logger=None):
@@ -31,6 +32,18 @@ def print_rank_0(msg: str, logger=None):
             print(msg, flush=True)
         else:
             logger.info(msg)
+
+
+def free_port():
+    while True:
+        try:
+            sock = socket.socket()
+            port = random.randint(20000, 65000)
+            sock.bind(('localhost', port))
+            sock.close()
+            return port
+        except Exception:
+            continue
 
 
 def sync_model_param_in_dp(model):
@@ -142,22 +155,12 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     if norm_type == inf:
         total_norm = max(p.grad.data.abs().max() for p in params)
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-        ops = []
         # Take max across all model-parallel GPUs.
-        if gpc.is_initialized(ParallelMode.TENSOR) and gpc.get_world_size(ParallelMode.TENSOR) > 1:
-            ops.append(dist.all_reduce(total_norm_cuda,
-                                       op=dist.ReduceOp.MAX,
-                                       group=gpc.get_group(
-                                           ParallelMode.TENSOR),
-                                       async_op=True))
-        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
-            ops.append(dist.all_reduce(total_norm_cuda,
-                                       op=dist.ReduceOp.MAX,
-                                       group=gpc.get_group(
-                                           ParallelMode.PIPELINE),
-                                       async_op=True))
-        for req in ops:
-            req.wait()
+        if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=gpc.get_group(ParallelMode.MODEL),
+                            async_op=False)
         total_norm = total_norm_cuda[0].item()
     else:
         tensor_parallel_grads = []
