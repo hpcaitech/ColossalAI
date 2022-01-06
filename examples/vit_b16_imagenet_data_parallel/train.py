@@ -11,7 +11,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.trainer import Trainer, hooks
 from colossalai.nn.lr_scheduler import LinearWarmupLR
 from dataloader.imagenet_dali_dataloader import DaliDataloader
-from mixup import MixupLoss
+from mixup import MixupLoss, MixupAccuracy
 from timm.models import vit_base_patch16_224
 from myhooks import TotalBatchsizeHook
 
@@ -62,7 +62,7 @@ def main():
                                  port=args.port,
                                  backend=args.backend
                                  )
-    # launch from torch    
+    # launch from torch
     # colossalai.launch_from_torch(config=args.config)
 
     # get logger
@@ -96,7 +96,7 @@ def main():
     # build hooks
     hook_list = [
         hooks.LossHook(),
-        hooks.AccuracyHook(accuracy_func=Accuracy()),
+        hooks.AccuracyHook(accuracy_func=MixupAccuracy()),
         hooks.LogMetricByEpochHook(logger),
         hooks.LRSchedulerHook(lr_scheduler, by_epoch=True),
         TotalBatchsizeHook(),

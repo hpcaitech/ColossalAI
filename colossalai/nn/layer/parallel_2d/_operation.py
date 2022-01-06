@@ -121,9 +121,10 @@ class classifier_2d(torch.autograd.Function):
             B_grad = torch.matmul(output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1), A)
             B_grad = reduce_scatter(B_grad, -1, ctx.col_parallel_mode)
             B_grad = B_grad.reshape(ctx.B_shape)
-
-            bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
-            bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
+            bias_grad = None
+            if ctx.use_bias:
+                bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
+                bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
 
         return A_grad, B_grad, bias_grad, None, None, None, None, None, None, None, None, None, None
 
@@ -174,9 +175,9 @@ class Matmul_AB_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_a = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
         src_b = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
 
         opa = [None] * 2
         opb = [None] * 2
@@ -279,9 +280,9 @@ class Matmul_ABT_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_b = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
         src_c = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
 
         opb = [None] * 2
         opr = [None] * 2
@@ -393,9 +394,9 @@ class Matmul_ATB_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_a = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
         src_c = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-                pipeline_parallel_rank * tensor_parallel_size
+            pipeline_parallel_rank * tensor_parallel_size
 
         opa = [None] * 2
         opr = [None] * 2

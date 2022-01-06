@@ -193,7 +193,7 @@ class Trainer:
 
         self._call_timer(action='stop', item='Train-epoch', keep_in_history=True)
         self._call_hooks('after_train_epoch')
-        self._call_timer(action='reset', item='Train-step')
+        self._call_timer(action='reset', item='Train-epoch')
 
     def _eval(self,
               test_dataloader: DataLoader,
