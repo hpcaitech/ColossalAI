@@ -8,7 +8,7 @@ from colossalai.registry import LAYERS, MODELS, LOSSES
 from colossalai.utils import get_current_device
 from torch import dtype, nn
 
-__all__ = ['GPT', 'GPTLMLoss', 'gpt2_small', 'gpt2_medium', 'gpt2_large', 'gpt2_xl', 'gpt3']
+__all__ = ['GPT', 'GPTLMLoss', 'gpt2_small', 'gpt2_medium', 'gpt2_large', 'gpt2_xl', 'gpt3', 'gpt2_4B', 'gpt2_6B', 'gpt2_10B']
 
 
 @LAYERS.register_module
@@ -275,6 +275,24 @@ def gpt2_large(**kwargs):
 @MODELS.register_module
 def gpt2_xl(**kwargs):
     model_kwargs = dict(dim=1600, depth=48, num_heads=25, **kwargs)
+    return _create_gpt_model(**model_kwargs)
+
+
+@MODELS.register_module
+def gpt2_4B(**kwargs):
+    model_kwargs = dict(dim=2304, depth=64, num_heads=16, **kwargs)
+    return _create_gpt_model(**model_kwargs)
+
+
+@MODELS.register_module
+def gpt2_6B(**kwargs):
+    model_kwargs = dict(dim=3072, depth=53, num_heads=16, **kwargs)
+    return _create_gpt_model(**model_kwargs)
+
+
+@MODELS.register_module
+def gpt2_10B(**kwargs):
+    model_kwargs = dict(dim=4096, depth=50, num_heads=16, **kwargs)
     return _create_gpt_model(**model_kwargs)
 
 

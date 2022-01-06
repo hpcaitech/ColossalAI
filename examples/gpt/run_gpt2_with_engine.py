@@ -10,7 +10,7 @@ from colossalai.nn import CosineAnnealingWarmupLR
 from colossalai.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, get_dataloader
 from colossalai.zero import zero3_model_context
-from model_zoo.gpt import GPTLMLoss, gpt2_small, gpt2_medium, gpt2_large, gpt2_xl
+from model_zoo.gpt import GPTLMLoss, gpt2_small, gpt2_medium, gpt2_large, gpt2_xl, gpt2_4B, gpt2_6B, gpt2_10B
 
 # from data import WebtextDataset
 from random_data_loader import get_random_data_loader
@@ -28,7 +28,7 @@ def train_gpt():
     #                   port=args.port)
 
     # launch from torchrun
-    colossalai.launch_from_torch(config='./config/1d.py')
+    colossalai.launch_from_torch(config='./config/2p5d.py')
 
     logger = get_dist_logger()
     if hasattr(gpc.config, 'LOG_PATH'):
@@ -39,7 +39,7 @@ def train_gpt():
             logger.log_to_file(log_path)
 
     # train_dataset = WebtextDataset(os.environ['DATA'], seq_len=gpc.config.SEQ_LENGTH)
-    train_dataloader = get_random_data_loader(gpc.config.BATCH_SIZE, gpc.config.SEQ_LENGTH * 3, gpc.config.SEQ_LENGTH, torch.device('cpu'), torch.float)
+    train_dataloader = get_random_data_loader(gpc.config.BATCH_SIZE, gpc.config.BATCH_SIZE * 10, gpc.config.SEQ_LENGTH, torch.device('cpu'), torch.float)
     # print(f'train_dataset len {len(train_dataset)} bs {gpc.config.BATCH_SIZE}')
     # train_dataloader = get_dataloader(train_dataset,
     #                                   seed=42,
@@ -55,11 +55,11 @@ def train_gpt():
     # with cm:
     #     model = gpc.config.model.pop('type')(**gpc.config.model)
 
-    model = gpt2_xl(vocab_size=gpc.config.VOCAB_SIZE,
+    model = gpt2_10B(vocab_size=gpc.config.VOCAB_SIZE,
                         max_position_embeddings=gpc.config.SEQ_LENGTH,
                         checkpoint=True)
     model_numel, param_cnt = get_model_numel(model)
-    logger.info(f'model numel {model_numel/1024/1024} M param cnt {param_cnt}')
+    logger.info(f'model numel {model_numel / 1024**3} M param cnt {param_cnt}')
     criterion = GPTLMLoss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.00015, weight_decay=1e-2)
