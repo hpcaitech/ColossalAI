@@ -25,6 +25,7 @@ os.environ['DATA']= './data'
 # os.environ['LOCAL_RANK']= '0'
 # os.environ['WORLD_SIZE']= '0'
 
+# Loading Data
 DATA_DIR = './data/CamVid/'
 
 if not os.path.exists(DATA_DIR):
@@ -38,6 +39,7 @@ y_train_dir = os.path.join(DATA_DIR, 'trainannot')
 x_test_dir = os.path.join(DATA_DIR, 'test')
 y_test_dir = os.path.join(DATA_DIR, 'testannot')
 
+# Data visualization function
 def visualize(**images):
     """PLot images in one row."""
     n = len(images)
@@ -52,7 +54,6 @@ def visualize(**images):
 
 class Dataset(BaseDataset):
     """CamVid Dataset. Read images, apply augmentation and preprocessing transformations.
-
     Args:
         images_dir (str): path to images folder
         masks_dir (str): path to segmentation masks folder
@@ -63,7 +64,6 @@ class Dataset(BaseDataset):
             (e.g. noralization, shape manipulation, etc.)
 
     """
-
     CLASSES = ['sky', 'building', 'pole', 'road', 'pavement',
                'tree', 'signsymbol', 'fence', 'car',
                'pedestrian', 'bicyclist', 'unlabelled']
@@ -82,7 +82,6 @@ class Dataset(BaseDataset):
 
         # convert str names to class values on masks
         self.class_values = [self.CLASSES.index(cls.lower()) for cls in classes]
-
         self.augmentation = augmentation
         self.preprocessing = preprocessing
 
@@ -112,19 +111,112 @@ class Dataset(BaseDataset):
     def __len__(self):
         return len(self.ids)
 
+# Prepared input data visualization
+
 dataset = Dataset(x_train_dir, y_train_dir, classes=['car'])
 
 image, mask = dataset[4] # get some sample
+
 visualize(
     image=image,
     cars_mask=mask.squeeze(),
 )
 
+# Data augmentation
+def get_training_augmentation():
+    train_transform = [
+        albu.HorizontalFlip(p=0.5),
+        albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=1, border_mode=0),
+        albu.PadIfNeeded(min_height=320, min_width=320, always_apply=True, border_mode=0),
+        albu.RandomCrop(height=320, width=320, always_apply=True),
+        albu.IAAAdditiveGaussianNoise(p=0.2),
+        albu.IAAPerspective(p=0.5),
+        albu.OneOf(
+            [
+                albu.CLAHE(p=1),
+                albu.RandomBrightness(p=1),
+                albu.RandomGamma(p=1),
+            ],
+             p=0.9,
+        ),
+        albu.OneOf(
+            [
+                albu.IAASharpen(p=1),
+                albu.Blur(blur_limit=3, p=1),
+                albu.MotionBlur(blur_limit=3, p=1),
+            ],
+            p=0.9,
+        ),
+        albu.OneOf(
+            [
+                albu.RandomContrast(p=1),
+                albu.HueSaturationValue(p=1),
+            ],
+            p=0.9,
+        ),
+    ]
+    return albu.Compose(train_transform)
+
+def to_tensor(x, **kwargs):
+    return x.transpose(2, 0, 1).astype('float32')
+
+def get_preprocessing(preprocessing_fn):
+    """Construct preprocessing transform
+
+    Args:
+        preprocessing_fn (callbale): data normalization function
+            (can be specific for each pretrained neural network)
+        Return:
+        transform: albumentations.Compose
+
+        """
+    _transform = [
+        albu.Lambda(image=preprocessing_fn),
+        albu.Lambda(image=to_tensor, mask=to_tensor),
+    ]
+    return albu.Compose(_transform)
+
+def get_test_augmentation():
+    """Add paddings to make image shape divisible by 32"""
+    test_transform = [
+        albu.PadIfNeeded(480,384)
+    ]
+    return albu.Compose(test_transform)
+
+# Visualize resulted augmented images and masks
+
+augmented_dataset = Dataset(
+    x_train_dir, 
+    y_train_dir, 
+    augmentation=get_training_augmentation(), 
+    classes=['car'],
+)
+
+# Same image with different random transforms
+for i in range(3):
+    image, mask = augmented_dataset[1]
+    visualize(image=image, mask=mask.squeeze(-1))
+
+# Create model and train
+ENCODER = 'resnext50_32x4d'
+ENCODER_WEIGHTS = 'imagenet'
+CLASSES = ['car']
+ACTIVATION = 'sigmoid' # could be None for logits or 'softmax2d' for multiclass segmentation
+DEVICE = 'cuda'
+
+model = sgm.DeepLabV3(
+    encoder_name=ENCODER, 
+    encoder_weights=ENCODER_WEIGHTS, 
+    classes=len(CLASSES), 
+    activation=ACTIVATION,
+)
+preprocessing_fn = sgm.encoder.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
+
 def main():
 
     colossalai.launch(config='./config.py',
            rank=0,
-          world_size=1,
+           world_size=1,
            host='127.0.0.1',
            port=8888,
            backend = 'nccl',
@@ -134,90 +226,7 @@ def main():
 
     logger = get_dist_logger()
 
-    ENCODER = 'resnext50_32x4d'
-    
-    ENCODER_WEIGHTS = 'imagenet'
-    CLASSES = ['car']
-    ACTIVATION = 'sigmoid' # could be None for logits or 'softmax2d' for multiclass segmentation
-    DEVICE = 'cuda'
-    model = sgm.DeepLabV3(
-        encoder_name=ENCODER, 
-        encoder_weights=ENCODER_WEIGHTS, 
-        classes=len(CLASSES), 
-        activation=ACTIVATION,
-    )
-    preprocessing_fn = sgm.encoder.get_preprocessing_fn(ENCODER, ENCODER_WEIGHTS)
     # build dataloaders
-
-    def get_training_augmentation():
-        train_transform = [
-
-            albu.HorizontalFlip(p=0.5),
-
-            albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=1, border_mode=0),
-
-            albu.PadIfNeeded(min_height=320, min_width=320, always_apply=True, border_mode=0),
-            albu.RandomCrop(height=320, width=320, always_apply=True),#train输入 320*320
-
-            albu.IAAAdditiveGaussianNoise(p=0.2),
-            albu.IAAPerspective(p=0.5),
-
-            albu.OneOf(
-                [
-                    albu.CLAHE(p=1),
-                    albu.RandomBrightness(p=1),
-                    albu.RandomGamma(p=1),
-                ],
-                p=0.9,
-            ),
-
-            albu.OneOf(
-                [
-                    albu.IAASharpen(p=1),
-                    albu.Blur(blur_limit=3, p=1),
-                    albu.MotionBlur(blur_limit=3, p=1),
-                ],
-                p=0.9,
-            ),
-
-            albu.OneOf(
-                [
-                    albu.RandomContrast(p=1),
-                    albu.HueSaturationValue(p=1),
-                ],
-                p=0.9,
-            ),
-        ]
-        return albu.Compose(train_transform)
-
-    def get_preprocessing(preprocessing_fn):
-        """Construct preprocessing transform
-
-        Args:
-            preprocessing_fn (callbale): data normalization function
-                (can be specific for each pretrained neural network)
-        Return:
-            transform: albumentations.Compose
-
-        """
-
-        _transform = [
-            albu.Lambda(image=preprocessing_fn),
-            albu.Lambda(image=to_tensor, mask=to_tensor),
-        ]
-        return albu.Compose(_transform)
-
-    def get_test_augmentation():
-        """Add paddings to make image shape divisible by 32"""
-        test_transform = [
-            albu.PadIfNeeded(384,480)#test输入 384*480
-        ]
-        return albu.Compose(test_transform)
-
-    def to_tensor(x, **kwargs):
-        return x.transpose(2, 0, 1).astype('float32')
-
-
     train_dataset = Dataset(
         x_train_dir,
         y_train_dir,
@@ -234,18 +243,11 @@ def main():
         classes=CLASSES,
     )
 
-    #test_dataloader = DataLoader(test_dataset)
-    #logs = test_epoch.run(test_dataloader)
-
-    test_dataset_vis = Dataset(
-        x_test_dir, y_test_dir,
-        classes=CLASSES,
-    )
-
     train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=0)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
 
-    loss = torch.nn.CrossEntropyLoss()
+    # build criterion
+    criterion = torch.nn.CrossEntropyLoss()
 
     # optimizer
     optimizer = torch.optim.Adam([
@@ -257,7 +259,7 @@ def main():
 
     engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model,
                                                                          optimizer,
-                                                                         loss,
+                                                                         criterion,
                                                                          train_dataloader,
                                                                          test_dataloader,
                                                                          )
@@ -274,21 +276,19 @@ def main():
 
     # define the hooks to attach to the trainer
     hook_list = [
-        #hooks.LossHook(),
-        #hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=True),
-        #hooks.AccuracyHook(accuracy_func=Accuracy()),
-        #hooks.LogMetricByEpochHook(logger),
-        #hooks.LogMemoryByEpochHook(logger),
-        #hooks.LogTimingByEpochHook(timer, logger),
+        hooks.LossHook(),
+        hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=True),
+        hooks.AccuracyHook(accuracy_func=Accuracy()),
+        hooks.LogMetricByEpochHook(logger),
+        hooks.LogMemoryByEpochHook(logger),
+        hooks.LogTimingByEpochHook(timer, logger),
 
         # you can uncomment these lines if you wish to use them
-        #hooks.TensorboardHook(log_dir='./tb_logs', ranks=[0]),
-        #hooks.SaveCheckpointHook(checkpoint_dir='./ckpt')
+        hooks.TensorboardHook(log_dir='./tb_logs', ranks=[0]),
+        hooks.SaveCheckpointHook(checkpoint_dir='./ckpt')
     ]
 
     # start training
-    #epochs = gpc.config.NUM_EPOCHS
-    #writer = SummaryWriter('./runs/exp1')
     trainer.fit(
         train_dataloader=train_dataloader,
         epochs=gpc.config.NUM_EPOCHS,
@@ -297,6 +297,6 @@ def main():
         hooks=hook_list,
         display_progress=True
     )
-    writer.add_scalar('batch_loss', loss, epochs)
+
 if __name__ == '__main__':
     main()
