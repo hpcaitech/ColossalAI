@@ -38,8 +38,9 @@ class BaseSchedule(ABC):
         return data
 
     @staticmethod
-    def _check_sanity(data, tag):
-        assert isinstance(data, (torch.Tensor, dict)), f'{tag} must be torch.Tensor or dict'
+    def _check_sanity(data, tag: str):
+        assert isinstance(data, (torch.Tensor, dict)), \
+            f'{tag} must be torch.Tensor or dict'
 
     def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are

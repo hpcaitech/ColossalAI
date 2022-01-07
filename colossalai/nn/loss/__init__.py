@@ -6,6 +6,7 @@ from colossalai.nn.layer.utils import get_tensor_parallel_mode
 from .loss_2d import CrossEntropyLoss2D
 from .loss_2p5d import CrossEntropyLoss2p5D
 from .loss_3d import CrossEntropyLoss3D
+from .loss_moe import MoeCrossEntropyLoss, MoeLoss
 
 _parallel_cross_entropy = {
     '2d': CrossEntropyLoss2D,

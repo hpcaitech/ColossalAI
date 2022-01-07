@@ -10,6 +10,7 @@ from torch import Tensor, dtype
 from torch import nn as nn
 
 from ..utils import to_2tuple
+from colossalai.context import seed
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
@@ -40,6 +41,58 @@ class DropPath(nn.Module):
 
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
+
+
+class WrappedDropout(nn.Module):
+    """Same as torch.nn.Dropout. But it is wrapped with the context of seed manager.
+    """
+    def __init__(self, p: float = 0.5, inplace: bool = False, mode=None):
+        super().__init__()
+        if p < 0 or p > 1:
+            raise ValueError("dropout probability has to be between 0 and 1, "
+                             "but got {}".format(p))
+        self.p = p
+        self.inplace = inplace
+        if mode is None:
+            self.func = self.nonefunc
+        else:
+            self.func = self.normalfunc
+            self.mode = mode
+
+    def nonefunc(self, inputs):
+        return F.dropout(inputs, self.p, self.training, self.inplace)
+
+    def normalfunc(self, inputs):
+        with seed(self.mode):
+            return F.dropout(inputs, self.p, self.training, self.inplace)
+
+    def forward(self, inputs):
+        return self.func(inputs)
+
+
+class WrappedDropPath(nn.Module):
+    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    Here, it is wrapped with the context of seed manager.
+    """
+    def __init__(self, p: float = 0., mode=None):
+        super().__init__()
+        self.p = p
+        self.mode = mode
+        if self.mode is None:
+            self.func = self.nonefunc
+        else:
+            self.func = self.normalfunc
+            self.mode = mode
+
+    def nonefunc(self, inputs):
+        return drop_path(inputs, self.p, self.training)
+
+    def normalfunc(self, inputs):
+        with seed(self.mode):
+            return drop_path(inputs, self.p, self.training)
+
+    def forward(self, inputs):
+        return self.func(inputs)
 
 
 @LAYERS.register_module
