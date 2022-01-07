@@ -13,5 +13,5 @@ __all__ = [
     'send_forward_backward_recv_forward_backward', 'send_backward',
     'send_backward_recv_backward', 'send_backward_recv_forward',
     'send_forward_recv_backward', 'recv_backward', 'recv_forward',
-    'ring_forward', 'send_tensor_meta', 'recv_tensor_meta'
+    'ring_forward', 'send_tensor_meta', 'recv_tensor_meta',
 ]
