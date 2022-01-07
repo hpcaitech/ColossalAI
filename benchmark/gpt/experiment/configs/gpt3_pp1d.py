@@ -2,7 +2,7 @@ import torch
 from model import GPT3_pipeline_1D
 from torch.optim import Adam
 from colossalai.amp import AMP_TYPE
-
+from model import vocab_parallel_cross_entropy
 
 BATCH_SIZE = 192
 NUM_EPOCHS = 60
@@ -27,9 +27,11 @@ optimizer = dict(
 )
 
 model = dict(
-    type=GPT3_pipeline_hybrid,
+    type=GPT3_pipeline_1D,
     checkpoint=True,
     dtype=torch.half,
-    # act_func='fused_gelu',
-    # num_chunks=3,
+    fused=True,
+    num_chunks=1,
 )
+
+loss_fn = dict(type=vocab_parallel_cross_entropy)
