@@ -173,7 +173,7 @@ class PipelineGPTHybrid(GenericPipelineGPT):
             for _ in range(num_layers)
         ])
         if last:
-            norm = kernel.LayerNorm(hidden_size, eps=layer_norm_epsilon)
+            norm = col_nn.LayerNorm(hidden_size, eps=layer_norm_epsilon)
             head = col_gpt.GPTLMHead(vocab_size=vocab_size,
                                      dim=hidden_size,
                                      dtype=dtype,
