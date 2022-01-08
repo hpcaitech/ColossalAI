@@ -15,7 +15,8 @@ INITIALIZER_MAPPING = {
     '2.5d': 'Initializer_2p5D',
     '3d': 'Initializer_3D',
     'sequence': 'Initializer_Sequence',
-    'model': 'Initializer_Model'
+    'model': 'Initializer_Model',
+    'moe': 'Initializer_Moe'
 }
 
 # 1D parallel
