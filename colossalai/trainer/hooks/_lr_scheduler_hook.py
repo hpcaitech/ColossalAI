@@ -8,14 +8,14 @@ from ._metric_hook import LearningRateMetric, MetricHook
 class LRSchedulerHook(MetricHook):
     """Build LR scheduler
 
-    :param trainer: Trainer attached with current hook
-    :type trainer: Trainer
-    :param lr_scheduler_cfg: The config of LR scheduler
-    :type lr_scheduler_cfg: dict
-    :param by_epoch: If `True`, the LR will be scheduled every epoch. Else, the LR will be scheduled every batch. Defaults to `True`.
+    :param lr_scheduler: LR scheduler
+    :param by_epoch: If `True`, the LR will be scheduled every epoch. Else, the LR will be scheduled every batch
     :type by_epoch: bool
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
+    :param store_lr_in_state: If `True`, store the learning rate in each state, defaults to `True`
+    :type store_lr_in_state: bool, optional
+    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 1
     :type priority: int, optional
+    :param trainer: Trainer attached with current hook
     """
     def __init__(
         self,

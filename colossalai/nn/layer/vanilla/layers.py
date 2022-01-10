@@ -32,7 +32,8 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
 
 
 class DropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    """
+    Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     Adapted from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers/drop.py
     """
     def __init__(self, drop_prob=None):
@@ -97,7 +98,27 @@ class WrappedDropPath(nn.Module):
 
 @LAYERS.register_module
 class VanillaPatchEmbedding(nn.Module):
-    """ 2D Image to Patch Embedding
+    """ 
+    2D Image to Patch Embedding
+
+    :param img_size: image size
+    :type img_size: int
+    :param patch_size: patch size
+    :type patch_size: int
+    :param in_chans: number of channels of input image
+    :type in_chans: int
+    :param embed_size: size of embedding
+    :type embed_size: int
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param flatten: whether to flatten output tensor, defaults to True
+    :type flatten: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    :param position_embed_initializer: The intializer of position embedding, defaults to zero
+    :type position_embed_initializer: typing.Callable, optional
     """
     def __init__(self,
                  img_size: int,
@@ -148,6 +169,24 @@ class VanillaPatchEmbedding(nn.Module):
 
 @LAYERS.register_module
 class VanillaClassifier(nn.Module):
+    """
+    Classifier
+
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param num_classes: number of classes
+    :type num_classes: int
+    :param weight: weight of the classifier, defaults to True
+    :type weight: torch.nn.Parameter, optional
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    """
     def __init__(self,
                  in_features: int,
                  num_classes: int,

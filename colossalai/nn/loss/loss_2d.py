@@ -7,7 +7,8 @@ from torch.nn.modules.loss import _Loss
 
 @LOSSES.register_module
 class CrossEntropyLoss2D(_Loss):
-    """Cross entropy loss for 2D parallelism
+    """
+    Cross entropy loss for 2D parallelism
 
     :param reduction: whether to average the loss, defaults to True
     :type reduction: bool, optional

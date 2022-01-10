@@ -21,7 +21,8 @@ from ._utils import assert_summa_initialization, get_summa_dim_from_env
 
 @LAYERS.register_module
 class Linear2D(ParallelLayer):
-    """ Linear layer for 2D parallelism
+    """
+    Linear layer for 2D parallelism
 
     :param in_features: size of each input sample
     :type in_features: int
@@ -33,6 +34,10 @@ class Linear2D(ParallelLayer):
     :type dtype: torch.dtype, optional
     :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
     :type skip_bias_add: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
     """
     def __init__(self,
                  in_features: int,
@@ -113,7 +118,8 @@ class Linear2D(ParallelLayer):
 
 @LAYERS.register_module
 class LayerNorm2D(ParallelLayer):
-    r"""Layer Normalization for 2D parallelism
+    r"""
+    Layer Normalization for 2D parallelism
 
     :param normalized_shape: input shape from an expected input
         of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
@@ -184,18 +190,27 @@ class LayerNorm2D(ParallelLayer):
 
 @LAYERS.register_module
 class PatchEmbedding2D(ParallelLayer):
-    """ 2D Image to Patch Embedding
+    """
+    2D Image to Patch Embedding
 
-    :param img_size: iamge size
+    :param img_size: image size
     :type img_size: int
     :param patch_size: patch size
     :type patch_size: int
-    :param embed_dim: dimension of embedding
-    :type embed_dim: int
-    :param in_chans: number of channels of input image, defaults to 3
-    :type in_chans: int, optional
+    :param in_chans: number of channels of input image
+    :type in_chans: int
+    :param embed_size: size of embedding
+    :type embed_size: int
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
     :param flatten: whether to flatten output tensor, defaults to True
     :type flatten: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    :param position_embed_initializer: The intializer of position embedding, defaults to zero
+    :type position_embed_initializer: typing.Callable, optional
     """
     def __init__(self,
                  img_size: int,
@@ -275,6 +290,20 @@ class PatchEmbedding2D(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding2D(ParallelLayer):
+    """
+    Embedding for 2D parallelism
+
+    :param num_embeddings: number of embeddings
+    :type num_embeddings: int
+    :param embedding_dim: dimension of embedding
+    :type embedding_dim: int
+    :param padding_idx: index of padding, defaults to None
+    :type padding_idx: int, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to normal initializer
+    :type weight_initializer: typing.Callable, optional
+    """
     def __init__(self,
                  num_embeddings: int,
                  embedding_dim: int,
@@ -325,6 +354,24 @@ class Embedding2D(ParallelLayer):
 
 @LAYERS.register_module
 class Classifier2D(ParallelLayer):
+    """
+    Classifier for 2D parallelism
+
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param num_classes: number of classes
+    :type num_classes: int
+    :param weight: weight of the classifier, defaults to True
+    :type weight: torch.nn.Parameter, optional
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    """
     def __init__(self,
                  in_features: int,
                  num_classes: int,

@@ -24,6 +24,20 @@ _parallel_patchembedding = {
 
 
 class Embedding(nn.Module):
+    """
+    Embedding for colossalai
+
+    :param num_embeddings: number of embeddings
+    :type num_embeddings: int
+    :param embedding_dim: dimension of embedding
+    :type embedding_dim: int
+    :param padding_idx: index of padding, defaults to None
+    :type padding_idx: int, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to normal initializer
+    :type weight_initializer: typing.Callable, optional
+    """
     def __init__(self,
                  num_embeddings: int,
                  embedding_dim: int,
@@ -63,6 +77,28 @@ class Embedding(nn.Module):
 
 
 class PatchEmbedding(nn.Module):
+    """
+    2D Image to Patch Embedding
+
+    :param img_size: image size
+    :type img_size: int
+    :param patch_size: patch size
+    :type patch_size: int
+    :param in_chans: number of channels of input image
+    :type in_chans: int
+    :param embed_size: size of embedding
+    :type embed_size: int
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param flatten: whether to flatten output tensor, defaults to True
+    :type flatten: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    :param position_embed_initializer: The intializer of position embedding, defaults to zero
+    :type position_embed_initializer: typing.Callable, optional
+    """
     def __init__(self,
                  img_size: int,
                  patch_size: int,

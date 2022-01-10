@@ -10,10 +10,9 @@ class BaseHook(ABC):
     """This class allows users to add desired actions in specific time points
     during training or evaluation.
 
-    :param trainer: Trainer attached with current hook
     :param priority: Priority in the printing, hooks with small priority will be printed in front
-    :type trainer: Trainer
     :type priority: int
+    :param trainer: Trainer attached with current hook
     """
 
     def __init__(self, priority: int) -> None:
@@ -43,11 +42,11 @@ class BaseHook(ABC):
         """Actions after running a training iteration.
 
         :param output: Output of the model
+        :type output: torch.Tensor
         :param label: Labels of the input data
+        :type label: torch.Tensor
         :param loss: Loss between the output and input data
-        :type output: Tensor
-        :type label: Tensor
-        :type loss: Tensor
+        :type loss: torch.Tensor
         """
         pass
 
@@ -90,10 +89,10 @@ class BaseHook(ABC):
         """Actions after running a testing iteration.
 
         :param output: Output of the model
-        :param label: Labels of the input data
-        :param loss: Loss between the output and input data
         :type output: Tensor
+        :param label: Labels of the input data
         :type label: Tensor
+        :param loss: Loss between the output and input data
         :type loss: Tensor
         """
         pass
