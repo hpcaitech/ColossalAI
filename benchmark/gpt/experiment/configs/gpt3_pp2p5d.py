@@ -16,7 +16,7 @@ fp16 = dict(
 
 parallel = dict(
     pipeline=24,
-    tensor=dict(mode='2d', size=4)
+    tensor=dict(mode='2.5d', depth = 1, size=4)
 )
 
 optimizer = dict(

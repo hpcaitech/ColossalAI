@@ -278,7 +278,7 @@ class Linear1D_Row(ParallelLayer):
         weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
         if self.bias is not None:
             bias_initializer(self.bias, fan_in=fan_in)
-        broadcast(self.bias, gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0], ParallelMode.PARALLEL_1D)
+            broadcast(self.bias, gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0], ParallelMode.PARALLEL_1D)
 
     def _set_tensor_parallel_attributes(self):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)
@@ -295,7 +295,8 @@ class Linear1D_Row(ParallelLayer):
         output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
 
         if not self.skip_bias_add:
-            output = output + self.bias
+            if self.bias is not None:
+                output = output + self.bias
             return output
         else:
             return output, self.bias
