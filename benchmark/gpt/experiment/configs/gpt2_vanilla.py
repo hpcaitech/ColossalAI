@@ -1,6 +1,6 @@
 
 from colossalai.amp import AMP_TYPE
-from model.gpt import GPTLMLoss, GPT2_small
+from model.gpt import GPT2_small
 from torch.optim import Adam
 
 
@@ -19,16 +19,8 @@ fp16 = dict(
     mode=AMP_TYPE.NAIVE
 )
 
-loss = dict(
-    type=GPTLMLoss,
-)
 
 model = dict(
     type=GPT2_small,
     checkpoint=True,
-)
-
-parallel = dict(
-    pipeline=1,
-    tensor=dict(mode=None, size=1),
 )

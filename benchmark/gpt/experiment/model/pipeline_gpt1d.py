@@ -11,7 +11,6 @@ from colossalai import kernel
 from colossalai import nn as col_nn
 import model_zoo.gpt.gpt as col_gpt
 from colossalai.logging import get_dist_logger
-import os
 
 __all__ = [
     'GPT2_exlarge_pipeline_1D',
@@ -199,7 +198,7 @@ def _build_generic_gpt_pipeline_1d(module_cls, num_layers, num_chunks, device=to
         kwargs['num_layers'] = end - start
         kwargs['first'] = start == 0
         kwargs['last'] = end == num_layers
-        logger.info(f'Rank{rank} build layer {start}-{end}, {end-start}/{num_layers} layers, {os.environ["HOSTNAME"]}')
+        logger.info(f'Rank{rank} build layer {start}-{end}, {end-start}/{num_layers} layers')
         chunk = module_cls(**_filter_kwargs(module_cls.__init__, kwargs)).to(device)
         if start == 0:
             wrapper.register_module(chunk.embedding.word_embeddings)
@@ -233,7 +232,7 @@ def GPT2_exlarge_pipeline_1D(num_chunks=1, checkpoint=False, dtype=torch.float, 
     return _build_gpt_pipeline_1d(48, num_chunks, fused=fused, **cfg)
 
 
-def GPT3_pipeline_1D(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=True, fused=False):
+def GPT3_pipeline_1D(num_chunks=1, checkpoint=False, dtype=torch.float, embed_split_hidden=False, fused=False):
     cfg = dict(hidden_size=12288, num_attention_heads=96,
                checkpoint=checkpoint, max_position_embeddings=2048, dtype=dtype, embed_split_hidden=embed_split_hidden)
     return _build_gpt_pipeline_1d(96, num_chunks, fused=fused, **cfg)

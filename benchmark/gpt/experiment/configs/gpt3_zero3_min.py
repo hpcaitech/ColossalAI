@@ -3,7 +3,7 @@ from torch.optim import Adam
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 
-BATCH_SIZE = 2
+BATCH_SIZE = 3
 NUM_EPOCHS = 60
 SEQ_LEN = 2048
 

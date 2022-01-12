@@ -1,3 +1,4 @@
+from colossalai.context.parallel_mode import ParallelMode
 from colossalai.logging import get_dist_logger, disable_existing_loggers
 import colossalai
 import os
@@ -7,18 +8,13 @@ from colossalai.zero import zero3_model_context
 import colossalai.utils as utils
 from colossalai.trainer import hooks, Trainer
 from colossalai.nn import LinearWarmupLR
-from colossalai.context import ParallelMode
 import torch.nn as nn
-import torch
 from dataset.webtext import WebtextDataset
 import contextlib
-from colossalai.engine.schedule import PipelineSchedule, InterleavedPipelineSchedule, NonPipelineSchedule
+from colossalai.engine.schedule import PipelineSchedule, InterleavedPipelineSchedule
 from model.gpt import GPTLMLoss
+from colossalai.utils import is_using_pp
 
-# profiler setup
-# WAIT_STEPS = 1
-# WARMUP_STEPS = 1
-# ACTIVE_STEPS = 3
 
 def main():
     parser = colossalai.get_default_parser()
@@ -45,13 +41,13 @@ def main():
                                             drop_last=True)
 
     logger.info('Build model', ranks=[0])
-    use_pipeline = getattr(gpc.config.parallel, 'pipeline', None)
+    use_pipeline = is_using_pp()
     use_interleaved = hasattr(gpc.config.model, 'num_chunks')
     use_zero3 = hasattr(gpc.config, 'zero') and gpc.config.zero.level == 3
     ctx = zero3_model_context() if use_zero3 else contextlib.nullcontext()
     with ctx:
         model = gpc.config.model.pop('type')(**gpc.config.model)
-    if use_interleaved and not isinstance(model, nn.ModuleList):
+    if use_pipeline and use_interleaved and not isinstance(model, nn.ModuleList):
         model = nn.ModuleList([model])
 
     criterion = getattr(gpc.config, 'loss_fn', None)
@@ -72,21 +68,20 @@ def main():
                                                                       criterion,
                                                                       train_dataloader=train_dataloader,
                                                                       lr_scheduler=lr_scheduler)
-    logger.info('Init done', ranks=[0])
+    global_batch_size = gpc.config.BATCH_SIZE * \
+        gpc.get_world_size(ParallelMode.DATA) * getattr(gpc.config, "gradient_accumulation", 1)
+    logger.info(f'Init done, global batch size = {global_batch_size}', ranks=[0])
     tensor_shape = getattr(gpc.config, 'TENSOR_SHAPE', None)
-    if use_pipeline is not None and (use_pipeline != 1) :
+    schedule = None
+    if use_pipeline:
         if use_interleaved:
             logger.info('Build InterleavedPipelineSchedule', ranks=[0])
             schedule = InterleavedPipelineSchedule(gpc.config.NUM_MICRO_BATCHES,
-                                                gpc.config.model.num_chunks, tensor_shape=tensor_shape, scatter_gather_tensors=True)
+                                                   gpc.config.model.num_chunks, tensor_shape=tensor_shape, scatter_gather_tensors=True)
         else:
             logger.info('Build PipelineSchedule', ranks=[0])
             schedule = PipelineSchedule(gpc.config.NUM_MICRO_BATCHES,
                                         tensor_shape=tensor_shape, scatter_gather_tensors=True)
-    else:
-        logger.info('Build InterleavedPipelineSchedule', ranks=[0])
-        schedule = NonPipelineSchedule()
-    
 
     timier = MultiTimer()
 
@@ -118,54 +113,6 @@ def main():
         return_output_label=False
     )
 
-    # add profiler
-    # if gpc.get_global_rank() == 0:
-    #     with torch.profiler.profile(
-    #             activities=[
-    #                 # torch.profiler.ProfilerActivity.CPU,
-    #                 torch.profiler.ProfilerActivity.CUDA,
-    #             ],
-    #             schedule=torch.profiler.schedule(wait=WAIT_STEPS,
-    #                                              warmup=WARMUP_STEPS,
-    #                                              active=ACTIVE_STEPS),
-    #             on_trace_ready=torch.profiler.tensorboard_trace_handler(
-    #                 f'./log_gpt_{gpc.config.parallel.tensor.mode}_{gpc.get_world_size(ParallelMode.GLOBAL)}'
-    #             ),
-    #             record_shapes=True,
-    #             profile_memory=True,
-    #             # with_flops=True,
-    #             # with_modules=True,
-    #     ) as prof:
-    #         if prof is not None:
-    #             print('profiler is ok before entering trainer')
-    #         trainer.fit(
-    #             train_dataloader=train_dataloader,
-    #             epochs=gpc.config.NUM_EPOCHS,
-    #             test_interval=1,
-    #             hooks=hook_list,
-    #             display_progress=True,
-    #             return_output_label=False,
-    #             profiler=prof,
-    #             max_steps=WAIT_STEPS + WARMUP_STEPS + ACTIVE_STEPS,
-    #         )
-
-    #     torch.cuda.synchronize()
-
-    #     print('Test complete. Generating profiling report ...')
-
-    #     torch.distributed.barrier()
-    # else:
-    #     trainer.fit(
-    #             train_dataloader=train_dataloader,
-    #             epochs=gpc.config.NUM_EPOCHS,
-    #             test_interval=1,
-    #             hooks=hook_list,
-    #             display_progress=True,
-    #             return_output_label=False,
-    #             max_steps=WAIT_STEPS + WARMUP_STEPS + ACTIVE_STEPS,
-    #         )
-    #     torch.cuda.synchronize()
-    #     torch.distributed.barrier()
 
 if __name__ == '__main__':
     main()

@@ -1,21 +1,22 @@
-from model import GPT2_exlarge_pipeline_1D
+import torch
+from model import GPT3_pipeline_1D
 from torch.optim import Adam
 from colossalai.amp import AMP_TYPE
-import torch
 from model import vocab_parallel_cross_entropy
 
-BATCH_SIZE = 128
+
+BATCH_SIZE = 192
 NUM_EPOCHS = 60
-SEQ_LEN = 1024
-NUM_MICRO_BATCHES = 16
-TENSOR_SHAPE = (BATCH_SIZE // NUM_MICRO_BATCHES, SEQ_LEN, 1600)
+SEQ_LEN = 2048
+NUM_MICRO_BATCHES = 192
+TENSOR_SHAPE = (BATCH_SIZE // NUM_MICRO_BATCHES, SEQ_LEN, 12288)
 
 fp16 = dict(
     mode=AMP_TYPE.NAIVE
 )
 
 parallel = dict(
-    pipeline=2,
+    pipeline=24,
     tensor=dict(mode='1d', size=4)
 )
 
@@ -26,11 +27,11 @@ optimizer = dict(
 )
 
 model = dict(
-    type=GPT2_exlarge_pipeline_1D,
+    type=GPT3_pipeline_1D,
     checkpoint=True,
     dtype=torch.half,
-    # embed_split_hidden=True,
-    # num_chunks=2,
+    fused=True,
+    num_chunks=1,
 )
 
 loss_fn = dict(type=vocab_parallel_cross_entropy)

@@ -26,7 +26,7 @@ zero = dict(
 
 
 optimizer = dict(
-    type=Adam,
+    type=DeepSpeedCPUAdam,
     lr=0.00015,
     weight_decay=1e-2,
 )
