@@ -14,6 +14,7 @@ from colossalai.utils import get_current_device
 class VanillaSelfAttention(nn.Module):
     """Standard ViT self attention.
     """
+
     def __init__(self,
                  d_model: int,
                  n_heads: int,
@@ -57,6 +58,7 @@ class VanillaSelfAttention(nn.Module):
 class VanillaFFN(nn.Module):
     """FFN composed with two linear layers, also called MLP.
     """
+
     def __init__(self,
                  d_model: int,
                  d_ff: int,
@@ -72,8 +74,7 @@ class VanillaFFN(nn.Module):
         drop1 = nn.Dropout(drop_rate) if dropout1 is None else dropout1
         drop2 = nn.Dropout(drop_rate) if dropout2 is None else dropout2
 
-        self.ffn = nn.Sequential(
-            dense1, act, drop1,dense2, drop2)
+        self.ffn = nn.Sequential(dense1, act, drop1, dense2, drop2)
 
     def forward(self, x):
         return self.ffn(x)
@@ -91,7 +92,7 @@ class Widenet(nn.Module):
                  d_model: int = 768,
                  num_heads: int = 12,
                  d_kv: int = 64,
-                 d_ff: int = 3072,
+                 d_ff: int = 4096,
                  attention_drop: float = 0.,
                  drop_rate: float = 0.1,
                  drop_path: float = 0.):
