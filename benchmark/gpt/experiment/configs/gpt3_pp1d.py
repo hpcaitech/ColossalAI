@@ -16,7 +16,7 @@ fp16 = dict(
 )
 
 parallel = dict(
-    pipeline=32,
+    pipeline=16,
     tensor=dict(mode='1d', size=4)
 )
 
@@ -34,4 +34,4 @@ model = dict(
     num_chunks=1,
 )
 
-loss_fn = dict(type=vocab_parallel_cross_entropy)
+# loss_fn = dict(type=vocab_parallel_cross_entropy)

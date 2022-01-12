@@ -345,9 +345,11 @@ class Embedding2D(ParallelLayer):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
-        weight = all_gather_weight_2d.apply(self.weight, -1, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
+        # weight = all_gather_weight_2d.apply(self.weight, -1, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
 
-        output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+        output = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+
+        output = all_gather_weight_2d.apply(output, -1, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
 
         return output
 
