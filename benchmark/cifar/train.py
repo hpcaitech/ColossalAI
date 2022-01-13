@@ -8,7 +8,7 @@ import torch
 import torchvision
 from colossalai.builder import *
 from colossalai.core import global_context as gpc
-from colossalai.logging import get_dist_logger
+from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn import Accuracy, CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.trainer import Trainer, hooks
@@ -47,6 +47,7 @@ def build_cifar(batch_size):
 
 
 def train_cifar():
+    disable_existing_loggers()
     args = colossalai.get_default_parser().parse_args()
     # standard launch
     # colossalai.launch(config=args.config,

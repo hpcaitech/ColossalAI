@@ -1,13 +1,12 @@
-import os
-
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.global_variables import tensor_parallel_env as env
 
 
 def get_tesseract_dim_dep_from_env():
     try:
-        tesseract_dim = int(os.environ['TESSERACT_DIM'])
-        tesseract_dep = int(os.environ['TESSERACT_DEP'])
+        tesseract_dim = env.tesseract_dim
+        tesseract_dep = env.tesseract_dep
         assert tesseract_dim > 0, 'TESSERACT_DIM must be larger than zero'
         assert tesseract_dep > 0, 'TESSERACT_DEP must be larger than zero'
         return tesseract_dim, tesseract_dep

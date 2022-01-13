@@ -17,7 +17,7 @@ import torch.distributed as dist
 from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.global_variables import moe_env
+from colossalai.global_variables import moe_env, tensor_parallel_env as env
 
 from .multi_tensor_apply import multi_tensor_applier
 
@@ -86,6 +86,14 @@ def conditional_context(context_manager, enable=True):
             yield
     else:
         yield
+
+
+class model_branch_context(object):
+    def __enter__(self):
+        self.env_status = env.save()
+    
+    def __exit__(self, *exc_info):
+        env.load(**self.env_status)
 
 
 def is_model_parallel_parameter(p):

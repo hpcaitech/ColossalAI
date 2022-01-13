@@ -2,22 +2,21 @@
 # -*- encoding: utf-8 -*-
 
 import math
-import os
 
 import torch.distributed as dist
-
-from colossalai.constants import TESSERACT_DIM, TESSERACT_DEP
 from colossalai.context import Config
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.registry import DIST_GROUP_INITIALIZER
-from .process_group_initializer import ProcessGroupInitializer
+
 from ..parallel_mode import ParallelMode
+from .process_group_initializer import ProcessGroupInitializer
 
 
 def _check_tesseract_env_var(tesseract_dim: int,
                              tesseract_dep: int):
-    # check environment variable for TESSERACT
-    env_tesseract_dim = os.environ.get(TESSERACT_DIM, None)
-    env_tesseract_dep = os.environ.get(TESSERACT_DEP, None)
+    # check global variable for TESSERACT
+    env_tesseract_dim = env.tesseract_dim
+    env_tesseract_dep = env.tesseract_dep
 
     if env_tesseract_dim and env_tesseract_dep:
         assert int(env_tesseract_dim) == tesseract_dim, \
@@ -27,8 +26,8 @@ def _check_tesseract_env_var(tesseract_dim: int,
             'TESSERACT_DEP has been set in the current environment and ' \
             'does not match with the value passed to this initialized'
     else:
-        os.environ[TESSERACT_DIM] = str(tesseract_dim)
-        os.environ[TESSERACT_DEP] = str(tesseract_dep)
+        env.tesseract_dim = tesseract_dim
+        env.tesseract_dep = tesseract_dep
 
 
 # i row j col k dep

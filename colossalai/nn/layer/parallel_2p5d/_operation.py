@@ -122,8 +122,11 @@ class classifier_2p5d(torch.autograd.Function):
             B_grad = reduce_scatter(B_grad, -1, ctx.col_parallel_mode)
             B_grad = B_grad.reshape(ctx.B_shape)
 
-            bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
-            bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
+            if ctx.use_bias:
+                bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
+                bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
+            else:
+                bias_grad = None
 
         return A_grad, B_grad, bias_grad, None, None, None, None, None, None, None, None, None, None
 
@@ -737,6 +740,22 @@ def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
         return input_
     return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
                        dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
+
+
+class reduce_tensor_2p5d(torch.autograd.Function):
+    """
+    All-reduce the input.
+    
+    :param input_: input tensor
+    :param parallel_mode: parallel mode
+    """
+    @staticmethod
+    def forward(ctx, input_, parallel_mode):
+        return all_reduce(input_, parallel_mode)
+
+    @staticmethod
+    def backward(ctx, output_grad):
+        return output_grad, None
 
 
 class reduce_by_batch_2p5d(torch.autograd.Function):

@@ -7,16 +7,17 @@ import torch.nn.functional as F
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils import get_current_device
-from torch import Tensor, dtype
+from torch import Tensor
 from torch.nn import Parameter
 
 from ..base_layer import ParallelLayer
-from ..utils import (divide, set_tensor_parallel_attribute_by_partition, to_2tuple)
-from ._operation import (Add_Bias_2p5D, Matmul_AB_2p5D, all_gather_weight_2p5d, classifier_2p5d, layernorm_2p5d)
-from ._utils import (assert_tesseract_initialization, get_tesseract_dim_dep_from_env)
+from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
+from ._operation import (Add_Bias_2p5D, Matmul_AB_2p5D, Matmul_ABT_2p5D, all_gather_weight_2p5d, classifier_2p5d,
+                         layernorm_2p5d, reduce_tensor_2p5d)
+from ._utils import assert_tesseract_initialization, get_tesseract_dim_dep_from_env
 
 
 @LAYERS.register_module
@@ -37,14 +38,16 @@ class Linear2p5D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  in_features: int,
                  out_features: int,
                  bias: bool = True,
-                 dtype: dtype = None,
                  skip_bias_add: bool = False,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 device=None,
+                 dtype=None):
         super().__init__()
 
         self.in_features = in_features
@@ -63,7 +66,7 @@ class Linear2p5D(ParallelLayer):
         self.hidden_size_per_partition = divide(out_features, self.tesseract_dim)
 
         # create weight, shape: [k/q, h/q]
-        factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
+        factory_kwargs = {'device': device, 'dtype': dtype}
         self.weight = Parameter(
             torch.empty(self.input_size_per_partition, self.hidden_size_per_partition, **factory_kwargs))
 
@@ -143,7 +146,8 @@ class LayerNorm2p5D(ParallelLayer):
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     """
-    def __init__(self, normalized_shape: int, eps: float = 1e-05, dtype=None):
+
+    def __init__(self, normalized_shape: int, eps: float = 1e-05, device=None, dtype=None):
         super().__init__()
 
         # layer norm config
@@ -161,7 +165,7 @@ class LayerNorm2p5D(ParallelLayer):
         self.partitioned_partition = divide(normalized_shape, self.tesseract_dim)  # *
 
         # create parameters
-        factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
+        factory_kwargs = {'device': device, 'dtype': dtype}
 
         self.gamma = Parameter(torch.ones(self.partitioned_partition, **factory_kwargs))
         self.beta = Parameter(torch.zeros(self.partitioned_partition, **factory_kwargs))
@@ -224,16 +228,18 @@ class PatchEmbedding2p5D(ParallelLayer):
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  img_size: int,
                  patch_size: int,
                  in_chans: int,
                  embed_size: int,
-                 dtype: dtype = None,
                  flatten: bool = True,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 position_embed_initializer: Callable = init.zeros_()):
+                 position_embed_initializer: Callable = init.zeros_(),
+                 device=None,
+                 dtype=None):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -250,17 +256,12 @@ class PatchEmbedding2p5D(ParallelLayer):
 
         with seed(ParallelMode.TENSOR):
             self.weight = Parameter(
-                torch.empty((self.embed_size_per_partition, in_chans, *self.patch_size),
-                            device=get_current_device(),
-                            dtype=dtype))
-            self.bias = Parameter(torch.empty(self.embed_size_per_partition, device=get_current_device(), dtype=dtype))
+                torch.empty((self.embed_size_per_partition, in_chans, *self.patch_size), device=device, dtype=dtype))
+            self.bias = Parameter(torch.empty(self.embed_size_per_partition, device=device, dtype=dtype))
 
-            self.cls_token = Parameter(
-                torch.zeros((1, 1, self.embed_size_per_partition), device=get_current_device(), dtype=dtype))
+            self.cls_token = Parameter(torch.zeros((1, 1, self.embed_size_per_partition), device=device, dtype=dtype))
             self.pos_embed = Parameter(
-                torch.zeros((1, self.num_patches + 1, self.embed_size_per_partition),
-                            device=get_current_device(),
-                            dtype=dtype))
+                torch.zeros((1, self.num_patches + 1, self.embed_size_per_partition), device=device, dtype=dtype))
 
         self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
         self._set_tensor_parallel_attribute()
@@ -316,12 +317,14 @@ class Embedding2p5D(ParallelLayer):
     :param weight_initializer: The intializer of weight, defaults to normal initializer
     :type weight_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  num_embeddings: int,
                  embedding_dim: int,
                  padding_idx: int = None,
-                 dtype: dtype = None,
                  weight_initializer: Callable = init.normal_(),
+                 device=None,
+                 dtype=None,
                  *args,
                  **kwargs):
         super().__init__()
@@ -336,8 +339,7 @@ class Embedding2p5D(ParallelLayer):
         self.embed_args = args
         self.embed_kwargs = kwargs
 
-        self.weight = Parameter(
-            torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype))
+        self.weight = Parameter(torch.empty((num_embeddings, embed_dim_per_partition), device=device, dtype=dtype))
 
         self.reset_parameters(weight_initializer)
         self._set_tensor_parallel_attributes()
@@ -365,6 +367,80 @@ class Embedding2p5D(ParallelLayer):
 
 
 @LAYERS.register_module
+class VocabParallelEmbedding2p5D(torch.nn.Module):
+    """Embedding parallelized in the vocabulary dimension.
+
+    This is mainly adapted from torch.nn.Embedding and all the default
+    values are kept.
+    Arguments:
+        num_embeddings: vocabulary size.
+        embedding_dim: size of hidden state.
+        init_method: method to initialize weights.
+    """
+
+    def __init__(self,
+                 num_embeddings: int,
+                 embedding_dim: int,
+                 padding_idx: int = None,
+                 weight_initializer: Callable = init.normal_(),
+                 device=None,
+                 dtype=None,
+                 *args,
+                 **kwargs):
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embed_dim = embedding_dim
+        self.padding_idx = padding_idx
+        self.embed_args = args
+        self.embed_kwargs = kwargs
+
+        assert_tesseract_initialization()
+        self.tesseract_dim, self.tesseract_dep = get_tesseract_dim_dep_from_env()
+        self.num_embeddings_per_partition = divide(self.num_embeddings, self.tesseract_dim)
+        self.embed_dim_per_partition = divide(self.embed_dim, self.tesseract_dim)
+        tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
+        self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
+        self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
+
+        self.weight = Parameter(
+            torch.empty((self.num_embeddings_per_partition, self.embed_dim_per_partition), device=device, dtype=dtype))
+
+        self.reset_parameters(weight_initializer)
+        self._set_tensor_parallel_attributes()
+        env.vocab_parallel = True
+
+    def _set_tensor_parallel_attributes(self):
+        set_tensor_parallel_attribute_by_partition(self.weight, self.tesseract_dim**2)
+
+    def reset_parameters(self, weight_initializer) -> None:
+        with seed(ParallelMode.TENSOR):
+            fan_in, fan_out = self.num_embeddings, self.embed_dim
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+            self._fill_padding_idx_with_zero()
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None:
+            with torch.no_grad():
+                self.weight[self.padding_idx].fill_(0)
+
+    def forward(self, input_: Tensor) -> Tensor:
+        # Build the mask.
+        input_mask = (input_ < self.vocab_start_index) | (input_ >= self.vocab_end_index)
+        # Mask the input.
+        masked_input = input_.clone() - self.vocab_start_index
+        masked_input[input_mask] = 0
+
+        output_parallel = F.embedding(masked_input, self.weight, self.padding_idx, *self.embed_args,
+                                      **self.embed_kwargs)
+
+        # Mask the output embedding.
+        output_parallel[input_mask, :] = 0.
+        # Reduce across all the model parallel GPUs.
+        output = reduce_tensor_2p5d.apply(output_parallel, ParallelMode.PARALLEL_2P5D_ROW)
+        return output
+
+
+@LAYERS.register_module
 class Classifier2p5D(ParallelLayer):
     """
     Classifier for 2.5D parallelism
@@ -384,14 +460,16 @@ class Classifier2p5D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  in_features: int,
                  num_classes: int,
                  weight: Parameter = None,
                  bias: bool = True,
-                 dtype: dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 device=None,
+                 dtype=None):
         super().__init__()
         self.in_features = in_features
         self.num_classes = num_classes
@@ -409,10 +487,10 @@ class Classifier2p5D(ParallelLayer):
             self.has_weight = False
         else:
             self.weight = Parameter(
-                torch.empty(self.num_classes, self.input_size_per_partition, device=get_current_device(), dtype=dtype))
+                torch.empty(self.num_classes, self.input_size_per_partition, device=device, dtype=dtype))
             self.has_weight = True
         if bias:
-            self.bias = Parameter(torch.zeros(self.num_classes, device=get_current_device(), dtype=dtype))
+            self.bias = Parameter(torch.zeros(self.num_classes, device=device, dtype=dtype))
         else:
             self.bias = None
 
@@ -444,3 +522,110 @@ class Classifier2p5D(ParallelLayer):
                                      self.col_rank, ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL,
                                      self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
                                      self.tensor_parallel_size)
+
+
+@LAYERS.register_module
+class VocabParallelClassifier2p5D(ParallelLayer):
+    """
+    Linear layer for 2.5D parallelism
+
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param out_features: size of each output sample
+    :type out_features: int
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    """
+
+    def __init__(self,
+                 in_features: int,
+                 num_classes: int,
+                 weight: Parameter = None,
+                 bias: bool = True,
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 device=None,
+                 dtype=None):
+        super().__init__()
+
+        self.in_features = in_features
+        self.num_classes = num_classes
+
+        # parallel setting
+        assert_tesseract_initialization()
+        self.row_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)
+        self.col_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
+        self.dep_rank = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
+        self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
+
+        # partitioning dimension
+        self.input_size_per_partition = divide(in_features, self.tesseract_dim)
+        self.hidden_size_per_partition = divide(num_classes, self.tesseract_dim)
+
+        # create weight, shape: [k/q, h/q]
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        if weight is not None:
+            self.weight = weight
+            self.has_weight = False
+        else:
+            self.weight = Parameter(
+                torch.empty(self.hidden_size_per_partition, self.input_size_per_partition, **factory_kwargs))
+            self.has_weight = True
+        # create bias, shape: [h/q]
+        if bias:
+            self.bias = Parameter(torch.empty(self.hidden_size_per_partition, **factory_kwargs))
+        else:
+            self.bias = None
+
+        # initialize parameters
+        with seed(ParallelMode.TENSOR):
+            self.reset_parameters(weight_initializer, bias_initializer)
+        self._set_tensor_parallel_attributes()
+        env.vocab_parallel = True
+
+    def _set_tensor_parallel_attributes(self):
+        if self.has_weight:
+            set_tensor_parallel_attribute_by_partition(self.weight, self.tesseract_dim**2)
+        if self.bias is not None:
+            set_tensor_parallel_attribute_by_partition(self.bias, self.tesseract_dim)
+
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
+        fan_in, fan_out = self.in_features, self.num_classes
+        if self.has_weight:
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        if self.bias is not None:
+            bias_initializer(self.bias, fan_in=fan_in)
+
+    def forward(self, x: Tensor) -> Tensor:
+        # input: [m/dq, n/q, k/q]
+        # output: [m/dq, n/q, h/q]
+        out_shape = x.shape[:-1] + (self.hidden_size_per_partition, )
+
+        output = Matmul_ABT_2p5D.apply(
+            x,
+            self.weight,
+            self.tesseract_dim,
+            out_shape,
+            self.row_rank,
+            self.col_rank,
+            self.dep_rank,
+            ParallelMode.PARALLEL_2P5D_ROW,
+            ParallelMode.PARALLEL_2P5D_COL,
+            self.data_parallel_rank,
+            self.pipeline_parallel_rank,
+            self.pipeline_parallel_size,
+            self.tensor_parallel_size,
+        )
+
+        if self.bias is not None:
+            output = Add_Bias_2p5D.apply(output, self.bias, self.hidden_size_per_partition, self.tesseract_dim,
+                                         self.row_rank, self.col_rank, self.dep_rank, ParallelMode.PARALLEL_2P5D_COL,
+                                         False, self.data_parallel_rank, self.pipeline_parallel_rank,
+                                         self.pipeline_parallel_size, self.tensor_parallel_size)
+        return output

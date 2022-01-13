@@ -5,8 +5,7 @@ import torch
 import torch.nn.functional as F
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils import get_current_device
-from torch import Tensor, dtype
+from torch import Tensor
 from torch import nn as nn
 
 from ..utils import to_2tuple
@@ -125,11 +124,12 @@ class VanillaPatchEmbedding(nn.Module):
                  patch_size: int,
                  in_chans: int,
                  embed_size: int,
-                 dtype: dtype = None,
                  flatten: bool = True,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 position_embed_initializer: Callable = init.zeros_()):
+                 position_embed_initializer: Callable = init.zeros_(),
+                 device=None,
+                 dtype=None):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -139,11 +139,10 @@ class VanillaPatchEmbedding(nn.Module):
         self.num_patches = self.grid_size[0] * self.grid_size[1]
         self.flatten = flatten
 
-        self.weight = nn.Parameter(
-            torch.empty((embed_size, in_chans, *self.patch_size), device=get_current_device(), dtype=dtype))
-        self.bias = nn.Parameter(torch.empty(embed_size, device=get_current_device(), dtype=dtype))
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_size))
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_size))
+        self.weight = nn.Parameter(torch.empty((embed_size, in_chans, *self.patch_size), device=device, dtype=dtype))
+        self.bias = nn.Parameter(torch.empty(embed_size, device=device, dtype=dtype))
+        self.cls_token = nn.Parameter(torch.zeros((1, 1, embed_size), device=device, dtype=dtype))
+        self.pos_embed = nn.Parameter(torch.zeros((1, self.num_patches + 1, embed_size), device=device, dtype=dtype))
 
         self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
 
@@ -192,9 +191,10 @@ class VanillaClassifier(nn.Module):
                  num_classes: int,
                  weight: nn.Parameter = None,
                  bias: bool = True,
-                 dtype: dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 device=None,
+                 dtype=None):
         super().__init__()
         self.in_features = in_features
         self.num_classes = num_classes
@@ -204,10 +204,10 @@ class VanillaClassifier(nn.Module):
             self.has_weight = False
         else:
             self.weight = nn.Parameter(
-                torch.empty(self.num_classes, self.in_features, device=get_current_device(), dtype=dtype))
+                torch.empty(self.num_classes, self.in_features, device=device, dtype=dtype))
             self.has_weight = True
         if bias:
-            self.bias = nn.Parameter(torch.zeros(self.num_classes, device=get_current_device(), dtype=dtype))
+            self.bias = nn.Parameter(torch.zeros(self.num_classes, device=device, dtype=dtype))
         else:
             self.bias = None
 

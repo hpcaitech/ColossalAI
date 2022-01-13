@@ -1,19 +1,20 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import List, Tuple, Union, Callable
 import inspect
-import torch.cuda
-from torch import Tensor
+from typing import Callable, List, Tuple, Union
 
 import colossalai.communication as comm
+import torch
+from colossalai.amp.naive_amp import NaiveAMPModel
+from colossalai.amp.torch_amp import TorchAMPModel
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.amp.naive_amp import NaiveAMPModel
-from colossalai.utils.cuda import get_current_device
-from colossalai.zero import (ZeroRedundancyOptimizer_Level_2,
-                             ZeroRedundancyOptimizer_Level_3)
 from colossalai.utils import switch_virtual_pipeline_parallel_rank
+from colossalai.utils.cuda import get_current_device
+from colossalai.zero import ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3
+from torch import Tensor
+
 from ._base_schedule import BaseSchedule
 
 
@@ -80,7 +81,7 @@ class PipelineSchedule(BaseSchedule):
                 "Pipeline schedule is currently not compatible with ZeRO Level 2 and Level 3"
             )
         model = engine.model
-        if isinstance(model, NaiveAMPModel):
+        if isinstance(model, (NaiveAMPModel, TorchAMPModel)):
             self.dtype = torch.half
             model = model.model
         sig = inspect.signature(model.forward)
@@ -393,7 +394,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
 
         if gpc.is_pipeline_last_stage():
             if return_output_label:
-                return_tensors.append(tuple(output_tensor, label))
+                return_tensors.append(tuple((output_tensor, label)))
             if accum_loss is not None:
                 loss_reduced = self._call_engine_criterion(engine, output_tensor, label) / self.num_microbatches
                 accum_loss.add_(loss_reduced.detach())

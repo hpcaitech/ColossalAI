@@ -107,7 +107,7 @@ class DaliDataloader(DALIClassificationIterator):
         data = super().__next__()
         img, label = data[0]['data'], data[0]['label']
         label = label.squeeze()
-        return (img, ), (label, )
+        return img, label
 
 
 def build_dali_train(batch_size):
@@ -139,15 +139,15 @@ def build_dali_test(batch_size):
 def train_imagenet():
     args = colossalai.get_default_parser().parse_args()
     # standard launch
-    # colossalai.launch(config=args.config,
-    #                   rank=args.rank,
-    #                   world_size=args.world_size,
-    #                   local_rank=args.local_rank,
-    #                   host=args.host,
-    #                   port=args.port)
+    colossalai.launch(config=args.config,
+                      rank=args.rank,
+                      world_size=args.world_size,
+                      local_rank=args.local_rank,
+                      host=args.host,
+                      port=args.port)
 
     # launch from torchrun
-    colossalai.launch_from_torch(config=args.config)
+    # colossalai.launch_from_torch(config=args.config)
 
     logger = get_dist_logger()
     if hasattr(gpc.config, 'LOG_PATH'):
