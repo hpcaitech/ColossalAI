@@ -19,7 +19,7 @@ from colossalai.utils import checkpoint
 from colossalai.utils import get_current_device
 from colossalai.nn.layer import Linear1D_Col, Linear1D_Row
 from colossalai.nn.layer.base_layer import ParallelLayer
-from colossalai.kernel import bias_gelu_impl
+from colossalai.kernel.jit import bias_gelu_impl
 
 
 __all__ = [
@@ -45,7 +45,7 @@ class BERTLMLoss(nn.Module):
         MLM_loss = self.loss_fn1(sequence_output, masked_lm_ids)
         MLM_loss = MLM_loss * masked_lm_weights.view(-1)
         MLM_loss = MLM_loss.mean()
-        
+
         # NSP loss
         NSP_loss = self.loss_fn2(nsp_prediction.view(-1, 2).float(),
                                  next_sentence_labels.view(-1),)
@@ -144,7 +144,7 @@ class BertModel1D(nn.Module):
 
         self.blocks = nn.ModuleList([
             BertTransformerLayer1D(hidden_size, num_heads, act_func, mlp_ratio, attn_drop_rate,
-                                 drop_rate, dtype, checkpoint, max_position_embeddings, layer_norm_epsilon, apply_post_layer_norm)
+                                   drop_rate, dtype, checkpoint, max_position_embeddings, layer_norm_epsilon, apply_post_layer_norm)
             for i in range(depth)
         ])
         self.pooler = BertPooler(hidden_size) if add_pooling_layer else None
