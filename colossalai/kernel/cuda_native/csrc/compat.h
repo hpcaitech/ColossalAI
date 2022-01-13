@@ -1,7 +1,4 @@
-/*This code from NVIDIA apex:
- *     https://github.com/NVIDIA/apex
- *     with minor changes. */
-
+// modified from https://github.com/NVIDIA/apex/blob/master/csrc/compat.h
 #ifndef TORCH_CHECK
 #define TORCH_CHECK AT_CHECK
 #endif

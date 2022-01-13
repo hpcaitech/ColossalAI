@@ -65,8 +65,7 @@ class FusedAdam(torch.optim.Optimizer):
             self._dummy_overflow_buf = torch.cuda.IntTensor([0])
             self.multi_tensor_adam = colossal_C.multi_tensor_adam
         else:
-            raise RuntimeError(
-                'apex.optimizers.FusedAdam requires cuda extensions')
+            raise RuntimeError('FusedAdam requires cuda extensions')
 
     def zero_grad(self):
         if self.set_grad_none:

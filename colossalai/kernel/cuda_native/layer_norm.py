@@ -34,10 +34,10 @@ class FusedLayerNormAffineFunction(torch.autograd.Function):
         input_, weight_, bias_, mean, invvar = ctx.saved_tensors
         grad_input = grad_weight = grad_bias = None
         grad_input, grad_weight, grad_bias \
-          = colossal_layer_norm_cuda.backward_affine(
-            grad_output.contiguous(), mean, invvar,
-            input_, ctx.normalized_shape,
-            weight_, bias_, ctx.eps)
+            = colossal_layer_norm_cuda.backward_affine(
+                grad_output.contiguous(), mean, invvar,
+                input_, ctx.normalized_shape,
+                weight_, bias_, ctx.eps)
 
         return grad_input, grad_weight, grad_bias, None, None
 
@@ -48,7 +48,11 @@ class MixedFusedLayerNorm(torch.nn.Module):
         super(MixedFusedLayerNorm, self).__init__()
 
         global colossal_layer_norm_cuda
-        colossal_layer_norm_cuda = importlib.import_module("colossal_layer_norm_cuda")
+        if colossal_layer_norm_cuda is None:
+            try:
+                colossal_layer_norm_cuda = importlib.import_module("colossal_layer_norm_cuda")
+            except ImportError:
+                raise RuntimeError('MixedFusedLayerNorm requires cuda extensions')
 
         if isinstance(normalized_shape, numbers.Integral):
             normalized_shape = (normalized_shape,)
