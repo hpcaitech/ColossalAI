@@ -2,6 +2,7 @@ import torch
 
 JIT_OPTIONS_SET = False
 
+
 def _set_jit_fusion_options():
     """Set PyTorch JIT layer fusion options."""
     global JIT_OPTIONS_SET
