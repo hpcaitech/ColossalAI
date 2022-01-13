@@ -5,7 +5,7 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 BATCH_SIZE = 2
 NUM_EPOCHS = 60
-EQ_LEN = 1024
+SEQ_LEN = 1024
 
 zero = dict(
     level=3,
