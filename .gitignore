@@ -164,3 +164,4 @@ demos/
 *.err
 *.pbs
 examples/vilt/baseline_vqa.sh
+examples/vilt/baseline_vqa.sh
