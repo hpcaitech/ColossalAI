@@ -26,10 +26,10 @@ def build_dali_train():
         batch_size=gpc.config.BATCH_SIZE,
         shard_id=gpc.get_local_rank(ParallelMode.DATA),
         num_shards=gpc.get_world_size(ParallelMode.DATA),
-        training=True,
         gpu_aug=gpc.config.dali.gpu_aug,
         cuda=True,
-        mixup_alpha=gpc.config.dali.mixup_alpha
+        mixup_alpha=gpc.config.dali.mixup_alpha,
+	randaug_num_layers=2
     )
 
 
