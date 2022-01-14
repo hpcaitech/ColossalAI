@@ -139,7 +139,7 @@ class VanillaResNet(ModelFromConfig):
     def forward(self, x: Tensor):
         for layer in self.layers:
             x = layer(x)
-        return x,
+        return x
 
     def init_weights(self):
         for m in self.modules():
