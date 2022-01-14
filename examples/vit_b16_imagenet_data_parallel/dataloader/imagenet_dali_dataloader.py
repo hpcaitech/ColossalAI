@@ -5,6 +5,7 @@ import nvidia.dali.types as types
 import nvidia.dali.tfrecord as tfrec
 import torch
 import numpy as np
+from .rand_augment import RandAugment
 
 
 class DaliDataloader(DALIClassificationIterator):
@@ -21,13 +22,17 @@ class DaliDataloader(DALIClassificationIterator):
                  training=True,
                  gpu_aug=False,
                  cuda=True,
-                 mixup_alpha=0.0):
+                 mixup_alpha=0.0,
+                 randaug_magnitude=10,
+                 randaug_num_layers=0):
         self.mixup_alpha = mixup_alpha
         self.training = training
+        self.randaug_magnitude = randaug_magnitude
+        self.randaug_num_layers = randaug_num_layers
         pipe = Pipeline(batch_size=batch_size,
                         num_threads=num_threads,
                         device_id=torch.cuda.current_device() if cuda else None,
-                        seed=1024)
+                        seed=42)
         with pipe:
             inputs = fn.readers.tfrecord(
                 path=tfrec_filenames,
@@ -44,38 +49,27 @@ class DaliDataloader(DALIClassificationIterator):
                     'image/class/label': tfrec.FixedLenFeature([1], tfrec.int64, -1),
                 })
             images = inputs["image/encoded"]
-
+            images = fn.decoders.image(images,
+                                       device='mixed' if gpu_aug else 'cpu',
+                                       output_type=types.RGB)
             if training:
-                images = fn.decoders.image(images,
-                                           device='mixed' if gpu_aug else 'cpu',
-                                           output_type=types.RGB)
                 images = fn.random_resized_crop(images,
                                                 size=crop,
                                                 device='gpu' if gpu_aug else 'cpu')
-                flip_lr = fn.random.coin_flip(probability=0.5)
+                if randaug_num_layers == 0:
+                    flip_lr = fn.random.coin_flip(probability=0.5)
+                    images = fn.flip(images, horizontal=flip_lr)
             else:
-                # decode jpeg and resize
-                images = fn.decoders.image(images,
-                                           device='mixed' if gpu_aug else 'cpu',
-                                           output_type=types.RGB)
                 images = fn.resize(images,
                                    device='gpu' if gpu_aug else 'cpu',
                                    resize_x=resize,
                                    resize_y=resize,
                                    dtype=types.FLOAT,
                                    interp_type=types.INTERP_TRIANGULAR)
-                flip_lr = False
-
-            # center crop and normalise
-            images = fn.crop_mirror_normalize(images,
-                                              dtype=types.FLOAT,
-                                              crop=(crop, crop),
-                                              mean=[127.5],
-                                              std=[127.5],
-                                              mirror=flip_lr)
+                images = fn.crop(images,
+                                 dtype=types.FLOAT,
+                                 crop=(crop, crop))
             label = inputs["image/class/label"] - 1  # 0-999
-            # LSG: element_extract will raise exception, let's flatten outside
-            # label = fn.element_extract(label, element_map=0)  # Flatten
             if cuda:  # transfer data to gpu
                 pipe.set_outputs(images.gpu(), label.gpu())
             else:
@@ -96,6 +90,10 @@ class DaliDataloader(DALIClassificationIterator):
     def __next__(self):
         data = super().__next__()
         img, label = data[0]['data'], data[0]['label']
+        img = img.permute(0, 3, 1, 2)
+        if self.randaug_num_layers > 0 and self.training:
+            img = RandAugment(img, num_layers=self.randaug_num_layers, magnitude=self.randaug_magnitude)
+        img = (img - 127.5) / 127.5
         label = label.squeeze()
         if self.mixup_alpha > 0.0:
             if self.training:
@@ -106,7 +104,7 @@ class DaliDataloader(DALIClassificationIterator):
                 lam = torch.tensor([lam], device=img.device, dtype=img.dtype)
                 label = {'targets_a': label_a, 'targets_b': label_b, 'lam': lam}
             else:
-                label = {'targets_a': label, 'targets_b': label,
-                         'lam': torch.ones(1, device=img.device, dtype=img.dtype)}
+                label = {'targets_a': label, 'targets_b': label, 'lam': torch.ones(
+                    1, device=img.device, dtype=img.dtype)}
             return img, label
         return img, label
