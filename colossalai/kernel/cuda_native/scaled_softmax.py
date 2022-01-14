@@ -21,7 +21,10 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, inputs, scale):
-        import colossal_scaled_upper_triang_masked_softmax
+        try:
+            import colossal_scaled_upper_triang_masked_softmax
+        except ImportError:
+            raise RuntimeError('ScaledUpperTriangMaskedSoftmax requires cuda extensions')
 
         scale_t = torch.tensor([scale])
         softmax_results = colossal_scaled_upper_triang_masked_softmax.forward(
@@ -33,7 +36,10 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, output_grads):
-        import colossal_scaled_upper_triang_masked_softmax
+        try:
+            import colossal_scaled_upper_triang_masked_softmax
+        except ImportError:
+            raise RuntimeError('ScaledUpperTriangMaskedSoftmax requires cuda extensions')
 
         softmax_results, scale_t = ctx.saved_tensors
         input_grads = colossal_scaled_upper_triang_masked_softmax.backward(
@@ -53,7 +59,10 @@ class ScaledMaskedSoftmax(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, inputs, mask, scale):
-        import colossal_scaled_masked_softmax
+        try:
+            import colossal_scaled_masked_softmax
+        except ImportError:
+            raise RuntimeError('ScaledMaskedSoftmax requires cuda extensions')
 
         scale_t = torch.tensor([scale])
 
@@ -63,7 +72,10 @@ class ScaledMaskedSoftmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, output_grads):
-        import colossal_scaled_masked_softmax
+        try:
+            import colossal_scaled_masked_softmax
+        except ImportError:
+            raise RuntimeError('ScaledMaskedSoftmax requires cuda extensions')
 
         softmax_results, scale_t = ctx.saved_tensors
 
@@ -179,6 +191,9 @@ class FusedScaleMaskSoftmax(nn.Module):
 
     @staticmethod
     def get_batch_per_block(sq, sk, b, np):
-        import colossal_scaled_masked_softmax
+        try:
+            import colossal_scaled_masked_softmax
+        except ImportError:
+            raise RuntimeError('ScaledMaskedSoftmax requires cuda extensions')
 
         return colossal_scaled_masked_softmax.get_batch_per_block(sq, sk, b, np)

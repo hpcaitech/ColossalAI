@@ -90,8 +90,7 @@ class FusedSGD(Optimizer):
                 [0], dtype=torch.int, device=self.param_groups[0]["params"][0].device)
             self.multi_tensor_sgd = colossal_C.multi_tensor_sgd
         else:
-            raise RuntimeError(
-                'apex.optimizers.FusedSGD requires cuda extensions')
+            raise RuntimeError('FusedSGD requires cuda extensions')
 
     def __setstate__(self, state):
         super(FusedSGD, self).__setstate__(state)

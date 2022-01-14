@@ -12,18 +12,14 @@ body:
     description: |
       **Describe the bug**
       A clear and concise description of what the bug is.
-
       **To Reproduce**
-      Steps or code snippet to reproduce the behavior:
-
+      Steps or code snippet to reproduce the behavior.
       **Expected behavior**
       A clear and concise description of what you expected to happen.
-
       **Screenshots**
       If applicable, add screenshots to help explain your problem.
     placeholder: |
       A clear and concise description of what the bug is.
-
   validations:
     required: true
 - type: textarea
@@ -31,13 +27,7 @@ body:
     label: Environment
     description: |
       Please provide the environment information, eg. CUDA/cuDNN/NCCL/Python/PyTorch version.
-  validations:
-    required: true
-- type: textarea
-  attributes:
-    label: Additional context
-    description: >
-      Add any other context or screenshots about the feature request here.
+
 - type: markdown
   attributes:
     value: >

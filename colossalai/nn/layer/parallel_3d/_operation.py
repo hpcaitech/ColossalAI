@@ -12,6 +12,28 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 
 
 class linear_3d(torch.autograd.Function):
+    """
+    Linear layer for 3D parallelism
+
+    :param input_: matrix of input
+    :type input_: torch.tensor
+    :param weight: matrix of weight
+    :type weight: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param output_parallel_mode: output parallel mode
+    :type output_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param input_dim: dimension of input, defaults to 0
+    :type input_dim: int, optional
+    :param weight_dim: dimension of weight, defaults to -1
+    :type weight_dim: int, optional
+    :param output_dim: dimension of output, defaults to 0
+    :type output_dim: int, optional
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx,
@@ -74,6 +96,22 @@ class linear_3d(torch.autograd.Function):
 
 
 class classifier_3d(torch.autograd.Function):
+    """
+    Classifier
+
+    :param input_: matrix of input
+    :type input_: torch.tensor
+    :param weight: matrix of weight
+    :type weight: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param output_parallel_mode: output parallel mode
+    :type output_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx, input_: Tensor, weight: Tensor, bias: Optional[Tensor], input_parallel_mode: ParallelMode,
@@ -129,6 +167,29 @@ class classifier_3d(torch.autograd.Function):
 
 
 class layernorm_3d(torch.autograd.Function):
+    """
+    Layernorm
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param weight: matrix of weight
+    :type weight: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor
+    :param normalized_shape: input shape from an expected input
+        of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
+        If a single integer is used, it is treated as a singleton list, and this module will
+        normalize over the last dimension which is expected to be of that specific size.
+    :type normalized_shape: int
+    :param eps: a value added to the denominator for numerical stability
+    :type eps: float
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param output_parallel_mode: output parallel mode
+    :type output_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, input_: Tensor, weight: Tensor, bias: Tensor, normalized_shape: int, eps: float,
@@ -189,6 +250,18 @@ def split_tensor_3d(input_: Tensor,
 
 
 class reduce_by_batch_3d(torch.autograd.Function):
+    """
+    All-reduce the input from the model parallel region.
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param reduce_mean:  If set to ``True``, it will divide the output by (input parallel size * weight parallel size), default to False
+    :type reduce_mean: int, optional
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx,
@@ -215,6 +288,18 @@ class reduce_by_batch_3d(torch.autograd.Function):
 
 
 class broadcast_weight_3d_from_diagonal(torch.autograd.Function):
+    """
+    broadcast weight from diagonal
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: output parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx, input_: Tensor, input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,

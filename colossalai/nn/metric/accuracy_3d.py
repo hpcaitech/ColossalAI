@@ -8,6 +8,12 @@ from ._utils import calc_acc
 
 
 class Accuracy3D(nn.Module):
+    """
+    Accuracy for 3D parallelism
+
+    :param logits: predicted labels
+    :param targets: true labels
+    """
     def __init__(self):
         super().__init__()
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)

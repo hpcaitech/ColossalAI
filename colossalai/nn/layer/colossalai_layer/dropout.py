@@ -9,6 +9,14 @@ from ..utils import get_tensor_parallel_mode
 
 
 class Dropout(nn.Module):
+    """
+    Dropout layer of colossalai
+
+    :param p: dropout rate, defaults to 0.5
+    :type p: float, optional
+    :param inplace: If set to ``True``, will do this operation in-place, defaults tp ``False``
+    :type inplace: bool, optional
+    """
     def __init__(self, p: float = 0.5, inplace: bool = False) -> None:
         super().__init__()
         self.tensor_parallel = get_tensor_parallel_mode()

@@ -7,14 +7,11 @@ from torch.nn.modules.loss import _Loss
 
 @LOSSES.register_module
 class CrossEntropyLoss3D(_Loss):
-    """Cross entropy loss for 3D parallelism
+    """
+    Cross entropy loss for 3D parallelism
 
     :param depth: depth for 3D parallelism
     :type depth: int
-    :param input_parallel_mode: parallel mode for input tensor
-    :type input_parallel_mode: ParallelMode
-    :param weight_parallel_mode: parallel mode for weight
-    :type weight_parallel_mode: ParallelMode
     :param reduction: whether to average the loss, defaults to True
     :type reduction: bool, optional
     """

@@ -34,6 +34,7 @@ def calc_offset(sizes):
 
 colossal_multihead_attention = None
 
+
 @dataclass
 class Config:
     max_batch_tokens: int  # max batch token numbers
@@ -94,7 +95,7 @@ class MultiHeadAttention1DFunc(Function):
             input_mask = input_mask.to(torch.half)
         grad_input, grad_in_proj_weight, grad_in_proj_bias, grad_out_proj_weight, \
             grad_out_proj_bias, grad_norm_weight, grad_norm_bias = backward_func(
-            ctx.config.layer_id, grad_output, output, input, input_mask, in_proj_weight, \
+                ctx.config.layer_id, grad_output, output, input, input_mask, in_proj_weight,
                 in_proj_bias, out_proj_weight, out_proj_bias, norm_weight, norm_bias)
 
         return (grad_input, None, grad_in_proj_weight, grad_in_proj_bias, grad_out_proj_weight,
@@ -142,7 +143,10 @@ class MultiHeadAttention(nn.Module):
         # Load cuda modules if needed
         global colossal_multihead_attention
         if colossal_multihead_attention is None:
-            colossal_multihead_attention = importlib.import_module("colossal_multihead_attention")
+            try:
+                colossal_multihead_attention = importlib.import_module("colossal_multihead_attention")
+            except ImportError:
+                raise RuntimeError('MultiHeadAttention requires cuda extensions')
 
         # create the layer in cuda kernels.
         cuda_module = colossal_multihead_attention
@@ -210,14 +214,14 @@ class MultiHeadAttention(nn.Module):
             with torch.no_grad():
                 self.in_proj_weight.copy_(
                     attn_qkvw_global.view(3, hs, hs)[:,
-                                                    int(hs * rank_in_pg /
-                                                        self.pg_size):int(hs * (rank_in_pg + 1) /
-                                                                        self.pg_size), :])
+                                                     int(hs * rank_in_pg /
+                                                         self.pg_size):int(hs * (rank_in_pg + 1) /
+                                                                           self.pg_size), :])
                 self.in_proj_bias.copy_(
                     attn_qkvb_global.view(3, hs)[:,
-                                                int(hs * rank_in_pg /
-                                                    self.pg_size):int(hs * (rank_in_pg + 1) /
-                                                                    self.pg_size)])
+                                                 int(hs * rank_in_pg /
+                                                     self.pg_size):int(hs * (rank_in_pg + 1) /
+                                                                       self.pg_size)])
 
             attn_ow_global = torch.empty(hs, hs)
             nn.init.xavier_uniform_(attn_ow_global, 1.0)
@@ -226,9 +230,9 @@ class MultiHeadAttention(nn.Module):
             attn_ow_global = attn_ow_global.cpu()
             with torch.no_grad():
                 self.out_proj_weight.copy_(attn_ow_global[:,
-                                                      int(hs * rank_in_pg /
-                                                          self.pg_size):int(hs * (rank_in_pg + 1) /
-                                                                            self.pg_size)])
+                                                          int(hs * rank_in_pg /
+                                                              self.pg_size):int(hs * (rank_in_pg + 1) /
+                                                                                self.pg_size)])
 
         else:
             attn_qkvw = self.in_proj_weight.view(-1, hs)

@@ -76,7 +76,12 @@ def _gather(input_, parallel_mode, dim=-1):
 
 
 class _ReduceGrad(torch.autograd.Function):
-    """Pass the input to the model parallel region."""
+    """
+    Pass the input to the model parallel region.
+
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
+    """
     @staticmethod
     def symbolic(graph, input_):
         return input_
@@ -92,7 +97,12 @@ class _ReduceGrad(torch.autograd.Function):
 
 
 class _ReduceInput(torch.autograd.Function):
-    """All-reduce the input from the model parallel region."""
+    """
+    All-reduce the input from the model parallel region.
+    
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
+    """
     @staticmethod
     def symbolic(graph, input_):
         return _reduce(input_)
@@ -107,7 +117,13 @@ class _ReduceInput(torch.autograd.Function):
 
 
 class _SplitForwardGatherBackward(torch.autograd.Function):
-    """Split the input and keep only the corresponding chuck to the rank."""
+    """
+    Split the input and keep only the corresponding chuck to the rank.
+    
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
+    :param dim: dimension
+    """
     @staticmethod
     def symbolic(graph, input_):
         return _split(input_)
@@ -124,7 +140,13 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
 
 
 class _GatherForwardSplitBackward(torch.autograd.Function):
-    """Gather the input from model parallel region and concatinate."""
+    """
+    Gather the input from model parallel region and concatinate.
+    
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
+    :param dim: dimension
+    """
     @staticmethod
     def symbolic(graph, input_):
         return _gather(input_)
