@@ -156,6 +156,10 @@ if "--cuda_ext" in sys.argv:
                                             'kernels/cuda_util.cu'],
                                            extra_cuda_flags + cc_flag))
 
+        ext_modules.append(cuda_ext_helper('colossal_transpose_pad',
+                                            ['transpose_pad_fusion_wrapper.cpp', 'transpose_pad_fusion_kernel.cu'],
+                                            extra_cuda_flags + cc_flag))
+
 
 install_requires = fetch_requirements('requirements/requirements.txt')
 
