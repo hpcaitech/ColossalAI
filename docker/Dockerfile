@@ -1,7 +1,8 @@
 FROM nvcr.io/nvidia/pytorch:21.07-py3
 
 # install dependencies
-RUN pip install -U pip setuptools wheel \
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+ && pip install -U pip setuptools wheel \
  && pip install pytest tensorboard deepspeed apex
 
 # install colossalai
