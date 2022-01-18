@@ -1,10 +1,9 @@
 # Colossal-AI
-
+![logo](./docs/images/Colossal-AI_logo.png)
+<div align="center">
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | <a href="https://www.colossalai.org/"> Documentation </a> | <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
+</div>
 An integrated large-scale model training system with efficient parallelization techniques.
-
-Paper: [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://arxiv.org/abs/2110.14883)
-
-Blog: [Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training](https://www.hpcaitech.com/blog)
 
 ## Installation
 
@@ -33,10 +32,6 @@ Install and enable CUDA kernel fusion (compulsory installation when using fused 
 ```shell
 pip install -v --no-cache-dir --global-option="--cuda_ext" .
 ```
-
-## Documentation
-
-- [Documentation](https://www.colossalai.org/)
 
 
 ## Use Docker
@@ -82,7 +77,7 @@ model = ...
 # sampler by default
 train_dataset = ... 
 train_dataloader = get_dataloader(dataset=dataset,
-                                shuffle=True,
+                                shuffle=True
                                 )
 
 
