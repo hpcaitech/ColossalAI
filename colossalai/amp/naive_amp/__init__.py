@@ -8,7 +8,7 @@ from .naive_amp import NaiveAMPOptimizer, NaiveAMPModel
 def convert_to_naive_amp(model: nn.Module,
                          optimizer: Optimizer,
                          amp_config):
-    """A helper function to wrap training components with Torch AMP modules
+    """A helper function to wrap training components with naive AMP modules
 
     :param model: your model object
     :type model: :class:`torch.nn.Module`

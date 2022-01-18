@@ -82,7 +82,7 @@ fp16 = dict(
 We leveraged the Megatron-LM implementation to achieve mixed precision training while maintaining compatibility with complex tensor 
 and pipeline parallelism. This AMP mode will cast all operations into fp16.
 
-The following conde block show a config file for this mode.
+The following code block shows a config file for this mode.
 
 ```python
 from colossalai.amp import AMP_TYPE
