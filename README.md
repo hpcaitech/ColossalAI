@@ -38,6 +38,22 @@ pip install -v --no-cache-dir --global-option="--cuda_ext" .
 
 - [Documentation](https://www.colossalai.org/)
 
+
+## Use Docker
+
+Run the following command to build a docker image from Dockerfile provided.
+
+```bash
+cd ColossalAI
+docker build -t colossalai ./docker
+```
+
+Run the following command to start the docker container in interactive mode.
+
+```bash
+docker run -ti --gpus all --rm --ipc=host colossalai bash
+```
+
 ## Quick View
 
 ### Start Distributed Training in Lines
