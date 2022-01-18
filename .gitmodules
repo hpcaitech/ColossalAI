@@ -1,0 +1,3 @@
+[submodule "benchmark"]
+	path = benchmark
+	url = https://github.com/hpcaitech/ColossalAI-Benchmark.git
