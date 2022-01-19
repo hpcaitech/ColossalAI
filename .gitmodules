@@ -4,5 +4,6 @@
 	branch = main
 [submodule "examples"]
 	path = examples
-	url = https://github.com/FrankLeeeee/ColossalAI-Examples.git
+	url = https://github.com/hpcaitech/ColossalAI-Examples.git
 	branch = main
+
