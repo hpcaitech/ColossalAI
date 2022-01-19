@@ -1,9 +1,12 @@
 # Colossal-AI
 
-![logo](./docs/images/Colossal-AI_logo.png)
+[![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
 <div align="center">
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | <a href="https://www.colossalai.org/"> Documentation </a> | <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
+   
+   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
+   [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
 </div>
 An integrated large-scale model training system with efficient parallelization techniques.
 
