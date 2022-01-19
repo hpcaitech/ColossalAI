@@ -9,3 +9,4 @@ colossalai.nn.layer.wrapper
    :maxdepth: 2
 
    colossalai.nn.layer.wrapper.lambda_wrapper
+   colossalai.nn.layer.wrapper.pipeline_wrapper

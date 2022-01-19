@@ -1,6 +1,9 @@
 colossalai.context
 ==================
 
+.. automodule:: colossalai.context
+   :members:
+
 .. toctree::
    :maxdepth: 2
 
@@ -14,7 +17,3 @@ colossalai.context
    colossalai.context.config
    colossalai.context.parallel_context
    colossalai.context.parallel_mode
-
-
-.. automodule:: colossalai.context
-   :members:
