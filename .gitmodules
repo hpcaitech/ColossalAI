@@ -2,3 +2,7 @@
 	path = benchmark
 	url = https://github.com/hpcaitech/ColossalAI-Benchmark.git
 	branch = main
+[submodule "examples"]
+	path = examples
+	url = https://github.com/FrankLeeeee/ColossalAI-Examples.git
+	branch = main
