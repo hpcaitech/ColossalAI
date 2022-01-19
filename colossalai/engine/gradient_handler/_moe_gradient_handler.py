@@ -10,7 +10,7 @@ from ...context.parallel_mode import ParallelMode
 @GRADIENT_HANDLER.register_module
 class MoeGradientHandler(BaseGradientHandler):
     """A helper class to handle all-reduce operations in a data parallel group and
-    moe tensor parallel. A all-reduce collective communication will be operated in
+    moe model parallel. A all-reduce collective communication will be operated in
     :func:`handle_gradient` among a data parallel group.
     For better performance, it bucketizes the gradients of all parameters that are
     the same type to improve the efficiency of communication.
@@ -19,7 +19,7 @@ class MoeGradientHandler(BaseGradientHandler):
     def handle_gradient(self):
         """A method running an all-reduce operation in a data parallel group.
         Then running an all-reduce operation for all parameters in experts
-        across moe tensor parallel group
+        across moe model parallel group
         """
         moe_data = moe_env.data_parallel_size
         global_data = gpc.data_parallel_size

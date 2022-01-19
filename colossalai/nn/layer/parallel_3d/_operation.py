@@ -240,6 +240,21 @@ def split_tensor_3d(input_: Tensor,
                    dim: int = 0,
                    input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
                    weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT) -> Tensor:
+    """Splits 3D tensor in specified dimension
+
+    :param input_: Input tensor
+    :param dim: Specified dimension in which to split
+    :param input_parallel_mode: Input parallel mode
+    :param weight_parallel_mode: Weight parallel mode
+
+    :type input_: torch.Tensor
+    :type dim: int, optional
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode, optional
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode, optional
+
+    :return output: Splitted tensor
+    :rtype output: torch.Tensor
+    """
     if input_.size(dim) <= 1:
         return input_
     output = torch.chunk(input_, gpc.get_world_size(weight_parallel_mode),
@@ -250,17 +265,7 @@ def split_tensor_3d(input_: Tensor,
 
 
 class reduce_by_batch_3d(torch.autograd.Function):
-    """
-    All-reduce the input from the model parallel region.
-
-    :param input_: input maxtrix
-    :type input_: torch.tensor
-    :param input_parallel_mode: input parallel mode
-    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param weight_parallel_mode: weight parallel mode
-    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param reduce_mean:  If set to ``True``, it will divide the output by (input parallel size * weight parallel size), default to False
-    :type reduce_mean: int, optional
+    """All-reduce the input from the model parallel region.
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
@@ -269,6 +274,16 @@ class reduce_by_batch_3d(torch.autograd.Function):
                 input_parallel_mode: ParallelMode,
                 weight_parallel_mode: ParallelMode,
                 reduce_mean: bool = False) -> Tensor:
+        """
+        :param input_: input maxtrix
+        :type input_: torch.tensor
+        :param input_parallel_mode: input parallel mode
+        :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+        :param weight_parallel_mode: weight parallel mode
+        :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+        :param reduce_mean:  If set to ``True``, it will divide the output by (input parallel size * weight parallel size), default to False
+        :type reduce_mean: int, optional
+        """
         output = all_reduce(input_, input_parallel_mode)
         output = all_reduce(output, weight_parallel_mode)
         ctx.reduce_mean = reduce_mean

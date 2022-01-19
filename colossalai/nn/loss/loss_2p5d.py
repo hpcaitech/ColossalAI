@@ -11,6 +11,9 @@ class CrossEntropyLoss2p5D(_Loss):
     Cross entropy loss for 2.5D parallelism
     
     :param reduction: whether to average the loss, defaults to True
+    :param args: Args for loss function
+    :param kwargs: Kwargs for loss function
+
     :type reduction: bool, optional
     """
     def __init__(self, reduction=True, *args, **kwargs):
@@ -21,6 +24,11 @@ class CrossEntropyLoss2p5D(_Loss):
         self.loss_kwargs = kwargs
 
     def forward(self, logits, targets):
+        """Calculate loss between logits and targets
+
+        :param logits: Output logits of model
+        :param targets: True targets from data
+        """
         loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
         if self.reduction_mean:
             loss = loss.mean()

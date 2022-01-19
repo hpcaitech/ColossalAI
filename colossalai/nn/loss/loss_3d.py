@@ -14,6 +14,9 @@ class CrossEntropyLoss3D(_Loss):
     :type depth: int
     :param reduction: whether to average the loss, defaults to True
     :type reduction: bool, optional
+
+    :param args: Args for loss function
+    :param kwargs: Kwargs for loss function
     """
     def __init__(self, reduction=True, *args, **kwargs):
         super().__init__()
@@ -24,6 +27,11 @@ class CrossEntropyLoss3D(_Loss):
         self.loss_kwargs = kwargs
 
     def forward(self, logits, targets):
+        """Calculate loss between logits and targets
+
+        :param logits: Output logits of model
+        :param targets: True targets from data
+        """
         loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
         if self.reduction_mean:
             loss = loss.mean()

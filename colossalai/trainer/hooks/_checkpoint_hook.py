@@ -24,7 +24,6 @@ class SaveCheckpointHook(BaseHook):
     :type suffix: str, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
-    :param trainer: Trainer attached with current hook
     """
 
     def __init__(self,
@@ -84,7 +83,6 @@ class LoadCheckpointHook(BaseHook):
     :type suffix: str, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 0
     :type priority: int, optional
-    :param trainer: Trainer attached with current hook
     """
 
     def __init__(self,

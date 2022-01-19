@@ -21,13 +21,15 @@ T_co = TypeVar('T_co', covariant=True)
 class DataParallelSampler(Sampler):
     """A data sampler for distributed data parallelism
 
-    :param dataset: a Dataset instance
+    :param dataset: A Dataset instance
     :type dataset: torch.utils.data.Dataset
-    :param shuffle: whether to shuffle data, defaults to False
+    :param shuffle: Whether to shuffle data, defaults to False
     :type shuffle: bool, optional
-    :param seed: the random seed, defaults to 0
+    :param seed: The random seed, defaults to 0
     :type seed: int, optional
-    :param drop_last: set to True to drop the last incomplete batch, if the dataset size is not divisible by the batch size. If False and the size of dataset is not divisible by the batch size, then the last batch will be smaller, defaults to False
+    :param drop_last: Set to True to drop the last incomplete batch, if the dataset size is not divisible by the batch
+        size. If False and the size of dataset is not divisible by the batch size, then the last batch will be smaller,
+        defaults to False
     :type drop_last: bool, optional
     """
 
@@ -116,19 +118,18 @@ def get_dataloader(dataset,
                    pin_memory=False,
                    num_workers=0,
                    **kwargs):
-    '''Set up a deterministic dataloader (also configure seed workers, samplers and whether shuffle or not)
+    """Set up a deterministic dataloader (also configure seed workers, samplers and whether shuffle or not)
 
-    .. note: when pipeline parallel is enabled, shuffle cannot be True
-        as it will result in mismatch between input data on the 1st
-        stage and label on the last stage
+    .. note:: When pipeline parallel is enabled, shuffle cannot be True as it will result in mismatch between input data
+        on the 1st stage and label on the last stage
 
-    :param dataset: a :class:utils.data.dataset dataset
-    :param shuffle: whether to shuffle the dataset
-    :param seed: random worker seed, defaults to 1024
-    :param add_sampler: add DistributedDataParallelSampelr to the dataset
-    :param drop_last: drop the last incomplete batch of data
-    :param pin_memory: whether to pin memory address in CPU memory
-    :param num_workers: number of worker threads for this dataloader
+    :param dataset: A :class:`utils.data.dataset dataset`
+    :param shuffle: Whether to shuffle the dataset
+    :param seed: Random worker seed, defaults to 1024
+    :param add_sampler: Add DistributedDataParallelSampelr to the dataset
+    :param drop_last: Drop the last incomplete batch of data
+    :param pin_memory: Whether to pin memory address in CPU memory
+    :param num_workers: Number of worker threads for this dataloader
 
     :type dataset: :class:`torch.utils.data.Dataset`
     :type shuffle: bool, optional. Default is False
@@ -138,9 +139,9 @@ def get_dataloader(dataset,
     :type pin_memory: bool, optional. Default is False
     :type num_workers: int, optional. Default is 0
 
-    :return: a object of :class:`torch.utils.data.DataLoader`
+    :return: A object of :class:`torch.utils.data.DataLoader`
     :rtype: :class:`torch.utils.data.DataLoader`
-    '''
+    """
     _kwargs = kwargs.copy()
 
     if add_sampler and gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1:

@@ -12,19 +12,22 @@ from colossalai.constants import PARALLEL_INPUT_1D
 
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_1D(ProcessGroupInitializer):
-    '''A ProcessGroupInitializer for 1d tensor parallelism.
-    '''
+    """A ProcessGroupInitializer for 1d tensor parallelism.
+
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_group = self.world_size // self.tensor_parallel_size
 
     def init_dist_group(self):
-        '''Initialize 1D tensor parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 1D tensor parallel groups, and assign local_ranks and groups to each gpu.
 
         :return: (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        :rtype: tuple
-        '''
+        :rtype: Tuple
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None

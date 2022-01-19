@@ -20,7 +20,7 @@ class Lamb(Optimizer):
         betas (Tuple[float, float], optional): coefficients used for computing
             running averages of gradient and its square (default: (0.9, 0.999))
         eps (float, optional): term added to the denominator to improve
-            numerical stability (default: 1e-8)
+            numerical stability (default: 1e-6)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
         adam (bool, optional): always use trust ratio = 1, which turns this into
             Adam. Useful for comparison purposes.

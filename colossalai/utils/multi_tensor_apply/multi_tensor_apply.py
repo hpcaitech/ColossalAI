@@ -5,7 +5,7 @@ class MultiTensorApply(object):
     """
     Apply an operation to a list of tensors efficiently
 
-    :param chunk_size: size of a chunk
+    :param chunk_size: Size of a chunk
     :type chunk_size: int
     """
 
@@ -22,7 +22,7 @@ class MultiTensorApply(object):
             MultiTensorApply.import_err = err
 
     def check_avail(self):
-        if MultiTensorApply.available == False:
+        if not MultiTensorApply.available:
             raise RuntimeError(
                 "Attempted to call MultiTensorApply method, but MultiTensorApply "
                 "is not available, possibly because Apex was installed without "

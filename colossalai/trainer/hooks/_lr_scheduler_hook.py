@@ -15,7 +15,6 @@ class LRSchedulerHook(MetricHook):
     :type store_lr_in_state: bool, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 1
     :type priority: int, optional
-    :param trainer: Trainer attached with current hook
     """
     def __init__(
         self,

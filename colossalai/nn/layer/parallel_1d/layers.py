@@ -186,6 +186,12 @@ class Linear1D_Col(ParallelLayer):
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
     :type gather_output: bool, optional
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :type skip_bias_add: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
     """
 
     def __init__(self,
@@ -268,6 +274,12 @@ class Linear1D_Row(ParallelLayer):
     :type dtype: torch.dtype, optional
     :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
     :type parallel_input: bool, optional
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :type skip_bias_add: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
     """
 
     def __init__(self,
@@ -383,6 +395,8 @@ class Embedding1D(ParallelLayer):
     :type dtype: torch.dtype, optional
     :param weight_initializer: The intializer of weight, defaults to normal initializer
     :type weight_initializer: typing.Callable, optional
+    :param args: Args used in F.embedding
+    :param kwargs: Kwargs used in F.embedding
     """
     def __init__(self,
                  num_embeddings: int,

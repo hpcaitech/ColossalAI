@@ -9,8 +9,15 @@ from ..parallel_mode import ParallelMode
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Moemodel(ProcessGroupInitializer):
     """Model parallel initialization for MoE system.
-    """
 
+    :param moe_moel: Size of moe model parallel
+    :param moe_data: Size of moe data parallel
+    :param args: Args used in base class
+    :param kwargs: Kwargs used in base class
+
+    :type moe_model: int
+    :type moe_data: int
+    """
     def __init__(self, moe_model, moe_data, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.moe_model = moe_model
@@ -19,8 +26,10 @@ class Initializer_Moemodel(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize model parallel groups in moe parallel environment,
         and assign local_ranks and groups to each gpu.
-        """
 
+        :return: MoE model parallelism's information
+        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None
@@ -43,8 +52,15 @@ class Initializer_Moemodel(ProcessGroupInitializer):
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Moedata(ProcessGroupInitializer):
     """Data parallel initialization for MoE system.
-    """
 
+    :param moe_moel: Size of moe model parallel
+    :param moe_data: Size of moe data parallel
+    :param args: Args used in base class
+    :param kwargs: Kwargs used in base class
+
+    :type moe_model: int
+    :type moe_data: int
+    """
     def __init__(self, moe_model, moe_data, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.moe_model = moe_model
@@ -53,8 +69,10 @@ class Initializer_Moedata(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize data parallel groups in moe parallel environment,
         and assign local_ranks and groups to each gpu.
-        """
 
+        :return: MoE data parallelism's information
+        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None
@@ -77,8 +95,10 @@ class Initializer_Moedata(ProcessGroupInitializer):
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Moe(ProcessGroupInitializer):
     """Serves as the single entry point to MoE parallel initialization.
-    """
 
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.moe_model = moe_env.model_parallel_size
@@ -90,8 +110,10 @@ class Initializer_Moe(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initializes MoE parallel communication groups.
-        """
 
+        :return: MoE parallelism's information
+        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
         parallel_setting = [self.model_initializer.init_dist_group(),
                             self.data_initializer.init_dist_group()]
         return parallel_setting

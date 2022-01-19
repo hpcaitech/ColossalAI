@@ -5,11 +5,12 @@ from abc import ABC, abstractmethod
 
 import torch
 
-from typing import Iterable,  Callable
+from typing import Iterable, Callable
 from .._base_engine import Engine
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 from colossalai.nn.layer import split_batch
+
 
 class BaseSchedule(ABC):
     """A basic helper class to control the process of training or evaluation.
@@ -46,6 +47,11 @@ class BaseSchedule(ABC):
         """Loads a batch from data iterator. It returns the data and labels which are
         already in the same GPU as where the model's.
 
+        :param data_iter: Data iterator from which get a batch of data
+        :type data_iter: DataIter
+        :param to_gpu: Whether the data should be moved to GPU
+        :type to_gpu: bool, optional
+
         :return: (data, label)
         :rtype: (:class:`Tensor`, :class:`torch.Tensor`)
         """
@@ -62,12 +68,11 @@ class BaseSchedule(ABC):
         if isinstance(data, torch.Tensor):
             self.batch_size = data.size(0)
         else:
-            self.batch_size = next(iter(data.values())).size(0)    
+            self.batch_size = next(iter(data.values())).size(0)
         data, label = split_batch(data), split_batch(label)
         if to_gpu:
             return self._move_to_device(data), self._move_to_device(label)
         return data, label
-
 
     def pre_processing(self, engine: Engine):
         """To perform actions before running the schedule.
@@ -85,11 +90,15 @@ class BaseSchedule(ABC):
         """The process function over a batch of dataset for training or evaluation.
 
         :param engine: Colossalai training engine
-        :param inputs: input data
-        :param labels: ground truth
+        :type engine: colossalai.engine.Engine
+        :param data_iter: Data iterator from which get a batch of data
+        :type data_iter: DataIter
         :param forward_only: If True, the process won't include backward
+        :type forward_only: bool
         :param return_loss: If False, the loss won't be returned
+        :type return_loss: bool, optional
         :param return_output_label: If False, the output and label won't be returned
+        :type return_output_label: bool, optional
         """
         pass
 
@@ -105,7 +114,7 @@ class BaseSchedule(ABC):
         assert isinstance(outputs, (torch.Tensor, list, tuple)
                           ), f'Expect output of model is (torch.Tensor, list, tuple), got {type(outputs)}'
         if isinstance(outputs, torch.Tensor):
-            outputs = (outputs, )
+            outputs = (outputs,)
         if isinstance(labels, torch.Tensor):
             return engine.criterion(*outputs, labels)
         else:

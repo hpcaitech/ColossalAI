@@ -10,18 +10,21 @@ from ..parallel_mode import ParallelMode
 
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Data(ProcessGroupInitializer):
-    '''A ProcessGroupInitializer for data parallelism.
-    '''
+    """A ProcessGroupInitializer for data parallelism.
+
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_data_parallel_group = self.world_size // self.data_parallel_size
 
     def init_dist_group(self):
-        '''Initialize data parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize data parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: data parallelism's information 
-        :rtype: tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        '''
+        :return: Data parallelism's information
+        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None

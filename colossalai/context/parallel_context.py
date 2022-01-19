@@ -307,6 +307,7 @@ class ParallelContext:
                          port: int
                          ):
         """Initializes the global distributed environment
+
         :param rank: rank for the default process group
         :type rank: int
         :param world_size: world size of the default process group
@@ -462,7 +463,7 @@ class ParallelContext:
         """Sets distributed processes to be bound to devices.
 
         :param device_ordinal: the device id to be bound to
-        :type device_ordinal: int
+        :type device_ordinal: int, optional
         """
         global_rank = self.get_global_rank()
         if device_ordinal is None:

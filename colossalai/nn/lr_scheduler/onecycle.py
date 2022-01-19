@@ -17,19 +17,20 @@ class OneCycleLR(_OneCycleLR):
     This scheduler is not chainable.
     Note also that the total number of steps in the cycle can be determined in one
     of two ways (listed in order of precedence):
-    #. A value for total_steps is explicitly provided.
-    #. A number of epochs (epochs) and a number of steps per epoch
-       (steps_per_epoch) are provided.
-       In this case, the number of total steps is inferred by
-       total_steps = epochs * steps_per_epoch
+
+      * A value for total_steps is explicitly provided.
+      * A number of epochs (epochs) and a number of steps per epoch (steps_per_epoch) are provided.
+        In this case, the number of total steps is inferred by total_steps = epochs * steps_per_epoch
+
     You must either provide a value for total_steps or provide a value for both
     epochs and steps_per_epoch.
     The default behaviour of this scheduler follows the fastai implementation of 1cycle, which
     claims that "unpublished work has shown even better results by using only two phases". To
     mimic the behaviour of the original paper instead, set ``three_phase=True``.
+
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
-    :param total_steps: number of total training steps
+    :param total_steps: Number of total training steps
     :type total_steps: int
     :param pct_start: The percentage of the cycle (in number of steps) spent increasing the learning rate, defaults to 0.3
     :type pct_start: float, optional
@@ -64,6 +65,7 @@ class OneCycleLR(_OneCycleLR):
         number of *batches* computed, not the total number of epochs computed.
         When last_epoch=-1, the schedule is started from the beginning, defaults to -1
     :type last_epoch: int, optional
+
     .. _Super-Convergence\: Very Fast Training of Neural Networks Using Large Learning Rates:
         https://arxiv.org/abs/1708.07120
     """

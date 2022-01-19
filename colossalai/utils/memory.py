@@ -12,34 +12,36 @@ from colossalai.logging import get_dist_logger
 
 
 def bytes_to_GB(val, decimal=2):
-    '''A byte-to-Gigabyte converter, defaultly using binary notation.
+    """A byte-to-Gigabyte converter, defaultly using binary notation.
 
     :param val: X bytes to convert
     :return: X' GB
-    '''
+    """
     return round(val / (1024 * 1024 * 1024), decimal)
 
 
 def bytes_to_MB(val, decimal=2):
-    '''A byte-to-Megabyte converter, defaultly using binary notation.
+    """A byte-to-Megabyte converter, defaultly using binary notation.
 
     :param val: X bytes to convert
     :return: X' MB
-    '''
+    """
     return round(val / (1024 * 1024), decimal)
 
 
 def report_memory_usage(message, logger=None, report_cpu=False):
-    '''Calculate and print RAM usage (in GB)
+    """Calculate and print RAM usage (in GB)
 
-    :param message: a prefix message to add in the log
+    :param message: A prefix message to add in the log
     :type message: str
-    :param logger: an instance of :class:`colossalai.logging.DistributedLogger`
-    :type logger: :class:`colossalai.logging.DistributedLogger`
-    :param report_cpu: whether to report CPU memory
-    :type report_cpu: bool
-    :raises EnvironmentError: raise error if no distributed environment has been initialized
-    '''
+    :param logger: An instance of :class:`colossalai.logging.DistributedLogger`
+    :type logger: :class:`colossalai.logging.DistributedLogger`, optional
+    :param report_cpu: Whether to report CPU memory
+    :type report_cpu: bool, optional
+    :raises EnvironmentError: Raise error if no distributed environment has been initialized
+    """
+    if not gpc.is_initialized(ParallelMode.GLOBAL):
+        raise EnvironmentError("No distributed environment is initialized")
 
     gpu_allocated = bytes_to_MB(torch.cuda.memory_allocated())
     gpu_max_allocated = bytes_to_MB(torch.cuda.max_memory_allocated())

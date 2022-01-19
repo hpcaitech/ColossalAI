@@ -95,8 +95,11 @@ class DynamicLossScaler(LossScalerBase):
     always using the highest loss scale possible without incurring overflow.
     Args:
         init_scale (float, optional, default=2**32):  Initial loss scale attempted by :class:`DynamicLossScaler.`
-        scale_factor (float, optional, default=2.0):  Factor used when adjusting the loss scale. If an overflow is encountered, the loss scale is readjusted to loss scale/``scale_factor``.  If ``scale_window`` consecutive iterations take place without an overflow, the loss scale is readjusted to loss_scale*``scale_factor``.
-        scale_window (int, optional, default=1000):  Number of consecutive iterations without an overflow to wait before increasing the loss scale.
+        scale_factor (float, optional, default=2.0):  Factor used when adjusting the loss scale. If an overflow is
+            encountered, the loss scale is readjusted to loss scale/``scale_factor``.  If ``scale_window`` consecutive
+            iterations take place without an overflow, the loss scale is readjusted to loss_scale*``scale_factor``.
+        scale_window (int, optional, default=1000):  Number of consecutive iterations without an overflow to wait before
+            increasing the loss scale.
     """
 
     def __init__(self,

@@ -733,6 +733,17 @@ class SplitFirst(torch.autograd.Function):
 
 
 def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+    """Splits 2P5D tensor in specified dimension across cols
+
+    :param input_: Input tensor
+    :param dim: Specified dimension in which to split
+
+    :type input_: torch.Tensor
+    :type dim: int, optional
+
+    :return output: Splitted tensor
+    :rtype output: torch.Tensor
+    """
     if input_.size(dim) <= 1:
         return input_
     return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
@@ -740,13 +751,7 @@ def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
 
 
 class reduce_by_batch_2p5d(torch.autograd.Function):
-    """
-    All-reduce the input from the model parallel region.
-
-    :param input_: input maxtrix
-    :type input_: torch.tensor
-    :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
-    :type reduce_mean: int, optional
+    """All-reduce the input from the model parallel region.
     """
     @staticmethod
     def symbolic(graph, input_, reduce_mean: bool = False):
@@ -759,6 +764,12 @@ class reduce_by_batch_2p5d(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, input_, reduce_mean: bool = False):
+        """
+        :param input_: input maxtrix
+        :type input_: torch.tensor
+        :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
+        :type reduce_mean: int, optional
+        """
         output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)
         ctx.reduce_mean = reduce_mean
         if reduce_mean:

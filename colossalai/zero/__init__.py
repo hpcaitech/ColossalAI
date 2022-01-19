@@ -13,17 +13,17 @@ from .zero_redundancy_optimizer_level_3 import ZeroRedundancyOptimizer_Level_3
 def convert_to_zero(model: nn.Module,
                     optimizer: Optimizer,
                     level: int,
-                    zero_config):
+                    zero_config: dict):
     """
     A helper function to integrate the model and optimizer with ZeRO optimizer and off-loading
 
-    :param model: your model object
+    :param model: Your model object
     :type model: :class:`torch.nn.Module`
-    :param optimizer: your optimizer object
+    :param optimizer: Your optimizer object
     :type optimizer: :class:`torch.optim.Optimizer`
-    :param level: optimizer level, can be 2 or 3
+    :param level: Optimizer level, can be 2 or 3
     :type level: int
-    :param zero_config: configuration for zero
+    :param zero_config: Configuration for zero
     :type zero_config: dict
 
     :return: (model, optimizer)

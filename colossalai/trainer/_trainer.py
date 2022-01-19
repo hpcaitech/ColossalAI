@@ -25,11 +25,13 @@ class Trainer:
     called `Trainer`.
 
     :param engine: Engine responsible for the process function
-    :param hooks_cfg: The configuration of hooks
-    :param verbose: If True, additional information will be printed
-    :type engine: Engine
-    :type hoooks_cfg: Config, optional
-    :type verbose: bool, optional
+    :type engine: :class:`Engine`
+    :param schedule: Schedule responsible for forward and backward steps
+    :type schedule: :class:`BaseSchedule`, optional
+    :param timer: Timer used to monitor the whole training
+    :type timer: :class:`MultiTimer`, optional
+    :param logger: Logger used to record the whole training
+    :type logger: :class:`colossalai.logging.DistributedLogger`, optional
     """
 
     def __init__(self,
@@ -121,6 +123,8 @@ class Trainer:
         :type action: str
         :param item: Name of the timer
         :type item: str
+        :param args: args used for action function
+        :param kwargs: kwargs used for action function
         """
 
         if self._timer is not None:
@@ -257,18 +261,18 @@ class Trainer:
         :param max_steps: Maximum number of running iterations
         :param test_dataloader: DataLoader in testing
         :param test_interval: Interval of testing
-        :param hooks_cfg: A list of hook configuration
+        :param hooks: A list of hooks used in training
         :param display_progress: If True, the training progress will be printed
         :param return_output_label: If True, the output of model and the label will be returned
-        :type return_output_label: bool
+
         :type train_dataloader: DataLoader
         :type epochs: int
-        :type max_steps: int
-        :type test_dataloader: DataLoader
-        :type test_interval: int
-        :type hooks_cfg: dict
-        :type display_progress: bool
-        :type gradient_accumulation: int
+        :type max_steps: int, optional
+        :type test_dataloader: DataLoader, optional
+        :type test_interval: int, optional
+        :type hooks: list, optional
+        :type display_progress: bool, optional
+        :type return_output_label: bool, optional
         """
 
         # set epochs and steps, consider gradient accumulation
@@ -343,9 +347,12 @@ class Trainer:
         """Evaluates the model with testing data.
 
         :param test_dataloader: DataLoader in testing
+        :param hooks: A list of hooks used in evaluation
         :param display_progress: If True, the evaluation progress will be printed
         :param return_output_label: If True, the output of model and the label will be returned
+
         :type test_dataloader: DataLoader
+        :type hooks: list, optional
         :type display_progress: bool, optional
         :type return_output_label: bool
         """

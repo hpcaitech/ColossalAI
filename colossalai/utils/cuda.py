@@ -5,10 +5,10 @@ import torch
 
 
 def set_to_cuda(models):
-    '''Send model to gpu.
+    """Send model to gpu.
 
     :param models: nn.module or a list of module
-    '''
+    """
     if isinstance(models, list) and len(models) > 1:
         ret = []
         for model in models:
@@ -21,9 +21,8 @@ def set_to_cuda(models):
 
 
 def get_current_device():
-    '''
-    Returns the index of a currently selected device (gpu/cpu).
-    '''
+    """Returns the index of a currently selected device (gpu/cpu).
+    """
     if torch.cuda.is_available():
         return torch.cuda.current_device()
     else:
@@ -31,18 +30,16 @@ def get_current_device():
 
 
 def synchronize():
-    '''
-    Similar to cuda.synchronize().
+    """Similar to cuda.synchronize().
     Waits for all kernels in all streams on a CUDA device to complete.
-    '''
+    """
     if torch.cuda.is_available():
         torch.cuda.synchronize()
 
 
 def empty_cache():
-    '''
-    Similar to cuda.empty_cache()
+    """Similar to cuda.empty_cache()
     Releases all unoccupied cached memory currently held by the caching allocator.
-    '''
+    """
     if torch.cuda.is_available():
         torch.cuda.empty_cache()

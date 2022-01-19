@@ -14,9 +14,10 @@ class AttnMaskType(enum.Enum):
 class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
     """
     Fused operation which performs following three operations in sequence
-    1. Scale the tensor.
-    2. Apply upper triangular mask (typically used in gpt models).
-    3. Perform softmax.
+
+        1.  Scale the tensor.
+        2.  Apply upper triangular mask (typically used in gpt models).
+        3.  Perform softmax.
     """
 
     @staticmethod
@@ -52,9 +53,10 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
 class ScaledMaskedSoftmax(torch.autograd.Function):
     """
     Fused operation which performs following three operations in sequence
-    1. Scale the tensor.
-    2. Apply the mask.
-    3. Perform softmax.
+
+        1.  Scale the tensor.
+        2.  Apply the mask.
+        3.  Perform softmax.
     """
 
     @staticmethod
@@ -87,16 +89,16 @@ class ScaledMaskedSoftmax(torch.autograd.Function):
 
 class FusedScaleMaskSoftmax(nn.Module):
     """
-    fused operation: scaling + mask + softmax
+    Fused operation: scaling + mask + softmax
 
     Arguments:
-        input_in_fp16: flag to indicate if input in fp16 data format.
-        input_in_bf16: flag to indicate if input in bf16 data format.
-        attn_mask_type: attention mask type (pad or causal)
-        scaled_masked_softmax_fusion: flag to indicate user want to use softmax fusion
-        mask_func: mask function to be applied.
-        softmax_in_fp32: if true, softmax in performed at fp32 precision.
-        scale: scaling factor used in input tensor scaling.
+        input_in_fp16: Flag to indicate if input in fp16 data format.
+        input_in_bf16: Flag to indicate if input in bf16 data format.
+        attn_mask_type: Attention mask type (pad or causal)
+        scaled_masked_softmax_fusion: Flag to indicate user want to use softmax fusion
+        mask_func: Mask function to be applied.
+        softmax_in_fp32: If True, softmax in performed at fp32 precision.
+        scale: Scaling factor used in input tensor scaling.
     """
 
     def __init__(
