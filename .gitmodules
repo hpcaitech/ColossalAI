@@ -5,3 +5,4 @@
 [submodule "examples"]
 	path = examples
 	url = https://github.com/FrankLeeeee/ColossalAI-Examples.git
+	branch = main
