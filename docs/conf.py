@@ -6,6 +6,7 @@
 
 # -- Path setup --------------------------------------------------------------
 
+import datetime
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -18,14 +19,13 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'Colossal-AI'
-copyright = '2021, HPC-AI Tech'
+copyright = f'{datetime.datetime.now().year}, HPC-AI Tech'
 author = 'HPC-AI Technology Inc.'
 
 # The full version, including alpha/beta/rc tags
 release = '0.0.1'
 
-if 'SPHINX_LANG' in os.environ:
-    root_doc = f'index_{os.environ["SPHINX_LANG"]}'
+
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be
@@ -34,8 +34,8 @@ if 'SPHINX_LANG' in os.environ:
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.mathjax',
-    'myst_parser',
     'sphinx.ext.napoleon',
+    'myst_parser',
 ]
 
 # Disable docstring inheritance
