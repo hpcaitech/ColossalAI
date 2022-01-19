@@ -1,13 +1,18 @@
 colossalai.amp
-==================
+==============
+
+.. automodule:: colossalai.amp
+   :members:
 
 .. toctree::
    :maxdepth: 2
 
-   colossalai.amp.torch_amp
    colossalai.amp.apex_amp
    colossalai.amp.naive_amp
+   colossalai.amp.torch_amp
 
 
-.. automodule:: colossalai.amp
-   :members:
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.amp.amp_type

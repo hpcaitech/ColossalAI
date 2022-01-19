@@ -1,5 +1,7 @@
 # Colossal-AI
+
 ![logo](./docs/images/Colossal-AI_logo.png)
+
 <div align="center">
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | <a href="https://www.colossalai.org/"> Documentation </a> | <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 </div>
@@ -32,7 +34,6 @@ Install and enable CUDA kernel fusion (compulsory installation when using fused 
 ```shell
 pip install -v --no-cache-dir --global-option="--cuda_ext" .
 ```
-
 
 ## Use Docker
 
@@ -71,18 +72,18 @@ colossalai.launch(
 )
 
 # build your model
-model = ... 
+model = ...
 
-# build you dataset, the dataloader will have distributed data 
+# build you dataset, the dataloader will have distributed data
 # sampler by default
-train_dataset = ... 
+train_dataset = ...
 train_dataloader = get_dataloader(dataset=dataset,
                                 shuffle=True
                                 )
 
 
-# build your 
-optimizer = ... 
+# build your
+optimizer = ...
 
 # build your loss function
 criterion = ...
@@ -137,13 +138,15 @@ Colossal-AI provides a collection of parallel training components for you. We ai
 distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
 distributed training in a few lines.
 
-- [Data Parallelism](./docs/parallelization.md)
-- [Pipeline Parallelism](./docs/parallelization.md)
-- [1D, 2D, 2.5D, 3D and sequence parallelism](./docs/parallelization.md)
-- [Friendly trainer and engine](./docs/trainer_engine.md)
-- [Extensible for new parallelism](./docs/add_your_parallel.md)
-- [Mixed Precision Training](./docs/amp.md)
-- [Zero Redundancy Optimizer (ZeRO)](./docs/zero.md)
+- Data Parallelism
+- Pipeline Parallelism
+- 1D, 2D, 2.5D, 3D and sequence parallelism
+- Friendly trainer and engine
+- Extensible for new parallelism
+- Mixed Precision Training
+- Zero Redundancy Optimizer (ZeRO)
+
+Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
 
 ## Cite Us
 

@@ -1,6 +1,10 @@
 colossalai.nn.model
 ===================
 
+.. automodule:: colossalai.nn.model
+   :members:
+
+
 .. toctree::
    :maxdepth: 2
 

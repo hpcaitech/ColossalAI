@@ -1,13 +1,8 @@
 colossalai
 ==========
 
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.constants
-   colossalai.core
-   colossalai.initialize
-
+.. automodule:: colossalai
+   :members:
 
 .. toctree::
    :maxdepth: 2
@@ -17,6 +12,7 @@ colossalai
    colossalai.communication
    colossalai.context
    colossalai.engine
+   colossalai.kernel
    colossalai.logging
    colossalai.nn
    colossalai.registry
@@ -24,5 +20,8 @@ colossalai
    colossalai.utils
    colossalai.zero
 
-.. automodule:: colossalai
-   :members:
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.initialize
