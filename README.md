@@ -12,12 +12,6 @@ An integrated large-scale model training system with efficient parallelization t
 
 ## Installation
 
-### PyPI
-
-```bash
-pip install colossalai
-```
-
 ### Install From Source (Recommended)
 
 > We **recommend** you to install from source as the Colossal-AI is updating frequently in the early versions. The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
@@ -37,6 +31,17 @@ Install and enable CUDA kernel fusion (compulsory installation when using fused 
 ```shell
 pip install -v --no-cache-dir --global-option="--cuda_ext" .
 ```
+
+### PyPI
+
+```bash
+pip install colossalai
+```
+
+## Documentation
+
+- [Documentation](https://www.colossalai.org/)
+
 
 ## Use Docker
 
