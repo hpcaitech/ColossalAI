@@ -6,7 +6,7 @@ JIT_OPTIONS_SET = False
 def set_jit_fusion_options():
     """Set PyTorch JIT layer fusion options.
     """
-    # LSG: the latest pytorch and CUDA versions may not support 
+    # LSG: the latest pytorch and CUDA versions may not support
     # the following jit settings
     global JIT_OPTIONS_SET
     if JIT_OPTIONS_SET == False:

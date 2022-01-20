@@ -77,7 +77,7 @@ class Engine:
         """
         self._all_reduce_gradients()
         self.optimizer.clip_grad_norm(self.model, self._clip_grad_norm)
-        self.optimizer.step()
+        return self.optimizer.step()
 
     def backward(self, loss: Tensor):
         """Start backward propagation given the loss value computed by a loss function
