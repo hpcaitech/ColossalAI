@@ -200,26 +200,28 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import torch.distributed.optim as dist_optim
-import torch.nn as nn
-import torch.optim as optim
-import torchvision.models as tv_models
-import torchvision.datasets as tv_datasets
-from torchvision import transforms
+from abc import ABC, abstractmethod
+import torch
 
-from .registry import Registry
 
-LAYERS = Registry("layers", third_party_library=[nn])
-LOSSES = Registry("losses")
-MODELS = Registry("models", third_party_library=[tv_models])
-OPTIMIZERS = Registry("optimizers", third_party_library=[optim, dist_optim])
-DATASETS = Registry("datasets", third_party_library=[tv_datasets])
-DIST_GROUP_INITIALIZER = Registry("dist_group_initializer")
-GRADIENT_HANDLER = Registry("gradient_handler")
-LOSSES = Registry("losses", third_party_library=[nn])
-HOOKS = Registry("hooks")
-TRANSFORMS = Registry("transforms", third_party_library=[transforms])
-DATA_SAMPLERS = Registry("data_samplers")
-LR_SCHEDULERS = Registry("lr_schedulers")
-SCHEDULE = Registry("schedules")
-OPHOOKS = Registry("ophooks")
+class BaseOpHook(ABC):
+    """This class allows users to add customized operations
+    before and after the execution of a PyTorch submodule"""
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def pre_fwd_exec(self, module: torch.nn.Module, *args):
+        pass
+
+    @abstractmethod
+    def post_fwd_exec(self, module: torch.nn.Module, *args):
+        pass
+
+    @abstractmethod
+    def pre_bwd_exec(self, module: torch.nn.Module, input, output):
+        pass
+
+    @abstractmethod
+    def post_bwd_exec(self, module: torch.nn.Module, input):
+        pass
