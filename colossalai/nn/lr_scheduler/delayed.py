@@ -18,9 +18,9 @@ class DelayerScheduler(_LRScheduler):
 
     :param optimizer: Wrapped optimizer.
     :type optimizer: torch.optim.Optimizer
-    :param delay_epochs: number of epochs to keep the initial lr until starting aplying the scheduler
+    :param delay_epochs: Number of epochs to keep the initial lr until starting aplying the scheduler
     :type delay_epochs: int
-    :param after_scheduler: after target_epoch, use this scheduler(eg. ReduceLROnPlateau)
+    :param after_scheduler: After target_epoch, use this scheduler(eg. ReduceLROnPlateau)
     :type after_scheduler: torch.optim.lr_scheduler
     :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional
@@ -61,9 +61,9 @@ class WarmupScheduler(_LRScheduler):
 
     :param optimizer: Wrapped optimizer.
     :type optimizer: torch.optim.Optimizer
-    :param warmup_epochs: number of epochs to linearly warmup lr until starting aplying the scheduler
+    :param warmup_epochs: Number of epochs to linearly warmup lr until starting aplying the scheduler
     :type warmup_epochs: int
-    :param after_scheduler: after target_epoch, use this scheduler(eg. ReduceLROnPlateau)
+    :param after_scheduler: After target_epoch, use this scheduler(eg. ReduceLROnPlateau)
     :type after_scheduler: torch.optim.lr_scheduler
     :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional
@@ -101,11 +101,11 @@ class WarmupDelayerScheduler(_LRScheduler):
 
     :param optimizer: Wrapped optimizer.
     :type optimizer: torch.optim.Optimizer
-    :param warmup_epochs: number of epochs to linearly warmup lr until starting aplying the scheduler
+    :param warmup_epochs: Number of epochs to linearly warmup lr until starting aplying the scheduler
     :type warmup_epochs: int
-    :param delay_epochs: number of epochs to keep the initial lr until starting aplying the scheduler
+    :param delay_epochs: Number of epochs to keep the initial lr until starting aplying the scheduler
     :type delay_epochs: int
-    :param after_scheduler: after target_epoch, use this scheduler(eg. ReduceLROnPlateau)
+    :param after_scheduler: After target_epoch, use this scheduler(eg. ReduceLROnPlateau)
     :type after_scheduler: torch.optim.lr_scheduler
     :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional

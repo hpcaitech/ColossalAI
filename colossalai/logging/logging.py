@@ -25,9 +25,10 @@ class DistributedLogger:
     @staticmethod
     def get_instance(name: str):
         """Get the unique single logger instance based on name.
+
         :param name: The name of the logger
         :type name: str
-        :return: a DistributedLogger object
+        :return: A DistributedLogger object
         :rtype: DistributedLogger
         """
         if name in DistributedLogger.__instances:
@@ -50,7 +51,8 @@ class DistributedLogger:
 
     def set_level(self, level: str):
         """Set the logging level
-        :param level: can only be INFO, DEBUG, WARNING and ERROR
+
+        :param level: Can only be INFO, DEBUG, WARNING and ERROR
         :type level: str
         """
         self._check_valid_logging_level(level)
@@ -62,12 +64,15 @@ class DistributedLogger:
                     level: str = 'INFO',
                     suffix: str = None):
         """Save the logs to file
-        :param path: the file to save the log
-        :type path: a string or pathlib.Path object
-        :param mode: the mode to write log into the file
+
+        :param path: The file to save the log
+        :type path: A string or pathlib.Path object
+        :param mode: The mode to write log into the file
         :type mode: str
-        :param level: can only be INFO, DEBUG, WARNING and ERROR
+        :param level: Can only be INFO, DEBUG, WARNING and ERROR
         :type level: str
+        :param suffix: The suffix string of log's name
+        :type suffix: str
         """
         assert isinstance(path, (str, Path)), \
             f'expected argument path to be type str or Path, but got {type(path)}'
@@ -105,12 +110,12 @@ class DistributedLogger:
     def info(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
         """Log an info message.
 
-        :param message:
-        :type message:
-        :param parallel_mode:
-        :type parallel_mode:
-        :param ranks:
-        :type ranks:
+        :param message: The message to be logged
+        :type message: str
+        :param parallel_mode: The parallel mode used for logging. Defaults to ParallelMode.GLOBAL
+        :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
+        :param ranks: List of parallel ranks
+        :type ranks: list
         """
         self._log('info', message, parallel_mode, ranks)
 

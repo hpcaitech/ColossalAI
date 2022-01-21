@@ -11,9 +11,9 @@ from colossalai.registry import LAYERS
 class LambdaWrapper(nn.Module):
     """Wrap a function to nn.Module, which takes a config of layers and can fully access them
 
-    :param func: user customed function
+    :param func: User customed function
     :type func: Callable
-    :param layers_cfg: config of layers, defaults to None
+    :param layers_cfg: Config of layers, defaults to None
     :type layers_cfg: dict, optional
     """
 

@@ -40,6 +40,7 @@ class Linear(nn.Module):
     :type weight_initializer: typing.Callable, optional
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
+    :param kwargs: Kwargs used for initialization
     """
     def __init__(self,
                  in_features: int,

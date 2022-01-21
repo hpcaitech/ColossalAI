@@ -15,7 +15,10 @@ from ._fp16_optimizer import FP16Optimizer
 class NaiveAMPOptimizer(ColossalaiOptimizer):
     """A wrapper class for optimizer to cast all parameters to fp16
 
-    :param optim: a normal optimizer like Adam or SGD
+    :param optim: A normal optimizer like Adam or SGD
+    :param args: Args used to initialize FP16 optimizer
+    :param kwargs: Kwargs used to initialize FP16 optimizer
+
     :type optim: torch.optim.Optimizer
     """
 
@@ -24,7 +27,8 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
         super().__init__(optim)
 
     def backward(self, loss: Tensor):
-        """backward with gradient scaler
+        """Backward with gradient scaler
+
         :param loss: loss computed by a loss function
         :type loss: torch.Tensor
         """

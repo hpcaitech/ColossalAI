@@ -9,9 +9,9 @@ class LinearWarmupLR(_LRScheduler):
 
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
-    :param total_steps: number of total training steps
+    :param total_steps: Number of total training steps
     :type total_steps: int
-    :param warmup_steps: number of warmup steps, defaults to 0
+    :param warmup_steps: Number of warmup steps, defaults to 0
     :type warmup_steps: int, optional
     :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional

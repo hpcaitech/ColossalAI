@@ -106,8 +106,10 @@ class MultiHeadAttention(nn.Module):
     """Initialize the MultiHeadAttention.
 
     Static variable:
+
         layer_id: The layer-index counter starting from 0 and incrementing by 1 every time a layer object is instantiated,
         e.g. if a model has 24 transformer layers, layer_id goes from 0 to 23.
+
     Arguments:
         hidden_size: Total dimension of hidden_size.
         nhead: Number of parallel attention heads.

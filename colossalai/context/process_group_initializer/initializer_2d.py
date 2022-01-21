@@ -22,8 +22,16 @@ def _check_summa_env_var(summa_dim):
 
 
 class Initializer_2D_Row(ProcessGroupInitializer):
-    '''2d tensor parallel initialization among rows. 
-    '''
+    """2d tensor parallel initialization among rows.
+
+    :param num_group: The number of all tensor groups
+    :param summa_dim: The dimension of SUMMA
+    :param args: Args used to initialize base class
+    :param kwargs: Kwargs used to initialize base class
+
+    :type num_group: int
+    :type summa_dim: int
+    """
 
     def __init__(self, num_group, summa_dim, *args, **kwargs):
         super(Initializer_2D_Row, self).__init__(*args, **kwargs)
@@ -31,11 +39,11 @@ class Initializer_2D_Row(ProcessGroupInitializer):
         self.summa_dim = summa_dim
 
     def init_dist_group(self):
-        '''Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2D tensor row parallelism's information 
-        :rtype: tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
-        '''
+        :return: 2D tensor row parallelism's information
+        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None
@@ -58,8 +66,16 @@ class Initializer_2D_Row(ProcessGroupInitializer):
 
 
 class Initializer_2D_Col(ProcessGroupInitializer):
-    '''2d tensor parallel initialization among cols. 
-    '''
+    """2d tensor parallel initialization among cols.
+
+    :param num_group: The number of all tensor groups
+    :param summa_dim: The dimension of SUMMA
+    :param args: Args used to initialize base class
+    :param kwargs: Kwargs used to initialize base class
+
+    :type num_group: int
+    :type summa_dim: int
+    """
 
     def __init__(self, num_group, summa_dim, *args, **kwargs):
         super(Initializer_2D_Col, self).__init__(*args, **kwargs)
@@ -67,11 +83,11 @@ class Initializer_2D_Col(ProcessGroupInitializer):
         self.summa_dim = summa_dim
 
     def init_dist_group(self):
-        '''Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2D tensor col parallelism's information 
-        :rtype: tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
-        '''
+        :return: 2D tensor col parallelism's information
+        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None
@@ -97,6 +113,9 @@ class Initializer_2D_Col(ProcessGroupInitializer):
 class Initializer_2D(ProcessGroupInitializer):
     """
     Serve as the single entry point to 2D parallel initialization.
+
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
     """
 
     def __init__(self, *args, **kwargs):
@@ -112,12 +131,10 @@ class Initializer_2D(ProcessGroupInitializer):
         self.row_initializer = Initializer_2D_Row(self.num_group, self.summa_dim, *args, **kwargs)
 
     def init_dist_group(self):
-        '''Initialize 2D tensor row and col parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 2D tensor row and col parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2D tensor parallelism's information 
-        :rtype: list of tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        '''
-        parallel_setting = []
-        parallel_setting.append(self.row_initializer.init_dist_group())
-        parallel_setting.append(self.col_initializer.init_dist_group())
+        :return: 2D tensor parallelism's information
+        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
+        parallel_setting = [self.row_initializer.init_dist_group(), self.col_initializer.init_dist_group()]
         return parallel_setting

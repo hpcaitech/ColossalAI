@@ -44,9 +44,11 @@ class PipelineSchedule(BaseSchedule):
     :param num_microbatches: The number of microbatches
     :type num_microbatches: int
     :param batch_data_process_func: The preprocessing function which receives a batch of data, and it will be executed in `load_batch`
-    :type batch_data_process_func: Callable
+    :type batch_data_process_func: Callable, optional
+    :param tensor_shape: Specified shape in pipeline communication
+    :type tensor_shape: torch.Size, optional
     :param scatter_gather_tensors: If set to `True`, communication will be reduced over pipeline when using 1D tensor parallelization
-    :type scatter_gather_tensors: bool
+    :type scatter_gather_tensors: bool, optional
     """
 
     def __init__(self,
@@ -130,12 +132,16 @@ class PipelineSchedule(BaseSchedule):
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
 
-        :param engine: your engine object
+        :param engine: Your engine object
         :type engine: colossalai.engine.Engine
-        :param input_tensor: input tensor for this pipeline stage
+        :param input_tensor: Input tensor for this pipeline stage
         :type input_tensor: :class:`torch.Tensor`
-        :param return_tensors: a list of tensors to return
+        :param return_tensors: A list of tensors to return
         :type return_tensors: List[:class:`torch.Tensor`]
+        :param return_output_label: Whether returns output labels
+        :type return_output_label: bool, optional
+        :param accum_loss: Where accumulated loss stores
+        :type  accum_loss: optional
 
         :return: output or the loss value of the current pipeline stage
         :rtype: :class:`torch.Tensor`
@@ -205,13 +211,13 @@ class PipelineSchedule(BaseSchedule):
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
-        :param engine: your engine object
+        :param engine: Your engine object
         :type engine: colossalai.engine.Engine
-        :param data_iter: dataloader as the form of an iterator, obtained by calling iter(dataloader)
+        :param data_iter: Dataloader as the form of an iterator, obtained by calling iter(dataloader)
         :type data_iter: Iterable
-        :param forward_only: whether run forward step only. Default is false. If true, no backward will be run.
+        :param forward_only: Whether run forward step only. Default is false. If true, no backward will be run.
         :type forward_only: bool
-        :param return_loss: whether returns the loss value. Default is true.
+        :param return_loss: Whether returns the loss value. Default is true.
         :type return_loss: bool
         :param return_output_label: If False, the output and label won't be returned
         :type return_output_label: bool
@@ -357,9 +363,11 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         :param num_model_chunks: The number of model chunks
         :type num_model_chunks: int
         :param batch_data_process_func: The preprocessing function which receives a batch of data, and it will be executed in `load_batch`
-        :type batch_data_process_func: Callable
+        :type batch_data_process_func: Callable, optional
+        :param tensor_shape: Specified shape in pipeline communication
+        :type tensor_shape: torch.Size, optional
         :param scatter_gather_tensors: If set to `True`, communication will be reduced over pipeline when using 1D tensor parallelization
-        :type scatter_gather_tensors: bool
+        :type scatter_gather_tensors: bool, optional
         """
         assert num_microbatches % gpc.get_world_size(ParallelMode.PIPELINE) == 0, \
             'num_microbatches must be an integer multiple of pipeline parallel world size'
@@ -425,7 +433,19 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         """Run interleaved 1F1B schedule (model split into model chunks), with
         communication between pipeline stages as needed.
 
-        Returns dictionary with losses if the last stage, empty dict otherwise."""
+        Returns dictionary with losses if the last stage, empty dict otherwise.
+
+        :param engine: Your engine object
+        :type engine: colossalai.engine.Engine
+        :param data_iter: Dataloader as the form of an iterator, obtained by calling iter(dataloader)
+        :type data_iter: Iterable
+        :param forward_only: Whether run forward step only. Default is false. If true, no backward will be run.
+        :type forward_only: bool
+        :param return_loss: Whether returns the loss value. Default is true.
+        :type return_loss: bool
+        :param return_output_label: If False, the output and label won't be returned
+        :type return_output_label: bool
+        """
         assert forward_only or return_loss, \
             'The argument \'return_loss\' has to be True when \'forward_only\' is False, but got False.'
         self.load_batch(data_iter)

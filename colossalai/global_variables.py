@@ -1,7 +1,7 @@
 
 
 class MoeEnv:
-    """Moe enviroment variable.
+    """Moe enviroment variables.
     """
 
     def __init__(self):

@@ -170,7 +170,7 @@ class VanillaPatchEmbedding(nn.Module):
 @LAYERS.register_module
 class VanillaClassifier(nn.Module):
     """
-    Classifier
+    Classifier for ViT
 
     :param in_features: size of each input sample
     :type in_features: int

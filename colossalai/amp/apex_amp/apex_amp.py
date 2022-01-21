@@ -13,23 +13,25 @@ from colossalai.utils import clip_grad_norm_fp32
 
 
 class ApexAMPOptimizer(ColossalaiOptimizer):
-    ''' A wrapper class for APEX optimizer and it implements apex-specific backward and clip_grad_norm
+    """ A wrapper class for APEX optimizer and it implements apex-specific backward and clip_grad_norm
     methods
-    '''
+    """
 
     def backward(self, loss: Tensor):
-        """
-        :param loss: loss computed by a loss function
+        """Backward pass to get all gradients
+
+        :param loss: Loss computed by a loss function
         :type loss: torch.Tensor
         """
         with apex_amp.scale_loss(loss, self.optim) as scaled_loss:
             scaled_loss.backward()
 
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
-        """
-        :param model: your model object
+        """Clip gradients' norm
+
+        :param model: Your model object
         :type model: torch.nn.Module
-        :param max_norm: the max norm value for gradient clipping
+        :param max_norm: The max norm value for gradient clipping
         :type max_norm: float
         """
         if max_norm > 0:

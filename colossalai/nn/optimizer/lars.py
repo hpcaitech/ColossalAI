@@ -16,7 +16,7 @@ class Lars(Optimizer):
     Args:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups
-        lr (float, optional): learning rate
+        lr (float, optional): learning rate (default: 1e-3)
         momentum (float, optional): momentum factor (default: 0)
         eeta (float, optional): LARS coefficient as used in the paper (default: 1e-3)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)

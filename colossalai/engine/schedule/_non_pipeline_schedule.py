@@ -15,10 +15,6 @@ class NonPipelineSchedule(BaseSchedule):
     During one process, it loads a batch of dataset and feeds it to the model.
     After getting the output and calculating the loss, it will use :meth:`step`
     to update the parameters if it is in training mode.
-    :param amp_type: The type of automatic mixed precision
-    :param amp_config: The configuration of automatic mixed procision
-    :type amp_type: AMP_TYPE
-    :type amp_config: dict
     """
 
     def forward_backward_step(self,
@@ -29,6 +25,7 @@ class NonPipelineSchedule(BaseSchedule):
                               return_output_label: bool = True):
         """The process function that loads loads a batch of dataset and feeds it to the model.
         The returned labels and loss will None if :attr:`return_loss` is False.
+
         :param engine: Model for training and inference
         :param data_iter: Data iterator of the dataloader, e.g. iter(dataloader)
         :param forward_only: If True, the model is run for the forward pass, else back propagation will be executed

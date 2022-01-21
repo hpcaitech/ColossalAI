@@ -38,7 +38,7 @@ class CosineAnnealingLR(_CosineAnnealingLR):
 
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
-    :param total_steps: number of total training steps
+    :param total_steps: Number of total training steps
     :type total_steps: int
     :param eta_min: Minimum learning rate, defaults to 0
     :type eta_min: int, optional
@@ -56,9 +56,9 @@ class CosineAnnealingWarmupLR(WarmupScheduler):
 
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
-    :param total_steps: number of total training steps
+    :param total_steps: Number of total training steps
     :type total_steps: int
-    :param warmup_steps: number of warmup steps, defaults to 0
+    :param warmup_steps: Number of warmup steps, defaults to 0
     :type warmup_steps: int, optional
     :param eta_min: Minimum learning rate, defaults to 0
     :type eta_min: int, optional
@@ -78,9 +78,9 @@ class FlatAnnealingLR(DelayerScheduler):
 
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
-    :param total_steps: number of total training steps
+    :param total_steps: Number of total training steps
     :type total_steps: int
-    :param pct_start: percent of steps before starting learning rate decay
+    :param pct_start: Percent of steps before starting learning rate decay
     :type pct_start: float
     :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional
@@ -99,15 +99,16 @@ class FlatAnnealingLR(DelayerScheduler):
 
 @LR_SCHEDULERS.register_module
 class FlatAnnealingWarmupLR(WarmupDelayerScheduler):
-    """Flat and cosine annealing learning rate scheduler with learning rate warmup. A linear warmup schedule will be applied, and then the learning rate will be a fixed value before starting decay.
+    """Flat and cosine annealing learning rate scheduler with learning rate warmup. A linear warmup schedule will be
+    applied, and then the learning rate will be a fixed value before starting decay.
 
     :param optimizer: Wrapped optimizer
     :type optimizer: torch.optim.Optimizer
-    :param total_steps: number of total training steps
+    :param total_steps: Number of total training steps
     :type total_steps: int
-    :param warmup_steps: number of warmup steps, defaults to 0
+    :param warmup_steps: Number of warmup steps, defaults to 0
     :type warmup_steps: int, optional
-    :param pct_start: percent of steps before starting learning rate decay
+    :param pct_start: Percent of steps before starting learning rate decay
     :type pct_start: float
     :param eta_min: Minimum learning rate, defaults to 0
     :type eta_min: int, optional

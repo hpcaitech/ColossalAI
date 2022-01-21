@@ -11,8 +11,12 @@ from ..parallel_mode import ParallelMode
 
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Model(ProcessGroupInitializer):
-    '''A ProcessGroupInitializer for model parallelism (model parallel group contains pipeline and tensor parallel groups).
-    '''
+    """A ProcessGroupInitializer for model parallelism (model parallel group contains pipeline and tensor parallel
+    groups).
+
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -20,11 +24,11 @@ class Initializer_Model(ProcessGroupInitializer):
         self.num_group = self.world_size // self.model_parallel_size
 
     def init_dist_group(self):
-        '''Initialize 1D tensor parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize model parallel groups, and assign local_ranks and groups to each gpu.
 
         :return: (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        :rtype: tuple
-        '''
+        :rtype: Tuple
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None

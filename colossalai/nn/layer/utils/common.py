@@ -37,7 +37,11 @@ class CheckpointModule(nn.Module):
 
 
 def divide(numerator, denominator):
-    """ only allow exact division """
+    """Only allow exact division
+
+    :param numerator: Numerator of the division
+    :param denominator: Denominator of the division
+    """
     assert numerator % denominator == 0, \
         '{} is not divisible by {}'.format(numerator, denominator)
     return numerator // denominator

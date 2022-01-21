@@ -12,7 +12,6 @@ class BaseHook(ABC):
 
     :param priority: Priority in the printing, hooks with small priority will be printed in front
     :type priority: int
-    :param trainer: Trainer attached with current hook
     """
 
     def __init__(self, priority: int) -> None:
@@ -41,6 +40,8 @@ class BaseHook(ABC):
     def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a training iteration.
 
+        :param trainer: Trainer which is using this hook
+        :type trainer: :class:`Trainer`
         :param output: Output of the model
         :type output: torch.Tensor
         :param label: Labels of the input data
@@ -88,6 +89,8 @@ class BaseHook(ABC):
     def after_test_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a testing iteration.
 
+        :param trainer: Trainer which is using this hook
+        :type trainer: :class:`Trainer`
         :param output: Output of the model
         :type output: Tensor
         :param label: Labels of the input data
@@ -100,6 +103,8 @@ class BaseHook(ABC):
     def init_runner_states(self, trainer, key, val):
         """Initializes trainer's state.
 
+        :param trainer: Trainer which is using this hook
+        :type trainer: :class:`Trainer`
         :param key: Key of reseting state
         :param val: Value of reseting state
         """

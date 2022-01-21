@@ -37,6 +37,8 @@ class Embedding(nn.Module):
     :type dtype: torch.dtype, optional
     :param weight_initializer: The intializer of weight, defaults to normal initializer
     :type weight_initializer: typing.Callable, optional
+    :param args: Args used in F.embedding
+    :param kwargs: Kwargs used in F.embedding
     """
     def __init__(self,
                  num_embeddings: int,

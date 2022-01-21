@@ -10,12 +10,22 @@ from ..parallel_mode import ParallelMode
 
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Pipeline(ProcessGroupInitializer):
+    """A ProcessGroupInitializer for pipeline parallelism.
+
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_group_size = self.world_size // self.data_parallel_size
         self.pipeline_stage_size = self.data_group_size // self.pipeline_parallel_size
 
     def init_dist_group(self):
+        """Initialize pipeline parallel groups, and assign local_ranks and groups to each gpu.
+
+        :return: Pipeline parallelism's information
+        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
         dist_settings = list()
         for i in range(self.data_parallel_size):
             for j in range(self.pipeline_stage_size):

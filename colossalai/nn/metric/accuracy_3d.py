@@ -8,11 +8,7 @@ from ._utils import calc_acc
 
 
 class Accuracy3D(nn.Module):
-    """
-    Accuracy for 3D parallelism
-
-    :param logits: predicted labels
-    :param targets: true labels
+    """Accuracy for 3D parallelism
     """
     def __init__(self):
         super().__init__()
@@ -20,6 +16,11 @@ class Accuracy3D(nn.Module):
         self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
 
     def forward(self, logits, targets):
+        """Calculate the accuracy of predicted labels.
+
+         :param logits: Predicted labels
+         :param targets: True labels from data
+         """
         with torch.no_grad():
             correct = calc_acc(logits, targets)
             correct = reduce_by_batch_3d.apply(correct, self.input_parallel_mode, self.weight_parallel_mode)

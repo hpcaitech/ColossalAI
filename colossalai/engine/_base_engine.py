@@ -22,8 +22,10 @@ class Engine:
     :type optimizer: ``torch.optim.Optimizer``
     :param criterion: Loss function for calculating loss
     :type criterion: ``torch.nn.modules.loss._Loss``
-    :param gradient_clipping: The norm of gradient clipping
-    :type gradient_clipping: float, optional
+    :param gradient_handlers: A list of gradient handler used in backward
+    :type gradient_handlers: list
+    :param clip_grad_norm: The norm of gradient clipping
+    :type clip_grad_norm: float, optional
     :param verbose: whether to display log info
     :type verbose: bool
     """
@@ -54,26 +56,26 @@ class Engine:
 
     @property
     def model(self):
-        """model attached to the engine"""
+        """Model attached to the engine"""
         return self._model
 
     @property
     def optimizer(self):
-        """optimizer attached to the engine"""
+        """Optimizer attached to the engine"""
         return self._optimizer
 
     @property
     def criterion(self):
-        """criterion attached to the engine"""
+        """Criterion attached to the engine"""
         return self._criterion
 
     def zero_grad(self):
-        """set the gradient of parameters to zero
+        """Set the gradient of parameters to zero
         """
         self.optimizer.zero_grad()
 
     def step(self):
-        """execute parameter update
+        """Execute parameter update
         """
         self._all_reduce_gradients()
         self.optimizer.clip_grad_norm(self.model, self._clip_grad_norm)
@@ -82,7 +84,7 @@ class Engine:
     def backward(self, loss: Tensor):
         """Start backward propagation given the loss value computed by a loss function
 
-        :param loss: loss value computed by a loss function
+        :param loss: Loss value computed by a loss function
         :type loss: :class:`torch.Tensor`
         """
         return self.optimizer.backward(loss)
@@ -90,23 +92,28 @@ class Engine:
     def backward_by_grad(self, tensor, grad):
         """Start backward propagation given the gradient of the output tensor
 
-        :param loss: output tensor
-        :type loss: :class:`torch.Tensor`
-        :param grad: gradient passed back to the output
+        :param tensor: Output tensor
+        :type tensor: :class:`torch.Tensor`
+        :param grad: Gradient passed back to the output
         :type grad: :class:`torch.Tensor`
         """
         return self.optimizer.backward_by_grad(tensor, grad)
 
     def calc_loss(self, *args, **kwargs):
-        """compute the loss value
-        :return: the loss value
+        """Compute the loss value
+
+        :param args: Args used in criterion function
+        :param kwargs: Kwargs used in criterion function
+
+        :return: The loss value
         :rtype: :class:`torch.Tensor`
         """
         return self.criterion(*args, **kwargs)
 
     def __call__(self, *args, **kwargs):
-        """run the forward step for the model
-        :return: output the model
+        """Run the forward step for the model
+
+        :return: Output the model
         :rtype: Tuple[:class:`torch.Tensor`] or :class:`torch.Tensor`
         """
         return self.model(*args, **kwargs)

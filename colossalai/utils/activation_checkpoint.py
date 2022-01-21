@@ -108,10 +108,10 @@ class CheckpointFunction(torch.autograd.Function):
 
 
 def checkpoint(function, *args):
-    '''Checkpoint the computation while preserve the rng states, modified from Pytorch torch.utils.checkpoint
+    """Checkpoint the computation while preserve the rng states, modified from Pytorch torch.utils.checkpoint
 
-    :param function: describe the forward pass function. It should know how to handle the input tuples.
-    :param args: tuple containing inputs to the function
-    :return: Output of running function on \*args
-    '''
+    :param function: Describe the forward pass function. It should know how to handle the input tuples.
+    :param args: Tuple containing the parameters of the function
+    :return: Output of running function with provided args
+    """
     return CheckpointFunction.apply(function, *args)

@@ -10,12 +10,14 @@ from ..parallel_mode import ParallelMode
 
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Sequence_DP(ProcessGroupInitializer):
-    '''A ProcessGroupInitializer for sequence parallelism all-reduce.
+    """A ProcessGroupInitializer for sequence parallelism all-reduce.
 
-    In Sequence Parallelism, each GPU holds the full copy of model weights, 
+    In Sequence Parallelism, each GPU holds the full copy of model weights,
     thus, gradient all-reduce occurs across all processes in the same pipeline stage
 
-    '''
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -23,10 +25,11 @@ class Initializer_Sequence_DP(ProcessGroupInitializer):
         self.num_group = self.pipeline_parallel_size
 
     def init_dist_group(self):
-        '''Initialize Sequence Parallel process groups used for gradient all-reduce.
+        """Initialize Sequence Parallel process groups used for gradient all-reduce.
+
         :return: (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        :rtype: tuple
-        '''
+        :rtype: Tuple
+        """
         local_rank = None
         ranks_in_group = None
         process_group = None
@@ -47,9 +50,11 @@ class Initializer_Sequence_DP(ProcessGroupInitializer):
 
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_Sequence(ProcessGroupInitializer):
-    '''A ProcessGroupInitializer for sequence parallelism.
-    '''
+    """A ProcessGroupInitializer for sequence parallelism.
 
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    """
     def __init__(self,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -58,15 +63,15 @@ class Initializer_Sequence(ProcessGroupInitializer):
         self._sequence_dp_initializer = Initializer_Sequence_DP(*args, **kwargs)
 
     def init_dist_group(self):
-        '''Initialize Sequence parallel process groups and assign local_ranks and groups to each gpu.
+        """Initialize Sequence parallel process groups and assign local_ranks and groups to each gpu.
 
         Sequence parallelism requires 2 process groups. The first is for model forward where several processes
         exchange paritial query, key and value embedding to compute self attention values. The second is for
         all-reduce to synchronize the model parameters.
 
-        :return: 2D tensor parallelism's information 
-        :rtype: list of tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        '''
+        :return: Sequence parallelism's information
+        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """
 
         parallel_setting = []
 

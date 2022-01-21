@@ -65,7 +65,17 @@ def recv_tensor_meta(tensor_shape, prev_rank=None):
 
 
 def split_tensor_into_1d_equal_chunks(tensor, new_buffer=False):
-    """Break a tensor into equal 1D chunks."""
+    """Break a tensor into equal 1D chunks.
+
+    :param tensor: Tensor to be splitted before communication
+    :param new_buffer: Whether uses a new buffer to store sliced tensor
+
+    :type tensor: torch.Tensor
+    :type new_buffer: bool, optional
+
+    :return splitted_tensor: The splitted tensor
+    :rtype splitted_tensor: torch.Tensor
+    """
     partition_size = torch.numel(tensor) // gpc.get_world_size(ParallelMode.PARALLEL_1D)
     start_index = partition_size * gpc.get_local_rank(ParallelMode.PARALLEL_1D)
     end_index = start_index + partition_size
@@ -80,7 +90,14 @@ def split_tensor_into_1d_equal_chunks(tensor, new_buffer=False):
 
 
 def gather_split_1d_tensor(tensor):
-    """Opposite of above function, gather values from model parallel ranks."""
+    """Opposite of above function, gather values from model parallel ranks.
+
+    :param tensor: Tensor to be gathered after communication
+    :type tensor: torch.Tensor
+
+    :return gathered: The gathered tensor
+    :rtype gathered: torch.Tensor
+    """
     world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
     numel = torch.numel(tensor)
     numel_gathered = world_size * numel
