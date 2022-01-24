@@ -1,10 +1,13 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 21.12b0
+  - repo: https://github.com/pre-commit/pre-commit-hooks.git
+    sha: v4.0.1
     hooks:
-      - id: black
-  - repo: https://github.com/PyCQA/flake8
-    rev: 4.0.1
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+  - repo: https://github.com/google/yapf
+    rev: v0.31.0
     hooks:
-      - id: flake8
+      - id: yapf
+        name: "yapf"
+        args: [--style, google]
 
