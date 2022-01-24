@@ -10,4 +10,4 @@ jobs:
       - uses: hkusu/review-assign-action@v1
         with:
           assignees: ${{ github.actor }} # assign pull request author
-          reviewers: frankleeeee, kurisusnowdeng
+          reviewers: hpcaitech/pull-request-reviewer
