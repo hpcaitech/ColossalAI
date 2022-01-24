@@ -36,7 +36,10 @@ class Initializer_Model(ProcessGroupInitializer):
         mode = ParallelMode.MODEL
 
         for i in range(self.num_group):
-            ranks = [i * self.model_parallel_size + j for j in range(self.model_parallel_size)]
+            ranks = [
+                i * self.model_parallel_size + j
+                for j in range(self.model_parallel_size)
+            ]
             group = dist.new_group(ranks)
 
             if self.rank in ranks:

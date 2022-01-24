@@ -11,22 +11,17 @@ from torch.utils.data import DataLoader
 from colossalai.builder import build_dataset, build_transform
 from colossalai.context import Config
 
-TRAIN_DATA = dict(
-    dataset=dict(
-        type='CIFAR10',
-        root=Path(os.environ['DATA']),
-        train=True,
-        download=True
-    ),
-    dataloader=dict(batch_size=4, shuffle=True, num_workers=2),
-    transform_pipeline=[
-        dict(type='ToTensor'),
-        dict(type='Normalize',
-             mean=(0.5, 0.5, 0.5),
-             std=(0.5, 0.5, 0.5)
-             )
-    ]
-)
+TRAIN_DATA = dict(dataset=dict(type='CIFAR10',
+                               root=Path(os.environ['DATA']),
+                               train=True,
+                               download=True),
+                  dataloader=dict(batch_size=4, shuffle=True, num_workers=2),
+                  transform_pipeline=[
+                      dict(type='ToTensor'),
+                      dict(type='Normalize',
+                           mean=(0.5, 0.5, 0.5),
+                           std=(0.5, 0.5, 0.5))
+                  ])
 
 
 @pytest.mark.cpu

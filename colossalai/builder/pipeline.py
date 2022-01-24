@@ -1,7 +1,6 @@
 import copy
 import heapq
 
-
 from colossalai.builder import build_model, build_layer
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
@@ -41,6 +40,7 @@ def _binary_partition(weights, st, ed):
 def _heap_addition(weights, intervals, add_cnt):
     """
     """
+
     def _heap_push(heap, st, ed):
         value = weights[ed - 1]
         if st > 0:
@@ -163,7 +163,10 @@ def count_layer_params(layers):
     return param_counts
 
 
-def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method: str = 'parameter', verbose: bool = False):
+def build_pipeline_model_from_cfg(config,
+                                  num_chunks: int = 1,
+                                  partition_method: str = 'parameter',
+                                  verbose: bool = False):
     """An intializer to split the model into different stages for pipeline parallelism.
 
     An example for the model config is shown below. The class VisionTransformerFromConfig should
@@ -201,13 +204,16 @@ def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method:
     # Make a partition
     if method == 'layer':
         num_layers = len(layers)
-        parts = partition_uniform(num_layers, pipeline_parallel_size, num_chunks)
+        parts = partition_uniform(num_layers, pipeline_parallel_size,
+                                  num_chunks)
     elif method == 'parameter':
         param_counts = count_layer_params(layers)
         # print_rank_0(param_counts)
-        parts = partition_balanced(param_counts, pipeline_parallel_size, num_chunks)
+        parts = partition_balanced(param_counts, pipeline_parallel_size,
+                                   num_chunks)
     else:
-        raise ValueError("Method should be a pre-set string in [layer, parameter]")
+        raise ValueError(
+            "Method should be a pre-set string in [layer, parameter]")
 
     # Display the partition
     if verbose:
@@ -220,7 +226,7 @@ def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method:
 
             log_str += f'\n===== stage={stage}, layers={num_layers} =====\n'
             for st, ed in parts[stage]:
-                for idx, layer in enumerate(layers[st: ed]):
+                for idx, layer in enumerate(layers[st:ed]):
                     log_str += f'\t{idx + st:2d}: {layer}\n'
         logger.info(log_str, ranks=[0])
 
@@ -236,7 +242,9 @@ def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method:
     return nn.ModuleList(models) if len(models) > 1 else models[0]
 
 
-def build_pipeline_model(layers: nn.Sequential, num_chunks: int = 1, verbose: bool = False):
+def build_pipeline_model(layers: nn.Sequential,
+                         num_chunks: int = 1,
+                         verbose: bool = False):
     """An intializer to split the model into different stages for pipeline parallelism.
     Note that `layer` must be `torch.nn.Sequential`.
 
@@ -250,7 +258,8 @@ def build_pipeline_model(layers: nn.Sequential, num_chunks: int = 1, verbose: bo
     """
     pipeline_parallel_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
-    partitions = partition_uniform(len(layers), pipeline_parallel_size, num_chunks)
+    partitions = partition_uniform(len(layers), pipeline_parallel_size,
+                                   num_chunks)
     module_list = []
     for start, end in partitions[pipeline_rank]:
         module_list.append(nn.Sequential(*layers[start:end]))
@@ -261,6 +270,8 @@ def build_pipeline_model(layers: nn.Sequential, num_chunks: int = 1, verbose: bo
             log_str = f'===== stage={rank} =====\n'
             for chunk, (start, end) in enumerate(part):
                 log_str += f'===== chunk={chunk}, layer=[{start}-{end}] =====\n'
-                log_str += '\n'.join([str(layer) for layer in layers[start:end]]) + '\n'
+                log_str += '\n'.join(
+                    [str(layer) for layer in layers[start:end]]) + '\n'
             logger.info(log_str, ranks=[0])
-    return nn.ModuleList(module_list) if len(module_list) > 1 else module_list[0]
+    return nn.ModuleList(
+        module_list) if len(module_list) > 1 else module_list[0]

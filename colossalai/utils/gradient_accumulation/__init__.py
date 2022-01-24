@@ -27,17 +27,26 @@ def accumulate_gradient(model: nn.Module,
     :param lr_scheduler: your lr scheduler object. Default is None
     :type lr_scheduler: `torch.optim.lr_scheduler._LRScheduler`
     """
-    optimizer = GradAccumOptimizer(optimizer, accumulate_size=accumulate_size, model=model)
-    dataloader = GradAccumDataloader(dataloader, accumulate_size=accumulate_size)
+    optimizer = GradAccumOptimizer(optimizer,
+                                   accumulate_size=accumulate_size,
+                                   model=model)
+    dataloader = GradAccumDataloader(dataloader,
+                                     accumulate_size=accumulate_size)
 
     if gradient_handlers is not None:
-        gradient_handlers = [GradAccumGradientHandler(handler, accumulate_size) for handler in gradient_handlers]
+        gradient_handlers = [
+            GradAccumGradientHandler(handler, accumulate_size)
+            for handler in gradient_handlers
+        ]
 
     if lr_scheduler is not None:
-        lr_scheduler = GradAccumLrSchedulerByStep(lr_scheduler, accumulate_size=accumulate_size)
+        lr_scheduler = GradAccumLrSchedulerByStep(
+            lr_scheduler, accumulate_size=accumulate_size)
 
     return optimizer, dataloader, gradient_handlers, lr_scheduler
 
 
-__all__ = ['accumulate_gradient', 'GradAccumDataloader', 'GradAccumOptimizer',
-           'GradAccumLrSchedulerByStep', 'GradAccumGradientHandler']
+__all__ = [
+    'accumulate_gradient', 'GradAccumDataloader', 'GradAccumOptimizer',
+    'GradAccumLrSchedulerByStep', 'GradAccumGradientHandler'
+]

@@ -28,7 +28,12 @@ CONFIG = dict(parallel=dict(pipeline=2, tensor=dict(size=2, mode='1d')),
 
 
 def run_trainer(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=CONFIG,
+                      rank=rank,
+                      world_size=world_size,
+                      host='localhost',
+                      port=port,
+                      backend='nccl')
 
     logger = get_dist_logger()
 
@@ -40,40 +45,60 @@ def run_trainer(rank, world_size, port):
         transforms.RandomCrop(32, padding=4),
         transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.CIFAR10),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
     ])
     transform_test = transforms.Compose([
         transforms.Resize(32),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
     ])
 
-    train_dataset = CIFAR10(root=Path(os.environ['DATA']), train=True, download=True, transform=transform_train)
-    test_dataset = CIFAR10(root=Path(os.environ['DATA']), train=False, transform=transform_test)
-    train_dataloader = get_dataloader(dataset=train_dataset, shuffle=True, batch_size=BATCH_SIZE, pin_memory=True)
-    test_dataloader = get_dataloader(dataset=test_dataset, batch_size=BATCH_SIZE, pin_memory=True)
+    train_dataset = CIFAR10(root=Path(os.environ['DATA']),
+                            train=True,
+                            download=True,
+                            transform=transform_train)
+    test_dataset = CIFAR10(root=Path(os.environ['DATA']),
+                           train=False,
+                           transform=transform_test)
+    train_dataloader = get_dataloader(dataset=train_dataset,
+                                      shuffle=True,
+                                      batch_size=BATCH_SIZE,
+                                      pin_memory=True)
+    test_dataloader = get_dataloader(dataset=test_dataset,
+                                     batch_size=BATCH_SIZE,
+                                     pin_memory=True)
 
     # build criterion
     criterion = CrossEntropyLoss()
 
     # optimizer
-    optimizer = torch.optim.Adam(pipe_model.parameters(), lr=0.001, weight_decay=0)
+    optimizer = torch.optim.Adam(pipe_model.parameters(),
+                                 lr=0.001,
+                                 weight_decay=0)
 
     # lr_scheduler
-    steps_per_epoch = GradAccumLrSchedulerByStep.compute_effective_steps_per_epoch(train_dataloader, accumulate_size=2)
+    steps_per_epoch = GradAccumLrSchedulerByStep.compute_effective_steps_per_epoch(
+        train_dataloader, accumulate_size=2)
     total_steps = steps_per_epoch * NUM_EPOCHS
     warmup_steps = steps_per_epoch * WARMUP_EPOCHS
-    lr_scheduler = LinearWarmupLR(optimizer, total_steps=total_steps, warmup_steps=warmup_steps)
+    lr_scheduler = LinearWarmupLR(optimizer,
+                                  total_steps=total_steps,
+                                  warmup_steps=warmup_steps)
 
-    engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(pipe_model, optimizer, criterion,
-                                                                                    train_dataloader, test_dataloader,
-                                                                                    lr_scheduler)
+    engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(
+        pipe_model, optimizer, criterion, train_dataloader, test_dataloader,
+        lr_scheduler)
 
     timer = MultiTimer()
 
     schedule = PipelineSchedule(num_microbatches=4)
 
-    trainer = Trainer(engine=engine, timer=timer, logger=logger, schedule=schedule)
+    trainer = Trainer(engine=engine,
+                      timer=timer,
+                      logger=logger,
+                      schedule=schedule)
 
     hook_list = [
         hooks.LossHook(),

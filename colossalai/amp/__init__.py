@@ -39,7 +39,8 @@ def convert_to_amp(model: nn.Module,
         amp_config = Config()
 
     if mode == AMP_TYPE.TORCH:
-        model, optimizer, criterion = convert_to_torch_amp(model, optimizer, criterion, amp_config)
+        model, optimizer, criterion = convert_to_torch_amp(
+            model, optimizer, criterion, amp_config)
     elif mode == AMP_TYPE.APEX:
         model, optimizer = convert_to_apex_amp(model, optimizer, amp_config)
     elif mode == AMP_TYPE.NAIVE:

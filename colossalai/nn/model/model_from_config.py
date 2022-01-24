@@ -22,7 +22,7 @@ class ModelFromConfig(nn.Module, ABC):
             start = 0
         if end is None:
             end = len(self.layers_cfg)
-        for cfg in self.layers_cfg[start: end]:
+        for cfg in self.layers_cfg[start:end]:
             layer = build_layer(cfg)
             self.layers.append(layer)
 
@@ -30,7 +30,9 @@ class ModelFromConfig(nn.Module, ABC):
     def init_weights(self):
         pass
 
-    def state_dict_for_save_checkpoint(self, destination=None, prefix='',
+    def state_dict_for_save_checkpoint(self,
+                                       destination=None,
+                                       prefix='',
                                        keep_vars=False):
         """Use this function to override the state dict for
         saving checkpoints."""

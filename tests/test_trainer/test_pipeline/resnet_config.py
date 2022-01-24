@@ -14,7 +14,4 @@ model = dict(type='VanillaResNet',
              layers=[2, 2, 2, 2],
              num_cls=10)
 
-parallel = dict(
-    pipeline=dict(size=4),
-    tensor=dict(size=1, mode=None)
-)
+parallel = dict(pipeline=dict(size=4), tensor=dict(size=1, mode=None))

@@ -16,6 +16,7 @@ class CrossEntropyLoss2p5D(_Loss):
 
     :type reduction: bool, optional
     """
+
     def __init__(self, reduction=True, *args, **kwargs):
         super().__init__()
         assert_tesseract_initialization()
@@ -29,7 +30,11 @@ class CrossEntropyLoss2p5D(_Loss):
         :param logits: Output logits of model
         :param targets: True targets from data
         """
-        loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
+        loss = cross_entropy(logits,
+                             targets,
+                             reduction='none',
+                             *self.loss_args,
+                             **self.loss_kwargs)
         if self.reduction_mean:
             loss = loss.mean()
             loss = reduce_by_batch_2p5d.apply(loss, True)

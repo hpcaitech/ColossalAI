@@ -1,6 +1,6 @@
-
 import sys
 from pathlib import Path
+
 repo_path = Path(__file__).absolute().parents[2]
 sys.path.append(str(repo_path))
 

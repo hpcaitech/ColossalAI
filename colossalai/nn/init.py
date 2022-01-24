@@ -6,6 +6,7 @@ import torch.nn as nn
 
 
 def zeros_():
+
     def initializer(tensor: Tensor, fan_in: int = None, fan_out: int = None):
         return nn.init.zeros_(tensor)
 
@@ -13,6 +14,7 @@ def zeros_():
 
 
 def ones_():
+
     def initializer(tensor: Tensor, fan_in: int = None, fan_out: int = None):
         return nn.init.ones_(tensor)
 
@@ -20,6 +22,7 @@ def ones_():
 
 
 def uniform_(a: float = 0., b: float = 1.):
+
     def initializer(tensor: Tensor, fan_in: int = None, fan_out: int = None):
         return nn.init.uniform_(tensor, a, b)
 
@@ -27,13 +30,18 @@ def uniform_(a: float = 0., b: float = 1.):
 
 
 def normal_(mean: float = 0., std: float = 1.):
+
     def initializer(tensor: Tensor, fan_in: int = None, fan_out: int = None):
         return nn.init.normal_(tensor, mean, std)
 
     return initializer
 
 
-def trunc_normal_(mean: float = 0., std: float = 1., a: float = -2., b: float = 2.):
+def trunc_normal_(mean: float = 0.,
+                  std: float = 1.,
+                  a: float = -2.,
+                  b: float = 2.):
+
     def initializer(tensor: Tensor, fan_in: int = None, fan_out: int = None):
         return nn.init.trunc_normal_(tensor, mean, std, a, b)
 
@@ -85,7 +93,8 @@ def kaiming_normal_(a=0, mode='fan_in', nonlinearity='leaky_relu'):
     return initializer
 
 
-def xavier_uniform_(a: float = math.sqrt(3.), scale: float = 2., gain: float = 1.):
+def xavier_uniform_(
+        a: float = math.sqrt(3.), scale: float = 2., gain: float = 1.):
     # adapted from torch.nn.init
     def initializer(tensor: Tensor, fan_in: int = None, fan_out: int = None):
         assert fan_in is not None, 'Fan_in is not provided.'

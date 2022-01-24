@@ -63,7 +63,8 @@ class Trainer:
         # set schedule which specifies the training iteration for the engine
         if schedule is None:
             schedule = NonPipelineSchedule()
-        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
+        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(
+                ParallelMode.PIPELINE) > 1:
             assert not isinstance(schedule, NonPipelineSchedule), \
                 'NonPipelineSchedule cannot be used for pipeline parallel training, please use PipelineSchedule instead.'
         self._schedule = schedule
@@ -154,7 +155,8 @@ class Trainer:
     def _should_display_progress(display_progress: bool):
         """ Only display progress on DP rank 0, TP rank 0 and PP last rank
         """
-        return display_progress and is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
+        return display_progress and is_dp_rank_0() and is_tp_rank_0(
+        ) and is_no_pp_or_last_stage()
 
     def _train_epoch(self,
                      train_dataloader: DataLoader,
@@ -180,9 +182,15 @@ class Trainer:
             # run 1 training step
             self.engine.zero_grad()
             logits, label, loss = self.schedule.forward_backward_step(
-                self.engine, data_iter, forward_only=False, return_loss=True, return_output_label=return_output_label)
+                self.engine,
+                data_iter,
+                forward_only=False,
+                return_loss=True,
+                return_output_label=return_output_label)
             self.engine.step()
-            self._call_timer(action='stop', item='Train-step', keep_in_history=True)
+            self._call_timer(action='stop',
+                             item='Train-step',
+                             keep_in_history=True)
             self._call_hooks('after_train_iter', output=(logits, label, loss))
 
             self._cur_step += 1
@@ -195,7 +203,9 @@ class Trainer:
             if self._exceed_max_step():
                 break
 
-        self._call_timer(action='stop', item='Train-epoch', keep_in_history=True)
+        self._call_timer(action='stop',
+                         item='Train-epoch',
+                         keep_in_history=True)
         self._call_hooks('after_train_epoch')
         self._call_timer(action='reset', item='Train-epoch')
 
@@ -226,8 +236,14 @@ class Trainer:
                 self._call_hooks('before_test_iter')
                 self._call_timer(action='start', item='Test-step')
                 logits, label, loss = self.schedule.forward_backward_step(
-                    self.engine, data_iter, forward_only=True, return_loss=True, return_output_label=return_output_label)
-                self._call_timer(action='stop', item='Test-step', keep_in_history=True)
+                    self.engine,
+                    data_iter,
+                    forward_only=True,
+                    return_loss=True,
+                    return_output_label=return_output_label)
+                self._call_timer(action='stop',
+                                 item='Test-step',
+                                 keep_in_history=True)
                 self._call_hooks('after_test_iter',
                                  output=(logits, label, loss))
 
@@ -244,16 +260,17 @@ class Trainer:
     def _exceed_max_step(self):
         return self._max_steps is not None and self._cur_step >= self._max_steps
 
-    def fit(self,
-            train_dataloader: DataLoader,
-            epochs: int,
-            max_steps: int = None,
-            test_dataloader: DataLoader = None,
-            test_interval: int = 1,
-            hooks: List[BaseHook] = None,
-            display_progress: bool = False,
-            return_output_label: bool = True,
-            ):
+    def fit(
+        self,
+        train_dataloader: DataLoader,
+        epochs: int,
+        max_steps: int = None,
+        test_dataloader: DataLoader = None,
+        test_interval: int = 1,
+        hooks: List[BaseHook] = None,
+        display_progress: bool = False,
+        return_output_label: bool = True,
+    ):
         """Trains the model to fit training data.
 
         :param train_dataloader: DataLoader in training
@@ -290,7 +307,9 @@ class Trainer:
         # reset hooks
         self._reset_states()
         if hooks is not None:
-            assert isinstance(hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
+            assert isinstance(
+                hooks, list
+            ), f'expected argument hooks be to list, but got {type(hooks)}'
         else:
             hooks = []
         self.hooks = hooks
@@ -298,8 +317,11 @@ class Trainer:
         if self._verbose:
             for hook in self.hooks:
                 self._logger.info(
-                    f'Using {hook.__class__.__name__} for training, priority = {hook.priority}', ranks=[0])
-            self._logger.info("Lower value means higher priority for calling hook function", ranks=[0])
+                    f'Using {hook.__class__.__name__} for training, priority = {hook.priority}',
+                    ranks=[0])
+            self._logger.info(
+                "Lower value means higher priority for calling hook function",
+                ranks=[0])
         self._call_hooks('after_hook_is_attached')
 
         # start train
@@ -313,20 +335,17 @@ class Trainer:
 
         for epoch in range(last_epoch, epochs):
             # train for one epoch
-            self._train_epoch(
-                train_dataloader=train_dataloader,
-                epoch=epoch,
-                display_progress=display_progress,
-                return_output_label=return_output_label
-            )
+            self._train_epoch(train_dataloader=train_dataloader,
+                              epoch=epoch,
+                              display_progress=display_progress,
+                              return_output_label=return_output_label)
 
             # start eval
             if should_test and epoch % test_interval == 0:
                 self._eval(test_dataloader=test_dataloader,
                            display_progress=display_progress,
                            epoch=epoch,
-                           return_output_label=return_output_label
-                           )
+                           return_output_label=return_output_label)
 
             self._cur_epoch += 1
 
@@ -362,7 +381,9 @@ class Trainer:
         # reset hooks
         self._reset_states()
         if hooks is not None:
-            assert isinstance(hooks, list), f'expected argument hooks be to list, but got {type(hooks)}'
+            assert isinstance(
+                hooks, list
+            ), f'expected argument hooks be to list, but got {type(hooks)}'
         else:
             hooks = []
         self.hooks = hooks
@@ -370,15 +391,17 @@ class Trainer:
         if self._verbose:
             for hook in self.hooks:
                 self._logger.info(
-                    f'Using {hook.__class__.__name__} for training, priority = {hook.priority}', ranks=[0])
-            self._logger.info("Lower value means higher priority for calling hook function", ranks=[0])
+                    f'Using {hook.__class__.__name__} for training, priority = {hook.priority}',
+                    ranks=[0])
+            self._logger.info(
+                "Lower value means higher priority for calling hook function",
+                ranks=[0])
         self._call_hooks('after_hook_is_attached')
 
         # eval
         self._eval(test_dataloader=test_dataloader,
                    display_progress=display_progress,
-                   return_output_label=return_output_label
-                   )
+                   return_output_label=return_output_label)
 
     def predict(self, data: Union[Tensor, List[Tensor]]):
         """Uses trained model to make a prediction for a tensor or a tensor list.
@@ -399,6 +422,8 @@ class Trainer:
         # for compatibility with schedule
         simple_dataloader = [(data, None)]
         data_iter = iter(simple_dataloader)
-        output, _, _ = self.schedule.forward_backward_step(
-            self.engine, data_iter, forward_only=True, return_loss=False)
+        output, _, _ = self.schedule.forward_backward_step(self.engine,
+                                                           data_iter,
+                                                           forward_only=True,
+                                                           return_loss=False)
         return output
