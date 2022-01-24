@@ -50,7 +50,8 @@ def build_from_registry(config, registry: Registry):
         obj = registry.get_module(mod_type)(**config_)
     except Exception as e:
         print(
-            f'An error occurred when building {mod_type} from registry {registry.name}', flush=True)
+            f'An error occurred when building {mod_type} from registry {registry.name}',
+            flush=True)
         raise e
 
     return obj

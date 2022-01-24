@@ -29,7 +29,12 @@ def check_layer():
 
 
 def check_layer_and_operation(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG,
+           rank=rank,
+           world_size=world_size,
+           host='localhost',
+           port=port,
+           backend='nccl')
     check_layer()
     gpc.destroy()
     torch.cuda.empty_cache()
@@ -38,7 +43,9 @@ def check_layer_and_operation(rank, world_size, port):
 @pytest.mark.dist
 def test_3d():
     world_size = 8
-    run_func = partial(check_layer_and_operation, world_size=world_size, port=free_port())
+    run_func = partial(check_layer_and_operation,
+                       world_size=world_size,
+                       port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

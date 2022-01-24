@@ -8,11 +8,15 @@ from colossalai.registry import LAYERS, MODELS, LOSSES
 from colossalai.utils import get_current_device
 from torch import dtype, nn
 
-__all__ = ['GPT', 'GPTLMLoss', 'gpt2_small', 'gpt2_medium', 'gpt2_large', 'gpt2_xl', 'gpt3']
+__all__ = [
+    'GPT', 'GPTLMLoss', 'gpt2_small', 'gpt2_medium', 'gpt2_large', 'gpt2_xl',
+    'gpt3'
+]
 
 
 @LAYERS.register_module
 class GPTEmbedding(nn.Module):
+
     def __init__(self,
                  embedding_dim: int,
                  vocab_size: int,
@@ -22,10 +26,17 @@ class GPTEmbedding(nn.Module):
                  dropout: float = 0.,
                  dtype: dtype = None) -> None:
         super().__init__()
-        self.word_embeddings = col_nn.Embedding(vocab_size, embedding_dim, padding_idx=padding_idx, dtype=dtype)
-        self.position_embeddings = col_nn.Embedding(max_position_embeddings, embedding_dim, dtype=dtype)
+        self.word_embeddings = col_nn.Embedding(vocab_size,
+                                                embedding_dim,
+                                                padding_idx=padding_idx,
+                                                dtype=dtype)
+        self.position_embeddings = col_nn.Embedding(max_position_embeddings,
+                                                    embedding_dim,
+                                                    dtype=dtype)
         if num_tokentypes > 0:
-            self.tokentype_embeddings = col_nn.Embedding(num_tokentypes, embedding_dim, dtype=dtype)
+            self.tokentype_embeddings = col_nn.Embedding(num_tokentypes,
+                                                         embedding_dim,
+                                                         dtype=dtype)
         else:
             self.tokentype_embeddings = None
         self.dropout = col_nn.Dropout(dropout)
@@ -37,8 +48,11 @@ class GPTEmbedding(nn.Module):
     def forward(self, input_ids, position_ids=None, tokentype_ids=None):
         seq_length = input_ids.size(1)
         if position_ids is None:
-            position_ids = torch.arange(seq_length, dtype=torch.long, device=get_current_device()).unsqueeze(0)
-        x = self.word_embeddings(input_ids) + self.position_embeddings(position_ids)
+            position_ids = torch.arange(
+                seq_length, dtype=torch.long,
+                device=get_current_device()).unsqueeze(0)
+        x = self.word_embeddings(input_ids) + self.position_embeddings(
+            position_ids)
         if self.tokentype_embeddings is not None and tokentype_ids is not None:
             x = x + self.tokentype_embeddings(tokentype_ids)
         x = self.dropout(x)
@@ -47,6 +61,7 @@ class GPTEmbedding(nn.Module):
 
 @LAYERS.register_module
 class GPTSelfAttention(nn.Module):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -57,7 +72,10 @@ class GPTSelfAttention(nn.Module):
         super().__init__()
 
         self.attention_head_size = dim // num_heads
-        self.query_key_value = col_nn.Linear(dim, 3 * dim, dtype=dtype, bias=bias)
+        self.query_key_value = col_nn.Linear(dim,
+                                             3 * dim,
+                                             dtype=dtype,
+                                             bias=bias)
         self.attention_dropout = col_nn.Dropout(attention_dropout)
         self.dense = col_nn.Linear(dim, dim, dtype=dtype, bias=True)
         self.dropout = col_nn.Dropout(dropout)
@@ -78,9 +96,14 @@ class GPTSelfAttention(nn.Module):
 
         # causal mask
         q_len, k_len = q.size(-2), k.size(-2)
-        causal_mask = torch.tril(torch.ones((q_len, k_len), dtype=torch.uint8,
-                                            device=get_current_device())).view(1, 1, q_len, k_len).bool()
-        x = torch.where(causal_mask, x, torch.tensor(-1e4, dtype=x.dtype, device=get_current_device()))
+        causal_mask = torch.tril(
+            torch.ones((q_len, k_len),
+                       dtype=torch.uint8,
+                       device=get_current_device())).view(1, 1, q_len,
+                                                          k_len).bool()
+        x = torch.where(
+            causal_mask, x,
+            torch.tensor(-1e4, dtype=x.dtype, device=get_current_device()))
 
         if attention_mask is not None:
             x = x + attention_mask
@@ -89,7 +112,7 @@ class GPTSelfAttention(nn.Module):
 
         x = torch.matmul(x, v)
         x = x.transpose(1, 2)
-        new_context_layer_shape = x.size()[:-2] + (all_head_size, )
+        new_context_layer_shape = x.size()[:-2] + (all_head_size,)
         x = x.reshape(new_context_layer_shape)
 
         x = self.dense(x)
@@ -100,6 +123,7 @@ class GPTSelfAttention(nn.Module):
 
 @LAYERS.register_module
 class GPTMLP(nn.Module):
+
     def __init__(self,
                  dim: int,
                  mlp_ratio: int,
@@ -108,9 +132,15 @@ class GPTMLP(nn.Module):
                  dtype: dtype = None,
                  bias: bool = True):
         super().__init__()
-        self.dense_1 = col_nn.Linear(dim, mlp_ratio * dim, dtype=dtype, bias=bias)
+        self.dense_1 = col_nn.Linear(dim,
+                                     mlp_ratio * dim,
+                                     dtype=dtype,
+                                     bias=bias)
         self.activation = activation
-        self.dense_2 = col_nn.Linear(mlp_ratio * dim, dim, dtype=dtype, bias=bias)
+        self.dense_2 = col_nn.Linear(mlp_ratio * dim,
+                                     dim,
+                                     dtype=dtype,
+                                     bias=bias)
         self.dropout = col_nn.Dropout(dropout)
 
     def forward(self, x):
@@ -123,6 +153,7 @@ class GPTMLP(nn.Module):
 
 @LAYERS.register_module
 class GPTBlock(CheckpointModule):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -134,15 +165,24 @@ class GPTBlock(CheckpointModule):
                  bias: bool = True,
                  checkpoint: bool = False):
         super().__init__(checkpoint=checkpoint)
-        self.norm1 = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype)
+        self.norm1 = col_nn.LayerNorm(normalized_shape=dim,
+                                      eps=1e-6,
+                                      dtype=dtype)
         self.attn = GPTSelfAttention(dim=dim,
                                      num_heads=num_heads,
                                      attention_dropout=attention_dropout,
                                      dropout=dropout,
                                      bias=bias,
                                      dtype=dtype)
-        self.norm2 = col_nn.LayerNorm(normalized_shape=dim, eps=1e-6, dtype=dtype)
-        self.mlp = GPTMLP(dim=dim, mlp_ratio=mlp_ratio, activation=activation, dropout=dropout, dtype=dtype, bias=bias)
+        self.norm2 = col_nn.LayerNorm(normalized_shape=dim,
+                                      eps=1e-6,
+                                      dtype=dtype)
+        self.mlp = GPTMLP(dim=dim,
+                          mlp_ratio=mlp_ratio,
+                          activation=activation,
+                          dropout=dropout,
+                          dtype=dtype,
+                          bias=bias)
 
     def _forward(self, x, attention_mask=None):
         x = x + self.attn(self.norm1(x), attention_mask)
@@ -152,6 +192,7 @@ class GPTBlock(CheckpointModule):
 
 @LAYERS.register_module
 class GPTLMHead(nn.Module):
+
     def __init__(self,
                  dim: int,
                  vocab_size: int,
@@ -159,7 +200,11 @@ class GPTLMHead(nn.Module):
                  bias: bool = False,
                  dtype: dtype = None) -> None:
         super().__init__()
-        self.dense = col_nn.Classifier(dim, vocab_size, word_embeeding_weight, bias=bias, dtype=dtype)
+        self.dense = col_nn.Classifier(dim,
+                                       vocab_size,
+                                       word_embeeding_weight,
+                                       bias=bias,
+                                       dtype=dtype)
 
     def forward(self, x):
         x = self.dense(x)
@@ -168,6 +213,7 @@ class GPTLMHead(nn.Module):
 
 @LOSSES.register_module
 class GPTLMLoss(nn.Module):
+
     def __init__(self):
         super().__init__()
         self.loss = col_nn.CrossEntropyLoss()
@@ -176,11 +222,13 @@ class GPTLMLoss(nn.Module):
         shift_logits = logits[..., :-1, :].contiguous()
         shift_labels = labels[..., 1:].contiguous()
         # Flatten the tokens
-        return self.loss(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return self.loss(shift_logits.view(-1, shift_logits.size(-1)),
+                         shift_labels.view(-1))
 
 
 @MODELS.register_module
 class GPT(nn.Module):
+
     def __init__(self,
                  vocab_size: int = 50304,
                  max_position_embeddings: int = 1024,
@@ -199,12 +247,13 @@ class GPT(nn.Module):
                  padding_idx: int = 0) -> None:
         super().__init__()
         self.dtype = dtype
-        self.embed = GPTEmbedding(embedding_dim=dim,
-                                  vocab_size=vocab_size,
-                                  max_position_embeddings=max_position_embeddings,
-                                  padding_idx=padding_idx,
-                                  dropout=embedding_dropout,
-                                  dtype=dtype)
+        self.embed = GPTEmbedding(
+            embedding_dim=dim,
+            vocab_size=vocab_size,
+            max_position_embeddings=max_position_embeddings,
+            padding_idx=padding_idx,
+            dropout=embedding_dropout,
+            dtype=dtype)
         self.blocks = nn.ModuleList([
             GPTBlock(
                 dim=dim,
@@ -219,13 +268,16 @@ class GPT(nn.Module):
             ) for _ in range(depth)
         ])
 
-        self.norm = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
+        self.norm = col_nn.LayerNorm(normalized_shape=dim,
+                                     eps=layernorm_epsilon,
+                                     dtype=dtype)
 
-        self.head = GPTLMHead(dim=dim,
-                              vocab_size=vocab_size,
-                              word_embeeding_weight=self.embed.word_embedding_weight,
-                              bias=bias,
-                              dtype=dtype)
+        self.head = GPTLMHead(
+            dim=dim,
+            vocab_size=vocab_size,
+            word_embeeding_weight=self.embed.word_embedding_weight,
+            bias=bias,
+            dtype=dtype)
 
     def forward(self, input_ids, attention_mask=None):
         # We create a 3D attention mask from a 2D tensor mask.
@@ -236,7 +288,8 @@ class GPT(nn.Module):
             batch_size = input_ids.shape[0]
             attention_mask = attention_mask.view(batch_size, -1)
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            attention_mask = attention_mask.to(dtype=self.dtype)  # fp16 compatibility
+            attention_mask = attention_mask.to(
+                dtype=self.dtype)  # fp16 compatibility
             attention_mask = (1.0 - attention_mask) * -10000.0
 
         x = self.embed(input_ids)
@@ -280,5 +333,9 @@ def gpt2_xl(**kwargs):
 
 @MODELS.register_module
 def gpt3(**kwargs):
-    model_kwargs = dict(dim=12288, max_position_embeddings=2048, depth=96, num_heads=96, **kwargs)
+    model_kwargs = dict(dim=12288,
+                        max_position_embeddings=2048,
+                        depth=96,
+                        num_heads=96,
+                        **kwargs)
     return _create_gpt_model(**model_kwargs)

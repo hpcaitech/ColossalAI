@@ -16,7 +16,6 @@
 #    https://github.com/NVIDIA/Megatron-LM/blob/master/fp16/loss_scaler.py
 # Commit: 93ab4bea59dc5cbf97c079d313741866af4deac9
 
-
 INITIAL_LOSS_SCALE = 'init_scale'
 SCALE_WINDOW = 'scale_window'
 DELAYED_SHIFT = 'delayed_shift'
@@ -103,7 +102,7 @@ class DynamicLossScaler(LossScalerBase):
     """
 
     def __init__(self,
-                 init_scale=2 ** 32,
+                 init_scale=2**32,
                  scale_factor=2.,
                  scale_window=1000,
                  min_scale=1,
@@ -154,15 +153,16 @@ class DynamicLossScaler(LossScalerBase):
         if overflow:
             # self.cur_scale /= self.scale_factor
             if self.delayed_shift == 1 or self.cur_hysteresis == 1:
-                self.cur_scale = max(
-                    self.cur_scale / self.scale_factor, self.min_scale)
+                self.cur_scale = max(self.cur_scale / self.scale_factor,
+                                     self.min_scale)
             else:
                 self.cur_hysteresis -= 1
             self.last_overflow_iter = self.cur_iter
         else:
             if self.consecutive_hysteresis:
                 self.cur_hysteresis = self.delayed_shift
-            if (self.cur_iter - self.last_overflow_iter) % self.scale_window == 0:
+            if (self.cur_iter -
+                    self.last_overflow_iter) % self.scale_window == 0:
                 if not self.consecutive_hysteresis:
                     self.cur_hysteresis = self.delayed_shift
                 self.cur_scale *= self.scale_factor

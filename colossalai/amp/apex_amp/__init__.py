@@ -3,9 +3,7 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 
-def convert_to_apex_amp(model: nn.Module,
-                        optimizer: Optimizer,
-                        amp_config):
+def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     """A helper function to wrap training components with Apex AMP modules
 
     :param model: your model object

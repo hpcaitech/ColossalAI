@@ -15,6 +15,7 @@ class Initializer_Tensor(ProcessGroupInitializer):
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_tensor_parallel_group = self.world_size // self.tensor_parallel_size
@@ -32,7 +33,10 @@ class Initializer_Tensor(ProcessGroupInitializer):
         mode = ParallelMode.TENSOR
 
         for i in range(self.num_tensor_parallel_group):
-            ranks = [i * self.tensor_parallel_size + j for j in range(self.tensor_parallel_size)]
+            ranks = [
+                i * self.tensor_parallel_size + j
+                for j in range(self.tensor_parallel_size)
+            ]
             group = dist.new_group(ranks)
 
             if self.rank in ranks:

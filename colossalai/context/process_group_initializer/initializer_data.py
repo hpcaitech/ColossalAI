@@ -15,6 +15,7 @@ class Initializer_Data(ProcessGroupInitializer):
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_data_parallel_group = self.world_size // self.data_parallel_size
@@ -32,7 +33,10 @@ class Initializer_Data(ProcessGroupInitializer):
         mode = ParallelMode.DATA
 
         for i in range(self.num_data_parallel_group):
-            ranks = [i + j * self.num_data_parallel_group for j in range(self.data_parallel_size)]
+            ranks = [
+                i + j * self.num_data_parallel_group
+                for j in range(self.data_parallel_size)
+            ]
             group = dist.new_group(ranks)
 
             if self.rank in ranks:

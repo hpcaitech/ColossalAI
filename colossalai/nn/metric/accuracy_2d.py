@@ -8,6 +8,7 @@ from ._utils import calc_acc
 class Accuracy2D(nn.Module):
     """Accuracy for 2D parallelism
     """
+
     def __init__(self):
         super().__init__()
 

@@ -7,19 +7,23 @@ from itertools import repeat
 
 import numpy as np
 import torch
-from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_MODE)
+from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS,
+                                  TENSOR_PARALLEL_MODE)
 from colossalai.utils import checkpoint
 from torch import Tensor, nn
 
 
 class CheckpointModule(nn.Module):
+
     def __init__(self, checkpoint: bool = True):
         super().__init__()
         self.checkpoint = checkpoint
         self._use_checkpoint = checkpoint
 
     def _forward(self, *args, **kwargs):
-        raise NotImplementedError('CheckpointModule should implement _forward method instead of origin forward')
+        raise NotImplementedError(
+            'CheckpointModule should implement _forward method instead of origin forward'
+        )
 
     def forward(self, *args, **kwargs):
         if self._use_checkpoint:
@@ -51,7 +55,11 @@ def swish(x: Tensor) -> Tensor:
     return x * torch.sigmoid(x)
 
 
-ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
+ACT2FN = {
+    "gelu": torch.nn.functional.gelu,
+    "relu": torch.nn.functional.relu,
+    "swish": swish
+}
 
 
 def set_tensor_parallel_attribute_by_size(param, size):
@@ -72,6 +80,7 @@ def get_tensor_parallel_mode():
 
 
 def _ntuple(n):
+
     def parse(x):
         if isinstance(x, collections.abc.Iterable):
             return x

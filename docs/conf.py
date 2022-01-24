@@ -25,7 +25,6 @@ author = 'HPC-AI Technology Inc.'
 # The full version, including alpha/beta/rc tags
 release = '0.0.1'
 
-
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be
@@ -46,9 +45,7 @@ autodoc_typehints = 'none'
 
 # Enable overriding of function signatures in the first line of the docstring.
 autodoc_docstring_signature = True
-autodoc_default_options = {
-    'member-order': 'bysource'
-}
+autodoc_default_options = {'member-order': 'bysource'}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

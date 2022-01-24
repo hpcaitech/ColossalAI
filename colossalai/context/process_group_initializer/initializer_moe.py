@@ -18,6 +18,7 @@ class Initializer_Moemodel(ProcessGroupInitializer):
     :type moe_model: int
     :type moe_data: int
     """
+
     def __init__(self, moe_model, moe_data, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.moe_model = moe_model
@@ -61,6 +62,7 @@ class Initializer_Moedata(ProcessGroupInitializer):
     :type moe_model: int
     :type moe_data: int
     """
+
     def __init__(self, moe_model, moe_data, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.moe_model = moe_model
@@ -99,14 +101,17 @@ class Initializer_Moe(ProcessGroupInitializer):
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.moe_model = moe_env.model_parallel_size
         self.moe_data = moe_env.data_parallel_size
-        self.model_initializer = Initializer_Moemodel(
-            self.moe_model, self.moe_data, *args, **kwargs)
-        self.data_initializer = Initializer_Moedata(
-            self.moe_model, self.moe_data, *args, **kwargs)
+        self.model_initializer = Initializer_Moemodel(self.moe_model,
+                                                      self.moe_data, *args,
+                                                      **kwargs)
+        self.data_initializer = Initializer_Moedata(self.moe_model,
+                                                    self.moe_data, *args,
+                                                    **kwargs)
 
     def init_dist_group(self):
         """Initializes MoE parallel communication groups.
@@ -114,6 +119,8 @@ class Initializer_Moe(ProcessGroupInitializer):
         :return: MoE parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """
-        parallel_setting = [self.model_initializer.init_dist_group(),
-                            self.data_initializer.init_dist_group()]
+        parallel_setting = [
+            self.model_initializer.init_dist_group(),
+            self.data_initializer.init_dist_group()
+        ]
         return parallel_setting

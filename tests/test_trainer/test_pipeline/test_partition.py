@@ -21,13 +21,14 @@ def run_partition(rank, world_size, port):
            world_size=world_size,
            host='localhost',
            port=port,
-           backend='nccl'
-           )
+           backend='nccl')
     logger = get_dist_logger()
     logger.info('finished initialization')
 
     # build model
-    model = build_pipeline_model_from_cfg(global_context.config.model, 1, verbose=True)
+    model = build_pipeline_model_from_cfg(global_context.config.model,
+                                          1,
+                                          verbose=True)
     assert isinstance(model, torch.nn.Module)
     logger.info('model is created')
 

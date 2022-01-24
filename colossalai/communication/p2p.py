@@ -12,11 +12,11 @@ from functools import reduce
 import operator
 from .utils import split_tensor_into_1d_equal_chunks, gather_split_1d_tensor
 
-
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 
 
-def _get_tensor_shape(tensor_shape: TensorShape, chunk_tensor: bool = False) -> Tuple[TensorShape, bool]:
+def _get_tensor_shape(tensor_shape: TensorShape,
+                      chunk_tensor: bool = False) -> Tuple[TensorShape, bool]:
     """get the exact tensor shape when communicating and return whether the tensor is a chunk
 
     :param tensor_shape: shape of tensor
@@ -73,14 +73,16 @@ def _communicate(tensor_send_next=None,
 
     if recv_prev:
         assert recv_prev_shape is not None
-        recv_prev_chunk_shape, recv_prev_split = _get_tensor_shape(recv_prev_shape, scatter_gather_tensors)
+        recv_prev_chunk_shape, recv_prev_split = _get_tensor_shape(
+            recv_prev_shape, scatter_gather_tensors)
         tensor_recv_prev = torch.empty(recv_prev_chunk_shape,
                                        requires_grad=True,
                                        device=get_current_device(),
                                        dtype=dtype)
     if recv_next:
         assert recv_next_shape is not None
-        recv_next_chunk_shape, recv_next_split = _get_tensor_shape(recv_next_shape, scatter_gather_tensors)
+        recv_next_chunk_shape, recv_next_split = _get_tensor_shape(
+            recv_next_shape, scatter_gather_tensors)
         tensor_recv_next = torch.empty(recv_next_chunk_shape,
                                        requires_grad=True,
                                        device=get_current_device(),
@@ -88,23 +90,25 @@ def _communicate(tensor_send_next=None,
 
     if tensor_send_prev is not None or recv_prev:
         if prev_rank is None:
-            prev_rank = gpc.get_prev_global_rank(
-                ParallelMode.PIPELINE)
+            prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
 
     if tensor_send_next is not None or recv_next:
         if next_rank is None:
-            next_rank = gpc.get_next_global_rank(
-                ParallelMode.PIPELINE)
+            next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
 
     if tensor_send_prev is not None:
-        send_prev_split = _get_tensor_shape(tensor_send_prev.shape, scatter_gather_tensors)[1]
+        send_prev_split = _get_tensor_shape(tensor_send_prev.shape,
+                                            scatter_gather_tensors)[1]
         if send_prev_split:
-            tensor_send_prev = split_tensor_into_1d_equal_chunks(tensor_send_prev)
+            tensor_send_prev = split_tensor_into_1d_equal_chunks(
+                tensor_send_prev)
 
     if tensor_send_next is not None:
-        send_next_split = _get_tensor_shape(tensor_send_next.shape, scatter_gather_tensors)[1]
+        send_next_split = _get_tensor_shape(tensor_send_next.shape,
+                                            scatter_gather_tensors)[1]
         if send_next_split:
-            tensor_send_next = split_tensor_into_1d_equal_chunks(tensor_send_next)
+            tensor_send_next = split_tensor_into_1d_equal_chunks(
+                tensor_send_next)
 
     ops = []
     if tensor_send_prev is not None:
@@ -127,13 +131,18 @@ def _communicate(tensor_send_next=None,
     torch.cuda.synchronize()
 
     if recv_prev and recv_prev_split:
-        tensor_recv_prev = gather_split_1d_tensor(tensor_recv_prev).view(recv_prev_shape).requires_grad_()
+        tensor_recv_prev = gather_split_1d_tensor(tensor_recv_prev).view(
+            recv_prev_shape).requires_grad_()
     if recv_next and recv_next_split:
-        tensor_recv_next = gather_split_1d_tensor(tensor_recv_next).view(recv_next_shape).requires_grad_()
+        tensor_recv_next = gather_split_1d_tensor(tensor_recv_next).view(
+            recv_next_shape).requires_grad_()
     return tensor_recv_prev, tensor_recv_next
 
 
-def recv_forward(input_tensor_shape, prev_rank=None, dtype=torch.float, scatter_gather_tensors=False):
+def recv_forward(input_tensor_shape,
+                 prev_rank=None,
+                 dtype=torch.float,
+                 scatter_gather_tensors=False):
     """Receives the input tensor from the previous member in pipeline.
 
     :param input_tensor_shape: The shape of the tensor to be recieved
@@ -146,15 +155,19 @@ def recv_forward(input_tensor_shape, prev_rank=None, dtype=torch.float, scatter_
     if gpc.is_pipeline_first_stage():
         input_tensor = None
     else:
-        input_tensor, _ = _communicate(recv_prev=True,
-                                       recv_prev_shape=input_tensor_shape,
-                                       prev_rank=prev_rank,
-                                       dtype=dtype,
-                                       scatter_gather_tensors=scatter_gather_tensors)
+        input_tensor, _ = _communicate(
+            recv_prev=True,
+            recv_prev_shape=input_tensor_shape,
+            prev_rank=prev_rank,
+            dtype=dtype,
+            scatter_gather_tensors=scatter_gather_tensors)
     return input_tensor
 
 
-def recv_backward(output_grad_shape, next_rank=None, dtype=torch.float, scatter_gather_tensors=False):
+def recv_backward(output_grad_shape,
+                  next_rank=None,
+                  dtype=torch.float,
+                  scatter_gather_tensors=False):
     """Receives the grad tensor from the next member in pipeline.
 
     :param output_grad_shape: The shape of the tensor to be recieved
@@ -167,11 +180,12 @@ def recv_backward(output_grad_shape, next_rank=None, dtype=torch.float, scatter_
     if gpc.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
-        _, output_tensor_grad = _communicate(recv_next=True,
-                                             recv_next_shape=output_grad_shape,
-                                             next_rank=next_rank,
-                                             dtype=dtype,
-                                             scatter_gather_tensors=scatter_gather_tensors)
+        _, output_tensor_grad = _communicate(
+            recv_next=True,
+            recv_next_shape=output_grad_shape,
+            next_rank=next_rank,
+            dtype=dtype,
+            scatter_gather_tensors=scatter_gather_tensors)
     return output_tensor_grad
 
 
@@ -189,7 +203,9 @@ def send_forward(output_tensor, next_rank=None, scatter_gather_tensors=False):
                      scatter_gather_tensors=scatter_gather_tensors)
 
 
-def send_backward(input_tensor_grad, prev_rank=None, scatter_gather_tensors=False):
+def send_backward(input_tensor_grad,
+                  prev_rank=None,
+                  scatter_gather_tensors=False):
     """Sends the grad tensor to the previous member in pipeline.
 
     :param input_tensor_grad: Tensor to be sent
@@ -223,12 +239,13 @@ def send_forward_recv_backward(output_tensor,
     if gpc.is_pipeline_last_stage():
         output_tensor_grad = None
     else:
-        _, output_tensor_grad = _communicate(tensor_send_next=output_tensor,
-                                             recv_next=recv_next,
-                                             recv_next_shape=output_grad_shape,
-                                             next_rank=next_rank,
-                                             dtype=dtype,
-                                             scatter_gather_tensors=scatter_gather_tensors)
+        _, output_tensor_grad = _communicate(
+            tensor_send_next=output_tensor,
+            recv_next=recv_next,
+            recv_next_shape=output_grad_shape,
+            next_rank=next_rank,
+            dtype=dtype,
+            scatter_gather_tensors=scatter_gather_tensors)
     return output_tensor_grad
 
 
@@ -252,12 +269,13 @@ def send_backward_recv_forward(input_tensor_grad,
     if gpc.is_pipeline_first_stage():
         input_tensor = None
     else:
-        input_tensor, _ = _communicate(tensor_send_prev=input_tensor_grad,
-                                       recv_prev=recv_prev,
-                                       recv_prev_shape=input_tensor_shape,
-                                       prev_rank=prev_rank,
-                                       dtype=dtype,
-                                       scatter_gather_tensors=scatter_gather_tensors)
+        input_tensor, _ = _communicate(
+            tensor_send_prev=input_tensor_grad,
+            recv_prev=recv_prev,
+            recv_prev_shape=input_tensor_shape,
+            prev_rank=prev_rank,
+            dtype=dtype,
+            scatter_gather_tensors=scatter_gather_tensors)
     return input_tensor
 
 
@@ -279,13 +297,14 @@ def send_forward_recv_forward(output_tensor,
     :return: The input tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
-    input_tensor, _ = _communicate(tensor_send_next=output_tensor,
-                                   recv_prev=recv_prev,
-                                   recv_prev_shape=input_tensor_shape,
-                                   prev_rank=prev_rank,
-                                   next_rank=next_rank,
-                                   dtype=dtype,
-                                   scatter_gather_tensors=scatter_gather_tensors)
+    input_tensor, _ = _communicate(
+        tensor_send_next=output_tensor,
+        recv_prev=recv_prev,
+        recv_prev_shape=input_tensor_shape,
+        prev_rank=prev_rank,
+        next_rank=next_rank,
+        dtype=dtype,
+        scatter_gather_tensors=scatter_gather_tensors)
     return input_tensor
 
 
@@ -307,13 +326,14 @@ def send_backward_recv_backward(input_tensor_grad,
     :return: The grad of output tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
-    _, output_tensor_grad = _communicate(tensor_send_prev=input_tensor_grad,
-                                         recv_next=recv_next,
-                                         recv_next_shape=output_grad_shape,
-                                         prev_rank=prev_rank,
-                                         next_rank=next_rank,
-                                         dtype=dtype,
-                                         scatter_gather_tensors=scatter_gather_tensors)
+    _, output_tensor_grad = _communicate(
+        tensor_send_prev=input_tensor_grad,
+        recv_next=recv_next,
+        recv_next_shape=output_grad_shape,
+        prev_rank=prev_rank,
+        next_rank=next_rank,
+        dtype=dtype,
+        scatter_gather_tensors=scatter_gather_tensors)
     return output_tensor_grad
 
 

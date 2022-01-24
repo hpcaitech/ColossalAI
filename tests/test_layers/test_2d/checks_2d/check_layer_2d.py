@@ -62,7 +62,9 @@ def check_linear():
     print_rank_0('linear forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -141,7 +143,9 @@ def check_classifier():
     print_rank_0('classifier forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     # grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -205,7 +209,9 @@ def check_layernorm():
     print_rank_0('layer norm forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -257,7 +263,6 @@ def check_layernorm():
 #     assert A.grad.shape == A.shape
 #     print_rank_0('self attention backward: pass')
 
-
 # def check_mlp():
 #     device = get_current_device()
 #     dtype = torch.float32
@@ -290,7 +295,6 @@ def check_layernorm():
 #     out.backward(grad)
 #     assert A.grad.shape == A.shape
 #     print_rank_0('mlp backward: pass')
-
 
 # def check_transformerlayer():
 #     device = get_current_device()

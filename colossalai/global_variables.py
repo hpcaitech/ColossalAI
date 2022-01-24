@@ -1,5 +1,3 @@
-
-
 class MoeEnv:
     """Moe enviroment variables.
     """
@@ -12,7 +10,8 @@ class MoeEnv:
     def setup(self, moe_model_size):
         from .core import global_context as gpc
         if gpc.tensor_parallel_size > 1 or gpc.pipeline_parallel_size > 1:
-            raise NotImplementedError("Moe is not compatible with tensor or pipeline parallel")
+            raise NotImplementedError(
+                "Moe is not compatible with tensor or pipeline parallel")
 
         assert gpc.data_parallel_size % moe_model_size == 0, \
             "The size of data parallel needs to be divided by moe model parallel size"

@@ -8,7 +8,6 @@ from typing import Union
 
 from colossalai.context.parallel_mode import ParallelMode
 
-
 _FORMAT = 'colossalai - %(name)s - %(asctime)s %(levelname)s: %(message)s'
 logging.basicConfig(level=logging.INFO, format=_FORMAT)
 
@@ -39,7 +38,9 @@ class DistributedLogger:
 
     def __init__(self, name):
         if name in DistributedLogger.__instances:
-            raise Exception('Logger with the same name has been created, you should use colossalai.logging.get_dist_logger')
+            raise Exception(
+                'Logger with the same name has been created, you should use colossalai.logging.get_dist_logger'
+            )
         else:
             self._name = name
             self._logger = logging.getLogger(name)
@@ -47,7 +48,8 @@ class DistributedLogger:
 
     @staticmethod
     def _check_valid_logging_level(level: str):
-        assert level in ['INFO', 'DEBUG', 'WARNING', 'ERROR'], 'found invalid logging level'
+        assert level in ['INFO', 'DEBUG', 'WARNING',
+                         'ERROR'], 'found invalid logging level'
 
     def set_level(self, level: str):
         """Set the logging level
@@ -81,7 +83,8 @@ class DistributedLogger:
             path = Path(path)
 
         # set the default file name if path is a directory
-        if not colossalai.core.global_context.is_initialized(ParallelMode.GLOBAL):
+        if not colossalai.core.global_context.is_initialized(
+                ParallelMode.GLOBAL):
             rank = 0
         else:
             rank = colossalai.core.global_context.get_global_rank()
@@ -99,15 +102,23 @@ class DistributedLogger:
         file_handler.setFormatter(formatter)
         self._logger.addHandler(file_handler)
 
-    def _log(self, level, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
+    def _log(self,
+             level,
+             message: str,
+             parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+             ranks: list = None):
         if ranks is None:
             getattr(self._logger, level)(message)
         else:
-            local_rank = colossalai.core.global_context.get_local_rank(parallel_mode)
+            local_rank = colossalai.core.global_context.get_local_rank(
+                parallel_mode)
             if local_rank in ranks:
                 getattr(self._logger, level)(message)
 
-    def info(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
+    def info(self,
+             message: str,
+             parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+             ranks: list = None):
         """Log an info message.
 
         :param message: The message to be logged
@@ -119,7 +130,10 @@ class DistributedLogger:
         """
         self._log('info', message, parallel_mode, ranks)
 
-    def warning(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
+    def warning(self,
+                message: str,
+                parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+                ranks: list = None):
         """Log a warning message.
 
         :param message: The message to be logged
@@ -131,7 +145,10 @@ class DistributedLogger:
         """
         self._log('warning', message, parallel_mode, ranks)
 
-    def debug(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
+    def debug(self,
+              message: str,
+              parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+              ranks: list = None):
         """Log a debug message.
 
         :param message: The message to be logged
@@ -143,7 +160,10 @@ class DistributedLogger:
         """
         self._log('debug', message, parallel_mode, ranks)
 
-    def error(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
+    def error(self,
+              message: str,
+              parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+              ranks: list = None):
         """Log an error message.
 
         :param message: The message to be logged

@@ -53,7 +53,8 @@ def test_activation_checkpointing():
     loss = out.sum()
     loss.backward()
 
-    assert torch.all(data.grad == data_.grad), 'Gradient of the input does not match'
+    assert torch.all(
+        data.grad == data_.grad), 'Gradient of the input does not match'
     torch.cuda.empty_cache()
 
 

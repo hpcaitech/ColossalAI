@@ -10,11 +10,8 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 
 __all__ = [
-    'get_checkpoint_path',
-    'get_latest_checkpoint_path',
-    'get_latest_checkpoint_pattern',
-    'save_checkpoint',
-    'load_checkpoint'
+    'get_checkpoint_path', 'get_latest_checkpoint_path',
+    'get_latest_checkpoint_pattern', 'save_checkpoint', 'load_checkpoint'
 ]
 
 
@@ -114,9 +111,12 @@ def get_latest_checkpoint_path(checkpoint_dir: str, suffix: str = ''):
 
     if last_epoch == -1:
         ranks_name = _get_ranks_name()
-        raise FileNotFoundError(f"Cannot find the latest checkpoint file for {ranks_name} in {checkpoint_dir}")
+        raise FileNotFoundError(
+            f"Cannot find the latest checkpoint file for {ranks_name} in {checkpoint_dir}"
+        )
     else:
-        target_file = _get_standard_checkpoint_filename(last_epoch, suffix=suffix)
+        target_file = _get_standard_checkpoint_filename(last_epoch,
+                                                        suffix=suffix)
         path = osp.join(checkpoint_dir, target_file)
         return path
 

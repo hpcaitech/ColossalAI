@@ -29,7 +29,7 @@ class VisionTransformerFromConfig(ModelFromConfig):
         self.num_tokens = 1
         self.tensor_splitting_cfg = tensor_splitting_cfg
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)
-               ]  # stochastic depth decay rule
+              ]  # stochastic depth decay rule
         if token_fusion_cfg is None:
             token_fusion_cfg = []
         else:
@@ -43,8 +43,8 @@ class VisionTransformerFromConfig(ModelFromConfig):
             *token_fusion_cfg,
 
             # blocks
-            *self._generate_block_cfg(
-                dpr=dpr, block_cfg=block_cfg, depth=depth),
+            *self._generate_block_cfg(dpr=dpr, block_cfg=block_cfg,
+                                      depth=depth),
 
             # norm
             norm_cfg,

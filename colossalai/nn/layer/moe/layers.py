@@ -23,8 +23,8 @@ class NormalNoiseGenerator:
     def __init__(self, num_experts: int):
         self.normal = torch.distributions.normal.Normal(
             loc=torch.tensor(0.0, device=get_current_device()),
-            scale=torch.tensor(1.0 / num_experts ** 2, device=get_current_device())
-        ).rsample
+            scale=torch.tensor(1.0 / num_experts**2,
+                               device=get_current_device())).rsample
 
     def __call__(self, inputs: torch.Tensor):
         noisy = self.normal(inputs.shape)
@@ -51,8 +51,8 @@ class Experts(nn.Module):
 
         num_local_experts = num_experts // moe_env.model_parallel_size
         with seed(ParallelMode.MOE_MODEL):
-            self.experts = nn.ModuleList([
-                expert(**expert_args) for _ in range(num_local_experts)])
+            self.experts = nn.ModuleList(
+                [expert(**expert_args) for _ in range(num_local_experts)])
         self.num_local_experts = num_local_experts
         for exp in self.experts:
             for param in exp.parameters():
@@ -96,8 +96,8 @@ class Top1Router(nn.Module):
             high=torch.tensor(1.0, device=get_current_device())).rsample
 
     def get_capacity(self, logits_shape):
-        capacity = math.ceil(self.capacity_factor *
-                             logits_shape[0] / logits_shape[1])
+        capacity = math.ceil(self.capacity_factor * logits_shape[0] /
+                             logits_shape[1])
         if capacity < self.min_capacity:
             capacity = self.min_capacity
         return capacity
@@ -159,8 +159,8 @@ class Top2Router(nn.Module):
         self.noisy_func = noisy_func
 
     def get_capacity(self, logits_shape):
-        capacity = math.ceil(2 * self.capacity_factor *
-                             logits_shape[0] / logits_shape[1])
+        capacity = math.ceil(2 * self.capacity_factor * logits_shape[0] /
+                             logits_shape[1])
         return capacity
 
     def forward(self, inputs):
@@ -171,7 +171,11 @@ class Top2Router(nn.Module):
         num_experts = logits.size(-1)
         capacity = self.get_capacity(logits.shape)
 
-        _, expert_idx = torch.topk(logits, k=2, dim=-1, largest=True, sorted=True)
+        _, expert_idx = torch.topk(logits,
+                                   k=2,
+                                   dim=-1,
+                                   largest=True,
+                                   sorted=True)
         top1_idx = expert_idx[:, 0]
         top2_idx = expert_idx[:, 1]
 
@@ -225,15 +229,14 @@ class MoeLayer(nn.Module):
     :type experts: nn.Module
     """
 
-    def __init__(self,
-                 dim_model: int,
-                 num_experts: int,
-                 router: nn.Module,
+    def __init__(self, dim_model: int, num_experts: int, router: nn.Module,
                  experts: nn.Module):
         super().__init__()
         self.d_model = dim_model
         self.num_experts = num_experts
-        self.gate = nn.Linear(dim_model, num_experts, device=get_current_device())
+        self.gate = nn.Linear(dim_model,
+                              num_experts,
+                              device=get_current_device())
         self.router = router
         self.experts = experts
 

@@ -6,7 +6,9 @@ import torch
 try:
     import colossal_C
 except:
-    print('Colossalai should be built with cuda extension to use the FP16 optimizer')
+    print(
+        'Colossalai should be built with cuda extension to use the FP16 optimizer'
+    )
 
 from torch.optim import Optimizer
 
@@ -14,7 +16,8 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import (print_rank_0, copy_tensor_parallel_attributes,
-                              clip_grad_norm_fp32, count_zeros_fp32, multi_tensor_applier, is_using_pp)
+                              clip_grad_norm_fp32, count_zeros_fp32,
+                              multi_tensor_applier, is_using_pp)
 
 
 def _zero_grad_group_helper(group, set_to_none):
@@ -40,10 +43,8 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
     if overflow_buf:
         overflow_buf.fill_(0)
         # Scaling with factor `1.0` is equivalent to copy.
-        multi_tensor_applier(colossal_C.multi_tensor_scale,
-                             overflow_buf,
-                             [this, that],
-                             1.0)
+        multi_tensor_applier(colossal_C.multi_tensor_scale, overflow_buf,
+                             [this, that], 1.0)
     else:
         for this_, that_ in zip(this, that):
             that_.copy_(this_)
@@ -114,7 +115,9 @@ class DynamicGradScaler:
                 self._scale = torch.max(self._scale * self.backoff_factor,
                                         self.min_scale)
             if self.verbose:
-                self._logger.info(f'overflow occurs, loss scale is adjusted to {self._scale}', ranks=[0])
+                self._logger.info(
+                    f'overflow occurs, loss scale is adjusted to {self._scale}',
+                    ranks=[0])
         else:
             # If there is no nan/inf, increment the growth tracker.
             self._growth_tracker += 1
@@ -127,12 +130,14 @@ class DynamicGradScaler:
                 if self._max_scale is not None and self._scale >= self._max_scale:
                     if self.verbose:
                         self._logger.info(
-                            f'Current loss scale {self._scale} has reached the max scale {self._max_scale} allowed', ranks=[0])
+                            f'Current loss scale {self._scale} has reached the max scale {self._max_scale} allowed',
+                            ranks=[0])
                 else:
                     self._scale = self._scale * self.growth_factor
                     if self.verbose:
                         self._logger.info(
-                            f'no consecutive overflow, loss scale is adjusted to {self._scale}', ranks=[0])
+                            f'no consecutive overflow, loss scale is adjusted to {self._scale}',
+                            ranks=[0])
 
     def state_dict(self):
         state_dict = {}
@@ -176,13 +181,13 @@ class FP16Optimizer(Optimizer):
                  optimizer,
                  clip_grad=0,
                  log_num_zeros_in_grad=False,
-                 initial_scale=2 ** 32,
+                 initial_scale=2**32,
                  min_scale=1,
                  growth_factor=2,
                  backoff_factor=0.5,
                  growth_interval=1000,
                  hysteresis=2,
-                 max_scale: int = 2 ** 32,
+                 max_scale: int = 2**32,
                  verbose: bool = False):
         # default args for compatibility
         bf16 = False
@@ -194,18 +199,19 @@ class FP16Optimizer(Optimizer):
         # log config
         self._logger = get_dist_logger()
         if verbose:
-            self._logger.info(f"\n=========  FP16 Optimizer Config =========\n"
-                              f"Optimizer: {optimizer.__class__.__name__}\n"
-                              f"clip_grad = {clip_grad}\n"
-                              f"log_num_zeros_in_grad = {log_num_zeros_in_grad}\n"
-                              f"initial_scale = {initial_scale}\n"
-                              f"min_scale = {min_scale}\n"
-                              f"growth_factor = {growth_factor}\n"
-                              f"backoff_factor = {backoff_factor}\n"
-                              f"growth_interval = {growth_interval}\n"
-                              f"hysteresis = {hysteresis}\n"
-                              f"==========================================", ranks=[0])
-
+            self._logger.info(
+                f"\n=========  FP16 Optimizer Config =========\n"
+                f"Optimizer: {optimizer.__class__.__name__}\n"
+                f"clip_grad = {clip_grad}\n"
+                f"log_num_zeros_in_grad = {log_num_zeros_in_grad}\n"
+                f"initial_scale = {initial_scale}\n"
+                f"min_scale = {min_scale}\n"
+                f"growth_factor = {growth_factor}\n"
+                f"backoff_factor = {backoff_factor}\n"
+                f"growth_interval = {growth_interval}\n"
+                f"hysteresis = {hysteresis}\n"
+                f"==========================================",
+                ranks=[0])
         """Input optimizer is the base optimizer for example Adam."""
         self.optimizer = optimizer
         assert self.optimizer, 'no optimizer is provided.'
@@ -215,16 +221,14 @@ class FP16Optimizer(Optimizer):
         self.params_have_main_grad = params_have_main_grad
 
         self.bf16 = bf16
-        self.grad_scaler = DynamicGradScaler(
-            initial_scale=initial_scale,
-            min_scale=min_scale,
-            growth_factor=growth_factor,
-            backoff_factor=backoff_factor,
-            growth_interval=growth_interval,
-            hysteresis=hysteresis,
-            max_scale=max_scale,
-            verbose=verbose
-        )
+        self.grad_scaler = DynamicGradScaler(initial_scale=initial_scale,
+                                             min_scale=min_scale,
+                                             growth_factor=growth_factor,
+                                             backoff_factor=backoff_factor,
+                                             growth_interval=growth_interval,
+                                             hysteresis=hysteresis,
+                                             max_scale=max_scale,
+                                             verbose=verbose)
 
         # None grad scaler is only supported for bf16.
         if self.grad_scaler is None:
@@ -270,8 +274,9 @@ class FP16Optimizer(Optimizer):
             for i, param in enumerate(param_group['params']):
                 if param.requires_grad:
                     # float16 params:
-                    if param.type() in ['torch.cuda.HalfTensor',
-                                        'torch.cuda.BFloat16Tensor']:
+                    if param.type() in [
+                            'torch.cuda.HalfTensor', 'torch.cuda.BFloat16Tensor'
+                    ]:
                         float16_params_this_group.append(param)
                         # Create a copy
                         main_param = param.detach().clone().float()
@@ -378,13 +383,15 @@ class FP16Optimizer(Optimizer):
     def _copy_main_params_to_model_params(self):
         # Only needed for the float16 params.
         model_data, main_data = self._get_model_and_main_params_data_float16()
-        _multi_tensor_copy_this_to_that(this=main_data, that=model_data,
+        _multi_tensor_copy_this_to_that(this=main_data,
+                                        that=model_data,
                                         overflow_buf=self._dummy_overflow_buf)
 
     def _copy_model_params_to_main_params(self):
         # Only needed for the float16 params.
         model_data, main_data = self._get_model_and_main_params_data_float16()
-        _multi_tensor_copy_this_to_that(this=model_data, that=main_data,
+        _multi_tensor_copy_this_to_that(this=model_data,
+                                        that=main_data,
                                         overflow_buf=self._dummy_overflow_buf)
 
     def reload_model_params(self):

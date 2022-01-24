@@ -34,10 +34,7 @@ class LogByEpochHook(BaseHook):
     :type priority: int, optional
     """
 
-    def __init__(self,
-                 logger,
-                 interval: int = 1,
-                 priority: int = 1):
+    def __init__(self, logger, interval: int = 1, priority: int = 1):
         super().__init__(priority)
         self.logger = logger
         self._interval = interval
@@ -59,13 +56,15 @@ class LogMetricByStepHook(BaseHook):
 
     def after_train_iter(self, trainer, *args):
         trainer.states['step_metrics'] = dict()
-        for metric_name, metric_calculator in trainer.states['metrics']['train'].items():
+        for metric_name, metric_calculator in trainer.states['metrics'][
+                'train'].items():
             trainer.states['step_metrics'][metric_name.lower()] = \
                 f'{_format_number(metric_calculator.get_last_step_value())}'
 
     def after_test_iter(self, trainer, *args):
         trainer.states['step_metrics'] = dict()
-        for metric_name, metric_calculator in trainer.states['metrics']['test'].items():
+        for metric_name, metric_calculator in trainer.states['metrics'][
+                'test'].items():
             trainer.states['step_metrics'][metric_name.lower()] = \
                 f'{_format_number(metric_calculator.get_last_step_value())}'
 
@@ -81,18 +80,18 @@ class LogMetricByEpochHook(LogByEpochHook):
     :type priority: int, optional
     """
 
-    def __init__(self,
-                 logger,
-                 interval: int = 1,
-                 priority: int = 10) -> None:
+    def __init__(self, logger, interval: int = 1, priority: int = 10) -> None:
         super().__init__(logger, interval, priority)
-        self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
+        self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0(
+        ) and is_no_pp_or_last_stage()
 
     def _get_str(self, trainer, mode):
         msg = []
-        for metric_name, metric_calculator in trainer.states['metrics'][mode].items():
+        for metric_name, metric_calculator in trainer.states['metrics'][
+                mode].items():
             msg.append(
-                f'{metric_name} = {_format_number(metric_calculator.get_accumulated_value())}')
+                f'{metric_name} = {_format_number(metric_calculator.get_accumulated_value())}'
+            )
         msg = ' | '.join(msg)
         return msg
 
@@ -126,17 +125,19 @@ class TensorboardHook(BaseHook):
     :type priority: int, optional
     """
 
-    def __init__(self,
-                 log_dir: str,
-                 ranks: List = None,
-                 parallel_mode: ParallelMode = ParallelMode.GLOBAL,
-                 priority: int = 10,
-                 ) -> None:
+    def __init__(
+        self,
+        log_dir: str,
+        ranks: List = None,
+        parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+        priority: int = 10,
+    ) -> None:
         super().__init__(priority=priority)
         from torch.utils.tensorboard import SummaryWriter
 
         # create log dir
-        if not gpc.is_initialized(ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
+        if not gpc.is_initialized(
+                ParallelMode.GLOBAL) or gpc.get_global_rank() == 0:
             os.makedirs(log_dir, exist_ok=True)
 
         # determine the ranks to generate tensorboard logs
@@ -152,7 +153,9 @@ class TensorboardHook(BaseHook):
         # check for
         if gpc.is_initialized(ParallelMode.PIPELINE) and \
                 not gpc.is_last_rank(ParallelMode.PIPELINE) and self._is_valid_rank_to_log:
-            raise ValueError("Tensorboard hook can only log on the last rank of pipeline process group")
+            raise ValueError(
+                "Tensorboard hook can only log on the last rank of pipeline process group"
+            )
 
         if self._is_valid_rank_to_log:
             # create workspace on only one rank
@@ -165,23 +168,28 @@ class TensorboardHook(BaseHook):
             log_dir = osp.join(log_dir, f'{parallel_mode}_rank_{rank}')
             os.makedirs(log_dir, exist_ok=True)
 
-            self.writer = SummaryWriter(log_dir=log_dir, filename_suffix=f'_rank_{rank}')
+            self.writer = SummaryWriter(log_dir=log_dir,
+                                        filename_suffix=f'_rank_{rank}')
 
     def _log_by_iter(self, trainer, mode: str):
-        for metric_name, metric_calculator in trainer.states['metrics'][mode].items():
+        for metric_name, metric_calculator in trainer.states['metrics'][
+                mode].items():
             if metric_calculator.epoch_only:
                 continue
             val = metric_calculator.get_last_step_value()
 
             if self._is_valid_rank_to_log:
-                self.writer.add_scalar(f'{metric_name}/{mode}', val, trainer.cur_step)
+                self.writer.add_scalar(f'{metric_name}/{mode}', val,
+                                       trainer.cur_step)
 
     def _log_by_epoch(self, trainer, mode: str):
-        for metric_name, metric_calculator in trainer.states['metrics'][mode].items():
+        for metric_name, metric_calculator in trainer.states['metrics'][
+                mode].items():
             if metric_calculator.epoch_only:
                 val = metric_calculator.get_accumulated_value()
                 if self._is_valid_rank_to_log:
-                    self.writer.add_scalar(f'{metric_name}/{mode}', val, trainer.cur_step)
+                    self.writer.add_scalar(f'{metric_name}/{mode}', val,
+                                           trainer.cur_step)
 
     def after_test_iter(self, trainer, *args):
         self._log_by_iter(trainer, mode='test')
@@ -238,7 +246,8 @@ class LogTimingByEpochHook(LogByEpochHook):
                 last_elapsed_time = timer.get_elapsed_time()
                 if timer.has_history:
                     if timer_name == 'Train-step' and not self._is_train_step_history_trimmed:
-                        timer._history = timer._history[self._ignore_num_train_steps:]
+                        timer._history = timer._history[
+                            self._ignore_num_train_steps:]
                         self._is_train_step_history_trimmed = True
                     history_mean = timer.get_history_mean()
                     history_sum = timer.get_history_sum()
@@ -246,7 +255,9 @@ class LogTimingByEpochHook(LogByEpochHook):
                         f'{timer_name}: last = {_format_number(last_elapsed_time)} s, mean = {_format_number(history_mean)} s'
                     )
                 else:
-                    msg.append(f'{timer_name}: last = {_format_number(last_elapsed_time)} s')
+                    msg.append(
+                        f'{timer_name}: last = {_format_number(last_elapsed_time)} s'
+                    )
 
         msg = ' | '.join(msg)
         return msg
@@ -256,12 +267,15 @@ class LogTimingByEpochHook(LogByEpochHook):
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log:
             msg = self._get_message('Train')
-            self.logger.info(f'[Epoch {trainer.cur_epoch} / Train]: {msg}, #steps/epoch = {trainer.steps_per_epoch}')
+            self.logger.info(
+                f'[Epoch {trainer.cur_epoch} / Train]: {msg}, #steps/epoch = {trainer.steps_per_epoch}'
+            )
 
     def after_test_epoch(self, trainer):
         """Writes log after finishing a testing epoch.
         """
-        if self._is_epoch_to_log(trainer) and self._is_rank_to_log and self._log_eval:
+        if self._is_epoch_to_log(
+                trainer) and self._is_rank_to_log and self._log_eval:
             msg = self._get_message('Test')
             self.logger.info(f'[Epoch {trainer.cur_epoch} / Test]: {msg}')
 
@@ -280,13 +294,14 @@ class LogMemoryByEpochHook(LogByEpochHook):
     :type log_eval: bool, optional
     """
 
-    def __init__(self,
-                 logger: DistributedLogger,
-                 interval: int = 1,
-                 priority: int = 10,
-                 log_eval: bool = True,
-                 report_cpu: bool = False,  # no reference
-                 ) -> None:
+    def __init__(
+            self,
+            logger: DistributedLogger,
+            interval: int = 1,
+            priority: int = 10,
+            log_eval: bool = True,
+            report_cpu: bool = False,  # no reference
+    ) -> None:
         super().__init__(logger=logger, interval=interval, priority=priority)
         self._log_eval = log_eval
         self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0()
@@ -301,10 +316,13 @@ class LogMemoryByEpochHook(LogByEpochHook):
         """Writes log after finishing a training epoch.
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log:
-            report_memory_usage(f'[Epoch {trainer.cur_epoch} / Train]', self.logger)
+            report_memory_usage(f'[Epoch {trainer.cur_epoch} / Train]',
+                                self.logger)
 
     def after_test(self, trainer):
         """Reports after testing.
         """
-        if self._is_epoch_to_log(trainer) and self._is_rank_to_log and self._log_eval:
-            report_memory_usage(f'[Epoch {trainer.cur_epoch} / Test]', self.logger)
+        if self._is_epoch_to_log(
+                trainer) and self._is_rank_to_log and self._log_eval:
+            report_memory_usage(f'[Epoch {trainer.cur_epoch} / Test]',
+                                self.logger)

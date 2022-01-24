@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-
 from typing import List
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
@@ -36,8 +35,7 @@ class Engine:
                  criterion: _Loss,
                  gradient_handlers: List = None,
                  clip_grad_norm: float = 0.0,
-                 verbose: bool = True
-                 ):
+                 verbose: bool = True):
         self._model = model
         self._optimizer = optimizer
         self._criterion = criterion

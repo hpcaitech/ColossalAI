@@ -10,11 +10,12 @@ from .common import *
 
 
 def check_AB():
-    data_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
-    pipeline_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_local_rank(
-        ParallelMode.PIPELINE)
-    pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
-        ParallelMode.PIPELINE)
+    data_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
+    pipeline_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_local_rank(ParallelMode.PIPELINE)
+    pipeline_parallel_size = 1 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_world_size(ParallelMode.PIPELINE)
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
 
     dtype = torch.float
@@ -38,17 +39,13 @@ def check_AB():
     B = B.clone()
     B.requires_grad = True
 
-    out_shape = (BATCH_SIZE // TESSERACT_DIM, SEQ_LENGTH, 4 * HIDDEN_SIZE // TESSERACT_DIM)
-    out = Matmul_AB_2p5D.apply(
-        A, B,
-        TESSERACT_DIM, out_shape,
-        i, j, k,
-        ParallelMode.PARALLEL_2P5D_ROW,
-        ParallelMode.PARALLEL_2P5D_COL,
-        data_parallel_rank,
-        pipeline_parallel_rank,
-        pipeline_parallel_size,
-        tensor_parallel_size)
+    out_shape = (BATCH_SIZE // TESSERACT_DIM, SEQ_LENGTH,
+                 4 * HIDDEN_SIZE // TESSERACT_DIM)
+    out = Matmul_AB_2p5D.apply(A, B, TESSERACT_DIM, out_shape, i, j, k,
+                               ParallelMode.PARALLEL_2P5D_ROW,
+                               ParallelMode.PARALLEL_2P5D_COL,
+                               data_parallel_rank, pipeline_parallel_rank,
+                               pipeline_parallel_size, tensor_parallel_size)
 
     C_shape = (BATCH_SIZE, SEQ_LENGTH, 4 * HIDDEN_SIZE)
     A_master = A_master.clone()
@@ -63,7 +60,9 @@ def check_AB():
     print_rank_0('AB forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -86,11 +85,12 @@ def check_AB():
 
 
 def check_ABT():
-    data_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
-    pipeline_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_local_rank(
-        ParallelMode.PIPELINE)
-    pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
-        ParallelMode.PIPELINE)
+    data_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
+    pipeline_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_local_rank(ParallelMode.PIPELINE)
+    pipeline_parallel_size = 1 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_world_size(ParallelMode.PIPELINE)
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
 
     dtype = torch.float
@@ -117,14 +117,10 @@ def check_ABT():
     B.requires_grad = True
 
     out = Matmul_ABT_2p5D.apply(
-        C, B,
-        TESSERACT_DIM, (BATCH_SIZE // TESSERACT_DIM, SEQ_LENGTH, HIDDEN_SIZE // TESSERACT_DIM),
-        i, j, k,
-        ParallelMode.PARALLEL_2P5D_ROW,
-        ParallelMode.PARALLEL_2P5D_COL,
-        data_parallel_rank,
-        pipeline_parallel_rank,
-        pipeline_parallel_size,
+        C, B, TESSERACT_DIM,
+        (BATCH_SIZE // TESSERACT_DIM, SEQ_LENGTH, HIDDEN_SIZE // TESSERACT_DIM),
+        i, j, k, ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL,
+        data_parallel_rank, pipeline_parallel_rank, pipeline_parallel_size,
         tensor_parallel_size)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
@@ -161,11 +157,12 @@ def check_ABT():
 
 
 def check_ATB():
-    data_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
-    pipeline_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_local_rank(
-        ParallelMode.PIPELINE)
-    pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
-        ParallelMode.PIPELINE)
+    data_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
+    pipeline_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_local_rank(ParallelMode.PIPELINE)
+    pipeline_parallel_size = 1 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_world_size(ParallelMode.PIPELINE)
     tensor_parallel_size = gpc.get_world_size(ParallelMode.TENSOR)
 
     device = get_current_device()
@@ -192,14 +189,10 @@ def check_ATB():
     C.requires_grad = True
 
     out = Matmul_ATB_2p5D.apply(
-        A, C,
-        TESSERACT_DIM, (HIDDEN_SIZE // TESSERACT_DIM, 4 * HIDDEN_SIZE // TESSERACT_DIM),
-        i, j, k,
-        ParallelMode.PARALLEL_2P5D_ROW,
-        ParallelMode.PARALLEL_2P5D_COL,
-        data_parallel_rank,
-        pipeline_parallel_rank,
-        pipeline_parallel_size,
+        A, C, TESSERACT_DIM,
+        (HIDDEN_SIZE // TESSERACT_DIM, 4 * HIDDEN_SIZE // TESSERACT_DIM), i, j,
+        k, ParallelMode.PARALLEL_2P5D_ROW, ParallelMode.PARALLEL_2P5D_COL,
+        data_parallel_rank, pipeline_parallel_rank, pipeline_parallel_size,
         tensor_parallel_size)
 
     B_shape = (HIDDEN_SIZE, 4 * HIDDEN_SIZE)

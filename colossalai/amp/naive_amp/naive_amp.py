@@ -47,9 +47,7 @@ class NaiveAMPModel(nn.Module):
     automatically cast the input and output
     """
 
-    def __init__(self,
-                 model: nn.Module,
-                 output_to_fp32: bool = True):
+    def __init__(self, model: nn.Module, output_to_fp32: bool = True):
         super().__init__()
         self.model = model.half()
         self._output_to_fp32 = output_to_fp32

@@ -3,10 +3,12 @@
 
 import time
 
-from colossalai.constants import (INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D)
+from colossalai.constants import (INPUT_GROUP_3D, OUTPUT_GROUP_3D,
+                                  WEIGHT_GROUP_3D)
 from colossalai.core import global_context
 from colossalai.logging import get_dist_logger
-from colossalai.nn import (Classifier3D, CrossEntropyLoss3D, LayerNorm3D, Linear3D, PatchEmbedding3D, VanillaClassifier,
+from colossalai.nn import (Classifier3D, CrossEntropyLoss3D, LayerNorm3D,
+                           Linear3D, PatchEmbedding3D, VanillaClassifier,
                            VanillaPatchEmbedding)
 from colossalai.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
 from colossalai.utils import get_current_device, print_rank_0
@@ -60,7 +62,8 @@ def check_linear():
     torch.cuda.synchronize()
     fwd_end = time.time()
     print_rank_0(
-        'linear forward: {0} --> {1} | {2:.3f} s'.format(tuple(A.shape), tuple(out.shape), fwd_end - fwd_start), logger)
+        'linear forward: {0} --> {1} | {2:.3f} s'.format(
+            tuple(A.shape), tuple(out.shape), fwd_end - fwd_start), logger)
     A_master = A_master.clone()
     A_master.requires_grad = True
     C_master = layer_master(A_master)
@@ -70,7 +73,9 @@ def check_linear():
     logger.info('Rank {} linear forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[j]
@@ -80,23 +85,27 @@ def check_linear():
     out.backward(grad)
     torch.cuda.synchronize()
     bwd_end = time.time()
-    print_rank_0('linear backward: {:.3f} s'.format(bwd_end - bwd_start), logger)
+    print_rank_0('linear backward: {:.3f} s'.format(bwd_end - bwd_start),
+                 logger)
 
     C_master.backward(grad_master)
     A_grad = A_master.grad
     A_grad = torch.chunk(A_grad, DEPTH, dim=0)[i]
     A_grad = torch.chunk(A_grad, DEPTH, dim=-1)[k]
     A_grad = torch.chunk(A_grad, DEPTH, dim=0)[j]
-    logger.info('Rank {} linear backward (input_grad): {}'.format(rank, check_equal(A_grad, A.grad)))
+    logger.info('Rank {} linear backward (input_grad): {}'.format(
+        rank, check_equal(A_grad, A.grad)))
 
     B_grad = layer_master.weight.grad.transpose(0, 1)
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[k]
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[j]
-    logger.info('Rank {} linear backward (weight_grad): {}'.format(rank, check_equal(B_grad, layer.weight.grad)))
+    logger.info('Rank {} linear backward (weight_grad): {}'.format(
+        rank, check_equal(B_grad, layer.weight.grad)))
 
     bias_grad = layer_master.bias.grad
     bias_grad = torch.chunk(bias_grad, DEPTH)[j]
-    logger.info('Rank {} linear backward (bias_grad): {}'.format(rank, check_equal(bias_grad, layer.bias.grad)))
+    logger.info('Rank {} linear backward (bias_grad): {}'.format(
+        rank, check_equal(bias_grad, layer.bias.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
@@ -144,8 +153,8 @@ def check_layernorm():
     torch.cuda.synchronize()
     fwd_end = time.time()
     print_rank_0(
-        'layer norm forward: pass | {0} --> {1} | {2:.3f} s'.format(tuple(A.shape), tuple(out.shape),
-                                                                    fwd_end - fwd_start), logger)
+        'layer norm forward: pass | {0} --> {1} | {2:.3f} s'.format(
+            tuple(A.shape), tuple(out.shape), fwd_end - fwd_start), logger)
 
     A_master = A_master.clone()
     A_master.requires_grad = True
@@ -153,7 +162,8 @@ def check_layernorm():
     C = torch.chunk(C_master, DEPTH, dim=0)[i]
     C = torch.chunk(C, DEPTH, dim=-1)[k]
     C = torch.chunk(C, DEPTH, dim=0)[j]
-    logger.info('Rank {} layernorm forward: {}'.format(rank, check_equal(out, C)))
+    logger.info('Rank {} layernorm forward: {}'.format(rank,
+                                                       check_equal(out, C)))
 
     grad_shape = C_master.shape
     grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
@@ -166,22 +176,27 @@ def check_layernorm():
     out.backward(grad)
     torch.cuda.synchronize()
     bwd_end = time.time()
-    print_rank_0('layer norm backward: pass | {:.3f} s'.format(bwd_end - bwd_start), logger)
+    print_rank_0(
+        'layer norm backward: pass | {:.3f} s'.format(bwd_end - bwd_start),
+        logger)
 
     C_master.backward(grad_master)
     A_grad = A_master.grad
     A_grad = torch.chunk(A_grad, DEPTH, dim=0)[i]
     A_grad = torch.chunk(A_grad, DEPTH, dim=-1)[k]
     A_grad = torch.chunk(A_grad, DEPTH, dim=0)[j]
-    logger.info('Rank {} layernorm backward (input_grad): {}'.format(rank, check_equal(A_grad, A.grad)))
+    logger.info('Rank {} layernorm backward (input_grad): {}'.format(
+        rank, check_equal(A_grad, A.grad)))
 
     bias_grad = norm_master.weight.grad
     bias_grad = torch.chunk(bias_grad, DEPTH)[k]
-    logger.info('Rank {} layernorm backward (weight_grad): {}'.format(rank, check_equal(bias_grad, norm.weight.grad)))
+    logger.info('Rank {} layernorm backward (weight_grad): {}'.format(
+        rank, check_equal(bias_grad, norm.weight.grad)))
 
     bias_grad = norm_master.bias.grad
     bias_grad = torch.chunk(bias_grad, DEPTH)[k]
-    logger.info('Rank {} layernorm backward (bias_grad): {}'.format(rank, check_equal(bias_grad, norm.bias.grad)))
+    logger.info('Rank {} layernorm backward (bias_grad): {}'.format(
+        rank, check_equal(bias_grad, norm.bias.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
@@ -204,7 +219,10 @@ def check_classifier():
     layer = Classifier3D(INPUT_SIZE, NUM_CLASSES, dtype=dtype, bias=True)
     layer = layer.to(device)
 
-    layer_master = VanillaClassifier(INPUT_SIZE, NUM_CLASSES, bias=True, dtype=dtype)
+    layer_master = VanillaClassifier(INPUT_SIZE,
+                                     NUM_CLASSES,
+                                     bias=True,
+                                     dtype=dtype)
     layer_master = layer_master.to(device)
 
     weight_master = layer_master.weight.data
@@ -229,8 +247,8 @@ def check_classifier():
     torch.cuda.synchronize()
     fwd_end = time.time()
     print_rank_0(
-        'head forward: pass | {0} --> {1} | {2:.3f} s'.format(tuple(A.shape), tuple(out.shape), fwd_end - fwd_start),
-        logger)
+        'head forward: pass | {0} --> {1} | {2:.3f} s'.format(
+            tuple(A.shape), tuple(out.shape), fwd_end - fwd_start), logger)
     A_master = A_master.clone()
     A_master.requires_grad = True
     C_master = layer_master(A_master)
@@ -239,7 +257,9 @@ def check_classifier():
     logger.info('Rank {} head forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=0)[j]
@@ -249,7 +269,8 @@ def check_classifier():
     out.backward(grad)
     torch.cuda.synchronize()
     bwd_end = time.time()
-    print_rank_0('head backward: pass | {:.3f} s'.format(bwd_end - bwd_start), logger)
+    print_rank_0('head backward: pass | {:.3f} s'.format(bwd_end - bwd_start),
+                 logger)
 
     grad_master = grad_master.clone()
     C_master.backward(grad_master)
@@ -257,18 +278,21 @@ def check_classifier():
     A_grad = torch.chunk(A_grad, DEPTH, dim=0)[i]
     A_grad = torch.chunk(A_grad, DEPTH, dim=-1)[k]
     A_grad = torch.chunk(A_grad, DEPTH, dim=0)[j]
-    logger.info('Rank {} head backward (input_grad): {}'.format(rank, check_equal(A_grad, A.grad)))
+    logger.info('Rank {} head backward (input_grad): {}'.format(
+        rank, check_equal(A_grad, A.grad)))
 
     B_grad = layer_master.weight.grad
     B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[k]
     if j == k:
-        logger.info('Rank {} head backward (weight_grad): {}'.format(rank,
-                                                                     check_equal(B_grad, layer.weight.grad)))
+        logger.info('Rank {} head backward (weight_grad): {}'.format(
+            rank, check_equal(B_grad, layer.weight.grad)))
     else:
-        logger.info('Rank {} head backward (weight_grad): {}'.format(rank, layer.weight.grad is None))
+        logger.info('Rank {} head backward (weight_grad): {}'.format(
+            rank, layer.weight.grad is None))
 
     bias_grad = layer_master.bias.grad
-    logger.info('Rank {} head backward (bias_grad): {}'.format(rank, check_equal(bias_grad, layer.bias.grad)))
+    logger.info('Rank {} head backward (bias_grad): {}'.format(
+        rank, check_equal(bias_grad, layer.bias.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
@@ -292,7 +316,11 @@ def check_embed():
     torch.nn.init.ones_(layer.pos_embed)
     layer = layer.to(device)
 
-    layer_master = VanillaPatchEmbedding(IMG_SIZE, 4, 3, HIDDEN_SIZE, dtype=dtype)
+    layer_master = VanillaPatchEmbedding(IMG_SIZE,
+                                         4,
+                                         3,
+                                         HIDDEN_SIZE,
+                                         dtype=dtype)
     torch.nn.init.ones_(layer_master.cls_token)
     torch.nn.init.ones_(layer_master.pos_embed)
     layer_master = layer_master.to(device)
@@ -317,8 +345,8 @@ def check_embed():
     torch.cuda.synchronize()
     fwd_end = time.time()
     print_rank_0(
-        'embedding forward: pass | {0} --> {1} | {2:.3f} s'.format(tuple(A.shape), tuple(out.shape),
-                                                                   fwd_end - fwd_start), logger)
+        'embedding forward: pass | {0} --> {1} | {2:.3f} s'.format(
+            tuple(A.shape), tuple(out.shape), fwd_end - fwd_start), logger)
 
     A_master = A_master.clone()
     A_master.requires_grad = True
@@ -329,7 +357,9 @@ def check_embed():
     logger.info('Rank {} embed forward: {}'.format(rank, check_equal(out, C)))
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=0)[i]
     grad = torch.chunk(grad, DEPTH, dim=-1)[k]
@@ -339,30 +369,36 @@ def check_embed():
     out.backward(grad)
     torch.cuda.synchronize()
     bwd_end = time.time()
-    print_rank_0('embedding backward: pass | {:.3f} s'.format(bwd_end - bwd_start), logger)
+    print_rank_0(
+        'embedding backward: pass | {:.3f} s'.format(bwd_end - bwd_start),
+        logger)
 
     grad_master = grad_master.clone()
     C_master.backward(grad_master)
 
     cls_grad_master = layer_master.cls_token.grad
     cls_grad = torch.chunk(cls_grad_master, DEPTH, dim=-1)[k]
-    logger.info('Rank {} embed backward (cls_grad): {}'.format(rank, check_equal(cls_grad, layer.cls_token.grad)))
+    logger.info('Rank {} embed backward (cls_grad): {}'.format(
+        rank, check_equal(cls_grad, layer.cls_token.grad)))
 
     pos_grad_master = layer_master.pos_embed.grad
     pos_grad = torch.chunk(pos_grad_master, DEPTH, dim=-1)[k]
-    logger.info('Rank {} embed backward (pos_embed_grad): {}'.format(rank, check_equal(pos_grad, layer.pos_embed.grad)))
+    logger.info('Rank {} embed backward (pos_embed_grad): {}'.format(
+        rank, check_equal(pos_grad, layer.pos_embed.grad)))
 
     B_grad = layer_master.weight.grad
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[k]
     if j == k:
-        logger.info('Rank {} embed backward (proj_weight_grad): {}'.format(rank, check_equal(B_grad,
-                                                                                             layer.weight.grad)))
+        logger.info('Rank {} embed backward (proj_weight_grad): {}'.format(
+            rank, check_equal(B_grad, layer.weight.grad)))
     else:
-        logger.info('Rank {} embed backward (proj_weight_grad): {}'.format(rank, layer.weight.grad is None))
+        logger.info('Rank {} embed backward (proj_weight_grad): {}'.format(
+            rank, layer.weight.grad is None))
 
     bias_grad = layer_master.bias.grad
     bias_grad = torch.chunk(bias_grad, DEPTH)[k]
-    logger.info('Rank {} embed backward (proj_bias_grad): {}'.format(rank, check_equal(bias_grad, layer.bias.grad)))
+    logger.info('Rank {} embed backward (proj_bias_grad): {}'.format(
+        rank, check_equal(bias_grad, layer.bias.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start
 
@@ -386,7 +422,9 @@ def check_loss():
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
     out_master = torch.randn(out_shape, dtype=dtype, device=device)
-    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, ), dtype=torch.long, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,),
+                                  dtype=torch.long,
+                                  device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
     out = torch.chunk(out_master, DEPTH, dim=0)[i]
@@ -398,23 +436,26 @@ def check_loss():
     loss = criterion(out, target_master)
     fwd_end = time.time()
     print_rank_0(
-        'loss forward: pass | {0} --> {1} | {2:.3f} s'.format(tuple(out.shape), tuple(loss.shape), fwd_end - fwd_start),
-        logger)
+        'loss forward: pass | {0} --> {1} | {2:.3f} s'.format(
+            tuple(out.shape), tuple(loss.shape), fwd_end - fwd_start), logger)
 
     out_master = out_master.clone()
     out_master.requires_grad = True
     loss_master = criterion_master(out_master, target_master)
-    logger.info('Rank {} CrossEntropyLoss forward: {}'.format(rank, check_equal(loss, loss_master)))
+    logger.info('Rank {} CrossEntropyLoss forward: {}'.format(
+        rank, check_equal(loss, loss_master)))
 
     bwd_start = time.time()
     loss.backward()
     bwd_end = time.time()
-    print_rank_0('loss backward: pass | {:.3f} s'.format(bwd_end - bwd_start), logger)
+    print_rank_0('loss backward: pass | {:.3f} s'.format(bwd_end - bwd_start),
+                 logger)
 
     loss_master.backward()
     out_grad = out_master.grad
     out_grad = torch.chunk(out_grad, DEPTH, dim=0)[i]
     out_grad = torch.chunk(out_grad, DEPTH, dim=0)[j]
-    logger.info('Rank {} CrossEntropyLoss backward: {}'.format(rank, check_equal(out_grad, out.grad)))
+    logger.info('Rank {} CrossEntropyLoss backward: {}'.format(
+        rank, check_equal(out_grad, out.grad)))
 
     return fwd_end - fwd_start, bwd_end - bwd_start

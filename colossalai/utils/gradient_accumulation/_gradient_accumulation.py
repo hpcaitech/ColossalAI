@@ -26,7 +26,10 @@ class GradAccumOptimizer(ColossalaiOptimizer):
 
     """
 
-    def __init__(self, optim: Optimizer, accumulate_size: int, model: nn.Module = None):
+    def __init__(self,
+                 optim: Optimizer,
+                 accumulate_size: int,
+                 model: nn.Module = None):
         super().__init__(optim)
         self.accumulate_size = accumulate_size
         self.accumulate_step = 0
@@ -93,7 +96,8 @@ class GradAccumDataloader:
     def __init__(self, dataloader: Iterable, accumulate_size: int) -> None:
         self.dataloader = dataloader
         self.consume_remain_data = not isinstance(dataloader, DataLoader)
-        self.steps_per_epoch = len(dataloader) - len(dataloader) % accumulate_size
+        self.steps_per_epoch = len(
+            dataloader) - len(dataloader) % accumulate_size
 
     def __getattr__(self, __name: str) -> Any:
         return getattr(self.dataloader, __name)
@@ -134,13 +138,15 @@ class GradAccumLrSchedulerByStep(_LRScheduler):
 
     """
 
-    def __init__(self, lr_scheduler: _LRScheduler, accumulate_size: int) -> None:
+    def __init__(self, lr_scheduler: _LRScheduler,
+                 accumulate_size: int) -> None:
         self.lr_scheduler = lr_scheduler
         self.accumulate_size = accumulate_size
         self.accumulate_step = 0
 
     @staticmethod
-    def compute_effective_steps_per_epoch(dataloader: Iterable, accumulate_size: int):
+    def compute_effective_steps_per_epoch(dataloader: Iterable,
+                                          accumulate_size: int):
         return len(dataloader) // accumulate_size
 
     def __getattr__(self, __name: str) -> Any:
@@ -181,7 +187,8 @@ class GradAccumGradientHandler:
 
     """
 
-    def __init__(self, grad_handler: BaseGradientHandler, accumulate_size: int) -> None:
+    def __init__(self, grad_handler: BaseGradientHandler,
+                 accumulate_size: int) -> None:
         assert isinstance(grad_handler, BaseGradientHandler), \
             f'expected grad_handler to be type BaseGradientHandler, but got {type(grad_handler)}'
         self.grad_handler = grad_handler
