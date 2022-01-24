@@ -5,7 +5,7 @@ on: pull_request
 jobs:
   autoyapf:
     runs-on: ubuntu-latest
-#     if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -40,5 +40,5 @@ jobs:
             Automated PR to fix formatting errors
           committer: GitHub <noreply@github.com>
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-#           assignees: frankleeeee, kurisusnowdeng
-#           reviewers: frankleeeee, kurisusnowdeng
+          assignees: frankleeeee, kurisusnowdeng
+          reviewers: frankleeeee, kurisusnowdeng
