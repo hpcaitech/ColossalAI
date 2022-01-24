@@ -14,7 +14,6 @@ from colossalai.logging import DistributedLogger
 from colossalai.utils import MultiTimer
 from colossalai.utils import is_dp_rank_0, is_tp_rank_0, is_no_pp_or_last_stage
 from colossalai.trainer.hooks import BaseHook
-from colossalai.trainer.ophooks import BaseOpHook, register_ophooks_recursively
 
 
 class Trainer:
@@ -69,10 +68,6 @@ class Trainer:
             ), "NonPipelineSchedule cannot be used for pipeline parallel training, please use PipelineSchedule instead."
         self._schedule = schedule
         self._schedule.pre_processing(engine)
-
-    def register_ophooks(self, ophook_list):
-        """Register the ophooks for the model"""
-        register_ophooks_recursively(self._engine._model, ophook_list)
 
     @property
     def cur_epoch(self):
@@ -275,7 +270,6 @@ class Trainer:
             test_dataloader: DataLoader = None,
             test_interval: int = 1,
             hooks: List[BaseHook] = None,
-            ophook_list: List[BaseOpHook] = [],
             display_progress: bool = False,
             return_output_label: bool = True,
     ):
@@ -333,8 +327,6 @@ class Trainer:
                 ranks=[0])
         self._call_hooks("after_hook_is_attached")
 
-        # start train
-        self.register_ophooks(ophook_list)
         self._engine.train()
         self._call_hooks("before_train")
 

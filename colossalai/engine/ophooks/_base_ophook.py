@@ -23,3 +23,7 @@ class BaseOpHook(ABC):
     @abstractmethod
     def post_bwd_exec(self, module: torch.nn.Module, input):
         pass
+
+    @abstractmethod
+    def post_iter(self):
+        pass

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-
 from typing import List
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
@@ -9,10 +8,11 @@ from torch.optim import Optimizer
 
 from colossalai.logging import get_dist_logger
 from torch import Tensor
+from colossalai.engine.ophooks import register_ophooks_recursively, BaseOpHook
 
 
 class Engine:
-    """Basic engine class for training and evaluation. It runs a specific process method 
+    """Basic engine class for training and evaluation. It runs a specific process method
     :meth:`step` which is based on the given :attr:`schedule` over each batch of a dataset.
     It controls a iteration in training.
 
@@ -29,15 +29,14 @@ class Engine:
     :param verbose: whether to display log info
     :type verbose: bool
     """
-
     def __init__(self,
                  model: Module,
                  optimizer: Optimizer,
                  criterion: _Loss,
                  gradient_handlers: List = None,
                  clip_grad_norm: float = 0.0,
-                 verbose: bool = True
-                 ):
+                 ophook_list: List[BaseOpHook] = [],
+                 verbose: bool = True):
         self._model = model
         self._optimizer = optimizer
         self._criterion = criterion
@@ -53,6 +52,9 @@ class Engine:
             self._gradient_handlers = gradient_handlers
         else:
             self._gradient_handlers = []
+
+        self._ophook_list = ophook_list
+        register_ophooks_recursively(self._model, self._ophook_list)
 
     @property
     def model(self):
@@ -87,7 +89,10 @@ class Engine:
         :param loss: Loss value computed by a loss function
         :type loss: :class:`torch.Tensor`
         """
-        return self.optimizer.backward(loss)
+        ret = self.optimizer.backward(loss)
+        for ophook in self._ophook_list:
+            ophook.post_iter()
+        return ret
 
     def backward_by_grad(self, tensor, grad):
         """Start backward propagation given the gradient of the output tensor
@@ -97,7 +102,10 @@ class Engine:
         :param grad: Gradient passed back to the output
         :type grad: :class:`torch.Tensor`
         """
-        return self.optimizer.backward_by_grad(tensor, grad)
+        ret = self.optimizer.backward_by_grad(tensor, grad)
+        for ophook in self._ophook_list:
+            ophook.post_iter()
+        return ret
 
     def calc_loss(self, *args, **kwargs):
         """Compute the loss value
