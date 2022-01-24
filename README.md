@@ -1,4 +1,5 @@
 # Colossal-AI
+<!-- TEST -->
 
 [![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
