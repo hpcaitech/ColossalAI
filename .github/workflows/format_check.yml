@@ -1,0 +1,44 @@
+name: Format check on pull request
+
+on: pull_request
+
+jobs:
+  autoyapf:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: autoyapf
+        id: autoyapf
+        uses: mritunjaysharma394/autoyapf@v2
+        with:
+          args: --style google --recursive --in-place .
+
+      - name: Check for modified files
+        id: git-check
+        run: echo ::set-output name=modified::$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)
+      
+      - name: Push changes
+        if: steps.git-check.outputs.modified == 'true'
+        run: |
+          git config --global user.name 'github-actions' 
+          git config --global user.email 'github-actions@github.com' 
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git commit -am "Automated autoyapf fixes"
+        continue-on-error: true
+      
+      - name: Create Pull Request
+        # if: steps.format.outputs.has-changes == 'true'
+        uses: peter-evans/create-pull-request@v3
+        with:
+          title: '[Bot] Automated PR to fix formatting errors'
+          body: |
+            Automated PR to fix formatting errors
+          committer: GitHub <noreply@github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          assignees: ${{ github.actor }}
+          reviewers: hpcaitech/pull-request-reviewer
