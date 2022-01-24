@@ -1,0 +1,83 @@
+name: Pull Request CI and Build
+
+on: pull_request
+
+jobs:
+  assign_reviewer:
+    name: Assign Reviewer for PR
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && toJson(github.event.pull_request.requested_reviewers) == '[]'
+    steps:
+      - uses: kentaro-m/auto-assign-action@v1.2.1
+        with:
+          configuration-path: '.github/reviewer_list.yml'
+
+  build:
+    name: Build and Test Colossal-AI
+    if: ${{ always() }} && github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    needs: [assign_reviewer]
+    runs-on: [self-hosted, gpu]
+    container:
+      image: nvcr.io/nvidia/pytorch:21.07-py3
+      options: --gpus all --rm --ipc=host -v /data/cifar-10:/data/cifar-10
+    timeout-minutes: 20
+    steps:
+      - name: Setup Environment
+        run: |
+          export https_proxy=http://172.17.0.1:7890 http_proxy=http://172.17.0.1:7890 all_proxy=socks5://172.17.0.1:7890
+      - name: Install dependencies
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip install -U pip setuptools wheel --user
+          pip install pytest tensorboard deepspeed apex
+      - uses: actions/checkout@v2
+      - name: Install Colossal-AI      
+        run: |
+          pip install -r requirements/requirements.txt
+          pip install -v --no-cache-dir --global-option="--cuda_ext" .
+      - name: Unit Testing
+        run: |
+          pytest tests
+        env:
+          DATA: /data/cifar-10
+
+  format_check:
+    name: Format Check
+    if: ${{ always() }} && github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    needs: [assign_reviewer, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: autoyapf
+        id: autoyapf
+        uses: mritunjaysharma394/autoyapf@v2
+        with:
+          args: --style google --recursive --in-place .
+
+      - name: Check for modified files
+        id: git-check
+        run: echo ::set-output name=modified::$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)
+      
+      - name: Push changes
+        if: steps.git-check.outputs.modified == 'true'
+        run: |
+          git config --global user.name 'github-actions' 
+          git config --global user.email 'github-actions@github.com' 
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git commit -am "Automated autoyapf fixes"
+      
+      - name: Create Pull Request
+        # if: steps.format.outputs.has-changes == 'true'
+        uses: peter-evans/create-pull-request@v3
+        with:
+          title: '[Bot] Automated PR to fix formatting errors'
+          body: |
+            Automated PR to fix formatting errors
+          committer: GitHub <noreply@github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          assignees: ${{ github.actor }}
+          reviewers: frankleeeee
