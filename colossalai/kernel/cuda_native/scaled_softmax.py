@@ -25,12 +25,12 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
         try:
             import colossal_scaled_upper_triang_masked_softmax
         except ImportError:
-            raise RuntimeError('ScaledUpperTriangMaskedSoftmax requires cuda extensions')
+            raise RuntimeError(
+                'ScaledUpperTriangMaskedSoftmax requires cuda extensions')
 
         scale_t = torch.tensor([scale])
         softmax_results = colossal_scaled_upper_triang_masked_softmax.forward(
-            inputs, scale_t[0]
-        )
+            inputs, scale_t[0])
 
         ctx.save_for_backward(softmax_results, scale_t)
         return softmax_results
@@ -40,12 +40,12 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
         try:
             import colossal_scaled_upper_triang_masked_softmax
         except ImportError:
-            raise RuntimeError('ScaledUpperTriangMaskedSoftmax requires cuda extensions')
+            raise RuntimeError(
+                'ScaledUpperTriangMaskedSoftmax requires cuda extensions')
 
         softmax_results, scale_t = ctx.saved_tensors
         input_grads = colossal_scaled_upper_triang_masked_softmax.backward(
-            output_grads, softmax_results, scale_t[0]
-        )
+            output_grads, softmax_results, scale_t[0])
 
         return input_grads, None
 
@@ -68,7 +68,8 @@ class ScaledMaskedSoftmax(torch.autograd.Function):
 
         scale_t = torch.tensor([scale])
 
-        softmax_results = colossal_scaled_masked_softmax.forward(inputs, mask, scale_t[0])
+        softmax_results = colossal_scaled_masked_softmax.forward(
+            inputs, mask, scale_t[0])
         ctx.save_for_backward(softmax_results, scale_t)
         return softmax_results
 
@@ -82,8 +83,7 @@ class ScaledMaskedSoftmax(torch.autograd.Function):
         softmax_results, scale_t = ctx.saved_tensors
 
         input_grads = colossal_scaled_masked_softmax.backward(
-            output_grads, softmax_results, scale_t[0]
-        )
+            output_grads, softmax_results, scale_t[0])
         return input_grads, None, None
 
 
@@ -124,9 +124,8 @@ class FusedScaleMaskSoftmax(nn.Module):
         self.softmax_in_fp32 = softmax_in_fp32
         self.scale = scale
 
-        assert (
-            self.scale is None or softmax_in_fp32
-        ), "softmax should be in fp32 when scaled"
+        assert (self.scale is None
+                or softmax_in_fp32), "softmax should be in fp32 when scaled"
 
     def forward(self, input, mask):
         # [b, np, sq, sk]
@@ -140,14 +139,13 @@ class FusedScaleMaskSoftmax(nn.Module):
     def is_kernel_available(self, mask, b, np, sq, sk):
         attn_batches = b * np
 
-        if (
-            self.scaled_masked_softmax_fusion  # user want to fuse
-            and self.input_in_float16  # input must be fp16
-            and mask is not None  # mask tensor must not be None
-            and 16 < sk <= 2048  # sk must be 16 ~ 2048
-            and sq % 4 == 0  # sq must be divisor of 4
-            and attn_batches % 4 == 0  # np * b must be divisor of 4
-        ):
+        if (self.scaled_masked_softmax_fusion  # user want to fuse
+                and self.input_in_float16  # input must be fp16
+                and mask is not None  # mask tensor must not be None
+                and 16 < sk <= 2048  # sk must be 16 ~ 2048
+                and sq % 4 == 0  # sq must be divisor of 4
+                and attn_batches % 4 == 0  # np * b must be divisor of 4
+            ):
             if 0 <= sk <= 2048:
                 batch_per_block = self.get_batch_per_block(sq, sk, b, np)
 
@@ -180,7 +178,8 @@ class FusedScaleMaskSoftmax(nn.Module):
 
         if self.scale is not None:
             input = input * self.scale
-        mask_output = self.mask_func(input, mask) if mask is not None else input
+        mask_output = self.mask_func(input,
+                                     mask) if mask is not None else input
         probs = torch.nn.Softmax(dim=-1)(mask_output)
 
         if self.input_in_float16 and self.softmax_in_fp32:
@@ -198,4 +197,5 @@ class FusedScaleMaskSoftmax(nn.Module):
         except ImportError:
             raise RuntimeError('ScaledMaskedSoftmax requires cuda extensions')
 
-        return colossal_scaled_masked_softmax.get_batch_per_block(sq, sk, b, np)
+        return colossal_scaled_masked_softmax.get_batch_per_block(
+            sq, sk, b, np)

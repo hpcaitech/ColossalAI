@@ -55,12 +55,13 @@ class Initializer_Sequence(ProcessGroupInitializer):
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
     """
-    def __init__(self,
-                 *args, **kwargs):
+
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # reuse tensor parallel initializer code
         self._sequence_initializer = Initializer_Tensor(*args, **kwargs)
-        self._sequence_dp_initializer = Initializer_Sequence_DP(*args, **kwargs)
+        self._sequence_dp_initializer = Initializer_Sequence_DP(
+            *args, **kwargs)
 
     def init_dist_group(self):
         """Initialize Sequence parallel process groups and assign local_ranks and groups to each gpu.
@@ -75,10 +76,13 @@ class Initializer_Sequence(ProcessGroupInitializer):
 
         parallel_setting = []
 
-        local_rank, group_world_size, process_group, ranks_in_group, mode = self._sequence_initializer.init_dist_group()
+        local_rank, group_world_size, process_group, ranks_in_group, mode = self._sequence_initializer.init_dist_group(
+        )
         # change mode to sequence
         mode = ParallelMode.SEQUENCE
 
-        parallel_setting.append((local_rank, group_world_size, process_group, ranks_in_group, mode))
-        parallel_setting.append(self._sequence_dp_initializer.init_dist_group())
+        parallel_setting.append((local_rank, group_world_size, process_group,
+                                 ranks_in_group, mode))
+        parallel_setting.append(
+            self._sequence_dp_initializer.init_dist_group())
         return parallel_setting

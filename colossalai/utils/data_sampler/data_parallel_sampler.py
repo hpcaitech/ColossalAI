@@ -58,7 +58,8 @@ class DataParallelSampler(Sampler):
             )
         else:
             self.num_samples = math.ceil(
-                len(self.dataset) / self.num_replicas)  # type: ignore[arg-type]
+                len(self.dataset) /
+                self.num_replicas)  # type: ignore[arg-type]
         self.total_size = self.num_samples * self.num_replicas
         self.shuffle = shuffle
         self.seed = seed
@@ -83,8 +84,9 @@ class DataParallelSampler(Sampler):
             if padding_size <= len(indices):
                 indices += indices[:padding_size]
             else:
-                indices += (indices * math.ceil(padding_size /
-                            len(indices)))[:padding_size]
+                indices += (
+                    indices *
+                    math.ceil(padding_size / len(indices)))[:padding_size]
         else:
             # remove tail of data to make it evenly divisible.
             indices = indices[:self.total_size]
@@ -112,8 +114,8 @@ class DataParallelSampler(Sampler):
 
 def get_dataloader(dataset,
                    shuffle=False,
-                   seed=1024, 
-                   add_sampler=True, 
+                   seed=1024,
+                   add_sampler=True,
                    drop_last=False,
                    pin_memory=False,
                    num_workers=0,
@@ -144,7 +146,8 @@ def get_dataloader(dataset,
     """
     _kwargs = kwargs.copy()
 
-    if add_sampler and gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1:
+    if add_sampler and gpc.is_initialized(
+            ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1:
         sampler = DataParallelSampler(dataset, shuffle=shuffle)
     else:
         sampler = None

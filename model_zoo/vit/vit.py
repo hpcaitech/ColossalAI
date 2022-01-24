@@ -63,6 +63,7 @@ _init_rules = dict(
 
 @LAYERS.register_module
 class ViTEmbedding(nn.Module):
+
     def __init__(self,
                  img_size: int,
                  patch_size: int,
@@ -73,13 +74,14 @@ class ViTEmbedding(nn.Module):
                  flatten: bool = True,
                  init_method: str = 'torch'):
         super().__init__()
-        self.patch_embed = col_nn.PatchEmbedding(img_size,
-                                                 patch_size,
-                                                 in_chans,
-                                                 embedding_dim,
-                                                 dtype=dtype,
-                                                 flatten=flatten,
-                                                 **_init_rules[init_method]['embed'])
+        self.patch_embed = col_nn.PatchEmbedding(
+            img_size,
+            patch_size,
+            in_chans,
+            embedding_dim,
+            dtype=dtype,
+            flatten=flatten,
+            **_init_rules[init_method]['embed'])
         self.dropout = col_nn.Dropout(dropout)
 
     def forward(self, x):
@@ -90,6 +92,7 @@ class ViTEmbedding(nn.Module):
 
 @LAYERS.register_module
 class ViTSelfAttention(nn.Module):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -100,13 +103,18 @@ class ViTSelfAttention(nn.Module):
                  init_method: str = 'torch'):
         super().__init__()
         self.attention_head_size = dim // num_heads
-        self.query_key_value = col_nn.Linear(dim,
-                                             3 * dim,
-                                             dtype=dtype,
-                                             bias=bias,
-                                             **_init_rules[init_method]['transformer'])
+        self.query_key_value = col_nn.Linear(
+            dim,
+            3 * dim,
+            dtype=dtype,
+            bias=bias,
+            **_init_rules[init_method]['transformer'])
         self.attention_dropout = col_nn.Dropout(attention_dropout)
-        self.dense = col_nn.Linear(dim, dim, dtype=dtype, bias=True, **_init_rules[init_method]['transformer'])
+        self.dense = col_nn.Linear(dim,
+                                   dim,
+                                   dtype=dtype,
+                                   bias=True,
+                                   **_init_rules[init_method]['transformer'])
         self.dropout = col_nn.Dropout(dropout)
         self.softmax = nn.Softmax(dim=-1)
 
@@ -138,6 +146,7 @@ class ViTSelfAttention(nn.Module):
 
 @LAYERS.register_module
 class ViTMLP(nn.Module):
+
     def __init__(self,
                  dim: int,
                  mlp_ratio: int,
@@ -172,6 +181,7 @@ class ViTMLP(nn.Module):
 
 @LAYERS.register_module
 class ViTHead(nn.Module):
+
     def __init__(self,
                  dim: int,
                  num_classes: int,
@@ -181,11 +191,12 @@ class ViTHead(nn.Module):
                  init_method: str = 'torch'):
         super().__init__()
         if representation_size:
-            self.representation = col_nn.Linear(dim,
-                                                representation_size,
-                                                bias=bias,
-                                                dtype=dtype,
-                                                **_init_rules[init_method]['head'])
+            self.representation = col_nn.Linear(
+                dim,
+                representation_size,
+                bias=bias,
+                dtype=dtype,
+                **_init_rules[init_method]['head'])
         else:
             self.representation = None
             representation_size = dim
@@ -206,6 +217,7 @@ class ViTHead(nn.Module):
 
 @LAYERS.register_module
 class ViTBlock(CheckpointModule):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -220,7 +232,9 @@ class ViTBlock(CheckpointModule):
                  checkpoint: bool = False,
                  init_method: str = 'torch'):
         super().__init__(checkpoint)
-        self.norm1 = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
+        self.norm1 = col_nn.LayerNorm(normalized_shape=dim,
+                                      eps=layernorm_epsilon,
+                                      dtype=dtype)
         self.attn = ViTSelfAttention(dim=dim,
                                      num_heads=num_heads,
                                      attention_dropout=attention_dropout,
@@ -228,8 +242,11 @@ class ViTBlock(CheckpointModule):
                                      bias=bias,
                                      dtype=dtype,
                                      init_method=init_method)
-        self.drop_path = col_nn.DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.norm2 = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
+        self.drop_path = col_nn.DropPath(
+            drop_path) if drop_path > 0. else nn.Identity()
+        self.norm2 = col_nn.LayerNorm(normalized_shape=dim,
+                                      eps=layernorm_epsilon,
+                                      dtype=dtype)
         self.mlp = ViTMLP(dim=dim,
                           mlp_ratio=mlp_ratio,
                           activation=activation,
@@ -246,6 +263,7 @@ class ViTBlock(CheckpointModule):
 
 @MODELS.register_module
 class VisionTransformer(nn.Module):
+
     def __init__(self,
                  img_size: int = 224,
                  patch_size: int = 16,
@@ -293,7 +311,9 @@ class VisionTransformer(nn.Module):
             ) for i in range(depth)
         ]
 
-        norm = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
+        norm = col_nn.LayerNorm(normalized_shape=dim,
+                                eps=layernorm_epsilon,
+                                dtype=dtype)
 
         head = ViTHead(dim=dim,
                        num_classes=num_classes,
@@ -321,95 +341,193 @@ def _create_vit_model(**model_kwargs):
 
 @MODELS.register_module
 def vit_lite_depth7_patch4_32(**kwargs):
-    model_kwargs = dict(img_size=32, patch_size=4, dim=256, depth=7, num_heads=4, mlp_ratio=2, num_classes=10, **kwargs)
+    model_kwargs = dict(img_size=32,
+                        patch_size=4,
+                        dim=256,
+                        depth=7,
+                        num_heads=4,
+                        mlp_ratio=2,
+                        num_classes=10,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_tiny_patch4_32(**kwargs):
-    model_kwargs = dict(img_size=32, patch_size=4, dim=512, depth=6, num_heads=8, mlp_ratio=1, num_classes=10, **kwargs)
+    model_kwargs = dict(img_size=32,
+                        patch_size=4,
+                        dim=512,
+                        depth=6,
+                        num_heads=8,
+                        mlp_ratio=1,
+                        num_classes=10,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_tiny_patch16_224(**kwargs):
-    model_kwargs = dict(img_size=224, patch_size=16, dim=192, depth=12, num_heads=3, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=224,
+                        patch_size=16,
+                        dim=192,
+                        depth=12,
+                        num_heads=3,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_tiny_patch16_384(**kwargs):
-    model_kwargs = dict(img_size=384, patch_size=16, dim=192, depth=12, num_heads=3, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=384,
+                        patch_size=16,
+                        dim=192,
+                        depth=12,
+                        num_heads=3,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_small_patch16_224(**kwargs):
-    model_kwargs = dict(img_size=224, patch_size=16, dim=384, depth=12, num_heads=6, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=224,
+                        patch_size=16,
+                        dim=384,
+                        depth=12,
+                        num_heads=6,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_small_patch16_384(**kwargs):
-    model_kwargs = dict(img_size=384, patch_size=16, dim=384, depth=12, num_heads=6, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=384,
+                        patch_size=16,
+                        dim=384,
+                        depth=12,
+                        num_heads=6,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_small_patch32_224(**kwargs):
-    model_kwargs = dict(img_size=224, patch_size=32, dim=384, depth=12, num_heads=6, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=224,
+                        patch_size=32,
+                        dim=384,
+                        depth=12,
+                        num_heads=6,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_small_patch32_384(**kwargs):
-    model_kwargs = dict(img_size=384, patch_size=32, dim=384, depth=12, num_heads=6, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=384,
+                        patch_size=32,
+                        dim=384,
+                        depth=12,
+                        num_heads=6,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_base_patch16_224(**kwargs):
-    model_kwargs = dict(img_size=224, patch_size=16, dim=768, depth=12, num_heads=12, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=224,
+                        patch_size=16,
+                        dim=768,
+                        depth=12,
+                        num_heads=12,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_base_patch16_384(**kwargs):
-    model_kwargs = dict(img_size=384, patch_size=16, dim=768, depth=12, num_heads=12, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=384,
+                        patch_size=16,
+                        dim=768,
+                        depth=12,
+                        num_heads=12,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_base_patch32_224(**kwargs):
-    model_kwargs = dict(img_size=224, patch_size=32, dim=768, depth=12, num_heads=12, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=224,
+                        patch_size=32,
+                        dim=768,
+                        depth=12,
+                        num_heads=12,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_base_patch32_384(**kwargs):
-    model_kwargs = dict(img_size=384, patch_size=32, dim=768, depth=12, num_heads=12, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=384,
+                        patch_size=32,
+                        dim=768,
+                        depth=12,
+                        num_heads=12,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_large_patch16_224(**kwargs):
-    model_kwargs = dict(img_size=224, patch_size=16, dim=1024, depth=24, num_heads=16, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=224,
+                        patch_size=16,
+                        dim=1024,
+                        depth=24,
+                        num_heads=16,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_large_patch16_384(**kwargs):
-    model_kwargs = dict(img_size=384, patch_size=16, dim=1024, depth=24, num_heads=16, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=384,
+                        patch_size=16,
+                        dim=1024,
+                        depth=24,
+                        num_heads=16,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_large_patch32_224(**kwargs):
-    model_kwargs = dict(img_size=224, patch_size=32, dim=1024, depth=24, num_heads=16, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=224,
+                        patch_size=32,
+                        dim=1024,
+                        depth=24,
+                        num_heads=16,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)
 
 
 @MODELS.register_module
 def vit_large_patch32_384(**kwargs):
-    model_kwargs = dict(img_size=384, patch_size=32, dim=1024, depth=24, num_heads=16, mlp_ratio=4, **kwargs)
+    model_kwargs = dict(img_size=384,
+                        patch_size=32,
+                        dim=1024,
+                        depth=24,
+                        num_heads=16,
+                        mlp_ratio=4,
+                        **kwargs)
     return _create_vit_model(**model_kwargs)

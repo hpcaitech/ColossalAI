@@ -53,12 +53,14 @@ class MixedFusedLayerNorm(torch.nn.Module):
         global colossal_layer_norm_cuda
         if colossal_layer_norm_cuda is None:
             try:
-                colossal_layer_norm_cuda = importlib.import_module("colossal_layer_norm_cuda")
+                colossal_layer_norm_cuda = importlib.import_module(
+                    "colossal_layer_norm_cuda")
             except ImportError:
-                raise RuntimeError('MixedFusedLayerNorm requires cuda extensions')
+                raise RuntimeError(
+                    'MixedFusedLayerNorm requires cuda extensions')
 
         if isinstance(normalized_shape, numbers.Integral):
-            normalized_shape = (normalized_shape,)
+            normalized_shape = (normalized_shape, )
         self.normalized_shape = torch.Size(normalized_shape)
         self.eps = eps
         self.weight = Parameter(torch.Tensor(*normalized_shape))
@@ -72,8 +74,10 @@ class MixedFusedLayerNorm(torch.nn.Module):
 
     def forward(self, input):
 
-        return FusedLayerNormAffineFunction.apply(input, self.weight, self.bias,
-                                                  self.normalized_shape, self.eps)
+        return FusedLayerNormAffineFunction.apply(input, self.weight,
+                                                  self.bias,
+                                                  self.normalized_shape,
+                                                  self.eps)
 
     def __repr__(self):
         return f'MixedFusedLayerNorm(normalized_shape={self.normalized_shape}, eps={self.eps})'

@@ -58,13 +58,12 @@ class SaveCheckpointHook(BaseHook):
                                                 trainer.cur_epoch,
                                                 suffix=self.suffix)
 
-                save_checkpoint(save_path,
-                                trainer.cur_epoch,
-                                trainer.engine.model,
-                                trainer.engine.optimizer,
+                save_checkpoint(save_path, trainer.cur_epoch,
+                                trainer.engine.model, trainer.engine.optimizer,
                                 self._lr_scheduler)
                 self.logger.info(
-                    f'checkpoint for epoch {trainer.cur_epoch} is saved to {self.checkpoint_dir}', ranks=[0])
+                    f'checkpoint for epoch {trainer.cur_epoch} is saved to {self.checkpoint_dir}',
+                    ranks=[0])
 
 
 @HOOKS.register_module
@@ -112,9 +111,12 @@ class LoadCheckpointHook(BaseHook):
 
         # use latest checkpoint if epoch = -1
         if self.epoch == -1:
-            path = get_latest_checkpoint_path(self.checkpoint_dir, suffix=self.suffix)
+            path = get_latest_checkpoint_path(self.checkpoint_dir,
+                                              suffix=self.suffix)
         else:
-            path = get_checkpoint_path(self.checkpoint_dir, epoch=self.epoch, suffix=self.suffix)
+            path = get_checkpoint_path(self.checkpoint_dir,
+                                       epoch=self.epoch,
+                                       suffix=self.suffix)
 
         if osp.exists(path):
             last_epoch, _ = load_checkpoint(path,
@@ -128,7 +130,6 @@ class LoadCheckpointHook(BaseHook):
             else:
                 trainer.cur_epoch = last_epoch
 
-            self.logger.info(
-                f'loaded checkpoint from {path}', ranks=[0])
+            self.logger.info(f'loaded checkpoint from {path}', ranks=[0])
         else:
             raise FileNotFoundError(f'checkpoint is not found at {path}')

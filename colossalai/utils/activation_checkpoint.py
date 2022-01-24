@@ -81,7 +81,7 @@ class CheckpointFunction(torch.autograd.Function):
                 outputs = ctx.run_function(*detached_inputs)
 
         if isinstance(outputs, torch.Tensor):
-            outputs = (outputs,)
+            outputs = (outputs, )
 
         # recover the rng states
         torch.set_rng_state(bwd_cpu_rng_state)
@@ -97,14 +97,13 @@ class CheckpointFunction(torch.autograd.Function):
                 outputs_with_grad.append(outputs[i])
                 args_with_grad.append(args[i])
         if len(outputs_with_grad) == 0:
-            raise RuntimeError(
-                "none of output has requires_grad=True,"
-                " this checkpoint() is not necessary")
+            raise RuntimeError("none of output has requires_grad=True,"
+                               " this checkpoint() is not necessary")
         torch.autograd.backward(outputs_with_grad, args_with_grad)
         grads = tuple(inp.grad if isinstance(inp, torch.Tensor) else None
                       for inp in detached_inputs)
 
-        return (None,) + grads
+        return (None, ) + grads
 
 
 def checkpoint(function, *args):

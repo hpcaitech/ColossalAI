@@ -19,17 +19,17 @@ class VanillaResNet(ModelFromConfig):
     """
 
     def __init__(
-            self,
-            num_cls: int,
-            block_type: str,
-            layers: List[int],
-            norm_layer_type: str = 'BatchNorm2d',
-            in_channels: int = 3,
-            groups: int = 1,
-            width_per_group: int = 64,
-            zero_init_residual: bool = False,
-            replace_stride_with_dilation: Optional[List[bool]] = None,
-            dilations=(1, 1, 1, 1)
+        self,
+        num_cls: int,
+        block_type: str,
+        layers: List[int],
+        norm_layer_type: str = 'BatchNorm2d',
+        in_channels: int = 3,
+        groups: int = 1,
+        width_per_group: int = 64,
+        zero_init_residual: bool = False,
+        replace_stride_with_dilation: Optional[List[bool]] = None,
+        dilations=(1, 1, 1, 1)
     ) -> None:
         super().__init__()
 
@@ -38,13 +38,11 @@ class VanillaResNet(ModelFromConfig):
         self.blocks = layers
         self.block_expansion = LAYERS.get_module(block_type).expansion
         self.dilations = dilations
-        self.reslayer_common_cfg = dict(
-            type='ResLayer',
-            block_type=block_type,
-            norm_layer_type=norm_layer_type,
-            groups=groups,
-            base_width=width_per_group
-        )
+        self.reslayer_common_cfg = dict(type='ResLayer',
+                                        block_type=block_type,
+                                        norm_layer_type=norm_layer_type,
+                                        groups=groups,
+                                        base_width=width_per_group)
 
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
@@ -53,7 +51,8 @@ class VanillaResNet(ModelFromConfig):
 
         if len(replace_stride_with_dilation) != 3:
             raise ValueError("replace_stride_with_dilation should be None "
-                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
+                             "or a 3-element tuple, got {}".format(
+                                 replace_stride_with_dilation))
 
         self.layers_cfg = [
             # conv1
@@ -65,75 +64,50 @@ class VanillaResNet(ModelFromConfig):
                  padding=3,
                  bias=False),
             # bn1
-            dict(
-                type=norm_layer_type,
-                num_features=self.inplanes
-            ),
+            dict(type=norm_layer_type, num_features=self.inplanes),
             # relu
-            dict(
-                type='ReLU',
-                inplace=True
-            ),
+            dict(type='ReLU', inplace=True),
             # maxpool
-            dict(
-                type='MaxPool2d',
-                kernel_size=3,
-                stride=2,
-                padding=1
-            ),
+            dict(type='MaxPool2d', kernel_size=3, stride=2, padding=1),
             # layer 1
-            dict(
-                inplanes=self.inplanes,
-                planes=64,
-                blocks=self.blocks[0],
-                dilation=self.dilations[0],
-                **self.reslayer_common_cfg
-            ),
+            dict(inplanes=self.inplanes,
+                 planes=64,
+                 blocks=self.blocks[0],
+                 dilation=self.dilations[0],
+                 **self.reslayer_common_cfg),
             # layer 2
-            dict(
-                inplanes=64 * self.block_expansion,
-                planes=128,
-                blocks=self.blocks[1],
-                stride=2,
-                dilate=replace_stride_with_dilation[0],
-                dilation=self.dilations[1],
-                **self.reslayer_common_cfg
-            ),
+            dict(inplanes=64 * self.block_expansion,
+                 planes=128,
+                 blocks=self.blocks[1],
+                 stride=2,
+                 dilate=replace_stride_with_dilation[0],
+                 dilation=self.dilations[1],
+                 **self.reslayer_common_cfg),
             # layer  3
-            dict(
-                inplanes=128 * self.block_expansion,
-                planes=256,
-                blocks=layers[2],
-                stride=2,
-                dilate=replace_stride_with_dilation[1],
-                dilation=self.dilations[2],
-                **self.reslayer_common_cfg
-            ),
+            dict(inplanes=128 * self.block_expansion,
+                 planes=256,
+                 blocks=layers[2],
+                 stride=2,
+                 dilate=replace_stride_with_dilation[1],
+                 dilation=self.dilations[2],
+                 **self.reslayer_common_cfg),
             # layer 4
-            dict(
-                inplanes=256 * self.block_expansion,
-                planes=512,
-                blocks=layers[3], stride=2,
-                dilate=replace_stride_with_dilation[2],
-                dilation=self.dilations[3],
-                **self.reslayer_common_cfg
-            ),
+            dict(inplanes=256 * self.block_expansion,
+                 planes=512,
+                 blocks=layers[3],
+                 stride=2,
+                 dilate=replace_stride_with_dilation[2],
+                 dilation=self.dilations[3],
+                 **self.reslayer_common_cfg),
             # avg pool
-            dict(
-                type='AdaptiveAvgPool2d',
-                output_size=(1, 1)
-            ),
+            dict(type='AdaptiveAvgPool2d', output_size=(1, 1)),
             # flatten
-            dict(
-                type='LambdaWrapper',
-                func=lambda mod, x: torch.flatten(x, 1)
-            ),
+            dict(type='LambdaWrapper',
+                 func=lambda mod, x: torch.flatten(x, 1)),
             # linear
-            dict(
-                type='Linear',
-                in_features=512 * self.block_expansion,
-                out_features=num_cls
-            )
+            dict(type='Linear',
+                 in_features=512 * self.block_expansion,
+                 out_features=num_cls)
         ]
 
     def forward(self, x: Tensor):
@@ -144,8 +118,9 @@ class VanillaResNet(ModelFromConfig):
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(
-                    m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight,
+                                        mode='fan_out',
+                                        nonlinearity='relu')
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)

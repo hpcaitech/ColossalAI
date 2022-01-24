@@ -5,6 +5,7 @@ from colossalai.registry import LOSSES
 from torch.nn.functional import cross_entropy
 from torch.nn.modules.loss import _Loss
 
+
 @LOSSES.register_module
 class CrossEntropyLoss3D(_Loss):
     """
@@ -18,6 +19,7 @@ class CrossEntropyLoss3D(_Loss):
     :param args: Args for loss function
     :param kwargs: Kwargs for loss function
     """
+
     def __init__(self, reduction=True, *args, **kwargs):
         super().__init__()
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -32,8 +34,13 @@ class CrossEntropyLoss3D(_Loss):
         :param logits: Output logits of model
         :param targets: True targets from data
         """
-        loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
+        loss = cross_entropy(logits,
+                             targets,
+                             reduction='none',
+                             *self.loss_args,
+                             **self.loss_kwargs)
         if self.reduction_mean:
             loss = loss.mean()
-            loss = reduce_by_batch_3d.apply(loss, self.input_parallel_mode, self.weight_parallel_mode, True)
+            loss = reduce_by_batch_3d.apply(loss, self.input_parallel_mode,
+                                            self.weight_parallel_mode, True)
         return loss

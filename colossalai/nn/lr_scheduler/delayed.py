@@ -2,6 +2,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 
 class _enable_get_lr_call:
+
     def __init__(self, o):
         self.o = o
 
@@ -26,7 +27,11 @@ class DelayerScheduler(_LRScheduler):
     :type last_epoch: int, optional
     """
 
-    def __init__(self, optimizer, delay_epochs, after_scheduler, last_epoch=-1):
+    def __init__(self,
+                 optimizer,
+                 delay_epochs,
+                 after_scheduler,
+                 last_epoch=-1):
         if delay_epochs < 0:
             raise ValueError(f'delay_epochs must >= 0, got {delay_epochs}')
         self.delay_epochs = delay_epochs
@@ -69,7 +74,11 @@ class WarmupScheduler(_LRScheduler):
     :type last_epoch: int, optional
     """
 
-    def __init__(self, optimizer, warmup_epochs, after_scheduler, last_epoch=-1):
+    def __init__(self,
+                 optimizer,
+                 warmup_epochs,
+                 after_scheduler,
+                 last_epoch=-1):
         self.warmup_epochs = int(warmup_epochs)
         self.after_scheduler = after_scheduler
         self.finished = False
@@ -82,7 +91,8 @@ class WarmupScheduler(_LRScheduler):
                 self.finished = True
             return self.after_scheduler.get_lr()
 
-        return [(self.last_epoch + 1) / self.warmup_epochs * lr for lr in self.base_lrs]
+        return [(self.last_epoch + 1) / self.warmup_epochs * lr
+                for lr in self.base_lrs]
 
     def step(self, epoch=None):
         if self.finished:
@@ -111,7 +121,12 @@ class WarmupDelayerScheduler(_LRScheduler):
     :type last_epoch: int, optional
     """
 
-    def __init__(self, optimizer, warmup_epochs, delay_epochs, after_scheduler, last_epoch=-1):
+    def __init__(self,
+                 optimizer,
+                 warmup_epochs,
+                 delay_epochs,
+                 after_scheduler,
+                 last_epoch=-1):
         if delay_epochs < 0:
             raise ValueError(f'delay_epochs must >= 0, got {delay_epochs}')
         if warmup_epochs < 0:
@@ -127,7 +142,8 @@ class WarmupDelayerScheduler(_LRScheduler):
             if not self.finished:
                 self.after_scheduler.base_lrs = self.base_lrs
                 # reset lr to base_lr
-                for group, base_lr in zip(self.optimizer.param_groups, self.base_lrs):
+                for group, base_lr in zip(self.optimizer.param_groups,
+                                          self.base_lrs):
                     group['lr'] = base_lr
                 self.finished = True
             with _enable_get_lr_call(self.after_scheduler):
@@ -135,7 +151,8 @@ class WarmupDelayerScheduler(_LRScheduler):
         elif self.last_epoch >= self.warmup_epochs:
             return self.base_lrs
 
-        return [(self.last_epoch + 1) / self.warmup_epochs * lr for lr in self.base_lrs]
+        return [(self.last_epoch + 1) / self.warmup_epochs * lr
+                for lr in self.base_lrs]
 
     def step(self, epoch=None):
         if self.finished:

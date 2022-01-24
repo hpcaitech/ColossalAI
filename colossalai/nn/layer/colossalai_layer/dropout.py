@@ -17,6 +17,7 @@ class Dropout(nn.Module):
     :param inplace: If set to ``True``, will do this operation in-place, defaults tp ``False``
     :type inplace: bool, optional
     """
+
     def __init__(self, p: float = 0.5, inplace: bool = False) -> None:
         super().__init__()
         self.tensor_parallel = get_tensor_parallel_mode()
@@ -26,6 +27,7 @@ class Dropout(nn.Module):
             self.drop = nn.Dropout(p, inplace)
 
     def forward(self, *args):
-        cm = nullcontext() if self.tensor_parallel in ['None', '1d'] else seed(ParallelMode.TENSOR)
+        cm = nullcontext() if self.tensor_parallel in ['None', '1d'] else seed(
+            ParallelMode.TENSOR)
         with cm:
             return self.drop(*args)

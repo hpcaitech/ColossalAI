@@ -34,6 +34,7 @@ class Initializer_3D_Input(ProcessGroupInitializer):
     :type num_group: int
     :type depth: int
     """
+
     def __init__(self, num_group: int, depth: int, *args):
         super().__init__(*args)
         self.num_group = num_group
@@ -170,6 +171,7 @@ class Initializer_3D(ProcessGroupInitializer):
 
     :param args: Args used to initialize ProcessGroupInitializer
     """
+
     def __init__(self, *args):
         super().__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
@@ -191,6 +193,9 @@ class Initializer_3D(ProcessGroupInitializer):
         :return: 3D tensor parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """
-        parallel_setting = [self.input_initializer.init_dist_group(), self.weight_initializer.init_dist_group(),
-                            self.output_initializer.init_dist_group()]
+        parallel_setting = [
+            self.input_initializer.init_dist_group(),
+            self.weight_initializer.init_dist_group(),
+            self.output_initializer.init_dist_group()
+        ]
         return parallel_setting

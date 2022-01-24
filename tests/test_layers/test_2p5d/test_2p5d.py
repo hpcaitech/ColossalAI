@@ -11,12 +11,10 @@ from checks_2p5d.check_layer_2p5d import (check_classifier, check_layernorm,
                                           check_linear)
 from checks_2p5d.check_operation_2p5d import check_AB, check_ABT, check_ATB
 
-CONFIG = dict(
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(size=4, mode='2.5d', depth=1),
-    ),
-)
+CONFIG = dict(parallel=dict(
+    pipeline=dict(size=1),
+    tensor=dict(size=4, mode='2.5d', depth=1),
+), )
 
 
 def check_operations():
@@ -48,7 +46,9 @@ def check_layer_and_operation(rank, world_size, port):
 @pytest.mark.dist
 def test_2p5d():
     world_size = 4
-    run_func = partial(check_layer_and_operation, world_size=world_size, port=free_port())
+    run_func = partial(check_layer_and_operation,
+                       world_size=world_size,
+                       port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

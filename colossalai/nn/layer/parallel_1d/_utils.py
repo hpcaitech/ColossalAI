@@ -26,7 +26,8 @@ def vocab_range_from_per_partition_vocab_size(per_partition_vocab_size, rank):
 
 def vocab_range_from_global_vocab_size(global_vocab_size, rank, world_size):
     per_partition_vocab_size = divide(global_vocab_size, world_size)
-    return vocab_range_from_per_partition_vocab_size(per_partition_vocab_size, rank)
+    return vocab_range_from_per_partition_vocab_size(per_partition_vocab_size,
+                                                     rank)
 
 
 def _reduce(input_, parallel_mode):
@@ -67,7 +68,9 @@ def _gather(input_, parallel_mode, dim=-1):
     rank = gpc.get_local_rank(parallel_mode)
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     tensor_list[rank] = input_
-    torch.distributed.all_gather(tensor_list, input_, group=gpc.get_group(parallel_mode))
+    torch.distributed.all_gather(tensor_list,
+                                 input_,
+                                 group=gpc.get_group(parallel_mode))
 
     # concat
     output = torch.cat(tensor_list, dim=dim).contiguous()
@@ -82,6 +85,7 @@ class _ReduceGrad(torch.autograd.Function):
     :param input_: input matrix
     :param parallel_mode: parallel mode
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return input_
@@ -103,6 +107,7 @@ class _ReduceInput(torch.autograd.Function):
     :param input_: input matrix
     :param parallel_mode: parallel mode
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return _reduce(input_)
@@ -124,6 +129,7 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     :param parallel_mode: parallel mode
     :param dim: dimension
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return _split(input_)
@@ -147,6 +153,7 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     :param parallel_mode: parallel mode
     :param dim: dimension
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return _gather(input_)

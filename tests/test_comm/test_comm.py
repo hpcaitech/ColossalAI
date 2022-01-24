@@ -10,7 +10,8 @@ from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.utils import free_port, get_current_device
 
-CONFIG = dict(parallel=dict(data=8, pipeline=1, tensor=dict(mode=None, size=1)))
+CONFIG = dict(
+    parallel=dict(data=8, pipeline=1, tensor=dict(mode=None, size=1)))
 
 SIZE = 8
 
@@ -49,7 +50,12 @@ def check_all_reduce():
 
 
 def check_layer(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    launch(config=CONFIG,
+           rank=rank,
+           world_size=world_size,
+           host='localhost',
+           port=port,
+           backend='nccl')
 
     assert dist.get_rank() == gpc.get_global_rank()
     print('Rank {} / {}'.format(dist.get_rank(), dist.get_world_size()))

@@ -14,6 +14,7 @@ _parallel_accuracy = {
 
 
 class Accuracy(nn.Module):
+
     def __init__(self):
         super().__init__()
         tensor_parallel = get_tensor_parallel_mode()

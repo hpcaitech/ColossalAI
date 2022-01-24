@@ -13,8 +13,7 @@ from .process_group_initializer import ProcessGroupInitializer
 from ..parallel_mode import ParallelMode
 
 
-def _check_tesseract_env_var(tesseract_dim: int,
-                             tesseract_dep: int):
+def _check_tesseract_env_var(tesseract_dim: int, tesseract_dep: int):
     # check environment variable for TESSERACT
     env_tesseract_dim = os.environ.get(TESSERACT_DIM, None)
     env_tesseract_dep = os.environ.get(TESSERACT_DEP, None)
@@ -43,10 +42,7 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
     :type tesseract_dep: int
     """
 
-    def __init__(self,
-                 tesseract_dim: int,
-                 tesseract_dep: int,
-                 *args):
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
         super(Initializer_2p5D_ROW, self).__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
@@ -69,8 +65,11 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
         for h in range(self.num_group):
             for j in range(self.tesseract_dim):
                 for k in range(self.tesseract_dep):
-                    ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                        j + self.tesseract_dim * k) for i in range(self.tesseract_dim)]
+                    ranks = [
+                        h * self.tensor_parallel_size + i +
+                        self.tesseract_dim * (j + self.tesseract_dim * k)
+                        for i in range(self.tesseract_dim)
+                    ]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -93,10 +92,7 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
     :type tesseract_dep: int
     """
 
-    def __init__(self,
-                 tesseract_dim: int,
-                 tesseract_dep: int,
-                 *args):
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
         super(Initializer_2p5D_Col, self).__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
@@ -119,8 +115,11 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
         for h in range(self.num_group):
             for i in range(self.tesseract_dim):
                 for k in range(self.tesseract_dep):
-                    ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                        j + self.tesseract_dim * k) for j in range(self.tesseract_dim)]
+                    ranks = [
+                        h * self.tensor_parallel_size + i +
+                        self.tesseract_dim * (j + self.tesseract_dim * k)
+                        for j in range(self.tesseract_dim)
+                    ]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -143,10 +142,7 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
     :type tesseract_dep: int
     """
 
-    def __init__(self,
-                 tesseract_dim: int,
-                 tesseract_dep: int,
-                 *args):
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
         super(Initializer_2p5D_Dep, self).__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
@@ -169,8 +165,11 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
         for h in range(self.num_group):
             for i in range(self.tesseract_dim):
                 for j in range(self.tesseract_dim):
-                    ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                        j + self.tesseract_dim * k) for k in range(self.tesseract_dep)]
+                    ranks = [
+                        h * self.tensor_parallel_size + i +
+                        self.tesseract_dim * (j + self.tesseract_dim * k)
+                        for k in range(self.tesseract_dep)
+                    ]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -194,10 +193,7 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
     :type tesseract_dep: int
     """
 
-    def __init__(self,
-                 tesseract_dim: int,
-                 tesseract_dep: int,
-                 *args):
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
         super(Initializer_2p5D_XZ, self).__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
@@ -219,9 +215,12 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
 
         for h in range(self.num_group):
             for i in range(self.tesseract_dim):
-                ranks = [h * self.tensor_parallel_size + i + self.tesseract_dim * (
-                    j + self.tesseract_dim * k) for k in range(self.tesseract_dep) for j in
-                    range(self.tesseract_dim)]
+                ranks = [
+                    h * self.tensor_parallel_size + i + self.tesseract_dim *
+                    (j + self.tesseract_dim * k)
+                    for k in range(self.tesseract_dep)
+                    for j in range(self.tesseract_dim)
+                ]
                 group = dist.new_group(ranks)
 
                 if self.rank in ranks:
@@ -255,16 +254,11 @@ class Initializer_2p5D(ProcessGroupInitializer):
     :type depth: int
     """
 
-    def __init__(self,
-                 rank: int,
-                 world_size: int,
-                 config: Config,
-                 data_parallel_size: int,
-                 pipeline_parallel_size: int,
-                 tensor_parallel_size: int,
-                 depth: int
-                 ):
-        args = (rank, world_size, config, data_parallel_size, pipeline_parallel_size, tensor_parallel_size)
+    def __init__(self, rank: int, world_size: int, config: Config,
+                 data_parallel_size: int, pipeline_parallel_size: int,
+                 tensor_parallel_size: int, depth: int):
+        args = (rank, world_size, config, data_parallel_size,
+                pipeline_parallel_size, tensor_parallel_size)
         super().__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dim = int(math.sqrt(self.tensor_parallel_size / depth))
@@ -274,10 +268,14 @@ class Initializer_2p5D(ProcessGroupInitializer):
             "2.5D tesseract dim should equal to (tensor parallel size / tesseract dep) ^ 0.5"
         _check_tesseract_env_var(self.tesseract_dim, self.tesseract_dep)
 
-        self.col_initializer = Initializer_2p5D_Col(self.tesseract_dim, self.tesseract_dep, *args)
-        self.row_initializer = Initializer_2p5D_ROW(self.tesseract_dim, self.tesseract_dep, *args)
-        self.dep_initializer = Initializer_2p5D_Dep(self.tesseract_dim, self.tesseract_dep, *args)
-        self.xz_initializer = Initializer_2p5D_XZ(self.tesseract_dim, self.tesseract_dep, *args)
+        self.col_initializer = Initializer_2p5D_Col(self.tesseract_dim,
+                                                    self.tesseract_dep, *args)
+        self.row_initializer = Initializer_2p5D_ROW(self.tesseract_dim,
+                                                    self.tesseract_dep, *args)
+        self.dep_initializer = Initializer_2p5D_Dep(self.tesseract_dim,
+                                                    self.tesseract_dep, *args)
+        self.xz_initializer = Initializer_2p5D_XZ(self.tesseract_dim,
+                                                  self.tesseract_dep, *args)
 
     def init_dist_group(self):
         """Initialize 2p5D tensor row, col, depth, and colXdepth parallel groups, and assign local_ranks and groups to each gpu.
@@ -285,6 +283,10 @@ class Initializer_2p5D(ProcessGroupInitializer):
         :return: Whole 2p5D tensor parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """
-        parallel_setting = [self.col_initializer.init_dist_group(), self.row_initializer.init_dist_group(),
-                            self.dep_initializer.init_dist_group(), self.xz_initializer.init_dist_group()]
+        parallel_setting = [
+            self.col_initializer.init_dist_group(),
+            self.row_initializer.init_dist_group(),
+            self.dep_initializer.init_dist_group(),
+            self.xz_initializer.init_dist_group()
+        ]
         return parallel_setting

@@ -17,7 +17,8 @@ from colossalai.core import global_context as gpc
 from colossalai.engine import Engine
 from colossalai.logging import get_dist_logger
 from colossalai.utils import (accumulate_gradient, get_current_device,
-                              sync_model_param, is_using_ddp, is_using_pp, is_using_sequence)
+                              sync_model_param, is_using_ddp, is_using_pp,
+                              is_using_sequence)
 from colossalai.zero import convert_to_zero, ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3
 from colossalai.builder.builder import build_gradient_handler
 from torch.optim.optimizer import Optimizer
@@ -43,8 +44,12 @@ def get_default_parser():
     parser.add_argument('--port',
                         type=int,
                         help='the master port for distributed training')
-    parser.add_argument('--world_size', type=int, help='world size for distributed training')
-    parser.add_argument('--rank', type=int, help='rank for the default process group')
+    parser.add_argument('--world_size',
+                        type=int,
+                        help='world size for distributed training')
+    parser.add_argument('--rank',
+                        type=int,
+                        help='rank for the default process group')
     parser.add_argument('--local_rank',
                         type=int,
                         help='local rank on the node')
@@ -114,9 +119,11 @@ def launch(config: Union[str, Path, Config, Dict],
 
     if verbose:
         logger = get_dist_logger()
-        logger.info(f'Distributed environment is initialized, '
-                    f'data parallel size: {gpc.data_parallel_size}, pipeline parallel size: {gpc.pipeline_parallel_size}, '
-                    f'tensor parallel size: {gpc.tensor_parallel_size}', ranks=[0])
+        logger.info(
+            f'Distributed environment is initialized, '
+            f'data parallel size: {gpc.data_parallel_size}, pipeline parallel size: {gpc.pipeline_parallel_size}, '
+            f'tensor parallel size: {gpc.tensor_parallel_size}',
+            ranks=[0])
 
 
 def launch_from_slurm(config: Union[str, Path, Config, Dict],
@@ -221,14 +228,15 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
            verbose=verbose)
 
 
-def initialize(model: Union[nn.Module, List[nn.Module]],
-               optimizer: Union[Optimizer, List[Optimizer]],
-               criterion: Union[_Loss, List[_Loss]],
-               train_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
-               test_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
-               lr_scheduler: _LRScheduler = None,
-               verbose: bool = True
-               ) -> Tuple[Engine, DataLoader, DataLoader, _LRScheduler]:
+def initialize(
+    model: Union[nn.Module, List[nn.Module]],
+    optimizer: Union[Optimizer, List[Optimizer]],
+    criterion: Union[_Loss, List[_Loss]],
+    train_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
+    test_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
+    lr_scheduler: _LRScheduler = None,
+    verbose: bool = True
+) -> Tuple[Engine, DataLoader, DataLoader, _LRScheduler]:
     """Core function to wrap the essential training components with our functionality based on the config which is
     loaded into gpc.config.
 
@@ -258,9 +266,11 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
 
     # print config
     if verbose:
-        logger.info(f"\n========== Your Config ========\n"
-                    f"{pprint.pformat(gpc.config)}\n"
-                    f"================================\n", ranks=[0])
+        logger.info(
+            f"\n========== Your Config ========\n"
+            f"{pprint.pformat(gpc.config)}\n"
+            f"================================\n",
+            ranks=[0])
 
     # cudnn
     cudnn_benchmark = config.get('cudnn_benchmark', True)
@@ -269,7 +279,8 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
     torch.backends.cudnn.deterministic = cudnn_deterministic
     if verbose:
         logger.info(
-            f"cuDNN benchmark = {cudnn_benchmark}, deterministic = {cudnn_deterministic}", ranks=[0])
+            f"cuDNN benchmark = {cudnn_benchmark}, deterministic = {cudnn_deterministic}",
+            ranks=[0])
 
     # first sync model across dp ranks
     model.to(get_current_device())
@@ -291,14 +302,16 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
 
     if fp16_cfg is not None and fp16_cfg.mode is not None and zero_cfg is not None:
         raise ConfigException(
-            "It is not allowed to set fp16 and zero configuration in your config file at the same time")
+            "It is not allowed to set fp16 and zero configuration in your config file at the same time"
+        )
 
     # clip grad norm
     clip_grad_norm = gpc.config.get('clip_grad_norm', 0.0)
     if clip_grad_norm > 0:
         if zero_cfg is not None:
             raise ConfigException(
-                "clip_grad_norm should be specified with zero, you should specify clip_grad in zero configuration")
+                "clip_grad_norm should be specified with zero, you should specify clip_grad in zero configuration"
+            )
 
     # initialize amp
     amp_mode = None
@@ -321,8 +334,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         model, optimizer = convert_to_zero(model=model,
                                            optimizer=optimizer,
                                            level=level,
-                                           zero_config=cfg_
-                                           )
+                                           zero_config=cfg_)
 
     # gradient handler
     gradient_handler_cfg = gpc.config.get('gradient_handler', None)
@@ -348,15 +360,19 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                     "added even though not specified in the configuration",
                     ranks=[0])
         elif is_using_sequence():
-            model = DDP(model, process_group=gpc.get_group(ParallelMode.SEQUENCE_DP))
+            model = DDP(model,
+                        process_group=gpc.get_group(ParallelMode.SEQUENCE_DP))
             if verbose:
                 logger.info(
-                    'Model is using torch.nn.parallel.DistributedDataParallel for Sequence Parallelism', ranks=[0])
-        elif is_using_ddp() and not is_using_pp() and amp_mode != AMP_TYPE.NAIVE:
+                    'Model is using torch.nn.parallel.DistributedDataParallel for Sequence Parallelism',
+                    ranks=[0])
+        elif is_using_ddp(
+        ) and not is_using_pp() and amp_mode != AMP_TYPE.NAIVE:
             model = DDP(model, process_group=gpc.get_group(ParallelMode.DATA))
             if verbose:
                 logger.info(
-                    'Model is using torch.nn.parallel.DistributedDataParallel for Data Parallelism', ranks=[0])
+                    'Model is using torch.nn.parallel.DistributedDataParallel for Data Parallelism',
+                    ranks=[0])
         elif is_using_ddp():
             gradient_handler_cfg = [dict(type='DataParallelGradientHandler')]
             if verbose:
@@ -368,9 +384,12 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         for param in model.parameters():
             if getattr(param, 'pipeline_shared_module_pg', None) is not None:
                 if gradient_handler_cfg is None:
-                    gradient_handler_cfg = [dict(type='PipelineSharedModuleGradientHandler')]
+                    gradient_handler_cfg = [
+                        dict(type='PipelineSharedModuleGradientHandler')
+                    ]
                 else:
-                    gradient_handler_cfg.append(dict(type='PipelineSharedModuleGradientHandler'))
+                    gradient_handler_cfg.append(
+                        dict(type='PipelineSharedModuleGradientHandler'))
                 if verbose:
                     logger.info(
                         "pipeline_shared_module is detected, PipelineSharedModuleGradientHandler is automatically "
@@ -380,7 +399,8 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
     else:
         if not isinstance(gradient_handler_cfg, list):
             raise ConfigException(
-                f"expected gradient_handler in the configuration file to be a list but got {type(gradient_handler_cfg)}")
+                f"expected gradient_handler in the configuration file to be a list but got {type(gradient_handler_cfg)}"
+            )
 
     if gradient_handler_cfg is None:
         gradient_handlers = None
@@ -390,28 +410,32 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                 "to all-reduce the gradients after a training step.",
                 ranks=[0])
     else:
-        gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
+        gradient_handlers = [
+            build_gradient_handler(cfg, model, optimizer)
+            for cfg in gradient_handler_cfg
+        ]
 
     # check if optimizer is ColossalaiOptimizer
-    if not isinstance(optimizer, (ColossalaiOptimizer, ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
+    if not isinstance(optimizer,
+                      (ColossalaiOptimizer, ZeroRedundancyOptimizer_Level_2,
+                       ZeroRedundancyOptimizer_Level_3)):
         optimizer = ColossalaiOptimizer(optim=optimizer)
 
     # gradient accumulation
     grad_accum_size = gpc.config.get('gradient_accumulation', None)
     if grad_accum_size is not None:
-        optimizer, train_dataloader, gradient_handlers, lr_scheduler = accumulate_gradient(model=model,
-                                                                                           optimizer=optimizer,
-                                                                                           dataloader=train_dataloader,
-                                                                                           accumulate_size=grad_accum_size,
-                                                                                           gradient_handlers=gradient_handlers,
-                                                                                           lr_scheduler=lr_scheduler)
+        optimizer, train_dataloader, gradient_handlers, lr_scheduler = accumulate_gradient(
+            model=model,
+            optimizer=optimizer,
+            dataloader=train_dataloader,
+            accumulate_size=grad_accum_size,
+            gradient_handlers=gradient_handlers,
+            lr_scheduler=lr_scheduler)
 
-    engine = Engine(
-        model=model,
-        optimizer=optimizer,
-        criterion=criterion,
-        gradient_handlers=gradient_handlers,
-        clip_grad_norm=clip_grad_norm
-    )
+    engine = Engine(model=model,
+                    optimizer=optimizer,
+                    criterion=criterion,
+                    gradient_handlers=gradient_handlers,
+                    clip_grad_norm=clip_grad_norm)
 
     return engine, train_dataloader, test_dataloader, lr_scheduler

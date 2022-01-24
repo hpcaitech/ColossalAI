@@ -45,8 +45,7 @@ class TransformerSelfAttentionRing(nn.Module):
                  attn_mask_type=AttnMaskType.padding,
                  masked_softmax_fusion=True,
                  fp16=False,
-                 bf16=False
-                 ):
+                 bf16=False):
         super().__init__()
         self.convert_fp16_to_fp32_in_softmax = convert_fp16_to_fp32_in_softmax
         self.apply_query_key_layer_scaling = apply_query_key_layer_scaling
@@ -82,11 +81,8 @@ class TransformerSelfAttentionRing(nn.Module):
             self.norm_factor *= self.coeff
 
         self.scale_mask_softmax = FusedScaleMaskSoftmax(
-            fp16, bf16,
-            self.attn_mask_type,
-            masked_softmax_fusion,
-            self.attention_mask_func,
-            self.convert_fp16_to_fp32_in_softmax,
+            fp16, bf16, self.attn_mask_type, masked_softmax_fusion,
+            self.attention_mask_func, self.convert_fp16_to_fp32_in_softmax,
             self.coeff)
 
         self.attention_dropout = nn.Dropout(attention_dropout)
@@ -111,8 +107,8 @@ class TransformerSelfAttentionRing(nn.Module):
         mixed_x_layer = self.query_key_value(hidden_states)
 
         # [sub_seq_len, batch_size, num_heads, 3 * head_size] --> 3 [sub_seq_len, batch_size, num_heads, head_size]
-        new_tensor_shape = mixed_x_layer.size()[:-1] + (self.num_attention_heads,
-                                                        3 * self.hidden_size_per_attention_head)
+        new_tensor_shape = mixed_x_layer.size()[:-1] + (
+            self.num_attention_heads, 3 * self.hidden_size_per_attention_head)
         mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
 
         # split into query, key and value
@@ -121,12 +117,12 @@ class TransformerSelfAttentionRing(nn.Module):
         assert last_dim_value % 3 == 0, 'the last dimension is not a multiple of 3, ' \
                                         'cannot be divided into query, key and value'
         partition_size = last_dim_value // 3
-        (query_layer, key_layer, value_layer) = torch.split(
-            mixed_x_layer, partition_size, dim=last_dim)
+        (query_layer, key_layer, value_layer) = torch.split(mixed_x_layer,
+                                                            partition_size,
+                                                            dim=last_dim)
 
         # attention scores: [batch_size, num_heads, sub_seq_len, seq_len]
-        output_size = (query_layer.size(1),
-                       query_layer.size(2),
+        output_size = (query_layer.size(1), query_layer.size(2),
                        query_layer.size(0),
                        key_layer.size(0) * self.world_size)
 
@@ -139,12 +135,13 @@ class TransformerSelfAttentionRing(nn.Module):
 
         # attention_scores: [batch_size * num_heads, sub_seq_len, seq_len]
         attention_scores = RingQK.apply(
-            query_layer.transpose(0, 1).contiguous(),  # [batch_size * num_heads, sub_seq_len, head_size]
-            key_layer.transpose(0, 1).contiguous(),  # [batch_size * num_heads, sub_seq_len, head_size],
+            query_layer.transpose(0, 1).contiguous(
+            ),  # [batch_size * num_heads, sub_seq_len, head_size]
+            key_layer.transpose(0, 1).contiguous(
+            ),  # [batch_size * num_heads, sub_seq_len, head_size],
             batch_size,
             self.num_attention_heads,
-            sub_seq_length
-        )
+            sub_seq_length)
 
         attention_scores /= self.norm_factor
 
@@ -152,36 +149,32 @@ class TransformerSelfAttentionRing(nn.Module):
         attention_scores = attention_scores.view(*output_size)
 
         # change shape to [batch_size, num_heads, sub_seq_len, seq_len]
-        attention_probs = self.scale_mask_softmax(attention_scores, attention_mask)
+        attention_probs = self.scale_mask_softmax(attention_scores,
+                                                  attention_mask)
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
         with seed(ParallelMode.TENSOR):
             attention_probs = self.attention_dropout(attention_probs)
 
         # context layer shape: [batch_size, num_heads, sub_seq_len, head_size]
-        output_size = (value_layer.size(1),
-                       value_layer.size(2),
-                       query_layer.size(0),
-                       value_layer.size(3))
+        output_size = (value_layer.size(1), value_layer.size(2),
+                       query_layer.size(0), value_layer.size(3))
 
         # change view [sub_seq_len, batch_size * num_heads, head_size]
-        value_layer = value_layer.contiguous().view(value_layer.size(0),
-                                                    output_size[0] * output_size[1], -1)
+        value_layer = value_layer.contiguous().view(
+            value_layer.size(0), output_size[0] * output_size[1], -1)
 
         # # change view [b * num_heads, sub_seq_len, seq_len]
-        attention_probs = attention_probs.view(attention_probs.size(0) * attention_probs.size(1),
-                                               attention_probs.size(2),
-                                               attention_probs.size(3))
+        attention_probs = attention_probs.view(
+            attention_probs.size(0) * attention_probs.size(1),
+            attention_probs.size(2), attention_probs.size(3))
 
         # matmul: [batch_size * num_heads, sub_seq_len, head_size]
-        context_layer = RingAV.apply(
-            attention_probs,
-            value_layer.transpose(0, 1).contiguous(),
-            batch_size,
-            self.num_attention_heads,
-            self.hidden_size_per_attention_head,
-            sub_seq_length
-        )
+        context_layer = RingAV.apply(attention_probs,
+                                     value_layer.transpose(0, 1).contiguous(),
+                                     batch_size, self.num_attention_heads,
+                                     self.hidden_size_per_attention_head,
+                                     sub_seq_length)
 
         # change view [batch_size, num_heads, sub_seq_len, head_size]
         context_layer = context_layer.view(*output_size)
@@ -191,7 +184,7 @@ class TransformerSelfAttentionRing(nn.Module):
 
         # [sub_seq_len, batch_size, num_heads, head_size] -> [sub_seq_len, batch_size, hidden_size]
         new_context_layer_shape = context_layer.size()[:-2] + (
-            self.hidden_size_per_attention_head * self.num_attention_heads,)
+            self.hidden_size_per_attention_head * self.num_attention_heads, )
         context_layer = context_layer.view(*new_context_layer_shape)
 
         output, bias = self.dense(context_layer)
@@ -237,9 +230,11 @@ class _Linear(nn.Module):
         self.output_size = output_size
         self.skip_bias_add = skip_bias_add
 
-        self.weight = Parameter(torch.empty(self.output_size,
-                                            self.input_size,
-                                            ))
+        self.weight = Parameter(
+            torch.empty(
+                self.output_size,
+                self.input_size,
+            ))
         nn.init.xavier_normal_(self.weight)
 
         if bias:

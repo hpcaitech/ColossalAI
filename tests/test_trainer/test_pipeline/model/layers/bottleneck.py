@@ -29,8 +29,7 @@ class ResNetBottleneck(nn.Module):
             groups: int = 1,
             base_width: int = 64,
             dilation: int = 1,
-            norm_layer: Optional[Callable[..., nn.Module]] = None
-    ) -> None:
+            norm_layer: Optional[Callable[..., nn.Module]] = None) -> None:
         super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d

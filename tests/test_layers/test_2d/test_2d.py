@@ -13,15 +13,8 @@ from colossalai.utils import free_port
 from checks_2d.check_layer_2d import *
 from checks_2d.check_operation_2d import *
 
-CONFIG = dict(
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(
-            size=4,
-            mode='2d'
-        )
-    ),
-)
+CONFIG = dict(parallel=dict(pipeline=dict(size=1),
+                            tensor=dict(size=4, mode='2d')), )
 
 
 def check_operations():
@@ -34,6 +27,7 @@ def check_layer():
     check_linear()
     check_layernorm()
     check_classifier()
+
 
 def check_layer_and_operation(rank, world_size, port):
     launch(config=CONFIG,
@@ -52,7 +46,9 @@ def check_layer_and_operation(rank, world_size, port):
 @pytest.mark.dist
 def test_2d():
     world_size = 4
-    run_func = partial(check_layer_and_operation, world_size=world_size, port=free_port())
+    run_func = partial(check_layer_and_operation,
+                       world_size=world_size,
+                       port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

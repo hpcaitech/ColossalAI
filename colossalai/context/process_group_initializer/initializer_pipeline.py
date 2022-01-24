@@ -15,6 +15,7 @@ class Initializer_Pipeline(ProcessGroupInitializer):
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_group_size = self.world_size // self.data_parallel_size
@@ -42,8 +43,7 @@ class Initializer_Pipeline(ProcessGroupInitializer):
                     process_group = pipe_group
                     ranks_in_group = pipe_ranks
                     dist_settings.append(
-                        tuple((local_rank, group_world_size,
-                               process_group, ranks_in_group,
-                               ParallelMode.PIPELINE)))
+                        tuple((local_rank, group_world_size, process_group,
+                               ranks_in_group, ParallelMode.PIPELINE)))
 
         return dist_settings

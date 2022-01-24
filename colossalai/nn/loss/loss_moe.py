@@ -14,6 +14,7 @@ class MoeCrossEntropyLoss(_Loss):
 
     :type aux_weight: float, optional
     """
+
     def __init__(self, aux_weight: float = 0.01, *args, **kwargs):
         super().__init__()
         self.loss = nn.CrossEntropyLoss(*args, **kwargs)
@@ -37,6 +38,7 @@ class MoeLoss(_Loss):
     :type aux_weight: float
     :type loss_fn: Callable
     """
+
     def __init__(self, aux_weight: float, loss_fn, *args, **kwargs):
         super().__init__()
         self.loss_fn = loss_fn(*args, **kwargs)

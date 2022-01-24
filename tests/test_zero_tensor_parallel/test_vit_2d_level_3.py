@@ -41,7 +41,12 @@ def train_epoch(engine, train_dataloader):
 
 
 def run_2d_parallel_vision_transformer_level_3(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=CONFIG,
+                      rank=rank,
+                      world_size=world_size,
+                      host='localhost',
+                      port=port,
+                      backend='nccl')
 
     # build model
     model = vit_lite_depth7_patch4_32()
@@ -52,7 +57,8 @@ def run_2d_parallel_vision_transformer_level_3(rank, world_size, port):
                             transform=transforms.Compose([
                                 transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
                                 transforms.ToTensor(),
-                                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+                                transforms.Normalize(mean=(0.5, 0.5, 0.5),
+                                                     std=(0.5, 0.5, 0.5))
                             ]))
     train_dataloader = get_dataloader(dataset=train_dataset,
                                       shuffle=True,
@@ -64,10 +70,11 @@ def run_2d_parallel_vision_transformer_level_3(rank, world_size, port):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = CrossEntropyLoss()
 
-    engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                            optimizer=optimizer,
-                                                            criterion=criterion,
-                                                            train_dataloader=train_dataloader)
+    engine, train_dataloader, *args = colossalai.initialize(
+        model=model,
+        optimizer=optimizer,
+        criterion=criterion,
+        train_dataloader=train_dataloader)
     logger = get_dist_logger()
 
     logger.info('start training')
@@ -91,7 +98,9 @@ def run_2d_parallel_vision_transformer_level_3(rank, world_size, port):
 @pytest.mark.skip("Level 3 has unknown bug so skip this test for now")
 def test_3d_vit_zero_level_3():
     world_size = 8
-    run_func = partial(run_2d_parallel_vision_transformer_level_3, world_size=world_size, port=free_port())
+    run_func = partial(run_2d_parallel_vision_transformer_level_3,
+                       world_size=world_size,
+                       port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

@@ -13,7 +13,12 @@ from ..parallel_3d import *
 from ..utils import get_tensor_parallel_mode
 from ..vanilla import *
 
-_parallel_linear = {'1d': Linear1D, '2d': Linear2D, '2.5d': Linear2p5D, '3d': Linear3D}
+_parallel_linear = {
+    '1d': Linear1D,
+    '2d': Linear2D,
+    '2.5d': Linear2p5D,
+    '3d': Linear3D
+}
 
 _parallel_classifier = {
     'None': VanillaClassifier,
@@ -42,19 +47,28 @@ class Linear(nn.Module):
     :type bias_initializer: typing.Callable, optional
     :param kwargs: Kwargs used for initialization
     """
+
     def __init__(self,
                  in_features: int,
                  out_features: int,
                  bias: bool = True,
                  dtype: dtype = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 weight_initializer: Callable = init.kaiming_uniform_(
+                     a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1,
+                                                                   scale=1),
                  **kwargs) -> None:
         super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
         if tensor_parallel == 'None':
-            self.layer = nn.Linear(in_features, out_features, bias=bias, device=get_current_device(), dtype=dtype)
-            weight_initializer(self.layer.weight, fan_in=in_features, fan_out=out_features)
+            self.layer = nn.Linear(in_features,
+                                   out_features,
+                                   bias=bias,
+                                   device=get_current_device(),
+                                   dtype=dtype)
+            weight_initializer(self.layer.weight,
+                               fan_in=in_features,
+                               fan_out=out_features)
             if bias:
                 bias_initializer(self.layer.bias, fan_in=in_features)
         else:
@@ -97,6 +111,7 @@ class Classifier(nn.Module):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(
         self,
         in_features: int,

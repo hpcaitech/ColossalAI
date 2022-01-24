@@ -22,13 +22,9 @@ BATCH_SIZE = 16
 SEQ_LENGTH = 64
 HIDDEN_SIZE = 128
 
-CONFIG = dict(
-    parallel=dict(
-        pipeline=dict(size=4),
-        tensor=dict(size=1, mode=None)
-    ),
-    seed=1024
-)
+CONFIG = dict(parallel=dict(pipeline=dict(size=4),
+                            tensor=dict(size=1, mode=None)),
+              seed=1024)
 
 
 def check_equal(A, B):
@@ -75,7 +71,7 @@ def check_forward_backward(output_tensor, output_grad, rank, logger):
                 rank, check_equal(grad, output_grad)))
 
 
-def check_comm(size, rank, prev_rank, next_rank,  logger):
+def check_comm(size, rank, prev_rank, next_rank, logger):
     dtype = torch.float32
     device = get_current_device()
     tensor_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
@@ -90,21 +86,18 @@ def check_comm(size, rank, prev_rank, next_rank,  logger):
 
 
 def run_check(rank, world_size, port):
-    launch(
-        config=CONFIG,
-        rank=rank,
-        world_size=world_size,
-        host='localhost',
-        port=port,
-        backend='nccl'
-    )
+    launch(config=CONFIG,
+           rank=rank,
+           world_size=world_size,
+           host='localhost',
+           port=port,
+           backend='nccl')
     logger = get_dist_logger()
     rank = gpc.get_global_rank()
     prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
     next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
-    logger.info(
-        'Rank {0}: prev rank {1}, next rank {2}'.format(
-            rank, prev_rank, next_rank))
+    logger.info('Rank {0}: prev rank {1}, next rank {2}'.format(
+        rank, prev_rank, next_rank))
     logger.info('Distributed environment is initialzied.')
 
     check_comm(world_size, rank, prev_rank, next_rank, logger)

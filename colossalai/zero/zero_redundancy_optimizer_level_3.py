@@ -56,8 +56,7 @@ def input(msg):
 
 def split_half_float_double(tensors):
     dtypes = [
-        "torch.cuda.HalfTensor",
-        "torch.cuda.FloatTensor",
+        "torch.cuda.HalfTensor", "torch.cuda.FloatTensor",
         "torch.cuda.DoubleTensor"
     ]
     buckets = []
@@ -92,10 +91,8 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
     if type(outputs) is tuple:
         touched_outputs = []
         for output in outputs:
-            touched_output = _apply_to_tensors_only(module,
-                                                    functional,
-                                                    backward_function,
-                                                    output)
+            touched_output = _apply_to_tensors_only(module, functional,
+                                                    backward_function, output)
             touched_outputs.append(touched_output)
         return tuple(touched_outputs)
     elif type(outputs) is torch.Tensor:
@@ -105,18 +102,13 @@ def _apply_to_tensors_only(module, functional, backward_function, outputs):
 
 
 # for each tensor in outputs run the forward_funciton and register backward_function as hook
-def _apply_forward_and_backward_to_tensors_only(module,
-                                                forward_function,
-                                                backward_function,
-                                                outputs):
+def _apply_forward_and_backward_to_tensors_only(module, forward_function,
+                                                backward_function, outputs):
     if type(outputs) is tuple:
         touched_outputs = []
         for output in outputs:
             touched_output = _apply_forward_and_backward_to_tensors_only(
-                module,
-                forward_function,
-                backward_function,
-                output)
+                module, forward_function, backward_function, output)
             touched_outputs.append(touched_output)
         return tuple(touched_outputs)
     elif type(outputs) is torch.Tensor:
@@ -129,6 +121,7 @@ def _apply_forward_and_backward_to_tensors_only(module,
 
 
 class ZeROOrderedDict(OrderedDict):
+
     def __init__(self, parent_module, *args, **kwargs):
         """A replacement for ``collections.OrderedDict`` to detect external ZeRO params.
 
@@ -149,8 +142,9 @@ class ZeROOrderedDict(OrderedDict):
 
         if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
             if self._parent_module._parameters._in_forward:
-                print_rank_0(f'Registering external parameter from getter {key}',
-                             force=False)
+                print_rank_0(
+                    f'Registering external parameter from getter {key}',
+                    force=False)
                 register_external_parameter(FWD_MODULE_STACK[-1], param)
                 param.all_gather()
 
@@ -171,6 +165,7 @@ def _inject_parameters(module, cls):
 
 # TODO Needs to be implemented
 class PrefetchCoordinator(object):
+
     def __init__(self):
         # step_id keeps track of the number of sub-modules invoked so far
         # the step_id is tracking forward and backward sequence of sub-modules
@@ -231,9 +226,11 @@ class PrefetchCoordinator(object):
 
         for i in range(self.step_id, len(self.sub_module_trace)):
             module_id = self.sub_module_trace[i]
-            for _, param in get_all_parameters(self.id_to_sub_module_map[module_id]):
+            for _, param in get_all_parameters(
+                    self.id_to_sub_module_map[module_id]):
                 if param.ds_status is ZeroParamStatus.NOT_AVAILABLE and (
-                        param.ds_id not in [p.ds_id for p in params_to_prefetch]):
+                        param.ds_id
+                        not in [p.ds_id for p in params_to_prefetch]):
                     params_to_prefetch.append(param)
                     total_numel_to_prefetch += param.ds_numel
                     # print_rank_0(f"Total numel to prefetch: {total_numel_to_prefetch}. Param: {param.ds_shape} and numel {param.ds_numel}, numel limit {numel}")
@@ -254,7 +251,8 @@ class PrefetchCoordinator(object):
         trace = self.sub_module_trace
         total_steps = len(trace)
         if sub_module_step_id is None:
-            sub_module_step_id = self.most_recent_sub_module_step[sub_module.id]
+            sub_module_step_id = self.most_recent_sub_module_step[
+                sub_module.id]
 
         # tracing failed. The sub_module passed at the step_id must match with the sub_module during tracing
         if sub_module.id != trace[sub_module_step_id]:
@@ -277,12 +275,11 @@ class PrefetchCoordinator(object):
 
                 is_there_reuse = True
                 reuse_distance_in_numel = self._distance_in_numel(
-                    start_step,
-                    end_step,
-                    trace)
+                    start_step, end_step, trace)
                 break
 
-        self.reuse_numel_for_step_id[sub_module_step_id] = reuse_distance_in_numel
+        self.reuse_numel_for_step_id[
+            sub_module_step_id] = reuse_distance_in_numel
 
         return reuse_distance_in_numel
 
@@ -290,14 +287,17 @@ class PrefetchCoordinator(object):
         distance_in_numel = 0
         for step_id in range(start_step, end_step):
             module_id = trace[step_id]
-            for _, param in self.id_to_sub_module_map[module_id].named_parameters(recurse=False):
+            for _, param in self.id_to_sub_module_map[
+                    module_id].named_parameters(recurse=False):
                 distance_in_numel += param.ds_numel
-            for _, param in self.id_to_sub_module_map[module_id].ds_external_parameters():
+            for _, param in self.id_to_sub_module_map[
+                    module_id].ds_external_parameters():
                 distance_in_numel += param.ds_numel
         return distance_in_numel
 
 
 class PartitionedParameterCoordinator(object):
+
     def __init__(self,
                  comm_stream=None,
                  max_reuse_distance_in_numel=500000000,
@@ -339,18 +339,18 @@ class PartitionedParameterCoordinator(object):
         numel_in_flight = sum(
             [param.ds_tensor.ds_numel for param in params_in_flight])
         upcoming_param_list = self.prefetch_coordinator.get_params_to_prefetch(
-            sub_module,
-            numel=2 * numel_in_flight)
+            sub_module, numel=2 * numel_in_flight)
         swap_in_params = []
         for param in upcoming_param_list:
-            if len(swap_in_params) >= param.nvme_swapper.available_swap_in_buffers():
+            if len(swap_in_params
+                   ) >= param.nvme_swapper.available_swap_in_buffers():
                 break
             if param.ds_tensor.status == PartitionedParamStatus.NOT_AVAILABLE:
                 swap_in_params.append(param)
 
         if len(swap_in_params) > 0:
-            swap_in_params[0].nvme_swapper.swap_in(
-                swap_in_params, async_op=True)
+            swap_in_params[0].nvme_swapper.swap_in(swap_in_params,
+                                                   async_op=True)
 
     # Pre fetches the parameters for sub_modules that comes after
     #  the current sub_module. This call is asynchronous
@@ -363,8 +363,7 @@ class PartitionedParameterCoordinator(object):
         # prefetch if there is no current prefetching in flight
         if not self.in_flight_handles and self.total_available_parameter_numel < self.max_available_parameters_in_numel:
             params_to_prefetch = self.prefetch_coordinator.get_params_to_prefetch(
-                sub_module,
-                numel=numel)
+                sub_module, numel=numel)
 
             self._all_gather(params_to_prefetch, async_op=True)
             for param in params_to_prefetch:
@@ -374,8 +373,8 @@ class PartitionedParameterCoordinator(object):
                 self._increment_available_parameter_numel(param.ds_numel)
 
             if nvme:
-                self._prefetch_nvme_param_partitions(
-                    sub_module, params_to_prefetch)
+                self._prefetch_nvme_param_partitions(sub_module,
+                                                     params_to_prefetch)
 
         self._print_prefetch_elements_info(sub_module, params_to_prefetch)
         print_rank_0(
@@ -410,8 +409,7 @@ class PartitionedParameterCoordinator(object):
             f"{'--' * self.hierarchy}Fetching params in module {debug_module2name_class(sub_module)}"
         )
         params_to_fetch = [
-            param for _,
-            param in sub_module.named_parameters(recurse=False)
+            param for _, param in sub_module.named_parameters(recurse=False)
         ]
         # print([n for n,p in sub_module.named_parameters(recurse=False)])
 
@@ -420,8 +418,7 @@ class PartitionedParameterCoordinator(object):
                 f"{'--' * self.hierarchy}--Fetching external parameters {sub_module.ds_external_parameters()}"
             )
             params_to_fetch += [
-                param for _,
-                param in sub_module.ds_external_parameters()
+                param for _, param in sub_module.ds_external_parameters()
             ]
         # for _, param in sub_module.named_parameters(recurse=False):
         for param in params_to_fetch:
@@ -472,15 +469,13 @@ class PartitionedParameterCoordinator(object):
             f"{'--' * self.hierarchy}Releasing params in module {debug_module2name_class(sub_module)}"
         )
         params_to_release = [
-            param for _,
-            param in sub_module.named_parameters(recurse=False)
+            param for _, param in sub_module.named_parameters(recurse=False)
         ]
 
         if hasattr(sub_module, 'ds_external_parameters'):
             # print_rank_0(f"Releasing external parameters {sub_module.ds_external_parameters()}")
             params_to_release += [
-                param for _,
-                param in sub_module.ds_external_parameters()
+                param for _, param in sub_module.ds_external_parameters()
             ]
 
         # for _, param in sub_module.named_parameters(recurse=False):
@@ -543,7 +538,8 @@ class PartitionedParameterCoordinator(object):
 
     def _synchronize_communication(self, synchronize_streams=True):
         assert len(self.params_in_flight) == len(self.in_flight_handles)
-        for handle, param in zip(self.in_flight_handles, self.params_in_flight):
+        for handle, param in zip(self.in_flight_handles,
+                                 self.params_in_flight):
             if handle is not None:
                 with torch.cuda.stream(self.comm_stream):
                     handle.wait()
@@ -555,6 +551,7 @@ class PartitionedParameterCoordinator(object):
 
 
 class PreBackwardFunction(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, module, pre_backward_function, outputs):
         ctx.module = module
@@ -574,6 +571,7 @@ class PreBackwardFunction(torch.autograd.Function):
 
 
 class PostBackwardFunction(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, module, pre_backward_function, output):
         ctx.module = module
@@ -702,15 +700,19 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 remote_device = None
 
             if offload_optimizer_config is not None:
-                pin_memory = offload_optimizer_config.get(OFFLOAD_OPTIMIZER_PIN_MEMORY, False)
+                pin_memory = offload_optimizer_config.get(
+                    OFFLOAD_OPTIMIZER_PIN_MEMORY, False)
             else:
                 pin_memory = False
 
             group = None
             if gpc.is_initialized(ParallelMode.DATA):
                 group = gpc.get_group(ParallelMode.DATA)
-            Init(module=module, data_parallel_group=group, dtype=self.dtype,
-                 remote_device=remote_device, config_dict_or_path=ds_config,
+            Init(module=module,
+                 data_parallel_group=group,
+                 dtype=self.dtype,
+                 remote_device=remote_device,
+                 config_dict_or_path=ds_config,
                  pin_memory=pin_memory)
 
         for m in module.modules():
@@ -755,14 +757,16 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 OFFLOAD_PARAM_PIN_MEMORY]
             self.params_in_nvme_and_cpu = offload_param_config[
                 OFFLOAD_PARAM_DEVICE] == OFFLOAD_NVME_DEVICE
-            self.max_params_in_cpu = offload_param_config[OFFLOAD_PARAM_MAX_IN_CPU]
+            self.max_params_in_cpu = offload_param_config[
+                OFFLOAD_PARAM_MAX_IN_CPU]
             if self.verbose:
                 print_rank_0(
                     f"FP16 params swapping is {self.params_in_nvme_and_cpu}, Max params in CPU is {self.max_params_in_cpu}",
                     force=False)
 
         self.deepspeed_adam_offload = (self.offload_optimizer
-                                       and type(init_optimizer) == DeepSpeedCPUAdam)
+                                       and type(init_optimizer)
+                                       == DeepSpeedCPUAdam)
 
         self.device = torch.cuda.current_device(
         ) if not self.offload_optimizer else OFFLOAD_CPU_DEVICE
@@ -868,8 +872,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
         # Optimizer ensor swapping
         if self.swap_optimizer:
-            self._configure_tensor_swapping(
-                offload_optimizer_config, aio_config)
+            self._configure_tensor_swapping(offload_optimizer_config,
+                                            aio_config)
 
         if self.verbose:
             report_memory_usage("Before creating fp32 partitions")
@@ -893,8 +897,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
         self.reduce_bucket_size = int(reduce_bucket_size)
 
-        self.reduction_event = torch.cuda.Event(
-            enable_timing=False, blocking=False)
+        self.reduction_event = torch.cuda.Event(enable_timing=False,
+                                                blocking=False)
 
         self.reduction_stream = torch.cuda.Stream(
         ) if self.overlap_comm else torch.cuda.current_stream()
@@ -956,9 +960,10 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 largest_partitioned_param_numel,
                 device=torch.cuda.current_device(),
                 dtype=self.dtype)
-            self.temp_grad_gpu_buffer = torch.zeros(largest_partitioned_param_numel,
-                                                    device=torch.cuda.current_device(),
-                                                    dtype=self.dtype)
+            self.temp_grad_gpu_buffer = torch.zeros(
+                largest_partitioned_param_numel,
+                device=torch.cuda.current_device(),
+                dtype=self.dtype)
 
         if self.verbose:
             report_memory_usage(f"After CPU Offload initialization")
@@ -1043,7 +1048,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     )
 
                 # Record padding required to align group to world size (only applies to last rank)
-                if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
+                if partition_id == dist.get_world_size(
+                        group=self.dp_process_group) - 1:
                     padding = [p.padding_size() for p in self.fp16_groups[i]]
                 else:
                     padding = [0] * len(self.fp16_groups[i])
@@ -1068,8 +1074,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     self.fp16_partitioned_groups_flat.append(
                         self.flatten_dense_tensors_aligned(
                             self.fp16_partitioned_groups[i],
-                            dist.get_world_size(group=self.dp_process_group)).cuda(
-                            torch.cuda.current_device()))
+                            dist.get_world_size(
+                                group=self.dp_process_group)).cuda(
+                                    torch.cuda.current_device()))
 
                     if self.verbose:
                         report_memory_usage(
@@ -1081,17 +1088,19 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     self.fp16_partitioned_groups_flat.append(
                         self.flatten_dense_tensors_aligned(
                             self.fp16_partitioned_groups[i],
-                            dist.get_world_size(
-                                group=self.dp_process_group)).detach().pin_memory())
+                            dist.get_world_size(group=self.dp_process_group)).
+                        detach().pin_memory())
 
                 if self.verbose:
                     report_memory_usage(f"After Flattening param group {i}")
 
                 # set model fp16 weight to slices of flattened buffer
-                updated_params = self.unflatten(self.fp16_partitioned_groups_flat[i],
-                                                self.fp16_partitioned_groups[i])
+                updated_params = self.unflatten(
+                    self.fp16_partitioned_groups_flat[i],
+                    self.fp16_partitioned_groups[i])
 
-                for partitioned_param, q in zip(self.fp16_partitioned_groups[i], updated_params):
+                for partitioned_param, q in zip(
+                        self.fp16_partitioned_groups[i], updated_params):
                     partitioned_param.data = q.data
 
     def _move_to_flat_buffer(self, param_list, flat_buffer, avoid_copy=False):
@@ -1140,15 +1149,16 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
             if self.params_in_nvme_and_cpu and \
                     aggregate_params_count + params_in_group > self.max_params_in_cpu:
-                flat_buffer_size = max(0,
-                                       self.max_params_in_cpu - aggregate_params_count)
+                flat_buffer_size = max(
+                    0, self.max_params_in_cpu - aggregate_params_count)
 
             aggregate_params_count += params_in_group
 
             if flat_buffer_size > 0:
                 if self.verbose:
-                    print_rank_0(f"group {j} flat buffer size {flat_buffer_size}",
-                                 force=False)
+                    print_rank_0(
+                        f"group {j} flat buffer size {flat_buffer_size}",
+                        force=False)
                 self.param_groups_fp16_flat_cpu_memory.append(
                     torch.empty(int(flat_buffer_size),
                                 dtype=self.dtype,
@@ -1160,8 +1170,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                         force=False)
 
                 self.param_groups_fp16_flat_cpu_memory.append(
-                    torch.empty(1,
-                                dtype=self.dtype))
+                    torch.empty(1, dtype=self.dtype))
 
     def _create_fp16_partitions_with_defragmentation(self):
         dist.barrier()
@@ -1180,8 +1189,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             sub_groups = self._create_fp16_sub_groups(param_group['params'])
 
             if self.verbose:
-                print_rank_0(
-                    f'fp16 group {j} has {len(sub_groups)} subgroups', force=False)
+                print_rank_0(f'fp16 group {j} has {len(sub_groups)} subgroups',
+                             force=False)
 
             flat_offset = 0
             for sub_group in sub_groups:
@@ -1216,7 +1225,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     )
 
                 # Record padding required to align group to world size (only applies to last rank)
-                if partition_id == dist.get_world_size(group=self.dp_process_group) - 1:
+                if partition_id == dist.get_world_size(
+                        group=self.dp_process_group) - 1:
                     padding = [p.padding_size() for p in self.fp16_groups[i]]
                 else:
                     padding = [0] * len(self.fp16_groups[i])
@@ -1246,21 +1256,21 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                             1).cuda(torch.cuda.current_device()))
                     if self.verbose:
                         report_memory_usage(
-                            f"After flattening and moving param subgroup {i} to GPU")
+                            f"After flattening and moving param subgroup {i} to GPU"
+                        )
 
                 # all partitioned parameters are in CPU during training
                 else:
                     if self.verbose:
                         print_rank_0(
-                            f"Params in nvme and cpu {self.params_in_nvme_and_cpu}")
+                            f"Params in nvme and cpu {self.params_in_nvme_and_cpu}"
+                        )
                     # Flat buffer may not be available for parameters that reside in NVME
                     if not self.params_in_nvme_and_cpu or flat_offset + total_elements <= \
                             self.param_groups_fp16_flat_cpu_memory[
                                 j].numel():
                         fp16_partitioned_group_flat = self.param_groups_fp16_flat_cpu_memory[
-                            j].narrow(0,
-                                      flat_offset,
-                                      total_elements)
+                            j].narrow(0, flat_offset, total_elements)
                         if self.verbose:
                             print_rank_0(
                                 f"Creating a flat buffer for subgroup {i} requiring {total_elements} elements, and cumulative CPU elemets {flat_offset + total_elements}",
@@ -1294,8 +1304,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     report_memory_usage(f"After Flattening param subgroup {i}")
 
         if create_fp16_flat_reuse_buffer:
-            assert len(
-                largest_partition_numel) > 0, f'Unexpected that largest partition is empty'
+            assert len(largest_partition_numel
+                       ) > 0, f'Unexpected that largest partition is empty'
             self.fp16_groups[0][0].nvme_swapper.reserve_partitioned_swap_space(
                 largest_partition_numel)
 
@@ -1304,7 +1314,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         elements_in_sub_group = sum(
             [t.ds_numel for t in self.fp16_partitioned_groups[sub_group_id]])
         assert (flat_buffer.numel() == elements_in_sub_group)
-        for param, partitioned_param in zip(self.fp16_groups[sub_group_id], self.fp16_partitioned_groups[sub_group_id]):
+        for param, partitioned_param in zip(
+                self.fp16_groups[sub_group_id],
+                self.fp16_partitioned_groups[sub_group_id]):
             dest = flat_buffer.narrow(0, offset, partitioned_param.ds_numel)
             if partitioned_param.status == PartitionedParamStatus.NOT_AVAILABLE:
                 if self.verbose:
@@ -1313,8 +1325,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     )
                 param.nvme_swapper.swap_in([param], async_op=False)
                 dest.data.copy_(partitioned_param.data)
-                param.nvme_swapper.remove_partition_and_release_buffers([
-                    param])
+                param.nvme_swapper.remove_partition_and_release_buffers(
+                    [param])
                 if self.verbose:
                     print_rank_0(f"Swapping in {param.ds_id} done")
             else:
@@ -1337,16 +1349,16 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
     def _get_sub_group_partitions(self, sub_group_id):
         sub_group_partitions = []
-        for param, partitioned_param in zip(self.fp16_groups[sub_group_id], self.fp16_partitioned_groups[sub_group_id]):
+        for param, partitioned_param in zip(
+                self.fp16_groups[sub_group_id],
+                self.fp16_partitioned_groups[sub_group_id]):
             if partitioned_param.status == PartitionedParamStatus.NOT_AVAILABLE:
                 swap_path = param.nvme_swapper.get_path(param, True)
-                sub_group_partitions.append((partitioned_param,
-                                             param.ds_tensor.ds_numel,
-                                             swap_path))
+                sub_group_partitions.append(
+                    (partitioned_param, param.ds_tensor.ds_numel, swap_path))
             else:
-                sub_group_partitions.append((partitioned_param,
-                                             partitioned_param.ds_numel,
-                                             None))
+                sub_group_partitions.append(
+                    (partitioned_param, partitioned_param.ds_numel, None))
 
         return sub_group_partitions
 
@@ -1359,15 +1371,15 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         num_swap_from_cpu_partitions = 0
         swap_from_nvme_memory_usage = 0
         swap_from_cpu_memory_usage = 0
-        GIGA_BYTES = (1024 ** 3)
+        GIGA_BYTES = (1024**3)
 
         swappable_fp32_tensors = []
         swappable_fp16_src_tensors = []
         nvme_fp16_partitions_info = []
         nvme_fp16_num_elems = []
         nvme_fp32_dest_tensors = []
-        fp32_element_size = torch.tensor(
-            [], dtype=torch.float32).element_size()
+        fp32_element_size = torch.tensor([],
+                                         dtype=torch.float32).element_size()
 
         for i, tensor in enumerate(self.fp16_partitioned_groups_flat):
             num_elements = self.fp16_partitioned_groups_flat_numel[i]
@@ -1380,8 +1392,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
                 if self.params_in_nvme_and_cpu and tensor is None:
                     num_swap_from_nvme_partitions += 1
-                    swap_from_nvme_memory_usage += (
-                        fp32_element_size * num_elements)
+                    swap_from_nvme_memory_usage += (fp32_element_size *
+                                                    num_elements)
                     if self.offload_optimizer_fast_init:
                         sub_group_partitions = self._get_sub_group_partitions(
                             i)
@@ -1400,8 +1412,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                             src_tensors=[unpinned_fp32_buffer])
                 else:
                     num_swap_from_cpu_partitions += 1
-                    swap_from_cpu_memory_usage += (
-                        fp32_element_size * num_elements)
+                    swap_from_cpu_memory_usage += (fp32_element_size *
+                                                   num_elements)
                     swappable_fp32_tensors.append(
                         self.fp32_partitioned_groups_flat[i])
                     swappable_fp16_src_tensors.append(
@@ -1468,8 +1480,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
     def _create_fp16_sub_groups(self, params_group):
 
-        params_group_numel = sum([param.partitioned_size()
-                                  for param in params_group])
+        params_group_numel = sum(
+            [param.partitioned_size() for param in params_group])
         sub_group_size = self.sub_group_size
 
         if sub_group_size is None or sub_group_size >= params_group_numel:
@@ -1560,8 +1572,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 else:
                     # print(f'got UNKNOWN type {type(output)}')
                     outputs = []
-                    output = output if isinstance(
-                        output, dict) else vars(output)
+                    output = output if isinstance(output,
+                                                  dict) else vars(output)
                     for name, val in output.items():
                         if not name.startswith('__') and torch.is_tensor(val):
                             outputs.append(val)
@@ -1569,7 +1581,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     # print(f'convert output to {output}')
 
             for item in filter(lambda item: is_zero_param(item), output):
-                if not any(id(item) in m._external_params for m in FWD_MODULE_STACK):
+                if not any(
+                        id(item) in m._external_params
+                        for m in FWD_MODULE_STACK):
                     item.ds_active_sub_modules += 1
                     module_to_register = FWD_MODULE_STACK[-1]
 
@@ -1593,6 +1607,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             self.post_sub_module_forward_function(module)
 
         def _pre_backward_module_hook(module, inputs, output):
+
             def _run_before_backward_function(sub_module):
                 # some models (e.g. Albert) may run multiple forwards on the same layer in a loop
                 # before doing backwards, so each backward will need a pre-fetch - using reference
@@ -1603,8 +1618,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     sub_module.applied_pre_backward_ref_cnt -= 1
                 # print(f"COUNTER after: {sub_module.applied_pre_backward_ref_cnt}")
 
-            return _apply_to_tensors_only(module,
-                                          PreBackwardFunction,
+            return _apply_to_tensors_only(module, PreBackwardFunction,
                                           _run_before_backward_function,
                                           output)
 
@@ -1626,9 +1640,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     module.ds_grads_remaining += 1
 
             return _apply_forward_and_backward_to_tensors_only(
-                module,
-                _run_before_forward_function,
-                _run_after_backward_hook,
+                module, _run_before_forward_function, _run_after_backward_hook,
                 inputs)
 
         def _post_backward_module_hook(module, inputs):
@@ -1638,10 +1650,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 if sub_module.ds_grads_remaining == 0:
                     self.post_sub_module_backward_function(sub_module)
 
-            return _apply_to_tensors_only(module,
-                                          PostBackwardFunction,
-                                          _run_after_backward_function,
-                                          inputs)
+            return _apply_to_tensors_only(module, PostBackwardFunction,
+                                          _run_after_backward_function, inputs)
 
         # Pre forward hook
         module.register_forward_pre_hook(_pre_forward_module_hook)
@@ -1667,7 +1677,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         self.param_coordinator.fetch_sub_module(sub_module)
         if self.verbose:
             report_memory_usage(
-                f"Before sub module function {sub_module.__class__.__name__} after fetch")
+                f"Before sub module function {sub_module.__class__.__name__} after fetch"
+            )
 
         self.param_coordinator.prefetch_next_sub_modules(
             sub_module,
@@ -1675,39 +1686,44 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             nvme=self.params_in_nvme_and_cpu)
         if self.verbose:
             report_memory_usage(
-                f"Before sub module function {sub_module.__class__.__name__} after prefetch")
+                f"Before sub module function {sub_module.__class__.__name__} after prefetch"
+            )
 
         self.param_coordinator.increment_step(sub_module)
 
     def post_sub_module_forward_function(self, sub_module):
         if self.verbose:
             report_memory_usage(
-                f"After sub module function {sub_module.__class__.__name__} {sub_module.id} before release")
+                f"After sub module function {sub_module.__class__.__name__} {sub_module.id} before release"
+            )
 
         self.param_coordinator.release_sub_module(sub_module)
         if self.verbose:
             report_memory_usage(
-                f"After sub module function {sub_module.__class__.__name__}  {sub_module.id} after release")
+                f"After sub module function {sub_module.__class__.__name__}  {sub_module.id} after release"
+            )
 
     def pre_sub_module_backward_function(self, sub_module):
         self.param_coordinator.record_trace(sub_module)
 
         self.param_coordinator.fetch_sub_module(sub_module)
 
-        self.param_coordinator.prefetch_next_sub_modules(sub_module,
-                                                         numel=self.prefetch_elements)
+        self.param_coordinator.prefetch_next_sub_modules(
+            sub_module, numel=self.prefetch_elements)
 
         self.param_coordinator.increment_step(sub_module)
 
     def post_sub_module_backward_function(self, sub_module):
         if self.verbose:
             report_memory_usage(
-                f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release")
+                f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} before release"
+            )
         self.param_coordinator.release_sub_module(sub_module)
 
         if self.verbose:
             report_memory_usage(
-                f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release")
+                f"After sub module backward function {sub_module.__class__.__name__} {sub_module.id} after release"
+            )
 
     def _release_ipg_buffers(self):
         if self.contiguous_gradients:
@@ -1731,8 +1747,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             return False
 
         return self.optimizer_swapper.swappable_tensor(
-            None,
-            numel=self.fp16_partitioned_groups_flat_numel[sub_group_id])
+            None, numel=self.fp16_partitioned_groups_flat_numel[sub_group_id])
 
     def _partitioned_params_swap_out(self, i):
         offset = 0
@@ -1742,7 +1757,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
         swap_fp16_params = []
         swap_fp32_params = []
-        for param, partitioned_param in zip(self.fp16_groups[i], self.fp16_partitioned_groups[i]):
+        for param, partitioned_param in zip(self.fp16_groups[i],
+                                            self.fp16_partitioned_groups[i]):
             src = fp32_param.narrow(0, offset, partitioned_param.ds_numel)
             if partitioned_param.status == PartitionedParamStatus.AVAILABLE:
                 partitioned_param.data.copy_(src.data)
@@ -1759,8 +1775,10 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
     def initialize_optimizer_states(self):
         num_subgroups = len(self.fp16_groups)
 
-        largest_numel = max(
-            [sum([p.ds_numel for p in psg]) for psg in self.fp16_partitioned_groups])
+        largest_numel = max([
+            sum([p.ds_numel for p in psg])
+            for psg in self.fp16_partitioned_groups
+        ])
         gradient_dtype = self.fp32_partitioned_groups_flat[0].dtype
         gradient_buffer = torch.zeros(int(largest_numel),
                                       dtype=gradient_dtype,
@@ -1779,13 +1797,15 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         for i, group in enumerate(self.fp16_groups):
             swappable_optimizer_subgroup = self._swappable_optimizer_subgroup(
                 i)
-            swappable_param_subgroup = self.fp16_partitioned_groups_flat[i] is None
+            swappable_param_subgroup = self.fp16_partitioned_groups_flat[
+                i] is None
 
             num_elements = int(self.fp16_partitioned_groups_flat_numel[i])
 
             if self.verbose:
                 report_memory_usage(
-                    f'[Begin] Initialize optimizer states {i} / {num_subgroups} subgroups, num_elems: {num_elements}, swappable opt/param:{swappable_optimizer_subgroup}/{swappable_param_subgroup}')
+                    f'[Begin] Initialize optimizer states {i} / {num_subgroups} subgroups, num_elems: {num_elements}, swappable opt/param:{swappable_optimizer_subgroup}/{swappable_param_subgroup}'
+                )
 
             if swappable_optimizer_subgroup:
                 self._optimizer_states_and_gradient_swap_in(i, timer_names)
@@ -1795,14 +1815,14 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                                                        dtype=gradient_dtype,
                                                        device=self.device)
                 if self.offload_optimizer_pin_memory:
-                    subgroup_gradient_buffer = subgroup_gradient_buffer.pin_memory()
+                    subgroup_gradient_buffer = subgroup_gradient_buffer.pin_memory(
+                    )
 
-                self.fp32_partitioned_groups_flat[i].grad = subgroup_gradient_buffer
+                self.fp32_partitioned_groups_flat[
+                    i].grad = subgroup_gradient_buffer
             else:
-                self.fp32_partitioned_groups_flat[i].grad = gradient_buffer.narrow(
-                    0,
-                    0,
-                    num_elements)
+                self.fp32_partitioned_groups_flat[
+                    i].grad = gradient_buffer.narrow(0, 0, num_elements)
 
             self._optimizer_step(i)
 
@@ -1814,7 +1834,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
             if self.verbose:
                 report_memory_usage(
-                    f'[End] Initialize optimizer states {i} / {num_subgroups} subgroups, num_elems: {num_elements}, swappable opt/param:{swappable_optimizer_subgroup}/{swappable_param_subgroup}')
+                    f'[End] Initialize optimizer states {i} / {num_subgroups} subgroups, num_elems: {num_elements}, swappable opt/param:{swappable_optimizer_subgroup}/{swappable_param_subgroup}'
+                )
 
         self.stop_timers([INIT_OPTIMIZER_TIMER])
         self.log_timers(timer_names)
@@ -1859,14 +1880,12 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 self.is_grad_computed[i][partition_id] = {}
                 self.grad_partition_insertion_offset[i][partition_id] = {}
                 self.grad_start_offset[i][partition_id] = {}
-                self.initialize_gradient_partition(
-                    i, param_group, partition_id)
+                self.initialize_gradient_partition(i, param_group,
+                                                   partition_id)
                 self.is_partition_reduced[i][partition_id] = False
                 self.first_param_index_in_partition[i][
                     partition_id] = self.get_first_param_index(
-                    i,
-                    param_group,
-                    partition_id)
+                        i, param_group, partition_id)
 
     def independent_gradient_partition_epilogue(self):
         if self.verbose:
@@ -1893,10 +1912,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         if not self.offload_optimizer:
             for i, sub_group in enumerate(self.fp16_groups):
                 self.averaged_gradients[i] = [
-                    torch.zeros_like(param.ds_tensor) if param.grad is None else
-                    param.grad.data.narrow(0,
-                                           0,
-                                           param.ds_tensor.numel())
+                    torch.zeros_like(param.ds_tensor) if param.grad is None
+                    else param.grad.data.narrow(0, 0, param.ds_tensor.numel())
                     for param in sub_group
                 ]
                 # self.averaged_gradients[i] = self.get_flat_partition(
@@ -1919,12 +1936,14 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             for partition_id in range(total_partitions):
                 self.is_partition_reduced[i][partition_id] = False
                 self.remaining_grads_in_partition[i][
-                    partition_id] = self.total_grads_in_partition[i][partition_id]
+                    partition_id] = self.total_grads_in_partition[i][
+                        partition_id]
 
                 for param_id in self.is_grad_computed[i][partition_id]:
                     self.is_grad_computed[i][partition_id][param_id] = False
 
     def initialize_gradient_partition(self, i, param_group, partition_id):
+
         def set_key_value_list(dictionary, key, value):
             if key in dictionary:
                 dictionary[key].append(value)
@@ -1951,8 +1970,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             param_id = self.get_param_id(param)
 
             if (current_index >= start_index and current_index < end_index):
-                set_key_value_list(self.param_to_partition_ids[i],
-                                   param_id,
+                set_key_value_list(self.param_to_partition_ids[i], param_id,
                                    partition_id)
                 increment_value(self.total_grads_in_partition[i], partition_id)
 
@@ -1965,18 +1983,20 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             elif start_index > current_index and start_index < (current_index +
                                                                 param_size):
                 assert (
-                    first_offset == 0), "This can happen either zero or only once as this must be the first tensor in the partition"
+                    first_offset == 0
+                ), "This can happen either zero or only once as this must be the first tensor in the partition"
                 first_offset = start_index - current_index
 
-                set_key_value_list(self.param_to_partition_ids[i],
-                                   param_id,
+                set_key_value_list(self.param_to_partition_ids[i], param_id,
                                    partition_id)
                 increment_value(self.total_grads_in_partition[i], partition_id)
 
                 self.is_grad_computed[i][partition_id][param_id] = False
 
-                self.grad_partition_insertion_offset[i][partition_id][param_id] = 0
-                self.grad_start_offset[i][partition_id][param_id] = first_offset
+                self.grad_partition_insertion_offset[i][partition_id][
+                    param_id] = 0
+                self.grad_start_offset[i][partition_id][
+                    param_id] = first_offset
 
             current_index = current_index + param_size
 
@@ -2023,10 +2043,11 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
     def report_ipg_memory_usage(self, tag, param_elems):
         elem_count = self.elements_in_ipg_bucket + param_elems
-        percent_of_bucket_size = (
-            100.0 * elem_count) // self.reduce_bucket_size
+        percent_of_bucket_size = (100.0 *
+                                  elem_count) // self.reduce_bucket_size
         report_memory_usage(
-            f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}")
+            f"{tag}: elems in_bucket {self.elements_in_ipg_bucket} param {param_elems} max_percent {percent_of_bucket_size}"
+        )
 
     ###############Idependent Partition Gradient ########################
     def reduce_independent_p_g_buckets_and_remove_grads(self, param, i):
@@ -2039,8 +2060,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         # empty, while reduction_list will have that garbage data.
         if self.elements_in_ipg_bucket > 0 and self.elements_in_ipg_bucket + param.ds_numel > self.reduce_bucket_size:
             if self.verbose:
-                self.report_ipg_memory_usage("In ipg_remove_grads before reduce_ipg_grads",
-                                             param.ds_numel)
+                self.report_ipg_memory_usage(
+                    "In ipg_remove_grads before reduce_ipg_grads",
+                    param.ds_numel)
 
             self.reduce_ipg_grads()
 
@@ -2048,8 +2070,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 # Swap ipg_index between 0 and 1
                 self.ipg_index = 1 - self.ipg_index
             if self.verbose:
-                self.report_ipg_memory_usage("In ipg_remove_grads after reduce_ipg_grads",
-                                             param.ds_numel)
+                self.report_ipg_memory_usage(
+                    "In ipg_remove_grads after reduce_ipg_grads",
+                    param.ds_numel)
 
         param_id = self.get_param_id(param)
         assert self.params_already_reduced[param_id] == False, \
@@ -2064,9 +2087,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         elif self.contiguous_gradients:
             # print_rank_0("before new grad tensor move")
             new_grad_tensor = self.ipg_buffer[self.ipg_index].narrow(
-                0,
-                self.elements_in_ipg_bucket,
-                param.ds_numel)
+                0, self.elements_in_ipg_bucket, param.ds_numel)
             # print_rank_0("after new grad tensor move")
             new_grad_tensor.copy_(param.grad.view(-1))
             param.grad.data = new_grad_tensor.data.view_as(param.grad)
@@ -2092,8 +2113,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
 
             if self.gradient_predivide_factor != dp_world_size:
-                tensor_to_allreduce.mul_(
-                    self.gradient_predivide_factor / dp_world_size)
+                tensor_to_allreduce.mul_(self.gradient_predivide_factor /
+                                         dp_world_size)
         else:
             tensor_to_allreduce.div_(dp_world_size)
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
@@ -2130,24 +2151,22 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 num_elements = param.ds_tensor.ds_numel
 
                 self.grad_position[param_id] = [
-                    int(i),
-                    int(current_offset),
+                    int(i), int(current_offset),
                     int(num_elements)
                 ]
                 # print(f"param id {param_id} i:{i}, ds_tensor {num_elements} numel {param.numel()}")
                 current_offset += num_elements
 
-    def async_accumulate_grad_in_cpu_via_gpu(self, param, acc_grad_cpu_partition):
+    def async_accumulate_grad_in_cpu_via_gpu(self, param,
+                                             acc_grad_cpu_partition):
 
         # copy to a preexisiting buffer to avoid memory allocation penalty
         dest_buffer = self.temp_grad_buffer_for_gpu_offload.view(-1).narrow(
-            0,
-            0,
-            param.ds_tensor.ds_numel)
+            0, 0, param.ds_tensor.ds_numel)
 
         if self.micro_step_id > 0:
-            dest_buffer.copy_(
-                acc_grad_cpu_partition.view(-1), non_blocking=True)
+            dest_buffer.copy_(acc_grad_cpu_partition.view(-1),
+                              non_blocking=True)
             param.grad.data.view(-1).add_(dest_buffer)
 
         # at the boundary we will send 32bit directly
@@ -2159,10 +2178,10 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         norm = None
         for part in input.view(-1).split(buffer_size):
             if norm is None:
-                norm = part.data.double().norm(2) ** 2.0
+                norm = part.data.double().norm(2)**2.0
             else:
-                norm += part.data.double().norm(2) ** 2.0
-        return norm ** 0.5
+                norm += part.data.double().norm(2)**2.0
+        return norm**0.5
 
     def set_norm_for_param_grad_in_gpu(self, param):
         param_id = self.get_param_id(param)
@@ -2179,7 +2198,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             elif self._has_inf_or_nan(param.grad.data):
                 self.local_overflow = True
 
-    def async_inplace_copy_grad_to_fp32_buffer_from_gpu(self, param, fp32_grad_tensor):
+    def async_inplace_copy_grad_to_fp32_buffer_from_gpu(
+            self, param, fp32_grad_tensor):
         with torch.cuda.stream(self.copy_grad_stream):
             param_id = self.get_param_id(param)
             src_tensor = param.grad.view(-1).float()
@@ -2191,11 +2211,12 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         total_norm = 0.0
         norm_type = 2.0
         for p in params:
-            if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
+            if is_model_parallel_parameter(p) or (self.model_parallel_rank
+                                                  == 0):
                 param_id = self.get_param_id(p)
                 if param_id in self.norm_for_param_grads.keys():
                     param_norm = self.norm_for_param_grads[param_id]
-                    total_norm += param_norm.item() ** 2
+                    total_norm += param_norm.item()**2
 
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
@@ -2207,10 +2228,10 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         self._model_parallel_all_reduce(tensor=total_norm_cuda,
                                         op=torch.distributed.ReduceOp.SUM)
 
-        total_norm = total_norm_cuda[0].item() ** (1. / norm_type)
+        total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
-        if total_norm == float(
-                'inf') or total_norm == -float('inf') or total_norm != total_norm:
+        if total_norm == float('inf') or total_norm == -float(
+                'inf') or total_norm != total_norm:
             total_norm = -1
 
         return total_norm
@@ -2235,7 +2256,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
                 if self.verbose:
                     report_memory_usage(
-                        f"group {i} before creating {total_size} reduced gradients into partition")
+                        f"group {i} before creating {total_size} reduced gradients into partition"
+                    )
                 if self.offload_param_pin_memory:
                     self.grads_in_partition.append(
                         torch.zeros(int(total_size),
@@ -2248,7 +2270,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                                     device=self.device))
                 if self.verbose:
                     report_memory_usage(
-                        f"group {i} after creating {total_size} reduced gradients into partition")
+                        f"group {i} after creating {total_size} reduced gradients into partition"
+                    )
 
         if self.offload_optimizer:
             offload_fp32_gradients = {}
@@ -2258,8 +2281,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             self.reduction_stream.synchronize()
             for param in self.previous_reduced_grads:
 
-                [i,
-                 dest_offset,
+                [i, dest_offset,
                  num_elements] = self.grad_position[self.get_param_id(param)]
 
                 if self.offload_optimizer:
@@ -2271,12 +2293,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                     if self.gradient_accumulation_steps > 1:
                         # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
                         fp16_grad_tensor = self.grads_in_partition[i].narrow(
-                            0,
-                            dest_offset,
-                            num_elements)
+                            0, dest_offset, num_elements)
                         self.async_accumulate_grad_in_cpu_via_gpu(
-                            param,
-                            fp16_grad_tensor)
+                            param, fp16_grad_tensor)
 
                     if self.is_gradient_accumulation_boundary:
 
@@ -2295,19 +2314,14 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                             offload_fp32_offsets[i].append(dest_offset)
                         else:
                             fp32_grad_tensor = self.fp32_partitioned_groups_flat[
-                                i].grad.narrow(0,
-                                               dest_offset,
-                                               num_elements)
+                                i].grad.narrow(0, dest_offset, num_elements)
 
                             self.async_inplace_copy_grad_to_fp32_buffer_from_gpu(
-                                param,
-                                fp32_grad_tensor)
+                                param, fp32_grad_tensor)
                 else:
                     # The allreduce buffer will be rewritted. Copy the gradients in partition to a new buffer
                     fp16_grad_tensor = self.grads_in_partition[i].narrow(
-                        0,
-                        dest_offset,
-                        num_elements)
+                        0, dest_offset, num_elements)
                     param.partition_gradients(
                         partition_buffers=fp16_grad_tensor,
                         accumulate=True if self.micro_step_id > 0 else False)
@@ -2328,8 +2342,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         with torch.cuda.stream(self.reduction_stream):
             self.partition_previous_reduced_grads()
 
-        params_to_reduce = [param for i, param,
-                            param_id in self.params_in_ipg_bucket]
+        params_to_reduce = [
+            param for i, param, param_id in self.params_in_ipg_bucket
+        ]
         # print(f"Params in ipg bucket {self.params_in_ipg_bucket}")
         # print(f"Reducing {[(debug_param2name_id_shape(param), param.grad) for param in params_to_reduce]}")
         # exit(0)
@@ -2360,6 +2375,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         self.reduce_independent_p_g_buckets_and_remove_grads(param, i)
 
     def zero_reduced_gradients(self, partition_id, i):
+
         def are_all_related_partitions_reduced(params_id):
             for partition_id in self.param_to_partition_ids[i][params_id]:
                 if not self.is_partition_reduced[i][partition_id]:
@@ -2379,29 +2395,26 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         self.sequential_execution(print_func, message)
 
     def get_grads_to_reduce(self, i, partition_id):
+
         def get_reducable_portion(key):
             grad = self.param_dict[key].grad
             total_elements = grad.numel()
             start = self.grad_start_offset[i][partition_id][key]
             num_elements = min(
-                total_elements - start,
-                self.partition_size[i] -
+                total_elements - start, self.partition_size[i] -
                 self.grad_partition_insertion_offset[i][partition_id][key])
             if not pg_correctness_test:
                 if num_elements == total_elements:
                     return grad
                 else:
-                    return grad.contiguous().view(-1).narrow(0,
-                                                             int(start),
-                                                             int(num_elements))
+                    return grad.contiguous().view(-1).narrow(
+                        0, int(start), int(num_elements))
             else:
                 if num_elements == total_elements:
                     return grad.clone()
                 else:
                     return grad.clone().contiguous().view(-1).narrow(
-                        0,
-                        int(start),
-                        int(num_elements))
+                        0, int(start), int(num_elements))
 
         grads_to_reduce = []
         for key in self.is_grad_computed[i][partition_id]:
@@ -2427,7 +2440,11 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
     ######################Reduction Related Methods##############################
 
-    def allreduce_bucket(self, bucket, allreduce_always_fp32=False, rank=None, log=None):
+    def allreduce_bucket(self,
+                         bucket,
+                         allreduce_always_fp32=False,
+                         rank=None,
+                         log=None):
         rank = None
         tensor = self.flatten(bucket)
 
@@ -2447,11 +2464,13 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             dist.all_reduce(tensor_to_allreduce, group=self.dp_process_group)
         else:
             global_rank = _get_global_rank(self.dp_process_group, rank)
-            dist.reduce(tensor_to_allreduce, global_rank,
+            dist.reduce(tensor_to_allreduce,
+                        global_rank,
                         group=self.dp_process_group)
 
         if allreduce_always_fp32 and tensor is not tensor_to_allreduce:
-            if rank is None or rank == dist.get_rank(group=self.dp_process_group):
+            if rank is None or rank == dist.get_rank(
+                    group=self.dp_process_group):
                 tensor.copy_(tensor_to_allreduce)
 
         return tensor
@@ -2459,10 +2478,14 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
     # if rank is specified do a reduction instead of an allreduce
     def allreduce_and_copy(self, small_bucket, rank=None, log=None):
         with torch.cuda.stream(self.reduction_stream):
-            allreduced = self.allreduce_bucket(
-                small_bucket, rank=rank, log=log)
-            if rank is None or rank == dist.get_rank(group=self.dp_process_group):
-                for buf, synced in zip(small_bucket, self.unflatten(allreduced, small_bucket)):
+            allreduced = self.allreduce_bucket(small_bucket,
+                                               rank=rank,
+                                               log=log)
+            if rank is None or rank == dist.get_rank(
+                    group=self.dp_process_group):
+                for buf, synced in zip(
+                        small_bucket, self.unflatten(allreduced,
+                                                     small_bucket)):
                     buf.copy_(synced)
 
     def allreduce_no_retain(self,
@@ -2543,7 +2566,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 params_in_partition.append(tensor)
 
                 assert (
-                    first_offset == 0), "This can happen either zero or only once as this must be the first tensor in the partition"
+                    first_offset == 0
+                ), "This can happen either zero or only once as this must be the first tensor in the partition"
                 first_offset = start_index - current_index
 
             else:
@@ -2617,9 +2641,10 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             # if dist.get_rank() == 0:
             #    print()(f"Total Norm begining {total_norm}")
             for g, p in zip(gradients, params):
-                if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
+                if is_model_parallel_parameter(p) or (self.model_parallel_rank
+                                                      == 0):
                     param_norm = g.data.double().norm(2)
-                    total_norm += param_norm.item() ** 2
+                    total_norm += param_norm.item()**2
             # Sum across all model parallel GPUs.
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
 
@@ -2630,10 +2655,10 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             self._model_parallel_all_reduce(tensor=total_norm_cuda,
                                             op=torch.distributed.ReduceOp.SUM)
 
-            total_norm = total_norm_cuda[0].item() ** (1. / norm_type)
+            total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
-        if total_norm == float(
-                'inf') or total_norm == -float('inf') or total_norm != total_norm:
+        if total_norm == float('inf') or total_norm == -float(
+                'inf') or total_norm != total_norm:
             total_norm = -1
 
         return total_norm
@@ -2669,9 +2694,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             # we need from this tensor
             if tensor_offset > 0 or num_elements < tensor.numel():
                 flat_tensor_list.append(tensor.contiguous().view(-1).narrow(
-                    0,
-                    int(tensor_offset),
-                    int(num_elements)))
+                    0, int(tensor_offset), int(num_elements)))
             else:
                 flat_tensor_list.append(tensor)
 
@@ -2748,8 +2771,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
     def _prepare_fp32_grad_for_sub_group(self, sub_group_id):
         partition_id = dist.get_rank(group=self.dp_process_group)
 
-        single_grad_partition = self.flatten(self.averaged_gradients[sub_group_id]).to(
-            self.fp32_partitioned_groups_flat[sub_group_id].dtype)
+        single_grad_partition = self.flatten(
+            self.averaged_gradients[sub_group_id]).to(
+                self.fp32_partitioned_groups_flat[sub_group_id].dtype)
 
         assert single_grad_partition.numel() == self.fp32_partitioned_groups_flat[sub_group_id].numel(), \
             "averaged gradients have different number of elements that partition size {} {} {} {}".format(
@@ -2757,7 +2781,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 ), self.fp32_partitioned_groups_flat[sub_group_id].numel(), sub_group_id,
                 partition_id)
 
-        self.fp32_partitioned_groups_flat[sub_group_id].grad = single_grad_partition
+        self.fp32_partitioned_groups_flat[
+            sub_group_id].grad = single_grad_partition
 
         # release all the gradient since we have already created a necessary copy in dp_grad_partition
         self.zero_grad()
@@ -2777,7 +2802,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             report_memory_usage(
                 f'After prepare optimizer sub group {sub_group_id}')
 
-    def _optimizer_states_and_gradient_swap_in(self, sub_group_id, timer_names=set()):
+    def _optimizer_states_and_gradient_swap_in(self,
+                                               sub_group_id,
+                                               timer_names=set()):
         param_length = self.fp16_partitioned_groups_flat_numel[sub_group_id]
         fp32_param_id = id(self.fp32_partitioned_groups_flat[sub_group_id])
         assert self._swappable_optimizer_subgroup(sub_group_id), \
@@ -2786,12 +2813,14 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         OPTIMIZER_SWAP_IN_STATE = 'optimizer_swap_in_state'
         if self.verbose:
             report_memory_usage(
-                f'pre-step Before swapping in optimizer tensors {sub_group_id}')
+                f'pre-step Before swapping in optimizer tensors {sub_group_id}'
+            )
         self.start_timers([OPTIMIZER_SWAP_IN_STATE])
 
         self.optimizer_swapper.swap_in_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
-            async_parameter=self.next_swappable_fp32_partitioned_groups[sub_group_id])
+            async_parameter=self.
+            next_swappable_fp32_partitioned_groups[sub_group_id])
 
         self.stop_timers([OPTIMIZER_SWAP_IN_STATE])
         timer_names.add(OPTIMIZER_SWAP_IN_STATE)
@@ -2835,7 +2864,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
         return self.flatten(padded_tensor_list)
 
-    def _optimizer_states_and_gradient_swap_out(self, sub_group_id, timer_names=set()):
+    def _optimizer_states_and_gradient_swap_out(self,
+                                                sub_group_id,
+                                                timer_names=set()):
         param_length = self.fp16_partitioned_groups_flat_numel[sub_group_id]
         fp32_param_id = id(self.fp32_partitioned_groups_flat[sub_group_id])
         assert self._swappable_optimizer_subgroup(sub_group_id), \
@@ -2844,28 +2875,32 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         OPTIMIZER_SWAP_OUT_STATE = 'optimizer_swap_out_state'
         if self.verbose:
             report_memory_usage(
-                f'post-step Before swapping out optimizer tensors {sub_group_id}')
+                f'post-step Before swapping out optimizer tensors {sub_group_id}'
+            )
         self.start_timers([OPTIMIZER_SWAP_OUT_STATE])
 
         self.optimizer_swapper.swap_out_optimizer_state(
             parameter=self.fp32_partitioned_groups_flat[sub_group_id],
-            async_swap=self.next_swappable_fp32_partitioned_groups[sub_group_id] is
-            not None)
+            async_swap=self.
+            next_swappable_fp32_partitioned_groups[sub_group_id] is not None)
 
         self.stop_timers([OPTIMIZER_SWAP_OUT_STATE])
         if self.verbose:
             report_memory_usage(
-                f'post-step After swapping out optimizer tensors {sub_group_id}')
+                f'post-step After swapping out optimizer tensors {sub_group_id}'
+            )
         timer_names.add(OPTIMIZER_SWAP_OUT_STATE)
 
         # get rid of the fp32 gradients. Not needed anymore
         self.fp32_partitioned_groups_flat[sub_group_id].grad = None
 
     def _unflatten_partitioned_parameters(self, sub_group_id):
-        updated_params = self.unflatten(self.fp16_partitioned_groups_flat[sub_group_id],
-                                        self.fp16_partitioned_groups[sub_group_id])
+        updated_params = self.unflatten(
+            self.fp16_partitioned_groups_flat[sub_group_id],
+            self.fp16_partitioned_groups[sub_group_id])
 
-        for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
+        for partitioned_param, q in zip(
+                self.fp16_partitioned_groups[sub_group_id], updated_params):
             partitioned_param.data = q.data
 
     def _overflow_clean_up(self, prev_scale):
@@ -2884,8 +2919,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         if torch.distributed.get_rank() == 0:
             print(
                 "[deepscale] OVERFLOW! Rank {} Skipping step. Attempted loss scale: {}, "
-                "reducing to {}".format(dist.get_rank(),
-                                        prev_scale,
+                "reducing to {}".format(dist.get_rank(), prev_scale,
                                         self.loss_scale))
 
     def _overflow_check_and_loss_scale_update(self):
@@ -2980,13 +3014,16 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         for i, _ in enumerate(self.fp16_groups):
             if self.verbose:
                 print(
-                    f'Pre-Step Dump Norms for Group {i} FP16P, FP16G, FP32G, FP32GUC')
-            for fp16_param, fp32_grad in zip(self.fp16_groups[i], debug_fp32_grads[i]):
+                    f'Pre-Step Dump Norms for Group {i} FP16P, FP16G, FP32G, FP32GUC'
+                )
+            for fp16_param, fp32_grad in zip(self.fp16_groups[i],
+                                             debug_fp32_grads[i]):
                 param_id = self.get_param_id(fp16_param)
                 fp16_grad_norm = self.debug_fp16_grads[i][param_id]
 
-                fp32_grad_norm = [float(t.data.float().norm(2))
-                                  for t in fp32_grad]
+                fp32_grad_norm = [
+                    float(t.data.float().norm(2)) for t in fp32_grad
+                ]
                 norm_list = [fp16_grad_norm, fp32_grad_norm]
                 if self.verbose:
                     print(f'Pre-Step Norms {i} {param_id} = {norm_list}')
@@ -2996,9 +3033,10 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         for i, group in enumerate(self.fp16_groups):
             if self.verbose:
                 print(
-                    f'Post-Step Dump Norms for Group {i} FP16P, FP16DS, FP16FLAT, FP32FLAT')
-            unflat_fp16 = self.unflatten(
-                self.fp16_groups_flat[i], self.fp16_groups[i])
+                    f'Post-Step Dump Norms for Group {i} FP16P, FP16DS, FP16FLAT, FP32FLAT'
+                )
+            unflat_fp16 = self.unflatten(self.fp16_groups_flat[i],
+                                         self.fp16_groups[i])
             unflat_fp32 = self.unflatten(self.fp32_partitioned_groups_flat[i],
                                          self.fp16_groups[i])
             for j, p in enumerate(self.fp16_groups[i]):
@@ -3008,8 +3046,7 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
 
                 unflat_norm = [
                     float(t.data.float().norm(2))
-                    for t in [unflat_fp16[j],
-                              unflat_fp32[j]]
+                    for t in [unflat_fp16[j], unflat_fp32[j]]
                 ]
                 norm_list = [param_norm, ds_norm] + unflat_norm
                 if self.verbose:
@@ -3018,11 +3055,12 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
     def unscale_and_clip_grads(self, sub_group_id, norm_groups):
 
         grad_groups_flat = [
-            self.fp32_partitioned_groups_flat[sub_group_id].grad]
+            self.fp32_partitioned_groups_flat[sub_group_id].grad
+        ]
 
         total_norm = 0.0
         for norm in norm_groups:
-            total_norm += norm ** 2.0
+            total_norm += norm**2.0
         total_norm = math.sqrt(total_norm)
 
         # compute combined scale factor for this group
@@ -3109,7 +3147,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 raise
             return True
         else:
-            if cpu_sum == float('inf') or cpu_sum == -float('inf') or cpu_sum != cpu_sum:
+            if cpu_sum == float(
+                    'inf') or cpu_sum == -float('inf') or cpu_sum != cpu_sum:
                 return True
             return False
 
@@ -3196,14 +3235,17 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
     loss_scale = property(_get_loss_scale, _set_loss_scale)
     cur_scale = property(_get_loss_scale, _set_loss_scale)
 
-    def _get_lean_tensors(self, padded_flattened_tensor, group_tensors, paddings):
+    def _get_lean_tensors(self, padded_flattened_tensor, group_tensors,
+                          paddings):
         # Remove paddings from flattened tensor
-        individual_tensors = self.unflatten(
-            padded_flattened_tensor, group_tensors)
-        lean_lengths = [t.numel() - pad for t,
-                        pad in zip(group_tensors, paddings)]
-        lean_tensors = [t[:len]
-                        for t, len in zip(individual_tensors, lean_lengths)]
+        individual_tensors = self.unflatten(padded_flattened_tensor,
+                                            group_tensors)
+        lean_lengths = [
+            t.numel() - pad for t, pad in zip(group_tensors, paddings)
+        ]
+        lean_tensors = [
+            t[:len] for t, len in zip(individual_tensors, lean_lengths)
+        ]
         # print()(f'rank {dist.get_rank()}: lean_tensors = {[t.numel() for t in lean_tensors]}')
         return lean_tensors
 
@@ -3218,11 +3260,11 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             lean_state = {}
             for key, value in self.optimizer.state[p].items():
                 if torch.is_tensor(value):
-                    padded_lens = [t.numel()
-                                   for t in self.fp16_partitioned_groups[i]]
+                    padded_lens = [
+                        t.numel() for t in self.fp16_partitioned_groups[i]
+                    ]
                     lean_state[key] = self._get_lean_tensors(
-                        value,
-                        self.fp16_partitioned_groups[i],
+                        value, self.fp16_partitioned_groups[i],
                         self.groups_padding[i])
                     lean_flat_len = sum([t.numel() for t in lean_state[key]])
                 else:
@@ -3236,9 +3278,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         # Return group tensor after removing paddings added for alignment to DP world size.
         groups_without_padding = []
         for i, group in enumerate(groups_with_padding):
-            lean_group = self._get_lean_tensors(group,
-                                                self.fp16_partitioned_groups[i],
-                                                self.groups_padding[i])
+            lean_group = self._get_lean_tensors(
+                group, self.fp16_partitioned_groups[i], self.groups_padding[i])
             groups_without_padding.append(lean_group)
 
         return groups_without_padding
@@ -3306,13 +3347,15 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             flat_local_partition.append(
                 self._get_flattened_partition(merged_partitions))
 
-        for current, saved in zip(self.fp32_partitioned_groups_flat, flat_local_partition):
+        for current, saved in zip(self.fp32_partitioned_groups_flat,
+                                  flat_local_partition):
             current.data.copy_(saved.data)
 
     # Restore base optimizer fp32 weights from ZeRO fp16 weights
     def _restore_from_fp16_weights(self):
-        for fp16_partitions, fp32_partition in zip(self.fp16_partitioned_groups_flat,
-                                                   self.fp32_partitioned_groups_flat):
+        for fp16_partitions, fp32_partition in zip(
+                self.fp16_partitioned_groups_flat,
+                self.fp32_partitioned_groups_flat):
             fp32_partition.data.copy_(fp16_partitions.data)
 
     # Refresh the fp32 master params from the fp16 copies.
@@ -3332,14 +3375,14 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
         local_state_partitions = []
         for param_index, param_slices in enumerate(param_partitions):
             flattened_merged_tensor = self.flatten_dense_tensors_aligned(
-                param_slices,
-                alignment)
+                param_slices, alignment)
             new_partitions = self.get_data_parallel_partitions(
                 flattened_merged_tensor)
             local_state_partitions.append(new_partitions[partition_id])
 
         if torch.is_tensor(local_state_partitions[0]):
-            return self.flatten_dense_tensors_aligned(local_state_partitions, alignment)
+            return self.flatten_dense_tensors_aligned(local_state_partitions,
+                                                      alignment)
 
         # Assume non-tensor states are not partitioned and equal across ranks, so return first one
         return local_state_partitions[0]
@@ -3357,7 +3400,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             ]
             for key in all_partition_group_states[0].keys():
                 all_partition_states = [
-                    all_states[key] for all_states in all_partition_group_states
+                    all_states[key]
+                    for all_states in all_partition_group_states
                 ]
                 partition_states[key] = self._get_flattened_partition(
                     all_partition_states)
@@ -3383,7 +3427,8 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
             self._clear_fp32_optimizer_param_groups()
 
         # restore fp32 partitions
-        for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat, state_dict['fp32_flat_groups']):
+        for curr_param, saved_param in zip(self.fp32_partitioned_groups_flat,
+                                           state_dict['fp32_flat_groups']):
             curr_param.data.copy_(saved_param.data)
 
         # restore fp16 partitions from fp32
@@ -3398,7 +3443,9 @@ class ZeroRedundancyOptimizer_Level_3(Optimizer):
                 self.fp16_partitioned_groups_flat[sub_group_id],
                 self.fp16_partitioned_groups[sub_group_id])
 
-            for partitioned_param, q in zip(self.fp16_partitioned_groups[sub_group_id], updated_params):
+            for partitioned_param, q in zip(
+                    self.fp16_partitioned_groups[sub_group_id],
+                    updated_params):
                 partitioned_param.data = q.data
 
     # TODO: Support different/changing load/save DP degree.
@@ -3494,8 +3541,9 @@ def estimate_zero3_model_states_mem_needs(total_params,
             if zero_init:
                 cpu_mem = total_params * 18 * gpus_factor * additional_buffer_factor
             else:
-                cpu_mem = total_params * max(4 * num_gpus_per_node,
-                                             18 * gpus_factor) * additional_buffer_factor
+                cpu_mem = total_params * max(
+                    4 * num_gpus_per_node,
+                    18 * gpus_factor) * additional_buffer_factor
 
         else:
             gpu_mem = largest_layer_memory + int(2 * total_params / total_gpus)
@@ -3503,8 +3551,9 @@ def estimate_zero3_model_states_mem_needs(total_params,
             if zero_init:
                 cpu_mem = total_params * 16 * gpus_factor * additional_buffer_factor
             else:
-                cpu_mem = total_params * max(4 * num_gpus_per_node,
-                                             16 * gpus_factor) * additional_buffer_factor
+                cpu_mem = total_params * max(
+                    4 * num_gpus_per_node,
+                    16 * gpus_factor) * additional_buffer_factor
     else:
         gpu_mem = largest_layer_memory + int(18 * total_params / total_gpus)
         if zero_init:
@@ -3518,8 +3567,7 @@ def estimate_zero3_model_states_mem_needs(total_params,
 def model_to_params(model):
     # shared params calculated only once
     total_params = sum(
-        dict((p.data_ptr(),
-              p.numel()) for p in model.parameters()).values())
+        dict((p.data_ptr(), p.numel()) for p in model.parameters()).values())
 
     largest_layer_params = 0
     for m in model.modules():
@@ -3533,7 +3581,8 @@ def model_to_params(model):
 def estimate_zero3_model_states_mem_needs_all_live(model,
                                                    num_gpus_per_node=1,
                                                    num_nodes=1,
-                                                   additional_buffer_factor=1.5):
+                                                   additional_buffer_factor=1.5
+                                                   ):
     """
     Print out estimates on memory usage requirements for ZeRO 3 params, optim states and gradients
     for a given ``model`` and hardware setup.
@@ -3562,11 +3611,12 @@ def estimate_zero3_model_states_mem_needs_all_live(model,
         additional_buffer_factor=additional_buffer_factor)
 
 
-def estimate_zero3_model_states_mem_needs_all_cold(total_params,
-                                                   largest_layer_params,
-                                                   num_gpus_per_node=1,
-                                                   num_nodes=1,
-                                                   additional_buffer_factor=1.5):
+def estimate_zero3_model_states_mem_needs_all_cold(
+        total_params,
+        largest_layer_params,
+        num_gpus_per_node=1,
+        num_nodes=1,
+        additional_buffer_factor=1.5):
     """
     Print out estimates on memory usage requirements for ZeRO 3 params, optim states and gradients
     for a given ``model`` and hardware setup.
@@ -3614,11 +3664,12 @@ def estimate_zero3_model_states_mem_needs_all_cold(total_params,
                     cpu_offload=cpu_offload,
                     cpu_offload_params=cpu_offload_params,
                     zero_init=zero_init,
-                    additional_buffer_factor=additional_buffer_factor
-                )
+                    additional_buffer_factor=additional_buffer_factor)
 
-                options_str = format_options(cpu_offload=cpu_offload,
-                                             cpu_offload_params=cpu_offload_params,
-                                             zero_init=zero_init)
+                options_str = format_options(
+                    cpu_offload=cpu_offload,
+                    cpu_offload_params=cpu_offload_params,
+                    zero_init=zero_init)
                 print(
-                    f" {cpu_mem / 2 ** 30:7.2f}GB | {gpu_mem / 2 ** 30:6.2f}GB | {options_str}")
+                    f" {cpu_mem / 2 ** 30:7.2f}GB | {gpu_mem / 2 ** 30:6.2f}GB | {options_str}"
+                )

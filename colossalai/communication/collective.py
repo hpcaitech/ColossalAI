@@ -11,7 +11,10 @@ from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
 
 
-def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: bool = False) -> Tensor:
+def all_gather(tensor: Tensor,
+               dim: int,
+               parallel_mode: ParallelMode,
+               async_op: bool = False) -> Tensor:
     """Gathers all tensors from the parallel group and concatenates them in a 
     specific dimension.
     
@@ -36,7 +39,9 @@ def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: 
         shape = list(tensor.shape)
         shape[0], shape[dim] = shape[dim], shape[0]
         shape[0] *= depth
-        out = torch.empty(shape, dtype=tensor.dtype, device=get_current_device())
+        out = torch.empty(shape,
+                          dtype=tensor.dtype,
+                          device=get_current_device())
         temp = list(torch.chunk(out, depth, dim=0))
         work = dist.all_gather(tensor_list=temp,
                                tensor=tensor.transpose(0, dim).contiguous(),
@@ -77,8 +82,11 @@ def reduce_scatter(tensor: Tensor,
         out = tensor
         work = None
     else:
-        temp = list(map(lambda x: x.contiguous(), torch.chunk(tensor, depth, dim=dim)))
-        out = torch.empty(temp[0].shape, dtype=tensor.dtype, device=get_current_device())
+        temp = list(
+            map(lambda x: x.contiguous(), torch.chunk(tensor, depth, dim=dim)))
+        out = torch.empty(temp[0].shape,
+                          dtype=tensor.dtype,
+                          device=get_current_device())
         work = dist.reduce_scatter(output=out,
                                    input_list=temp,
                                    op=op,
@@ -98,31 +106,48 @@ def all_reduce(tensor: Tensor,
     if depth == 1:
         work = None
     else:
-        work = dist.all_reduce(tensor.contiguous(), op=op, group=gpc.get_group(parallel_mode), async_op=async_op)
+        work = dist.all_reduce(tensor.contiguous(),
+                               op=op,
+                               group=gpc.get_group(parallel_mode),
+                               async_op=async_op)
     if async_op:
         return tensor, work
     else:
         return tensor
 
 
-def broadcast(tensor: Tensor, src: int, parallel_mode: ParallelMode, async_op: bool = False):
+def broadcast(tensor: Tensor,
+              src: int,
+              parallel_mode: ParallelMode,
+              async_op: bool = False):
     depth = gpc.get_world_size(parallel_mode)
     if depth == 1:
         work = None
     else:
-        work = dist.broadcast(tensor.contiguous(), src=src, group=gpc.get_group(parallel_mode), async_op=async_op)
+        work = dist.broadcast(tensor.contiguous(),
+                              src=src,
+                              group=gpc.get_group(parallel_mode),
+                              async_op=async_op)
     if async_op:
         return tensor, work
     else:
         return tensor
 
 
-def reduce(tensor: Tensor, dst: int, parallel_mode: ParallelMode, op: ReduceOp = ReduceOp.SUM, async_op: bool = False):
+def reduce(tensor: Tensor,
+           dst: int,
+           parallel_mode: ParallelMode,
+           op: ReduceOp = ReduceOp.SUM,
+           async_op: bool = False):
     depth = gpc.get_world_size(parallel_mode)
     if depth == 1:
         work = None
     else:
-        work = dist.reduce(tensor.contiguous(), dst=dst, op=op, group=gpc.get_group(parallel_mode), async_op=async_op)
+        work = dist.reduce(tensor.contiguous(),
+                           dst=dst,
+                           op=op,
+                           group=gpc.get_group(parallel_mode),
+                           async_op=async_op)
     if async_op:
         return tensor, work
     else:

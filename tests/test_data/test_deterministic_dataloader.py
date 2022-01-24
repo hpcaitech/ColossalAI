@@ -19,42 +19,37 @@ from colossalai.core import global_context as gpc
 
 CONFIG = Config(
     dict(
-        train_data=dict(
-            dataset=dict(
-                type='CIFAR10',
-                root=Path(os.environ['DATA']),
-                train=True,
-                download=True,
-            ),
-            dataloader=dict(
-                num_workers=2,
-                batch_size=2,
-                shuffle=True
-            ),
-            transform_pipeline=[
-                dict(type='ToTensor'),
-                dict(type='RandomCrop', size=32),
-                dict(type='Normalize', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-            ]
+        train_data=dict(dataset=dict(
+            type='CIFAR10',
+            root=Path(os.environ['DATA']),
+            train=True,
+            download=True,
         ),
+                        dataloader=dict(num_workers=2,
+                                        batch_size=2,
+                                        shuffle=True),
+                        transform_pipeline=[
+                            dict(type='ToTensor'),
+                            dict(type='RandomCrop', size=32),
+                            dict(type='Normalize',
+                                 mean=(0.5, 0.5, 0.5),
+                                 std=(0.5, 0.5, 0.5))
+                        ]),
         parallel=dict(
             pipeline=dict(size=1),
             tensor=dict(size=1, mode=None),
         ),
         seed=1024,
-    )
-)
+    ))
 
 
 def run_data_sampler(rank, world_size):
-    dist_args = dict(
-        config=CONFIG,
-        rank=rank,
-        world_size=world_size,
-        backend='gloo',
-        port='29904',
-        host='localhost'
-    )
+    dist_args = dict(config=CONFIG,
+                     rank=rank,
+                     world_size=world_size,
+                     backend='gloo',
+                     port='29904',
+                     host='localhost')
     colossalai.launch(**dist_args)
 
     dataset_cfg = gpc.config.train_data.dataset
@@ -80,13 +75,16 @@ def run_data_sampler(rank, world_size):
         img_to_compare = img.clone()
     else:
         img_to_compare = img
-    dist.broadcast(img_to_compare, src=0, group=gpc.get_group(ParallelMode.DATA))
+    dist.broadcast(img_to_compare,
+                   src=0,
+                   group=gpc.get_group(ParallelMode.DATA))
 
     if gpc.get_local_rank(ParallelMode.DATA) != 0:
         # this is without sampler
         # this should be false if data parallel sampler to given to the dataloader
-        assert torch.equal(img,
-                           img_to_compare), 'Same image was distributed across ranks and expected it to be the same'
+        assert torch.equal(
+            img, img_to_compare
+        ), 'Same image was distributed across ranks and expected it to be the same'
     torch.cuda.empty_cache()
 
 

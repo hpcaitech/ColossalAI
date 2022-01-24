@@ -54,7 +54,10 @@ class SeedManager:
         self._current_mode = parallel_mode
         torch.cuda.set_rng_state(self._seed_states[parallel_mode])
 
-    def add_seed(self, parallel_mode: ParallelMode, seed: int, overwrtie: bool = False):
+    def add_seed(self,
+                 parallel_mode: ParallelMode,
+                 seed: int,
+                 overwrtie: bool = False):
         """Adds a seed to the seed manager for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
@@ -67,11 +70,13 @@ class SeedManager:
             :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
         """
         assert isinstance(
-            parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
+            parallel_mode,
+            ParallelMode), 'A valid ParallelMode must be provided'
         if overwrtie is False:
             assert parallel_mode not in self._seed_states, f'The seed for {parallel_mode} has been added'
         elif parallel_mode in self._seed_states:
-            print(f"Warnning: {parallel_mode} seed has been overwritten.", flush=True)
+            print(f"Warnning: {parallel_mode} seed has been overwritten.",
+                  flush=True)
 
         current_state = torch.cuda.get_rng_state()
         torch.cuda.manual_seed(seed)

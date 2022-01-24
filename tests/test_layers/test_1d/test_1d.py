@@ -12,15 +12,8 @@ from colossalai.utils import free_port
 
 from checks_1d.check_layer_1d import *
 
-CONFIG = dict(
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(
-            size=4,
-            mode='1d'
-        )
-    ),
-)
+CONFIG = dict(parallel=dict(pipeline=dict(size=1),
+                            tensor=dict(size=4, mode='1d')), )
 
 
 def check_layer(rank, world_size, port):

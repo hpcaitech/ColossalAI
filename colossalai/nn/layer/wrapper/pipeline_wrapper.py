@@ -6,8 +6,11 @@ from colossalai.core import global_context as gpc
 
 
 class PipelineSharedModuleWrapper:
+
     def __init__(self, pipeline_ranks: Union[List[int], Tuple[int]]) -> None:
-        assert len(pipeline_ranks) > 1, f'Expect len(pipeline_ranks) > 1, got {len(pipeline_ranks)}'
+        assert len(
+            pipeline_ranks
+        ) > 1, f'Expect len(pipeline_ranks) > 1, got {len(pipeline_ranks)}'
         self.pipeline_ranks = pipeline_ranks
         self.group = None
         self.ranks_in_group = None
@@ -23,10 +26,11 @@ class PipelineSharedModuleWrapper:
         for i in range(dp_size):
             for j in range(num_pp_stages):
                 pipeline_ranks = list(
-                    range(i * num_dp_groups + j,
-                          (i + 1) * num_dp_groups,
+                    range(i * num_dp_groups + j, (i + 1) * num_dp_groups,
                           num_pp_stages))
-                sub_ranks = [pipeline_ranks[idx] for idx in self.pipeline_ranks]
+                sub_ranks = [
+                    pipeline_ranks[idx] for idx in self.pipeline_ranks
+                ]
                 group = dist.new_group(sub_ranks)
                 if rank in sub_ranks:
                     self.group = group
