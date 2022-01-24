@@ -13,10 +13,12 @@ jobs:
       - uses: actions/stale@v3
         with:
           days-before-issue-stale: 14
-          days-before-issue-close: 14
+          days-before-issue-close: -1
           stale-issue-label: "stale"
           stale-issue-message: "This issue is stale because it has been open for 14 days with no activity."
-          close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
+#           close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
           days-before-pr-stale: 14
-          days-before-pr-close: 14
+          days-before-pr-close: -1
+          stale-pr-message: "This PR is stale because it has been open for 14 days with no activity."
+#           close-pr-message: "This PR was closed because it has been inactive for 14 days since being marked as stale."
           repo-token: ${{ secrets.GITHUB_TOKEN }}
