@@ -16,7 +16,7 @@ jobs:
         id: autoyapf
         uses: mritunjaysharma394/autoyapf@v2
         with:
-          args: --style pep8 --recursive --in-place .
+          args: --style google --recursive --in-place .
 
       - name: Check for modified files
         id: git-check
