@@ -1,0 +1,13 @@
+name: Review Assign
+
+on: pull_request
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    if: github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    steps:
+      - uses: hkusu/review-assign-action@v1
+        with:
+          assignees: ${{ github.actor }} # assign pull request author
+          reviewers: frankleeeee, kurisusnowdeng
