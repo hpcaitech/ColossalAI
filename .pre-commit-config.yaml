@@ -1,14 +1,22 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
-    sha: v4.0.1
+    rev: v4.0.1
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
-  - repo: https://github.com/google/yapf
-    rev: v0.31.0
+      - id: trailing-whitespace
+  - repo: https://github.com/psf/black
+    rev: 21.12b0
+    hooks:
+      - id: black
+  - repo: https://gitlab.com/pycqa/flake8
+    rev: 3.8.3
+    hooks:
+      - id: flake8
+  - repo: https://github.com/pre-commit/mirrors-yapf
+    rev: v0.32.0
     hooks:
       - id: yapf
-        name: "yapf"
         args: [--style, google]
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v13.0.0
