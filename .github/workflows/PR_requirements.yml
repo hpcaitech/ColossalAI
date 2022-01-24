@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: kentaro-m/auto-assign-action@v1.2.1
         with:
-          configuration-path: '.github/reviewer_list.yml
+          configuration-path: '.github/reviewer_list.yml'
 
   format_check:
   name: Format check on codes
