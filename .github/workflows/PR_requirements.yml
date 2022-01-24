@@ -4,6 +4,7 @@ on: pull_request
 
 jobs:
   assign_reviewer:
+    name: Assign reviewer for PR
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     steps:
@@ -12,6 +13,7 @@ jobs:
           configuration-path: '.github/reviewer_list.yml
 
   format_check:
+  name: Format check on codes
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     steps:
