@@ -1,0 +1,9 @@
+addReviewers: true
+
+addAssignees: author
+
+numberOfReviewers: 1
+
+reviewers:
+  - frankleeeee
+  - kurisusnowdeng
