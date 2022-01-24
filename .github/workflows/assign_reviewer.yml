@@ -5,7 +5,7 @@ on: pull_request
 jobs:
   assign:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    if: github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     steps:
       - uses: hkusu/review-assign-action@v1
         with:
