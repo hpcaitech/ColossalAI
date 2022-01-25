@@ -27,7 +27,7 @@ def build_from_registry(config, registry: Registry):
     """Returns an object constructed from `config`, the type of the object
     is specified by `registry`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object 
+    :param config: A python dict or a :class:`colossalai.context.Config` object
         containing information used in the construction of the return object
     :type config: dict or :class:`colossalai.context.colossalai.context.Config`
     :param registry: A registry specifying the type of the return object
@@ -50,7 +50,8 @@ def build_from_registry(config, registry: Registry):
         obj = registry.get_module(mod_type)(**config_)
     except Exception as e:
         print(
-            f'An error occurred when building {mod_type} from registry {registry.name}', flush=True)
+            f'An error occurred when building {mod_type} from registry {registry.name}',
+            flush=True)
         raise e
 
     return obj
@@ -69,7 +70,7 @@ def build_layer(config):
 
 
 def build_loss(config):
-    """Returns a loss function object of :class:`torch.autograd.Function` constructed 
+    """Returns a loss function object of :class:`torch.autograd.Function` constructed
     from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
@@ -94,7 +95,7 @@ def build_model(config):
 
 
 def build_dataset(config):
-    """Returns a dataset object of :class:`torch.utils.data.Dataset` constructed 
+    """Returns a dataset object of :class:`torch.utils.data.Dataset` constructed
     from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
@@ -107,13 +108,13 @@ def build_dataset(config):
 
 
 def build_optimizer(config, model):
-    """Returns an optimizer object of :class:`torch.optim.Optimizer` constructed from `config`, 
+    """Returns an optimizer object of :class:`torch.optim.Optimizer` constructed from `config`,
     'model' and 'params'.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object 
+    :param config: A python dict or a :class:`colossalai.context.Config` object
         containing information used in the construction of the return object
     :type config: dict or :class:`colossalai.context.Config`
-    :param model: A model containing parameters for the optimizer 
+    :param model: A model containing parameters for the optimizer
     :type model: :class:`nn.Module`
     :return: An object of :class:`torch.optim.Optimizer`
     :rtype: :class:`torch.optim.Optimizer`
@@ -159,6 +160,19 @@ def build_hooks(config, trainer):
     return build_from_registry(config_, HOOKS)
 
 
+def build_ophooks(config):
+    """Returns a hook object of :class:`BaseOpHook` constructed from `config`.
+
+    :param config: A python dict or a :class:`colossalai.context.Config` object
+        containing information used in the construction of the return object
+    :type config: dict or :class:`colossalai.context.Config`
+    :return: An object of :class:`colossalai.trainer.hooks.BaseOpHook`
+    :rtype: :class:`colossalai.trainer.hooks.BaseOpHook`
+    """
+    config_ = config.copy()
+    return build_from_registry(config_, OPHOOKS)
+
+
 def build_transform(config):
     """Returns a transformation object of :class:`torchvision.transforms` constructed
     from `config`.
@@ -191,10 +205,10 @@ def build_data_sampler(config, dataset):
 
 
 def build_lr_scheduler(config, optimizer):
-    """Returns a learning rate scheduler object of :class:`torch.optim.lr_scheduler` 
+    """Returns a learning rate scheduler object of :class:`torch.optim.lr_scheduler`
     constructed from `config`, `optimizer`, `total_steps` and `num_steps_per_epoch`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object 
+    :param config: A python dict or a :class:`colossalai.context.Config` object
         containing information used in the construction of the return object
     :type config: dict or :class:`colossalai.context.Config`
     :param optimizer: An optimizer object containing parameters for the learning rate
