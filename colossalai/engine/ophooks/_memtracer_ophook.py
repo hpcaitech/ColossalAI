@@ -2,6 +2,7 @@ import torch
 from . import BaseOpHook
 from concurrent.futures import ThreadPoolExecutor
 from colossalai.registry import OPHOOKS
+from colossalai.logging import get_dist_logger
 from time import sleep, time
 import psutil
 import pickle
@@ -83,6 +84,7 @@ class MemTracerOpHook(BaseOpHook):
         self.async_mem_monitor = AsyncMemoryMonitor()
         self._niter = niter
         self._curiter = 0
+        self._logger = get_dist_logger()
 
     def _isvalid(self, module):
         return module.training and self._curiter < self._niter
@@ -94,25 +96,25 @@ class MemTracerOpHook(BaseOpHook):
         if self._isvalid(module):
             self.async_mem_monitor.finish()
             self.async_mem_monitor.start()
-            # print(f'FWD PRE {module.__class__.__name__}')
+            self._logger.debug(f'FWD PRE {module.__class__.__name__}')
 
     def post_fwd_exec(self, module: torch.nn.Module, *args):
         if self._isvalid(module):
             self.async_mem_monitor.finish()
-            # print(f'FWD POST {module.__class__.__name__}')
+            self._logger.debug(f'FWD POST {module.__class__.__name__}')
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
         assert isinstance(module, torch.nn.Module)
         if self._isvalid(module):
             self.async_mem_monitor.finish()
             self.async_mem_monitor.start()
-            # print(f'BWD PRE {module.__class__.__name__}')
+            self._logger.debug(f'BWD PRE {module.__class__.__name__}')
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
         assert isinstance(module, torch.nn.Module)
         if self._isvalid(module):
             self.async_mem_monitor.finish()
-            print(f'BWD POST {module.__class__.__name__}')
+            self._logger.debug(f'BWD POST {module.__class__.__name__}')
 
     def pre_iter(self):
         pass
@@ -120,22 +122,10 @@ class MemTracerOpHook(BaseOpHook):
     def post_iter(self):
         self.async_mem_monitor.finish()
         if self._curiter == self._niter:
+            self._logger.info(
+                f'dump a memory statistics as pickle to ./memstats.pkl')
             self.save_results("memstats.pkl")
         self._curiter += 1
-        print(f'post_iter')
 
     def save_results(self, filename):
         self.async_mem_monitor.save(filename)
-
-    def show_mem_stats(self):
-        start_timestamp = min(self.async_mem_monitor.time_stamps)
-        self.async_mem_monitor.time_stamps = [
-            elem - start_timestamp
-            for elem in self.async_mem_monitor.time_stamps
-        ]
-        min_mem_used = min(self.async_mem_monitor.mem_stats)
-        self.async_mem_monitor.mem_stats = [
-            elem - min_mem_used for elem in self.async_mem_monitor.mem_stats
-        ]
-        print(self.async_mem_monitor.time_stamps)
-        print(self.async_mem_monitor.mem_stats)
