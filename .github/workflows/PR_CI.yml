@@ -20,7 +20,7 @@ jobs:
     container:
       image: nvcr.io/nvidia/pytorch:21.07-py3
       options: --gpus all --rm --ipc=host -v /data/cifar-10:/data/cifar-10
-    timeout-minutes: 1200
+    timeout-minutes: 20
     steps:
       - name: Setup Environment
         run: |
