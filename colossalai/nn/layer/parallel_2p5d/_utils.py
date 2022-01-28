@@ -13,8 +13,10 @@ def get_tesseract_dim_dep_from_env():
         return tesseract_dim, tesseract_dep
 
     except KeyError as e:
-        raise EnvironmentError('TESSERACT_DIM or TESSERACT_DEP is not found in the current environment, '
-                               'please make sure that you have used the correct process group initializer')
+        raise EnvironmentError(
+            'TESSERACT_DIM or TESSERACT_DEP is not found in the current environment, '
+            'please make sure that you have used the correct process group initializer'
+        )
 
 
 def assert_tesseract_initialization():

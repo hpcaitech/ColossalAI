@@ -2,7 +2,8 @@ from typing import Any, Optional, Tuple
 
 import torch
 import torch.distributed as dist
-from colossalai.communication.collective import (all_gather, all_reduce, reduce, reduce_scatter)
+from colossalai.communication.collective import (all_gather, all_reduce, reduce,
+                                                 reduce_scatter)
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
@@ -46,14 +47,17 @@ def matmul_2d(
     if col_rank is None:
         col_rank = gpc.get_local_rank(row_parallel_mode)
 
-    data_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
-    pipeline_parallel_rank = 0 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_local_rank(
-        ParallelMode.PIPELINE)
-    pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
-        ParallelMode.PIPELINE)
+    data_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.DATA) else gpc.get_local_rank(ParallelMode.DATA)
+    pipeline_parallel_rank = 0 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_local_rank(ParallelMode.PIPELINE)
+    pipeline_parallel_size = 1 if not gpc.is_initialized(
+        ParallelMode.PIPELINE) else gpc.get_world_size(ParallelMode.PIPELINE)
     tensor_parallel_size = summa_dim**2
-    return Matmul_AB_2D(a, b, summa_dim, out_shape, row_rank, col_rank, row_parallel_mode, col_parallel_mode,
-                        data_parallel_rank, pipeline_parallel_rank, pipeline_parallel_size, tensor_parallel_size)
+    return Matmul_AB_2D(a, b, summa_dim, out_shape, row_rank, col_rank,
+                        row_parallel_mode, col_parallel_mode,
+                        data_parallel_rank, pipeline_parallel_rank,
+                        pipeline_parallel_size, tensor_parallel_size)
 
 
 class classifier_2d(torch.autograd.Function):
@@ -87,6 +91,7 @@ class classifier_2d(torch.autograd.Function):
     :param tensor_parallel_size: tensor parallel size
     :type tensor_parallel_size: int
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -147,12 +152,15 @@ class classifier_2d(torch.autograd.Function):
         with torch.no_grad():
             A_grad = torch.matmul(output_grad, B)
             A_grad = A_grad.reshape(ctx.A_shape)
-            B_grad = torch.matmul(output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1), A)
+            B_grad = torch.matmul(
+                output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1),
+                A)
             B_grad = reduce_scatter(B_grad, -1, ctx.col_parallel_mode)
             B_grad = B_grad.reshape(ctx.B_shape)
             bias_grad = None
             if ctx.use_bias:
-                bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
+                bias_grad = torch.sum(output_grad,
+                                      dim=tuple(range(output_grad.ndim - 1)))
                 bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
 
         return A_grad, B_grad, bias_grad, None, None, None, None, None, None, None, None, None, None
@@ -187,6 +195,7 @@ class Matmul_AB_2D(torch.autograd.Function):
     :param tensor_parallel_size: tensor parallel size
     :type tensor_parallel_size: int
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -239,16 +248,28 @@ class Matmul_AB_2D(torch.autograd.Function):
 
         A_list[0].copy_(A)
         B_list[0].copy_(B)
-        opa[0] = dist.broadcast(A_list[0], src=src_a, group=row_group, async_op=True)
-        opb[0] = dist.broadcast(B_list[0], src=src_b, group=col_group, async_op=True)
+        opa[0] = dist.broadcast(A_list[0],
+                                src=src_a,
+                                group=row_group,
+                                async_op=True)
+        opb[0] = dist.broadcast(B_list[0],
+                                src=src_b,
+                                group=col_group,
+                                async_op=True)
         cur = 0
 
         for i in range(summa_dim):
             if i != summa_dim - 1:
                 A_list[1 - cur].copy_(A)
-                opa[1 - cur] = dist.broadcast(A_list[1 - cur], src=src_a + 1, group=row_group, async_op=True)
+                opa[1 - cur] = dist.broadcast(A_list[1 - cur],
+                                              src=src_a + 1,
+                                              group=row_group,
+                                              async_op=True)
                 B_list[1 - cur].copy_(B)
-                opb[1 - cur] = dist.broadcast(B_list[1 - cur], src=src_b + summa_dim, group=col_group, async_op=True)
+                opb[1 - cur] = dist.broadcast(B_list[1 - cur],
+                                              src=src_b + summa_dim,
+                                              group=col_group,
+                                              async_op=True)
 
             if opa[cur] is not None:
                 opa[cur].wait()
@@ -281,14 +302,16 @@ class Matmul_AB_2D(torch.autograd.Function):
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
         A, B = ctx.saved_tensors
         with torch.no_grad():
-            A_grad = Matmul_ABT_2D.apply(output_grad, B, ctx.summa_dim, ctx.A_shape, ctx.row_rank, ctx.col_rank,
-                                         ctx.row_parallel_mode, ctx.col_parallel_mode, ctx.data_parallel_rank,
-                                         ctx.pipeline_parallel_rank, ctx.pipeline_parallel_size,
-                                         ctx.tensor_parallel_size)
-            B_grad = Matmul_ATB_2D.apply(A, output_grad, ctx.summa_dim, ctx.B_shape, ctx.row_rank, ctx.col_rank,
-                                         ctx.row_parallel_mode, ctx.col_parallel_mode, ctx.data_parallel_rank,
-                                         ctx.pipeline_parallel_rank, ctx.pipeline_parallel_size,
-                                         ctx.tensor_parallel_size)
+            A_grad = Matmul_ABT_2D.apply(
+                output_grad, B, ctx.summa_dim, ctx.A_shape, ctx.row_rank,
+                ctx.col_rank, ctx.row_parallel_mode, ctx.col_parallel_mode,
+                ctx.data_parallel_rank, ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size, ctx.tensor_parallel_size)
+            B_grad = Matmul_ATB_2D.apply(
+                A, output_grad, ctx.summa_dim, ctx.B_shape, ctx.row_rank,
+                ctx.col_rank, ctx.row_parallel_mode, ctx.col_parallel_mode,
+                ctx.data_parallel_rank, ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size, ctx.tensor_parallel_size)
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None
 
 
@@ -321,6 +344,7 @@ class Matmul_ABT_2D(torch.autograd.Function):
     :param tensor_parallel_size: tensor parallel size
     :type tensor_parallel_size: int
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -369,13 +393,19 @@ class Matmul_ABT_2D(torch.autograd.Function):
         opr = [None] * 2
 
         B_list[0].copy_(B)
-        opb[0] = dist.broadcast(B_list[0], src=src_b, group=col_group, async_op=True)
+        opb[0] = dist.broadcast(B_list[0],
+                                src=src_b,
+                                group=col_group,
+                                async_op=True)
         cur = 0
 
         for i in range(summa_dim):
             if i != summa_dim - 1:
                 B_list[1 - cur].copy_(B)
-                opb[1 - cur] = dist.broadcast(B_list[1 - cur], src=src_b + summa_dim, group=col_group, async_op=True)
+                opb[1 - cur] = dist.broadcast(B_list[1 - cur],
+                                              src=src_b + summa_dim,
+                                              group=col_group,
+                                              async_op=True)
 
             if opr[cur] is not None:
                 opr[cur].wait()
@@ -386,7 +416,10 @@ class Matmul_ABT_2D(torch.autograd.Function):
                 opb[cur].wait()
 
             torch.matmul(A, B_list[cur].transpose(0, 1), out=C_list[cur])
-            opr[cur] = dist.reduce(C_list[cur], dst=src_c, group=row_group, async_op=True)
+            opr[cur] = dist.reduce(C_list[cur],
+                                   dst=src_c,
+                                   group=row_group,
+                                   async_op=True)
             cur = 1 - cur
             src_b += summa_dim
             src_c += 1
@@ -421,14 +454,16 @@ class Matmul_ABT_2D(torch.autograd.Function):
         A, B = ctx.saved_tensors
 
         with torch.no_grad():
-            A_grad = Matmul_AB_2D.apply(output_grad, B, ctx.summa_dim, ctx.A_shape, ctx.row_rank, ctx.col_rank,
-                                        ctx.row_parallel_mode, ctx.col_parallel_mode, ctx.data_parallel_rank,
-                                        ctx.pipeline_parallel_rank, ctx.pipeline_parallel_size,
-                                        ctx.tensor_parallel_size)
-            B_grad = Matmul_ATB_2D.apply(output_grad, A, ctx.summa_dim, ctx.B_shape, ctx.row_rank, ctx.col_rank,
-                                         ctx.row_parallel_mode, ctx.col_parallel_mode, ctx.data_parallel_rank,
-                                         ctx.pipeline_parallel_rank, ctx.pipeline_parallel_size,
-                                         ctx.tensor_parallel_size)
+            A_grad = Matmul_AB_2D.apply(
+                output_grad, B, ctx.summa_dim, ctx.A_shape, ctx.row_rank,
+                ctx.col_rank, ctx.row_parallel_mode, ctx.col_parallel_mode,
+                ctx.data_parallel_rank, ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size, ctx.tensor_parallel_size)
+            B_grad = Matmul_ATB_2D.apply(
+                output_grad, A, ctx.summa_dim, ctx.B_shape, ctx.row_rank,
+                ctx.col_rank, ctx.row_parallel_mode, ctx.col_parallel_mode,
+                ctx.data_parallel_rank, ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size, ctx.tensor_parallel_size)
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None
 
 
@@ -461,6 +496,7 @@ class Matmul_ATB_2D(torch.autograd.Function):
     :param tensor_parallel_size: tensor parallel size
     :type tensor_parallel_size: int
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -509,13 +545,19 @@ class Matmul_ATB_2D(torch.autograd.Function):
         opr = [None] * 2
 
         A_list[0].copy_(A)
-        opa[0] = dist.broadcast(A_list[0], src=src_a, group=row_group, async_op=True)
+        opa[0] = dist.broadcast(A_list[0],
+                                src=src_a,
+                                group=row_group,
+                                async_op=True)
         cur = 0
 
         for i in range(summa_dim):
             if i != summa_dim - 1:
                 A_list[1 - cur].copy_(A)
-                opa[1 - cur] = dist.broadcast(A_list[1 - cur], src=src_a + 1, group=row_group, async_op=True)
+                opa[1 - cur] = dist.broadcast(A_list[1 - cur],
+                                              src=src_a + 1,
+                                              group=row_group,
+                                              async_op=True)
 
             if opr[cur] is not None:
                 opr[cur].wait()
@@ -526,7 +568,10 @@ class Matmul_ATB_2D(torch.autograd.Function):
                 opa[cur].wait()
 
             torch.matmul(A_list[cur].transpose(0, 1), B, out=C_list[cur])
-            opr[cur] = dist.reduce(C_list[cur], dst=src_c, group=col_group, async_op=True)
+            opr[cur] = dist.reduce(C_list[cur],
+                                   dst=src_c,
+                                   group=col_group,
+                                   async_op=True)
             cur = 1 - cur
             src_a += 1
             src_c += summa_dim
@@ -561,14 +606,16 @@ class Matmul_ATB_2D(torch.autograd.Function):
         A, B = ctx.saved_tensors
 
         with torch.no_grad():
-            A_grad = Matmul_ABT_2D.apply(B, output_grad, ctx.summa_dim, ctx.A_shape, ctx.row_rank, ctx.col_rank,
-                                         ctx.row_parallel_mode, ctx.col_parallel_mode, ctx.data_parallel_rank,
-                                         ctx.pipeline_parallel_rank, ctx.pipeline_parallel_size,
-                                         ctx.tensor_parallel_size)
-            B_grad = Matmul_AB_2D.apply(A, output_grad, ctx.summa_dim, ctx.B_shape, ctx.row_rank, ctx.col_rank,
-                                        ctx.row_parallel_mode, ctx.col_parallel_mode, ctx.data_parallel_rank,
-                                        ctx.pipeline_parallel_rank, ctx.pipeline_parallel_size,
-                                        ctx.tensor_parallel_size)
+            A_grad = Matmul_ABT_2D.apply(
+                B, output_grad, ctx.summa_dim, ctx.A_shape, ctx.row_rank,
+                ctx.col_rank, ctx.row_parallel_mode, ctx.col_parallel_mode,
+                ctx.data_parallel_rank, ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size, ctx.tensor_parallel_size)
+            B_grad = Matmul_AB_2D.apply(
+                A, output_grad, ctx.summa_dim, ctx.B_shape, ctx.row_rank,
+                ctx.col_rank, ctx.row_parallel_mode, ctx.col_parallel_mode,
+                ctx.data_parallel_rank, ctx.pipeline_parallel_rank,
+                ctx.pipeline_parallel_size, ctx.tensor_parallel_size)
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None
 
 
@@ -601,6 +648,7 @@ class add_bias_2d(torch.autograd.Function):
     :param tensor_parallel_size: tensor parallel size
     :type tensor_parallel_size: int
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -668,14 +716,11 @@ class layernorm_2d(torch.autograd.Function):
     :param col_parallel_mode: column parallel mode
     :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx: Any, 
-                input_: Tensor, 
-                E_x: Tensor, 
-                Var_x: Tensor, 
-                hidden_size: int, 
-                row_parallel_mode: ParallelMode,
+    def forward(ctx: Any, input_: Tensor, E_x: Tensor, Var_x: Tensor,
+                hidden_size: int, row_parallel_mode: ParallelMode,
                 col_parallel_mode: ParallelMode) -> Tensor:
         input_ = input_ - E_x
         # in here, input = x - E[x], Var_x = 1 / sqrt(Var[x] + eps)
@@ -694,11 +739,13 @@ class layernorm_2d(torch.autograd.Function):
         x, Var_x = ctx.saved_tensors
         # in here, Var_x = 1 / sqrt(Var[x] + eps), x = (x - E[x]) * Var_x
         output_grad_sum = torch.sum(output_grad, dim=-1, keepdim=True)
-        torch.distributed.all_reduce(output_grad_sum, group=gpc.get_group(row_parallel_mode))
+        torch.distributed.all_reduce(output_grad_sum,
+                                     group=gpc.get_group(row_parallel_mode))
         output_grad_sum /= ctx.normalized_shape
 
         output_grad_mul_x_sum = torch.sum(output_grad * x, dim=-1, keepdim=True)
-        torch.distributed.all_reduce(output_grad_mul_x_sum, group=gpc.get_group(row_parallel_mode))
+        torch.distributed.all_reduce(output_grad_mul_x_sum,
+                                     group=gpc.get_group(row_parallel_mode))
         output_grad_mul_x_sum /= ctx.normalized_shape
 
         input_grad = output_grad.clone()
@@ -722,9 +769,11 @@ class all_gather_weight_2d(torch.autograd.Function):
     :param col_parallel_mode: column parallel mode
     :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx: Any, inputs: Tensor, dim: int, summa_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
+    def forward(ctx: Any, inputs: Tensor, dim: int, summa_dim: int,
+                col_parallel_mode: ParallelMode) -> Tensor:
         ctx.dim = dim
         ctx.summa_dim = summa_dim
         ctx.row_rank = gpc.get_local_rank(col_parallel_mode)
@@ -748,9 +797,11 @@ class SplitFirst(torch.autograd.Function):
     :param col_parallel_mode: column parallel mode
     :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx: Any, inputs: Tensor, summa_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
+    def forward(ctx: Any, inputs: Tensor, summa_dim: int,
+                col_parallel_mode: ParallelMode) -> Tensor:
         ctx.summa_dim = summa_dim
         ctx.batch_size = inputs.size(0)
         ctx.para_mode = col_parallel_mode
@@ -762,8 +813,10 @@ class SplitFirst(torch.autograd.Function):
     @staticmethod
     @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        grad_shape = (ctx.batch_size, ) + output_grad.shape[1:]
-        grad = torch.empty(grad_shape, dtype=output_grad.dtype, device=get_current_device())
+        grad_shape = (ctx.batch_size,) + output_grad.shape[1:]
+        grad = torch.empty(grad_shape,
+                           dtype=output_grad.dtype,
+                           device=get_current_device())
         dist.all_gather(list(grad.chunk(ctx.summa_dim, dim=0)),
                         output_grad.contiguous(),
                         group=gpc.get_group(ctx.para_mode))
@@ -784,13 +837,16 @@ def split_tensor_2d(input_: Tensor, dim: int = 0) -> Tensor:
     """
     if input_.size(dim) <= 1:
         return input_
-    return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2D_COL),
-                       dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)].contiguous()
+    return torch.chunk(input_,
+                       gpc.get_world_size(ParallelMode.PARALLEL_2D_COL),
+                       dim=dim)[gpc.get_local_rank(
+                           ParallelMode.PARALLEL_2D_COL)].contiguous()
 
 
 class reduce_by_batch_2d(torch.autograd.Function):
     """All-reduce the input from the model parallel region.
     """
+
     @staticmethod
     def symbolic(graph, input_, reduce_mean: bool = False):
         output = all_reduce(input_, ParallelMode.PARALLEL_2D_COL)

@@ -43,9 +43,9 @@ class SequenceParallelGradientHandler(BaseGradientHandler):
 
             coalesced /= gpc.get_world_size(ParallelMode.SEQUENCE_DP)
 
-            dist.all_reduce(
-                coalesced, group=gpc.get_group(ParallelMode.SEQUENCE_DP))
+            dist.all_reduce(coalesced,
+                            group=gpc.get_group(ParallelMode.SEQUENCE_DP))
 
-            for buf, synced in zip(grads, _unflatten_dense_tensors(
-                    coalesced, grads)):
+            for buf, synced in zip(grads,
+                                   _unflatten_dense_tensors(coalesced, grads)):
                 buf.copy_(synced)

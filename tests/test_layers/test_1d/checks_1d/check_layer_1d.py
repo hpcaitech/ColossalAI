@@ -56,7 +56,9 @@ def check_linear_col():
     print_rank_0('linear_col forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     dist.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, DEPTH, dim=-1)[i]
     grad = grad.clone()
@@ -125,7 +127,9 @@ def check_linear_row():
     print_rank_0('linear_row forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     dist.broadcast(grad_master, src=0)
     grad = grad_master.clone()
     out.backward(grad)

@@ -6,6 +6,7 @@ from colossalai.nn.layer import WrappedDropPath as DropPath
 class TransformerLayer(nn.Module):
     """Transformer layer builder.
     """
+
     def __init__(self,
                  att: nn.Module,
                  ffn: nn.Module,
@@ -18,7 +19,8 @@ class TransformerLayer(nn.Module):
         self.ffn = ffn
         self.norm1 = norm1
         self.norm2 = norm2
-        self.droppath = DropPath(droppath_rate) if droppath is None else droppath
+        self.droppath = DropPath(
+            droppath_rate) if droppath is None else droppath
 
     def forward(self, x):
         x = x + self.droppath(self.att(self.norm1(x)))

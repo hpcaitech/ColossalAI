@@ -16,17 +16,15 @@ class ResNetBasicBlock(nn.Module):
     """
     expansion: int = 1
 
-    def __init__(
-            self,
-            inplanes: int,
-            planes: int,
-            stride: int = 1,
-            downsample: Optional[nn.Module] = None,
-            groups: int = 1,
-            base_width: int = 64,
-            dilation: int = 1,
-            norm_layer: Optional[Callable[..., nn.Module]] = None
-    ) -> None:
+    def __init__(self,
+                 inplanes: int,
+                 planes: int,
+                 stride: int = 1,
+                 downsample: Optional[nn.Module] = None,
+                 groups: int = 1,
+                 base_width: int = 64,
+                 dilation: int = 1,
+                 norm_layer: Optional[Callable[..., nn.Module]] = None) -> None:
         super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d

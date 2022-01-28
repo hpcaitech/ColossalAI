@@ -12,7 +12,8 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 
-CONFIG_PATH = Path(__file__).parent.joinpath('configs/parallel_2d_init.py').absolute()
+CONFIG_PATH = Path(__file__).parent.joinpath(
+    'configs/parallel_2d_init.py').absolute()
 
 
 def check_data_parallel_rank(rank):
@@ -35,7 +36,7 @@ def check_pipeline_parallel_rank(rank):
 
 def check_model_parallel_rank(rank):
     for i in range(8):
-        if rank in [i, i+8]:
+        if rank in [i, i + 8]:
             assert gpc.get_local_rank(ParallelMode.MODEL) == i
 
 
@@ -66,15 +67,13 @@ def check_2d_parallel_rank(rank):
 
 
 def init_2d(rank, world_size, backend, port, host):
-    dist_args = dict(
-        config=CONFIG_PATH,
-        rank=rank,
-        world_size=world_size,
-        backend=backend,
-        port=port,
-        host=host,
-        verbose=True
-    )
+    dist_args = dict(config=CONFIG_PATH,
+                     rank=rank,
+                     world_size=world_size,
+                     backend=backend,
+                     port=port,
+                     host=host,
+                     verbose=True)
     launch(**dist_args)
 
     check_tensor_parallel_rank(rank)
@@ -96,8 +95,7 @@ def test_2d_init():
                       world_size=world_size,
                       backend='gloo',
                       port=free_port(),
-                      host='localhost'
-                      )
+                      host='localhost')
     mp.spawn(test_fn, nprocs=world_size)
 
 

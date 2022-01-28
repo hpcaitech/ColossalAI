@@ -41,8 +41,8 @@ class DataParallelGradientHandler(BaseGradientHandler):
                 coalesced = _flatten_dense_tensors(grads)
                 coalesced /= gpc.get_world_size(ParallelMode.DATA)
 
-                dist.all_reduce(
-                    coalesced, group=gpc.get_group(ParallelMode.DATA))
-                for buf, synced in zip(grads, _unflatten_dense_tensors(
-                        coalesced, grads)):
+                dist.all_reduce(coalesced,
+                                group=gpc.get_group(ParallelMode.DATA))
+                for buf, synced in zip(
+                        grads, _unflatten_dense_tensors(coalesced, grads)):
                     buf.copy_(synced)

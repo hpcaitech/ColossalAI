@@ -23,42 +23,33 @@ DIM = 768
 NUM_CLASSES = 10
 NUM_ATTN_HEADS = 12
 
-CONFIG = dict(
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(size=1, mode=None)
-    ),
-    fp16=dict(mode=AMP_TYPE.TORCH),
-    clip_grad_norm=1.0
-)
+CONFIG = dict(parallel=dict(pipeline=dict(size=1),
+                            tensor=dict(size=1, mode=None)),
+              fp16=dict(mode=AMP_TYPE.TORCH),
+              clip_grad_norm=1.0)
 
 
 def run_engine(rank, world_size, port):
     # init dist env
-    colossalai.launch(
-        config=CONFIG,
-        rank=rank,
-        world_size=world_size,
-        host='localhost',
-        port=port,
-        backend='nccl'
-    )
+    colossalai.launch(config=CONFIG,
+                      rank=rank,
+                      world_size=world_size,
+                      host='localhost',
+                      port=port,
+                      backend='nccl')
 
     # build model
     model = resnet18(num_classes=10)
 
     # build dataloaders
-    train_dataset = CIFAR10(
-        root=Path(os.environ['DATA']),
-        download=True,
-        transform=transforms.Compose(
-            [
-                transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-            ]
-        )
-    )
+    train_dataset = CIFAR10(root=Path(os.environ['DATA']),
+                            download=True,
+                            transform=transforms.Compose([
+                                transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
+                                transforms.ToTensor(),
+                                transforms.Normalize(mean=(0.5, 0.5, 0.5),
+                                                     std=(0.5, 0.5, 0.5))
+                            ]))
     train_dataloader = get_dataloader(dataset=train_dataset,
                                       shuffle=True,
                                       batch_size=BATCH_SIZE,
@@ -72,8 +63,7 @@ def run_engine(rank, world_size, port):
         model=model,
         optimizer=optimizer,
         criterion=criterion,
-        train_dataloader=train_dataloader
-    )
+        train_dataloader=train_dataloader)
     logger = get_dist_logger()
     rank = torch.distributed.get_rank()
 

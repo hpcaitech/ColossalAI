@@ -36,6 +36,9 @@ class PipelineSharedModuleGradientHandler(BaseGradientHandler):
                 for tp, bucket in group_buckets.items():
                     grads = [param.grad.data for param in bucket]
                     coalesced = _flatten_dense_tensors(grads)
-                    dist.all_reduce(coalesced, op=dist.ReduceOp.SUM, group=group)
-                    for buf, synced in zip(grads, _unflatten_dense_tensors(coalesced, grads)):
+                    dist.all_reduce(coalesced,
+                                    op=dist.ReduceOp.SUM,
+                                    group=group)
+                    for buf, synced in zip(
+                            grads, _unflatten_dense_tensors(coalesced, grads)):
                         buf.copy_(synced)

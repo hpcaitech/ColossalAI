@@ -29,10 +29,16 @@ class VanillaSelfAttention(nn.Module):
         self.d_kv = d_kv
         self.scale = 1.0 / math.sqrt(self.d_kv)
 
-        self.dense1 = nn.Linear(d_model, 3 * n_heads * d_kv, bias, device=get_current_device())
+        self.dense1 = nn.Linear(d_model,
+                                3 * n_heads * d_kv,
+                                bias,
+                                device=get_current_device())
         self.softmax = nn.Softmax(dim=-1)
-        self.atten_drop = nn.Dropout(attention_drop) if dropout1 is None else dropout1
-        self.dense2 = nn.Linear(n_heads * d_kv, d_model, device=get_current_device())
+        self.atten_drop = nn.Dropout(
+            attention_drop) if dropout1 is None else dropout1
+        self.dense2 = nn.Linear(n_heads * d_kv,
+                                d_model,
+                                device=get_current_device())
         self.dropout = nn.Dropout(drop_rate) if dropout2 is None else dropout2
 
     def forward(self, x):
@@ -81,6 +87,7 @@ class VanillaFFN(nn.Module):
 
 
 class Widenet(nn.Module):
+
     def __init__(self,
                  num_experts: int,
                  capacity_factor: float,
@@ -98,38 +105,39 @@ class Widenet(nn.Module):
                  drop_path: float = 0.):
         super().__init__()
 
-        embedding = VanillaPatchEmbedding(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=in_chans,
-            embed_size=d_model)
+        embedding = VanillaPatchEmbedding(img_size=img_size,
+                                          patch_size=patch_size,
+                                          in_chans=in_chans,
+                                          embed_size=d_model)
         embed_dropout = Dropout(p=drop_rate, mode=ParallelMode.TENSOR)
 
-        shared_sa = VanillaSelfAttention(**moe_sa_args(
-            d_model=d_model, n_heads=num_heads, d_kv=d_kv,
-            attention_drop=attention_drop, drop_rate=drop_rate))
+        shared_sa = VanillaSelfAttention(
+            **moe_sa_args(d_model=d_model,
+                          n_heads=num_heads,
+                          d_kv=d_kv,
+                          attention_drop=attention_drop,
+                          drop_rate=drop_rate))
 
         noisy_func = NormalNoiseGenerator(num_experts)
         shared_router = Top2Router(capacity_factor, noisy_func=noisy_func)
         shared_experts = Experts(expert=VanillaFFN,
                                  num_experts=num_experts,
-                                 **moe_mlp_args(
-                                     d_model=d_model,
-                                     d_ff=d_ff,
-                                     drop_rate=drop_rate
-                                 ))
+                                 **moe_mlp_args(d_model=d_model,
+                                                d_ff=d_ff,
+                                                drop_rate=drop_rate))
 
         # stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path, depth)]
         blocks = [
-            TransformerLayer(
-                att=shared_sa,
-                ffn=MoeLayer(dim_model=d_model, num_experts=num_experts,
-                             router=shared_router, experts=shared_experts),
-                norm1=nn.LayerNorm(d_model, eps=1e-6),
-                norm2=nn.LayerNorm(d_model, eps=1e-6),
-                droppath=DropPath(p=dpr[i], mode=ParallelMode.TENSOR)
-            )
+            TransformerLayer(att=shared_sa,
+                             ffn=MoeLayer(dim_model=d_model,
+                                          num_experts=num_experts,
+                                          router=shared_router,
+                                          experts=shared_experts),
+                             norm1=nn.LayerNorm(d_model, eps=1e-6),
+                             norm2=nn.LayerNorm(d_model, eps=1e-6),
+                             droppath=DropPath(p=dpr[i],
+                                               mode=ParallelMode.TENSOR))
             for i in range(depth)
         ]
         norm = nn.LayerNorm(d_model, eps=1e-6)

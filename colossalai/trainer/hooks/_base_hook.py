@@ -37,7 +37,8 @@ class BaseHook(ABC):
         """
         pass
 
-    def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
+    def after_train_iter(self, trainer, output: Tensor, label: Tensor,
+                         loss: Tensor):
         """Actions after running a training iteration.
 
         :param trainer: Trainer which is using this hook
@@ -86,7 +87,8 @@ class BaseHook(ABC):
         """
         pass
 
-    def after_test_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
+    def after_test_iter(self, trainer, output: Tensor, label: Tensor,
+                        loss: Tensor):
         """Actions after running a testing iteration.
 
         :param trainer: Trainer which is using this hook

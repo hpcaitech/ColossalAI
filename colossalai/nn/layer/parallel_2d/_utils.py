@@ -13,8 +13,10 @@ def get_summa_dim_from_env() -> int:
         return summa_dim
 
     except KeyError as e:
-        raise EnvironmentError('SUMMA_DIM is not found in the current environment, '
-                               'please make sure that you have used the correct process group initializer')
+        raise EnvironmentError(
+            'SUMMA_DIM is not found in the current environment, '
+            'please make sure that you have used the correct process group initializer'
+        )
 
 
 def assert_summa_initialization():

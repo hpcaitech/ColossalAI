@@ -39,14 +39,16 @@ class Linear2D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 bias: bool = True,
-                 dtype=None,
-                 skip_bias_add: bool = False,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        dtype=None,
+        skip_bias_add: bool = False,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
 
         self.in_features = in_features
@@ -61,16 +63,20 @@ class Linear2D(ParallelLayer):
 
         # partitioning dimension
         self.input_size_per_partition = divide(self.in_features, self.summa_dim)
-        self.hidden_size_per_partition = divide(self.out_features, self.summa_dim)
+        self.hidden_size_per_partition = divide(self.out_features,
+                                                self.summa_dim)
 
         # create weight, shape: [k/q, h/q]
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
         self.weight = Parameter(
-            torch.empty(self.input_size_per_partition, self.hidden_size_per_partition, **factory_kwargs))
+            torch.empty(self.input_size_per_partition,
+                        self.hidden_size_per_partition, **factory_kwargs))
 
         # create bias, shape: [h/q]
         if bias:
-            self.bias = Parameter(torch.empty(divide(self.out_features, self.summa_dim**2), **factory_kwargs))
+            self.bias = Parameter(
+                torch.empty(divide(self.out_features, self.summa_dim**2),
+                            **factory_kwargs))
         else:
             self.register_parameter('bias', None)
 
@@ -80,9 +86,11 @@ class Linear2D(ParallelLayer):
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute_by_partition(self.weight, self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.weight,
+                                                   self.summa_dim**2)
         if self.bias is not None:
-            set_tensor_parallel_attribute_by_partition(self.bias, self.summa_dim**2)
+            set_tensor_parallel_attribute_by_partition(self.bias,
+                                                       self.summa_dim**2)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
@@ -93,24 +101,31 @@ class Linear2D(ParallelLayer):
     def forward(self, x: Tensor) -> Tensor:
         # input: [m/q, n/q, k/q]
         # output: [m/q, n/q, h/q]
-        out_shape = x.shape[:-1] + (self.hidden_size_per_partition, )
+        out_shape = x.shape[:-1] + (self.hidden_size_per_partition,)
 
-        output = Matmul_AB_2D.apply(x, self.weight, self.summa_dim, out_shape, self.row_rank, self.col_rank,
-                                    ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
-                                    self.pipeline_parallel_rank, self.pipeline_parallel_size, self.tensor_parallel_size)
+        output = Matmul_AB_2D.apply(
+            x, self.weight, self.summa_dim, out_shape, self.row_rank,
+            self.col_rank, ParallelMode.PARALLEL_2D_ROW,
+            ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
+            self.pipeline_parallel_rank, self.pipeline_parallel_size,
+            self.tensor_parallel_size)
 
         if self.bias is not None:
             if self.skip_bias_add:
-                bias = add_bias_2d.apply(None, self.bias, self.hidden_size_per_partition, self.row_rank, self.col_rank,
-                                         ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, True,
-                                         self.data_parallel_rank, self.pipeline_parallel_rank,
-                                         self.pipeline_parallel_size, self.tensor_parallel_size)
+                bias = add_bias_2d.apply(
+                    None, self.bias, self.hidden_size_per_partition,
+                    self.row_rank, self.col_rank, ParallelMode.PARALLEL_2D_ROW,
+                    ParallelMode.PARALLEL_2D_COL, True, self.data_parallel_rank,
+                    self.pipeline_parallel_rank, self.pipeline_parallel_size,
+                    self.tensor_parallel_size)
                 return output, bias
             else:
-                output = add_bias_2d.apply(output, self.bias, self.hidden_size_per_partition, self.row_rank,
-                                           self.col_rank, ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL,
-                                           False, self.data_parallel_rank, self.pipeline_parallel_rank,
-                                           self.pipeline_parallel_size, self.tensor_parallel_size)
+                output = add_bias_2d.apply(
+                    output, self.bias, self.hidden_size_per_partition,
+                    self.row_rank, self.col_rank, ParallelMode.PARALLEL_2D_ROW,
+                    ParallelMode.PARALLEL_2D_COL, False,
+                    self.data_parallel_rank, self.pipeline_parallel_rank,
+                    self.pipeline_parallel_size, self.tensor_parallel_size)
                 return output
         else:
             return output
@@ -131,6 +146,7 @@ class LayerNorm2D(ParallelLayer):
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     """
+
     def __init__(self, normalized_shape: int, eps: float = 1e-05, dtype=None):
         super().__init__()
 
@@ -150,40 +166,52 @@ class LayerNorm2D(ParallelLayer):
         # create parameters
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
 
-        self.gamma = Parameter(torch.ones(self.partitioned_partition, **factory_kwargs))
-        self.beta = Parameter(torch.zeros(self.partitioned_partition, **factory_kwargs))
+        self.gamma = Parameter(
+            torch.ones(self.partitioned_partition, **factory_kwargs))
+        self.beta = Parameter(
+            torch.zeros(self.partitioned_partition, **factory_kwargs))
 
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute_by_partition(self.gamma, self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.gamma,
+                                                   self.summa_dim**2)
         set_tensor_parallel_attribute_by_partition(self.beta, self.summa_dim**2)
 
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():
             E_x = torch.sum(x, dim=-1, keepdim=True)  # [b/q, s, 1]
-            torch.distributed.all_reduce(E_x, group=gpc.get_group(ParallelMode.PARALLEL_2D_ROW))
+            torch.distributed.all_reduce(E_x,
+                                         group=gpc.get_group(
+                                             ParallelMode.PARALLEL_2D_ROW))
             E_x /= self.normalized_shape
 
             # Var_x in the block below is the sum of input^2
             Var_x = torch.sum(x * x, dim=-1, keepdim=True)  # [b/q, s, 1]
-            torch.distributed.all_reduce(Var_x, group=gpc.get_group(ParallelMode.PARALLEL_2D_ROW))
+            torch.distributed.all_reduce(Var_x,
+                                         group=gpc.get_group(
+                                             ParallelMode.PARALLEL_2D_ROW))
             Var_x /= self.normalized_shape
 
             Var_x = Var_x - E_x * E_x  # variance of x [b/q, s, 1]
             # this time 1/sqrt(Var_x + epsilon)
             Var_x = 1.0 / torch.sqrt(Var_x + self.variance_epsilon)
 
-        output = layernorm_2d.apply(x, E_x, Var_x, self.normalized_shape, ParallelMode.PARALLEL_2D_ROW,
+        output = layernorm_2d.apply(x, E_x, Var_x, self.normalized_shape,
+                                    ParallelMode.PARALLEL_2D_ROW,
                                     ParallelMode.PARALLEL_2D_COL)
-        bias = add_bias_2d.apply(None, self.beta, self.partitioned_partition, self.row_rank, self.col_rank,
-                                 ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, True,
-                                 self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
-                                 self.tensor_parallel_size)
-        scale = add_bias_2d.apply(None, self.gamma, self.partitioned_partition, self.row_rank, self.col_rank,
-                                  ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, True,
-                                  self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
-                                  self.tensor_parallel_size)
+        bias = add_bias_2d.apply(
+            None, self.beta, self.partitioned_partition, self.row_rank,
+            self.col_rank, ParallelMode.PARALLEL_2D_ROW,
+            ParallelMode.PARALLEL_2D_COL, True, self.data_parallel_rank,
+            self.pipeline_parallel_rank, self.pipeline_parallel_size,
+            self.tensor_parallel_size)
+        scale = add_bias_2d.apply(
+            None, self.gamma, self.partitioned_partition, self.row_rank,
+            self.col_rank, ParallelMode.PARALLEL_2D_ROW,
+            ParallelMode.PARALLEL_2D_COL, True, self.data_parallel_rank,
+            self.pipeline_parallel_rank, self.pipeline_parallel_size,
+            self.tensor_parallel_size)
         output = torch.addcmul(bias, scale, output)
         return output
 
@@ -212,16 +240,18 @@ class PatchEmbedding2D(ParallelLayer):
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
     """
-    def __init__(self,
-                 img_size: int,
-                 patch_size: int,
-                 in_chans: int,
-                 embed_size: int,
-                 dtype: dtype = None,
-                 flatten: bool = True,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-                 position_embed_initializer: Callable = init.zeros_()):
+
+    def __init__(
+        self,
+        img_size: int,
+        patch_size: int,
+        in_chans: int,
+        embed_size: int,
+        dtype: dtype = None,
+        flatten: bool = True,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        position_embed_initializer: Callable = init.zeros_()):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -230,7 +260,8 @@ class PatchEmbedding2D(ParallelLayer):
         self.summa_dim = get_summa_dim_from_env()
         self.img_size = img_size
         self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
+        self.grid_size = (img_size[0] // patch_size[0],
+                          img_size[1] // patch_size[1])
         self.num_patches = self.grid_size[0] * self.grid_size[1]
         self.flatten = flatten
         self.embed_size = embed_size
@@ -238,28 +269,40 @@ class PatchEmbedding2D(ParallelLayer):
 
         with seed(ParallelMode.TENSOR):
             self.weight = Parameter(
-                torch.empty((self.embed_size_per_partition, in_chans, *self.patch_size),
+                torch.empty(
+                    (self.embed_size_per_partition, in_chans, *self.patch_size),
+                    device=get_current_device(),
+                    dtype=dtype))
+            self.bias = Parameter(
+                torch.empty(self.embed_size_per_partition,
                             device=get_current_device(),
                             dtype=dtype))
-            self.bias = Parameter(torch.empty(self.embed_size_per_partition, device=get_current_device(), dtype=dtype))
 
             self.cls_token = Parameter(
-                torch.zeros((1, 1, self.embed_size_per_partition), device=get_current_device(), dtype=dtype))
-            self.pos_embed = Parameter(
-                torch.zeros((1, self.num_patches + 1, self.embed_size_per_partition),
+                torch.zeros((1, 1, self.embed_size_per_partition),
                             device=get_current_device(),
                             dtype=dtype))
+            self.pos_embed = Parameter(
+                torch.zeros(
+                    (1, self.num_patches + 1, self.embed_size_per_partition),
+                    device=get_current_device(),
+                    dtype=dtype))
 
-        self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
+        self.reset_parameters(weight_initializer, bias_initializer,
+                              position_embed_initializer)
         self._set_tensor_parallel_attribute()
 
     def _set_tensor_parallel_attribute(self):
-        set_tensor_parallel_attribute_by_partition(self.weight, self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.weight,
+                                                   self.summa_dim**2)
         set_tensor_parallel_attribute_by_partition(self.bias, self.summa_dim**2)
-        set_tensor_parallel_attribute_by_partition(self.cls_token, self.summa_dim**2)
-        set_tensor_parallel_attribute_by_partition(self.pos_embed, self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.cls_token,
+                                                   self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.pos_embed,
+                                                   self.summa_dim**2)
 
-    def reset_parameters(self, weight_initializer, bias_initializer, position_embed_initializer):
+    def reset_parameters(self, weight_initializer, bias_initializer,
+                         position_embed_initializer):
         with seed(ParallelMode.TENSOR):
             fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
             fan_out = self.embed_size
@@ -272,15 +315,21 @@ class PatchEmbedding2D(ParallelLayer):
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-        weight = all_gather_weight_2d.apply(self.weight, 0, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
-        bias = all_gather_weight_2d.apply(self.bias, 0, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
+        weight = all_gather_weight_2d.apply(self.weight, 0, self.summa_dim,
+                                            ParallelMode.PARALLEL_2D_COL)
+        bias = all_gather_weight_2d.apply(self.bias, 0, self.summa_dim,
+                                          ParallelMode.PARALLEL_2D_COL)
 
         output = F.conv2d(input_, weight, bias, stride=self.patch_size)
         if self.flatten:
             output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
 
-        cls_token = all_gather_weight_2d.apply(self.cls_token, -1, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
-        pos_embed = all_gather_weight_2d.apply(self.pos_embed, -1, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
+        cls_token = all_gather_weight_2d.apply(self.cls_token, -1,
+                                               self.summa_dim,
+                                               ParallelMode.PARALLEL_2D_COL)
+        pos_embed = all_gather_weight_2d.apply(self.pos_embed, -1,
+                                               self.summa_dim,
+                                               ParallelMode.PARALLEL_2D_COL)
         cls_token = cls_token.expand(output.shape[0], -1, -1)
         output = torch.cat((cls_token, output), dim=1)
         output = output + pos_embed
@@ -306,6 +355,7 @@ class Embedding2D(ParallelLayer):
     :param args: Args used in F.embedding
     :param kwargs: Kwargs used in F.embedding
     """
+
     def __init__(self,
                  num_embeddings: int,
                  embedding_dim: int,
@@ -327,13 +377,16 @@ class Embedding2D(ParallelLayer):
         self.embed_kwargs = kwargs
 
         self.weight = Parameter(
-            torch.empty((num_embeddings, embed_dim_per_partition), device=get_current_device(), dtype=dtype))
+            torch.empty((num_embeddings, embed_dim_per_partition),
+                        device=get_current_device(),
+                        dtype=dtype))
 
         self.reset_parameters(weight_initializer)
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self):
-        set_tensor_parallel_attribute_by_partition(self.weight, self.summa_dim**2)
+        set_tensor_parallel_attribute_by_partition(self.weight,
+                                                   self.summa_dim**2)
 
     def reset_parameters(self, weight_initializer) -> None:
         with seed(ParallelMode.TENSOR):
@@ -347,9 +400,11 @@ class Embedding2D(ParallelLayer):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
-        weight = all_gather_weight_2d.apply(self.weight, -1, self.summa_dim, ParallelMode.PARALLEL_2D_COL)
+        weight = all_gather_weight_2d.apply(self.weight, -1, self.summa_dim,
+                                            ParallelMode.PARALLEL_2D_COL)
 
-        output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+        output = F.embedding(input_, weight, self.padding_idx, *self.embed_args,
+                             **self.embed_kwargs)
 
         return output
 
@@ -374,14 +429,16 @@ class Classifier2D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
-    def __init__(self,
-                 in_features: int,
-                 num_classes: int,
-                 weight: Parameter = None,
-                 bias: bool = True,
-                 dtype: dtype = None,
-                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+
+    def __init__(
+        self,
+        in_features: int,
+        num_classes: int,
+        weight: Parameter = None,
+        bias: bool = True,
+        dtype: dtype = None,
+        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
         self.in_features = in_features
         self.num_classes = num_classes
@@ -391,17 +448,24 @@ class Classifier2D(ParallelLayer):
         self.summa_dim = get_summa_dim_from_env()
 
         # partitioning dimension
-        self.input_size_per_partition = divide(self.in_features, self.summa_dim**2)
+        self.input_size_per_partition = divide(self.in_features,
+                                               self.summa_dim**2)
 
         if weight is not None:
             self.weight = weight
             self.has_weight = False
         else:
             self.weight = Parameter(
-                torch.empty(self.num_classes, self.input_size_per_partition, device=get_current_device(), dtype=dtype))
+                torch.empty(self.num_classes,
+                            self.input_size_per_partition,
+                            device=get_current_device(),
+                            dtype=dtype))
             self.has_weight = True
         if bias:
-            self.bias = Parameter(torch.zeros(self.num_classes, device=get_current_device(), dtype=dtype))
+            self.bias = Parameter(
+                torch.zeros(self.num_classes,
+                            device=get_current_device(),
+                            dtype=dtype))
         else:
             self.bias = None
 
@@ -410,13 +474,16 @@ class Classifier2D(ParallelLayer):
 
     def _set_tensor_parallel_attributes(self):
         if self.has_weight:
-            set_tensor_parallel_attribute_by_partition(self.weight, self.summa_dim**2)
+            set_tensor_parallel_attribute_by_partition(self.weight,
+                                                       self.summa_dim**2)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         with seed(ParallelMode.TENSOR):
             fan_in, fan_out = self.in_features, self.num_classes
-            col_src_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2D_COL)[0]
-            row_src_rank = gpc.get_ranks_in_group(ParallelMode.PARALLEL_2D_ROW)[0]
+            col_src_rank = gpc.get_ranks_in_group(
+                ParallelMode.PARALLEL_2D_COL)[0]
+            row_src_rank = gpc.get_ranks_in_group(
+                ParallelMode.PARALLEL_2D_ROW)[0]
 
             if self.has_weight:
                 weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
@@ -427,9 +494,11 @@ class Classifier2D(ParallelLayer):
                 broadcast(self.bias, row_src_rank, ParallelMode.PARALLEL_2D_ROW)
 
     def forward(self, input_: Tensor) -> Tensor:
-        out_shape = input_.shape[:-1] + (self.num_classes, )
+        out_shape = input_.shape[:-1] + (self.num_classes,)
 
-        return classifier_2d.apply(input_, self.weight, self.bias, self.summa_dim, out_shape, self.row_rank,
-                                   self.col_rank, ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL,
-                                   self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
-                                   self.tensor_parallel_size)
+        return classifier_2d.apply(
+            input_, self.weight, self.bias, self.summa_dim, out_shape,
+            self.row_rank, self.col_rank, ParallelMode.PARALLEL_2D_ROW,
+            ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
+            self.pipeline_parallel_rank, self.pipeline_parallel_size,
+            self.tensor_parallel_size)

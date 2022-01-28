@@ -113,7 +113,9 @@ class LossMetric(Metric):
         """Returns accumulated loss.
         """
         if gpc.is_initialized(ParallelMode.DATA):
-            dist.all_reduce(self.accum_loss, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.DATA))
+            dist.all_reduce(self.accum_loss,
+                            op=dist.ReduceOp.SUM,
+                            group=gpc.get_group(ParallelMode.DATA))
             self.accum_loss.div_(gpc.get_world_size(ParallelMode.DATA))
 
         self.accum_loss.div_(self.count)
@@ -205,12 +207,15 @@ class AccuracyMetric(Metric):
 
     def get_last_step_value(self):
         self.last_step_sum = all_reduce(self.last_step_sum, ParallelMode.DATA)
-        self.last_step_correct = all_reduce(self.last_step_correct, ParallelMode.DATA)
+        self.last_step_correct = all_reduce(self.last_step_correct,
+                                            ParallelMode.DATA)
         return (self.last_step_correct / self.last_step_sum).item()
 
     def get_accumulated_value(self):
-        self.accumulated_sum = all_reduce(self.accumulated_sum, ParallelMode.DATA)
-        self.accumulated_correct = all_reduce(self.accumulated_correct, ParallelMode.DATA)
+        self.accumulated_sum = all_reduce(self.accumulated_sum,
+                                          ParallelMode.DATA)
+        self.accumulated_correct = all_reduce(self.accumulated_correct,
+                                              ParallelMode.DATA)
         return (self.accumulated_correct / self.accumulated_sum).item()
 
     @staticmethod
@@ -296,7 +301,8 @@ class AccuracyHook(MetricHook):
     def after_hook_is_attached(self, trainer):
         self._check_metric_states_initialization(trainer)
         if self._is_stage_to_compute:
-            self.metric = AccuracyMetric(epoch_only=True, accuracy_func=self.accuracy_func)
+            self.metric = AccuracyMetric(epoch_only=True,
+                                         accuracy_func=self.accuracy_func)
 
             # register the metric
             trainer.states['metrics']['test']['Accuracy'] = self.metric
@@ -317,9 +323,11 @@ class ThroughputMetric(Metric):
     :param epoch_only: epoch only
     :type epoch_only: bool
     """
+
     def __init__(self, epoch_only: bool):
         super().__init__(epoch_only=epoch_only)
-        self.accumulated_num_samples = torch.zeros(1, device=get_current_device())
+        self.accumulated_num_samples = torch.zeros(1,
+                                                   device=get_current_device())
         self.accumulated_used_time = torch.zeros(1, device=get_current_device())
         self.last_step_num_samples = torch.zeros(1, device=get_current_device())
         self.last_step_used_time = torch.zeros(1, device=get_current_device())
@@ -339,14 +347,18 @@ class ThroughputMetric(Metric):
     def get_last_step_value(self):
         self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
             gpc.get_world_size(ParallelMode.DATA)
-        self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
-        return (self.last_step_num_samples / (self.last_step_used_time + 1e-12)).item()
+        self.last_step_num_samples = all_reduce(self.last_step_num_samples,
+                                                ParallelMode.DATA)
+        return (self.last_step_num_samples /
+                (self.last_step_used_time + 1e-12)).item()
 
     def get_accumulated_value(self):
         self.accumulated_used_time = all_reduce(self.accumulated_used_time, ParallelMode.DATA) / \
             gpc.get_world_size(ParallelMode.DATA)
-        self.accumulated_num_samples = all_reduce(self.accumulated_num_samples, ParallelMode.DATA)
-        return (self.accumulated_num_samples / (self.accumulated_used_time + 1e-12)).item()
+        self.accumulated_num_samples = all_reduce(self.accumulated_num_samples,
+                                                  ParallelMode.DATA)
+        return (self.accumulated_num_samples /
+                (self.accumulated_used_time + 1e-12)).item()
 
     @staticmethod
     def is_better(a, b) -> bool:
@@ -360,6 +372,7 @@ class ThroughputHook(MetricHook):
     :param priority: priority of throughput hook, defaults to 10
     :type priority: int, optional
     """
+
     def __init__(self, priority: int = 10):
         super().__init__(priority)
 
@@ -378,7 +391,9 @@ class ThroughputHook(MetricHook):
 
     def after_train_iter(self, trainer, *args):
         if self._is_stage_to_compute:
-            self.metric.update(trainer.schedule.batch_size, trainer._timer.get_timer('Train-step').get_elapsed_time())
+            self.metric.update(
+                trainer.schedule.batch_size,
+                trainer._timer.get_timer('Train-step').get_elapsed_time())
 
     def before_test(self, trainer):
         if self._is_stage_to_compute:
@@ -386,4 +401,6 @@ class ThroughputHook(MetricHook):
 
     def after_test_iter(self, trainer, *args):
         if self._is_stage_to_compute:
-            self.metric.update(trainer.schedule.batch_size, trainer._timer.get_timer('Test-step').get_elapsed_time())
+            self.metric.update(
+                trainer.schedule.batch_size,
+                trainer._timer.get_timer('Test-step').get_elapsed_time())

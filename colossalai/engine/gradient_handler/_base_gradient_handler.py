@@ -13,6 +13,7 @@ class BaseGradientHandler(ABC):
     :type model: Module
     :type optimizer: Optimizer
     """
+
     def __init__(self, model, optimizer):
         self._model = model
         self._optimizer = optimizer

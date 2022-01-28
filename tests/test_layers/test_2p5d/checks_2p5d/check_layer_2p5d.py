@@ -19,11 +19,10 @@ def check_linear():
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
     k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
-    layer = Linear2p5D(
-        INPUT_SIZE,
-        OUTPUT_SIZE,
-        dtype=dtype,
-        skip_bias_add=False)
+    layer = Linear2p5D(INPUT_SIZE,
+                       OUTPUT_SIZE,
+                       dtype=dtype,
+                       skip_bias_add=False)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
     A_master = torch.randn(A_shape, dtype=dtype, device=device)
@@ -67,7 +66,9 @@ def check_linear():
     print_rank_0('linear forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -130,7 +131,6 @@ def check_classifier():
     B = B_master.clone()
     layer.bias.data.copy_(B)
 
-
     out = layer(A)
 
     A_master = A_master.clone()
@@ -147,7 +147,9 @@ def check_classifier():
     print_rank_0('classifier forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     # grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -172,7 +174,7 @@ def check_classifier():
     check_equal(B_grad, layer.bias.grad)
 
     print_rank_0('classifier backward: pass')
-    
+
 
 def check_layernorm():
     device = get_current_device()
@@ -184,9 +186,7 @@ def check_layernorm():
     j = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)
     k = gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)
 
-    layernorm = LayerNorm2p5D(
-        INPUT_SIZE,
-        dtype=dtype)
+    layernorm = LayerNorm2p5D(INPUT_SIZE, dtype=dtype)
 
     A_shape = (BATCH_SIZE, SEQ_LENGTH, INPUT_SIZE)
     A_master = torch.randn(A_shape, dtype=dtype, device=device)
@@ -214,7 +214,9 @@ def check_layernorm():
     print_rank_0('layer norm forward: pass')
 
     grad_shape = C_master.shape
-    grad_master = torch.randn(grad_shape, dtype=dtype, device=get_current_device())
+    grad_master = torch.randn(grad_shape,
+                              dtype=dtype,
+                              device=get_current_device())
     torch.distributed.broadcast(grad_master, src=0)
     grad = torch.chunk(grad_master, TESSERACT_DIM, dim=0)[i]
     grad = torch.chunk(grad, TESSERACT_DIM, dim=-1)[j]
@@ -267,7 +269,6 @@ def check_layernorm():
 #     assert A.grad.shape == A.shape
 #     print_rank_0('self attention backward: pass')
 
-
 # def check_mlp():
 #     device = get_current_device()
 #     dtype = torch.float32
@@ -303,7 +304,6 @@ def check_layernorm():
 #     out.backward(grad)
 #     assert A.grad.shape == A.shape
 #     print_rank_0('mlp backward: pass')
-
 
 # def check_transformerlayer():
 #     device = get_current_device()

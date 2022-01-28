@@ -36,7 +36,8 @@ class ParallelContext:
         # create a singleton instance
         if ParallelContext.__instance is not None:
             raise Exception(
-                'ParallelContext is a singleton class, you should get the instance by colossalai.core.global_context')
+                'ParallelContext is a singleton class, you should get the instance by colossalai.core.global_context'
+            )
         else:
             ParallelContext.__instance = self
 
@@ -87,7 +88,9 @@ class ParallelContext:
         elif isinstance(config, dict):
             self._config = Config(config)
         else:
-            raise TypeError("Invalid type for config, only dictionary or string is supported")
+            raise TypeError(
+                "Invalid type for config, only dictionary or string is supported"
+            )
 
     @staticmethod
     def _check_parallel_mode(parallel_mode: ParallelMode):
@@ -299,13 +302,8 @@ class ParallelContext:
         self._check_parallel_mode(parallel_mode)
         self._ranks_in_group[parallel_mode] = ranks
 
-    def init_global_dist(self,
-                         rank: int,
-                         world_size: int,
-                         backend: str,
-                         host: str,
-                         port: int
-                         ):
+    def init_global_dist(self, rank: int, world_size: int, backend: str,
+                         host: str, port: int):
         """Initializes the global distributed environment
 
         :param rank: rank for the default process group
@@ -327,12 +325,12 @@ class ParallelContext:
                                 init_method=init_method)
 
         # None will give the default global process group for pytorch dist operations
-        self._register_dist(rank, world_size, None,
-                            list(range(world_size)), ParallelMode.GLOBAL)
+        self._register_dist(rank, world_size, None, list(range(world_size)),
+                            ParallelMode.GLOBAL)
         self.add_global_rank(ParallelMode.GLOBAL, rank)
 
-    def _register_dist(self, local_rank, world_size,
-                       process_group, ranks_in_group, mode):
+    def _register_dist(self, local_rank, world_size, process_group,
+                       ranks_in_group, mode):
         self.add_local_rank(mode, local_rank)
         self.add_world_size(mode, world_size)
         self.add_group(mode, process_group)
@@ -351,7 +349,8 @@ class ParallelContext:
         assert ws == dps * pps * \
             tps, f"Expected the world size {ws} to be equal to data parallel size ({dps}) * pipeline parallel size ({pps}) * tensor parallel size ({tps})"
 
-    def _set_parallel_size_from_config(self, config: dict, key: str, attr_name: str):
+    def _set_parallel_size_from_config(self, config: dict, key: str,
+                                       attr_name: str):
         if key in config:
             ele = config[key]
             if isinstance(ele, int):
@@ -377,16 +376,20 @@ class ParallelContext:
         # set parallel size as attributes for global context
         parallel_config = self.config.get('parallel', None)
         if parallel_config is not None:
-            self._set_parallel_size_from_config(parallel_config, 'pipeline', 'pipeline_parallel_size')
-            self._set_parallel_size_from_config(parallel_config, 'tensor', 'tensor_parallel_size')
+            self._set_parallel_size_from_config(parallel_config, 'pipeline',
+                                                'pipeline_parallel_size')
+            self._set_parallel_size_from_config(parallel_config, 'tensor',
+                                                'tensor_parallel_size')
 
         # the user should not set the data parallel size manually
         # instead, it should be calculated based on other parallel config
-        self.data_parallel_size = self.world_size // (self.pipeline_parallel_size * self.tensor_parallel_size)
+        self.data_parallel_size = self.world_size // (
+            self.pipeline_parallel_size * self.tensor_parallel_size)
 
         # get the tensor parallel mode and check
         tensor_parallel_mode = None
-        if parallel_config is not None and 'tensor' in parallel_config and 'mode' in parallel_config['tensor']:
+        if parallel_config is not None and 'tensor' in parallel_config and 'mode' in parallel_config[
+                'tensor']:
             tensor_parallel_mode = parallel_config['tensor']['mode']
         assert tensor_parallel_mode in ALLOWED_MODES, f"mode in the parallel config must be set to one of {ALLOWED_MODES}"
         os.environ[TENSOR_PARALLEL_MODE] = str(tensor_parallel_mode)
@@ -412,7 +415,9 @@ class ParallelContext:
             tensor_parallel_cfg.pop('size')
 
             # add this config to initialize later
-            pg_init.append(dict(type=INITIALIZER_MAPPING[tensor_parallel_mode.lower()], **tensor_parallel_cfg))
+            pg_init.append(
+                dict(type=INITIALIZER_MAPPING[tensor_parallel_mode.lower()],
+                     **tensor_parallel_cfg))
 
         # initialization for moe environment
         if parallel_config is not None and 'moe' in parallel_config:
@@ -426,11 +431,8 @@ class ParallelContext:
             cfg = initializer_cfg.copy()
             initializer_type = cfg.pop('type')
             initializer = DIST_GROUP_INITIALIZER.get_module(initializer_type)(
-                rank, world_size, self.config,
-                self.data_parallel_size,
-                self.pipeline_parallel_size,
-                self.tensor_parallel_size,
-                **cfg)
+                rank, world_size, self.config, self.data_parallel_size,
+                self.pipeline_parallel_size, self.tensor_parallel_size, **cfg)
             parallel_setting = initializer.init_dist_group()
             if isinstance(parallel_setting, list):
                 for args in parallel_setting:
@@ -472,7 +474,9 @@ class ParallelContext:
 
         torch.cuda.set_device(device_ordinal)
         if self._verbose:
-            self._logger.info(f'process rank {global_rank} is bound to device {device_ordinal}')
+            self._logger.info(
+                f'process rank {global_rank} is bound to device {device_ordinal}'
+            )
 
     def set_seed(self, seed: int):
         """Sets seeds for all random libraries.

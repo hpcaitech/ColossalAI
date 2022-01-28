@@ -52,16 +52,27 @@ class FusedLAMB(torch.optim.Optimizer):
         https://openreview.net/forum?id=ryQu7f-RZ
     """
 
-    def __init__(self, params, lr=1e-3, bias_correction=True,
-                 betas=(0.9, 0.999), eps=1e-6, weight_decay=0.01,
-                 amsgrad=False, adam_w_mode=True,
-                 grad_averaging=True, set_grad_none=True,
-                 max_grad_norm=1.0, use_nvlamb=False):
+    def __init__(self,
+                 params,
+                 lr=1e-3,
+                 bias_correction=True,
+                 betas=(0.9, 0.999),
+                 eps=1e-6,
+                 weight_decay=0.01,
+                 amsgrad=False,
+                 adam_w_mode=True,
+                 grad_averaging=True,
+                 set_grad_none=True,
+                 max_grad_norm=1.0,
+                 use_nvlamb=False):
         if amsgrad:
             raise RuntimeError(
                 'FusedLAMB does not support the AMSGrad variant.')
-        defaults = dict(lr=lr, bias_correction=bias_correction,
-                        betas=betas, eps=eps, weight_decay=weight_decay,
+        defaults = dict(lr=lr,
+                        bias_correction=bias_correction,
+                        betas=betas,
+                        eps=eps,
+                        weight_decay=weight_decay,
                         grad_averaging=grad_averaging,
                         max_grad_norm=max_grad_norm)
         super(FusedLAMB, self).__init__(params, defaults)
@@ -70,7 +81,9 @@ class FusedLAMB(torch.optim.Optimizer):
             self.multi_tensor_l2norm = colossal_C.multi_tensor_l2norm
             # Skip buffer
             self._dummy_overflow_buf = torch.tensor(
-                [0], dtype=torch.int, device=self.param_groups[0]["params"][0].device)
+                [0],
+                dtype=torch.int,
+                device=self.param_groups[0]["params"][0].device)
             self.multi_tensor_lamb = colossal_C.multi_tensor_lamb
         else:
             raise RuntimeError('FusedLAMB requires cuda extensions')
@@ -112,8 +125,8 @@ class FusedLAMB(torch.optim.Optimizer):
                     raise RuntimeError('FusedLAMB only support fp16 and fp32.')
 
         device = self.param_groups[0]["params"][0].device
-        g_norm_32, g_norm_16 = torch.zeros(
-            1, device=device), torch.zeros(1, device=device)
+        g_norm_32, g_norm_16 = torch.zeros(1, device=device), torch.zeros(
+            1, device=device)
         # compute grad norm for two lists
         if len(g_all_32) > 0:
             g_norm_32 = multi_tensor_applier(self.multi_tensor_l2norm,
@@ -152,7 +165,8 @@ class FusedLAMB(torch.optim.Optimizer):
                     continue
                 if p.grad.data.is_sparse:
                     raise RuntimeError(
-                        'FusedLAMB does not support sparse gradients, please consider SparseAdam instead')
+                        'FusedLAMB does not support sparse gradients, please consider SparseAdam instead'
+                    )
 
                 state = self.state[p]
                 # State initialization
@@ -176,36 +190,18 @@ class FusedLAMB(torch.optim.Optimizer):
                     raise RuntimeError('FusedLAMB only support fp16 and fp32.')
 
             if (len(g_16) > 0):
-                multi_tensor_applier(self.multi_tensor_lamb,
-                                     self._dummy_overflow_buf,
-                                     [g_16, p_16, m_16, v_16],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     group['step'],
-                                     bias_correction,
-                                     group['weight_decay'],
-                                     grad_averaging,
-                                     self.adam_w_mode,
-                                     global_grad_norm,
-                                     max_grad_norm,
-                                     self.use_nvlamb)
+                multi_tensor_applier(
+                    self.multi_tensor_lamb, self._dummy_overflow_buf,
+                    [g_16, p_16, m_16, v_16], group['lr'], beta1, beta2,
+                    group['eps'], group['step'], bias_correction,
+                    group['weight_decay'], grad_averaging, self.adam_w_mode,
+                    global_grad_norm, max_grad_norm, self.use_nvlamb)
             if (len(g_32) > 0):
-                multi_tensor_applier(self.multi_tensor_lamb,
-                                     self._dummy_overflow_buf,
-                                     [g_32, p_32, m_32, v_32],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     group['step'],
-                                     bias_correction,
-                                     group['weight_decay'],
-                                     grad_averaging,
-                                     self.adam_w_mode,
-                                     global_grad_norm,
-                                     max_grad_norm,
-                                     self.use_nvlamb)
+                multi_tensor_applier(
+                    self.multi_tensor_lamb, self._dummy_overflow_buf,
+                    [g_32, p_32, m_32, v_32], group['lr'], beta1, beta2,
+                    group['eps'], group['step'], bias_correction,
+                    group['weight_decay'], grad_averaging, self.adam_w_mode,
+                    global_grad_norm, max_grad_norm, self.use_nvlamb)
 
         return loss

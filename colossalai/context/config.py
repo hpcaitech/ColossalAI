@@ -41,7 +41,9 @@ class Config(dict):
             self.__setattr__(key, value)
 
     def update(self, config):
-        assert isinstance(config, (Config, dict)), 'can only update dictionary or Config objects.'
+        assert isinstance(
+            config,
+            (Config, dict)), 'can only update dictionary or Config objects.'
         for k, v in config.items():
             self._add_item(k, v)
         return self
@@ -64,7 +66,8 @@ class Config(dict):
         elif isinstance(filename, Path):
             filepath = filename.absolute()
 
-        assert filepath.exists(), f'{filename} is not found, please check your configuration path'
+        assert filepath.exists(
+        ), f'{filename} is not found, please check your configuration path'
 
         # check extension
         extension = filepath.suffix
@@ -77,7 +80,8 @@ class Config(dict):
             remove_path = True
 
         module_name = filepath.stem
-        source_file = SourceFileLoader(fullname=str(module_name), path=str(filepath))
+        source_file = SourceFileLoader(fullname=str(module_name),
+                                       path=str(filepath))
         module = source_file.load_module()
 
         # load into config
@@ -90,7 +94,9 @@ class Config(dict):
                 config._add_item(k, v)
 
         logger = get_dist_logger()
-        logger.debug('variables which starts with __, is a module or class declaration are omitted in config file')
+        logger.debug(
+            'variables which starts with __, is a module or class declaration are omitted in config file'
+        )
 
         # remove module
         del sys.modules[module_name]

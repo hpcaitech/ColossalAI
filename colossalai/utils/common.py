@@ -59,35 +59,43 @@ def sync_model_param(model, parallel_mode):
     :type model: torch.nn.Module
     :type parallel_mode:  colossalai.context.ParallelMode
     """
-    if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
+    if gpc.is_initialized(
+            parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
         for param in model.parameters():
             ranks = gpc.get_ranks_in_group(parallel_mode)
-            dist.broadcast(
-                param, src=ranks[0], group=gpc.get_group(parallel_mode))
+            dist.broadcast(param,
+                           src=ranks[0],
+                           group=gpc.get_group(parallel_mode))
 
 
 def is_dp_rank_0():
-    return not gpc.is_initialized(ParallelMode.DATA) or gpc.is_first_rank(ParallelMode.DATA)
+    return not gpc.is_initialized(ParallelMode.DATA) or gpc.is_first_rank(
+        ParallelMode.DATA)
 
 
 def is_tp_rank_0():
-    return not gpc.is_initialized(ParallelMode.TENSOR) or gpc.is_first_rank(ParallelMode.TENSOR)
+    return not gpc.is_initialized(ParallelMode.TENSOR) or gpc.is_first_rank(
+        ParallelMode.TENSOR)
 
 
 def is_no_pp_or_last_stage():
-    return not gpc.is_initialized(ParallelMode.PIPELINE) or gpc.is_last_rank(ParallelMode.PIPELINE)
+    return not gpc.is_initialized(ParallelMode.PIPELINE) or gpc.is_last_rank(
+        ParallelMode.PIPELINE)
 
 
 def is_using_ddp():
-    return gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1
+    return gpc.is_initialized(
+        ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA) > 1
 
 
 def is_using_pp():
-    return gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1
+    return gpc.is_initialized(
+        ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1
 
 
 def is_using_sequence():
-    return gpc.is_initialized(ParallelMode.SEQUENCE) and gpc.get_world_size(ParallelMode.SEQUENCE) > 1
+    return gpc.is_initialized(
+        ParallelMode.SEQUENCE) and gpc.get_world_size(ParallelMode.SEQUENCE) > 1
 
 
 @contextmanager
@@ -124,8 +132,9 @@ def _calc_lp(grads, norm_type):
     norm = 0.0
     for grad in grads:
         grad_norm = torch.norm(grad, norm_type)
-        norm += grad_norm ** norm_type
+        norm += grad_norm**norm_type
     return norm
+
 
 # ======== Gradient Clipping =========
 
@@ -171,7 +180,8 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
         total_norm = max(p.grad.data.abs().max() for p in params)
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
         # Take max across all model-parallel GPUs.
-        if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
+        if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(
+                ParallelMode.MODEL) > 1:
             dist.all_reduce(total_norm_cuda,
                             op=dist.ReduceOp.MAX,
                             group=gpc.get_group(ParallelMode.MODEL),
@@ -183,7 +193,8 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
         moe_parallel_grads = []  # used to collect moe tensor parallel gradients
         for p in params:
             if is_model_parallel_parameter(p):
-                reductor = (gpc.get_world_size(ParallelMode.TENSOR) / getattr(p, NUM_PARTITIONS)) ** (1 / norm_type)
+                reductor = (gpc.get_world_size(ParallelMode.TENSOR) /
+                            getattr(p, NUM_PARTITIONS))**(1 / norm_type)
                 tensor_parallel_grads.append(p.grad.data / reductor)
             elif is_moe_parallel_parameter(p):
                 moe_parallel_grads.append(p.grad.data)
@@ -192,31 +203,33 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
 
         if norm_type == 2.0:
             tensor_parallel_norm = _calc_l2_norm(
-                tensor_parallel_grads) ** norm_type
+                tensor_parallel_grads)**norm_type
             no_tensor_parallel_norm = _calc_l2_norm(
-                no_tensor_parallel_grads) ** norm_type
-            moe_parallel_norm = _calc_l2_norm(
-                moe_parallel_grads) ** norm_type
+                no_tensor_parallel_grads)**norm_type
+            moe_parallel_norm = _calc_l2_norm(moe_parallel_grads)**norm_type
         else:
             tensor_parallel_norm = _calc_lp(tensor_parallel_grads, norm_type)
-            no_tensor_parallel_norm = _calc_lp(
-                no_tensor_parallel_grads, norm_type)
+            no_tensor_parallel_norm = _calc_lp(no_tensor_parallel_grads,
+                                               norm_type)
             moe_parallel_norm = _calc_lp(moe_parallel_grads, norm_type)
         # Sum across all model-parallel GPUs.
-        if gpc.is_initialized(ParallelMode.TENSOR) and len(tensor_parallel_grads) > 0:
+        if gpc.is_initialized(
+                ParallelMode.TENSOR) and len(tensor_parallel_grads) > 0:
             dist.all_reduce(tensor_parallel_norm,
                             op=dist.ReduceOp.SUM,
                             group=gpc.get_group(ParallelMode.TENSOR))
         # Sum across all moe-tensor-parallel GPUs
         if len(moe_parallel_grads) > 0:
-            dist.all_reduce(moe_parallel_norm, group=gpc.get_group(ParallelMode.MOE_MODEL))
+            dist.all_reduce(moe_parallel_norm,
+                            group=gpc.get_group(ParallelMode.MOE_MODEL))
             no_tensor_parallel_norm += moe_parallel_norm
         total_norm = tensor_parallel_norm + no_tensor_parallel_norm
-        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
+        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(
+                ParallelMode.PIPELINE) > 1:
             dist.all_reduce(total_norm,
                             op=dist.ReduceOp.SUM,
                             group=gpc.get_group(ParallelMode.PIPELINE))
-        total_norm = total_norm ** (1.0 / norm_type)
+        total_norm = total_norm**(1.0 / norm_type)
         if type(total_norm) == 'torch.cuda.FloatTensor':
             total_norm = total_norm.item()
 
@@ -225,10 +238,8 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     if clip_coeff < 1.0:
         grads = [p.grad.detach() for p in params]
         dummy_overflow_buf = torch.cuda.IntTensor([0])
-        multi_tensor_applier(colossal_C.multi_tensor_scale,
-                             dummy_overflow_buf,
-                             [grads, grads],
-                             clip_coeff)
+        multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf,
+                             [grads, grads], clip_coeff)
 
     return total_norm
 
@@ -254,15 +265,17 @@ def count_zeros_fp32(parameters):
 
     # Sum across all model-parallel GPUs.
     ops = []
-    ops.append(dist.all_reduce(total_num_zeros,
-                               op=dist.ReduceOp.SUM,
-                               group=gpc.get_group(ParallelMode.TENSOR),
-                               async_op=True))
+    ops.append(
+        dist.all_reduce(total_num_zeros,
+                        op=dist.ReduceOp.SUM,
+                        group=gpc.get_group(ParallelMode.TENSOR),
+                        async_op=True))
     if gpc.is_initialized(ParallelMode.PIPELINE):
-        ops.append(dist.all_reduce(total_num_zeros,
-                                   op=dist.ReduceOp.SUM,
-                                   group=gpc.get_group(ParallelMode.PIPELINE),
-                                   async_op=True))
+        ops.append(
+            dist.all_reduce(total_num_zeros,
+                            op=dist.ReduceOp.SUM,
+                            group=gpc.get_group(ParallelMode.PIPELINE),
+                            async_op=True))
 
     for req in ops:
         req.wait()
@@ -280,8 +293,8 @@ def copy_tensor_parallel_attributes(src_tensor, dst_tensor):
 
 def param_is_not_tensor_parallel_duplicate(param):
     return (hasattr(param, IS_TENSOR_PARALLEL) and
-            getattr(param, IS_TENSOR_PARALLEL)) or (
-        gpc.get_local_rank(ParallelMode.TENSOR) == 0)
+            getattr(param, IS_TENSOR_PARALLEL)) or (gpc.get_local_rank(
+                ParallelMode.TENSOR) == 0)
 
 
 @contextmanager
