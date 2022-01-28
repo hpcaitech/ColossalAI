@@ -5,3 +5,4 @@ tqdm
 psutil
 tensorboard
 packaging
+pre-commit
