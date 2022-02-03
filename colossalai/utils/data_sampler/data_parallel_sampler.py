@@ -123,7 +123,7 @@ def get_dataloader(dataset,
     .. note:: When pipeline parallel is enabled, shuffle cannot be True as it will result in mismatch between input data
         on the 1st stage and label on the last stage
 
-    :param dataset: A :class:`utils.data.dataset dataset`
+    :param dataset: A :class:`torch.utils.data.Dataset` object
     :param shuffle: Whether to shuffle the dataset
     :param seed: Random worker seed, defaults to 1024
     :param add_sampler: Add DistributedDataParallelSampelr to the dataset

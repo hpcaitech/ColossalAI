@@ -3,7 +3,11 @@
 [![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
 <div align="center">
-   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | <a href="https://www.colossalai.org/"> Documentation </a> | <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
+   <a href="https://www.colossalai.org/"> Documentation </a> | 
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
+   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
+   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
    
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
@@ -49,6 +53,16 @@ If you don't want to install and enable CUDA kernel fusion (compulsory installat
 pip install --global-option="--no_cuda_ext" .
 ```
 
+<<<<<<< HEAD
+=======
+### PyPI
+
+```bash
+pip install colossalai
+```
+
+
+>>>>>>> 812357d (fixed utils docstring and add example to readme (#200))
 ## Use Docker
 
 Run the following command to build a docker image from Dockerfile provided.
