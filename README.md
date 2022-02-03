@@ -3,7 +3,11 @@
 [![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
 <div align="center">
-   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | <a href="https://www.colossalai.org/"> Documentation </a> | <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
+   <a href="https://www.colossalai.org/"> Documentation </a> | 
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
+   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
+   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
    
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
@@ -37,10 +41,6 @@ pip install -v --no-cache-dir --global-option="--cuda_ext" .
 ```bash
 pip install colossalai
 ```
-
-## Documentation
-
-- [Documentation](https://www.colossalai.org/)
 
 
 ## Use Docker
