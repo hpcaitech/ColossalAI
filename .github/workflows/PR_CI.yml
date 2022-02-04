@@ -3,6 +3,15 @@ name: Pull Request CI and Build
 on: pull_request
 
 jobs:
+  cancel_previous_workflow:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+
   assign_reviewer:
     name: Assign Reviewer for PR
     runs-on: ubuntu-latest
@@ -15,7 +24,7 @@ jobs:
   build:
     name: Build and Test Colossal-AI
     if: ${{ always() }} && github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
-    needs: [assign_reviewer]
+    needs: [cancel_previous_workflow, assign_reviewer]
     runs-on: [self-hosted, gpu]
     container:
       image: nvcr.io/nvidia/pytorch:21.07-py3
@@ -43,8 +52,8 @@ jobs:
 
   format_check:
     name: Format Check
-    if: ${{ always() }} && github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
-    needs: [assign_reviewer, build]
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.head_ref == 'develop' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
