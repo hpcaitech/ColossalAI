@@ -16,7 +16,6 @@ jobs:
     name: Assign Reviewer for PR
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && toJson(github.event.pull_request.requested_reviewers) == '[]'
-    needs: [cancel_previous_workflow]
     steps:
       - uses: kentaro-m/auto-assign-action@v1.2.1
         with:
@@ -53,8 +52,8 @@ jobs:
 
   format_check:
     name: Format Check
-    if: ${{ always() }} && github.event.pull_request.draft == false && github.base_ref == 'main' && github.head_ref == 'develop' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
-    needs: [cancel_previous_workflow, assign_reviewer, build]
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.head_ref == 'develop' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
