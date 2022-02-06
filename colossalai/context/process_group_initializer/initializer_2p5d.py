@@ -2,22 +2,21 @@
 # -*- encoding: utf-8 -*-
 
 import math
-import os
 
 import torch.distributed as dist
-
-from colossalai.constants import TESSERACT_DIM, TESSERACT_DEP
 from colossalai.context import Config
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.registry import DIST_GROUP_INITIALIZER
-from .process_group_initializer import ProcessGroupInitializer
+
 from ..parallel_mode import ParallelMode
+from .process_group_initializer import ProcessGroupInitializer
 
 
 def _check_tesseract_env_var(tesseract_dim: int,
                              tesseract_dep: int):
-    # check environment variable for TESSERACT
-    env_tesseract_dim = os.environ.get(TESSERACT_DIM, None)
-    env_tesseract_dep = os.environ.get(TESSERACT_DEP, None)
+    # check global variable for TESSERACT
+    env_tesseract_dim = env.tesseract_dim
+    env_tesseract_dep = env.tesseract_dep
 
     if env_tesseract_dim and env_tesseract_dep:
         assert int(env_tesseract_dim) == tesseract_dim, \
@@ -27,8 +26,8 @@ def _check_tesseract_env_var(tesseract_dim: int,
             'TESSERACT_DEP has been set in the current environment and ' \
             'does not match with the value passed to this initialized'
     else:
-        os.environ[TESSERACT_DIM] = str(tesseract_dim)
-        os.environ[TESSERACT_DEP] = str(tesseract_dep)
+        env.tesseract_dim = tesseract_dim
+        env.tesseract_dep = tesseract_dep
 
 
 # i row j col k dep
@@ -245,7 +244,6 @@ class Initializer_2p5D(ProcessGroupInitializer):
     :param pipeline_parallel_size: Size of pipeline parallel
     :param tensor_parallel_size: Size of tensor parallel
     :param depth: The depth of 2p5d parallel
-
     :type rank: int
     :type world_size: int
     :type config: Config
@@ -281,7 +279,7 @@ class Initializer_2p5D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 2p5D tensor row, col, depth, and colXdepth parallel groups, and assign local_ranks and groups to each gpu.
-
+        
         :return: Whole 2p5D tensor parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """

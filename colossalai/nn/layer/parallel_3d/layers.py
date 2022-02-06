@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 import math
 from typing import Callable
 
@@ -10,11 +8,12 @@ from colossalai.communication import all_reduce, broadcast
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.nn import init as init
 from colossalai.nn.layer.base_layer import ParallelLayer
 from colossalai.registry import LAYERS
-from colossalai.utils import get_current_device
-from torch import Tensor, dtype
+from colossalai.utils.cuda import get_current_device
+from torch import Tensor
 from torch.nn import Parameter
 
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
@@ -37,7 +36,8 @@ class LayerNorm3D(ParallelLayer):
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     """
-    def __init__(self, normalized_shape: int, eps: float = 1e-12, dtype: dtype = None):
+
+    def __init__(self, normalized_shape: int, eps: float = 1e-12, dtype=None):
         super().__init__()
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
         self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
@@ -62,8 +62,8 @@ class LayerNorm3D(ParallelLayer):
         init.ones_()(self.weight)
 
     def forward(self, input_: Tensor) -> Tensor:
-        return layernorm_3d.apply(input_, self.weight, self.bias, self.normalized_shape, self.variance_epsilon,
-                                  self.input_parallel_mode, self.weight_parallel_mode, self.output_parallel_mode)
+        return layernorm_3d(input_, self.weight, self.bias, self.normalized_shape, self.variance_epsilon,
+                            self.input_parallel_mode, self.weight_parallel_mode, self.output_parallel_mode)
 
 
 @LAYERS.register_module
@@ -84,11 +84,12 @@ class Linear3D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  in_features: int,
                  out_features: int,
                  bias: bool = True,
-                 dtype: dtype = None,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
@@ -136,8 +137,8 @@ class Linear3D(ParallelLayer):
                 broadcast(self.bias, output_src_rank, self.output_parallel_mode)
 
     def forward(self, input_: Tensor) -> Tensor:
-        return linear_3d.apply(input_, self.weight, self.bias, self.input_parallel_mode, self.weight_parallel_mode,
-                               self.output_parallel_mode)
+        return linear_3d(input_, self.weight, self.bias, self.input_parallel_mode, self.weight_parallel_mode,
+                         self.output_parallel_mode)
 
 
 @LAYERS.register_module
@@ -160,12 +161,13 @@ class Classifier3D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  in_features: int,
                  num_classes: int,
                  weight: Parameter = None,
                  bias: bool = True,
-                 dtype: dtype = None,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
@@ -214,8 +216,94 @@ class Classifier3D(ParallelLayer):
                 broadcast(self.bias, input_src_rank, self.input_parallel_mode)
 
     def forward(self, input_: Tensor) -> Tensor:
-        return classifier_3d.apply(input_, self.weight, self.bias, self.input_parallel_mode, self.weight_parallel_mode,
-                                   self.output_parallel_mode)
+        return classifier_3d(input_, self.weight, self.bias, self.input_parallel_mode, self.weight_parallel_mode,
+                             self.output_parallel_mode)
+
+
+@LAYERS.register_module
+class VocabParallelClassifier3D(ParallelLayer):
+    """
+    Vocab parallel classifier layer for 2D parallelism
+
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param num_classes: number of classes
+    :type num_classes: int
+    :param weight: weight of the classifier, defaults to True
+    :type weight: torch.nn.Parameter, optional
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    """
+
+    def __init__(self,
+                 in_features: int,
+                 num_classes: int,
+                 weight: Parameter = None,
+                 bias: bool = True,
+                 dtype: torch.dtype = None,
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+        super().__init__()
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+        self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+        self.output_parallel_mode = get_last_group(self.input_parallel_mode, self.weight_parallel_mode)
+        self.depth = get_depth_from_env()
+        self.in_features_per_partition = divide(in_features, self.depth)
+        self.out_features_per_partition = divide(num_classes, self.depth)
+
+        if weight is not None:
+            self.weight = weight
+            self.has_weight = False
+        else:
+            self.weight = Parameter(
+                torch.empty(self.out_features_per_partition,
+                            self.in_features_per_partition,
+                            device=get_current_device(),
+                            dtype=dtype))
+            self.has_weight = True
+        if bias:
+            self.bias = Parameter(torch.zeros(self.out_features_per_partition, device=get_current_device(),
+                                              dtype=dtype))
+        else:
+            self.bias = None
+
+        self.reset_parameters(weight_initializer, bias_initializer)
+        self._set_tensor_parallel_attributes()
+        swap_in_out_group()
+        env.vocab_parallel = True
+
+    def _set_tensor_parallel_attributes(self) -> None:
+        if self.has_weight:
+            set_tensor_parallel_attribute_by_partition(self.weight, self.depth**2)
+        if self.bias is not None:
+            set_tensor_parallel_attribute_by_partition(self.bias, self.depth)
+
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
+        with seed(ParallelMode.TENSOR):
+            fan_in, fan_out = self.in_features, self.num_classes
+            weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
+            output_src_rank = gpc.get_ranks_in_group(self.output_parallel_mode)[0]
+
+            if self.has_weight:
+                weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+                broadcast(self.weight, weight_src_rank, self.weight_parallel_mode)
+
+            if self.bias is not None:
+                bias_initializer(self.bias, fan_in=fan_in)
+                broadcast(self.bias, weight_src_rank, self.weight_parallel_mode)
+                broadcast(self.bias, output_src_rank, self.output_parallel_mode)
+
+    def forward(self, input_: Tensor) -> Tensor:
+        return linear_3d(input_, self.weight.transpose(0, 1), self.bias, self.input_parallel_mode,
+                         self.weight_parallel_mode, self.output_parallel_mode)
 
 
 @LAYERS.register_module
@@ -242,13 +330,14 @@ class PatchEmbedding3D(ParallelLayer):
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  img_size: int,
                  patch_size: int,
                  in_chans: int,
                  embed_size: int,
-                 dtype: dtype = None,
                  flatten: bool = True,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
                  position_embed_initializer: Callable = init.zeros_()):
@@ -284,8 +373,8 @@ class PatchEmbedding3D(ParallelLayer):
         set_tensor_parallel_attribute_by_partition(self.cls_token, self.depth)
         set_tensor_parallel_attribute_by_partition(self.pos_embed, self.depth)
 
-    def _sync_grad_hook(self, grad) -> None:
-        grad = all_reduce(grad, self.input_parallel_mode)
+    def _sync_grad_hook(self, grad) -> Tensor:
+        grad = all_reduce(grad.clone(), self.input_parallel_mode)
         grad = all_reduce(grad, self.weight_parallel_mode)
         return grad
 
@@ -302,17 +391,19 @@ class PatchEmbedding3D(ParallelLayer):
         broadcast(self.weight, weight_src_rank, self.weight_parallel_mode)
         broadcast(self.bias, weight_src_rank, self.weight_parallel_mode)
         broadcast(self.pos_embed, weight_src_rank, self.weight_parallel_mode)
+        broadcast(self.weight, input_src_rank, self.input_parallel_mode)
         broadcast(self.bias, input_src_rank, self.input_parallel_mode)
         broadcast(self.pos_embed, input_src_rank, self.input_parallel_mode)
 
+        self.weight.register_hook(self._sync_grad_hook)
         self.bias.register_hook(self._sync_grad_hook)
         self.cls_token.register_hook(self._sync_grad_hook)
         self.pos_embed.register_hook(self._sync_grad_hook)
 
     def forward(self, input_: Tensor) -> Tensor:
-        weight = broadcast_weight_3d_from_diagonal.apply(self.weight, self.input_parallel_mode,
-                                                         self.weight_parallel_mode, self.output_parallel_mode)
-        output = F.conv2d(input_, weight, self.bias, stride=self.patch_size)
+        input_ = split_tensor_3d(input_, 0, self.weight_parallel_mode)
+        input_ = split_tensor_3d(input_, 0, self.input_parallel_mode)
+        output = F.conv2d(input_, self.weight, self.bias, stride=self.patch_size)
         if self.flatten:
             output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
 
@@ -341,11 +432,12 @@ class Embedding3D(ParallelLayer):
     :param args: Args used in F.embedding
     :param kwargs: Kwargs used in F.embedding
     """
+
     def __init__(self,
                  num_embeddings: int,
                  embedding_dim: int,
                  padding_idx: int = None,
-                 dtype: dtype = None,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.normal_(),
                  *args,
                  **kwargs):
@@ -385,8 +477,95 @@ class Embedding3D(ParallelLayer):
                 self.weight[self.padding_idx].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
-        weight = broadcast_weight_3d_from_diagonal.apply(self.weight, self.input_parallel_mode,
-                                                         self.weight_parallel_mode, self.output_parallel_mode)
+        input_ = split_tensor_3d(input_, 0, self.weight_parallel_mode)
+        input_ = split_tensor_3d(input_, 0, self.input_parallel_mode)
+        weight = broadcast_weight_3d_from_diagonal(self.weight, self.input_parallel_mode, self.weight_parallel_mode,
+                                                   self.output_parallel_mode)
         output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+
+        return output
+
+
+@LAYERS.register_module
+class VocabParallelEmbedding3D(torch.nn.Module):
+    """Embedding parallelized in the vocabulary dimension.
+
+    :param num_embeddings: number of embeddings
+    :type num_embeddings: int
+    :param embedding_dim: dimension of embedding
+    :type embedding_dim: int
+    :param padding_idx: index of padding, defaults to None
+    :type padding_idx: int, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to normal initializer
+    :type weight_initializer: typing.Callable, optional
+    :param args: Args used in F.embedding
+    :param kwargs: Kwargs used in F.embedding
+    """
+
+    def __init__(self,
+                 num_embeddings: int,
+                 embedding_dim: int,
+                 padding_idx: int = None,
+                 dtype: torch.dtype = None,
+                 weight_initializer: Callable = init.normal_(),
+                 *args,
+                 **kwargs):
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embed_dim = embedding_dim
+        self.padding_idx = padding_idx
+        self.embed_args = args
+        self.embed_kwargs = kwargs
+
+        self.depth = get_depth_from_env()
+        self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
+        self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
+        self.output_parallel_mode = get_last_group(self.input_parallel_mode, self.weight_parallel_mode)
+        self.num_embeddings_per_partition = divide(self.num_embeddings, self.depth)
+        self.embed_dim_per_partition = divide(self.embed_dim, self.depth)
+        vocab_parallel_rank = gpc.get_local_rank(self.input_parallel_mode)
+        self.vocab_start_index = vocab_parallel_rank * self.num_embeddings_per_partition
+        self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
+
+        self.weight = Parameter(
+            torch.empty((self.num_embeddings_per_partition, self.embed_dim_per_partition),
+                        device=get_current_device(),
+                        dtype=dtype))
+
+        self.reset_parameters(weight_initializer)
+        self._set_tensor_parallel_attributes()
+        env.vocab_parallel = True
+
+    def _set_tensor_parallel_attributes(self):
+        set_tensor_parallel_attribute_by_partition(self.weight, self.depth**2)
+
+    def reset_parameters(self, weight_initializer) -> None:
+        with seed(ParallelMode.TENSOR):
+            fan_in, fan_out = self.num_embeddings, self.embed_dim
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+            self._fill_padding_idx_with_zero()
+        weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
+        broadcast(self.weight, weight_src_rank, self.weight_parallel_mode)
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None:
+            with torch.no_grad():
+                self.weight[self.padding_idx].fill_(0)
+
+    def forward(self, input_: Tensor) -> Tensor:
+        input_ = split_tensor_3d(input_, 0, self.weight_parallel_mode)
+
+        input_mask = (input_ < self.vocab_start_index) | (input_ >= self.vocab_end_index)
+        masked_input = input_.clone() - self.vocab_start_index
+        masked_input[input_mask] = 0
+
+        weight = reduce_grad_3d(self.weight, self.weight_parallel_mode)
+
+        output_parallel = F.embedding(masked_input, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
+
+        output_parallel[input_mask, :] = 0.
+        output = reduce_scatter_tensor_3d(output_parallel, 0, self.input_parallel_mode)
 
         return output
