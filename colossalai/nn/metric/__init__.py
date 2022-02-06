@@ -17,7 +17,7 @@ class Accuracy(nn.Module):
     def __init__(self):
         super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
-        if tensor_parallel in ['None', '1d']:
+        if tensor_parallel not in _parallel_accuracy:
             self.acc = calc_acc
         else:
             self.acc = _parallel_accuracy[tensor_parallel]()

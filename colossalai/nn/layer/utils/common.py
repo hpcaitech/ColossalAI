@@ -2,12 +2,12 @@
 # -*- encoding: utf-8 -*-
 
 import collections.abc
-import os
 from itertools import repeat
 
 import numpy as np
 import torch
-from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_MODE)
+from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.utils import checkpoint
 from torch import Tensor, nn
 
@@ -38,7 +38,7 @@ class CheckpointModule(nn.Module):
 
 def divide(numerator, denominator):
     """Only allow exact division
-
+    
     :param numerator: Numerator of the division
     :param denominator: Denominator of the division
     """
@@ -65,7 +65,7 @@ def set_tensor_parallel_attribute_by_partition(param, num_partitions):
 
 
 def get_tensor_parallel_mode():
-    return os.environ[TENSOR_PARALLEL_MODE]
+    return env.mode
 
 
 # From PyTorch internals

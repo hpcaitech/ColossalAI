@@ -4,8 +4,9 @@
 import torch.nn as nn
 try:
     import apex.amp as apex_amp
-except:
-    pass
+except ImportError:
+    raise ImportError('Cannot import apex.amp correctly.')
+
 from torch import Tensor
 
 from colossalai.nn.optimizer import ColossalaiOptimizer

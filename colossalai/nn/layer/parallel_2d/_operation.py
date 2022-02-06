@@ -8,6 +8,7 @@ from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
+from colossalai.global_variables import tensor_parallel_env as env
 
 
 def matmul_2d(
@@ -22,6 +23,7 @@ def matmul_2d(
 ):
     """
     Matrix multiplication for 2D parallelism
+
     :param a: matrix :math:`A`
     :type a: torch.tensor
     :param b: matrix :math:`B`
@@ -56,37 +58,7 @@ def matmul_2d(
                         data_parallel_rank, pipeline_parallel_rank, pipeline_parallel_size, tensor_parallel_size)
 
 
-class classifier_2d(torch.autograd.Function):
-    """
-    Classifier
-
-    :param a: matrix :math:`A`
-    :type a: torch.tensor
-    :param b: matrix :math:`B`
-    :type b: torch.tensor
-    :param bias: matrix of bias
-    :type bias: torch.tensor, optional
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
-    :param out_shape: shape of output tensor
-    :type out_shape: tuple
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
-    """
+class _Classifier2D(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -150,12 +122,52 @@ class classifier_2d(torch.autograd.Function):
             B_grad = torch.matmul(output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1), A)
             B_grad = reduce_scatter(B_grad, -1, ctx.col_parallel_mode)
             B_grad = B_grad.reshape(ctx.B_shape)
-            bias_grad = None
             if ctx.use_bias:
                 bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
                 bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
+            else:
+                bias_grad = None
 
         return A_grad, B_grad, bias_grad, None, None, None, None, None, None, None, None, None, None
+
+
+def classifier_2d(A: Tensor, B: Tensor, bias: Optional[Tensor], summa_dim: int, out_shape: Tuple[int, ...],
+                  row_rank: int, col_rank: int, row_parallel_mode: ParallelMode, col_parallel_mode: ParallelMode,
+                  data_parallel_rank: int, pipeline_parallel_rank: int, pipeline_parallel_size: int,
+                  tensor_parallel_size: int) -> Tensor:
+    """
+    2D parallel classifier
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param summa_dim: dimension of SUMMA fo 2D parallelism
+    :type summa_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
+    """
+    return _Classifier2D.apply(A, B, bias, summa_dim, out_shape, row_rank, col_rank, row_parallel_mode,
+                               col_parallel_mode, data_parallel_rank, pipeline_parallel_rank, pipeline_parallel_size,
+                               tensor_parallel_size)
 
 
 class Matmul_AB_2D(torch.autograd.Function):
@@ -230,9 +242,9 @@ class Matmul_AB_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_a = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-            pipeline_parallel_rank * tensor_parallel_size
+                pipeline_parallel_rank * tensor_parallel_size
         src_b = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-            pipeline_parallel_rank * tensor_parallel_size
+                pipeline_parallel_rank * tensor_parallel_size
 
         opa = [None] * 2
         opb = [None] * 2
@@ -361,9 +373,9 @@ class Matmul_ABT_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_b = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-            pipeline_parallel_rank * tensor_parallel_size
+                pipeline_parallel_rank * tensor_parallel_size
         src_c = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-            pipeline_parallel_rank * tensor_parallel_size
+                pipeline_parallel_rank * tensor_parallel_size
 
         opb = [None] * 2
         opr = [None] * 2
@@ -501,9 +513,9 @@ class Matmul_ATB_2D(torch.autograd.Function):
         col_group = gpc.get_group(col_parallel_mode)
 
         src_a = summa_dim * row_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-            pipeline_parallel_rank * tensor_parallel_size
+                pipeline_parallel_rank * tensor_parallel_size
         src_c = col_rank + data_parallel_rank * pipeline_parallel_size * tensor_parallel_size + \
-            pipeline_parallel_rank * tensor_parallel_size
+                pipeline_parallel_rank * tensor_parallel_size
 
         opa = [None] * 2
         opr = [None] * 2
@@ -572,35 +584,7 @@ class Matmul_ATB_2D(torch.autograd.Function):
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None
 
 
-class add_bias_2d(torch.autograd.Function):
-    """
-    Matrix add bias: :math:`C = A + b`
-
-    :param input_: matrix :math:`A`
-    :type input_: torch.tensor
-    :param bias: matrix :math:`b`
-    :type bias: torch.tensor
-    :param output_size_per_partition: size of ouput per partition
-    :type output_size_per_partition: int
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion
-    :type skip_bias_add: bool
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
-    """
+class _Add_Bias_2D(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -651,31 +635,47 @@ class add_bias_2d(torch.autograd.Function):
             return output_grad, grad, None, None, None, None, None, None, None, None, None, None
 
 
-class layernorm_2d(torch.autograd.Function):
+def add_bias_2d(input_: Tensor, bias: Tensor, output_size_per_partition: int, row_rank: int, col_rank: int,
+                row_parallel_mode: ParallelMode, col_parallel_mode: ParallelMode, skip_bias_add: bool,
+                data_parallel_rank: int, pipeline_parallel_rank: int, pipeline_parallel_size: int,
+                tensor_parallel_size: int) -> Tensor:
     """
-    Layernorm
+    Matrix add bias: :math:`C = A + b`
 
-    :param input_: input maxtrix
+    :param input_: matrix :math:`A`
     :type input_: torch.tensor
-    :param E_x: mean
-    :type E_x: torch.tensor
-    :param Var_x: variance
-    :type Var_x: torch.tensor
-    :param hidden_size: hidden size
-    :type hidden_size: int
+    :param bias: matrix :math:`b`
+    :type bias: torch.tensor
+    :param output_size_per_partition: size of ouput per partition
+    :type output_size_per_partition: int
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
     :param row_parallel_mode: row parallel mode
     :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     :param col_parallel_mode: column parallel mode
     :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion
+    :type skip_bias_add: bool
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
     """
+    return _Add_Bias_2D.apply(input_, bias, output_size_per_partition, row_rank, col_rank, row_parallel_mode,
+                              col_parallel_mode, skip_bias_add, data_parallel_rank, pipeline_parallel_rank,
+                              pipeline_parallel_size, tensor_parallel_size)
+
+
+class _Layernorm_2D(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx: Any, 
-                input_: Tensor, 
-                E_x: Tensor, 
-                Var_x: Tensor, 
-                hidden_size: int, 
-                row_parallel_mode: ParallelMode,
+    def forward(ctx: Any, input_: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int, row_parallel_mode: ParallelMode,
                 col_parallel_mode: ParallelMode) -> Tensor:
         input_ = input_ - E_x
         # in here, input = x - E[x], Var_x = 1 / sqrt(Var[x] + eps)
@@ -709,76 +709,64 @@ class layernorm_2d(torch.autograd.Function):
         return input_grad, None, None, None, None, None
 
 
-class all_gather_weight_2d(torch.autograd.Function):
+def layernorm_2d(input_: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int, row_parallel_mode: ParallelMode,
+                 col_parallel_mode: ParallelMode) -> Tensor:
     """
-    all gather the weight of 2D parallelism
+    Layernorm
 
-    :param inputs: input maxtrix
-    :type inputs: torch.tensor
-    :param dim: dimension of all gather
-    :type dim: int
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param E_x: mean
+    :type E_x: torch.tensor
+    :param Var_x: variance
+    :type Var_x: torch.tensor
+    :param hidden_size: hidden size
+    :type hidden_size: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     :param col_parallel_mode: column parallel mode
     :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
+    return _Layernorm_2D.apply(input_, E_x, Var_x, hidden_size, row_parallel_mode, col_parallel_mode)
+
+
+class _AllGatherTensor2D(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx: Any, inputs: Tensor, dim: int, summa_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
+    def forward(ctx: Any, inputs: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
         ctx.dim = dim
-        ctx.summa_dim = summa_dim
-        ctx.row_rank = gpc.get_local_rank(col_parallel_mode)
+        ctx.parallel_mode = parallel_mode
 
-        outputs = all_gather(inputs, dim, col_parallel_mode)
+        outputs = all_gather(inputs, dim, parallel_mode)
         return outputs
 
     @staticmethod
     @custom_bwd
     def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        grad = output_grad.chunk(ctx.summa_dim, dim=ctx.dim)[ctx.row_rank]
-        return grad.contiguous(), None, None, None
+        grad = reduce_scatter(output_grad, ctx.dim, ctx.parallel_mode)
+        return grad.contiguous(), None, None
 
 
-class SplitFirst(torch.autograd.Function):
+def all_gather_tensor_2d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
     """
+    All gather the tensor of 2D parallelism
+
     :param inputs: input maxtrix
     :type inputs: torch.tensor
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param dim: dimension to gather
+    :type dim: int
+    :param parallel_mode: parallel mode
+    :type parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
-    @staticmethod
-    @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx: Any, inputs: Tensor, summa_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
-        ctx.summa_dim = summa_dim
-        ctx.batch_size = inputs.size(0)
-        ctx.para_mode = col_parallel_mode
-        row_rank = gpc.get_local_rank(col_parallel_mode)
-
-        outputs = inputs.chunk(summa_dim, dim=0)[row_rank]
-        return outputs
-
-    @staticmethod
-    @custom_bwd
-    def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        grad_shape = (ctx.batch_size, ) + output_grad.shape[1:]
-        grad = torch.empty(grad_shape, dtype=output_grad.dtype, device=get_current_device())
-        dist.all_gather(list(grad.chunk(ctx.summa_dim, dim=0)),
-                        output_grad.contiguous(),
-                        group=gpc.get_group(ctx.para_mode))
-        return grad, None, None
+    return _AllGatherTensor2D.apply(tensor, dim, parallel_mode)
 
 
 def split_tensor_2d(input_: Tensor, dim: int = 0) -> Tensor:
     """Splits 2D tensor in specified dimension across cols
-
     :param input_: Input tensor
     :param dim: Specified dimension in which to split
-
     :type input_: torch.Tensor
     :type dim: int, optional
-
     :return output: Splitted tensor
     :rtype output: torch.Tensor
     """
@@ -788,9 +776,50 @@ def split_tensor_2d(input_: Tensor, dim: int = 0) -> Tensor:
                        dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)].contiguous()
 
 
-class reduce_by_batch_2d(torch.autograd.Function):
-    """All-reduce the input from the model parallel region.
+class _ReduceTensor2D(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_, parallel_mode):
+        return all_reduce(input_, parallel_mode)
+
+    @staticmethod
+    def backward(ctx, output_grad):
+        return output_grad, None
+
+
+def reduce_tensor_2d(input_: Tensor, parallel_mode: ParallelMode) -> Tensor:
     """
+    All-reduce the input.
+    
+    :param input_: input tensor
+    :param parallel_mode: parallel mode
+    """
+    return _ReduceTensor2D.apply(input_, parallel_mode)
+
+
+class _ReduceScatterTensor2D(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_, dim, parallel_mode):
+        ctx.dim = dim
+        ctx.parallel_mode = parallel_mode
+        return reduce_scatter(input_, dim, parallel_mode)
+
+    @staticmethod
+    def backward(ctx, output_grad):
+        return all_gather(output_grad, ctx.dim, ctx.parallel_mode), None, None
+
+
+def reduce_scatter_tensor_2d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
+    """
+    Reduce-scatter the input.
+    
+    :param tensor: Input tensor
+    :param dim: Dimension to scatter
+    :param parallel_mode: Parallel mode
+    """
+    return _ReduceScatterTensor2D.apply(tensor, dim, parallel_mode)
+
+
+class _ReduceByBatch2D(torch.autograd.Function):
     @staticmethod
     def symbolic(graph, input_, reduce_mean: bool = False):
         output = all_reduce(input_, ParallelMode.PARALLEL_2D_COL)
@@ -802,12 +831,6 @@ class reduce_by_batch_2d(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, input_, reduce_mean: bool = False):
-        """
-        :param input_: input maxtrix
-        :type input_: torch.tensor
-        :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
-        :type reduce_mean: int, optional
-        """
         output = all_reduce(input_, ParallelMode.PARALLEL_2D_COL)
         ctx.reduce_mean = reduce_mean
         if reduce_mean:
@@ -823,3 +846,14 @@ class reduce_by_batch_2d(torch.autograd.Function):
             return output_grad / ctx.reduce_size, None
         else:
             return output_grad, None
+
+
+def reduce_by_batch_2d(input_, reduce_mean: bool = False) -> Tensor:
+    """All-reduce the input from the model parallel region.
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
+    :type reduce_mean: bool, optional
+    """
+    return _ReduceByBatch2D.apply(input_, reduce_mean)
