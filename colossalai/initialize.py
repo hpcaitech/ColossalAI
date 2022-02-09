@@ -336,7 +336,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         # 2. if dp size is larger than 1 and pipeline is not used, use pytorch ddp
         # 3. if using pipeline and dp size larger than 1, use data parallel grad handler
         if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                  ZeroRedundancyOptimizer_Level_3)):
+                                  ZeroRedundancyOptimizer_Level_3, ZeroRedundancyOptimizer_Level_1)):
             gradient_handler_cfg = [dict(type='ZeROGradientHandler')]
             if verbose:
                 logger.info(

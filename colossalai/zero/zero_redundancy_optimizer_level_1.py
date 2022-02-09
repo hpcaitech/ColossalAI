@@ -2,12 +2,10 @@ from math import sqrt
 
 import torch
 import torch.distributed as dist
-from attr import has
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.utils import (is_model_parallel_parameter,
-                              is_moe_parallel_parameter, report_memory_usage)
+from colossalai.utils import is_model_parallel_parameter, report_memory_usage
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from torch._six import inf
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
@@ -64,6 +62,10 @@ def get_global_norm(norm_list):
     return sqrt(total_norm)
 
 
+def is_moe_parallel_parameter(param):
+    return False
+
+
 class ZeroRedundancyOptimizer_Level_1(object):
     """
     DeepSpeedZeroOptimizer designed to reduce the memory footprint
@@ -111,7 +113,8 @@ class ZeroRedundancyOptimizer_Level_1(object):
         # 2. keep common stuff here in case we need to add ne552w fused optimizer later
 
         self.elastic_checkpoint = elastic_checkpoint
-
+        if dp_process_group is None:
+            dp_process_group = gpc.get_group(ParallelMode.DATA)
         # differences from apex.fp16_utils:
         # - assume all model params in fp16
         # - assume all params requires grad
@@ -562,23 +565,24 @@ class ZeroRedundancyOptimizer_Level_1(object):
     #################### ZeRO Stage 1 - reduce gradients ####################
     #########################################################################
     def allreduce_gradients(self, pipeline_parallel=False):
-        world_size = dist.get_world_size(self.dp_process_group)
-        my_rank = dist.get_rank(self.dp_process_group)
+        if not self.partition_gradients:
+            world_size = dist.get_world_size(self.dp_process_group)
+            my_rank = dist.get_rank(self.dp_process_group)
 
-        # with PP we must create ipg buffer, since backward is handled outside zero
-        if pipeline_parallel and self.contiguous_gradients:
-            self.ipg_buffer = []
-            buf_0 = torch.empty(int(self.reduce_bucket_size),
-                                dtype=self.dtype,
-                                device=torch.cuda.current_device())
-            self.ipg_buffer.append(buf_0)
-            self.ipg_index = 0
+            # with PP we must create ipg buffer, since backward is handled outside zero
+            if pipeline_parallel and self.contiguous_gradients:
+                self.ipg_buffer = []
+                buf_0 = torch.empty(int(self.reduce_bucket_size),
+                                    dtype=self.dtype,
+                                    device=torch.cuda.current_device())
+                self.ipg_buffer.append(buf_0)
+                self.ipg_index = 0
 
-        if not self.overlap_comm:
-            for i, group in enumerate(self.bit16_groups):
-                for param in group:
-                    if param.grad is not None:
-                        self.reduce_ready_partitions_and_remove_grads(param, i)
+            if not self.overlap_comm:
+                for i, group in enumerate(self.bit16_groups):
+                    for param in group:
+                        if param.grad is not None:
+                            self.reduce_ready_partitions_and_remove_grads(param, i)
         # reduce any pending grads in either hook/non-hook case
         self.overlapping_partition_gradients_reduce_epilogue()
 
