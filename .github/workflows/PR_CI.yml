@@ -5,7 +5,7 @@ on: pull_request
 jobs:
   cancel_previous_workflow:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    if: github.event.pull_request.draft == false && (github.base_ref == 'main' || github.base_ref == 'develop') && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     steps:
       - name: Cancel Previous Runs
         uses: styfle/cancel-workflow-action@0.9.1
@@ -15,7 +15,7 @@ jobs:
   assign_reviewer:
     name: Assign Reviewer for PR
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && toJson(github.event.pull_request.requested_reviewers) == '[]'
+    if: github.event.pull_request.draft == false && (github.base_ref == 'main' || github.base_ref == 'develop') && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && toJson(github.event.pull_request.requested_reviewers) == '[]'
     steps:
       - uses: kentaro-m/auto-assign-action@v1.2.1
         with:
@@ -23,7 +23,7 @@ jobs:
 
   build:
     name: Build and Test Colossal-AI
-    if: ${{ always() }} && github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    if: ${{ always() }} && github.event.pull_request.draft == false && (github.base_ref == 'main'  || github.base_ref == 'develop') && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     needs: [cancel_previous_workflow, assign_reviewer]
     runs-on: [self-hosted, gpu]
     container:
