@@ -317,24 +317,29 @@ class ThroughputMetric(Metric):
     :param epoch_only: epoch only
     :type epoch_only: bool
     """
-    def __init__(self, epoch_only: bool):
+    def __init__(self, epoch_only: bool, ignored_steps: int = 0):
         super().__init__(epoch_only=epoch_only)
+        self.ignored_steps = ignored_steps
+        self.cur_steps = 0
         self.accumulated_num_samples = torch.zeros(1, device=get_current_device())
         self.accumulated_used_time = torch.zeros(1, device=get_current_device())
         self.last_step_num_samples = torch.zeros(1, device=get_current_device())
         self.last_step_used_time = torch.zeros(1, device=get_current_device())
 
     def reset(self) -> None:
+        # self.cur_steps = 0
         self.accumulated_num_samples.zero_()
         self.accumulated_used_time.zero_()
         self.last_step_num_samples.zero_()
         self.last_step_used_time.zero_()
 
     def update(self, num_samples, time) -> None:
+        self.cur_steps += 1
         self.last_step_num_samples.fill_(num_samples)
         self.last_step_used_time.fill_(time)
-        self.accumulated_num_samples += self.last_step_num_samples
-        self.accumulated_used_time += self.last_step_used_time
+        if self.cur_steps >= self.ignored_steps:
+            self.accumulated_num_samples += self.last_step_num_samples
+            self.accumulated_used_time += self.last_step_used_time
 
     def get_last_step_value(self):
         self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
@@ -360,13 +365,14 @@ class ThroughputHook(MetricHook):
     :param priority: priority of throughput hook, defaults to 10
     :type priority: int, optional
     """
-    def __init__(self, priority: int = 10):
+    def __init__(self, ignored_steps: int = 0, priority: int = 10):
         super().__init__(priority)
+        self.ignored_steps = ignored_steps
 
     def after_hook_is_attached(self, trainer):
         self._check_metric_states_initialization(trainer)
         if self._is_stage_to_compute:
-            self.metric = ThroughputMetric(epoch_only=True)
+            self.metric = ThroughputMetric(epoch_only=True, ignored_steps=self.ignored_steps)
 
             # register the metric
             trainer.states['metrics']['train']['Throughput'] = self.metric

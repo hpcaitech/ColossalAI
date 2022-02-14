@@ -224,7 +224,7 @@ class LogTimingByEpochHook(LogByEpochHook):
         super().__init__(logger=logger, interval=interval, priority=priority)
         self._timer = timer
         self._log_eval = log_eval
-        self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0()
+        self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
 
         # extra handling to avoid the unstable readings of the first
         # few training steps to affect the history mean time
@@ -256,7 +256,7 @@ class LogTimingByEpochHook(LogByEpochHook):
         """
         if self._is_epoch_to_log(trainer) and self._is_rank_to_log:
             msg = self._get_message('Train')
-            self.logger.info(f'[Epoch {trainer.cur_epoch} / Train]: {msg}, #steps/epoch = {trainer.steps_per_epoch}')
+            self.logger.info(f'[Epoch {trainer.cur_epoch} / Train]: {msg} | #steps/epoch = {trainer.steps_per_epoch}')
 
     def after_test_epoch(self, trainer):
         """Writes log after finishing a testing epoch.
