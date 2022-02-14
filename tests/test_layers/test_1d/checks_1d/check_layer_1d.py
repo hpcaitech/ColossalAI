@@ -1,12 +1,14 @@
 import torch
 import torch.distributed as dist
-from torch.nn import Parameter
-import time
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn import Linear1D_Col, Linear1D_Row
+from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.nn import (Classifier1D, Embedding1D, Linear1D_Col, Linear1D_Row, VanillaClassifier,
+                           VocabParallelClassifier1D, VocabParallelCrossEntropyLoss1D, VocabParallelEmbedding1D)
 from colossalai.utils import get_current_device, print_rank_0
-from .common import HIDDEN_SIZE, DEPTH, BATCH_SIZE, SEQ_LENGTH, NUM_CLASSES, check_equal, IMG_SIZE
+from torch.nn import Parameter
+
+from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 
 
 def check_linear_col():
@@ -144,3 +146,351 @@ def check_linear_row():
     check_equal(B_grad, layer.bias.grad)
 
     print_rank_0('linear_row backward: pass')
+
+
+def check_embed():
+    device = get_current_device()
+    dtype = torch.float32
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    embed = Embedding1D(VOCAB_SIZE, HIDDEN_SIZE)
+    embed = embed.to(dtype).to(device)
+    embed_master = torch.nn.Embedding(VOCAB_SIZE, HIDDEN_SIZE)
+    embed_master = embed_master.to(dtype).to(device)
+
+    weight_master = embed_master.weight.data
+    torch.distributed.broadcast(weight_master, src=0)
+    weight = torch.chunk(weight_master, DEPTH, dim=-1)[i]
+    embed.weight.data.copy_(weight)
+
+    A_shape = (BATCH_SIZE, SEQ_LENGTH)
+    A_master = torch.randint(VOCAB_SIZE, A_shape, device=device)
+    torch.distributed.broadcast(A_master, src=0)
+    A = A_master.clone()
+    out = embed(A)
+
+    A_master = A_master.clone()
+    C_master = embed_master(A_master)
+    C = C_master.clone()
+    check_equal(out, C)
+    print_rank_0('embed forward: pass')
+
+    grad_shape = C_master.shape
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    torch.distributed.broadcast(grad_master, src=0)
+    grad = grad_master.clone()
+    out.backward(grad)
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
+
+    B_grad = embed_master.weight.grad
+    B_grad = torch.chunk(B_grad, DEPTH, dim=-1)[i]
+    check_equal(B_grad, embed.weight.grad)
+    print_rank_0('embed backward: pass')
+
+
+def check_vocab_parallel_embed():
+    device = get_current_device()
+    dtype = torch.float32
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    embed = VocabParallelEmbedding1D(VOCAB_SIZE, HIDDEN_SIZE)
+    embed = embed.to(dtype).to(device)
+    embed_master = torch.nn.Embedding(VOCAB_SIZE, HIDDEN_SIZE)
+    embed_master = embed_master.to(dtype).to(device)
+
+    weight_master = embed_master.weight.data
+    torch.distributed.broadcast(weight_master, src=0)
+    weight = torch.chunk(weight_master, DEPTH, dim=0)[i]
+    embed.weight.data.copy_(weight)
+
+    A_shape = (BATCH_SIZE, SEQ_LENGTH)
+    A_master = torch.randint(VOCAB_SIZE, A_shape, device=device)
+    torch.distributed.broadcast(A_master, src=0)
+    A = A_master.clone()
+    out = embed(A)
+
+    A_master = A_master.clone()
+    C_master = embed_master(A_master)
+    C = C_master.clone()
+    check_equal(out, C)
+    print_rank_0('vocab parallel embed forward: pass')
+
+    grad_shape = C_master.shape
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    torch.distributed.broadcast(grad_master, src=0)
+    grad = grad_master.clone()
+    out.backward(grad)
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
+
+    B_grad = embed_master.weight.grad
+    B_grad = torch.chunk(B_grad, DEPTH, dim=0)[i]
+    check_equal(B_grad, embed.weight.grad)
+    print_rank_0('vocab parallel embed backward: pass')
+
+
+def check_classifier_no_given_weight():
+    device = get_current_device()
+    dtype = torch.float32
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    env.parallel_input_1d = False
+    parallel_input_1d = env.parallel_input_1d
+    layer = Classifier1D(HIDDEN_SIZE, NUM_CLASSES, bias=True)
+    layer.to(dtype).to(device)
+
+    layer_master = VanillaClassifier(HIDDEN_SIZE, NUM_CLASSES, bias=True)
+    layer_master = layer_master.to(dtype).to(device)
+
+    W_master = layer_master.weight.data
+    dist.broadcast(W_master, src=0)
+    W = torch.chunk(W_master, DEPTH, dim=-1)[i]
+    layer.weight.data.copy_(W)
+    B_master = layer_master.bias.data
+    dist.broadcast(B_master, src=0)
+    B = B_master.clone()
+    layer.bias.data.copy_(B)
+
+    A_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
+    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    dist.broadcast(A_master, src=0)
+    if parallel_input_1d:
+        A = torch.chunk(A_master, DEPTH, dim=-1)[i]
+        A = A.clone()
+    else:
+        A = A_master.clone()
+    A.requires_grad = True
+
+    out = layer(A)
+
+    A_master = A_master.clone()
+    A_master.requires_grad = True
+    C_master = layer_master(A_master)
+    C = C_master.clone()
+
+    check_equal(out, C)
+    print_rank_0('classifier (no given weight) forward: pass')
+
+    grad_shape = C_master.shape
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    dist.broadcast(grad_master, src=0)
+    grad = grad_master.clone()
+    out.backward(grad)
+
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
+    A_grad = A_master.grad
+    if parallel_input_1d:
+        A_grad = torch.chunk(A_grad, DEPTH, dim=-1)[i]
+    check_equal(A_grad, A.grad)
+
+    W_grad = layer_master.weight.grad
+    W_grad = torch.chunk(W_grad, DEPTH, dim=-1)[i]
+    check_equal(W_grad, layer.weight.grad)
+
+    B_grad = layer_master.bias.grad
+    check_equal(B_grad, layer.bias.grad)
+
+    print_rank_0('classifier (no given weight) backward: pass')
+
+
+def check_vocab_parallel_classifier_no_given_weight():
+    device = get_current_device()
+    dtype = torch.float32
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    layer = VocabParallelClassifier1D(HIDDEN_SIZE, VOCAB_SIZE, bias=True)
+    layer.to(dtype).to(device)
+
+    layer_master = VanillaClassifier(HIDDEN_SIZE, VOCAB_SIZE, bias=True)
+    layer_master = layer_master.to(dtype).to(device)
+
+    W_master = layer_master.weight.data
+    dist.broadcast(W_master, src=0)
+    W = torch.chunk(W_master, DEPTH, dim=0)[i]
+    layer.weight.data.copy_(W)
+    B_master = layer_master.bias.data
+    dist.broadcast(B_master, src=0)
+    B = torch.chunk(B_master, DEPTH, dim=0)[i]
+    layer.bias.data.copy_(B)
+
+    A_shape = (BATCH_SIZE, SEQ_LENGTH, HIDDEN_SIZE)
+    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    dist.broadcast(A_master, src=0)
+    A = A_master.clone()
+    A.requires_grad = True
+
+    out = layer(A)
+
+    A_master = A_master.clone()
+    A_master.requires_grad = True
+    C_master = layer_master(A_master)
+    C = torch.chunk(C_master, DEPTH, dim=-1)[i]
+
+    check_equal(out, C)
+    print_rank_0('vocab parallel classifier (no given weight) forward: pass')
+
+    grad_shape = C_master.shape
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    dist.broadcast(grad_master, src=0)
+    grad = torch.chunk(grad_master, DEPTH, dim=-1)[i]
+    grad = grad.clone()
+    out.backward(grad)
+
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
+    A_grad = A_master.grad
+    check_equal(A_grad, A.grad)
+
+    W_grad = layer_master.weight.grad
+    W_grad = torch.chunk(W_grad, DEPTH, dim=0)[i]
+    check_equal(W_grad, layer.weight.grad)
+
+    B_grad = layer_master.bias.grad
+    B_grad = torch.chunk(B_grad, DEPTH, dim=0)[i]
+    check_equal(B_grad, layer.bias.grad)
+
+    print_rank_0('vocab parallel classifier (no given weight) backward: pass')
+
+
+def check_classifier_given_embed_weight():
+    device = get_current_device()
+    dtype = torch.float32
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    embed = Embedding1D(VOCAB_SIZE, HIDDEN_SIZE)
+    embed = embed.to(dtype).to(device)
+    embed_master = torch.nn.Embedding(VOCAB_SIZE, HIDDEN_SIZE)
+    embed_master = embed_master.to(dtype).to(device)
+
+    weight_master = embed_master.weight.data
+    torch.distributed.broadcast(weight_master, src=0)
+    weight = torch.chunk(weight_master, DEPTH, dim=-1)[i]
+    embed.weight.data.copy_(weight)
+
+    env.parallel_input_1d = False
+    layer = Classifier1D(HIDDEN_SIZE, NUM_CLASSES, weight=embed.weight, bias=False)
+    layer.to(dtype).to(device)
+
+    layer_master = VanillaClassifier(HIDDEN_SIZE, NUM_CLASSES, weight=embed_master.weight, bias=False)
+    layer_master = layer_master.to(dtype).to(device)
+
+    A_shape = (BATCH_SIZE, SEQ_LENGTH)
+    A_master = torch.randint(VOCAB_SIZE, A_shape, device=device)
+    torch.distributed.broadcast(A_master, src=0)
+    A = A_master.clone()
+    out = layer(embed(A))
+
+    A_master = A_master.clone()
+    C_master = layer_master(embed_master(A_master))
+    C = C_master.clone()
+    check_equal(out, C)
+    print_rank_0('classifier (given embed weight) forward: pass')
+
+    grad_shape = C_master.shape
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    dist.broadcast(grad_master, src=0)
+    grad = grad_master.clone()
+    out.backward(grad)
+
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
+
+    W_grad = embed_master.weight.grad
+    W_grad = torch.chunk(W_grad, DEPTH, dim=-1)[i]
+    check_equal(W_grad, embed.weight.grad)
+
+    print_rank_0('classifier (given embed weight) backward: pass')
+
+
+def check_vocab_parallel_classifier_given_embed_weight():
+    device = get_current_device()
+    dtype = torch.float32
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    embed = VocabParallelEmbedding1D(VOCAB_SIZE, HIDDEN_SIZE)
+    embed = embed.to(dtype).to(device)
+    embed_master = torch.nn.Embedding(VOCAB_SIZE, HIDDEN_SIZE)
+    embed_master = embed_master.to(dtype).to(device)
+
+    weight_master = embed_master.weight.data
+    torch.distributed.broadcast(weight_master, src=0)
+    weight = torch.chunk(weight_master, DEPTH, dim=0)[i]
+    embed.weight.data.copy_(weight)
+
+    env.parallel_input_1d = False
+    layer = VocabParallelClassifier1D(HIDDEN_SIZE, NUM_CLASSES, weight=embed.weight, bias=False)
+    layer.to(dtype).to(device)
+
+    layer_master = VanillaClassifier(HIDDEN_SIZE, NUM_CLASSES, weight=embed_master.weight, bias=False)
+    layer_master = layer_master.to(dtype).to(device)
+
+    A_shape = (BATCH_SIZE, SEQ_LENGTH)
+    A_master = torch.randint(VOCAB_SIZE, A_shape, device=device)
+    torch.distributed.broadcast(A_master, src=0)
+    A = A_master.clone()
+    out = layer(embed(A))
+
+    A_master = A_master.clone()
+    C_master = layer_master(embed_master(A_master))
+    C = torch.chunk(C_master, DEPTH, dim=-1)[i]
+    check_equal(out, C)
+    print_rank_0('vocab parallel classifier (given embed weight) forward: pass')
+
+    grad_shape = C_master.shape
+    grad_master = torch.randn(grad_shape, dtype=dtype, device=device)
+    dist.broadcast(grad_master, src=0)
+    grad = torch.chunk(grad_master, DEPTH, dim=-1)[i]
+    grad = grad.clone()
+    out.backward(grad)
+
+    grad_master = grad_master.clone()
+    C_master.backward(grad_master)
+
+    W_grad = embed_master.weight.grad
+    W_grad = torch.chunk(W_grad, DEPTH, dim=0)[i]
+    check_equal(W_grad, embed.weight.grad)
+
+    print_rank_0('vocab parallel classifier (given embed weight) backward: pass')
+
+
+def check_vocab_parallel_loss():
+    device = get_current_device()
+    dtype = torch.float32
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    criterion = VocabParallelCrossEntropyLoss1D()
+    criterion_master = torch.nn.CrossEntropyLoss()
+
+    out_shape = (BATCH_SIZE, SEQ_LENGTH, NUM_CLASSES)
+    out_master = torch.randn(out_shape, dtype=dtype, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, SEQ_LENGTH), dtype=torch.long, device=device)
+    torch.distributed.broadcast(out_master, src=0)
+    torch.distributed.broadcast(target_master, src=0)
+    out = torch.chunk(out_master, DEPTH, dim=-1)[i]
+    out = out.clone()
+    out.requires_grad = True
+
+    loss = criterion(out, target_master)
+
+    out_master = out_master.clone()
+    out_master.requires_grad = True
+    loss_master = criterion_master(out_master, target_master)
+    check_equal(loss, loss_master)
+    print_rank_0('vocab parallel loss forward: pass')
+
+    loss.backward()
+    loss_master.backward()
+
+    out_grad = out_master.grad
+    out_grad = torch.chunk(out_grad, DEPTH, dim=-1)[i]
+    check_equal(out_grad, out.grad)
+    print_rank_0('vocab parallel loss backward: pass')

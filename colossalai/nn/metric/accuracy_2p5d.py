@@ -18,6 +18,7 @@ class Accuracy2p5D(nn.Module):
         :param targets: True labels from data
         """
         with torch.no_grad():
+            targets = split_tensor_2p5d(targets)
             correct = calc_acc(logits, targets)
-            correct = reduce_by_batch_2p5d.apply(correct)
+            correct = reduce_by_batch_2p5d(correct)
         return correct

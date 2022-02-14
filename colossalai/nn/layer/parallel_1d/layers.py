@@ -2,8 +2,6 @@
 # -*- encoding: utf-8 -*-
 
 import math
-import numbers
-from contextlib import nullcontext
 from typing import Callable, Tuple
 
 import torch
@@ -11,17 +9,17 @@ import torch.nn.functional as F
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils import get_current_device
-from torch import Tensor, dtype
+from colossalai.utils.cuda import get_current_device
+from torch import Tensor
 from torch.nn.parameter import Parameter
 
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition
-from ._operation import FusedLayerNormAffineFunction1D
-from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
-                     split_forward_gather_backward)
+from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad,
+                     reduce_input, set_parallel_input, split_forward_gather_backward)
 
 
 @LAYERS.register_module
@@ -44,6 +42,7 @@ class Linear1D(torch.nn.Module):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  in_features: int,
                  out_features: int,
@@ -106,12 +105,13 @@ class Classifier1D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  in_features: int,
                  num_classes: int,
                  weight: Parameter = None,
                  bias: bool = True,
-                 dtype: dtype = None,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
@@ -139,6 +139,7 @@ class Classifier1D(ParallelLayer):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
         set_parallel_input(False)
+        env.vocab_parallel = False
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.num_classes
@@ -164,6 +165,84 @@ class Classifier1D(ParallelLayer):
         output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
         if self.bias is not None:
             output = output + self.bias
+        return output
+
+
+@LAYERS.register_module
+class VocabParallelClassifier1D(ParallelLayer):
+    """ColLinear with given weight
+    Classifier of 1D parallelism
+    
+    :param in_features: size of input features
+    :type in_features: int
+    :param num_classes: number of classes in the dataset
+    :type num_classes: int
+    :param weight: weight of the classifier, defaults to True
+    :type weight: torch.nn.Parameter, optional
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    """
+
+    def __init__(self,
+                 in_features: int,
+                 num_classes: int,
+                 weight: Parameter = None,
+                 bias: bool = True,
+                 dtype: torch.dtype = None,
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+        super().__init__()
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.parallel_input = get_parallel_input()
+
+        # Divide the weight matrix along the last dimension.
+        self.num_classes_per_partition = divide(num_classes, gpc.tensor_parallel_size)
+
+        # Parameters.
+        # Initialize weight.
+        factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
+        if weight is not None:
+            self.weight = weight
+            self.has_weight = False
+        else:
+            self.weight = Parameter(torch.empty(self.num_classes_per_partition, self.in_features, **factory_kwargs))
+            self.has_weight = True
+        if bias:
+            self.bias = Parameter(torch.empty(self.num_classes_per_partition, **factory_kwargs))
+        else:
+            self.bias = None
+        with seed(ParallelMode.TENSOR):
+            self.reset_parameters(weight_initializer, bias_initializer)
+        self._set_tensor_parallel_attributes()
+        set_parallel_input(False)
+        env.vocab_parallel = True
+
+    def reset_parameters(self, weight_initializer, bias_initializer) -> None:
+        fan_in, fan_out = self.in_features, self.num_classes
+        if self.has_weight:
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+        if self.bias is not None:
+            bias_initializer(self.bias, fan_in=fan_in)
+
+    def _set_tensor_parallel_attributes(self):
+        num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+        if self.has_weight:
+            set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
+        if self.bias is not None:
+            set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
+
+    def forward(self, input_: Tensor) -> Tensor:
+        # Set up backprop all-reduce.
+        input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
+        # Matrix multiply.
+        output = F.linear(input_parallel, self.weight, self.bias)
         return output
 
 
@@ -324,7 +403,7 @@ class Linear1D_Row(ParallelLayer):
         weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
         if self.bias is not None:
             bias_initializer(self.bias, fan_in=fan_in)
-        broadcast(self.bias, gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0], ParallelMode.PARALLEL_1D)
+            broadcast(self.bias, gpc.get_ranks_in_group(ParallelMode.PARALLEL_1D)[0], ParallelMode.PARALLEL_1D)
 
     def _set_tensor_parallel_attributes(self):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)
@@ -341,43 +420,11 @@ class Linear1D_Row(ParallelLayer):
         output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
 
         if not self.skip_bias_add:
-            output = output + self.bias
+            if self.bias is not None:
+                output = output + self.bias
             return output
         else:
             return output, self.bias
-
-
-@LAYERS.register_module
-class MixedFusedLayerNorm1D(torch.nn.Module):
-    r"""
-    Layer Normalization for 1D parallelism
-
-    :param normalized_shape: input shape from an expected input
-        of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
-        If a single integer is used, it is treated as a singleton list, and this module will
-        normalize over the last dimension which is expected to be of that specific size.
-    :type normalized_shape: int
-    :param eps: a value added to the denominator for numerical stability, defaults to 1e-05
-    :type eps: float, optional
-    """
-
-    def __init__(self, normalized_shape, eps=1e-5):
-        super(MixedFusedLayerNorm1D, self).__init__()
-
-        if isinstance(normalized_shape, numbers.Integral):
-            normalized_shape = (normalized_shape, )
-        self.normalized_shape = torch.Size(normalized_shape)
-        self.eps = eps
-        self.weight = Parameter(torch.Tensor(*normalized_shape))
-        self.bias = Parameter(torch.Tensor(*normalized_shape))
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        init.ones_(self.weight)
-        init.zeros_(self.bias)
-
-    def forward(self, input):
-        return FusedLayerNormAffineFunction1D.apply(input, self.weight, self.bias, self.normalized_shape, self.eps)
 
 
 @LAYERS.register_module
@@ -398,11 +445,12 @@ class Embedding1D(ParallelLayer):
     :param args: Args used in F.embedding
     :param kwargs: Kwargs used in F.embedding
     """
+
     def __init__(self,
                  num_embeddings: int,
                  embedding_dim: int,
                  padding_idx: int = None,
-                 dtype: dtype = None,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.normal_(),
                  *args,
                  **kwargs):
@@ -447,6 +495,84 @@ class Embedding1D(ParallelLayer):
 
 
 @LAYERS.register_module
+class VocabParallelEmbedding1D(torch.nn.Module):
+    """Embedding parallelized in the vocabulary dimension.
+
+    :param num_embeddings: number of embeddings
+    :type num_embeddings: int
+    :param embedding_dim: dimension of embedding
+    :type embedding_dim: int
+    :param padding_idx: index of padding, defaults to None
+    :type padding_idx: int, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to normal initializer
+    :type weight_initializer: typing.Callable, optional
+    :param args: Args used in F.embedding
+    :param kwargs: Kwargs used in F.embedding
+    """
+
+    def __init__(self,
+                 num_embeddings: int,
+                 embedding_dim: int,
+                 padding_idx: int = None,
+                 dtype: torch.dtype = None,
+                 weight_initializer: Callable = init.normal_(),
+                 *args,
+                 **kwargs):
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embed_dim = embedding_dim
+        self.padding_idx = padding_idx
+        self.embed_args = args
+        self.embed_kwargs = kwargs
+
+        tensor_parallel_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
+        tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+        self.num_embeddings_per_partition = divide(num_embeddings, tensor_parallel_size)
+        self.vocab_start_index = tensor_parallel_rank * self.num_embeddings_per_partition
+        self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
+
+        self.weight = Parameter(
+            torch.empty((self.num_embeddings_per_partition, self.embed_dim), device=get_current_device(), dtype=dtype))
+
+        self.reset_parameters(weight_initializer)
+        self._set_tensor_parallel_attributes()
+        set_parallel_input(False)
+        env.vocab_parallel = True
+
+    def _set_tensor_parallel_attributes(self):
+        set_tensor_parallel_attribute_by_partition(self.weight, gpc.tensor_parallel_size)
+
+    def reset_parameters(self, weight_initializer) -> None:
+        with seed(ParallelMode.TENSOR):
+            fan_in, fan_out = self.num_embeddings, self.embed_dim
+            weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
+            self._fill_padding_idx_with_zero()
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None:
+            with torch.no_grad():
+                self.weight[self.padding_idx].fill_(0)
+
+    def forward(self, input_: Tensor) -> Tensor:
+        # Build the mask.
+        input_mask = (input_ < self.vocab_start_index) | (input_ >= self.vocab_end_index)
+        # Mask the input.
+        masked_input = input_.clone() - self.vocab_start_index
+        masked_input[input_mask] = 0
+
+        output_parallel = F.embedding(masked_input, self.weight, self.padding_idx, *self.embed_args,
+                                      **self.embed_kwargs)
+
+        # Mask the output embedding.
+        output_parallel[input_mask, :] = 0.
+        # Reduce across all the model parallel GPUs.
+        output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
+        return output
+
+
+@LAYERS.register_module
 class Dropout1D(ParallelLayer):
     """
     Dropout layer of 1D parallelism
@@ -456,6 +582,7 @@ class Dropout1D(ParallelLayer):
     :param inplace: If set to ``True``, will do this operation in-place, defaults tp ``False``
     :type inplace: bool, optional
     """
+
     def __init__(self, p: float = 0.5, inplace: bool = False):
         super().__init__()
         self.parallel_input = get_parallel_input()
@@ -463,7 +590,9 @@ class Dropout1D(ParallelLayer):
         self.inplace = inplace
 
     def forward(self, input_: Tensor) -> Tensor:
-        cm = nullcontext() if not self.parallel_input else seed(ParallelMode.TENSOR)
-        with cm:
+        if self.parallel_input:
+            with seed(ParallelMode.TENSOR):
+                output = F.dropout(input_, self.p, self.training, self.inplace)
+        else:
             output = F.dropout(input_, self.p, self.training, self.inplace)
         return output

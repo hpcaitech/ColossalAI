@@ -37,17 +37,17 @@ class FusedLayerNormAffineFunction(torch.autograd.Function):
         input_, weight_, bias_, mean, invvar = ctx.saved_tensors
         grad_input = grad_weight = grad_bias = None
         grad_input, grad_weight, grad_bias \
-            = colossal_layer_norm_cuda.backward_affine(
-                grad_output.contiguous(), mean, invvar,
-                input_, ctx.normalized_shape,
-                weight_, bias_, ctx.eps)
+          = colossal_layer_norm_cuda.backward_affine(
+            grad_output.contiguous(), mean, invvar,
+            input_, ctx.normalized_shape,
+            weight_, bias_, ctx.eps)
 
         return grad_input, grad_weight, grad_bias, None, None
 
 
 class MixedFusedLayerNorm(torch.nn.Module):
 
-    def __init__(self, normalized_shape, eps=1e-5):
+    def __init__(self, normalized_shape, eps=1e-5, device=None, dtype=None):
         super(MixedFusedLayerNorm, self).__init__()
 
         global colossal_layer_norm_cuda
@@ -61,8 +61,8 @@ class MixedFusedLayerNorm(torch.nn.Module):
             normalized_shape = (normalized_shape,)
         self.normalized_shape = torch.Size(normalized_shape)
         self.eps = eps
-        self.weight = Parameter(torch.Tensor(*normalized_shape))
-        self.bias = Parameter(torch.Tensor(*normalized_shape))
+        self.weight = Parameter(torch.empty(*normalized_shape, device=device, dtype=dtype))
+        self.bias = Parameter(torch.empty(*normalized_shape, device=device, dtype=dtype))
         self.reset_parameters()
 
     def reset_parameters(self):

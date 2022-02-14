@@ -1,14 +1,11 @@
-import os
-
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.context.process_group_initializer.initializer_2d import SUMMA_DIM
 from colossalai.core import global_context as gpc
+from colossalai.global_variables import tensor_parallel_env as env
 
 
 def get_summa_dim_from_env() -> int:
     try:
-        summa_dim = os.environ[SUMMA_DIM]
-        summa_dim = int(summa_dim)
+        summa_dim = env.summa_dim
         assert summa_dim > 0, 'SUMMA_DIM must be larger than zero'
         return summa_dim
 

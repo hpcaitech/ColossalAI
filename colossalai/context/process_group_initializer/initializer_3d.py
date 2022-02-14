@@ -2,10 +2,9 @@
 # -*- encoding: utf-8 -*-
 
 import math
-import os
 
 import torch.distributed as dist
-from colossalai.constants import DEPTH_3D, INPUT_GROUP_3D, WEIGHT_GROUP_3D, OUTPUT_GROUP_3D
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from ..parallel_mode import ParallelMode
@@ -13,15 +12,15 @@ from .process_group_initializer import ProcessGroupInitializer
 
 
 def _check_depth_env_var(depth):
-    # check environment variable for SUMMA
-    env_depth = os.environ.get(DEPTH_3D, None)
+    # check global variable
+    env_depth = env.depth_3d
 
     if env_depth:
         assert int(env_depth) == depth, \
             'DEPTH_3D has been set in the current environment and ' \
             'does not match with the value passed to this initialized'
     else:
-        os.environ[DEPTH_3D] = str(depth)
+        env.depth_3d = depth
 
 
 class Initializer_3D_Input(ProcessGroupInitializer):
@@ -34,6 +33,7 @@ class Initializer_3D_Input(ProcessGroupInitializer):
     :type num_group: int
     :type depth: int
     """
+
     def __init__(self, num_group: int, depth: int, *args):
         super().__init__(*args)
         self.num_group = num_group
@@ -50,15 +50,12 @@ class Initializer_3D_Input(ProcessGroupInitializer):
         process_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_INPUT
-        os.environ[INPUT_GROUP_3D] = INPUT_GROUP_3D
+        env.input_group_3d = mode
 
         for h in range(self.num_group):
             for i in range(self.depth):
                 for k in range(self.depth):
-                    ranks = [
-                        h * self.depth**3 + i + self.depth *
-                        (j + self.depth * k) for j in range(self.depth)
-                    ]
+                    ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for j in range(self.depth)]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -97,15 +94,12 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
         process_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_WEIGHT
-        os.environ[WEIGHT_GROUP_3D] = WEIGHT_GROUP_3D
+        env.weight_group_3d = mode
 
         for h in range(self.num_group):
             for k in range(self.depth):
                 for j in range(self.depth):
-                    ranks = [
-                        h * self.depth**3 + i + self.depth *
-                        (j + self.depth * k) for i in range(self.depth)
-                    ]
+                    ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for i in range(self.depth)]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -118,7 +112,7 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
 
 
 class Initializer_3D_Output(ProcessGroupInitializer):
-    """3D tensor parallel initialization among weight.
+    """3D tensor parallel initialization among output.
 
     :param num_group: The number of all tensor groups
     :param depth: Depth of 3D parallelism
@@ -144,15 +138,12 @@ class Initializer_3D_Output(ProcessGroupInitializer):
         process_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_OUTPUT
-        os.environ[OUTPUT_GROUP_3D] = OUTPUT_GROUP_3D
+        env.output_group_3d = mode
 
         for h in range(self.num_group):
             for i in range(self.depth):
                 for j in range(self.depth):
-                    ranks = [
-                        h * self.depth**3 + i + self.depth *
-                        (j + self.depth * k) for k in range(self.depth)
-                    ]
+                    ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for k in range(self.depth)]
                     group = dist.new_group(ranks)
 
                     if self.rank in ranks:
@@ -170,6 +161,7 @@ class Initializer_3D(ProcessGroupInitializer):
 
     :param args: Args used to initialize ProcessGroupInitializer
     """
+
     def __init__(self, *args):
         super().__init__(*args)
         self.num_group = self.world_size // self.tensor_parallel_size
@@ -178,16 +170,13 @@ class Initializer_3D(ProcessGroupInitializer):
             f'3D depth ({self.depth}) if not cube root of tensor parallel size ({self.tensor_parallel_size})'
         _check_depth_env_var(self.depth)
 
-        self.input_initializer = Initializer_3D_Input(self.num_group,
-                                                      self.depth, *args)
-        self.weight_initializer = Initializer_3D_Weight(
-            self.num_group, self.depth, *args)
-        self.output_initializer = Initializer_3D_Output(
-            self.num_group, self.depth, *args)
+        self.input_initializer = Initializer_3D_Input(self.num_group, self.depth, *args)
+        self.weight_initializer = Initializer_3D_Weight(self.num_group, self.depth, *args)
+        self.output_initializer = Initializer_3D_Output(self.num_group, self.depth, *args)
 
     def init_dist_group(self):
         """Initialize 3D tensor parallel groups, and assign local_ranks and groups to each gpu.
-
+        
         :return: 3D tensor parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """
