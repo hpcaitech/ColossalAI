@@ -7,8 +7,9 @@
    <a href="https://www.colossalai.org/"> Documentation </a> | 
    <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
-   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
-   
+   <a href="https://medium.com/@hpcaitech"> Blog </a></h3> 
+   <br/>
+
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
@@ -68,6 +69,11 @@ Run the following command to start the docker container in interactive mode.
 ```bash
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
+
+## Contributing
+
+If you wish to contribute to this project, you can follow the guideline in [Contributing](./CONTRIBUTING.md)
+
 
 ## Quick View
 
