@@ -2,6 +2,7 @@ import os
 import os.path as osp
 import re
 from typing import Tuple
+from pathlib import Path
 
 import torch
 
@@ -10,11 +11,8 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 
 __all__ = [
-    'get_checkpoint_path',
-    'get_latest_checkpoint_path',
-    'get_latest_checkpoint_pattern',
-    'save_checkpoint',
-    'load_checkpoint'
+    'get_checkpoint_path', 'get_latest_checkpoint_path',
+    'get_latest_checkpoint_pattern', 'save_checkpoint', 'load_checkpoint'
 ]
 
 
@@ -70,9 +68,9 @@ def get_checkpoint_path(checkpoint_dir: str, epoch: int, suffix: str = ''):
 
 def _ensure_directory_exists(filename: str):
     # ensure the directory exists
-    dir = os.path.dirname(filename)
-    if not os.path.exists(dir):
-        os.makedirs(dir)
+    dirpath = os.path.dirname(filename)
+    if not os.path.exists(dirpath):
+        Path(dirpath).mkdir(parents=True, exist_ok=True)
 
 
 def get_latest_checkpoint_pattern(suffix: str = ''):
@@ -114,9 +112,12 @@ def get_latest_checkpoint_path(checkpoint_dir: str, suffix: str = ''):
 
     if last_epoch == -1:
         ranks_name = _get_ranks_name()
-        raise FileNotFoundError(f"Cannot find the latest checkpoint file for {ranks_name} in {checkpoint_dir}")
+        raise FileNotFoundError(
+            f"Cannot find the latest checkpoint file for {ranks_name} in {checkpoint_dir}"
+        )
     else:
-        target_file = _get_standard_checkpoint_filename(last_epoch, suffix=suffix)
+        target_file = _get_standard_checkpoint_filename(last_epoch,
+                                                        suffix=suffix)
         path = osp.join(checkpoint_dir, target_file)
         return path
 
