@@ -5,7 +5,7 @@ import torch.nn as nn
 try:
     import apex.amp as apex_amp
 except ImportError:
-    raise ImportError('Cannot import apex.amp correctly.')
+    pass
 
 from torch import Tensor
 
