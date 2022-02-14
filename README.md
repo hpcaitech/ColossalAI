@@ -17,9 +17,26 @@ An integrated large-scale model training system with efficient parallelization t
 
 ## Installation
 
-### Install From Source (Recommended)
+### PyPI
 
-> We **recommend** you to install from source as the Colossal-AI is updating frequently in the early versions. The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+```bash
+pip install colossalai
+```
+This command will install CUDA extension if your have installed CUDA, NVCC and torch. 
+
+If you don't want to install CUDA extension, you should add `--global-option="--no_cuda_ext"`, like:
+```bash
+pip install colossalai --global-option="--no_cuda_ext"
+```
+
+If you want to use `ZeRO`, you can run:
+```bash
+pip install colossalai[zero]
+```
+
+### Install From Source
+
+> The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -31,18 +48,11 @@ pip install -r requirements/requirements.txt
 pip install .
 ```
 
-Install and enable CUDA kernel fusion (compulsory installation when using fused optimizer)
+If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
 
 ```shell
-pip install -v --no-cache-dir --global-option="--cuda_ext" .
+pip install --global-option="--no_cuda_ext" .
 ```
-
-### PyPI
-
-```bash
-pip install colossalai
-```
-
 
 ## Use Docker
 

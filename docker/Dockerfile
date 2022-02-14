@@ -8,4 +8,4 @@ RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple \
 # install colossalai
 RUN git clone https://github.com/hpcaitech/ColossalAI.git \
  && cd ./ColossalAI \
- && pip install -v --no-cache-dir --global-option="--cuda_ext" .
+ && pip install -v --no-cache-dir .
