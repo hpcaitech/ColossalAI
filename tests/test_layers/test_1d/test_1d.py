@@ -7,6 +7,7 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 from colossalai.core import global_context as gpc
+from colossalai.logging import disable_existing_loggers
 from colossalai.initialize import launch
 from colossalai.utils import free_port
 
@@ -24,6 +25,7 @@ CONFIG = dict(
 
 
 def check_layer(rank, world_size, port):
+    disable_existing_loggers()
     launch(config=CONFIG,
            rank=rank,
            world_size=world_size,
@@ -33,6 +35,13 @@ def check_layer(rank, world_size, port):
 
     check_linear_col()
     check_linear_row()
+    check_embed()
+    check_vocab_parallel_embed()
+    check_classifier_no_given_weight()
+    check_vocab_parallel_classifier_no_given_weight()
+    check_classifier_given_embed_weight()
+    check_vocab_parallel_classifier_given_embed_weight()
+    check_vocab_parallel_loss()
 
     gpc.destroy()
     torch.cuda.empty_cache()

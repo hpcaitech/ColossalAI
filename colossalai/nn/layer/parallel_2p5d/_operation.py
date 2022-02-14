@@ -22,42 +22,7 @@ def get_parallel_rank(parallel_mode: ParallelMode):
     return gpc.get_local_rank(parallel_mode)
 
 
-def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
-    return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
-                       dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
-
-
-class classifier_2p5d(torch.autograd.Function):
-    """
-    Classifier
-
-    :param a: matrix :math:`A`
-    :type a: torch.tensor
-    :param b: matrix :math:`B`
-    :type b: torch.tensor
-    :param bias: matrix of bias
-    :type bias: torch.tensor, optional
-    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
-    :type tesseract_dim: int
-    :param out_shape: shape of output tensor
-    :type out_shape: tuple
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
-    """
+class _Classifier2p5D(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
@@ -122,10 +87,52 @@ class classifier_2p5d(torch.autograd.Function):
             B_grad = reduce_scatter(B_grad, -1, ctx.col_parallel_mode)
             B_grad = B_grad.reshape(ctx.B_shape)
 
-            bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
-            bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
+            if ctx.use_bias:
+                bias_grad = torch.sum(output_grad, dim=tuple(range(output_grad.ndim - 1)))
+                bias_grad = all_reduce(bias_grad, ctx.col_parallel_mode)
+            else:
+                bias_grad = None
 
         return A_grad, B_grad, bias_grad, None, None, None, None, None, None, None, None, None, None
+
+
+def classifier_2p5d(A: Tensor, B: Tensor, bias, tesseract_dim: int, out_shape: Tuple[int,
+                                                                                     ...], row_rank: int, col_rank: int,
+                    row_parallel_mode: ParallelMode, col_parallel_mode: ParallelMode, data_parallel_rank: int,
+                    pipeline_parallel_rank: int, pipeline_parallel_size: int, tensor_parallel_size: int) -> Tensor:
+    """
+    Classifier
+
+    :param a: matrix :math:`A`
+    :type a: torch.tensor
+    :param b: matrix :math:`B`
+    :type b: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param out_shape: shape of output tensor
+    :type out_shape: tuple
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
+    """
+    return _Classifier2p5D.apply(A, B, bias, tesseract_dim, out_shape, row_rank, col_rank, row_parallel_mode,
+                                 col_parallel_mode, data_parallel_rank, pipeline_parallel_rank, pipeline_parallel_size,
+                                 tensor_parallel_size)
 
 
 class Matmul_AB_2p5D(torch.autograd.Function):
@@ -522,37 +529,7 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
         return A_grad, B_grad, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
-class Add_Bias_2p5D(torch.autograd.Function):
-    """
-    Matrix add bias: :math:`C = A + b`
-
-    :param input: matrix :math:`A`
-    :type input: torch.tensor
-    :param bias: matrix :math:`b`
-    :type bias: torch.tensor
-    :param output_size_per_partition: output size in each partition
-    :type output_size_per_partition: int
-    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
-    :type tesseract_dim: int
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion
-    :type skip_bias_add: bool
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
-    """
+class _Add_Bias_2p5D(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any, input: Tensor, bias: Tensor, output_size_per_partition: int, tesseract_dim: int,
@@ -621,7 +598,46 @@ class Add_Bias_2p5D(torch.autograd.Function):
                 return output_grad, reduce_tmp, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
-class layernorm_2p5d(torch.autograd.Function):
+def add_bias_2p5d(input: Tensor, bias: Tensor, output_size_per_partition: int, tesseract_dim: int, row_rank: int,
+                  col_rank: int, dep_rank: int, col_parallel_mode: ParallelMode, skip_bias_add: bool,
+                  data_parallel_rank: int, pipeline_parallel_rank: int, pipeline_parallel_size: int,
+                  tensor_parallel_size: int) -> Tensor:
+    """
+    Matrix add bias: :math:`C = A + b`
+
+    :param input: matrix :math:`A`
+    :type input: torch.tensor
+    :param bias: matrix :math:`b`
+    :type bias: torch.tensor
+    :param output_size_per_partition: output size in each partition
+    :type output_size_per_partition: int
+    :param tesseract_dim: dimension of TESSERACT fo 2.5D parallelism
+    :type tesseract_dim: int
+    :param row_rank: the rank of row
+    :type row_rank: int
+    :param col_rank: the rank of column
+    :type col_rank: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param col_parallel_mode: column parallel mode
+    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion
+    :type skip_bias_add: bool
+    :param data_parallel_rank: data parallel rank
+    :type data_parallel_rank: int
+    :param pipeline_parallel_rank: pipeline parallel rank
+    :type pipeline_parallel_rank: int
+    :param pipeline_parallel_size: pipeline parallel size
+    :type pipeline_parallel_size: int
+    :param tensor_parallel_size: tensor parallel size
+    :type tensor_parallel_size: int
+    """
+    return _Add_Bias_2p5D.apply(input, bias, output_size_per_partition, tesseract_dim, row_rank, col_rank, dep_rank,
+                                col_parallel_mode, skip_bias_add, data_parallel_rank, pipeline_parallel_rank,
+                                pipeline_parallel_size, tensor_parallel_size)
+
+
+class _Layernorm2p5D(torch.autograd.Function):
     """
     Layernorm
 
@@ -671,7 +687,43 @@ class layernorm_2p5d(torch.autograd.Function):
         return input_grad, None, None, None, None, None, None
 
 
-class all_gather_weight_2p5d(torch.autograd.Function):
+def layernorm_2p5d(input: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int,
+                   row_parallel_mode: ParallelMode) -> Tensor:
+    """
+    Layernorm
+
+    :param input: input maxtrix
+    :type input: torch.tensor
+    :param E_x: mean
+    :type E_x: torch.tensor
+    :param Var_x: variance
+    :type Var_x: torch.tensor
+    :param hidden_size: hidden size
+    :type hidden_size: int
+    :param row_parallel_mode: row parallel mode
+    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    """
+    return _Layernorm2p5D.apply(input, E_x, Var_x, hidden_size, row_parallel_mode)
+
+
+class _AllGatherTensor2p5D(torch.autograd.Function):
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
+    def forward(ctx: Any, inputs: Tensor, dim: int, col_parallel_mode: ParallelMode) -> Tensor:
+        ctx.dim = dim
+        ctx.col_parallel_mode = col_parallel_mode
+
+        outputs = all_gather(inputs, dim, col_parallel_mode)
+        return outputs
+
+    @staticmethod
+    @custom_bwd
+    def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
+        grad = reduce_scatter(output_grad, ctx.dim, ctx.col_parallel_mode)
+        return grad.contiguous(), None, None
+
+
+def all_gather_tensor_2p5d(inputs: Tensor, dim: int, col_parallel_mode: ParallelMode) -> Tensor:
     """
     all gather the weight of 2.5D parallelism
 
@@ -684,21 +736,7 @@ class all_gather_weight_2p5d(torch.autograd.Function):
     :param col_parallel_mode: column parallel mode
     :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
-    @staticmethod
-    @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx: Any, inputs: Tensor, dim: int, tesseract_dim: int, col_parallel_mode: ParallelMode) -> Tensor:
-        ctx.dim = dim
-        ctx.tesseract_dim = tesseract_dim
-        ctx.row_rank = gpc.get_local_rank(col_parallel_mode)
-
-        outputs = all_gather(inputs, dim, col_parallel_mode)
-        return outputs
-
-    @staticmethod
-    @custom_bwd
-    def backward(ctx: Any, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        grad = output_grad.chunk(ctx.tesseract_dim, dim=ctx.dim)[ctx.row_rank]
-        return grad.contiguous(), None, None, None
+    return _AllGatherTensor2p5D.apply(inputs, dim, col_parallel_mode)
 
 
 class SplitFirst(torch.autograd.Function):
@@ -737,10 +775,10 @@ def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
 
     :param input_: Input tensor
     :param dim: Specified dimension in which to split
-
+    
     :type input_: torch.Tensor
     :type dim: int, optional
-
+    
     :return output: Splitted tensor
     :rtype output: torch.Tensor
     """
@@ -750,9 +788,49 @@ def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
                        dim=dim)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)].contiguous()
 
 
-class reduce_by_batch_2p5d(torch.autograd.Function):
-    """All-reduce the input from the model parallel region.
+class _ReduceTensor2p5D(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_, parallel_mode):
+        return all_reduce(input_, parallel_mode)
+
+    @staticmethod
+    def backward(ctx, output_grad):
+        return output_grad, None
+
+
+def reduce_tensor_2p5d(input_: Tensor, parallel_mode: ParallelMode) -> Tensor:
     """
+    All-reduce the input.
+    
+    :param input_: input tensor
+    :param parallel_mode: parallel mode
+    """
+    return _ReduceTensor2p5D.apply(input_, parallel_mode)
+
+
+class _ReduceScatterTensor2p5D(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_, dim, parallel_mode):
+        ctx.dim = dim
+        ctx.parallel_mode = parallel_mode
+        return reduce_scatter(input_, dim, parallel_mode)
+
+    @staticmethod
+    def backward(ctx, output_grad):
+        return all_gather(output_grad, ctx.dim, ctx.parallel_mode), None, None
+
+
+def reduce_scatter_tensor_2p5d(input_: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
+    """
+    Reduce-scatter the input.
+    
+    :param input_: input tensor
+    :param parallel_mode: parallel mode
+    """
+    return _ReduceScatterTensor2p5D.apply(input_, dim, parallel_mode)
+
+
+class _RreduceByBatch2p5D(torch.autograd.Function):
     @staticmethod
     def symbolic(graph, input_, reduce_mean: bool = False):
         output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)
@@ -764,12 +842,6 @@ class reduce_by_batch_2p5d(torch.autograd.Function):
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, input_, reduce_mean: bool = False):
-        """
-        :param input_: input maxtrix
-        :type input_: torch.tensor
-        :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
-        :type reduce_mean: int, optional
-        """
         output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)
         ctx.reduce_mean = reduce_mean
         if reduce_mean:
@@ -785,3 +857,15 @@ class reduce_by_batch_2p5d(torch.autograd.Function):
             return output_grad / ctx.reduce_size, None
         else:
             return output_grad, None
+
+
+def reduce_by_batch_2p5d(input_, reduce_mean: bool = False) -> Tensor:
+    """
+    All-reduce the input from the model parallel region.
+
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
+    :type reduce_mean: bool, optional
+    """
+    return _RreduceByBatch2p5D.apply(input_, reduce_mean)

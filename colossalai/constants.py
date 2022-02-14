@@ -19,23 +19,12 @@ INITIALIZER_MAPPING = {
     'moe': 'Initializer_Moe'
 }
 
-# 1D parallel
-PARALLEL_INPUT_1D = 'parallel_input_1d'
+# 3D parallelism groups
+INPUT_GROUP_3D = 'input_group_3d'
+WEIGHT_GROUP_3D = 'weight_group_3d'
+OUTPUT_GROUP_3D = 'output_group_3d'
 
-# 2D paralllel
-SUMMA_DIM = 'SUMMA_DIM'
-
-# 2.5D paralllel
-TESSERACT_DIM = 'TESSERACT_DIM'
-TESSERACT_DEP = 'TESSERACT_DEP'
-
-# 3D parallel
-DEPTH_3D = 'DEPTH_3D'
-INPUT_GROUP_3D = 'PARALLEL_3D_INPUT'
-WEIGHT_GROUP_3D = 'PARALLEL_3D_WEIGHT'
-OUTPUT_GROUP_3D = 'PARALLEL_3D_OUTPUT'
-
-# Tensor parallel attributes
+# Attributes of tensor parallel parameters 
 IS_TENSOR_PARALLEL = 'is_tensor_parallel'
 NUM_PARTITIONS = 'num_partitions'
 TENSOR_PARALLEL_ATTRIBUTES = [IS_TENSOR_PARALLEL, NUM_PARTITIONS]
