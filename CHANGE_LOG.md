@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] v0.0.2 | 2022-02
+## v0.0.2 | 2022-02
 
 ### Added
 
@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - refactored utilities for tensor parallel and pipeline parallel
 - Separated benchmarks and examples as independent repositories
 - Updated pipeline parallelism to support non-interleaved and interleaved versions
+- refactored installation scripts for convenience
 
 ### Fixed
 
