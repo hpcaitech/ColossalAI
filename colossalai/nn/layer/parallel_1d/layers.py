@@ -18,8 +18,8 @@ from torch.nn.parameter import Parameter
 
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition
-from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad,
-                     reduce_input, set_parallel_input, split_forward_gather_backward)
+from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
+                     split_forward_gather_backward)
 
 
 @LAYERS.register_module
@@ -551,9 +551,10 @@ class VocabParallelEmbedding1D(torch.nn.Module):
             self._fill_padding_idx_with_zero()
 
     def _fill_padding_idx_with_zero(self) -> None:
-        if self.padding_idx is not None:
+        if self.padding_idx is not None and \
+            self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
-                self.weight[self.padding_idx].fill_(0)
+                self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
         # Build the mask.
