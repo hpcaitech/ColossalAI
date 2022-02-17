@@ -4,21 +4,24 @@ import functools
 import os
 import traceback
 from enum import Enum, auto
-from typing import (Any, Callable, Dict, Generator, List, Optional, Set, Tuple,
-                    Union)
+from typing import Any, Dict, Generator, List, Optional, Set, Union
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.nn.functional as F
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
+from colossalai.zero.param_manager import Zero3ParameterManager
 from torch.autograd import Variable
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
+from ._zero3_utils import (apply_to_tensors, assert_in_engine,
+                           cast_float_arguments, cast_trensor_to_fp16,
+                           cast_trensor_to_fp32, chunk_and_pad,
+                           get_gradient_predivide_factor)
 from .reduce_scatter import ReduceScatterBucketer
 
 # TODO: Remove the toggle-enable_nccl_base_collectives when github open issue #801 is resolved.
@@ -84,7 +87,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         self.verbose = verbose
         self.state_dict_on_rank_0_only = state_dict_on_rank_0_only
 
-        self.gradient_predivide_factor: float = _get_gradient_predivide_factor(self.world_size)
+        self.gradient_predivide_factor: float = get_gradient_predivide_factor(self.world_size)
         self.gradient_postdivide_factor: float = self.world_size / self.gradient_predivide_factor
 
         self._check_sanity()
@@ -101,7 +104,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
         self._has_sharded_params = False
         self.module = module
 
-        self._shard_parameters()
+        self.param_manager = Zero3ParameterManager(module, process_group=self.process_group, mixed_precision=self.mixed_precision,
+                                                   flatten_parameters=flatten_parameters, compute_dtype=self.compute_dtype, compute_device=self.compute_device)
+
         self._reset_lazy_init_info()
 
         # Flag to indicate if we require gradient reduction in the backward
@@ -110,9 +115,6 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         # Enum to indicate if we're in the forward/backward pass, idle, etc.
         self.training_state = TrainingState.IDLE
-
-        # Flag to indicate if the full params are gathered.
-        self.has_full_params: bool = False
 
         # Register hook after state_dict() to remove the "_fsdp_wrapped_module."
         # prefix and before load_state_dict() to add it back.
@@ -130,10 +132,8 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # Flag to guard against preparing gradients multiple times per iteration.
         # This is reset at the end of the backward pass.
         self._pre_backward_hook_has_run = False
-        self.logger.info('Zero3 Init Done')
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        self.logger.info('Zero3 Start Forward')
         self._lazy_init()
 
         # Start of a forward pass.
@@ -142,17 +142,17 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # For root and mixed precision, we convert the input to FP16 (no_grad is needed for
         # the conversion).
         if self._is_root and self.mixed_precision:
-            args, kwargs = _cast_float_arguments(_cast_trensor_to_fp16, *args, **kwargs)
+            args, kwargs = cast_float_arguments(cast_trensor_to_fp16, *args, **kwargs)
 
         # If enabled, convert the input to FP32 if we are in full precision.
         # no_grad is not used because the input might be for a non-root instance,
         # which mean autograd needs to go through the conversion.
         if self.force_input_to_fp32 and not self.mixed_precision:
-            args, kwargs = _cast_float_arguments(_cast_trensor_to_fp32, *args, **kwargs)
+            args, kwargs = cast_float_arguments(cast_trensor_to_fp32, *args, **kwargs)
 
         # All-gather full parameters. This will also transfer FP32 parameters to
         # ``self.compute_dtype`` (e.g., FP16 if *mixed_precision* is ``True``).
-        self._rebuild_full_params()
+        self.param_manager.rebuild_full_params()
 
         # Register backward hooks to reshard params and reduce-scatter grads.
         # These need to be re-registered every forward pass.
@@ -161,16 +161,16 @@ class ZeroRedundancyLevel3Model(nn.Module):
         outputs = self.module(*args, **kwargs)
 
         if self.reshard_after_forward:
-            self._free_full_params()
+            self.param_manager.free_full_params()
             if self.mixed_precision:
-                self._free_fp16_shards()
+                self.param_manager.free_fp16_shards()
 
         # Switch to main FP32 param shard. We maintain this invariant throughout
         # the code, i.e., ``p.data == p._fp32_shard`` after each function. This
         # also ensures that after the first forward, the optimizer state will be
         # initialized with the correct dtype and (sharded) size, since optimizer
         # state is typically initialized lazily in ``optim.step()``.
-        self._use_fp32_shards()
+        self.param_manager.use_fp32_shards()
 
         # Register pre-backward hooks to all-gather the params for the backward
         # pass (if output's grad was needed). This won't register anything if
@@ -205,33 +205,11 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 f"world_size={self.world_size}. Check torch.cuda.set_device is called properly"
             )
 
-    def _shard_parameters(self) -> None:
-        for p in self.params:
-            assert not hasattr(p, "zero_is_sharded")
-            assert p.is_floating_point()
-            if self.mixed_precision:
-                assert p.dtype == torch.float32
-
-            # If world_size is 1, then we all-reduce grads instead of sharding.
-            p.zero_is_sharded = self.world_size > 1
-            p.zero_orig_size = p.data.size()
-
-            if not p.zero_is_sharded:
-                p.zero_shard_padding = 0
-                continue
-
-            # Replace p.data with the relevant shard.
-            orig_data = p.data
-            p.data, p.zero_shard_padding = _get_shard(p.data, self.rank, self.world_size)
-            _free_storage(orig_data)
-
     def _reset_lazy_init_info(self) -> None:
         self._is_root: Optional[bool] = None
         self._streams: Dict[str, torch.cuda.Stream] = {}
         self._reducer: Optional[ReduceScatterBucketer] = None
-        for p in self.params:
-            if hasattr(p, 'zero_fp32_shard'):
-                del p.zero_fp32_shard  # reset _init_param_attr
+        self.param_manager.delete_fp32_shards()
         self._output_pre_backward_hook_registered: Optional[List] = None
         self.reshard_after_forward = self._orig_reshard_after_forward
 
@@ -239,7 +217,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # Initialize param attributes lazily, in case the param's dtype or
         # device changes after __init__.
         for p in self.params:
-            self._init_param_attr(p)
+            self.param_manager.reset_param_attr(p)
 
         # Initialize _is_root and setup streams. These steps would ideally
         # happen in __init__, but _is_root can only be determined after the
@@ -263,67 +241,6 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # Due to the use of streams, we need to make sure the previous
             # ``optim.step()`` is done before we all-gather parameters.
             self._wait_for_previous_optim_step()
-
-    @torch.no_grad()
-    def _init_param_attr(self, p: Parameter) -> None:
-        """
-        We manage several attributes on each Parameter instance. The first two
-        are set by :func:`_shard_parameters_`:
-
-            ``_is_sharded``: ``True`` if the Parameter is sharded or ``False``
-                if the Parameter is intentionally not sharded (in which case we
-                will all-reduce grads for this param).
-            ``_orig_size``: the size of the original Parameter (before sharding)
-
-        The remaining attributes are set here:
-            ``_fp32_shard``: a single shard of the parameters in full precision
-                (typically FP32, but this is dependent on the dtype of the model
-                as it's passed in by the user). This can be on CPU or GPU
-                depending on the value of *``move_params_to_cpu``*.
-            ``_fp16_shard``: This will be a single shard of the parameters in FP16, used for all-gather.
-                This can be in FP16 or FP32 depending on the value of *``compute_dtype``* and
-                if params are offloaded to CPU.
-            ``_full_param_padded``: the full weight (padded to be evenly
-                divisible by ``world_size``), used for computation in the
-                forward and backward pass. This will be resized in place and
-                only materialized (via all-gather) as needed.
-        """
-        assert hasattr(p, 'zero_is_sharded') and hasattr(p, 'zero_orig_size')
-        if hasattr(p, 'zero_fp32_shard'):
-            return
-
-        # A single shard of the parameters in full precision.
-        p.zero_fp32_shard = p.data
-
-        if self.mixed_precision:
-            assert p.zero_fp32_shard.dtype == torch.float32
-
-        if self.mixed_precision:
-
-            # In mixed precision mode, we maintain a reduced precision
-            # (typically FP16) parameter shard on compute_device for performing
-            # the computation in the forward/backward pass. We resize the
-            # storage to size 0 at init (here) and re-materialize (by copying
-            # from _fp32_shard) as needed. If offloading params to CPU, the
-            # dtype of the fp16 shard will depend on the *`compute_dtype`*.
-            p.zero_fp16_shard = torch.zeros_like(
-                p.zero_fp32_shard, device=self.compute_device, dtype=self.compute_dtype)
-            _free_storage(p.zero_fp16_shard)
-
-        if self.mixed_precision:
-            assert p.zero_fp32_shard.dtype == torch.float32
-
-        # We also maintain a full-sized parameter of type self.compute_dtype
-        # (FP16 for mixed_precision or FP32 otherwise). We resize the
-        # storage to size 0 at init (here) and only materialize as needed. The
-        # storage may contain padding elements so that it is evenly divisible by
-        # world_size, although these padding elements will be removed before the
-        # relevant computation.
-        if p.zero_is_sharded:
-            p.zero_full_param_padded = torch.zeros(
-                p.data.numel() * self.world_size, device=self.compute_device, dtype=self.compute_dtype
-            )
-            _free_storage(p.zero_full_param_padded)
 
     def _set_is_root(self) -> None:
         """If ``True``, implies that no other :class:`FullyShardedDataParallel`
@@ -376,6 +293,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # Stream for overlapping grad reduction with the backward pass.
             self._streams['post_backward'] = torch.cuda.Stream()
 
+        self.param_manager.setup_streams(self._streams)
         # Helper for bucketing reduce-scatter ops. This is also shared with
         # children instances to improve bucket utilization.
         self._reducer = ReduceScatterBucketer(self.reduce_scatter_bucket_size_mb)
@@ -445,143 +363,6 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     setattr(module, name, buf)
 
     @torch.no_grad()
-    def _rebuild_full_params(self, force_full_precision: bool = False) -> Optional[List[Tuple[torch.Tensor, bool]]]:
-        """
-        Gather all shards of params.
-
-        Note, this is idempotent if full params are already gathered. Callers
-        assume the idempotency. So please keep it that way.
-
-        Args:
-            force_full_precision (bool, Optional): by default params will be gathered
-                in ``compute_dtype`` (e.g., FP16), unless *force_full_precision* is
-                ``True``, in which case they will be gathered in full precision
-                (e.g., FP32), possibly in fresh storage. The parameter that's being
-                rebuilt will end up in full precision as well.
-
-        Returns:
-            A list of tuples, where the first element is the full-sized param
-            and the second element is a bool indicating if it's safe for the
-            caller to free the full-sized param. This will be ``None`` if
-            ``force_full_precision=False`` and the full params are already gathered.
-        """
-        # Store tensor and free flag
-        output_tensors: List[Tuple[torch.Tensor, bool]] = []
-
-        def update_p_data(custom_output_tensor: Optional[torch.Tensor] = None) -> None:
-            """
-            Helper function to update p.data pointer.
-
-            Args:
-                custom_output_tensor (torch.Tensor, Optional): if not None, this
-                tensor contains the data we just gathered.
-            """
-            if custom_output_tensor is not None:
-                assert p.zero_is_sharded
-                p.data = custom_output_tensor
-                output_tensors.append((p.data, True))
-            elif not p.zero_is_sharded:
-                if self.mixed_precision and not force_full_precision:
-                    assert p.zero_fp16_shard is not None
-                    p.data = p.zero_fp16_shard
-                    output_tensors.append((p.data, True))
-                else:
-                    # Here p.data == p._fp32_shard, so it's not safe to free.
-                    output_tensors.append((p.data, False))
-            else:
-                p.data = p.zero_full_param_padded
-                output_tensors.append((p.data, True))
-            # Trim any padding and reshape to match original size.
-            p.data = p.data[: p.zero_orig_size.numel()].view(p.zero_orig_size)
-
-        if self._has_sharded_params:
-            # self.has_full_params flag can be out of sync if a shared param is
-            # sharded by another FSDP instance. An example is that in eval case
-            # with reshard_after_forward=False but the sharing instance has
-            # reshard_after_forward=True. Then, on the second forward, the
-            # other instance can shard the shared param and but this instance
-            # can mistakenly think the full param is already gathered from the
-            # has_full_params flag.
-            #
-            # Therefore, we update the flag accordingly here.
-            self.has_full_params = not any(p.zero_full_param_padded.storage().size() == 0 for p in self.params)
-
-        # Early exit if we already have full params and don't need full precision.
-        if self.has_full_params and not force_full_precision:
-            for p in self.params:
-                update_p_data()
-            return output_tensors
-
-        self.has_full_params = True
-
-        with torch.cuda.stream(self._streams["all_gather"]):
-            if self.mixed_precision and not force_full_precision:
-                self._use_fp16_shards()
-
-            for p in self.params:
-                if not p.zero_is_sharded:  # e.g., when world_size == 1
-                    update_p_data()
-                else:
-                    # Skip if already built. Only shared param can be rebuilt multiple times.
-                    # A corner case is p._orig_size = (1,), which means the shape equality is
-                    # not a perfect check. But we assume we don't share a param with shape (1,).
-                    # if p.data.shape == p.zero_orig_size and hasattr(p, "zero_is_shared") and p.zero_is_shared:
-                    #     continue
-                    # If self.move_params_to_cpu and force_full_precision, we need to cast
-                    # the FP32 CPU param to CUDA for the all-gather.
-                    p_data = p.data.to(p.zero_full_param_padded.device, non_blocking=True)
-
-                    p_size = p.zero_full_param_padded.size()
-                    assert p_size.numel() % self.world_size == 0
-                    if self.mixed_precision and force_full_precision:
-                        # Allocate fresh tensor in full precision since we are in
-                        # mixed precision and full precision rebuild is asked.
-                        output_tensor = p_data.new_zeros(p_size)
-                    else:
-                        if p.zero_full_param_padded.storage().size() != p_size.numel():
-                            # Allocate based on full size from all shards.
-                            _alloc_storage(p.zero_full_param_padded, size=p_size)
-                        output_tensor = p.zero_full_param_padded
-
-                    # Fill output_tensor with (p.data for each shard in self.world_size)
-                    if hasattr(dist, "_all_gather_base") and enable_nccl_base_collectives:
-                        # New version of PyTorch has all_gather_base, which is faster than chunk and then all_gather.
-                        dist._all_gather_base(output_tensor, p_data, group=self.process_group)
-                    else:
-                        chunks = list(output_tensor.chunk(self.world_size))
-                        dist.all_gather(chunks, p_data, group=self.process_group)
-
-                    # Set p.data = output_tensor (with padding trimmed)
-                    update_p_data(output_tensor)
-
-                    if self.mixed_precision and not force_full_precision:
-                        self._free_fp16_shards([p])
-
-        torch.cuda.current_stream().wait_stream(self._streams["all_gather"])
-        return output_tensors
-
-    @torch.no_grad()
-    def _use_full_params(self) -> None:
-        """
-        Switch p.data pointers to use the full params.
-
-        Note: this assumes full params are already gathered.
-
-        Note: this might be called after full_params is already in used. So please
-              make sure it is idempotent in that case.
-        """
-        assert self.has_full_params
-        for p in self.params:
-            if not p.zero_is_sharded:
-                if self.mixed_precision:
-                    assert p.zero_fp16_shard is not None
-                    assert p.zero_fp16_shard.storage().size() != 0
-                    p.data = p.zero_fp16_shard
-            else:
-                assert p.zero_full_param_padded.storage().size() != 0, f"{p.zero_orig_size} {id(self)}"
-                p.data = p.zero_full_param_padded[: p.zero_orig_size.numel()].view(p.zero_orig_size)
-
-    @torch.no_grad()
     def _prep_grads_for_backward(self) -> None:
         """Make sure p.grad is correctly prepared for the backward with
         right shape, device, accumulated values, etc.
@@ -602,67 +383,6 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     p.grad = None
                 else:
                     raise AssertionError(f"unexpected grad shape: {p.grad.size()}")
-
-    @torch.no_grad()
-    def _use_fp16_shards(self, params: Optional[List[Parameter]] = None) -> None:
-        """Cast FP32 param shard to FP16 for a list of params."""
-        if params is None:
-            params = self.params
-        with torch.cuda.stream(self._streams["fp32_to_fp16"]):
-            for p in params:
-                assert p.zero_fp16_shard is not None
-                _alloc_storage(p.zero_fp16_shard, size=p.zero_fp32_shard.size())
-                p.zero_fp16_shard.copy_(
-                    # If move_params_to_cpu is True, this will be non-blocking
-                    # because _fp32_shard is pinned, otherwise it's a no-op.
-                    p.zero_fp32_shard.to(p.zero_fp16_shard.device, non_blocking=True)
-                )
-                p.data = p.zero_fp16_shard
-        torch.cuda.current_stream().wait_stream(self._streams["fp32_to_fp16"])
-
-    @torch.no_grad()
-    def _use_fp32_shards(self, params: Optional[List[Parameter]] = None) -> None:
-        """Use FP32 shard for a list of params."""
-        if params is None:
-            params = self.params
-        for p in params:
-            p.data = p.zero_fp32_shard
-
-    @torch.no_grad()
-    def _free_fp16_shards(self, params: Optional[List[Parameter]] = None) -> None:
-        """Free storage for FP16 shards for a list of params."""
-        if params is None:
-            params = self.params
-        current_stream = torch.cuda.current_stream()
-        for p in params:
-            if p.zero_fp16_shard is not None:
-                # _fp16_shard is allocated in "fp32_to_fp16" stream, so we can't
-                # free it until the work in the current stream completes.
-                p.zero_fp16_shard.record_stream(current_stream)
-                _free_storage(p.zero_fp16_shard)
-
-    @torch.no_grad()
-    def _free_full_params(self, params: Optional[List[Parameter]] = None) -> None:
-        """Free up storage for full parameters."""
-        if params is None:
-            params = self.params
-        self.has_full_params = False
-        current_stream = torch.cuda.current_stream()
-        for p in params:
-            if not p.zero_is_sharded:  # e.g., world_size == 1
-                if self.mixed_precision:
-                    self._free_fp16_shards([p])
-                continue
-            # Don't let PyTorch reuse this memory until all work in the current
-            # stream is complete.
-            p.zero_full_param_padded.record_stream(current_stream)
-            # There may be external references to the Tensor Storage that we
-            # can't modify, such as references that are created by
-            # ctx.save_for_backward in the forward pass. Thus when we
-            # unshard parameters, we should reuse the original Tensor
-            # Storage object and unshard it in-place. For now, just resize
-            # the Storage to 0 to save memory.
-            _free_storage(p.zero_full_param_padded)
 
     def _register_pre_backward_hooks(self, outputs: Any) -> Any:
         """Register pre-backward hook to run before the wrapped module's
@@ -699,13 +419,13 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # boolean guard below, which is incorrect. It worked in pytorch < 1.9 for
             # some unknown reason, but pytorch 1.10 nightly exposed this bug.
             #
-            # Note, both ``self._rebuild_full_params`` and ``self._use_full_params`` are
+            # Note, both ``self.param_manager.rebuild_full_params`` and ``self.param_manager.use_full_params`` are
             # idempotent.  So in case they are called unnecessarily, they don't incur much
             # overhead.
             if self.reshard_after_forward:
-                self._rebuild_full_params()
+                self.param_manager.rebuild_full_params()
             else:
-                self._use_full_params()
+                self.param_manager.use_full_params()
 
             # Only run the ``self._prep_grads_for_backward`` once per iteration (i.e. in case
             # it is multiple outputs or multiple forward passes).
@@ -755,7 +475,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             return t
 
         # Attach hooks to Tensor outputs.
-        outputs = _apply_to_tensors(outputs, _register_hook)
+        outputs = apply_to_tensors(outputs, _register_hook)
 
         return outputs
 
@@ -846,16 +566,16 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # ``self._require_backward_grad_sync``), since the params will not
             # get updated before the next forward. This saves networking
             # bandwidth but uses more GPU memory.
-            self._free_full_params([param])
+            self.param_manager.free_full_params([param])
 
         if self.mixed_precision:
             # This is a no-op if reshard_after_forward is True, since we already
             # free the param shard when rebuilding the full params in the
             # pre_backward_hook.
-            self._free_fp16_shards([param])
+            self.param_manager.free_fp16_shards([param])
 
         # Switch to FP32 shard after backward.
-        self._use_fp32_shards([param])
+        self.param_manager.use_fp32_shards([param])
 
         if not self._require_backward_grad_sync:
             return
@@ -1150,104 +870,3 @@ class ZeroRedundancyLevel3Model(nn.Module):
             if self.rank == 0:
                 traceback.print_stack()
             raise ValueError(msg)
-
-
-############################################
-################## Utils ###################
-############################################
-
-
-def _get_gradient_predivide_factor(world_size: int) -> float:
-    factor: int = 1
-    while world_size % factor == 0 and world_size / factor > factor:
-        factor *= 2
-    return float(factor)
-
-
-def _get_shard(tensor: torch.Tensor, rank: int, world_size: int) -> Tuple[torch.Tensor, int]:
-    """Return the local shard of a full tensor."""
-    # Shard using torch.chunk to match all-gather/reduce-scatter.
-    chunks = list(torch.flatten(tensor).chunk(world_size))
-    while len(chunks) < world_size:
-        chunks.append(chunks[0].new_empty(0))
-
-    # Determine number of padding elements.
-    num_to_pad = chunks[0].numel() - chunks[rank].numel()
-    assert num_to_pad >= 0, num_to_pad
-
-    shard = chunks[rank].clone()
-    if num_to_pad > 0:
-        shard = F.pad(shard, [0, num_to_pad])
-    return shard, num_to_pad
-
-
-def _free_storage(data: torch.Tensor) -> None:
-    """Free underlying storage of a Tensor."""
-    if data.storage().size() > 0:
-        # Since we're modifying the Tensor's Storage directly, make sure the Tensor
-        # is the sole occupant of the Storage.
-        assert data.storage_offset() == 0
-        data.storage().resize_(0)
-
-
-@torch.no_grad()
-def _alloc_storage(data: torch.Tensor, size: torch.Size) -> None:
-    """Allocate storage for a tensor."""
-    if data.storage().size() == size.numel():  # no need to reallocate
-        return
-    assert data.storage().size() == 0
-    data.storage().resize_(size.numel())
-
-
-def _cast_trensor_to_fp16(tensor: torch.Tensor) -> torch.Tensor:
-    if tensor.dtype is torch.float32:
-        out = tensor.half()
-        if tensor.is_leaf:
-            out.requires_grad = tensor.requires_grad
-        return out
-    return tensor
-
-
-def _cast_trensor_to_fp32(tensor: torch.Tensor) -> torch.Tensor:
-    if tensor.dtype is torch.float16:
-        out = tensor.float()
-        if tensor.is_leaf:
-            out.requires_grad = tensor.requires_grad
-        return out
-    return tensor
-
-
-def _apply_to_tensors(x: Any, fn: Callable):
-    if torch.is_tensor(x):
-        return fn(x)
-    elif isinstance(x, list):
-        return [_apply_to_tensors(t, fn) for t in x]
-    elif isinstance(x, tuple):
-        return tuple(_apply_to_tensors(t, fn) for t in x)
-    elif isinstance(x, dict):
-        return {key: _apply_to_tensors(val, fn) for key, val in x.items()}
-    else:
-        return x
-
-
-def _cast_float_arguments(fn: Callable, *args: Any, **kwargs: Any) -> Tuple[Any, Any]:
-    return _apply_to_tensors(args, fn), _apply_to_tensors(kwargs, fn)
-
-
-def chunk_and_pad(tensor: torch.Tensor, num_chunks: int) -> List[torch.Tensor]:
-    """Chunk a given Tensor into num_chunks parts and add any necessary padding."""
-    chunks = list(torch.flatten(tensor).chunk(num_chunks))
-    # torch.chunk may return fewer than num_chunks chunks, pad accordingly.
-    num_pad_for_partial_chunk = chunks[0].numel() - chunks[-1].numel()
-    if num_pad_for_partial_chunk > 0:
-        chunks[-1] = F.pad(chunks[-1], [0, num_pad_for_partial_chunk])
-    if len(chunks) < num_chunks:
-        chunks.extend([torch.zeros_like(chunks[0]) for _ in range(num_chunks - len(chunks))])
-    return chunks
-
-
-def assert_in_engine(cond: Any, s: Any) -> None:
-    """Used in backward context to make sure error is printed."""
-    if not cond:
-        print(s)
-        raise AssertionError
