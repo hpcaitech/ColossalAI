@@ -38,6 +38,15 @@ class TrainingState(Enum):
     POST_BACKWARD = auto()
     GATHER_FULL_PARAMS = auto()
 
+# TODO: Add summon_full_params
+# TODO: Add apply
+# TODO: Add clip_grad_norm_
+# TODO: Add extra_repr
+# TODO: Add parameters and named_parameters
+# TODO: Add state_dict, load_state_dict, load_local_state_dict
+# TODO: Add gather_full_optim_state_dict and get_shard_from_optim_state_dict
+# TODO: Add offload
+
 
 class ZeroRedundancyLevel3Model(nn.Module):
     def __init__(self,
@@ -93,15 +102,10 @@ class ZeroRedundancyLevel3Model(nn.Module):
         self._check_sanity()
 
         self.params: List[Parameter] = []
-        self.param_to_name: Dict[Parameter, str] = {}
         for name, param in module.named_parameters():
             if not hasattr(param, 'zero_is_sharded'):
                 self.params.append(param)
-                self.param_to_name[param] = name
 
-        # TODO: flatten
-        self._has_params = len(self.params) > 0
-        self._has_sharded_params = False
         self.module = module
 
         self.param_manager = Zero3ParameterManager(module, process_group=self.process_group, mixed_precision=self.mixed_precision,
@@ -682,7 +686,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
     def _final_backward_hook(self) -> None:
         """Wait for post-backward to finish. Only called on root instance."""
         # None, backward runtime swallow the assert error, so we use assert_in_engine() here.
-        assert_in_engine(self._is_root, "WFPB not called on root")
+        assert_in_engine(self._is_root, "FinalBackwardHook not called on root")
         # Check if the root module has params and if any of them has
         # the `requires_grad` field set. If `requires_grad=False` for
         # all the params, the post_backward hook will not fire and the
@@ -695,7 +699,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         if self._require_backward_grad_sync:
             # Flush any unreduced buckets in the post_backward stream.
             with torch.cuda.stream(self._streams["post_backward"]):
-                assert_in_engine(self._reducer is not None, "WFPB: reducer is None")
+                assert_in_engine(self._reducer is not None, "FinalBackwardHook: reducer is None")
                 assert self._reducer is not None  # make mypy happy
                 self._reducer.flush()
             torch.cuda.current_stream().wait_stream(self._streams["post_backward"])
@@ -716,7 +720,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     continue
                 if hasattr(p, "zero_shard_bwd_hook"):
                     assert_in_engine(len(p.zero_shard_bwd_hook) == 2,
-                                     f"WFPB: incorrect hook num: {len(p.zero_shard_bwd_hook)}")
+                                     f"FinalBackwardHook: incorrect hook num: {len(p.zero_shard_bwd_hook)}")
                     p.zero_shard_bwd_hook[1].remove()
                     delattr(p, "zero_shard_bwd_hook")
 
@@ -729,12 +733,13 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
                 # Parameter and gradient devices must match.
                 if hasattr(p, "zero_cpu_grad"):
-                    assert_in_engine(p.device == torch.device("cpu"), f"WFPB: incorrect cpu_grad device {p.device}")
+                    assert_in_engine(p.device == torch.device("cpu"),
+                                     f"FinalBackwardHook: incorrect cpu_grad device {p.device}")
                     p.grad = p.zero_cpu_grad
                 elif hasattr(p, "zero_saved_grad_shard"):
                     assert_in_engine(
                         p.device == p.zero_saved_grad_shard.device,
-                        f"WFPB: incorrect saved_grad_shard device {p.device} vs {p.zero_saved_grad_shard.device}",
+                        f"FinalBackwardHook: incorrect saved_grad_shard device {p.device} vs {p.zero_saved_grad_shard.device}",
                     )
                     p.grad = p.zero_saved_grad_shard
 
@@ -771,12 +776,10 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     # clear this list for next iteration
                     assert_in_engine(
                         self._output_pre_backward_hook_registered is not None,
-                        "WFPB: self._output_pre_backward_hook_registered should not be None",
+                        "FinalBackwardHook: self._output_pre_backward_hook_registered should not be None",
                     )
                     assert self._output_pre_backward_hook_registered is not None  # make mypy happy
                     self._output_pre_backward_hook_registered.clear()
-
-    # TODO: add apply()
 
     def __getattr__(self, name: str) -> Any:
         try:

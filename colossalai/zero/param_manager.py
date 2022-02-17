@@ -15,6 +15,8 @@ if os.getenv("ENABLE_NCCL_BASE_COLLECTIVES", "1") == "0":
 else:
     enable_nccl_base_collectives = True
 
+# TODO: add flatten params
+
 
 class Zero3ParameterManager:
     def __init__(self,
