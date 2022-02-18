@@ -1,8 +1,5 @@
-from ._operation import AllToAll
-from .layers import Experts, MoeLayer, \
-    NormalNoiseGenerator, Top1Router, Top2Router
+from .experts import Experts, FFNExperts
+from .layers import MoeLayer, Top1Router, Top2Router
+from .utils import NormalNoiseGenerator
 
-__all__ = [
-    'AllToAll', 'Experts', 'Top1Router', 'Top2Router',
-    'MoeLayer', 'NormalNoiseGenerator'
-]
+__all__ = ['Experts', 'FFNExperts', 'Top1Router', 'Top2Router', 'MoeLayer', 'NormalNoiseGenerator']
