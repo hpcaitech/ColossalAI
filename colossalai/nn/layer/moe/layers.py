@@ -3,70 +3,13 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.cuda.amp import autocast
+import torch.distributed as dist
+from colossalai.core import global_context as gpc
 from colossalai.global_variables import moe_env
-from colossalai.context import ParallelMode, seed
+from colossalai.context import ParallelMode
 from colossalai.utils import get_current_device
-from ._operation import AllToAll
-
-
-class NormalNoiseGenerator:
-    """Generates a random noisy mask for logtis tensor.
-
-    All noise is generated from a normal distribution (0, 1 / E^2), where
-    E = the number of experts.
-
-    :param num_experts: The number of experts
-    :type num_experts: int
-    """
-
-    def __init__(self, num_experts: int):
-        self.normal = torch.distributions.normal.Normal(
-            loc=torch.tensor(0.0, device=get_current_device()),
-            scale=torch.tensor(1.0 / num_experts ** 2, device=get_current_device())
-        ).rsample
-
-    def __call__(self, inputs: torch.Tensor):
-        noisy = self.normal(inputs.shape)
-        return inputs + noisy
-
-
-class Experts(nn.Module):
-    """A wrapper class to create experts. It will create E experts across the
-    moe model parallel group, where E is the number of experts. Every expert
-    is a instence of the class, 'expert' in initialization parameters.
-
-    :param expert: The class of all experts
-    :param num_experts: The number of experts
-    :param expert_args: Args used to initialize experts
-
-    :type num_experts: int
-    """
-
-    def __init__(self, expert, num_experts, **expert_args):
-        super().__init__()
-
-        assert num_experts % moe_env.model_parallel_size == 0, \
-            "The number of experts should be divied by moe model size"
-
-        num_local_experts = num_experts // moe_env.model_parallel_size
-        with seed(ParallelMode.MOE_MODEL):
-            self.experts = nn.ModuleList([
-                expert(**expert_args) for _ in range(num_local_experts)])
-        self.num_local_experts = num_local_experts
-        for exp in self.experts:
-            for param in exp.parameters():
-                param.__setattr__('moe_param', 1)
-
-    def forward(self, inputs):
-        expert_input = torch.chunk(inputs, self.num_local_experts, dim=0)
-        expert_output = []
-
-        for i in range(self.num_local_experts):
-            expert_output.append(self.experts[i](expert_input[i]))
-
-        output = torch.cat(expert_output, dim=0)
-        return output
+from ._operation import U_CUDA_MODE, AllToAll, MoeDispatch, MoeCombine, moe_cumsum
+from .utils import autocast_softmax
 
 
 class Top1Router(nn.Module):
@@ -83,63 +26,79 @@ class Top1Router(nn.Module):
     :type noisy_func: Callable, optional
     """
 
-    def __init__(self,
-                 capacity_factor: float,
-                 min_capacity: int,
-                 noisy_func=None):
+    def __init__(self, capacity_factor: float, min_capacity: int = 0, select_policy: str = "first", noisy_func=None):
         super().__init__()
         self.capacity_factor = capacity_factor
         self.min_capacity = min_capacity
+        self.select_policy = select_policy
         self.noisy_func = noisy_func
-        self.uniform = torch.distributions.uniform.Uniform(
-            low=torch.tensor(0.0, device=get_current_device()),
-            high=torch.tensor(1.0, device=get_current_device())).rsample
 
-    def get_capacity(self, logits_shape):
-        capacity = math.ceil(self.capacity_factor *
-                             logits_shape[0] / logits_shape[1])
-        if capacity < self.min_capacity:
-            capacity = self.min_capacity
+        assert select_policy in {"first", "random"}
+        if select_policy == "random":
+            self.uniform = torch.distributions.uniform.Uniform(low=torch.tensor(0.0, device=get_current_device()),
+                                                               high=torch.tensor(1.0,
+                                                                                 device=get_current_device())).rsample
+
+    def get_capacity(
+        self,
+        logits_shape,
+    ):
+        capacity = math.floor(self.capacity_factor * logits_shape[-2] / logits_shape[-1])
+        capacity += capacity % 2
+        capacity = max(capacity, self.min_capacity)
+        assert capacity > 0
         return capacity
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor, cuda_mode: bool = False):
 
         if self.noisy_func is not None:
             inputs_noisy = self.noisy_func(inputs)
         else:
             inputs_noisy = inputs
 
-        logits = F.softmax(inputs, dim=1)
-
-        num_experts = logits.shape[1]
+        logits = autocast_softmax(inputs, dim=-1)
+        num_experts = logits.size(-1)
         capacity = self.get_capacity(logits.shape)
 
-        expert_idx = torch.argmax(inputs_noisy, dim=1)
-        expert_mask = F.one_hot(expert_idx, num_classes=num_experts)
-        expert_mask_f = expert_mask.float()
+        top1_idx = torch.argmax(inputs_noisy, dim=-1)
+        mask = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
 
-        exp_counts = torch.sum(expert_mask, dim=0).detach().to('cpu')
+        if self.training:
+            me = torch.mean(logits, dim=0)
+            ce = torch.mean(mask.float(), dim=0)
+            l_aux = num_experts * torch.sum(me * ce)
+            moe_env.add_loss(l_aux)
+        else:
+            max_num = torch.max(torch.sum(mask, dim=0))
+            dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=gpc.get_group(ParallelMode.MOE_MODEL))
+            capacity = max_num.item()
 
-        me = torch.mean(logits, dim=0)
-        ce = torch.mean(expert_mask_f, dim=0)
-        l_aux = torch.sum(me * ce) * num_experts
-        moe_env.add_loss(l_aux)
+        if not self.training:
+            ranks = moe_cumsum(mask)
+        elif self.select_policy == "random":
+            rand_mask = mask * self.uniform(mask.shape)
+            _, dispatch_idx = torch.topk(rand_mask, k=capacity, dim=0)
+            mask = mask * torch.zeros_like(mask).scatter_(0, dispatch_idx, 1)
+            ranks = moe_cumsum(mask)
+        elif self.select_policy == "first":
+            ranks = moe_cumsum(mask)
+            mask = mask * torch.lt(ranks, capacity)
+        else:
+            raise NotImplementedError("Not support such select policy yet.")
 
-        rand_mask = expert_mask * self.uniform(logits.shape)
-        _, dispatch_idx = torch.topk(rand_mask, k=capacity, dim=0)
+        ranks = torch.sum(mask * ranks, dim=-1)
 
-        dispatch_mask = \
-            expert_mask * torch.zeros_like(expert_mask).scatter_(0, dispatch_idx, 1)
-
-        locations = torch.cumsum(dispatch_mask, dim=0) - 1
-        locations = torch.sum(dispatch_mask * locations, dim=1)
-        locations = F.one_hot(locations, num_classes=capacity)
-
-        logits = logits * dispatch_mask
-        combine_weights = logits.unsqueeze(2) * locations.unsqueeze(1)
-
-        sec_mask = combine_weights.bool()
-        return combine_weights, sec_mask, exp_counts
+        if cuda_mode:
+            mask = torch.sum(mask, dim=-1)
+            mask = torch.stack([mask], dim=0).to(torch.int32)
+            dest_idx = torch.stack([top1_idx * capacity + ranks], dim=0).to(torch.int32)
+            return logits, mask, dest_idx, num_experts * capacity
+        else:
+            ranks = F.one_hot(ranks, num_classes=capacity)
+            weight = mask * logits.type_as(inputs)
+            combine_weights = weight.unsqueeze(2) * ranks.unsqueeze(1)
+            sec_mask = combine_weights.bool()
+            return combine_weights, sec_mask
 
 
 class Top2Router(nn.Module):
@@ -159,53 +118,67 @@ class Top2Router(nn.Module):
         self.noisy_func = noisy_func
 
     def get_capacity(self, logits_shape):
-        capacity = math.ceil(2 * self.capacity_factor *
-                             logits_shape[0] / logits_shape[1])
+        capacity = math.floor(2 * self.capacity_factor * logits_shape[-2] / logits_shape[-1])
+        capacity += capacity % 2
+        assert capacity > 0
         return capacity
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor, cuda_mode: bool = False):
+        # inputs: [s, h]
         if self.noisy_func is not None:
             inputs = self.noisy_func(inputs)
 
-        logits = F.softmax(inputs, dim=-1)
+        logits = autocast_softmax(inputs, dim=-1)    # logits: [s, e]
         num_experts = logits.size(-1)
         capacity = self.get_capacity(logits.shape)
 
-        _, expert_idx = torch.topk(logits, k=2, dim=-1, largest=True, sorted=True)
-        top1_idx = expert_idx[:, 0]
-        top2_idx = expert_idx[:, 1]
+        top1_idx = torch.argmax(logits, dim=-1)
+        mask1 = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
+        logits_except1 = logits.masked_fill(mask1.bool(), float("-inf"))
+        top2_idx = torch.argmax(logits_except1, dim=-1)
+        mask2 = F.one_hot(top2_idx, num_classes=num_experts).to(torch.int32)
 
-        mask1 = F.one_hot(top1_idx, num_classes=num_experts)
-        mask2 = F.one_hot(top2_idx, num_classes=num_experts)
+        cmask = (mask1 + mask2)    # loss: [s, e]
+        if self.training:
+            me = torch.mean(logits, dim=0)
+            ce = torch.mean(cmask.float(), dim=0)
+            l_aux = num_experts * torch.sum(me * ce) / 2.0
+            moe_env.add_loss(l_aux)
+        else:
+            max_num = torch.max(torch.sum(cmask, dim=0))
+            dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=gpc.get_group(ParallelMode.MOE_MODEL))
+            capacity = max_num.item()
 
-        loss_mask = (mask1 + mask2)
-        exp_counts = torch.sum(loss_mask, dim=0).detach().to('cpu')
-        me = torch.mean(logits, dim=0)
-        ce = torch.mean(loss_mask.float(), dim=0)
-        l_aux = num_experts * torch.sum(me * ce) / 2.0
-        moe_env.add_loss(l_aux)
+        rank1 = moe_cumsum(mask1)    # rank1: [s, e]
+        rank2 = moe_cumsum(mask2)
+        rank2 += torch.sum(mask1, dim=-2, keepdim=True)
 
-        locations1 = torch.cumsum(mask1, dim=0) - 1
-        locations2 = torch.cumsum(mask2, dim=0) - 1
-        locations2 += torch.sum(mask1, dim=0, keepdim=True)
+        mask1 *= torch.lt(rank1, capacity)
+        mask2 *= torch.lt(rank2, capacity)
 
-        mask1 *= torch.lt(locations1, capacity)
-        mask2 *= torch.lt(locations2, capacity)
+        rank1 = torch.sum(mask1 * rank1, dim=-1)
+        rank2 = torch.sum(mask2 * rank2, dim=-1)
 
-        weight1 = mask1 * logits
-        weight2 = mask2 * logits
+        if cuda_mode:
+            mask1 = torch.sum(mask1, dim=-1)
+            mask2 = torch.sum(mask2, dim=-1)
 
-        locations1 = torch.sum(mask1 * locations1, dim=1)
-        locations2 = torch.sum(mask2 * locations2, dim=1)
-        locations1_sc = F.one_hot(locations1, num_classes=capacity)
-        locations2_sc = F.one_hot(locations2, num_classes=capacity)
+            mask = torch.stack([mask1, mask2], dim=0).to(torch.int32)
+            dest_idx = torch.stack([top1_idx * capacity + rank1, top2_idx * capacity + rank2], dim=0).to(torch.int32)
 
-        combine_weights1 = weight1.unsqueeze(2) * locations1_sc.unsqueeze(1)
-        combine_weights2 = weight2.unsqueeze(2) * locations2_sc.unsqueeze(1)
-        combine_weights = combine_weights1 + combine_weights2
-        sec_mask = combine_weights.bool()
+            return logits, mask, dest_idx, num_experts * capacity
+        else:
+            weight1 = mask1 * logits.type_as(inputs)
+            weight2 = mask2 * logits.type_as(inputs)
+            rank1_sc = F.one_hot(rank1, num_classes=capacity)
+            rank2_sc = F.one_hot(rank2, num_classes=capacity)
 
-        return combine_weights, sec_mask, exp_counts
+            cb_weight1 = weight1.unsqueeze(2) * rank1_sc.unsqueeze(1)
+            cb_weight2 = weight2.unsqueeze(2) * rank2_sc.unsqueeze(1)
+            cb_weight = cb_weight1 + cb_weight2
+            sec_mask = cb_weight.bool()
+
+            return cb_weight, sec_mask
 
 
 class MoeLayer(nn.Module):
@@ -225,52 +198,47 @@ class MoeLayer(nn.Module):
     :type experts: nn.Module
     """
 
-    def __init__(self,
-                 dim_model: int,
-                 num_experts: int,
-                 router: nn.Module,
-                 experts: nn.Module):
+    def __init__(self, dim_model: int, num_experts: int, router: nn.Module, experts: nn.Module):
         super().__init__()
         self.d_model = dim_model
         self.num_experts = num_experts
-        self.gate = nn.Linear(dim_model, num_experts, device=get_current_device())
+        self.gate = nn.Linear(dim_model, num_experts, bias=False, device=get_current_device())
         self.router = router
         self.experts = experts
+        self.cuda_mode = True if U_CUDA_MODE and moe_env.enable_cuda else False
 
-    def _router_part(self, tokens: torch.Tensor):
-        gate_output = self.gate(tokens)
-        return self.router(gate_output)
+    def expert_part(self, expert_input: torch.Tensor):
+        expert_input = AllToAll.apply(expert_input, ParallelMode.MOE_MODEL)
 
-    def router_part(self, tokens: torch.Tensor):
-        autocast_context = torch.is_autocast_enabled()
-        if not autocast_context:
-            return self._router_part(tokens)
-        else:
-            with autocast(enabled=False):
-                if tokens.dtype == torch.float16:
-                    input_tokens = tokens.float()
-                else:
-                    input_tokens = tokens
-                return self._router_part(input_tokens)
+        input_shape = expert_input.shape
+
+        expert_input = expert_input.reshape(moe_env.model_parallel_size,
+                                            self.num_experts // moe_env.model_parallel_size, -1, self.d_model)
+
+        expert_output = self.experts(expert_input)
+        expert_output = expert_output.reshape(input_shape)
+
+        expert_output = AllToAll.apply(expert_output, ParallelMode.MOE_MODEL)
+        return expert_output
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         tokens = inputs.reshape(-1, self.d_model)
+        gate_output = self.gate(tokens)
+        router_res = self.router(gate_output, self.cuda_mode)
 
-        combine_weights, sec_mask, exp_counts = self.router_part(tokens)
+        if self.cuda_mode:
+            logits, mask, dest_idx, ec = router_res
+            expert_input = MoeDispatch.apply(tokens, mask, dest_idx, ec)
+            expert_output = self.expert_part(expert_input)
+            ret = MoeCombine.apply(expert_output, logits, mask, dest_idx, ec)
+        else:
+            combine_weights, sec_mask = router_res
+            sec_mask_f = sec_mask.type_as(inputs)
+            expert_input = torch.matmul(sec_mask_f.permute(1, 2, 0), tokens)
+            expert_output = self.expert_part(expert_input)
+            combine_weights = combine_weights.view(combine_weights.shape[0], -1)
+            expert_output = expert_output.view(-1, expert_output.shape[-1])
+            ret = torch.matmul(combine_weights, expert_output)
 
-        sec_mask_f = sec_mask.type_as(inputs)
-        dispatch_data = torch.matmul(sec_mask_f.permute(1, 2, 0), tokens)
-
-        dispatch_data = AllToAll.apply(dispatch_data, ParallelMode.MOE_MODEL)
-
-        expert_output = self.experts(dispatch_data)
-
-        expert_output = AllToAll.apply(expert_output, ParallelMode.MOE_MODEL)
-
-        combine_weights = combine_weights.view(combine_weights.shape[0], -1)
-        expert_output = expert_output.view(-1, expert_output.shape[-1])
-
-        ret = torch.matmul(combine_weights, expert_output)
         ret = ret.reshape(inputs.shape)
-
         return ret
