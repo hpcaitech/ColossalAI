@@ -3,11 +3,11 @@
 [![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
 <div align="center">
-   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
-   <a href="https://www.colossalai.org/"> Documentation </a> | 
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
-   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
-   <a href="https://medium.com/@hpcaitech"> Blog </a></h3> 
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> | 
+   <a href="https://www.colossalai.org/"> 文档 </a> | 
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 样例 </a> |   
+   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> | 
+   <a href="https://medium.com/@hpcaitech"> 博客 </a></h3> 
    <br/>
 
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
@@ -16,109 +16,106 @@
 
    | [English](README.md) | [中文](README-zh-Hans.md) |
 </div>
-An integrated large-scale model training system with efficient parallelization techniques.
+一个整合高效并行技术的AI大模型训练系统。
 
+## 特点
 
-## Features
+Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您的分布式AI模型训练像普通的单GPU模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练。
 
-Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
-distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
-distributed training in a few lines.
+- 数据并行
+- 流水线并行
+- 1维, 2维, 2.5维, 3维张量并行 
+- 序列并行
+- 友好的trainer和engine
+- 可扩展新的并行方式
+- 混合精度
+- 零冗余优化器 (ZeRO)
 
-- Data Parallelism
-- Pipeline Parallelism
-- 1D, 2D, 2.5D, 3D tensor parallelism
-- Sequence parallelism
-- Friendly trainer and engine
-- Extensible for new parallelism
-- Mixed Precision Training
-- Zero Redundancy Optimizer (ZeRO)
-
-## Examples
+## 样例
 ### ViT
 
 <img src="./docs/images/ViT_TP.png" width="400" />
 
-- 14x larger batch size
-- 5x faster training
+- 14倍批大小
+- 5倍训练速度
 
 ### GPT-3 & GPT-2
 
 ![GPT_2_3](./docs/images/GPT_2_3.png)
 
-- Free 50% GPU resources, or 10.7% acceleration for GPT-3
-- 11x lower GPU RAM, or superlinear scaling for GPT-2
+- GPT-3：释放 50% GPU 资源占用, 或 10.7% 加速
+- GPT-2：降低11倍GPU显存占用，或超线性扩展 
 
 ### BERT
 
 ![BERT_seq](./docs/images/BERT_seq.png)
 
-- 2x faster training
-- 50% longer sequence length
+- 2倍训练速度
+- 1.5倍序列长度
 
-Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
+请访问我们的[文档和教程](https://www.colossalai.org/)以了解详情。
 
 
-## Installation
+## 安装
 
 ### PyPI
 
 ```bash
 pip install colossalai
 ```
-This command will install CUDA extension if your have installed CUDA, NVCC and torch. 
+该命令将会安装CUDA extension，如果你已安装CUDA, NVCC和torch。 
 
-If you don't want to install CUDA extension, you should add `--global-option="--no_cuda_ext"`, like:
+如果你不想安装CUDA extension, 可在命令中添加`--global-option="--no_cuda_ext"`, 例如:
 ```bash
 pip install colossalai --global-option="--no_cuda_ext"
 ```
 
-If you want to use `ZeRO`, you can run:
+如果你想使用`ZeRO`, 你可以使用:
 ```bash
 pip install colossalai[zero]
 ```
 
-### Install From Source
+### 从源代码安装
 
-> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+> Colossal-AI的版本将与该项目的主分支保持一致。欢迎通过issue反馈你遇到的任何问题 :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
-# install dependency
+# 安装依赖
 pip install -r requirements/requirements.txt
 
-# install colossalai
+# 安装 colossalai
 pip install .
 ```
 
-If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
+如果你不想安装和使用CUDA kernel fusion (使用fused优化器需安装):
 
 ```shell
 pip install --global-option="--no_cuda_ext" .
 ```
 
-## Use Docker
+## 使用 Docker
 
-Run the following command to build a docker image from Dockerfile provided.
+运行以下命令从我们提供的docker文件中建立docker镜像。
 
 ```bash
 cd ColossalAI
 docker build -t colossalai ./docker
 ```
 
-Run the following command to start the docker container in interactive mode.
+运行以下命令从以交互式启动docker镜像.
 
 ```bash
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
 
-## Contributing
+## 做出贡献
 
-If you wish to contribute to this project, you can follow the guideline in [Contributing](./CONTRIBUTING.md)
+欢迎为该项目做出贡献，请参阅[贡献指南](./CONTRIBUTING.md)。
 
 
-## Quick View
+## 快速预览
 
 ### Start Distributed Training in Lines
 
@@ -127,9 +124,8 @@ import colossalai
 from colossalai.utils import get_dataloader
 
 
-# my_config can be path to config file or a dictionary obj
-# 'localhost' is only for single node, you need to specify
-# the node name if using multiple nodes
+# my_config可以是config文件的路径或字典对象
+# 'localhost' 仅适用于单节点，在多节点时需指明节点名
 colossalai.launch(
     config=my_config,
     rank=rank,
@@ -139,24 +135,23 @@ colossalai.launch(
     host='localhost'
 )
 
-# build your model
+# 构建模型
 model = ...
 
-# build you dataset, the dataloader will have distributed data
-# sampler by default
+# 构建数据集, dataloader会默认处理分布式数据sampler
 train_dataset = ...
 train_dataloader = get_dataloader(dataset=dataset,
                                 shuffle=True
                                 )
 
 
-# build your optimizer
+# 构建优化器
 optimizer = ...
 
-# build your loss function
+# 构建损失函数
 criterion = ...
 
-# initialize colossalai
+# 初始化colossalai
 engine, train_dataloader, _, _ = colossalai.initialize(
     model=model,
     optimizer=optimizer,
@@ -164,7 +159,7 @@ engine, train_dataloader, _, _ = colossalai.initialize(
     train_dataloader=train_dataloader
 )
 
-# start training
+# 开始训练
 engine.train()
 for epoch in range(NUM_EPOCHS):
     for data, label in train_dataloader:
@@ -176,10 +171,9 @@ for epoch in range(NUM_EPOCHS):
 
 ```
 
-### Write a Simple 2D Parallel Model
+### 构建一个简单的2维并行模型
 
-Let's say we have a huge MLP model and its very large hidden size makes it difficult to fit into a single GPU. We can
-then distribute the model weights across GPUs in a 2D mesh while you still write your model in a familiar way.
+假设我们有一个非常巨大的MLP模型，它巨大的hidden size使得它难以被单个GPU容纳。我们可以将该模型的权重以二维网格的形式分配到多个GPU上，且保持你熟悉的模型构建方式。
 
 ```python
 from colossalai.nn import Linear2D
@@ -201,7 +195,7 @@ class MLP_2D(nn.Module):
 ```
 
 
-## Cite Us
+## 引用
 
 ```
 @article{bian2021colossal,
