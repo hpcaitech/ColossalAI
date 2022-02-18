@@ -56,6 +56,7 @@ class MoeEnv:
         self.data_parallel_size = None
         self.model_parallel_size = None
         self.aux_loss = None
+        self.enable_cuda = True
 
     def setup(self, moe_model_size):
         from .core import global_context as gpc
@@ -70,6 +71,9 @@ class MoeEnv:
 
     def is_initialized(self):
         return self.model_parallel_size is not None
+
+    def set_cuda_false(self):
+        self.enable_cuda = False
 
     def reset_loss(self):
         self.aux_loss = 0
