@@ -3,8 +3,10 @@ import copy
 import functools
 import os
 import traceback
+from collections import OrderedDict
 from enum import Enum, auto
-from typing import Any, Dict, Generator, List, Optional, Set, Union
+from typing import (Any, Callable, Dict, Generator, List, NamedTuple, Optional,
+                    Set, Union)
 
 import torch
 import torch.distributed as dist
@@ -20,8 +22,8 @@ from torch.nn.parameter import Parameter
 
 from ._zero3_utils import (apply_to_tensors, assert_in_engine,
                            cast_float_arguments, cast_trensor_to_fp16,
-                           cast_trensor_to_fp32, chunk_and_pad,
-                           get_gradient_predivide_factor)
+                           cast_trensor_to_fp32, chunk_and_pad, free_storage,
+                           get_gradient_predivide_factor, get_shard)
 from .reduce_scatter import ReduceScatterBucketer
 
 # TODO: Remove the toggle-enable_nccl_base_collectives when github open issue #801 is resolved.
@@ -38,12 +40,7 @@ class TrainingState(Enum):
     POST_BACKWARD = auto()
     GATHER_FULL_PARAMS = auto()
 
-# TODO: Add summon_full_params
-# TODO: Add apply
 # TODO: Add clip_grad_norm_
-# TODO: Add extra_repr
-# TODO: Add parameters and named_parameters
-# TODO: Add state_dict, load_state_dict, load_local_state_dict
 # TODO: Add gather_full_optim_state_dict and get_shard_from_optim_state_dict
 # TODO: Add offload
 
@@ -781,6 +778,99 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     assert self._output_pre_backward_hook_registered is not None  # make mypy happy
                     self._output_pre_backward_hook_registered.clear()
 
+    @contextlib.contextmanager
+    def gather_full_params(self, recurse: bool = True, volatile: bool = False) -> Generator:
+        """
+        A context manager to expose full params for the current FSDP instance.
+        Can be useful *after* forward/backward for a model to get the params for
+        additional processing or checking. Parameters will be gathered in full
+        precision (e.g., FP32).
+
+        .. note:: This can be used on inner FSDPs.
+
+        .. note:: This can *not* be used within a forward or backward pass. Nor
+            can forward and backward be started from within this context.
+
+        .. note:: The full parameters will be freed after the context manager
+            exits; it is up to the caller to clone them if needed.
+
+        .. note:: The full parameters can be modified, but only the portion
+            corresponding to the local param shard will persist after the
+            context manager exits (unless ``volatile=True``, in which case there
+            are no guarantees about persistence).
+
+        Args:
+            recurse (bool, Optional): recursively summon all params for nested
+                FSDP instances (default: True)
+            volatile (bool, Optional): if ``True``, modifications to params are
+                not guaranteed to persist after the context manager exists;
+                enabling this can be slightly more efficient (default: False)
+        """
+        if recurse:
+            with contextlib.ExitStack() as stack:
+                # Summon all params for any nested FSDP instances.
+                for module in self.modules():
+                    if isinstance(module, ZeroRedundancyLevel3Model):
+                        stack.enter_context(module.gather_full_params(recurse=False, volatile=volatile))
+                # Yield to the caller, with full params in all nested instances.
+                yield
+            # Exiting from the ExitStack will re-shard params.
+            return
+        else:
+            torch.cuda.synchronize()
+            self._lazy_init()
+            self._assert_state(TrainingState.IDLE)
+            # Set the state so that we assert when trying to go into
+            # forward/backward.
+            self.training_state = TrainingState.GATHER_FULL_PARAMS
+            full_tensors = self.param_manager.rebuild_full_params(force_full_precision=True)
+            assert full_tensors is not None
+            with contextlib.ExitStack() as stack:
+                try:
+                    yield
+                finally:
+                    stack.close()
+                    for p, (full_tensor, safe_to_free) in zip(self.params, full_tensors):
+                        if not volatile:
+                            # Copy any changes made to the full params back into
+                            # the corresponding local shards.
+                            local_shard, _ = get_shard(full_tensor)
+                            p.zero_fp32_shard.copy_(local_shard.view_as(p.zero_fp32_shard))
+                        if safe_to_free:
+                            free_storage(full_tensor)
+                    self.has_full_params = False
+                    self.param_manager.use_fp32_shards()
+                    self.training_state = TrainingState.IDLE
+
+    def apply(self, fn: Callable[[nn.Module], None]) -> "ZeroRedundancyLevel3Model":
+        """
+        Applies ``fn`` recursively to every submodule (as returned by
+        ``.children()``) as well as self. Typical use includes initializing the
+        parameters of a model.
+
+        Compared to ``torch.nn.Module.apply``, this version additionally gathers
+        the full parameters before applying ``fn``. It should not be called from
+        within another ``summon_full_params`` context.
+
+        Args:
+            fn (nn.Module): function to be applied to each submodule
+
+        Returns:
+            Module: self
+        """
+        is_uninitialized = self._is_root is None
+        self._assert_state(TrainingState.IDLE)
+        with self.gather_full_params(recurse=False):
+            return_value = super().apply(fn)
+        # summon_full_params will call _lazy_init, which sets _is_root. However,
+        # apply() may be called directly on children instances to do weight
+        # init, so we should reset the _is_root flag in this case.
+        if is_uninitialized and self._is_root:
+            for module in self.modules():
+                if isinstance(module, ZeroRedundancyLevel3Model):
+                    module._reset_lazy_init_info()
+        return return_value
+
     def __getattr__(self, name: str) -> Any:
         try:
             return super().__getattr__(name)
@@ -873,3 +963,69 @@ class ZeroRedundancyLevel3Model(nn.Module):
             if self.rank == 0:
                 traceback.print_stack()
             raise ValueError(msg)
+
+    def extra_repr(self) -> str:
+        repr = (
+            f"world_size={self.world_size}, "
+            f"mixed_precision={self.mixed_precision}, "
+        )
+        if self.verbose:
+            repr = (
+                f"rank={self.rank}, " + repr + f"reshard_after_forward={self.reshard_after_forward}, "
+                f"compute_dtype={self.compute_dtype}, "
+                f"buffer_dtype={self.buffer_dtype}, "
+                f"fp32_reduce_scatter={self.fp32_reduce_scatter}, "
+                f"compute_device={self.compute_device}"
+                f"reduce_scatter_bucket_size_mb={self.reduce_scatter_bucket_size_mb}, "
+                f"clear_autocast_cache={self.clear_autocast_cache}"
+                f"force_input_to_fp32={self.force_input_to_fp32}"
+            )
+        return repr
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """
+        Returns the whole (unsharded) state of the module. Parameters are not
+        sharded, so the resulting state_dict can be loaded directly by the
+        wrapped Module without any sharding-specific logic. Returned tensors
+        will be full precision (e.g., FP32).
+
+        .. warning:: This needs to be called on all ranks, since synchronization
+            primitives will be used.
+        """
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        self._lazy_init()
+
+        def maybe_cast_buffers(dtype: Optional[torch.dtype] = None) -> None:
+            if self.mixed_precision:
+                self._cast_buffers(dtype=dtype)
+
+        assert self._return_full_state_dict is True, 'Only support return full state dict now'
+        if self.training_state != TrainingState.GATHER_FULL_PARAMS:
+            with self.gather_full_params(recurse=False, volatile=True):
+                maybe_cast_buffers(torch.float32)
+                state_dict = super().state_dict()
+        else:
+            maybe_cast_buffers(torch.float32)
+            state_dict = super().state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+        # In case we are in mixed precision, restore buffers back to buffer_dtype.
+        maybe_cast_buffers()
+        return state_dict
+
+    def load_state_dict(
+        self, state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"], strict: bool = True
+    ) -> NamedTuple:
+        """
+        Load a whole (unsharded) state_dict.
+
+        .. warning:: This needs to be called on all ranks, since synchronization
+            primitives will be used.
+        """
+        if self._return_full_state_dict:
+            with self.gather_full_params():
+                return self.module.load_state_dict(state_dict, strict)
+        else:
+            torch.cuda.synchronize()
+            self._lazy_init()
+            return self.module.load_state_dict(state_dict, strict)
