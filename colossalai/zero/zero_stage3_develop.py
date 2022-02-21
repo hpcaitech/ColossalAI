@@ -305,6 +305,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             if n != "" and isinstance(m, ZeroRedundancyLevel3Model):
                 m._streams = self._streams
                 m._reducer = self._reducer
+                m.param_manager.setup_streams(self._streams)
 
     def _setup_output_hook_list(self) -> None:
         """set up a list to avoid registering pre-backward hooks

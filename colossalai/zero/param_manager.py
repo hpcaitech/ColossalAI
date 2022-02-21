@@ -132,8 +132,7 @@ class Zero3ParameterManager:
             free_storage(p.zero_full_param_padded)
 
     def setup_streams(self, streams):
-        if len(self._streams) == 0:
-            self._streams = streams
+        self._streams = streams
 
     @torch.no_grad()
     def rebuild_full_params(self, force_full_precision: bool = False) -> Optional[List[Tuple[torch.Tensor, bool]]]:
