@@ -26,6 +26,7 @@ class Zero3ParameterManager:
                  flatten_parameters: bool = True,
                  compute_dtype: Optional[torch.dtype] = None,
                  compute_device: Optional[torch.device] = None,
+                 offload_config: Optional[dict] = None
                  ) -> None:
         self.process_group = process_group
         self.shard_idx = process_group.rank()
@@ -33,6 +34,9 @@ class Zero3ParameterManager:
         self.mixed_precision = mixed_precision
         self.compute_dtype = compute_dtype
         self.compute_device = compute_device
+        self.offload_config = offload_config
+
+        self._cpu_offload = offload_config.get('device', None) == 'cpu' if offload_config else False
 
         self.params: List[Parameter] = []
         for param in module.parameters():
@@ -71,7 +75,7 @@ class Zero3ParameterManager:
             free_storage(orig_data)
 
     @torch.no_grad()
-    def reset_param_attr(self, p: Parameter) -> None:
+    def reset_param_attr(self, p: Parameter, training: bool) -> None:
         """
         We manage several attributes on each Parameter instance. The first two
         are set by :func:`_shard_parameters_`:
@@ -104,7 +108,15 @@ class Zero3ParameterManager:
         if self.mixed_precision:
             assert p.zero_fp32_shard.dtype == torch.float32
 
-        if self.mixed_precision:
+        if self._cpu_offload:
+            assert p.zero_fp32_shard.device == torch.device('cpu')
+            # If we plan to keep the FP32 parameters on CPU, then pinning
+            # memory allows us to later use non-blocking transfers when moving
+            # the FP32 param shard to compute_device.
+            p.zero_fp32_shard = p.zero_fp32_shard.pin_memory()
+            p.data = p.zero_fp32_shard
+
+        if self.mixed_precision or self._cpu_offload:
 
             # In mixed precision mode, we maintain a reduced precision
             # (typically FP16) parameter shard on compute_device for performing
@@ -119,6 +131,11 @@ class Zero3ParameterManager:
         if self.mixed_precision:
             assert p.zero_fp32_shard.dtype == torch.float32
 
+        if not self.mixed_precision and not self._cpu_offload:
+            # use _fp32_shard if you are not in using mixed precision or
+            # offloading params and grads to CPU.
+            p.zero_fp16_shard = None
+
         # We also maintain a full-sized parameter of type self.compute_dtype
         # (FP16 for mixed_precision or FP32 otherwise). We resize the
         # storage to size 0 at init (here) and only materialize as needed. The
@@ -130,6 +147,9 @@ class Zero3ParameterManager:
                 p.data.numel() * self.num_shards, device=self.compute_device, dtype=self.compute_dtype
             )
             free_storage(p.zero_full_param_padded)
+
+        if self._cpu_offload and training:
+            p.zero_cpu_grad = torch.zeros_like(p.data, device='cpu').pin_memory()
 
     def setup_streams(self, streams):
         self._streams = streams
@@ -171,7 +191,7 @@ class Zero3ParameterManager:
                 p.data = custom_output_tensor
                 output_tensors.append((p.data, True))
             elif not p.zero_is_sharded:
-                if self.mixed_precision and not force_full_precision:
+                if (self.mixed_precision or self._cpu_offload) and not force_full_precision:
                     assert p.zero_fp16_shard is not None
                     p.data = p.zero_fp16_shard
                     output_tensors.append((p.data, True))
@@ -205,8 +225,18 @@ class Zero3ParameterManager:
         self.has_full_params = True
 
         with torch.cuda.stream(self._streams["all_gather"]):
-            if self.mixed_precision and not force_full_precision:
+            if (self.mixed_precision or self._cpu_offload) and not force_full_precision:
                 self.use_fp16_shards()
+
+            if self._cpu_offload and force_full_precision:
+                # If the compute_dtype and storage dtype are the same,
+                # use pinned memory. Otherwise move p.data to the compute
+                # device.
+                if self.params[0].dtype == self.compute_dtype:
+                    self.use_fp16_shards()
+                else:
+                    for p in self.params:
+                        p.data = p.data.to(self.compute_device)
 
             for p in self.params:
                 if not p.zero_is_sharded:  # e.g., when world_size == 1
@@ -217,7 +247,7 @@ class Zero3ParameterManager:
                     # not a perfect check. But we assume we don't share a param with shape (1,).
                     # if p.data.shape == p.zero_orig_size and hasattr(p, "zero_is_shared") and p.zero_is_shared:
                     #     continue
-                    # If self.move_params_to_cpu and force_full_precision, we need to cast
+                    # If self._cpu_offload and force_full_precision, we need to cast
                     # the FP32 CPU param to CUDA for the all-gather.
                     p_data = p.data.to(p.zero_full_param_padded.device, non_blocking=True)
 
@@ -244,7 +274,10 @@ class Zero3ParameterManager:
                     # Set p.data = output_tensor (with padding trimmed)
                     update_p_data(output_tensor)
 
-                    if self.mixed_precision and not force_full_precision:
+                    if (self.mixed_precision or self._cpu_offload) and not force_full_precision:
+                        self.free_fp16_shards([p])
+
+                    if self._cpu_offload and (self.params[0].dtype == self.compute_dtype):
                         self.free_fp16_shards([p])
 
         torch.cuda.current_stream().wait_stream(self._streams["all_gather"])
@@ -263,7 +296,7 @@ class Zero3ParameterManager:
         assert self.has_full_params
         for p in self.params:
             if not p.zero_is_sharded:
-                if self.mixed_precision:
+                if self.mixed_precision or self._cpu_offload:
                     assert p.zero_fp16_shard is not None
                     assert p.zero_fp16_shard.storage().size() != 0
                     p.data = p.zero_fp16_shard
@@ -281,7 +314,7 @@ class Zero3ParameterManager:
                 assert p.zero_fp16_shard is not None
                 alloc_storage(p.zero_fp16_shard, size=p.zero_fp32_shard.size())
                 p.zero_fp16_shard.copy_(
-                    # If move_params_to_cpu is True, this will be non-blocking
+                    # If _cpu_offload is True, this will be non-blocking
                     # because _fp32_shard is pinned, otherwise it's a no-op.
                     p.zero_fp32_shard.to(p.zero_fp16_shard.device, non_blocking=True)
                 )
@@ -305,7 +338,7 @@ class Zero3ParameterManager:
         current_stream = torch.cuda.current_stream()
         for p in params:
             if not p.zero_is_sharded:  # e.g., world_size == 1
-                if self.mixed_precision:
+                if self.mixed_precision or self._cpu_offload:
                     self.free_fp16_shards([p])
                 continue
             # Don't let PyTorch reuse this memory until all work in the current

@@ -78,9 +78,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         self.disable_reshard_on_root = disable_reshard_on_root
         self.mixed_precision = mixed_precision
         self.fp32_reduce_scatter = fp32_reduce_scatter
-        # self.flatten_parameters = flatten_parameters
-        # self.move_params_to_cpu = move_params_to_cpu or cpu_offload
-        # self.move_grads_to_cpu = self.move_params_to_cpu if move_grads_to_cpu is None else move_grads_to_cpu
+        self.offload_config = offload_config
         self.compute_dtype = compute_dtype or (torch.float16 if mixed_precision else torch.float32)
         self.buffer_dtype = buffer_dtype or self.compute_dtype
         self.reduce_scatter_bucket_size_mb = reduce_scatter_bucket_size_mb
@@ -93,20 +91,27 @@ class ZeroRedundancyLevel3Model(nn.Module):
         self.verbose = verbose
         self.state_dict_on_rank_0_only = state_dict_on_rank_0_only
 
+        self._cpu_offload = offload_config.get('device', None) == 'cpu' if offload_config else False
+
         self.gradient_predivide_factor: float = get_gradient_predivide_factor(self.world_size)
         self.gradient_postdivide_factor: float = self.world_size / self.gradient_predivide_factor
 
         self._check_sanity()
 
         self.params: List[Parameter] = []
+
+        # TODO: debug info, to remote
+        self.param_to_name: Dict[Parameter, str] = {}
         for name, param in module.named_parameters():
             if not hasattr(param, 'zero_is_sharded'):
                 self.params.append(param)
+                self.param_to_name[param] = name
 
         self.module = module
 
         self.param_manager = Zero3ParameterManager(module, process_group=self.process_group, mixed_precision=self.mixed_precision,
-                                                   flatten_parameters=flatten_parameters, compute_dtype=self.compute_dtype, compute_device=self.compute_device)
+                                                   flatten_parameters=flatten_parameters, compute_dtype=self.compute_dtype, compute_device=self.compute_device,
+                                                   offload_config=offload_config)
 
         self._reset_lazy_init_info()
 
@@ -163,7 +168,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         if self.reshard_after_forward:
             self.param_manager.free_full_params()
-            if self.mixed_precision:
+            if self.mixed_precision or self._cpu_offload:
                 self.param_manager.free_fp16_shards()
 
         # Switch to main FP32 param shard. We maintain this invariant throughout
@@ -218,7 +223,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # Initialize param attributes lazily, in case the param's dtype or
         # device changes after __init__.
         for p in self.params:
-            self.param_manager.reset_param_attr(p)
+            self.param_manager.reset_param_attr(p, self.training)
 
         # Initialize _is_root and setup streams. These steps would ideally
         # happen in __init__, but _is_root can only be determined after the
@@ -325,7 +330,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         """
         if not torch.cuda.is_available():
             return
-        if self.mixed_precision:
+        if self.mixed_precision or self._cpu_offload:
             self._streams["fp32_to_fp16"].wait_stream(torch.cuda.current_stream())
         else:
             self._streams["all_gather"].wait_stream(torch.cuda.current_stream())
@@ -642,7 +647,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
         # Cast grad to param's dtype (typically FP32). Note: we do this
-        # before the move_grads_to_cpu step so that this entire hook remains
+        # before the cpu offload step so that this entire hook remains
         # non-blocking. The downside is a bit more D2H transfer in that case.
         if self.mixed_precision:
             orig_param_grad_data = reduced_grad.data
@@ -663,10 +668,10 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         # Optionally move gradients to CPU, typically used if one is running the optimizer on the CPU. Once the full
         # backwards pass completes, we will set `.grad` to the CPU copy.
-        # if self.move_grads_to_cpu:
-        #     param._cpu_grad.copy_(reduced_grad.data, non_blocking=True)
-        #     # Don't let this memory get reused until after the transfer.
-        #     reduced_grad.data.record_stream(torch.cuda.current_stream())
+        if self._cpu_offload:
+            param.zero_cpu_grad.copy_(reduced_grad.data, non_blocking=True)
+            # Don't let this memory get reused until after the transfer.
+            reduced_grad.data.record_stream(torch.cuda.current_stream())
 
     def _register_final_backward_hook(self) -> None:
         """Try to queue a `wait_for_post_backward` callback.
@@ -701,12 +706,11 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 assert self._reducer is not None  # make mypy happy
                 self._reducer.flush()
             torch.cuda.current_stream().wait_stream(self._streams["post_backward"])
-            # if self.move_grads_to_cpu:
-            #     # Wait for the non-blocking GPU -> CPU grad transfers to finish.
-            #     torch.cuda.current_stream().synchronize()
+            if self._cpu_offload:
+                # Wait for the non-blocking GPU -> CPU grad transfers to finish.
+                torch.cuda.current_stream().synchronize()
 
         # A backward pass is done, clean up below.
-
         # Free reducer buffers.
         if self._reducer is not None:
             self._reducer.free()
@@ -980,6 +984,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 f"reduce_scatter_bucket_size_mb={self.reduce_scatter_bucket_size_mb}, "
                 f"clear_autocast_cache={self.clear_autocast_cache}"
                 f"force_input_to_fp32={self.force_input_to_fp32}"
+                f"offload_config={self.offload_config}"
             )
         return repr
 
@@ -1010,6 +1015,10 @@ class ZeroRedundancyLevel3Model(nn.Module):
             maybe_cast_buffers(torch.float32)
             state_dict = super().state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
 
+        if self._cpu_offload:
+            for k, tensor in state_dict.items():
+                state_dict[k] = tensor.cpu()
+
         # In case we are in mixed precision, restore buffers back to buffer_dtype.
         maybe_cast_buffers()
         return state_dict
@@ -1030,3 +1039,39 @@ class ZeroRedundancyLevel3Model(nn.Module):
             torch.cuda.synchronize()
             self._lazy_init()
             return self.module.load_state_dict(state_dict, strict)
+
+    def _report_param_state(self, p=None):
+        msgs = []
+
+        def _t_info(param: Parameter):
+            return f'{param.shape} {param.dtype} on {param.device} (base {param.data_ptr()})'
+
+        def _p_info(param: Parameter):
+            msgs.append(f'{self.param_to_name[param]}:')
+            msgs.append(f'    data: {_t_info(param)}')
+            msgs.append(f'    fp16_shard: {_t_info(param.zero_fp16_shard)}')
+            msgs.append(f'    fp32_shard: {_t_info(param.zero_fp32_shard)}')
+            msgs.append(f'    full_param_padded: {_t_info(param.zero_full_param_padded)}')
+            msgs.append(f'    hook: {param.zero_shard_bwd_hook}')
+        if p is not None:
+            _p_info(p)
+        else:
+            for p in self.params[:3]:
+                _p_info(p)
+        if self.rank == 0:
+            print('\n'.join(msgs))
+
+    def _report_grad_state(self):
+        msgs = []
+        if self.rank == 0:
+            for p in self.params:
+                msgs.append(f'{self.param_to_name[p]} requires_grad = {p.requires_grad}')
+            print('\n'.join(msgs))
+
+    def _report_grad_acc(self):
+        for p in self.params:
+            # Register a hook on the first call, empirically, autograd
+            # fires it at the end for this param, which makes sense.
+            p_tmp = p.expand_as(p)  # Get a grad_fn on p_tmp.
+            assert p_tmp.grad_fn is not None
+            print(f'{self.param_to_name[p]} grad acc {p_tmp.grad_fn.next_functions}')
