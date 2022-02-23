@@ -65,7 +65,8 @@ class ZeroRedundancyLevel3Model(nn.Module):
                  force_input_to_fp32: bool = False,
                  verbose: bool = False,
                  offload_config: Optional[dict] = None,
-                 state_dict_on_rank_0_only: bool = False,) -> None:
+                 state_dict_on_rank_0_only: bool = False,
+                 gradient_predivide_factor: Optional[float] = 1.0) -> None:
         super().__init__()
         self.logger = get_dist_logger()
 
@@ -93,7 +94,11 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         self._cpu_offload = offload_config.get('device', None) == 'cpu' if offload_config else False
 
-        self.gradient_predivide_factor: float = get_gradient_predivide_factor(self.world_size)
+        # We find if gradient_predivide_factor != 1.0, there may be wrong precision problem
+        # So we use 1.0 as the default gradient_predivide_factor
+        # However, if you set gradient_predivide_factor to None, we will set gradient_predivide_factor to a value >= 1.0 automatically
+        self.gradient_predivide_factor: float = gradient_predivide_factor if gradient_predivide_factor is not None else \
+            get_gradient_predivide_factor(self.world_size)
         self.gradient_postdivide_factor: float = self.world_size / self.gradient_predivide_factor
 
         self._check_sanity()
@@ -527,16 +532,21 @@ class ZeroRedundancyLevel3Model(nn.Module):
             if p.requires_grad:
                 if hasattr(p, "zero_shard_bwd_hook"):
                     continue
+                # For mixed precision with activation checkpoint, hooks on GradAccumulation won't be fired normally
+                # Instead we register hook on parameter
+                # In this way, we can't modify param.grad and param.data directly, which leads to more memory usage
                 # Register a hook on the first call, empirically, autograd
                 # fires it at the end for this param, which makes sense.
-                p_tmp = p.expand_as(p)  # Get a grad_fn on p_tmp.
-                assert p_tmp.grad_fn is not None
-                grad_acc = p_tmp.grad_fn.next_functions[0][0]  # Gets its GradAccumulation object.
-                handle = grad_acc.register_hook(functools.partial(self._post_backward_hook, p))
-                p.zero_shard_bwd_hook = (grad_acc, handle)
+                # p_tmp = p.expand_as(p)  # Get a grad_fn on p_tmp.
+                # assert p_tmp.grad_fn is not None
+                # grad_acc = p_tmp.grad_fn.next_functions[0][0]  # Gets its GradAccumulation object.
+                # handle = grad_acc.register_hook(functools.partial(self._post_backward_hook, p))
+                # p.zero_shard_bwd_hook = (grad_acc, handle)
+                handle = p.register_hook(functools.partial(self._post_backward_hook, p))
+                p.zero_shard_bwd_hook = handle
 
     @torch.no_grad()
-    def _post_backward_hook(self, param: Parameter, *unused: Any) -> None:
+    def _post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
         """
         At the start of :func:`_post_backward_hook`, ``param.grad`` contains the
         full gradient for the local batch. The reduce-scatter op will replace
@@ -560,11 +570,11 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # then subsequent hook callbacks will see POST state.
         self._assert_state([TrainingState.PRE_BACKWARD, TrainingState.POST_BACKWARD])
         self.training_state = TrainingState.POST_BACKWARD
-        if param.grad is None:
+        if grad is None:
             return
 
-        assert param.grad is not None, param.shape
-        if param.grad.requires_grad:
+        assert grad is not None, param.shape
+        if grad.requires_grad:
             raise RuntimeError("FSDP only works with gradients that don't require gradients")
 
         if self._require_backward_grad_sync or self.reshard_after_forward:
@@ -582,7 +592,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
             self.param_manager.free_fp16_shards([param])
 
         # Switch to FP32 shard after backward.
-        self.param_manager.use_fp32_shards([param])
+        # Cannot modify param.data
+        # self.param_manager.use_fp32_shards([param])
+        # free_storage(param.data)
 
         if not self._require_backward_grad_sync:
             return
@@ -591,23 +603,23 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # reductions in post_backward stream.
         self._streams["post_backward"].wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(self._streams["post_backward"]):
-            orig_grad_data = param.grad.data
+            new_grad = grad.clone()
 
             if self.mixed_precision and self.fp32_reduce_scatter:
                 # Cast grad to FP32.
-                param.grad.data = param.grad.data.to(param.dtype)
+                new_grad.data = new_grad.data.to(param.dtype)
 
             if self.gradient_predivide_factor > 1:
                 # Average grad by world_size for consistency with PyTorch DDP.
-                param.grad.data.div_(self.gradient_predivide_factor)
+                new_grad.data.div_(self.gradient_predivide_factor)
 
+            orig_grad_data = new_grad.data
             if param.zero_is_sharded:
                 assert self._reducer is not None
                 # Save the unsharded grad for reduction. We will asynchronously accumulate the reduced gradient into
                 # param._saved_grad_shard. If this FSDP module was called multiple times it's possible that multiple
                 # gradient reductions will happen in an undefined order. But addition commutes, so this order doesn't
                 # matter, neglecting rounding.
-                grad = param.grad.data
                 # Clear grad on the tensor, so any repeated gradient computations do not interfere with this reduction.
                 #
                 # The effect on memory consumption is not usually significant. No extra memory is allocated if this
@@ -619,9 +631,8 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 # This ensures the `default` stream will wait for the `post_backward` stream to complete the last
                 # reduction for this module, before scheduling additional reduction work. Then at most there are two
                 # unsharded gradients allocated; one for a pending reduction, and one for gradient computation.
-                param.grad = None
                 callback_fn = functools.partial(self._reduce_scatter_callback, param)
-                grad_chunks = chunk_and_pad(grad, self.reduce_scatter_process_group.size())
+                grad_chunks = chunk_and_pad(orig_grad_data, self.reduce_scatter_process_group.size())
                 self._reducer.reduce_scatter_async(
                     grad_chunks, group=self.reduce_scatter_process_group, callback_fn=callback_fn
                 )
@@ -630,7 +641,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 # world_size == 1. This could be relaxed in the future, in which
                 # case grads should be all-reduced here.
                 assert self.world_size == 1
-                self._reduce_scatter_callback(param, param.grad.data)
+                self._reduce_scatter_callback(param, new_grad)
 
             # After _post_backward_hook returns, orig_grad_data will eventually
             # go out of scope, at which point it could otherwise be freed for
@@ -651,7 +662,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # non-blocking. The downside is a bit more D2H transfer in that case.
         if self.mixed_precision:
             orig_param_grad_data = reduced_grad.data
-            reduced_grad.data = reduced_grad.data.to(dtype=param.data.dtype)
+            reduced_grad.data = reduced_grad.data.to(dtype=param.zero_fp32_shard.dtype)
             # Don't let this memory get reused until after the transfer.
             orig_param_grad_data.record_stream(torch.cuda.current_stream())
 
@@ -665,6 +676,11 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 ), f"{param.zero_saved_grad_shard.shape} vs {reduced_grad.shape}"
                 param.zero_saved_grad_shard.data += reduced_grad.data
             reduced_grad = param.zero_saved_grad_shard.data
+        else:
+            if getattr(param, 'zero_saved_grad', None) is None:
+                param.zero_saved_grad = reduced_grad.data
+            else:
+                param.zero_saved_grad.data += reduced_grad.data
 
         # Optionally move gradients to CPU, typically used if one is running the optimizer on the CPU. Once the full
         # backwards pass completes, we will set `.grad` to the CPU copy.
@@ -698,7 +714,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             self._assert_state(TrainingState.POST_BACKWARD)
         else:
             self._assert_state(TrainingState.PRE_BACKWARD)
-
+        self.param_manager.use_fp32_shards()
         if self._require_backward_grad_sync:
             # Flush any unreduced buckets in the post_backward stream.
             with torch.cuda.stream(self._streams["post_backward"]):
@@ -721,9 +737,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 if not p.requires_grad:
                     continue
                 if hasattr(p, "zero_shard_bwd_hook"):
-                    assert_in_engine(len(p.zero_shard_bwd_hook) == 2,
-                                     f"FinalBackwardHook: incorrect hook num: {len(p.zero_shard_bwd_hook)}")
-                    p.zero_shard_bwd_hook[1].remove()
+                    p.zero_shard_bwd_hook.remove()
                     delattr(p, "zero_shard_bwd_hook")
 
                 # Leave the gradient accumulation state as-is if not synchronizing this pass. This ensures p.grad
@@ -744,9 +758,13 @@ class ZeroRedundancyLevel3Model(nn.Module):
                         f"FinalBackwardHook: incorrect saved_grad_shard device {p.device} vs {p.zero_saved_grad_shard.device}",
                     )
                     p.grad = p.zero_saved_grad_shard
+                elif hasattr(p, 'zero_saved_grad'):
+                    p.grad = p.zero_saved_grad
 
                 if hasattr(p, "zero_saved_grad_shard"):
                     delattr(p, "zero_saved_grad_shard")
+                if hasattr(p, 'zero_saved_grad'):
+                    delattr(p, "zero_saved_grad")
 
         # Update root and nested FSDP's hooks and flags.
         for m in self.modules():  # includes self
@@ -1039,39 +1057,3 @@ class ZeroRedundancyLevel3Model(nn.Module):
             torch.cuda.synchronize()
             self._lazy_init()
             return self.module.load_state_dict(state_dict, strict)
-
-    def _report_param_state(self, p=None):
-        msgs = []
-
-        def _t_info(param: Parameter):
-            return f'{param.shape} {param.dtype} on {param.device} (base {param.data_ptr()})'
-
-        def _p_info(param: Parameter):
-            msgs.append(f'{self.param_to_name[param]}:')
-            msgs.append(f'    data: {_t_info(param)}')
-            msgs.append(f'    fp16_shard: {_t_info(param.zero_fp16_shard)}')
-            msgs.append(f'    fp32_shard: {_t_info(param.zero_fp32_shard)}')
-            msgs.append(f'    full_param_padded: {_t_info(param.zero_full_param_padded)}')
-            msgs.append(f'    hook: {param.zero_shard_bwd_hook}')
-        if p is not None:
-            _p_info(p)
-        else:
-            for p in self.params[:3]:
-                _p_info(p)
-        if self.rank == 0:
-            print('\n'.join(msgs))
-
-    def _report_grad_state(self):
-        msgs = []
-        if self.rank == 0:
-            for p in self.params:
-                msgs.append(f'{self.param_to_name[p]} requires_grad = {p.requires_grad}')
-            print('\n'.join(msgs))
-
-    def _report_grad_acc(self):
-        for p in self.params:
-            # Register a hook on the first call, empirically, autograd
-            # fires it at the end for this param, which makes sense.
-            p_tmp = p.expand_as(p)  # Get a grad_fn on p_tmp.
-            assert p_tmp.grad_fn is not None
-            print(f'{self.param_to_name[p]} grad acc {p_tmp.grad_fn.next_functions}')
