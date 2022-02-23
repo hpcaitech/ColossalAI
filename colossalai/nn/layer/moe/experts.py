@@ -62,10 +62,12 @@ class FFNExperts(nn.Module):
 
         s1 = math.sqrt(0.1 / d_model)
         s2 = math.sqrt(0.1 / d_ff)
-        nn.init.trunc_normal_(self.w1, std=s1)
-        nn.init.trunc_normal_(self.b1, std=s1)
-        nn.init.trunc_normal_(self.w2, std=s2)
-        nn.init.trunc_normal_(self.b2, std=s2)
+
+        with seed(ParallelMode.MOE_MODEL):
+            nn.init.trunc_normal_(self.w1, std=s1)
+            nn.init.trunc_normal_(self.b1, std=s1)
+            nn.init.trunc_normal_(self.w2, std=s2)
+            nn.init.trunc_normal_(self.b2, std=s2)
 
         self.act = nn.GELU() if activation is None else activation
         self.drop = nn.Dropout(p=drop_rate)
