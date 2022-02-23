@@ -34,21 +34,27 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 ## 样例
 ### ViT
 
-<img src="./docs/images/ViT_TP.png" width="400" />
+<img src="./docs/images/update/vit.png" width="450" />
+
 
 - 14倍批大小
 - 5倍训练速度
 
-### GPT-3 & GPT-2
+### GPT-3
+<img src="./docs/images/allinone/GPT3_allin1.png" width=700/>
 
-![GPT_2_3](./docs/images/GPT_2_3.png)
+
 
 - GPT-3：释放 50% GPU 资源占用, 或 10.7% 加速
+
+### GPT-2
+<img src="./docs/images/allinone/GPT2_allin1.png" width=800/>
+
 - GPT-2：降低11倍GPU显存占用，或超线性扩展 
 
 ### BERT
+<img src="./docs/images/allinone/BERT_allin1.png" width=800/>
 
-![BERT_seq](./docs/images/BERT_seq.png)
 
 - 2倍训练速度
 - 1.5倍序列长度
