@@ -108,6 +108,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         for name, param in module.named_parameters():
             if not hasattr(param, 'zero_is_sharded'):
                 self.params.append(param)
+                self.param_to_name[param] = name
 
         self.module = module
 
