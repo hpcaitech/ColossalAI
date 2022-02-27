@@ -15,7 +15,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
-from colossalai.zero.param_manager import Zero3ParameterManager
+from .param_manager import Zero3ParameterManager
 from torch.autograd import Variable
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
@@ -45,7 +45,7 @@ class TrainingState(Enum):
 # TODO: Add gather_full_optim_state_dict and get_shard_from_optim_state_dict
 
 
-class ZeroRedundancyLevel3Model(nn.Module):
+class ShardedModel(nn.Module):
     def __init__(self,
                  module: nn.Module,
                  process_group: Optional[ProcessGroup] = None,
@@ -244,7 +244,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             self._wait_for_previous_optim_step()
 
     def _set_is_root(self) -> None:
-        """If ``True``, implies that no other :class:`ZeroRedundancyLevel3Model`
+        """If ``True``, implies that no other :class:`ShardedModel`
         instance wraps this one. Called once by :func:`_lazy_init`.
         Also sets self.children_share_process_group = True if all child
         instances share the same process group. If some child instances use a
@@ -266,9 +266,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
         self.children_share_process_group = True
         for n, m in self.named_modules():
             # `n != ""` excludes self.
-            if n != '' and isinstance(m, ZeroRedundancyLevel3Model):
+            if n != '' and isinstance(m, ShardedModel):
                 # We relax the assert for non-root instance, when the nested inialized module is wrapped
-                # again in ZeroRedundancyLevel3Model later, for example after training to run inference.
+                # again in ShardedModel later, for example after training to run inference.
                 assert m._is_root is None or not m._is_root
                 if m._is_root is None:
                     m._is_root = False
@@ -302,7 +302,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # overlap transfers across the forward pass without synchronizing with
         # the default stream.
         for n, m in self.named_modules():
-            if n != "" and isinstance(m, ZeroRedundancyLevel3Model):
+            if n != "" and isinstance(m, ShardedModel):
                 m._streams = self._streams
                 m._reducer = self._reducer
                 m.param_manager.setup_streams(self._streams)
@@ -314,12 +314,12 @@ class ZeroRedundancyLevel3Model(nn.Module):
         assert self._is_root, "This should only be called on the root"
         self._output_pre_backward_hook_registered = []
         for n, m in self.named_modules():
-            if n != "" and isinstance(m, ZeroRedundancyLevel3Model):
+            if n != "" and isinstance(m, ShardedModel):
                 m._output_pre_backward_hook_registered = self._output_pre_backward_hook_registered
 
     def _wait_for_previous_optim_step(self) -> None:
         """
-        The outer-most :class:`ZeroRedundancyLevel3Model` instance (i.e., the root
+        The outer-most :class:`ShardedModel` instance (i.e., the root
         instance) needs to synchronize with the default stream to ensure the
         previous optimizer step is done.
         """
@@ -337,7 +337,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         If *device* or *dtype* are not given, then they will default to
         ``self.compute_device`` and ``self.buffer_dtype``, respectively. In the
-        case of nested ZeroRedundancyLevel3Model instances, we will respect the child instance's
+        case of nested ShardedModel instances, we will respect the child instance's
         ``compute_device`` and ``buffer_dtype`` configuration.
 
         Args:
@@ -351,7 +351,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         if memo is None:
             memo = set()
         for module in self.modules():
-            if module is not self and isinstance(module, ZeroRedundancyLevel3Model):
+            if module is not self and isinstance(module, ShardedModel):
                 # Allow any child Zero3Model instances to handle their own buffers.
                 module._cast_buffers(device=device, dtype=dtype, memo=memo)
             elif module not in memo:
@@ -443,7 +443,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 self._prep_grads_for_backward()
 
             # Transition to PRE_BACKWARD state if currently IDLE. We can transition from POST_BACKWARD
-            # to IDLE when ZeroRedundancyLevel3Model is within activation checkpointing and called multiple times, due to the
+            # to IDLE when ShardedModel is within activation checkpointing and called multiple times, due to the
             # extra forward pass for re-computation.
             if self.training_state == TrainingState.IDLE:
                 self.training_state = TrainingState.PRE_BACKWARD
@@ -453,9 +453,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         def _register_hook(t: torch.Tensor) -> torch.Tensor:
             # We don't register the pre_backward hook on the same tensor that has been
-            # returned from an inner ZeroRedundancyLevel3Model, unless it is the first one. This does
+            # returned from an inner ShardedModel, unless it is the first one. This does
             # not cover all problematic cases though. A tensor not from an inner
-            # ZeroRedundancyLevel3Model can cause problems too:
+            # ShardedModel can cause problems too:
             # ```
             #   x = layer1(input)
             #   state = [x]  # better change to x.detach(), not fixed by the following if-condition
@@ -467,9 +467,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # The tensors in `state`, if not detached, can be registered with
             # backward hooks (in addition to the `x` on the last line). In that case,
             # pre-backward hook can fire multiple times in the order that causes
-            # the outer ZeroRedundancyLevel3Model to crash.
+            # the outer ShardedModel to crash.
             #
-            # The best practice is for modules to be wrapped by ZeroRedundancyLevel3Model to return 1 and only
+            # The best practice is for modules to be wrapped by ShardedModel to return 1 and only
             # 1 tensor to be used for backward. All other tensors returned should be
             # detached.
             nonlocal _registered
@@ -571,7 +571,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         assert grad is not None, param.shape
         if grad.requires_grad:
-            raise RuntimeError("ZeroRedundancyLevel3Model only works with gradients that don't require gradients")
+            raise RuntimeError("ShardedModel only works with gradients that don't require gradients")
 
         if self._require_backward_grad_sync or self.reshard_after_forward:
             # Free full params. As a special case, we don't free the full params
@@ -612,7 +612,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             if param.zero_is_sharded:
                 assert self._reducer is not None
                 # Save the unsharded grad for reduction. We will asynchronously accumulate the reduced gradient into
-                # param.zero_saved_grad_shard. If this ZeroRedundancyLevel3Model module was called multiple times it's possible that multiple
+                # param.zero_saved_grad_shard. If this ShardedModel module was called multiple times it's possible that multiple
                 # gradient reductions will happen in an undefined order. But addition commutes, so this order doesn't
                 # matter, neglecting rounding.
                 # Clear grad on the tensor, so any repeated gradient computations do not interfere with this reduction.
@@ -729,7 +729,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         if self._reducer is not None:
             self._reducer.free()
 
-        def _finalize_parameters(zero_module: ZeroRedundancyLevel3Model) -> None:
+        def _finalize_parameters(zero_module: ShardedModel) -> None:
             """Helper used below on all zero3 modules."""
             for p in zero_module.params:
                 if not p.requires_grad:
@@ -764,9 +764,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 if hasattr(p, 'zero_saved_grad'):
                     delattr(p, "zero_saved_grad")
 
-        # Update root and nested ZeroRedundancyLevel3Model's hooks and flags.
+        # Update root and nested ShardedModel's hooks and flags.
         for m in self.modules():  # includes self
-            if isinstance(m, ZeroRedundancyLevel3Model):
+            if isinstance(m, ShardedModel):
                 _finalize_parameters(m)
                 m._pre_backward_hook_has_run = False
                 if any(p.requires_grad for p in m.parameters()):
@@ -802,12 +802,12 @@ class ZeroRedundancyLevel3Model(nn.Module):
     @contextlib.contextmanager
     def gather_full_params(self, recurse: bool = True, volatile: bool = False) -> Generator:
         """
-        A context manager to expose full params for the current ZeroRedundancyLevel3Model instance.
+        A context manager to expose full params for the current ShardedModel instance.
         Can be useful *after* forward/backward for a model to get the params for
         additional processing or checking. Parameters will be gathered in full
         precision (e.g., FP32).
 
-        .. note:: This can be used on inner ZeroRedundancyLevel3Models.
+        .. note:: This can be used on inner ShardedModels.
 
         .. note:: This can *not* be used within a forward or backward pass. Nor
             can forward and backward be started from within this context.
@@ -822,7 +822,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         Args:
             recurse (bool, Optional): recursively summon all params for nested
-                ZeroRedundancyLevel3Model instances (default: True)
+                ShardedModel instances (default: True)
             volatile (bool, Optional): if ``True``, modifications to params are
                 not guaranteed to persist after the context manager exists;
                 enabling this can be slightly more efficient (default: False)
@@ -831,7 +831,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             with contextlib.ExitStack() as stack:
                 # Summon all params for any nested Zero3Model instances.
                 for module in self.modules():
-                    if isinstance(module, ZeroRedundancyLevel3Model):
+                    if isinstance(module, ShardedModel):
                         stack.enter_context(module.gather_full_params(recurse=False, volatile=volatile))
                 # Yield to the caller, with full params in all nested instances.
                 yield
@@ -863,7 +863,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     self.param_manager.use_fp32_shards()
                     self.training_state = TrainingState.IDLE
 
-    def apply(self, fn: Callable[[nn.Module], None]) -> "ZeroRedundancyLevel3Model":
+    def apply(self, fn: Callable[[nn.Module], None]) -> "ShardedModel":
         """
         Applies ``fn`` recursively to every submodule (as returned by
         ``.children()``) as well as self. Typical use includes initializing the
@@ -888,7 +888,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # init, so we should reset the _is_root flag in this case.
         if is_uninitialized and self._is_root:
             for module in self.modules():
-                if isinstance(module, ZeroRedundancyLevel3Model):
+                if isinstance(module, ShardedModel):
                     module._reset_lazy_init_info()
         return return_value
 
@@ -939,12 +939,12 @@ class ZeroRedundancyLevel3Model(nn.Module):
     @contextlib.contextmanager
     def no_sync(self) -> Generator:
         """
-        A context manager to disable gradient synchronizations across ZeroRedundancyLevel3Model
+        A context manager to disable gradient synchronizations across ShardedModel
         processes. Within this context, gradients will be accumulated on module
         variables, which will later be synchronized in the first
         forward-backward pass after exiting the context.
 
-        .. note:: This likely results in higher memory usage because ZeroRedundancyLevel3Model will
+        .. note:: This likely results in higher memory usage because ShardedModel will
             accumulate the full model gradients (instead of gradient shards)
             until the eventual sync.
 
@@ -953,13 +953,13 @@ class ZeroRedundancyLevel3Model(nn.Module):
             networking overhead.
         """
         self._lazy_init()
-        assert self._is_root, "no_sync on inner ZeroRedundancyLevel3Model is not supported"
+        assert self._is_root, "no_sync on inner ShardedModel is not supported"
         self._assert_state(TrainingState.IDLE)
-        # This instance may wrap other ZeroRedundancyLevel3Model instances and we
+        # This instance may wrap other ShardedModel instances and we
         # need to set all of them to accumulate gradients.
         old_flags = []
         for m in self.modules():  # includes self
-            if isinstance(m, ZeroRedundancyLevel3Model):
+            if isinstance(m, ShardedModel):
                 old_flags.append((m, m._require_backward_grad_sync))
                 m._require_backward_grad_sync = False
         try:
@@ -1066,7 +1066,7 @@ def _post_state_dict_hook(
 ) -> "OrderedDict[str, torch.Tensor]":
     # When state_dict_on_rank_0_only is ``True``, ``model.state_dict()`` will only
     # returns full state dict on rank 0 and return empty dict non-rank 0,
-    # which allow ZeroRedundancyLevel3Model to skip the GPU -> CPU copy on
+    # which allow ShardedModel to skip the GPU -> CPU copy on
     # non-rank 0 altogether and prevent OOM.
     if state_dict_on_rank_0_only and dist.get_rank() != 0:
         state_dict.clear()

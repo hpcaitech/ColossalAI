@@ -8,6 +8,8 @@ from torch.optim import Optimizer
 from .zero_redundancy_optimizer_level_1 import ZeroRedundancyOptimizer_Level_1
 from .zero_redundancy_optimizer_level_2 import ZeroRedundancyOptimizer_Level_2
 from .zero_redundancy_optimizer_level_3 import ZeroRedundancyOptimizer_Level_3
+from .sharded_model import ShardedModel
+from .sharded_optim import ShardedOptimizer
 
 
 def convert_to_zero(model: nn.Module,
