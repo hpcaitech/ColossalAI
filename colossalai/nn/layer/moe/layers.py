@@ -8,7 +8,8 @@ from colossalai.core import global_context as gpc
 from colossalai.global_variables import moe_env
 from colossalai.context import ParallelMode
 from colossalai.utils import get_current_device
-from ._operation import U_CUDA_MODE, AllToAll, MoeDispatch, MoeCombine, moe_cumsum
+from ._operation import U_CUDA_MODE, AllToAll, AllGather, ReduceScatter, MoeDispatch, MoeCombine, moe_cumsum
+from .experts import MoeExperts
 from .utils import autocast_softmax
 
 
@@ -198,7 +199,7 @@ class MoeLayer(nn.Module):
     :type experts: nn.Module
     """
 
-    def __init__(self, dim_model: int, num_experts: int, router: nn.Module, experts: nn.Module):
+    def __init__(self, dim_model: int, num_experts: int, router: nn.Module, experts: MoeExperts):
         super().__init__()
         self.d_model = dim_model
         self.num_experts = num_experts
@@ -207,8 +208,8 @@ class MoeLayer(nn.Module):
         self.experts = experts
         self.cuda_mode = True if U_CUDA_MODE and moe_env.enable_cuda else False
 
-    def expert_part(self, expert_input: torch.Tensor):
-        expert_input = AllToAll.apply(expert_input, ParallelMode.MOE_MODEL)
+    def a2a_process(self, dispatch_data: torch.Tensor):
+        expert_input = AllToAll.apply(dispatch_data, ParallelMode.MOE_MODEL)
 
         input_shape = expert_input.shape
 
@@ -221,24 +222,42 @@ class MoeLayer(nn.Module):
         expert_output = AllToAll.apply(expert_output, ParallelMode.MOE_MODEL)
         return expert_output
 
+    def tp_process(self, dispatch_data: torch.Tensor):
+        expert_in = AllGather.apply(dispatch_data, ParallelMode.MOE_MODEL)
+        expert_out = self.experts(expert_in)
+        expert_out = ReduceScatter.apply(expert_out, ParallelMode.MOE_MODEL)
+        return expert_out
+
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         tokens = inputs.reshape(-1, self.d_model)
         gate_output = self.gate(tokens)
         router_res = self.router(gate_output, self.cuda_mode)
 
         if self.cuda_mode:
-            logits, mask, dest_idx, ec = router_res
-            expert_input = MoeDispatch.apply(tokens, mask, dest_idx, ec)
-            expert_output = self.expert_part(expert_input)
-            ret = MoeCombine.apply(expert_output, logits, mask, dest_idx, ec)
+            dispatch_data = MoeDispatch.apply(tokens, *router_res[1:])
+            dispatch_data = dispatch_data.reshape(self.num_experts, -1, self.d_model)
         else:
-            combine_weights, sec_mask = router_res
-            sec_mask_f = sec_mask.type_as(inputs)
-            expert_input = torch.matmul(sec_mask_f.permute(1, 2, 0), tokens)
-            expert_output = self.expert_part(expert_input)
+            sec_mask_f = router_res[1].type_as(inputs)
+            dispatch_data = torch.matmul(sec_mask_f.permute(1, 2, 0), tokens)
+
+        # dispatch_data [e, c, h]
+        if self.experts.comm == "all_to_all":
+            expert_output = self.a2a_process(dispatch_data)
+        elif self.experts.comm == "all_gather":
+            expert_output = self.tp_process(dispatch_data)
+        else:
+            raise NotImplementedError("This kind of communication has not been implemented yet.\n Please use Experts "
+                                      "build function.")
+        # expert_output [e, c, h]
+
+        if self.cuda_mode:
+            expert_output = expert_output.reshape(-1, self.d_model)
+            ans = MoeCombine.apply(expert_output, *router_res)
+        else:
+            combine_weights = router_res[0]
             combine_weights = combine_weights.view(combine_weights.shape[0], -1)
             expert_output = expert_output.view(-1, expert_output.shape[-1])
-            ret = torch.matmul(combine_weights, expert_output)
+            ans = torch.matmul(combine_weights, expert_output)
 
-        ret = ret.reshape(inputs.shape)
-        return ret
+        ans = ans.reshape(inputs.shape)
+        return ans
