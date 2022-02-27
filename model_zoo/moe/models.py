@@ -4,7 +4,7 @@ import torch.nn as nn
 from colossalai.context import ParallelMode
 from colossalai.nn.layer import VanillaPatchEmbedding, VanillaClassifier, \
     WrappedDropout as Dropout, WrappedDropPath as DropPath
-from colossalai.nn.layer.moe import FFNExperts, MoeLayer, Top2Router, NormalNoiseGenerator
+from colossalai.nn.layer.moe import build_ffn_experts, MoeLayer, Top2Router, NormalNoiseGenerator
 from .util import moe_sa_args, moe_mlp_args
 from ..helper import TransformerLayer
 from colossalai.global_variables import moe_env
@@ -110,7 +110,7 @@ class Widenet(nn.Module):
 
         noisy_func = NormalNoiseGenerator(num_experts)
         shared_router = Top2Router(capacity_factor, noisy_func=noisy_func)
-        shared_experts = FFNExperts(num_experts, d_model, d_ff, drop_rate=drop_rate)
+        shared_experts = build_ffn_experts(num_experts, d_model, d_ff, drop_rate=drop_rate)
 
         # stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path, depth)]
@@ -177,7 +177,7 @@ class ViTMoE(nn.Module):
             ffn = VanillaFFN(**moe_mlp_args(
                 d_model=d_model, d_ff=d_ff, drop_rate=drop_rate)) if i % 2 == 0 else \
                 MoeLayer(dim_model=d_model, num_experts=num_experts, router=router,
-                         experts=FFNExperts(num_experts, d_model, d_ff, drop_rate=drop_rate))
+                         experts=build_ffn_experts(num_experts, d_model, d_ff, drop_rate=drop_rate))
             layer = TransformerLayer(att=sa,
                                      ffn=ffn,
                                      norm1=nn.LayerNorm(d_model, eps=1e-6),
