@@ -23,10 +23,11 @@ from torch.nn.parameter import Parameter
 from ._zero3_utils import (apply_to_tensors, assert_in_engine,
                            cast_float_arguments, cast_trensor_to_fp16,
                            cast_trensor_to_fp32, chunk_and_pad, free_storage,
-                           get_gradient_predivide_factor, get_shard)
+                           get_gradient_predivide_factor, get_shard,
+                           replace_state_dict_prefix)
 from .reduce_scatter import ReduceScatterBucketer
 
-# TODO: Remove the toggle-enable_nccl_base_collectives when github open issue #801 is resolved.
+# TODO: Remove the toggle-enable_nccl_base_collectives in the future
 if os.getenv("ENABLE_NCCL_BASE_COLLECTIVES", "1") == "0":
     enable_nccl_base_collectives = False
 else:
@@ -42,7 +43,6 @@ class TrainingState(Enum):
 
 # TODO: Add clip_grad_norm_
 # TODO: Add gather_full_optim_state_dict and get_shard_from_optim_state_dict
-# TODO: Add offload
 
 
 class ZeroRedundancyLevel3Model(nn.Module):
@@ -105,12 +105,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         self.params: List[Parameter] = []
 
-        # TODO: debug info, to remote
-        self.param_to_name: Dict[Parameter, str] = {}
         for name, param in module.named_parameters():
             if not hasattr(param, 'zero_is_sharded'):
                 self.params.append(param)
-                self.param_to_name[param] = name
 
         self.module = module
 
@@ -127,17 +124,12 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # Enum to indicate if we're in the forward/backward pass, idle, etc.
         self.training_state = TrainingState.IDLE
 
-        # Register hook after state_dict() to remove the "_fsdp_wrapped_module."
+        # Register hook after state_dict() to remove the "_zero3_module."
         # prefix and before load_state_dict() to add it back.
-        # TODO: add
-        # self._register_state_dict_hook(functools.partial(_post_state_dict_hook, self.state_dict_on_rank_0_only))
-        # self._register_load_state_dict_pre_hook(_pre_load_state_dict_hook)
+        self._register_state_dict_hook(functools.partial(_post_state_dict_hook, self.state_dict_on_rank_0_only))
+        self._register_load_state_dict_pre_hook(_pre_load_state_dict_hook)
 
-        # Flag to indicate whether state_dict() should automatically summon the
-        # full params. This defaults to True, but may be set to False if the
-        # user explicitly requests the local state dict via local_state_dict().
-        # TODO(anj): This should by default be set to False for ssd_offload=True
-        # unless we are in the summon_full_params context.
+        # Flag to indicate whether state_dict() should automatically gather the full params.
         self._return_full_state_dict = True
 
         # Flag to guard against preparing gradients multiple times per iteration.
@@ -177,7 +169,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 self.param_manager.free_fp16_shards()
 
         # Switch to main FP32 param shard. We maintain this invariant throughout
-        # the code, i.e., ``p.data == p._fp32_shard`` after each function. This
+        # the code, i.e., ``p.data == p.zero_fp32_shard`` after each function. This
         # also ensures that after the first forward, the optimizer state will be
         # initialized with the correct dtype and (sharded) size, since optimizer
         # state is typically initialized lazily in ``optim.step()``.
@@ -197,8 +189,6 @@ class ZeroRedundancyLevel3Model(nn.Module):
         self.training_state = TrainingState.IDLE
 
         # Only need to clear cache during forward. During backward, the cache is not used.
-        # TODO (Min): Future PyTorch versions may provide a way to completely disable this
-        #     cache. Update this when that's available.
         if self.clear_autocast_cache:
             torch.clear_autocast_cache()
 
@@ -254,7 +244,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             self._wait_for_previous_optim_step()
 
     def _set_is_root(self) -> None:
-        """If ``True``, implies that no other :class:`FullyShardedDataParallel`
+        """If ``True``, implies that no other :class:`ZeroRedundancyLevel3Model`
         instance wraps this one. Called once by :func:`_lazy_init`.
         Also sets self.children_share_process_group = True if all child
         instances share the same process group. If some child instances use a
@@ -262,7 +252,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         """
         if self._is_root is not None:
             return
-        # No FSDP instance wraps this, else _is_root would be set to False.
+        # No Zero3Model instance wraps this, else _is_root would be set to False.
         self._is_root = True
         # If final backward callback is never been queued, state should be IDLE.
         # If final backward callback is queued, the callback should be finished
@@ -278,7 +268,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # `n != ""` excludes self.
             if n != '' and isinstance(m, ZeroRedundancyLevel3Model):
                 # We relax the assert for non-root instance, when the nested inialized module is wrapped
-                # again in FSDP later, for example after training to run inference.
+                # again in ZeroRedundancyLevel3Model later, for example after training to run inference.
                 assert m._is_root is None or not m._is_root
                 if m._is_root is None:
                     m._is_root = False
@@ -329,7 +319,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
     def _wait_for_previous_optim_step(self) -> None:
         """
-        The outer-most :class:`FullyShardedDataParallel` instance (i.e., the root
+        The outer-most :class:`ZeroRedundancyLevel3Model` instance (i.e., the root
         instance) needs to synchronize with the default stream to ensure the
         previous optimizer step is done.
         """
@@ -347,7 +337,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         If *device* or *dtype* are not given, then they will default to
         ``self.compute_device`` and ``self.buffer_dtype``, respectively. In the
-        case of nested FSDP instances, we will respect the child instance's
+        case of nested ZeroRedundancyLevel3Model instances, we will respect the child instance's
         ``compute_device`` and ``buffer_dtype`` configuration.
 
         Args:
@@ -362,7 +352,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             memo = set()
         for module in self.modules():
             if module is not self and isinstance(module, ZeroRedundancyLevel3Model):
-                # Allow any child FSDP instances to handle their own buffers.
+                # Allow any child Zero3Model instances to handle their own buffers.
                 module._cast_buffers(device=device, dtype=dtype, memo=memo)
             elif module not in memo:
                 memo.add(module)
@@ -384,8 +374,12 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 if p.grad.device != p.data.device:
                     p.grad = None
                 elif p.grad.size() == p.zero_orig_size:
-                    # This is gradient accumulation with no_sync context.
-                    pass
+                    if not p.zero_is_sharded:
+                        p.zero_saved_grad = p.grad.data
+                        p.grad = None
+                    else:
+                        # This is gradient accumulation with no_sync context.
+                        pass
                 elif p.grad.size() == p.zero_fp32_shard.shape:
                     # This is gradient accumulation without no_sync context.
                     # We save the grad shard and set p.grad to None for this backward pass.
@@ -448,8 +442,8 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 # Prepare p.grad so that it is in the right shape, device, accumulated values, etc.
                 self._prep_grads_for_backward()
 
-            # Transition to BACKWARD_PRE state if currently IDLE. We can transition from BACKWARD_POST
-            # to IDLE when FSDP is within activation checkpointing and called multiple times, due to the
+            # Transition to PRE_BACKWARD state if currently IDLE. We can transition from POST_BACKWARD
+            # to IDLE when ZeroRedundancyLevel3Model is within activation checkpointing and called multiple times, due to the
             # extra forward pass for re-computation.
             if self.training_state == TrainingState.IDLE:
                 self.training_state = TrainingState.PRE_BACKWARD
@@ -459,13 +453,13 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         def _register_hook(t: torch.Tensor) -> torch.Tensor:
             # We don't register the pre_backward hook on the same tensor that has been
-            # returned from an inner FSDP, unless it is the first one. This does
+            # returned from an inner ZeroRedundancyLevel3Model, unless it is the first one. This does
             # not cover all problematic cases though. A tensor not from an inner
-            # FSDP can cause problems too:
+            # ZeroRedundancyLevel3Model can cause problems too:
             # ```
             #   x = layer1(input)
             #   state = [x]  # better change to x.detach(), not fixed by the following if-condition
-            #   x = inner_fsdp_module_layer2(x)
+            #   x = inner_zero3_module_layer2(x)
             #   state.append(x)  # better change to x.detach(), but fixed by the following if-condition
             #   x = layer3(x)
             #   return x, state
@@ -473,9 +467,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
             # The tensors in `state`, if not detached, can be registered with
             # backward hooks (in addition to the `x` on the last line). In that case,
             # pre-backward hook can fire multiple times in the order that causes
-            # the outer FSDP to crash.
+            # the outer ZeroRedundancyLevel3Model to crash.
             #
-            # The best practice is for modules to be wrapped by FSDP to return 1 and only
+            # The best practice is for modules to be wrapped by ZeroRedundancyLevel3Model to return 1 and only
             # 1 tensor to be used for backward. All other tensors returned should be
             # detached.
             nonlocal _registered
@@ -519,7 +513,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
         forward pass). If we keep the last one, the hook end up firing too
         early. In full precision mode, we luckily get the *same* ``grad_acc``
         object, so deleting and re-registering still ensured the hook fire
-        once after all gradients are generated.
+        once after all gradients are generated. However, we find if we use activation
+        checkpoint in mixed precision mode, hook on ``grad_acc`` object won't be
+        fire for *unknown reason*. So we finally register hook on parameter directly.
 
         Empirically, keep the first hook register per forward pass seems to
         work the best. We do need to remove the hook at the end of the
@@ -563,7 +559,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         The local GPU's ``optim.step`` is responsible for updating a single
         shard of params, also corresponding to the current GPU's rank. This
-        alignment is created by :func:`_shard_parameters_`, which ensures that
+        alignment is created by `param_manager`, which ensures that
         the local optimizer only sees the relevant parameter shard.
         """
         # First hook callback will see PRE state. If we have multiple params,
@@ -575,7 +571,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         assert grad is not None, param.shape
         if grad.requires_grad:
-            raise RuntimeError("FSDP only works with gradients that don't require gradients")
+            raise RuntimeError("ZeroRedundancyLevel3Model only works with gradients that don't require gradients")
 
         if self._require_backward_grad_sync or self.reshard_after_forward:
             # Free full params. As a special case, we don't free the full params
@@ -592,9 +588,8 @@ class ZeroRedundancyLevel3Model(nn.Module):
             self.param_manager.free_fp16_shards([param])
 
         # Switch to FP32 shard after backward.
-        # Cannot modify param.data
+        # Cannot modify param.data, so we switch to FP32 in final backward hook
         # self.param_manager.use_fp32_shards([param])
-        # free_storage(param.data)
 
         if not self._require_backward_grad_sync:
             return
@@ -617,7 +612,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             if param.zero_is_sharded:
                 assert self._reducer is not None
                 # Save the unsharded grad for reduction. We will asynchronously accumulate the reduced gradient into
-                # param._saved_grad_shard. If this FSDP module was called multiple times it's possible that multiple
+                # param.zero_saved_grad_shard. If this ZeroRedundancyLevel3Model module was called multiple times it's possible that multiple
                 # gradient reductions will happen in an undefined order. But addition commutes, so this order doesn't
                 # matter, neglecting rounding.
                 # Clear grad on the tensor, so any repeated gradient computations do not interfere with this reduction.
@@ -677,6 +672,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 param.zero_saved_grad_shard.data += reduced_grad.data
             reduced_grad = param.zero_saved_grad_shard.data
         else:
+            # We can't modify the dtype of grad in this function
+            # So we use `param.zero_saved_grad` to store gradient
+            # This is useful when using mixed precision mode on single node
             if getattr(param, 'zero_saved_grad', None) is None:
                 param.zero_saved_grad = reduced_grad.data
             else:
@@ -690,7 +688,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
             reduced_grad.data.record_stream(torch.cuda.current_stream())
 
     def _register_final_backward_hook(self) -> None:
-        """Try to queue a `wait_for_post_backward` callback.
+        """Try to queue a `_final_backward_hook` callback.
 
         Only called on root and only queue one callback at the beginning of
         outer most backward.
@@ -709,7 +707,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
         # Check if the root module has params and if any of them has
         # the `requires_grad` field set. If `requires_grad=False` for
         # all the params, the post_backward hook will not fire and the
-        # state will remain in `TrainingState.BACKWARD_PRE`.
+        # state will remain in `TrainingState.PRE_BACKWARD`.
         if any([p.requires_grad for p in self.params]):
             self._assert_state(TrainingState.POST_BACKWARD)
         else:
@@ -731,9 +729,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
         if self._reducer is not None:
             self._reducer.free()
 
-        def _finalize_parameters(fsdp_module: ZeroRedundancyLevel3Model) -> None:
-            """Helper used below on all fsdp modules."""
-            for p in fsdp_module.params:
+        def _finalize_parameters(zero_module: ZeroRedundancyLevel3Model) -> None:
+            """Helper used below on all zero3 modules."""
+            for p in zero_module.params:
                 if not p.requires_grad:
                     continue
                 if hasattr(p, "zero_shard_bwd_hook"):
@@ -741,7 +739,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     delattr(p, "zero_shard_bwd_hook")
 
                 # Leave the gradient accumulation state as-is if not synchronizing this pass. This ensures p.grad
-                # remains the unsharded gradient accumulated from prior no-sync passes, and p._saved_grad_shard
+                # remains the unsharded gradient accumulated from prior no-sync passes, and p.zero_saved_grad_shard
                 # remains the sharded gradient from the last synchronized pass. This also allows interleaved no-sync and
                 # sync passes, if desired.
                 if not self._require_backward_grad_sync:
@@ -766,7 +764,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                 if hasattr(p, 'zero_saved_grad'):
                     delattr(p, "zero_saved_grad")
 
-        # Update root and nested FSDP's hooks and flags.
+        # Update root and nested ZeroRedundancyLevel3Model's hooks and flags.
         for m in self.modules():  # includes self
             if isinstance(m, ZeroRedundancyLevel3Model):
                 _finalize_parameters(m)
@@ -775,7 +773,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     # Check if the module has params and if any of them has
                     # the `requires_grad` field set. If `requires_grad=False` for
                     # all the params, the post_backward hook will not fire and the
-                    # state will remain in `TrainingState.BACKWARD_PRE`.
+                    # state will remain in `TrainingState.PRE_BACKWARD`.
                     if any([p.requires_grad for p in m.params]):
                         m._assert_state(TrainingState.POST_BACKWARD)
                     else:
@@ -784,7 +782,7 @@ class ZeroRedundancyLevel3Model(nn.Module):
                     # When `m` and its children has no params or has params but
                     # none with `requires_grad==True`, there are two cases:
                     # 1. output tensors are `requires_grad==True`. In this case,
-                    # pre-backward hook is still registered, so it is in BACKWARD_PRE state.
+                    # pre-backward hook is still registered, so it is in PRE_BACKWARD state.
                     # 2. output tensors are `requires_grad==False`. In this case,
                     # pre-backward hook is not registered, so it is in IDLE state.
                     m._assert_state([TrainingState.PRE_BACKWARD, TrainingState.IDLE])
@@ -804,12 +802,12 @@ class ZeroRedundancyLevel3Model(nn.Module):
     @contextlib.contextmanager
     def gather_full_params(self, recurse: bool = True, volatile: bool = False) -> Generator:
         """
-        A context manager to expose full params for the current FSDP instance.
+        A context manager to expose full params for the current ZeroRedundancyLevel3Model instance.
         Can be useful *after* forward/backward for a model to get the params for
         additional processing or checking. Parameters will be gathered in full
         precision (e.g., FP32).
 
-        .. note:: This can be used on inner FSDPs.
+        .. note:: This can be used on inner ZeroRedundancyLevel3Models.
 
         .. note:: This can *not* be used within a forward or backward pass. Nor
             can forward and backward be started from within this context.
@@ -824,14 +822,14 @@ class ZeroRedundancyLevel3Model(nn.Module):
 
         Args:
             recurse (bool, Optional): recursively summon all params for nested
-                FSDP instances (default: True)
+                ZeroRedundancyLevel3Model instances (default: True)
             volatile (bool, Optional): if ``True``, modifications to params are
                 not guaranteed to persist after the context manager exists;
                 enabling this can be slightly more efficient (default: False)
         """
         if recurse:
             with contextlib.ExitStack() as stack:
-                # Summon all params for any nested FSDP instances.
+                # Summon all params for any nested Zero3Model instances.
                 for module in self.modules():
                     if isinstance(module, ZeroRedundancyLevel3Model):
                         stack.enter_context(module.gather_full_params(recurse=False, volatile=volatile))
@@ -941,12 +939,12 @@ class ZeroRedundancyLevel3Model(nn.Module):
     @contextlib.contextmanager
     def no_sync(self) -> Generator:
         """
-        A context manager to disable gradient synchronizations across FSDP
+        A context manager to disable gradient synchronizations across ZeroRedundancyLevel3Model
         processes. Within this context, gradients will be accumulated on module
         variables, which will later be synchronized in the first
         forward-backward pass after exiting the context.
 
-        .. note:: This likely results in higher memory usage because FSDP will
+        .. note:: This likely results in higher memory usage because ZeroRedundancyLevel3Model will
             accumulate the full model gradients (instead of gradient shards)
             until the eventual sync.
 
@@ -955,9 +953,9 @@ class ZeroRedundancyLevel3Model(nn.Module):
             networking overhead.
         """
         self._lazy_init()
-        assert self._is_root, "no_sync on inner FSDP is not supported"
+        assert self._is_root, "no_sync on inner ZeroRedundancyLevel3Model is not supported"
         self._assert_state(TrainingState.IDLE)
-        # This instance may wrap other FSDP instances and we
+        # This instance may wrap other ZeroRedundancyLevel3Model instances and we
         # need to set all of them to accumulate gradients.
         old_flags = []
         for m in self.modules():  # includes self
@@ -1057,3 +1055,46 @@ class ZeroRedundancyLevel3Model(nn.Module):
             torch.cuda.synchronize()
             self._lazy_init()
             return self.module.load_state_dict(state_dict, strict)
+
+
+def _post_state_dict_hook(
+    state_dict_on_rank_0_only: bool,
+    module: Zero3ParameterManager,
+    state_dict: "OrderedDict[str, torch.Tensor]",
+    prefix: str,
+    *args: Any,
+) -> "OrderedDict[str, torch.Tensor]":
+    # When state_dict_on_rank_0_only is ``True``, ``model.state_dict()`` will only
+    # returns full state dict on rank 0 and return empty dict non-rank 0,
+    # which allow ZeroRedundancyLevel3Model to skip the GPU -> CPU copy on
+    # non-rank 0 altogether and prevent OOM.
+    if state_dict_on_rank_0_only and dist.get_rank() != 0:
+        state_dict.clear()
+        return state_dict
+    # Assuming we are in a ``gather_full_params()`` context, we need to clone
+    # each tensor so that it does not get freed (in-place) when the context
+    # exits. At the same time, this hook can be called multiple times
+    # recursively, so we need to make sure that we only clone each tensor at
+    # most once. Thus we add an attribute on the tensor called "_has_been_cloned"
+    # which keeps track of tensors that are no longer at risk of being freed.
+    for key in state_dict.keys():
+        if not key.startswith(prefix) or getattr(state_dict[key], "_has_been_cloned", False):
+            continue
+        if state_dict[key].device.type != module.state_dict_device.type:
+            state_dict[key] = state_dict[key].to(device=module.state_dict_device)
+            state_dict[key]._has_been_cloned = True
+        elif module.training_state == TrainingState.GATHER_FULL_PARAMS:
+            # We copy the state_dict since full param will be freed after we
+            # exit the ``summon_full_params()`` context.
+            state_dict[key] = state_dict[key].clone()
+            state_dict[key]._has_been_cloned = True
+
+    # Remove "_zero3_module." prefix
+    replace_state_dict_prefix(state_dict, prefix + "_zero3_module.", prefix)
+    return state_dict
+
+
+def _pre_load_state_dict_hook(
+    state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"], prefix: str, *args: Any
+) -> None:
+    replace_state_dict_prefix(state_dict, prefix, prefix + "_zero3_module.")

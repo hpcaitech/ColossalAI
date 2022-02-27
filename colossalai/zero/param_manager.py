@@ -9,7 +9,7 @@ from torch.nn.parameter import Parameter
 
 from ._zero3_utils import alloc_storage, free_storage, get_shard
 
-# TODO: Remove the toggle-enable_nccl_base_collectives when github open issue #801 is resolved.
+# TODO: Remove the toggle-enable_nccl_base_collectives in the future
 if os.getenv("ENABLE_NCCL_BASE_COLLECTIVES", "1") == "0":
     enable_nccl_base_collectives = False
 else:
@@ -28,6 +28,40 @@ class Zero3ParameterManager:
                  compute_device: Optional[torch.device] = None,
                  offload_config: Optional[dict] = None
                  ) -> None:
+        """Manage parameter shards. We manage several attributes on each Parameter instance:
+            ``zero_is_sharded``: ``True`` if the Parameter is sharded or ``False``
+                if the Parameter is intentionally not sharded (in which case we
+                will all-reduce grads for this param).
+            ``zero_orig_size``: the size of the original Parameter (before sharding)
+            ``zero_shard_padding``: the padding size. All paddings are right padding.
+            ``zero_fp32_shard``: a single shard of the parameters in full precision
+                (typically FP32, but this is dependent on the dtype of the model
+                as it's passed in by the user). This can be on CPU or GPU
+                depending on the value of *``offload_config``*.
+            ``zero_fp16_shard``: This will be a single shard of the parameters in FP16, used for all-gather.
+                This can be in FP16 or FP32 depending on the value of *``compute_dtype``* and
+                if params are offloaded to CPU.
+            ``zero_full_param_padded``: the full weight (padded to be evenly
+                divisible by ``world_size``), used for computation in the
+                forward and backward pass. This will be resized in place and
+                only materialized (via all-gather) as needed.
+            ``zero_cpu_grad``: the gradient saved on CPU. It's set only when using CPU offload.
+
+        :param module: original module
+        :type module: nn.Module
+        :param process_group: typically data parallel process group, defaults to None
+        :type process_group: Optional[ProcessGroup], optional
+        :param mixed_precision: whether to use mixed precision mode, defaults to False
+        :type mixed_precision: bool, optional
+        :param flatten_parameters: whether to flatten parameters, useless now, defaults to True
+        :type flatten_parameters: bool, optional
+        :param compute_dtype: the dtype of parameters when computing, defaults to None
+        :type compute_dtype: Optional[torch.dtype], optional
+        :param compute_device: the device of parameters when computing, defaults to None
+        :type compute_device: Optional[torch.device], optional
+        :param offload_config: offload config, defaults to None
+        :type offload_config: Optional[dict], optional
+        """
         self.process_group = process_group
         self.shard_idx = process_group.rank()
         self.num_shards = process_group.size()
@@ -76,27 +110,7 @@ class Zero3ParameterManager:
 
     @torch.no_grad()
     def reset_param_attr(self, p: Parameter, training: bool) -> None:
-        """
-        We manage several attributes on each Parameter instance. The first two
-        are set by :func:`_shard_parameters_`:
-
-            ``_is_sharded``: ``True`` if the Parameter is sharded or ``False``
-                if the Parameter is intentionally not sharded (in which case we
-                will all-reduce grads for this param).
-            ``_orig_size``: the size of the original Parameter (before sharding)
-
-        The remaining attributes are set here:
-            ``_fp32_shard``: a single shard of the parameters in full precision
-                (typically FP32, but this is dependent on the dtype of the model
-                as it's passed in by the user). This can be on CPU or GPU
-                depending on the value of *``move_params_to_cpu``*.
-            ``_fp16_shard``: This will be a single shard of the parameters in FP16, used for all-gather.
-                This can be in FP16 or FP32 depending on the value of *``compute_dtype``* and
-                if params are offloaded to CPU.
-            ``_full_param_padded``: the full weight (padded to be evenly
-                divisible by ``world_size``), used for computation in the
-                forward and backward pass. This will be resized in place and
-                only materialized (via all-gather) as needed.
+        """This should be called by ``ZeroRedundancyLevel3Model._lazy_init()``
         """
         assert hasattr(p, 'zero_is_sharded') and hasattr(p, 'zero_orig_size')
         if hasattr(p, 'zero_fp32_shard'):
@@ -206,7 +220,7 @@ class Zero3ParameterManager:
 
         if self._has_sharded_params:
             # self.has_full_params flag can be out of sync if a shared param is
-            # sharded by another FSDP instance. An example is that in eval case
+            # sharded by another ZeroRedundancyLevel3Model instance. An example is that in eval case
             # with reshard_after_forward=False but the sharing instance has
             # reshard_after_forward=True. Then, on the second forward, the
             # other instance can shard the shared param and but this instance
@@ -243,7 +257,7 @@ class Zero3ParameterManager:
                     update_p_data()
                 else:
                     # Skip if already built. Only shared param can be rebuilt multiple times.
-                    # A corner case is p._orig_size = (1,), which means the shape equality is
+                    # A corner case is p.zero_orig_size = (1,), which means the shape equality is
                     # not a perfect check. But we assume we don't share a param with shape (1,).
                     # if p.data.shape == p.zero_orig_size and hasattr(p, "zero_is_shared") and p.zero_is_shared:
                     #     continue
@@ -360,7 +374,7 @@ class Zero3ParameterManager:
         current_stream = torch.cuda.current_stream()
         for p in params:
             if p.zero_fp16_shard is not None:
-                # _fp16_shard is allocated in "fp32_to_fp16" stream, so we can't
+                # zero_fp16_shard is allocated in "fp32_to_fp16" stream, so we can't
                 # free it until the work in the current stream completes.
                 p.zero_fp16_shard.record_stream(current_stream)
                 free_storage(p.zero_fp16_shard)

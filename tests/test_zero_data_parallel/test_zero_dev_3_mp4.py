@@ -44,36 +44,50 @@ class Net(nn.Module):
         return x
 
 
-def run_step(model, fp16, x):
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+def run_step(model, optimizer, x, enable_autocast=False):
     model.train()
     optimizer.zero_grad()
-    with torch.cuda.amp.autocast(enabled=fp16):
+    with torch.cuda.amp.autocast(enabled=enable_autocast):
         y = model(x)
         loss = y.sum()
+    loss = loss.float()
     loss.backward()
     optimizer.step()
-    grads = []
-    for p in model.parameters():
-        grad = p.grad.clone()
-        if hasattr(p, 'zero_shard_padding') and p.zero_shard_padding > 0:
-            grad = grad[:-p.zero_shard_padding]
-        grads.append(grad)
-    return grads
 
 
-def check_grads(grads_a, grads_b, offload=False):
+def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
+    if loose:
+        return torch.allclose(tensor_a, tensor_b, atol=1e-3, rtol=1e-3)
+    return torch.allclose(tensor_a, tensor_b)
+
+
+def check_grads(model, zero_model, loose=False):
     rank = dist.get_rank()
-    for i, g_a in enumerate(grads_a):
-        g_b = grads_b[i]
-        if offload:
-            g_b = g_b.cuda()
-        chunks = torch.flatten(g_a).chunk(4)
+    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
+        zero_grad = zero_p.grad.clone().to(p.device)
+        chunks = torch.flatten(p.grad).chunk(4)
         if rank >= len(chunks):
             continue
-        g_a = chunks[rank]
-        assert g_a.dtype == g_b.dtype
-        assert torch.allclose(g_a, g_b)
+        grad = chunks[rank]
+        if zero_p.zero_shard_padding > 0:
+            zero_grad = zero_grad[:-zero_p.zero_shard_padding]
+        assert grad.dtype == zero_grad.dtype
+        assert allclose(grad, zero_grad, loose=loose)
+
+
+def check_params(model, zero_model, loose=False):
+    rank = dist.get_rank()
+    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
+        zero_shard_padding = zero_p.zero_shard_padding
+        zero_p = zero_p.clone().to(p.device)
+        chunks = torch.flatten(p).chunk(4)
+        if rank >= len(chunks):
+            continue
+        p = chunks[rank]
+        if zero_shard_padding > 0:
+            zero_p = zero_p[:-zero_shard_padding]
+        assert p.dtype == zero_p.dtype
+        assert allclose(p, zero_p, loose=loose)
 
 
 def decode_booleans(intval, bits):
@@ -94,11 +108,21 @@ def check_config(checkpoint=False, fp16=False, offload=False):
         offload_config['device'] = 'cpu'
         zero_model = zero_model.cpu()
     zero_model = ZeroRedundancyLevel3Model(zero_model, mixed_precision=fp16, offload_config=offload_config)
-    for _ in range(3):
+
+    optimizer = torch.optim.Adam(ddp_model.parameters(), lr=1e-3)
+    zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1e-3)
+    for _ in range(5):
         x = torch.rand(2, 5).cuda()
-        grads = run_step(ddp_model, fp16, x)
-        zero_grads = run_step(zero_model, fp16, x)
-        check_grads(grads, zero_grads, offload=offload)
+        run_step(ddp_model, optimizer, x, enable_autocast=fp16)
+        run_step(zero_model, zero_optimizer, x, enable_autocast=fp16)
+        check_grads(ddp_model, zero_model)
+        check_params(ddp_model, zero_model)
+    for _ in range(5):
+        x = torch.rand(2, 5).cuda()
+        run_step(ddp_model, optimizer, x, enable_autocast=False)
+        run_step(zero_model, zero_optimizer, x, enable_autocast=False)
+        check_grads(ddp_model, zero_model, loose=True)
+        check_params(ddp_model, zero_model, loose=True)
 
 
 def run_dist(rank, world_size, port):
