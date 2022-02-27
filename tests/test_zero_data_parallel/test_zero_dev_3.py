@@ -11,7 +11,7 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 from colossalai.logging import disable_existing_loggers
 from colossalai.utils import checkpoint, free_port
-from colossalai.zero.zero_stage3_develop import ZeroRedundancyLevel3Model
+from colossalai.zero.sharded_model import ShardedModel
 
 
 def checkpoint_wrapper(module, enable=True):
@@ -89,7 +89,7 @@ def check_config(checkpoint=False, fp16=False, offload=False):
     if offload:
         offload_config['device'] = 'cpu'
         zero_model = zero_model.cpu()
-    zero_model = ZeroRedundancyLevel3Model(zero_model, mixed_precision=fp16, offload_config=offload_config)
+    zero_model = ShardedModel(zero_model, mixed_precision=fp16, offload_config=offload_config)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=1e-3)
