@@ -1,7 +1,6 @@
 import math
-from typing import Callable, Optional
+from typing import Callable
 
-from colossalai.nn.layer.parallel_1d.layers import Classifier1D
 from colossalai.utils import get_current_device
 from torch import dtype, nn
 
@@ -16,11 +15,18 @@ from ..vanilla import *
 _parallel_linear = {'1d': Linear1D, '2d': Linear2D, '2.5d': Linear2p5D, '3d': Linear3D}
 
 _parallel_classifier = {
-    'None': VanillaClassifier,
+    None: VanillaClassifier,
     '1d': Classifier1D,
     '2d': Classifier2D,
     '2.5d': Classifier2p5D,
     '3d': Classifier3D
+}
+
+_vocab_parallel_classifier = {
+    '1d': VocabParallelClassifier1D,
+    '2d': VocabParallelClassifier2D,
+    '2.5d': VocabParallelClassifier2p5D,
+    '3d': VocabParallelClassifier3D
 }
 
 
@@ -40,8 +46,9 @@ class Linear(nn.Module):
     :type weight_initializer: typing.Callable, optional
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
-    :param kwargs: Kwargs used for initialization
+    :param kwargs: Kwargs used for particular parallelisms
     """
+
     def __init__(self,
                  in_features: int,
                  out_features: int,
@@ -52,10 +59,10 @@ class Linear(nn.Module):
                  **kwargs) -> None:
         super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
-        if tensor_parallel == 'None':
-            self.layer = nn.Linear(in_features, out_features, bias=bias, device=get_current_device(), dtype=dtype)
+        if tensor_parallel is None:
+            self.layer = nn.Linear(in_features, out_features, bias=bias).to(dtype).to(get_current_device())
             weight_initializer(self.layer.weight, fan_in=in_features, fan_out=out_features)
-            if bias:
+            if self.layer.bias is not None:
                 bias_initializer(self.layer.bias, fan_in=in_features)
         else:
             self.layer = _parallel_linear[tensor_parallel](
@@ -97,26 +104,38 @@ class Classifier(nn.Module):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
-    def __init__(
-        self,
-        in_features: int,
-        num_classes: int,
-        weight: nn.Parameter = None,
-        bias: bool = True,
-        dtype: dtype = None,
-        weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-        bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)
-    ) -> None:
+
+    def __init__(self,
+                 in_features: int,
+                 num_classes: int,
+                 weight: nn.Parameter = None,
+                 bias: bool = True,
+                 dtype: dtype = None,
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 vocab_parallel_limit: int = 2048) -> None:
         super().__init__()
-        self.layer = _parallel_classifier[get_tensor_parallel_mode()](
-            in_features,
-            num_classes,
-            weight=weight,
-            bias=bias,
-            dtype=dtype,
-            weight_initializer=weight_initializer,
-            bias_initializer=bias_initializer,
-        )
+        tensor_parallel = get_tensor_parallel_mode()
+        if num_classes <= vocab_parallel_limit or tensor_parallel is None:
+            self.layer = _parallel_classifier[tensor_parallel](
+                in_features,
+                num_classes,
+                weight=weight,
+                bias=bias,
+                dtype=dtype,
+                weight_initializer=weight_initializer,
+                bias_initializer=bias_initializer,
+            )
+        else:
+            self.layer = _vocab_parallel_classifier[tensor_parallel](
+                in_features,
+                num_classes,
+                weight=weight,
+                bias=bias,
+                dtype=dtype,
+                weight_initializer=weight_initializer,
+                bias_initializer=bias_initializer,
+            )
 
     @property
     def weight(self):

@@ -1,7 +1,6 @@
-from typing import Optional
-
 from colossalai.utils import get_current_device
 from torch import nn
+from colossalai import kernel
 
 from ... import init as init
 from ..parallel_1d import *
@@ -11,7 +10,12 @@ from ..parallel_3d import *
 from ..utils import get_tensor_parallel_mode
 from ..vanilla import *
 
-_parallel_layernorm = {'2d': LayerNorm2D, '2.5d': LayerNorm2p5D, '3d': LayerNorm3D}
+_parallel_layernorm = {
+    '1d': kernel.LayerNorm,
+    '2d': LayerNorm2D,
+    '2.5d': LayerNorm2p5D,
+    '3d': LayerNorm3D
+}
 
 
 class LayerNorm(nn.Module):
@@ -28,11 +32,12 @@ class LayerNorm(nn.Module):
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     """
+
     def __init__(self, normalized_shape: int, eps=1e-05, dtype=None) -> None:
         super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
-        if tensor_parallel in ['None', '1d']:
-            self.norm = nn.LayerNorm(normalized_shape, eps=eps, device=get_current_device(), dtype=dtype)
+        if tensor_parallel is None:
+            self.norm = nn.LayerNorm(normalized_shape, eps=eps).to(dtype).to(get_current_device())
         else:
             self.norm = _parallel_layernorm[tensor_parallel](normalized_shape, eps=eps, dtype=dtype)
 

@@ -3,14 +3,14 @@ from typing import Callable
 
 import torch
 import torch.nn.functional as F
+from colossalai.context import seed
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils import get_current_device
-from torch import Tensor, dtype
+from colossalai.utils.cuda import get_current_device
+from torch import Tensor
 from torch import nn as nn
 
 from ..utils import to_2tuple
-from colossalai.context import seed
 
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
@@ -36,6 +36,7 @@ class DropPath(nn.Module):
     Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     Adapted from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers/drop.py
     """
+
     def __init__(self, drop_prob=None):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
@@ -47,6 +48,7 @@ class DropPath(nn.Module):
 class WrappedDropout(nn.Module):
     """Same as torch.nn.Dropout. But it is wrapped with the context of seed manager.
     """
+
     def __init__(self, p: float = 0.5, inplace: bool = False, mode=None):
         super().__init__()
         if p < 0 or p > 1:
@@ -75,6 +77,7 @@ class WrappedDropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     Here, it is wrapped with the context of seed manager.
     """
+
     def __init__(self, p: float = 0., mode=None):
         super().__init__()
         self.p = p
@@ -120,13 +123,14 @@ class VanillaPatchEmbedding(nn.Module):
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  img_size: int,
                  patch_size: int,
                  in_chans: int,
                  embed_size: int,
-                 dtype: dtype = None,
                  flatten: bool = True,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
                  position_embed_initializer: Callable = init.zeros_()):
@@ -142,8 +146,9 @@ class VanillaPatchEmbedding(nn.Module):
         self.weight = nn.Parameter(
             torch.empty((embed_size, in_chans, *self.patch_size), device=get_current_device(), dtype=dtype))
         self.bias = nn.Parameter(torch.empty(embed_size, device=get_current_device(), dtype=dtype))
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_size))
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_size))
+        self.cls_token = nn.Parameter(torch.zeros((1, 1, embed_size), device=get_current_device(), dtype=dtype))
+        self.pos_embed = nn.Parameter(
+            torch.zeros((1, self.num_patches + 1, embed_size), device=get_current_device(), dtype=dtype))
 
         self.reset_parameters(weight_initializer, bias_initializer, position_embed_initializer)
 
@@ -170,7 +175,7 @@ class VanillaPatchEmbedding(nn.Module):
 @LAYERS.register_module
 class VanillaClassifier(nn.Module):
     """
-    Classifier for ViT
+    Dense linear classifier
 
     :param in_features: size of each input sample
     :type in_features: int
@@ -187,12 +192,13 @@ class VanillaClassifier(nn.Module):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     """
+
     def __init__(self,
                  in_features: int,
                  num_classes: int,
                  weight: nn.Parameter = None,
                  bias: bool = True,
-                 dtype: dtype = None,
+                 dtype: torch.dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()

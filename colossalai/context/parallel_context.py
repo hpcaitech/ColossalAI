@@ -8,14 +8,15 @@ from typing import Union
 import numpy as np
 import torch
 import torch.distributed as dist
-from colossalai.constants import ALLOWED_MODES, INITIALIZER_MAPPING, TENSOR_PARALLEL_MODE
+from colossalai.constants import ALLOWED_MODES, INITIALIZER_MAPPING
 from colossalai.context.config import Config
+from colossalai.global_variables import moe_env
+from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.logging import get_dist_logger
 from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from .parallel_mode import ParallelMode
 from .random import add_seed, get_seeds, set_mode
-from colossalai.global_variables import moe_env
 
 
 class ParallelContext:
@@ -307,7 +308,6 @@ class ParallelContext:
                          port: int
                          ):
         """Initializes the global distributed environment
-
         :param rank: rank for the default process group
         :type rank: int
         :param world_size: world size of the default process group
@@ -389,7 +389,8 @@ class ParallelContext:
         if parallel_config is not None and 'tensor' in parallel_config and 'mode' in parallel_config['tensor']:
             tensor_parallel_mode = parallel_config['tensor']['mode']
         assert tensor_parallel_mode in ALLOWED_MODES, f"mode in the parallel config must be set to one of {ALLOWED_MODES}"
-        os.environ[TENSOR_PARALLEL_MODE] = str(tensor_parallel_mode)
+        env.mode = tensor_parallel_mode
+        
         self.check_sanity()
 
         pg_init = []
