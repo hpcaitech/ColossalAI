@@ -23,6 +23,7 @@ def checkpoint_wrapper(module, enable=True):
 class Net(nn.Module):
     def __init__(self, checkpoint=False) -> None:
         super().__init__()
+        self.emb = nn.Embedding(123, 5)
         self.fc1 = nn.Linear(5, 5)
         self.fc2 = nn.Linear(5, 5)
         self.fc3 = nn.Linear(5, 1)

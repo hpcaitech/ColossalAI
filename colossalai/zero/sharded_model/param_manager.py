@@ -21,7 +21,7 @@ else:
 class Zero3ParameterManager:
     def __init__(self,
                  module: nn.Module,
-                 process_group: Optional[ProcessGroup] = None,
+                 process_group: Optional[ProcessGroup],
                  mixed_precision: bool = False,
                  flatten_parameters: bool = True,
                  compute_dtype: Optional[torch.dtype] = None,
