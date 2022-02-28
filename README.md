@@ -37,21 +37,27 @@ distributed training in a few lines.
 ## Examples
 ### ViT
 
-<img src="./docs/images/ViT_TP.png" width="400" />
+<img src="./docs/images/update/vit.png" width="450" />
 
 - 14x larger batch size
 - 5x faster training
 
-### GPT-3 & GPT-2
+### GPT-3
 
-![GPT_2_3](./docs/images/GPT_2_3.png)
+<img src="./docs/images/allinone/GPT3_allin1.png" width=700/>
 
 - Free 50% GPU resources, or 10.7% acceleration for GPT-3
+
+### GPT-2
+<img src="./docs/images/allinone/GPT2_allin1.png" width=800/>
+
 - 11x lower GPU RAM, or superlinear scaling for GPT-2
 
-### BERT
 
-![BERT_seq](./docs/images/BERT_seq.png)
+
+### BERT
+<img src="./docs/images/allinone/BERT_allin1.png" width=800/>
+
 
 - 2x faster training
 - 50% longer sequence length
