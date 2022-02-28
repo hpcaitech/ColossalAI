@@ -37,30 +37,25 @@ distributed training in a few lines.
 ## Examples
 ### ViT
 
-<img src="./docs/images/update/vit.png" width="450" />
+<img src="./docs/images/ViT.png" width="450" />
 
-- 14x larger batch size
-- 5x faster training
+- 14x larger batch size, and 5x faster training for Tensor Parallel = 64
 
 ### GPT-3
 
-<img src="./docs/images/allinone/GPT3_allin1.png" width=700/>
+<img src="./docs/images/GPT3.png" width=700/>
 
-- Free 50% GPU resources, or 10.7% acceleration for GPT-3
+- Free 50% GPU resources, or 10.7% acceleration
 
 ### GPT-2
-<img src="./docs/images/allinone/GPT2_allin1.png" width=800/>
+<img src="./docs/images/GPT2.png" width=800/>
 
-- 11x lower GPU RAM, or superlinear scaling for GPT-2
-
-
+- 11x lower GPU RAM, or superlinear scaling
 
 ### BERT
-<img src="./docs/images/allinone/BERT_allin1.png" width=800/>
+<img src="./docs/images/BERT.png" width=800/>
 
-
-- 2x faster training
-- 50% longer sequence length
+- 2x faster training, or 50% longer sequence length
 
 Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
 
@@ -205,6 +200,12 @@ class MLP_2D(nn.Module):
         return x
 
 ```
+
+## Community
+
+Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
+[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+and [WeChat](./docs/images/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
 
 
 ## Cite Us
