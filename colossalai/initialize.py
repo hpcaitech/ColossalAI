@@ -26,6 +26,7 @@ from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.global_variables import moe_env
+from colossalai.engine.ophooks import register_ophooks_recursively, BaseOpHook
 
 
 def get_default_parser():
@@ -227,6 +228,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                train_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
                test_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
                lr_scheduler: _LRScheduler = None,
+               ophook_list: List[BaseOpHook] = [],
                verbose: bool = True
                ) -> Tuple[Engine, DataLoader, DataLoader, _LRScheduler]:
     """Core function to wrap the essential training components with our functionality based on the config which is
@@ -411,7 +413,8 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         optimizer=optimizer,
         criterion=criterion,
         gradient_handlers=gradient_handlers,
-        clip_grad_norm=clip_grad_norm
+        clip_grad_norm=clip_grad_norm,
+        hooks=ophook_list
     )
 
     return engine, train_dataloader, test_dataloader, lr_scheduler
