@@ -10,6 +10,8 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-python@v2
+      with:
+        python-version: '3.7.4'
     # publish to PyPI if executed on the main branch
     # publish to Test PyPI if executed on the develop branch
     - name: Publish package to Test PyPI
@@ -18,9 +20,11 @@ jobs:
       with:
         user: __token__
         password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        verbose: true
     - name: Publish package to PyPI
       if: github.base_ref == 'main'
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
+        verbose: true

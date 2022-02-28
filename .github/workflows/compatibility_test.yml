@@ -1,0 +1,49 @@
+name: Compatibility Test
+
+# set to pull_request for testing purpose
+# will change to workflow_dispatch when PR to develop
+on: pull_request
+
+jobs:
+  build:
+    name: Test for PyTorch compatibility
+    # comment for now, will uncomment when PR to develop
+    # if: (github.base_ref == 'main'  || github.base_ref == 'develop') && github.repository == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.07: PyTorch 1.6.0a0+9907a3e + Python 3.6
+        # 20.10: PyTorch 1.7.0a0+7036e91 + Python 3.8
+        # 20.12: PyTorch 1.8.0a0+1606899 + Python 3.8
+        # 21.06: PyTorch 1.9.0a0+c3d40fd + Python 3.8
+        container: ["nvcr.io/nvidia/pytorch:20.07-py3", 
+                    "nvcr.io/nvidia/pytorch:20.10-py3", 
+                    "nvcr.io/nvidia/pytorch:20.12-py3", 
+                    "nvcr.io/nvidia/pytorch:21.06-py3"]
+    container:
+      image: ${{ matrix.container }}
+      options: --gpus all --rm --ipc=host -v /data/scratch/cifar-10:/data/scratch/cifar-10
+    timeout-minutes: 180
+    steps:
+      - name: Setup Environment
+        run: |
+          export https_proxy=http://172.17.0.1:7890 http_proxy=http://172.17.0.1:7890 all_proxy=socks5://172.17.0.1:7890
+      - name: Install dependencies
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip install -U pip setuptools wheel --user
+          pip install pytest tensorboard deepspeed apex
+      - uses: actions/checkout@v2
+      - name: Install Colossal-AI      
+        run: |
+          pip install -r requirements/requirements.txt
+          pip install -v --no-cache-dir .
+      - name: Unit Testing
+        run: |
+          pytest tests
+        env:
+          DATA: /data/scratch/cifar-10
+      
+
+
