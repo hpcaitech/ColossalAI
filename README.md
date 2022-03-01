@@ -7,19 +7,81 @@
    <a href="https://www.colossalai.org/"> Documentation </a> | 
    <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
-   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
-   
+   <a href="https://medium.com/@hpcaitech"> Blog </a></h3> 
+   <br/>
+
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
+
+   | [English](README.md) | [中文](README-zh-Hans.md) |
 </div>
 An integrated large-scale model training system with efficient parallelization techniques.
 
+
+## Features
+
+Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
+distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
+distributed training in a few lines.
+
+- Data Parallelism
+- Pipeline Parallelism
+- 1D, 2D, 2.5D, 3D tensor parallelism
+- Sequence parallelism
+- Friendly trainer and engine
+- Extensible for new parallelism
+- Mixed Precision Training
+- Zero Redundancy Optimizer (ZeRO)
+
+## Examples
+### ViT
+
+<img src="./docs/images/ViT.png" width="450" />
+
+- 14x larger batch size, and 5x faster training for Tensor Parallel = 64
+
+### GPT-3
+
+<img src="./docs/images/GPT3.png" width=700/>
+
+- Free 50% GPU resources, or 10.7% acceleration
+
+### GPT-2
+<img src="./docs/images/GPT2.png" width=800/>
+
+- 11x lower GPU RAM, or superlinear scaling
+
+### BERT
+<img src="./docs/images/BERT.png" width=800/>
+
+- 2x faster training, or 50% longer sequence length
+
+Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
+
+
 ## Installation
 
-### Install From Source (Recommended)
+### PyPI
 
-> We **recommend** you to install from source as the Colossal-AI is updating frequently in the early versions. The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+```bash
+pip install colossalai
+```
+This command will install CUDA extension if your have installed CUDA, NVCC and torch. 
+
+If you don't want to install CUDA extension, you should add `--global-option="--no_cuda_ext"`, like:
+```bash
+pip install colossalai --global-option="--no_cuda_ext"
+```
+
+If you want to use `ZeRO`, you can run:
+```bash
+pip install colossalai[zero]
+```
+
+### Install From Source
+
+> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -31,18 +93,11 @@ pip install -r requirements/requirements.txt
 pip install .
 ```
 
-Install and enable CUDA kernel fusion (compulsory installation when using fused optimizer)
+If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
 
 ```shell
-pip install -v --no-cache-dir --global-option="--cuda_ext" .
+pip install --global-option="--no_cuda_ext" .
 ```
-
-### PyPI
-
-```bash
-pip install colossalai
-```
-
 
 ## Use Docker
 
@@ -58,6 +113,11 @@ Run the following command to start the docker container in interactive mode.
 ```bash
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
+
+## Contributing
+
+If you wish to contribute to this project, you can follow the guideline in [Contributing](./CONTRIBUTING.md)
+
 
 ## Quick View
 
@@ -91,13 +151,13 @@ train_dataloader = get_dataloader(dataset=dataset,
                                 )
 
 
-# build your
+# build your optimizer
 optimizer = ...
 
 # build your loss function
 criterion = ...
 
-# build your lr_scheduler
+# initialize colossalai
 engine, train_dataloader, _, _ = colossalai.initialize(
     model=model,
     optimizer=optimizer,
@@ -141,21 +201,12 @@ class MLP_2D(nn.Module):
 
 ```
 
-## Features
+## Community
 
-Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
-distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
-distributed training in a few lines.
+Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
+[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+and [WeChat](./docs/images/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
 
-- Data Parallelism
-- Pipeline Parallelism
-- 1D, 2D, 2.5D, 3D and sequence parallelism
-- Friendly trainer and engine
-- Extensible for new parallelism
-- Mixed Precision Training
-- Zero Redundancy Optimizer (ZeRO)
-
-Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
 
 ## Cite Us
 

@@ -1,34 +1,31 @@
 import math
-import os
 
 import torch.distributed as dist
 
-from colossalai.constants import SUMMA_DIM
 from colossalai.registry import DIST_GROUP_INITIALIZER
 from .process_group_initializer import ProcessGroupInitializer
 from ..parallel_mode import ParallelMode
+from colossalai.global_variables import tensor_parallel_env as env
 
 
 def _check_summa_env_var(summa_dim):
     # check environment variable for SUMMA
-    env_summa_dim = os.environ.get(SUMMA_DIM, None)
+    env_summa_dim = env.summa_dim
 
     if env_summa_dim:
         assert int(env_summa_dim) == summa_dim, \
             'SUMMA_DIM has been set in the current environment and ' \
             'does not match with the value passed to this initialized'
     else:
-        os.environ[SUMMA_DIM] = str(summa_dim)
+        env.summa_dim = summa_dim
 
 
 class Initializer_2D_Row(ProcessGroupInitializer):
     """2d tensor parallel initialization among rows.
-
     :param num_group: The number of all tensor groups
     :param summa_dim: The dimension of SUMMA
     :param args: Args used to initialize base class
     :param kwargs: Kwargs used to initialize base class
-
     :type num_group: int
     :type summa_dim: int
     """
@@ -132,7 +129,7 @@ class Initializer_2D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 2D tensor row and col parallel groups, and assign local_ranks and groups to each gpu.
-
+        
         :return: 2D tensor parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """

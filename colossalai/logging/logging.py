@@ -8,7 +8,6 @@ from typing import Union
 
 from colossalai.context.parallel_mode import ParallelMode
 
-
 _FORMAT = 'colossalai - %(name)s - %(asctime)s %(levelname)s: %(message)s'
 logging.basicConfig(level=logging.INFO, format=_FORMAT)
 
@@ -39,7 +38,8 @@ class DistributedLogger:
 
     def __init__(self, name):
         if name in DistributedLogger.__instances:
-            raise Exception('Logger with the same name has been created, you should use colossalai.logging.get_dist_logger')
+            raise Exception(
+                'Logger with the same name has been created, you should use colossalai.logging.get_dist_logger')
         else:
             self._name = name
             self._logger = logging.getLogger(name)
@@ -58,11 +58,7 @@ class DistributedLogger:
         self._check_valid_logging_level(level)
         self._logger.setLevel(getattr(logging, level))
 
-    def log_to_file(self,
-                    path: Union[str, Path],
-                    mode: str = 'a',
-                    level: str = 'INFO',
-                    suffix: str = None):
+    def log_to_file(self, path: Union[str, Path], mode: str = 'a', level: str = 'INFO', suffix: str = None):
         """Save the logs to file
 
         :param path: The file to save the log
@@ -77,8 +73,12 @@ class DistributedLogger:
         assert isinstance(path, (str, Path)), \
             f'expected argument path to be type str or Path, but got {type(path)}'
         self._check_valid_logging_level(level)
+
         if isinstance(path, str):
             path = Path(path)
+
+        # create log directory
+        path.mkdir(parents=True, exist_ok=True)
 
         # set the default file name if path is a directory
         if not colossalai.core.global_context.is_initialized(ParallelMode.GLOBAL):
