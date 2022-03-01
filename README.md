@@ -7,8 +7,9 @@
    <a href="https://www.colossalai.org/"> Documentation </a> | 
    <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
-   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
-   
+   <a href="https://medium.com/@hpcaitech"> Blog </a></h3> 
+   <br/>
+
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
@@ -17,9 +18,26 @@ An integrated large-scale model training system with efficient parallelization t
 
 ## Installation
 
-### Install From Source (Recommended)
+### PyPI
 
-> We **recommend** you to install from source as the Colossal-AI is updating frequently in the early versions. The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+```bash
+pip install colossalai
+```
+This command will install CUDA extension if your have installed CUDA, NVCC and torch. 
+
+If you don't want to install CUDA extension, you should add `--global-option="--no_cuda_ext"`, like:
+```bash
+pip install colossalai --global-option="--no_cuda_ext"
+```
+
+If you want to use `ZeRO`, you can run:
+```bash
+pip install colossalai[zero]
+```
+
+### Install From Source
+
+> The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -31,18 +49,11 @@ pip install -r requirements/requirements.txt
 pip install .
 ```
 
-Install and enable CUDA kernel fusion (compulsory installation when using fused optimizer)
+If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
 
 ```shell
-pip install -v --no-cache-dir --global-option="--cuda_ext" .
+pip install --global-option="--no_cuda_ext" .
 ```
-
-### PyPI
-
-```bash
-pip install colossalai
-```
-
 
 ## Use Docker
 
@@ -58,6 +69,11 @@ Run the following command to start the docker container in interactive mode.
 ```bash
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
+
+## Contributing
+
+If you wish to contribute to this project, you can follow the guideline in [Contributing](./CONTRIBUTING.md)
+
 
 ## Quick View
 

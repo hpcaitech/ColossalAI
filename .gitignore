@@ -137,8 +137,4 @@ dmypy.json
 .DS_Store
 #data/
 
-# launcher setting
-tests/launcher/log
-tests/launcher/personal
-
 docs/.build

@@ -1,5 +1,5 @@
 import torch
-from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d
+from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_tensor_2d
 from torch import nn
 
 from ._utils import calc_acc
@@ -18,6 +18,7 @@ class Accuracy2D(nn.Module):
         :param targets: True labels from data
         """
         with torch.no_grad():
+            targets = split_tensor_2d(targets)
             correct = calc_acc(logits, targets)
-            correct = reduce_by_batch_2d.apply(correct)
+            correct = reduce_by_batch_2d(correct)
         return correct
