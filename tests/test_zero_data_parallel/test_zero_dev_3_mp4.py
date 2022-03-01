@@ -14,35 +14,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.utils import checkpoint, free_port
 from colossalai.zero.sharded_model import ShardedModel
 from torch.nn.parallel import DistributedDataParallel as DDP
-
-
-def checkpoint_wrapper(module, enable=True):
-    if enable:
-        module.forward = partial(checkpoint, module.forward)
-    return module
-
-
-class Net(nn.Module):
-    def __init__(self, checkpoint=False) -> None:
-        super().__init__()
-        self.fc1 = nn.Linear(5, 5)
-        self.fc2 = nn.Linear(5, 5)
-        self.fc3 = nn.Linear(5, 1)
-        if checkpoint:
-            self.fc1 = checkpoint_wrapper(self.fc1)
-        self.layers = [
-            self.fc1,
-            self.fc2,
-            self.fc1,
-            self.fc2,
-            self.fc3
-        ]
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
-
+from common import Net, allclose
 
 def run_step(model, optimizer, x, enable_autocast=False):
     model.train()
@@ -54,14 +26,7 @@ def run_step(model, optimizer, x, enable_autocast=False):
     loss.backward()
     optimizer.step()
 
-
-def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
-    if loose:
-        return torch.allclose(tensor_a, tensor_b, atol=1e-3, rtol=1e-3)
-    return torch.allclose(tensor_a, tensor_b)
-
-
-def check_grads(model, zero_model, loose=False):
+def check_grads_padding(model, zero_model, loose=False):
     rank = dist.get_rank()
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
         zero_grad = zero_p.grad.clone().to(p.device)
@@ -75,7 +40,7 @@ def check_grads(model, zero_model, loose=False):
         assert allclose(grad, zero_grad, loose=loose)
 
 
-def check_params(model, zero_model, loose=False):
+def check_params_padding(model, zero_model, loose=False):
     rank = dist.get_rank()
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
         zero_shard_padding = zero_p.zero_shard_padding
@@ -115,14 +80,14 @@ def check_config(checkpoint=False, fp16=False, offload=False):
         x = torch.rand(2, 5).cuda()
         run_step(ddp_model, optimizer, x, enable_autocast=fp16)
         run_step(zero_model, zero_optimizer, x, enable_autocast=fp16)
-        check_grads(ddp_model, zero_model)
-        check_params(ddp_model, zero_model)
+        check_grads_padding(ddp_model, zero_model)
+        check_params_padding(ddp_model, zero_model)
     for _ in range(5):
         x = torch.rand(2, 5).cuda()
         run_step(ddp_model, optimizer, x, enable_autocast=False)
         run_step(zero_model, zero_optimizer, x, enable_autocast=False)
-        check_grads(ddp_model, zero_model, loose=True)
-        check_params(ddp_model, zero_model, loose=True)
+        check_grads_padding(ddp_model, zero_model, loose=True)
+        check_params_padding(ddp_model, zero_model, loose=True)
 
 
 def run_dist(rank, world_size, port):

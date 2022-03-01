@@ -12,7 +12,7 @@ import torch.nn as nn
 from colossalai.logging import disable_existing_loggers
 from colossalai.utils import checkpoint, free_port
 from colossalai.zero.sharded_model import ShardedModel
-
+from common import Net, check_grads, check_params, check_params
 
 def checkpoint_wrapper(module, enable=True):
     if enable:
@@ -51,26 +51,6 @@ def run_step(model, optimizer, x, enable_autocast=False):
     loss = loss.float()
     loss.backward()
     optimizer.step()
-
-
-def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
-    if loose:
-        return torch.allclose(tensor_a, tensor_b, atol=1e-3, rtol=1e-3)
-    return torch.allclose(tensor_a, tensor_b)
-
-
-def check_grads(model, zero_model, loose=False):
-    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_grad = zero_p.grad.clone().to(p.device)
-        assert p.grad.dtype == zero_grad.dtype
-        assert allclose(p.grad, zero_grad, loose=loose)
-
-
-def check_params(model, zero_model, loose=False):
-    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_p = zero_p.clone().to(p.device)
-        assert p.dtype == zero_p.dtype
-        assert allclose(p, zero_p, loose=loose)
 
 
 def decode_booleans(intval, bits):

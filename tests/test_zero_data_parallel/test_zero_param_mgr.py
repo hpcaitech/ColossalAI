@@ -13,37 +13,7 @@ from colossalai.zero.sharded_model.param_manager import Zero3ParameterManager
 from colossalai.core import global_context as gpc
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.utils import free_port
-
-BATCH_SIZE = 16
-IMG_SIZE = 224
-
-CONFIG = dict(
-    fp16=dict(
-        mode=None,
-    ),
-    zero=dict(
-        level=3,
-        verbose=False,
-        offload_optimizer_config=dict(
-            device='cpu',
-            pin_memory=True,
-            buffer_count=5,
-            fast_init=False
-        ),
-        offload_param_config=dict(
-            device='cpu',
-            pin_memory=True,
-            buffer_count=5,
-            buffer_size=1e8,
-            max_in_cpu=1e9
-        )
-    ),
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(size=1, mode=None)
-    )
-)
-
+from common import CONFIG
 
 def run_shard_shape_check(rank, world_size, port):
     colossalai.launch(config=CONFIG,
