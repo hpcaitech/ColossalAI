@@ -26,9 +26,7 @@ from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import (accumulate_gradient, get_current_device,
                               is_using_ddp, is_using_pp, is_using_sequence,
                               sync_model_param)
-from colossalai.zero import (ZeroRedundancyOptimizer_Level_1,
-                             ZeroRedundancyOptimizer_Level_2,
-                             ZeroRedundancyOptimizer_Level_3, convert_to_zero)
+from colossalai.zero import convert_to_zero, ShardedOptimizer
 
 
 def get_default_parser():
@@ -335,8 +333,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         # 1. if optimizer is ZERO, then use zero grad handler
         # 2. if dp size is larger than 1 and pipeline is not used, use pytorch ddp
         # 3. if using pipeline and dp size larger than 1, use data parallel grad handler
-        if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                  ZeroRedundancyOptimizer_Level_3, ZeroRedundancyOptimizer_Level_1)):
+        if isinstance(optimizer, ShardedOptimizer):
             gradient_handler_cfg = [dict(type='ZeROGradientHandler')]
             if verbose:
                 logger.info(
@@ -397,7 +394,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
 
     # check if optimizer is ColossalaiOptimizer
-    if not isinstance(optimizer, (ColossalaiOptimizer, ZeroRedundancyOptimizer_Level_1, ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
+    if not isinstance(optimizer, (ColossalaiOptimizer, ShardedOptimizer)):
         optimizer = ColossalaiOptimizer(optim=optimizer)
 
     # gradient accumulation
