@@ -3,19 +3,17 @@
 
 import copy
 from functools import partial
-from operator import mod
-from pyexpat import model
 
 import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.logging import disable_existing_loggers
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
-from tests.test_zero_data_parallel.common import Net, CONFIG, check_grads
+
+from common import CONFIG, Net, check_grads
 
 
 def run_fwd_bwd(model, x, enable_autocast=False):
@@ -24,8 +22,9 @@ def run_fwd_bwd(model, x, enable_autocast=False):
         y = model(x)
         loss = y.sum()
     loss = loss.float()
-    loss.backward()
-    
+    # loss.backward()
+    model.backward(loss)
+
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG,
@@ -34,7 +33,7 @@ def run_dist(rank, world_size, port):
                       host='localhost',
                       port=port,
                       backend='nccl')
-    
+
     model = Net(checkpoint=True).cuda()
     zero_model = copy.deepcopy(model)
     zero_model = ShardedModelV2(zero_model, process_group=gpc.get_group(ParallelMode.DATA))
@@ -48,7 +47,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 def test_shard_model_v2():
-    world_size = 2
+    world_size = 1
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
