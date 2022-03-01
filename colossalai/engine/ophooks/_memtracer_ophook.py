@@ -4,7 +4,6 @@ from concurrent.futures import ThreadPoolExecutor
 from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from time import sleep, time
-import psutil
 import pickle
 
 

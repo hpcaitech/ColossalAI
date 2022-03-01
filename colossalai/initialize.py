@@ -2,30 +2,31 @@
 # -*- encoding: utf-8 -*-
 
 import argparse
-import pprint
 import os
-from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
+import pprint
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
-
-from pathlib import Path
-from typing import Iterable, Union, Optional, Tuple, List, Dict
-
-from colossalai.amp import convert_to_amp, AMP_TYPE
-from colossalai.context import Config, ParallelMode, ConfigException
-from colossalai.core import global_context as gpc
-from colossalai.engine import Engine
-from colossalai.logging import get_dist_logger
-from colossalai.utils import (accumulate_gradient, get_current_device,
-                              sync_model_param, is_using_ddp, is_using_pp, is_using_sequence)
-from colossalai.zero import convert_to_zero, ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3
-from colossalai.builder.builder import build_gradient_handler
-from torch.optim.optimizer import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler
-from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.optimizer import Optimizer
+from torch.utils.data import DataLoader
+
+from colossalai.amp import AMP_TYPE, convert_to_amp
+from colossalai.builder.builder import build_gradient_handler
+from colossalai.context import Config, ConfigException, ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.engine import Engine
 from colossalai.global_variables import moe_env
+from colossalai.logging import get_dist_logger
+from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
+from colossalai.utils import (accumulate_gradient, get_current_device,
+                              is_using_ddp, is_using_pp, is_using_sequence,
+                              sync_model_param)
+from colossalai.zero import convert_to_zero, ShardedOptimizer
 
 
 def get_default_parser():
@@ -332,8 +333,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         # 1. if optimizer is ZERO, then use zero grad handler
         # 2. if dp size is larger than 1 and pipeline is not used, use pytorch ddp
         # 3. if using pipeline and dp size larger than 1, use data parallel grad handler
-        if isinstance(optimizer, (ZeroRedundancyOptimizer_Level_2,
-                                  ZeroRedundancyOptimizer_Level_3)):
+        if isinstance(optimizer, ShardedOptimizer):
             gradient_handler_cfg = [dict(type='ZeROGradientHandler')]
             if verbose:
                 logger.info(
@@ -348,7 +348,8 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                     "added even though not specified in the configuration",
                     ranks=[0])
         elif is_using_sequence():
-            model = DDP(model, process_group=gpc.get_group(ParallelMode.SEQUENCE_DP), device_ids=[torch.cuda.current_device()])
+            model = DDP(model, process_group=gpc.get_group(ParallelMode.SEQUENCE_DP),
+                        device_ids=[torch.cuda.current_device()])
             if verbose:
                 logger.info(
                     'Model is using torch.nn.parallel.DistributedDataParallel for Sequence Parallelism', ranks=[0])
@@ -393,7 +394,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
 
     # check if optimizer is ColossalaiOptimizer
-    if not isinstance(optimizer, (ColossalaiOptimizer, ZeroRedundancyOptimizer_Level_2, ZeroRedundancyOptimizer_Level_3)):
+    if not isinstance(optimizer, (ColossalaiOptimizer, ShardedOptimizer)):
         optimizer = ColossalaiOptimizer(optim=optimizer)
 
     # gradient accumulation
