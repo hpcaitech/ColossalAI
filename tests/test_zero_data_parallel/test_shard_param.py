@@ -86,6 +86,5 @@ def test_run_shard_shape():
     run_func = partial(run_shard_param_check, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
-
 if __name__ == '__main__':
     test_run_shard_shape()
