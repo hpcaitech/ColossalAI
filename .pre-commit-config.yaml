@@ -9,6 +9,6 @@ repos:
     hooks:
     - id: flake8
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v13.0.0
+    rev: v13.0.1
     hooks:
     - id: clang-format

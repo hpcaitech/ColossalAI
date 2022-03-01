@@ -86,6 +86,16 @@ def fetch_requirements(path):
         return [r.strip() for r in fd.readlines()]
 
 
+def fetch_readme():
+    with open('README.md', encoding='utf-8') as f:
+        return f.read()
+
+
+def get_version():
+    with open('version.txt') as f:
+        return f.read().strip()
+
+
 if build_cuda_ext:
     try:
         import torch
@@ -152,6 +162,10 @@ if build_cuda_ext:
                                        ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu'],
                                        extra_cuda_flags + cc_flag))
 
+    ext_modules.append(cuda_ext_helper('colossal_moe_cuda',
+                                       ['moe_cuda.cpp', 'moe_cuda_kernel.cu'],
+                                       extra_cuda_flags + cc_flag))
+
     extra_cuda_flags = ['-maxrregcount=50']
 
     ext_modules.append(cuda_ext_helper('colossal_layer_norm_cuda',
@@ -177,7 +191,7 @@ if build_cuda_ext:
 
 setup(
     name='colossalai',
-    version='0.0.2',
+    version=get_version(),
     packages=find_packages(exclude=('benchmark',
                                     'docker',
                                     'tests',
@@ -188,10 +202,28 @@ setup(
                                     'requirements',
                                     '*.egg-info',)),
     description='An integrated large-scale model training system with efficient parallelization techniques',
+    long_description=fetch_readme(),
+    long_description_content_type='text/markdown',
+    url='https://www.colossalai.org',
+    project_urls={
+        'Forum': 'https://github.com/hpcaitech/ColossalAI/discussions',
+        'Bug Tracker': 'https://github.com/hpcaitech/ColossalAI/issues',
+        'Examples': 'https://github.com/hpcaitech/ColossalAI-Examples',
+        'Documentation': 'http://colossalai.readthedocs.io',
+        'Github': 'https://github.com/hpcaitech/ColossalAI',
+    },
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     install_requires=fetch_requirements('requirements/requirements.txt'),
     extras_require={
         'zero': fetch_requirements('requirements/requirements-zero.txt'),
-    }
+    },
+    python_requires='>=3.7',
+    classifiers=[
+        'Programming Language :: Python :: 3',
+        'License :: OSI Approved :: Apache Software License',
+        'Environment :: GPU :: NVIDIA CUDA',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: System :: Distributed Computing',
+    ],
 )

@@ -415,9 +415,10 @@ class VocabParallelEmbedding2D(torch.nn.Module):
             self._fill_padding_idx_with_zero()
 
     def _fill_padding_idx_with_zero(self) -> None:
-        if self.padding_idx is not None:
+        if self.padding_idx is not None and \
+            self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
-                self.weight[self.padding_idx].fill_(0)
+                self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
         input_mask = (input_ < self.vocab_start_index) | (input_ >= self.vocab_end_index)

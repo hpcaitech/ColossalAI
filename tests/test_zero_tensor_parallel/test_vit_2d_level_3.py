@@ -88,7 +88,7 @@ def run_2d_parallel_vision_transformer_level_3(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.skip("Level 3 has unknown bug so skip this test for now")
+@pytest.mark.skip(reason="This test should be refactored for the reconstructed zero")
 def test_3d_vit_zero_level_3():
     world_size = 8
     run_func = partial(run_2d_parallel_vision_transformer_level_3, world_size=world_size, port=free_port())

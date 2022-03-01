@@ -100,7 +100,8 @@ class Linear3D(ParallelLayer):
         self.output_parallel_mode = get_last_group(self.input_parallel_mode, self.weight_parallel_mode)
         self.depth = get_depth_from_env()
         self.in_features_per_partition = divide(in_features, self.depth)
-        self.out_features_per_partition = divide(out_features, self.depth)
+        self.out_features_per_partition = divide(out_features, self.depth**2)
+        self.bias_features_per_partition = divide(out_features, self.depth)
 
         self.weight = Parameter(
             torch.empty(self.in_features_per_partition,
@@ -108,8 +109,8 @@ class Linear3D(ParallelLayer):
                         device=get_current_device(),
                         dtype=dtype))
         if bias:
-            self.bias = Parameter(torch.zeros(self.out_features_per_partition, device=get_current_device(),
-                                              dtype=dtype))
+            self.bias = Parameter(
+                torch.zeros(self.bias_features_per_partition, device=get_current_device(), dtype=dtype))
         else:
             self.bias = None
 
@@ -118,21 +119,20 @@ class Linear3D(ParallelLayer):
         swap_in_out_group()
 
     def _set_tensor_parallel_attributes(self) -> None:
-        set_tensor_parallel_attribute_by_partition(self.weight, self.depth**2)
+        set_tensor_parallel_attribute_by_partition(self.weight, self.depth**3)
         if self.bias is not None:
             set_tensor_parallel_attribute_by_partition(self.bias, self.depth)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         with seed(ParallelMode.TENSOR):
             fan_in, fan_out = self.in_features, self.out_features
-            weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
-            output_src_rank = gpc.get_ranks_in_group(self.output_parallel_mode)[0]
 
             weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
-            broadcast(self.weight, weight_src_rank, self.weight_parallel_mode)
 
             if self.bias is not None:
                 bias_initializer(self.bias, fan_in=fan_in)
+                weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
+                output_src_rank = gpc.get_ranks_in_group(self.output_parallel_mode)[0]
                 broadcast(self.bias, weight_src_rank, self.weight_parallel_mode)
                 broadcast(self.bias, output_src_rank, self.output_parallel_mode)
 
@@ -257,7 +257,8 @@ class VocabParallelClassifier3D(ParallelLayer):
         self.output_parallel_mode = get_last_group(self.input_parallel_mode, self.weight_parallel_mode)
         self.depth = get_depth_from_env()
         self.in_features_per_partition = divide(in_features, self.depth)
-        self.out_features_per_partition = divide(num_classes, self.depth)
+        self.out_features_per_partition = divide(num_classes, self.depth**2)
+        self.bias_features_per_partition = divide(num_classes, self.depth)
 
         if weight is not None:
             self.weight = weight
@@ -270,8 +271,8 @@ class VocabParallelClassifier3D(ParallelLayer):
                             dtype=dtype))
             self.has_weight = True
         if bias:
-            self.bias = Parameter(torch.zeros(self.out_features_per_partition, device=get_current_device(),
-                                              dtype=dtype))
+            self.bias = Parameter(
+                torch.zeros(self.bias_features_per_partition, device=get_current_device(), dtype=dtype))
         else:
             self.bias = None
 
@@ -289,15 +290,14 @@ class VocabParallelClassifier3D(ParallelLayer):
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         with seed(ParallelMode.TENSOR):
             fan_in, fan_out = self.in_features, self.num_classes
-            weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
-            output_src_rank = gpc.get_ranks_in_group(self.output_parallel_mode)[0]
 
             if self.has_weight:
                 weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
-                broadcast(self.weight, weight_src_rank, self.weight_parallel_mode)
 
             if self.bias is not None:
                 bias_initializer(self.bias, fan_in=fan_in)
+                weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
+                output_src_rank = gpc.get_ranks_in_group(self.output_parallel_mode)[0]
                 broadcast(self.bias, weight_src_rank, self.weight_parallel_mode)
                 broadcast(self.bias, output_src_rank, self.output_parallel_mode)
 
@@ -523,11 +523,11 @@ class VocabParallelEmbedding3D(torch.nn.Module):
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
         self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
         self.output_parallel_mode = get_last_group(self.input_parallel_mode, self.weight_parallel_mode)
-        self.num_embeddings_per_partition = divide(self.num_embeddings, self.depth)
+        self.num_embeddings_per_partition = divide(self.num_embeddings, self.depth**2)
         self.embed_dim_per_partition = divide(self.embed_dim, self.depth)
         vocab_parallel_rank = gpc.get_local_rank(self.input_parallel_mode)
-        self.vocab_start_index = vocab_parallel_rank * self.num_embeddings_per_partition
-        self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition
+        self.vocab_start_index = vocab_parallel_rank * self.num_embeddings_per_partition * self.depth
+        self.vocab_end_index = self.vocab_start_index + self.num_embeddings_per_partition * self.depth
 
         self.weight = Parameter(
             torch.empty((self.num_embeddings_per_partition, self.embed_dim_per_partition),
@@ -546,13 +546,12 @@ class VocabParallelEmbedding3D(torch.nn.Module):
             fan_in, fan_out = self.num_embeddings, self.embed_dim
             weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
             self._fill_padding_idx_with_zero()
-        weight_src_rank = gpc.get_ranks_in_group(self.weight_parallel_mode)[0]
-        broadcast(self.weight, weight_src_rank, self.weight_parallel_mode)
 
     def _fill_padding_idx_with_zero(self) -> None:
-        if self.padding_idx is not None:
+        if self.padding_idx is not None and \
+            self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
-                self.weight[self.padding_idx].fill_(0)
+                self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
         input_ = split_tensor_3d(input_, 0, self.weight_parallel_mode)
@@ -561,7 +560,7 @@ class VocabParallelEmbedding3D(torch.nn.Module):
         masked_input = input_.clone() - self.vocab_start_index
         masked_input[input_mask] = 0
 
-        weight = reduce_grad_3d(self.weight, self.weight_parallel_mode)
+        weight = all_gather_tensor_3d(self.weight, 0, self.weight_parallel_mode)
 
         output_parallel = F.embedding(masked_input, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
 

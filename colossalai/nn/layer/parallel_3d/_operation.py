@@ -5,15 +5,12 @@ from typing import Optional, Tuple
 
 import torch
 from colossalai.communication import (all_gather, all_reduce, broadcast, reduce, reduce_scatter)
-from colossalai.context import parallel_mode
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 from ._utils import get_parallel_mode_from_env
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
-
-from colossalai.nn.layer.base_layer import ParallelLayer
 
 
 class _Linear3D(torch.autograd.Function):
@@ -33,6 +30,7 @@ class _Linear3D(torch.autograd.Function):
         ctx.use_bias = bias is not None
 
         input_ = all_gather(input_, input_dim, input_parallel_mode)
+        weight = all_gather(weight, weight_dim, weight_parallel_mode)
         ctx.save_for_backward(input_, weight)
 
         output = torch.matmul(input_, weight)
@@ -64,7 +62,7 @@ class _Linear3D(torch.autograd.Function):
 
             weight_grad = torch.matmul(
                 input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1]))
-            weight_grad, op = all_reduce(weight_grad, ctx.weight_parallel_mode, async_op=True)
+            weight_grad, op = reduce_scatter(weight_grad, ctx.weight_dim, ctx.weight_parallel_mode, async_op=True)
             async_ops.append(op)
 
             if ctx.use_bias:
@@ -343,27 +341,29 @@ def reduce_tensor_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
     return _ReduceTensor3D.apply(tensor, parallel_mode)
 
 
-class _ReduceGrad3D(torch.autograd.Function):
+class _AllGatherTensor3D(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, input_, parallel_mode):
+    def forward(ctx, input_, dim, parallel_mode):
+        ctx.dim = dim
         ctx.parallel_mode = parallel_mode
-        return input_
+        output = all_gather(input_, dim, parallel_mode)
+        return output
 
     @staticmethod
     def backward(ctx, output_grad):
-        input_grad = all_reduce(output_grad, ctx.parallel_mode)
-        return input_grad, None
+        input_grad = reduce_scatter(output_grad, ctx.dim, ctx.parallel_mode)
+        return input_grad, None, None
 
 
-def reduce_grad_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
+def all_gather_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
     """
     All-reduce the gradient in backward pass.
     
     :param tensor: Input tensor
     :param parallel_mode: Parallel mode
     """
-    return _ReduceGrad3D.apply(tensor, parallel_mode)
+    return _AllGatherTensor3D.apply(tensor, dim, parallel_mode)
 
 
 class _ReduceScatterTensor3D(torch.autograd.Function):
