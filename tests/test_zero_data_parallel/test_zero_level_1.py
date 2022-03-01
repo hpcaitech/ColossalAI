@@ -113,7 +113,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 def test_zero_level_1():
-    world_size = 4
+    world_size = 1
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
