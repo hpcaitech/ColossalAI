@@ -58,6 +58,6 @@ class ShardParam(object):
         
         torch.distributed.all_gather(buffer_list, buffer_list[self.local_rank], group=self.process_group, async_op=False)
         print(buffer_list)
-        self._param_payload = torch.narrow(torch.concat(buffer_list), 0, 0, self._origin_numel).view(self._origin_shape)
+        self._param_payload = torch.narrow(torch.cat(buffer_list), 0, 0, self._origin_numel).view(self._origin_shape)
         self.is_shared = False
 

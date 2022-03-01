@@ -1,9 +1,10 @@
 from ._base_ophook import BaseOpHook
 from ._memtracer_ophook import MemTracerOpHook
+from ._shard_param_ophook import ShardParamHook
 import torch
 from typing import List
 
-all = ["BaseOpHook", "MemTracerOpHook", "register_ophooks_recursively"]
+all = ["BaseOpHook", "MemTracerOpHook", "register_ophooks_recursively", "ShardParamHook"]
 
 
 # apply torch.autograd.Function that calls a backward_function to tensors in output
