@@ -7,52 +7,12 @@ from functools import partial
 import colossalai
 import pytest
 import torch
-from torch import nn
 import torch.multiprocessing as mp
 from colossalai.zero.shard_param import ShardParam
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.utils import free_port
 from colossalai.logging import get_dist_logger, disable_existing_loggers
+from tests.test_zero_data_parallel.common import Net, CONFIG
 
-
-CONFIG = dict(
-    fp16=dict(
-        mode=None,
-    ),
-    zero=dict(
-        level=3,
-        verbose=False,
-        offload_optimizer_config=dict(
-            device='cpu',
-            pin_memory=True,
-            buffer_count=5,
-            fast_init=False
-        ),
-        offload_param_config=dict(
-            device='cpu',
-            pin_memory=True,
-            buffer_count=5,
-            buffer_size=1e8,
-            max_in_cpu=1e9
-        )
-    ),
-    parallel=dict(
-        pipeline=dict(size=1),
-        tensor=dict(size=1, mode=None)
-    )
-)
-
-class Net(nn.Module):
-    def __init__(self, checkpoint=False) -> None:
-        super().__init__()
-        self.fc1 = nn.Linear(5, 5)
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
-    
 def run_shard_param_check(rank, world_size, port):
     colossalai.launch(config=CONFIG,
                       rank=rank,
