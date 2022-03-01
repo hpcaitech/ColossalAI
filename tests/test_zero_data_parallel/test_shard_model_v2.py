@@ -3,18 +3,17 @@
 
 import copy
 from functools import partial
-from pyexpat import model
 
 import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers
 from colossalai.utils import checkpoint, free_port
 from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
 
 CONFIG = dict(
     fp16=dict(
@@ -42,6 +41,7 @@ CONFIG = dict(
         tensor=dict(size=1, mode=None)
     )
 )
+
 
 def checkpoint_wrapper(module, enable=True):
     if enable:
@@ -83,8 +83,9 @@ def run_fwd_bwd(model, x, enable_autocast=False):
         y = model(x)
         loss = y.sum()
     loss = loss.float()
-    loss.backward()
-    
+    # loss.backward()
+    model.backward(loss)
+
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG,
@@ -93,7 +94,7 @@ def run_dist(rank, world_size, port):
                       host='localhost',
                       port=port,
                       backend='nccl')
-    
+
     model = Net(checkpoint=True).cuda()
     zero_model = copy.deepcopy(model)
 
