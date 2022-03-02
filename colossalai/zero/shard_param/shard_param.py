@@ -1,9 +1,10 @@
 from enum import Enum
+
 import torch
-from colossalai.zero.sharded_model._zero3_utils import get_shard
+import torch.distributed as dist
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-import torch.distributed as dist
+from colossalai.zero.sharded_model._zero3_utils import get_shard
 
 
 class TensorType(Enum):
@@ -27,9 +28,11 @@ class ShardParam(object):
         self.world_size = dist.get_world_size(self.process_group)
         self.local_rank = dist.get_rank(self.process_group)
         self._param_payload = param.data if tensor_type == TensorType.DATA else param.grad
+        self._payload_shape = None
         self._payload_numel = None
         self._origin_shape = param.shape
         self._origin_numel = param.numel()
+        self._origin_dtype = param.dtype
         self.is_sharded = False
 
     def payload(self, target_device: torch.device):
@@ -65,3 +68,7 @@ class ShardParam(object):
                                      async_op=False)
         self._param_payload = torch.narrow(torch.cat(buffer_list), 0, 0, self._origin_numel).view(self._origin_shape)
         self.is_sharded = False
+
+    @property
+    def origin_dtype(self):
+        return self._origin_dtype
