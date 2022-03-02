@@ -190,10 +190,6 @@ class ReduceScatterBucketer:
         return int(bucket_size // num_shards)
 
     def _get_bucket(self, tensor: Tensor, group: ProcessGroup) -> Bucket:
-        # TODO (Min): the `group` used here in the key is the object hash, not the content
-        #     hash. That means if FSDP instances are initialized with different process groups,
-        #     even when the group members are in fact the same, we end up creating different
-        #     buckets here.
         key = (tensor.dtype, tensor.device, group)
         if key not in self.buckets:
             # buckets are divided into world_size pieces, bucket.data shaped (world_size, shard_size)
