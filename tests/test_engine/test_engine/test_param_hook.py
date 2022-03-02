@@ -1,10 +1,9 @@
 import pytest
-from colossalai.engine.paramhooks import BaseParamHook
+from colossalai.engine.paramhooks import BaseParamHookMgr
 from torch import nn
 import torch
 import torch.nn.functional as F
 import copy
-import functools
 
 class SubNet(nn.Module):
     def __init__(self, out_features) -> None:
@@ -58,7 +57,7 @@ def test_base_param_hook():
 
             hookwrapper = HooKWrapper()
             param_list = [p for p in model.parameters()]
-            hook_mgr = BaseParamHook(param_list)
+            hook_mgr = BaseParamHookMgr(param_list)
             hook_mgr.register_backward_hooks(hookwrapper.wrapper_func())
         
         model.zero_grad(set_to_none=True)

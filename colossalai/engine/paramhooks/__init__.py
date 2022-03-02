@@ -1,2 +1,2 @@
-from ._base_paramhook import BaseParamHook
-__all__ = ["BaseParamHook"]
+from ._param_hookmgr import BaseParamHookMgr
+__all__ = ["BaseParamHookMgr"]

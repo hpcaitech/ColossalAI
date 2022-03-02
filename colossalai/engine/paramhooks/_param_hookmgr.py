@@ -2,7 +2,7 @@ from typing import Callable, List
 import torch
 import functools
 
-class BaseParamHook(object):
+class BaseParamHookMgr(object):
     def __init__(self, param_list: List[torch.nn.Parameter]) -> None:
         r"""
         register backward hook on every parameters of module
