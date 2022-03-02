@@ -2,14 +2,14 @@ from typing import Callable, List
 import torch
 
 class BaseParamHook(object):
-    def __init__(self, param_list: List[torch.nn.Parameter], backward_hook_call: Callable) -> None:
+    def __init__(self, param_list: List[torch.nn.Parameter]) -> None:
         r"""
         register backward hook on every parameters of module
         """
         self.param_list = param_list
-        self._register_backward_hooks(backward_hook_call)
+        self._hook_list = []
 
-    def _register_backward_hooks(self, hook_call : Callable) -> None:
+    def register_backward_hooks(self, hook_call : Callable) -> None:
         r"""
         The hook_call will be called every time a gradient with respect to the a param in self.param_list 
         is computed. 
@@ -21,7 +21,7 @@ class BaseParamHook(object):
         if not torch.is_grad_enabled():
             return  # don't register grad hooks if grad isn't enabled
         for p in self.param_list:
-            if p.requires_grad and not hasattr(p, 'zero_shard_bwd_hook'):
+            if p.requires_grad and not hasattr(p, '_base_param_hook'):
                 # For mixed precision with activation checkpoint, hooks on GradAccumulation won't be fired normally
                 # Instead we register hook on parameter
                 # In this way, we can't modify param.grad and param.data directly, which leads to more memory usage
@@ -34,4 +34,8 @@ class BaseParamHook(object):
                 # p.zero_shard_bwd_hook = (grad_acc, handle)
                 # handle = p.register_hook(functools.partial(self._post_backward_hook, p))
                 handle = p.register_hook(hook_call)
-                p.zero_shard_bwd_hook = handle
+                p._base_param_hook = handle
+
+    def remove_hooks(self):
+        for p in self.param_list:
+            p._base_param_hook.remove()

@@ -59,8 +59,8 @@ def test_base_param_hook():
 
             hookwrapper = HooKWrapper()
             param_list = [p for p in model.parameters()]
-            BaseParamHook(param_list, hookwrapper.wrapper_func())
-
+            hook_mgr = BaseParamHook(param_list)
+            hook_mgr.register_backward_hooks(hookwrapper.wrapper_func())
         
         model.zero_grad(set_to_none=True)
 
