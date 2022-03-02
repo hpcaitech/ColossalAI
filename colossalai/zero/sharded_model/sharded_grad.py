@@ -88,6 +88,7 @@ class ShardedGradient:
                 self._saved_full_grad = reduced_grad.data
             else:
                 self._saved_full_grad += reduced_grad.data
+            reduced_grad = self._saved_full_grad.data
 
         # Optionally move gradients to CPU, typically used if one is running the optimizer on the CPU. Once the full
         # backwards pass completes, we will set `.grad` to the CPU copy.
