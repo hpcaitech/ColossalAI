@@ -51,7 +51,7 @@ def test_base_param_hook():
                     self.hook_triggered_times = 0
 
                 def wrapper_func(self):
-                    def hook(grad) -> torch.Tensor or None:
+                    def hook(param, grad) -> torch.Tensor or None:
                         self.hook_triggered_times += 1
                         return grad
                     return hook
