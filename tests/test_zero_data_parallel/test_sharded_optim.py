@@ -1,10 +1,12 @@
 import torch
 import colossalai
+import copy
+import pytest
+import torch.multiprocessing as mp
 import torch.nn as nn
 from colossalai.zero import ShardedOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.multiprocessing as mp
-import pytest
+
 from colossalai.utils import free_port
 from functools import partial
 
@@ -39,18 +41,9 @@ def check_sharded_param_consistency():
     oss_linear1 = nn.Linear(128, 256)
     oss_linear2 = nn.Linear(256, 512)
 
-    pg_linear1 = nn.Linear(128, 256)
-    pg_linear2 = nn.Linear(256, 512)
-
-    # clone weights
-    oss_linear1.weight.data.copy_(pg_linear1.weight.data)
-    oss_linear1.bias.data.copy_(pg_linear1.bias.data)
-    oss_linear2.weight.data.copy_(pg_linear2.weight.data)
-    oss_linear2.bias.data.copy_(pg_linear2.bias.data)
-
     # create model
     oss_model = nn.Sequential(oss_linear1, oss_linear2)
-    pg_model = nn.Sequential(pg_linear1, pg_linear2)
+    pg_model = copy.deepcopy(oss_model)
 
     oss_model = oss_model.cuda().half()
     pg_model = pg_model.cuda().half()
@@ -80,10 +73,10 @@ def check_sharded_param_consistency():
     # check grad
     # as this param is small, the backward reduction
     # will not be fired
-    oss_linear1_grad = oss_linear1.weight.grad
-    oss_linear2_grad = oss_linear2.weight.grad
-    pg_linear1_grad = pg_linear1.weight.grad
-    pg_linear2_grad = pg_linear2.weight.grad
+    oss_linear1_grad = oss_model[0].weight.grad
+    oss_linear2_grad = oss_model[1].weight.grad
+    pg_linear1_grad = pg_model[0].weight.grad
+    pg_linear2_grad = pg_model[1].weight.grad
     check_completely_equal(oss_linear1_grad, pg_linear1_grad)
     check_completely_equal(oss_linear2_grad, pg_linear2_grad)
 
@@ -96,8 +89,8 @@ def check_sharded_param_consistency():
     pg_optimizer.step()
 
     # check updated param
-    check_completely_equal(oss_linear1.weight, pg_linear1.weight)
-    check_completely_equal(oss_linear2.weight, pg_linear2.weight)
+    check_completely_equal(oss_model[0].weight, pg_model[0].weight)
+    check_completely_equal(oss_model[1].weight, pg_model[1].weight)
 
 
 def check_sharded_optim_against_torch_ddp():
@@ -114,18 +107,9 @@ def check_sharded_optim_against_torch_ddp():
     zero_linear1 = nn.Linear(128, 256)
     zero_linear2 = nn.Linear(256, 512)
 
-    torch_linear1 = nn.Linear(128, 256)
-    torch_linear2 = nn.Linear(256, 512)
-
-    # clone weights
-    zero_linear1.weight.data.copy_(torch_linear1.weight.data)
-    zero_linear1.bias.data.copy_(torch_linear1.bias.data)
-    zero_linear2.weight.data.copy_(torch_linear2.weight.data)
-    zero_linear2.bias.data.copy_(torch_linear2.bias.data)
-
     # create model
     zero_model = nn.Sequential(zero_linear1, zero_linear2)
-    torch_model = nn.Sequential(torch_linear1, torch_linear2)
+    torch_model = copy.deepcopy(zero_model)
 
     zero_model = zero_model.cuda().half()
     torch_model = DDP(torch_model.cuda())
@@ -157,10 +141,10 @@ def check_sharded_optim_against_torch_ddp():
     torch_output.mean().backward()
 
     # check grad
-    zero_linear1_grad = zero_linear1.weight.grad
-    zero_linear2_grad = zero_linear2.weight.grad
-    torch_linear1_grad = torch_linear1.weight.grad
-    torch_linear2_grad = torch_linear2.weight.grad
+    zero_linear1_grad = zero_model[0].weight.grad
+    zero_linear2_grad = zero_model[1].weight.grad
+    torch_linear1_grad = torch_model.module[0].weight.grad
+    torch_linear2_grad = torch_model.module[1].weight.grad
     check_equal(zero_linear1_grad, torch_linear1_grad)
     check_equal(zero_linear2_grad, torch_linear2_grad)
 
@@ -172,8 +156,8 @@ def check_sharded_optim_against_torch_ddp():
     torch_optimizer.step()
 
     # check updated param
-    check_equal(zero_linear1.weight, torch_linear1.weight)
-    check_equal(zero_linear2.weight, torch_linear2.weight)
+    check_equal(zero_model[0].weight, torch_model.module[0].weight)
+    check_equal(zero_model[1].weight, torch_model.module[1].weight)
 
 
 def run_dist(rank, world_size, port):
