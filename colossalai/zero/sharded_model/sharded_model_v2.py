@@ -1,7 +1,6 @@
 
 import functools
-from typing import (Any, Callable, Dict, Generator, List, NamedTuple, Optional,
-                    Set, Union)
+from typing import Any, Optional
 
 import torch
 import torch.distributed as dist
@@ -10,6 +9,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.engine.ophooks import (ShardGradHook, ShardParamHook,
                                        register_ophooks_recursively)
+from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.zero.shard_param import ShardParam
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
@@ -55,6 +55,8 @@ class ShardedModelV2(nn.Module):
 
         # Register hooks
         register_ophooks_recursively(self.module, [ShardParamHook(), ShardGradHook()])
+        self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
+        self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
         self.reshard_after_forward = reshard_after_forward
         self.mixed_precision = mixed_precision
@@ -70,8 +72,6 @@ class ShardedModelV2(nn.Module):
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
         self.reducer = ReduceScatterBucketer(reduce_scatter_bucket_size_mb)
         self._require_backward_grad_sync: bool = True
-
-        self._register_grad_post_backward_hooks()
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         outputs = self.module(*args, **kwargs)
@@ -106,10 +106,9 @@ class ShardedModelV2(nn.Module):
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
         """
-        At the start of :func:`_post_backward_hook`, ``param.grad`` contains the
-        full gradient for the local batch. The reduce-scatter op will replace
-        ``param.grad`` with a single shard of the summed gradient across all
-        GPUs. This shard will align with the current GPU rank. For example::
+        At the start of :func:`_grad_post_backward_hook`, ``param.grad`` contains the
+        full gradient for the local batch. The reduce-scatter op will save a single shard of the summed gradient across all
+        GPUs to param._sharded_grad. This shard will align with the current GPU rank. For example::
 
             before reduce_scatter:
                 param.grad (GPU #0): [1, 2, 3, 4]
@@ -121,7 +120,7 @@ class ShardedModelV2(nn.Module):
 
         The local GPU's ``optim.step`` is responsible for updating a single
         shard of params, also corresponding to the current GPU's rank. This
-        alignment is created by `param_manager`, which ensures that
+        alignment is created by `param._sharded_grad`, which ensures that
         the local optimizer only sees the relevant parameter shard.
         """
         if grad is None:
@@ -145,15 +144,6 @@ class ShardedModelV2(nn.Module):
             else:
                 self._reduce_scatter_callback(param, new_grad)
             orig_grad_data.record_stream(self.comm_stream)
-
-    def _register_grad_post_backward_hooks(self) -> None:
-        for p in self.module.parameters():
-            if p.requires_grad:
-                assert not hasattr(p, '_grad_backward_hook'), 'param has registered _grad_backward_hook'
-                # For mixed precision with activation checkpoint, hooks on GradAccumulation won't be fired normally
-                # Instead we register hook on parameter
-                handle = p.register_hook(functools.partial(self._grad_post_backward_hook, p))
-                p._grad_backward_hook = handle
 
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
         if self.gradient_postdivide_factor > 1:
