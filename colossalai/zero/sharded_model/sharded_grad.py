@@ -1,16 +1,10 @@
-import os
-from typing import List, Optional, Tuple
-from xml.dom.expatbuilder import parseFragment
+from typing import Optional
 
 import torch
-import torch.distributed as dist
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
-
-from ._zero3_utils import (alloc_storage, assert_in_engine, free_storage,
-                           get_shard)
 
 
 class ShardedGradient:
@@ -106,7 +100,6 @@ class ShardedGradient:
     def write_back(self) -> None:
         """This function will be called in final backward hook
         """
-        print(f'{self.param.shape} {self.param.ca_attr.origin_shape} {self.param.ca_attr.shard_shape} {self.param.grad.shape} {self._saved_grad_shard.shape}')
         if self._cpu_grad is not None:
             assert self.param.device == torch.device(
                 'cpu'), f'Incorrect param device, expected CPU, got {self.param.device}'
@@ -114,9 +107,11 @@ class ShardedGradient:
         elif self._saved_grad_shard is not None:
             assert self.param.device == self._saved_grad_shard.device, f'Incorrect _saved_grad_shard device, param on {self.param.device} but _saved_grad_shard on {self._saved_grad_shard.device}'
             self.param.grad.data = self._saved_grad_shard
-            self._saved_grad_shard = None
         elif self._saved_full_grad is not None:
             self.param.grad.data = self._saved_full_grad
-            self._saved_full_grad = None
         else:
             raise RuntimeError('No grad to write back')
+        # If using CPU offload, _cpu_grad will store the CPU tensor of _saved_grad_shard or _saved_full_grad
+        # They should be released here
+        self._saved_grad_shard = None
+        self._saved_full_grad = None
