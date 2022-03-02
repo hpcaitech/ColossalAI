@@ -229,7 +229,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
                train_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
                test_dataloader: Optional[Union[Iterable, List[Iterable]]] = None,
                lr_scheduler: _LRScheduler = None,
-               ophook_list: List[BaseOpHook] = [],
+               ophooks: List[BaseOpHook] = [],
                verbose: bool = True
                ) -> Tuple[Engine, DataLoader, DataLoader, _LRScheduler]:
     """Core function to wrap the essential training components with our functionality based on the config which is
@@ -415,7 +415,7 @@ def initialize(model: Union[nn.Module, List[nn.Module]],
         criterion=criterion,
         gradient_handlers=gradient_handlers,
         clip_grad_norm=clip_grad_norm,
-        hooks=ophook_list
+        ophook_list=ophooks
     )
 
     return engine, train_dataloader, test_dataloader, lr_scheduler
