@@ -12,7 +12,7 @@ class ShardedGradient:
                  offload_config: Optional[dict] = None
                  ) -> None:
         assert hasattr(
-            param, 'ca_attr') and param.ca_attr.is_shared, 'ShardedGradient can only be initialized with sharded parameter'
+            param, 'ca_attr') and param.ca_attr.is_sharded, 'ShardedGradient can only be initialized with sharded parameter'
 
         self.param = param
         self.sharded_module = sharded_module

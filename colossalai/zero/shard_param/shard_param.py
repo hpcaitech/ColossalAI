@@ -18,11 +18,12 @@ class ShardParam(object):
     on different processes.
     """
 
-    def __init__(self,
-                 param: torch.nn.Parameter,
-                 tensor_type: TensorType = TensorType.DATA,
-                 process_group=None,
-                 ) -> None:
+    def __init__(
+        self,
+        param: torch.nn.Parameter,
+        tensor_type: TensorType = TensorType.DATA,
+        process_group=None,
+    ) -> None:
         self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
         self.world_size = dist.get_world_size(self.process_group)
         self.local_rank = dist.get_rank(self.process_group)
@@ -32,27 +33,25 @@ class ShardParam(object):
         self._origin_shape = param.shape
         self._origin_numel = param.numel()
         self._origin_dtype = param.dtype
-        self.is_shared = False
+        self.is_sharded = False
 
-    def payload(self, target_device : torch.device):
+    def payload(self, target_device: torch.device):
         return self._param_payload.to(target_device)
 
     def shard(self):
         r"""
         Distributed the payload of param to all processes.
         """
-        if self.is_shared:
+        if self.is_sharded:
             return
         self._param_payload, _ = get_shard(self._param_payload, self.local_rank, self.world_size)
-        self.is_shared = True
-        self._payload_shape = self._param_payload.shape
-        self._payload_numel = self._param_payload.numel()
+        self.is_sharded = True
 
     def gather(self):
         r"""
         Collect the payload of param from different processes to process of local rank.
         """
-        if not self.is_shared:
+        if not self.is_sharded:
             return
 
         buffer_list = []
@@ -63,18 +62,12 @@ class ShardParam(object):
             else:
                 buffer_list.append(torch.zeros(payload_numel).cuda())
 
-        torch.distributed.all_gather(
-            buffer_list, buffer_list[self.local_rank], group=self.process_group, async_op=False)
+        torch.distributed.all_gather(buffer_list,
+                                     buffer_list[self.local_rank],
+                                     group=self.process_group,
+                                     async_op=False)
         self._param_payload = torch.narrow(torch.cat(buffer_list), 0, 0, self._origin_numel).view(self._origin_shape)
-        self.is_shared = False
-
-    @property
-    def origin_shape(self):
-        return self._origin_shape
-
-    @property
-    def shard_shape(self):
-        return self._payload_shape
+        self.is_sharded = False
 
     @property
     def origin_dtype(self):
