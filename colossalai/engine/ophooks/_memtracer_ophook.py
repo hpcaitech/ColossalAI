@@ -5,18 +5,18 @@ from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from time import sleep, time
 import pickle
+from typing import Union, Optional
 
-
-def get_cuda_memory_used(device):
+def get_cuda_memory_used(device: Optional[torch.device]) -> int:
     """
     Get the free memory info of device.
     Notice that for CPU, this function will return 1/N of the total free memory,
     where N is the world size.
     """
-    ret = torch.cuda.memory_allocated()
+    ret: int = torch.cuda.memory_allocated(device)
     # get the peak memory to report correct data, so reset the counter for the next call
     if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
-        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.reset_peak_memory_stats(device)
     return ret
 
 
