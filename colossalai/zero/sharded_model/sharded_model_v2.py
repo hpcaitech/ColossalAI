@@ -1,11 +1,5 @@
 
-import contextlib
-import copy
 import functools
-import os
-import traceback
-from collections import OrderedDict
-from enum import Enum, auto
 from typing import (Any, Callable, Dict, Generator, List, NamedTuple, Optional,
                     Set, Union)
 
@@ -14,15 +8,12 @@ import torch.distributed as dist
 import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine.ophooks import (BaseOpHook, ShardGradHook,
-                                       ShardParamHook,
+from colossalai.engine.ophooks import (ShardGradHook, ShardParamHook,
                                        register_ophooks_recursively)
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
 from colossalai.zero.shard_param import ShardParam
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_model.sharded_grad import ShardedGradient
-from torch.autograd import Variable
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
@@ -150,9 +141,9 @@ class ShardedModelV2(nn.Module):
             if self.world_size > 1:
                 grad_chunks = chunk_and_pad(orig_grad_data, self.reduce_scatter_process_group.size())
                 self.reducer.reduce_scatter_async(
-                    grad_chunks, group=self.reduce_scatter_process_group, callback_fn=param._sharded_grad.reduce_scatter_callback)
+                    grad_chunks, group=self.reduce_scatter_process_group, callback_fn=functools.partial(self._reduce_scatter_callback, param))
             else:
-                param._sharded_grad.reduce_scatter_callback(new_grad)
+                self._reduce_scatter_callback(param, new_grad)
             orig_grad_data.record_stream(self.comm_stream)
 
     def _register_grad_post_backward_hooks(self) -> None:
@@ -163,3 +154,18 @@ class ShardedModelV2(nn.Module):
                 # Instead we register hook on parameter
                 handle = p.register_hook(functools.partial(self._grad_post_backward_hook, p))
                 p._grad_backward_hook = handle
+
+    def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
+        if self.gradient_postdivide_factor > 1:
+            # Average grad by world_size for consistency with PyTorch DDP.
+            reduced_grad.data.div_(self.gradient_postdivide_factor)
+        # Cast grad to param's dtype (typically FP32). Note: we do this
+        # before the cpu offload step so that this entire hook remains
+        # non-blocking. The downside is a bit more D2H transfer in that case.
+        if self.mixed_precision:
+            orig_param_grad_data = reduced_grad.data
+            reduced_grad.data = reduced_grad.data.to(dtype=param.ca_attr.origin_dtype)
+            # Don't let this memory get reused until after the transfer.
+            orig_param_grad_data.record_stream(torch.cuda.current_stream())
+
+        param._sharded_grad.reduce_scatter_callback(reduced_grad)

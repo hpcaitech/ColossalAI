@@ -22,8 +22,10 @@ def run_fwd_bwd(model, x, enable_autocast=False):
         y = model(x)
         loss = y.sum()
     loss = loss.float()
-    loss.backward()
-    # model.backward(loss)
+    if isinstance(model, ShardedModelV2):
+        model.backward(loss)
+    else:
+        loss.backward()
 
 
 def run_dist(rank, world_size, port):

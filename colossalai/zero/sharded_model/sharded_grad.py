@@ -19,6 +19,9 @@ class ShardedGradient:
                  process_group: Optional[ProcessGroup] = None,
                  offload_config: Optional[dict] = None
                  ) -> None:
+        assert hasattr(
+            param, 'ca_attr') and param.ca_attr.is_shared, 'ShardedGradient can only be initialized with sharded parameter'
+
         self.param = param
         self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
         self.shard_idx = self.process_group.rank()
@@ -27,12 +30,9 @@ class ShardedGradient:
 
         self._cpu_offload = offload_config.get('device', None) == 'cpu' if offload_config else False
 
-        sharded_param, _ = get_shard(param.data, self.shard_idx, self.num_shards)
-
         self._is_sharded = self.num_shards > 1
-        self._orig_size = param.data.size()
-        self._shard_size = sharded_param.size()
-        del sharded_param
+        self._orig_size = param.ca_attr.origin_shape
+        self._shard_size = param.ca_attr.shard_shape
 
         self._saved_grad_shard: Optional[torch.Tensor] = None
         self._saved_full_grad: Optional[torch.Tensor] = None
@@ -40,36 +40,36 @@ class ShardedGradient:
 
         if self._cpu_offload:
             # this buffer will be held and reused every iteration
-            self._cpu_grad = torch.zeros_like(param.data, device='cpu').pin_memory()
+            self._cpu_grad = torch.zeros_like(param.ca_attr.payload('cpu')).pin_memory()
 
     @torch.no_grad()
     def setup(self) -> None:
-        """This function will be called pre-backward
+        """This function will be called pre-backward. Save the local accumulated gradient to _saved_grad_shard or _saved_full_grad
 
         :raises AssertionError: Raise if grad shape is wrong
         """
         if self.param.grad is not None:
+            set_grad_to_none = True
             if self.param.grad.device != self.param.data.device:
                 # TODO: offload?
                 raise RuntimeError(
                     'grad and param are on different device, grad {self.param.grad.device} vs. param {self.param.data.device}')
-                self.param.grad = None
             elif self.param.grad.size() == self._orig_size:
                 if not self._is_sharded:
                     self._saved_full_grad = self.param.grad.data
-                    self.param.grad = None
                 else:
                     # This is gradient accumulation with no_sync context.
-                    pass
+                    set_grad_to_none = False
             elif self.param.grad.size() == self._shard_size:
                 # This is gradient accumulation without no_sync context.
                 # We save the grad shard and set p.grad to None for this backward pass.
                 # We will accumulate after this pass's grad is generated and reduced and
                 # sharded.
                 self._saved_grad_shard = self.param.grad.data
-                self.param.grad = None
             else:
                 raise AssertionError(f"unexpected grad shape: {self.param.grad.size()}")
+            if set_grad_to_none:
+                self.param.grad = None
 
     def reduce_scatter_callback(self, reduced_grad: torch.Tensor) -> None:
         """This function will be called in post-backward hook, so we cannot modify param.grad directly
@@ -106,17 +106,17 @@ class ShardedGradient:
     def write_back(self) -> None:
         """This function will be called in final backward hook
         """
+        print(f'{self.param.shape} {self.param.ca_attr.origin_shape} {self.param.ca_attr.shard_shape} {self.param.grad.shape} {self._saved_grad_shard.shape}')
         if self._cpu_grad is not None:
-            assert_in_engine(self.param.device == torch.device('cpu'),
-                             f'Incorrect param device, expected CPU, got {self.param.device}')
-            self.param.grad = self._cpu_grad
+            assert self.param.device == torch.device(
+                'cpu'), f'Incorrect param device, expected CPU, got {self.param.device}'
+            self.param.grad.data = self._cpu_grad
         elif self._saved_grad_shard is not None:
-            assert_in_engine(self.param.device == self._saved_grad_shard.device,
-                             f'Incorrect _saved_grad_shard device, param on {self.param.device} but _saved_grad_shard on {self._saved_grad_shard.device}')
-            self.param.grad = self._saved_grad_shard
+            assert self.param.device == self._saved_grad_shard.device, f'Incorrect _saved_grad_shard device, param on {self.param.device} but _saved_grad_shard on {self._saved_grad_shard.device}'
+            self.param.grad.data = self._saved_grad_shard
             self._saved_grad_shard = None
         elif self._saved_full_grad is not None:
-            self.param.grad = self._saved_full_grad
+            self.param.grad.data = self._saved_full_grad
             self._saved_full_grad = None
         else:
-            assert_in_engine(False, 'No grad to write back')
+            raise RuntimeError('No grad to write back')
