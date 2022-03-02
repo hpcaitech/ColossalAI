@@ -20,7 +20,7 @@ class ShardedGradient:
 
         self._cpu_offload = offload_config.get('device', None) == 'cpu' if offload_config else False
 
-        # _gpu_grad can be both sharded or not
+        # _gpu_grad is either sharded or not
         # all saved grads are fp32
         self._gpu_grad: Optional[torch.Tensor] = None
         self._cpu_grad: Optional[torch.Tensor] = None
