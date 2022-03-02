@@ -38,4 +38,5 @@ class BaseParamHook(object):
 
     def remove_hooks(self):
         for p in self.param_list:
-            p._base_param_hook.remove()
+            if p.requires_grad and hasattr(p, '_base_param_hook'):
+                p._base_param_hook.remove()
