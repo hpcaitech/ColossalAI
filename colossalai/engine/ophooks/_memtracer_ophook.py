@@ -1,3 +1,4 @@
+from re import S
 import torch
 from . import BaseOpHook
 from concurrent.futures import ThreadPoolExecutor
@@ -78,18 +79,49 @@ class AsyncMemoryMonitor:
 
 @OPHOOKS.register_module
 class MemTracerOpHook(BaseOpHook):
-    def __init__(self, niter=5):
+    '''
+    Collect GPU memory usage information
+
+    Args: 
+        warmup (int): This parameter indicates how many iterations to truncate
+        before profiling, e.g. set to 5 and the data will start from 6-th iteration
+        refreshrate (int): This parameter decides the frequency of write file.
+        datafile(string): the name of the stats data file
+    Attributes:
+        _logger (colossalai.logging.logger): output log file
+        _curiter (int): current iteration number
+        _count (int): the number of times the data file was written
+        _datafile (string): the name of the stats data file
+    '''
+    def __init__(self, warmup: int = 50, refreshrate: int = 10, datafile: str = "memstats.pkl"):
         super().__init__()
         self.async_mem_monitor = AsyncMemoryMonitor()
-        self._niter = niter
         self._curiter = 0
         self._logger = get_dist_logger()
+        self._count = 0
+        self._warmup = warmup
+        self._refreshrate = refreshrate
+        self._datafile = datafile
 
-    def _isvalid(self, module):
-        return module.training and self._curiter < self._niter
+    def _isvalid(self, module) -> bool:
+        assert isinstance(module, torch.nn.Module)
+        return module.training
 
-    def niter(self):
-        return self._niter
+    @property
+    def refreshrate(self) -> int:
+        return self._refreshrate
+    
+    @property
+    def warmup(self) -> int:
+        return self._warmup
+
+    @property
+    def curiter(self) -> int:
+        return self._curiter
+
+    @property
+    def valid_iter(self) -> int:
+        return self.curiter - self.warmup
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
         if self._isvalid(module):
@@ -103,14 +135,12 @@ class MemTracerOpHook(BaseOpHook):
             self._logger.debug(f'FWD POST {module.__class__.__name__}')
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
-        assert isinstance(module, torch.nn.Module)
         if self._isvalid(module):
             self.async_mem_monitor.finish()
             self.async_mem_monitor.start()
             self._logger.debug(f'BWD PRE {module.__class__.__name__}')
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
-        assert isinstance(module, torch.nn.Module)
         if self._isvalid(module):
             self.async_mem_monitor.finish()
             self._logger.debug(f'BWD POST {module.__class__.__name__}')
@@ -120,11 +150,21 @@ class MemTracerOpHook(BaseOpHook):
 
     def post_iter(self):
         self.async_mem_monitor.finish()
-        if self._curiter == self._niter:
-            self._logger.info(
-                f'dump a memory statistics as pickle to ./memstats.pkl')
-            self.save_results("memstats.pkl")
+        # in the warmup stage
+        if self._curiter <= self.warmup:
+            # TODO: record time and adaptively change sampling rate
+            pass
+        else:
+            # every `refreshrate` times, refresh the file
+            if self.valid_iter != 0 and self.valid_iter % self.refreshrate == 0:
+                # output file info
+                self._logger.info(
+                    f'dump a memory statistics as pickle to {self._datafile}')
+                self.save_results(self._datafile)
+                self._count += 1
+                self._logger.debug(f'data file has been refreshed {self._count} times')
+        # finish a iteration
         self._curiter += 1
 
-    def save_results(self, filename):
-        self.async_mem_monitor.save(filename)
+    def save_results(self):
+        self.async_mem_monitor.save(self._datafile)
