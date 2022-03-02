@@ -6,7 +6,7 @@ class BaseParamHook(object):
         r"""
         register backward hook on every parameters of module
         """
-        self.param_list = param_list
+        self._param_list = param_list
         self._hook_list = []
 
     def register_backward_hooks(self, hook_call : Callable) -> None:
@@ -20,23 +20,12 @@ class BaseParamHook(object):
         """
         if not torch.is_grad_enabled():
             return  # don't register grad hooks if grad isn't enabled
-        for p in self.param_list:
+        for p in self._param_list:
             if p.requires_grad and not hasattr(p, '_base_param_hook'):
-                # For mixed precision with activation checkpoint, hooks on GradAccumulation won't be fired normally
-                # Instead we register hook on parameter
-                # In this way, we can't modify param.grad and param.data directly, which leads to more memory usage
-                # Register a hook on the first call, empirically, autograd
-                # fires it at the end for this param, which makes sense.
-                # p_tmp = p.expand_as(p)  # Get a grad_fn on p_tmp.
-                # assert p_tmp.grad_fn is not None
-                # grad_acc = p_tmp.grad_fn.next_functions[0][0]  # Gets its GradAccumulation object.
-                # handle = grad_acc.register_hook(functools.partial(self._post_backward_hook, p))
-                # p.zero_shard_bwd_hook = (grad_acc, handle)
-                # handle = p.register_hook(functools.partial(self._post_backward_hook, p))
                 handle = p.register_hook(hook_call)
                 p._base_param_hook = handle
 
     def remove_hooks(self):
-        for p in self.param_list:
+        for p in self._param_list:
             if p.requires_grad and hasattr(p, '_base_param_hook'):
                 p._base_param_hook.remove()
