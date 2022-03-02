@@ -1,5 +1,4 @@
 import pytest
-from tkinter import S
 from colossalai.engine.paramhooks import BaseParamHook
 from torch import nn
 import torch
@@ -70,6 +69,7 @@ def test_base_param_hook():
         loss.backward()
 
         if use_param_hook:
+            hook_mgr.remove_hooks()
             return hookwrapper.hook_triggered_times
     
     model_copy = copy.deepcopy(model)
