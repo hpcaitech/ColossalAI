@@ -35,6 +35,9 @@ class AsyncMemoryMonitor:
         self.time_stamps = []
         self.mem_stats = []
 
+    def __len__(self):
+        return len(self.mem_stats)
+
     def set_interval(self, power: int):
         self.interval = 1 / (10**power)
 
@@ -75,6 +78,10 @@ class AsyncMemoryMonitor:
     def save(self, filename):
         with open(filename, "wb") as f:
             pickle.dump(self.state_dict(), f)
+    
+    def clear(self):
+        self.mem_stats.clear()
+        self.time_stamps.clear()
 
 
 @OPHOOKS.register_module
@@ -88,6 +95,8 @@ class MemTracerOpHook(BaseOpHook):
         refreshrate (int): This parameter decides the frequency of write file.
         datafile(string): the name of the stats data file
     Attributes:
+        _warmup (int): warmup iterations
+        _refreshrate(int): how many iterations we shall refresh the file
         _logger (colossalai.logging.logger): output log file
         _curiter (int): current iteration number
         _count (int): the number of times the data file was written
@@ -151,16 +160,18 @@ class MemTracerOpHook(BaseOpHook):
     def post_iter(self):
         self.async_mem_monitor.finish()
         # in the warmup stage
-        if self._curiter <= self.warmup:
+        if self._curiter < self.warmup:
             # TODO: record time and adaptively change sampling rate
             pass
+        elif self._curiter == self._warmup:
+            self.async_mem_monitor.clear()
         else:
             # every `refreshrate` times, refresh the file
             if self.valid_iter != 0 and self.valid_iter % self.refreshrate == 0:
                 # output file info
                 self._logger.info(
                     f'dump a memory statistics as pickle to {self._datafile}')
-                self.save_results(self._datafile)
+                self.save_results()
                 self._count += 1
                 self._logger.debug(f'data file has been refreshed {self._count} times')
         # finish a iteration
