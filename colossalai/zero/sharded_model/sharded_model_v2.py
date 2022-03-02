@@ -51,7 +51,7 @@ class ShardedModelV2(nn.Module):
         for _, param in self.module.named_parameters():
             param.ca_attr = ShardParam(param)
             param.ca_attr.shard()
-            param._sharded_grad = ShardedGradient(param, process_group, offload_config)
+            param._sharded_grad = ShardedGradient(param, self, offload_config)
 
         # Register hooks
         register_ophooks_recursively(self.module, [ShardParamHook(), ShardGradHook()])

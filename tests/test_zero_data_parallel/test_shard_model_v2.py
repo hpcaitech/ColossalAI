@@ -7,13 +7,14 @@ from functools import partial
 import colossalai
 import pytest
 import torch
+import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 from colossalai.zero.sharded_model import ShardedModelV2
 
-from common import CONFIG, Net, check_grads
+from common import CONFIG, Net, check_grads, check_grads_padding
 
 
 def run_fwd_bwd(model, x, enable_autocast=False):
@@ -44,14 +45,15 @@ def run_dist(rank, world_size, port):
         x = torch.rand(2, 5).cuda()
         run_fwd_bwd(zero_model, x, False)
         run_fwd_bwd(model, x, False)
-        check_grads(model, zero_model)
+        if dist.get_world_size() > 1:
+            check_grads_padding(model, zero_model)
+        else:
+            check_grads(model, zero_model)
 
-# TODO: fix this test
 
-
-@pytest.mark.skip
+@pytest.mark.dist
 def test_shard_model_v2():
-    world_size = 1
+    world_size = 2
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
