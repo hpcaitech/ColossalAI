@@ -1,38 +1,58 @@
-from enum import Enum
 import torch
 from colossalai.zero.sharded_model._zero3_utils import get_shard
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 import torch.distributed as dist
-
-
-class TensorType(Enum):
-    GRAD = 1
-    DATA = 2
+from typing import Union, Tuple, Optional
 
 
 class ShardParam(object):
     r"""
     A wrapper to torch.nn.Parameter. Shard a param
-    on different processes.
+    on memory space of different processes.
     """
 
-    def __init__(
-        self,
-        param: torch.nn.Parameter,
-        tensor_type: TensorType = TensorType.DATA,
-        process_group=None,
-    ) -> None:
+    def __init__(self,
+                 param: Union[torch.nn.Parameter, Tuple[int, ...]],
+                 process_group: Optional[dist.ProcessGroup] = None,
+                 is_sharded: bool = False,
+                 device: Optional[torch.device] = None) -> None:
+        r"""
+        param: either an existing torch parameter or a tuple, indicate allocate a new param with the tuple as shape.
+        process_group: the process group storing the shared data.
+        is_sharded: is shared the param during __init__.
+        device: the device to place param data payload on
+        """
         self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
         self.world_size = dist.get_world_size(self.process_group)
         self.local_rank = dist.get_rank(self.process_group)
-        self._param_payload = param.data if tensor_type == TensorType.DATA else param.grad
-        self._payload_numel = None
-        self._origin_shape = param.shape
-        self._origin_numel = param.numel()
         self.is_sharded = False
 
+        # Hijack the data payload of param
+        if isinstance(param, torch.nn.Parameter):
+            self._param_payload = param.data.to(device)
+            self._origin_shape = param.shape
+            self._origin_numel = param.numel()
+            if is_sharded:
+                self.shard()
+        elif isinstance(param, tuple):
+            self._origin_shape = param.shape
+            self._origin_numel = param.numel()
+
+            # TODO(jiaruifang) can be optimized. Directly allocate payload as the sharded shape.
+            assert device is not None, "You have to assign a device to initialize a ShardParam from a shape tuple"
+            self._param_payload = torch.empty(self._origin_shape, device=device)
+            if is_sharded:
+                self.shard()
+        else:
+            raise RuntimeError(f"Initialize ShardParam failed. The 2nd parameter is wrong type {type(param)}")
+
+        self._payload_numel = None
+
     def payload(self, target_device: torch.device):
+        r"""
+        get the payload and move it to target device
+        """
         return self._param_payload.to(target_device)
 
     def shard(self):
@@ -47,6 +67,7 @@ class ShardParam(object):
     def gather(self):
         r"""
         Collect the payload of param from different processes to process of local rank.
+        The payload has to be moved to cuda memory before communication.
         """
         if not self.is_sharded:
             return
