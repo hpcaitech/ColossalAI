@@ -14,7 +14,9 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.utils import checkpoint, free_port
 from colossalai.zero.sharded_model import ShardedModel
 from torch.nn.parallel import DistributedDataParallel as DDP
-from common import Net, allclose
+
+from common import Net, check_grads_padding, check_params_padding
+
 
 def run_step(model, optimizer, x, enable_autocast=False):
     model.train()
@@ -25,34 +27,6 @@ def run_step(model, optimizer, x, enable_autocast=False):
     loss = loss.float()
     loss.backward()
     optimizer.step()
-
-def check_grads_padding(model, zero_model, loose=False):
-    rank = dist.get_rank()
-    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_grad = zero_p.grad.clone().to(p.device)
-        chunks = torch.flatten(p.grad).chunk(4)
-        if rank >= len(chunks):
-            continue
-        grad = chunks[rank]
-        if zero_p.zero_shard_padding > 0:
-            zero_grad = zero_grad[:-zero_p.zero_shard_padding]
-        assert grad.dtype == zero_grad.dtype
-        assert allclose(grad, zero_grad, loose=loose)
-
-
-def check_params_padding(model, zero_model, loose=False):
-    rank = dist.get_rank()
-    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_shard_padding = zero_p.zero_shard_padding
-        zero_p = zero_p.clone().to(p.device)
-        chunks = torch.flatten(p).chunk(4)
-        if rank >= len(chunks):
-            continue
-        p = chunks[rank]
-        if zero_shard_padding > 0:
-            zero_p = zero_p[:-zero_shard_padding]
-        assert p.dtype == zero_p.dtype
-        assert allclose(p, zero_p, loose=loose)
 
 
 def decode_booleans(intval, bits):
