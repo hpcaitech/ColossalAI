@@ -22,7 +22,7 @@ class OptimState(Enum):
     UNSCALED = 2
 
 
-class ShardedAdam(ColossalaiOptimizer):
+class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def __init__(self,
                  adam_optim: Optimizer,
