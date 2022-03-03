@@ -1,27 +1,22 @@
-name: Compatibility Test
+name: Build
 
-on: workflow_dispatch
+on: 
+  pull_request:
+    types: [synchronize, labeled]
 
 jobs:
   build:
-    name: Test for PyTorch compatibility
-    if: (github.base_ref == 'main'  || github.base_ref == 'develop') && github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, aws]
-    strategy:
-      fail-fast: false
-      matrix:
-        # 20.07: PyTorch 1.6.0a0+9907a3e + Python 3.6
-        # 20.10: PyTorch 1.7.0a0+7036e91 + Python 3.8
-        # 20.12: PyTorch 1.8.0a0+1606899 + Python 3.8
-        # 21.06: PyTorch 1.9.0a0+c3d40fd + Python 3.8
-        container: ["nvcr.io/nvidia/pytorch:20.07-py3", 
-                    "nvcr.io/nvidia/pytorch:20.10-py3", 
-                    "nvcr.io/nvidia/pytorch:20.12-py3", 
-                    "nvcr.io/nvidia/pytorch:21.06-py3"]
+    name: Build and Test Colossal-AI
+    if: |
+        github.event.pull_request.draft == false && 
+        (github.base_ref == 'main' || github.base_ref == 'develop') && 
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
+        contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
+    runs-on: [self-hosted, gpu]
     container:
-      image: ${{ matrix.container }}
+      image: nvcr.io/nvidia/pytorch:21.07-py3
       options: --gpus all --rm --ipc=host -v /data/scratch/cifar-10:/data/scratch/cifar-10
-    timeout-minutes: 120
+    timeout-minutes: 20
     steps:
       - name: Setup Environment
         run: |
@@ -41,6 +36,3 @@ jobs:
           pytest tests
         env:
           DATA: /data/scratch/cifar-10
-      
-
-
