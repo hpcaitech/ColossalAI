@@ -218,7 +218,7 @@ setup(
     extras_require={
         'zero': fetch_requirements('requirements/requirements-zero.txt'),
     },
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: Apache Software License',
