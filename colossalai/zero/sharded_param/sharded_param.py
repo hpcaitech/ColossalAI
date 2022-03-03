@@ -1,13 +1,13 @@
 import torch
-from colossalai.zero.sharded_model._zero3_utils import get_shard
+import torch.distributed as dist
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-import torch.distributed as dist
+from colossalai.zero.sharded_model._zero3_utils import get_shard
 from typing import Union, Tuple, Optional
 import numpy
 
 
-class ShardParam(object):
+class ShardedParam(object):
     r"""
     A wrapper to torch.nn.Parameter. Shard a param
     on memory space of different processes.
@@ -87,3 +87,7 @@ class ShardParam(object):
                                      async_op=False)
         self._param_payload = torch.narrow(torch.cat(buffer_list), 0, 0, self._origin_numel).view(self._origin_shape)
         self.is_sharded = False
+
+    @property
+    def origin_dtype(self):
+        return self._origin_dtype

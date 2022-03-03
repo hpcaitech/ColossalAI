@@ -1,9 +1,10 @@
 from functools import partial
-from operator import imod
-from colossalai.utils import checkpoint
-import torch.nn as nn
+
 import torch
+import torch.distributed as dist
+import torch.nn as nn
 from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.utils import checkpoint
 
 LOGGER = get_dist_logger()
 
@@ -34,6 +35,7 @@ CONFIG = dict(
     )
 )
 
+
 def checkpoint_wrapper(module, enable=True):
     if enable:
         module.forward = partial(checkpoint, module.forward)
@@ -61,6 +63,7 @@ class Net(nn.Module):
             x = layer(x)
         return x
 
+
 def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
     if loose:
         return torch.allclose(tensor_a, tensor_b, atol=1e-3, rtol=1e-3)
@@ -72,7 +75,8 @@ def check_grads(model, zero_model, loose=False):
         zero_grad = zero_p.grad.clone().to(p.device)
         assert p.grad.dtype == zero_grad.dtype
         assert allclose(p.grad, zero_grad, loose=loose)
-        LOGGER.info(torch.sum(p.grad-zero_grad))
+        LOGGER.info(torch.sum(p.grad - zero_grad))
+
 
 def check_params(model, zero_model, loose=False):
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
@@ -80,3 +84,30 @@ def check_params(model, zero_model, loose=False):
         assert p.dtype == zero_p.dtype
         assert allclose(p, zero_p, loose=loose)
 
+
+def check_grads_padding(model, zero_model, loose=False):
+    rank = dist.get_rank()
+    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
+        zero_grad = zero_p.grad.clone().to(p.device)
+        chunks = torch.flatten(p.grad).chunk(dist.get_world_size())
+        if rank >= len(chunks):
+            continue
+        grad = chunks[rank]
+        if zero_grad.size(0) > grad.size(0):
+            zero_grad = zero_grad[:grad.size(0)]
+        assert grad.dtype == zero_grad.dtype
+        assert allclose(grad, zero_grad, loose=loose)
+
+
+def check_params_padding(model, zero_model, loose=False):
+    rank = dist.get_rank()
+    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
+        zero_p = zero_p.clone().to(p.device)
+        chunks = torch.flatten(p).chunk(dist.get_world_size())
+        if rank >= len(chunks):
+            continue
+        p = chunks[rank]
+        if zero_p.size(0) > p.size(0):
+            zero_p = zero_p[:p.size(0)]
+        assert p.dtype == zero_p.dtype
+        assert allclose(p, zero_p, loose=loose)
