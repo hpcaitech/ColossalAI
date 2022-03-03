@@ -1,4 +1,5 @@
 name: Synchronize Submodule
+
 on: 
   workflow_dispatch:
   schedule:
@@ -12,6 +13,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
         with:
+          ref: 'develop'
           submodules: true
 
       - name: echo
