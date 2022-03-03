@@ -7,6 +7,8 @@ from colossalai.logging import get_dist_logger
 from time import sleep, time
 import pickle
 from typing import Union, Optional
+from colossalai.core import global_context as gpc
+
 
 def get_cuda_memory_used(device: Optional[torch.device]) -> int:
     """
@@ -100,9 +102,10 @@ class MemTracerOpHook(BaseOpHook):
         _logger (colossalai.logging.logger): output log file
         _curiter (int): current iteration number
         _count (int): the number of times the data file was written
-        _datafile (string): the name of the stats data file
+        _data_prefix (string): the prefix of the stats data file
+        _rank (int): the rank of current node
     '''
-    def __init__(self, warmup: int = 50, refreshrate: int = 10, datafile: str = "memstats.pkl"):
+    def __init__(self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"):
         super().__init__()
         self.async_mem_monitor = AsyncMemoryMonitor()
         self._curiter = 0
@@ -110,7 +113,8 @@ class MemTracerOpHook(BaseOpHook):
         self._count = 0
         self._warmup = warmup
         self._refreshrate = refreshrate
-        self._datafile = datafile
+        self._data_prefix = data_prefix
+        self._rank = gpc.add_global_rank()
 
     def _isvalid(self, module) -> bool:
         assert isinstance(module, torch.nn.Module)
@@ -170,7 +174,7 @@ class MemTracerOpHook(BaseOpHook):
             if self.valid_iter != 0 and self.valid_iter % self.refreshrate == 0:
                 # output file info
                 self._logger.info(
-                    f'dump a memory statistics as pickle to {self._datafile}')
+                    f'dump a memory statistics as pickle to {self._dataprefix}-{self._rank}.pkl')
                 self.save_results()
                 self._count += 1
                 self._logger.debug(f'data file has been refreshed {self._count} times')
@@ -178,4 +182,5 @@ class MemTracerOpHook(BaseOpHook):
         self._curiter += 1
 
     def save_results(self):
-        self.async_mem_monitor.save(self._datafile)
+        datafile = f"{self._data_prefix}-{self._rank}.pkl"
+        self.async_mem_monitor.save(datafile)
