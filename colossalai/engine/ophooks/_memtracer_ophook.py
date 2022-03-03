@@ -114,7 +114,7 @@ class MemTracerOpHook(BaseOpHook):
         self._warmup = warmup
         self._refreshrate = refreshrate
         self._data_prefix = data_prefix
-        self._rank = gpc.add_global_rank()
+        self._rank = gpc.get_global_rank()
 
     def _isvalid(self, module) -> bool:
         assert isinstance(module, torch.nn.Module)
