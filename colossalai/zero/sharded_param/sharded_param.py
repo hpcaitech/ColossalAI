@@ -7,7 +7,7 @@ from typing import Union, Tuple, Optional
 import numpy
 
 
-class ShardParam(object):
+class ShardedParam(object):
     r"""
     A wrapper to torch.nn.Parameter. Shard a param
     on memory space of different processes.
