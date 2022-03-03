@@ -4,6 +4,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 import torch.distributed as dist
 from typing import Union, Tuple, Optional
+import numpy
 
 
 class ShardParam(object):
@@ -13,12 +14,12 @@ class ShardParam(object):
     """
 
     def __init__(self,
-                 param: Union[torch.nn.Parameter, Tuple[int, ...]],
+                 other: Union[torch.nn.Parameter, Tuple[int, ...]],
                  process_group: Optional[dist.ProcessGroup] = None,
                  is_sharded: bool = False,
                  device: Optional[torch.device] = None) -> None:
         r"""
-        param: either an existing torch parameter or a tuple, indicate allocate a new param with the tuple as shape.
+        other: either an existing torch parameter or a tuple, indicate allocate a new param with the tuple as shape.
         process_group: the process group storing the shared data.
         is_sharded: is shared the param during __init__.
         device: the device to place param data payload on
@@ -29,15 +30,15 @@ class ShardParam(object):
         self.is_sharded = False
 
         # Hijack the data payload of param
-        if isinstance(param, torch.nn.Parameter):
-            self._param_payload = param.data.to(device)
-            self._origin_shape = param.shape
-            self._origin_numel = param.numel()
+        if isinstance(other, torch.nn.Parameter):
+            self._param_payload = other.data.to(device)
+            self._origin_shape = other.shape
+            self._origin_numel = other.numel()
             if is_sharded:
                 self.shard()
-        elif isinstance(param, tuple):
-            self._origin_shape = param.shape
-            self._origin_numel = param.numel()
+        elif isinstance(other, tuple):
+            self._origin_shape = other
+            self._origin_numel = numpy.prod(other)
 
             # TODO(jiaruifang) can be optimized. Directly allocate payload as the sharded shape.
             assert device is not None, "You have to assign a device to initialize a ShardParam from a shape tuple"
@@ -45,7 +46,7 @@ class ShardParam(object):
             if is_sharded:
                 self.shard()
         else:
-            raise RuntimeError(f"Initialize ShardParam failed. The 2nd parameter is wrong type {type(param)}")
+            raise RuntimeError(f"Initialize ShardParam failed. The 2nd parameter is wrong type {type(other)}")
 
         self._payload_numel = None
 

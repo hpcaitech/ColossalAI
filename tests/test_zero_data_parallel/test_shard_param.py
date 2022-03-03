@@ -19,6 +19,17 @@ def run_init_shard_param(rank, world_size, port):
     sparam = ShardParam(param, None, True)
     payload = sparam.payload(torch.device('cuda'))
     assert (list(payload.shape) == [3])
+    del sparam
+
+    param_shape = (2, 3)
+    sparam = ShardParam(param_shape, process_group=None, is_sharded=True, device=torch.device('cpu'))
+    payload = sparam.payload(torch.device('cuda'))
+    assert (list(payload.shape) == [3])
+
+    param_shape = (2, 3)
+    sparam = ShardParam(param_shape, process_group=None, is_sharded=False, device=torch.device('cpu'))
+    payload = sparam.payload(torch.device('cuda'))
+    assert (list(payload.shape) == [2, 3])
 
 
 def run_shard_param_check(rank, world_size, port):
