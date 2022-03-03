@@ -1,4 +1,5 @@
 from re import S
+from colossalai.context.parallel_mode import ParallelMode
 import torch
 from . import BaseOpHook
 from concurrent.futures import ThreadPoolExecutor
@@ -114,7 +115,11 @@ class MemTracerOpHook(BaseOpHook):
         self._warmup = warmup
         self._refreshrate = refreshrate
         self._data_prefix = data_prefix
-        self._rank = gpc.get_global_rank()
+        # in distributed environment
+        if gpc.is_initialized(ParallelMode.GLOBAL):
+            self._rank = gpc.get_global_rank()
+        else:
+            self._rank = 0
 
     def _isvalid(self, module) -> bool:
         assert isinstance(module, torch.nn.Module)
