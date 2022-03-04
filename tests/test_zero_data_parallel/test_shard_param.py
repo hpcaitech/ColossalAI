@@ -7,10 +7,36 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.zero.sharded_param import ShardedParam
+from colossalai.zero.sharded_param import ShardedTensor, ShardedParam
 from colossalai.utils import free_port
 from colossalai.logging import get_dist_logger, disable_existing_loggers
 from tests.test_zero_data_parallel.common import Net, CONFIG
+
+
+def run_shard_tensor(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    t = ShardedTensor(tensor=torch.randn(world_size * 2, 3))
+
+    assert list(t.shape) == [world_size * 2, 3]
+    t.shard()
+    # The shape is flattened
+    assert list(t.shape) == [6]
+    # Do nothing
+    t.shard()
+    assert list(t.shape) == [6]
+
+    t.gather()
+    assert list(t.shape) == [world_size * 2, 3]
+
+    t.payload = torch.zeros(world_size * 2, 3)
+    assert torch.sum(t.payload).cpu() == 0
+
+
+@pytest.mark.dist
+def test_shard_tensor():
+    world_size = 2
+    run_func = partial(run_shard_tensor, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
 
 
 def run_init_shard_param(rank, world_size, port):
@@ -68,5 +94,6 @@ def test_init_shard_param():
 
 
 if __name__ == '__main__':
+    test_shard_tensor()
     test_shard_shape()
     test_init_shard_param()

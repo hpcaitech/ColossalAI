@@ -56,6 +56,13 @@ class ShardedParam(object):
         """
         return self._param_payload.to(target_device)
 
+    def set_payload(self, data: torch.Tensor):
+        r"""
+        set payload as data
+        """
+        assert self._param_payload.numel() == data.numel()
+        self._param_payload.copy_(data)
+
     def shard(self):
         r"""
         Distributed the payload of param to all processes.
