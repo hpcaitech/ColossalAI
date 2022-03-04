@@ -1,5 +1,4 @@
 #include "cpu_adam.h"
-#include <cuda_runtime_api.h>
 #include <math.h>
 #include <omp.h>
 #include <torch/extension.h>
@@ -7,9 +6,7 @@
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
-#include "cublas_v2.h"
-#include "cuda.h"
-#include "curand.h"
+#include <string.h>
 
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
@@ -71,7 +68,6 @@ void Adam_Optimizer::Step_1(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
-        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]);}
 
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH) {
@@ -125,14 +121,12 @@ void Adam_Optimizer::Step_1(float* _params,
             SIMD_STORE(_exp_avg_sq + i, variance_4.data);
         }
     }
-
 #endif
     if (_param_size > rounded_size) {
         for (size_t t = rounded_size; t < _param_size; t += TILE) {
             size_t copy_size = TILE;
             if ((t + TILE) > _param_size) copy_size = _param_size - t;
             size_t offset = copy_size + t;
-            if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]); }
 
 #pragma omp parallel for
             for (size_t k = t; k < offset; k++) {
@@ -219,8 +213,6 @@ void Adam_Optimizer::Step_4(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
-        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]);
-    }
 
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * 4) {
@@ -346,7 +338,7 @@ void Adam_Optimizer::Step_8(float* _params,
     }
     if (grad_half_precision) {
         grads_cast_h = reinterpret_cast<__half*>(grads);
-    } 
+    }
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
     AVX_Data betta1_4;
     betta1_4.data = SIMD_SET(_betta1);
@@ -380,8 +372,6 @@ void Adam_Optimizer::Step_8(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
-        if ((t / TILE) >= 2) { cudaStreamSynchronize(_streams[_buf_index]);
-    }
 
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH * 8) {
@@ -423,7 +413,6 @@ void Adam_Optimizer::Step_8(float* _params,
                 grad_4[j].data = SIMD_SQRT(variance_4[j].data);
                 grad_4[j].data = SIMD_FMA(grad_4[j].data, bias2_sqrt.data, eps_4.data);
                 grad_4[j].data = SIMD_DIV(momentum_4[j].data, grad_4[j].data);
-
                 if (_weight_decay > 0 && _adamw_mode) {
                     param_4[j].data = SIMD_FMA(param_4[j].data, weight_decay_4.data, param_4[j].data);
                 }
@@ -452,7 +441,7 @@ void Adam_Optimizer::Step_8(float* _params,
                loss_scale);
 }
 
-int ds_adam_step(int optimizer_id,
+int adam_step(int optimizer_id,
                  size_t step,
                  float lr,
                  float beta1,
@@ -471,8 +460,6 @@ int ds_adam_step(int optimizer_id,
     auto exp_avg_c = exp_avg.contiguous();
     auto exp_avg_sq_c = exp_avg_sq.contiguous();
 
-    // assert(params.options().dtype() == grads.options().dtype());
-
     float* params_ptr = (float*)params_c.data_ptr();
     float* grads_ptr = (float*)grads_c.data_ptr();
     float* exp_avg_ptr = (float*)exp_avg_c.data_ptr();
@@ -481,7 +468,6 @@ int ds_adam_step(int optimizer_id,
         std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
     opt->IncrementStep(step, beta1, beta2);
     opt->update_state(lr, epsilon, weight_decay, bias_correction);
-
     opt->Step_8(params_ptr,
                 grads_ptr,
                 exp_avg_ptr,
@@ -491,7 +477,6 @@ int ds_adam_step(int optimizer_id,
                 (grads.options().dtype() == at::kHalf),
                 loss_scale);
 
-    opt->SynchronizeStreams();
     return 0;
 }
 
@@ -505,7 +490,7 @@ int destroy_adam_optimizer(int optimizer_id)
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("adam_update", &ds_adam_step, "DeepSpeed CPU Adam update (C++)");
-    m.def("create_adam", &create_adam_optimizer, "DeepSpeed CPU Adam (C++)");
-    m.def("destroy_adam", &destroy_adam_optimizer, "DeepSpeed CPU Adam destroy (C++)");
+    m.def("adam_update", &adam_step, "CPU Adam update (C++)");
+    m.def("create_adam", &create_adam_optimizer, "CPU Adam (C++)");
+    m.def("destroy_adam", &destroy_adam_optimizer, "CPU Adam destroy (C++)");
 }

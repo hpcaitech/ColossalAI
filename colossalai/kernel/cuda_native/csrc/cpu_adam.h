@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cublas_v2.h>
-#include <ATen/cuda/CUDAContext.h>
 
 #if (__x86_64__ || __i386__)
 #include <cpuid.h>
@@ -28,7 +27,7 @@
 #define SIMD_FMA(x, y, c) _mm512_fmadd_ps(x, y, c)
 #define SIMD_SQRT(x) _mm512_sqrt_ps(x)
 #define SIMD_DIV(x, y) _mm512_div_ps(x, y)
-#define SIMD_LOAD_HALF(x) _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)x))
+#define SIMD_LOAD_HALF(x) _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)(x)))
 #define SIMD_STORE_HALF(x, d) _mm256_store_ps(x, _mm256_castsi256_ps(_mm512_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT)))
 
 #elif defined(__AVX256__) or defined(__AVX2__)
@@ -42,7 +41,7 @@
 #define SIMD_FMA(x, y, c) _mm256_fmadd_ps(x, y, c)
 #define SIMD_SQRT(x) _mm256_sqrt_ps(x)
 #define SIMD_DIV(x, y) _mm256_div_ps(x, y)
-#define SIMD_LOAD_HALF(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)x))
+#define SIMD_LOAD_HALF(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(x)))
 #define SIMD_STORE_HALF(x, d) _mm_store_ps(x, _mm_castsi128_ps(_mm256_cvtps_ph(d, _MM_FROUND_TO_NEAREST_INT)))
 
 #endif
@@ -85,28 +84,12 @@ public:
           _betta1_t(1.0),
           _betta2_t(1.0),
           _step(0),
-          _buf_index(false),
-          _adamw_mode(adamw_mode)
-    {
-        cudaMallocHost((void**)_doubled_buffer, TILE * sizeof(float));
-        cudaMallocHost((void**)(_doubled_buffer + 1), TILE * sizeof(float));
-
-        _streams[0] = c10::cuda::getCurrentCUDAStream();
-        _streams[1] = c10::cuda::getStreamFromPool();
-    }
-    ~Adam_Optimizer()
-    {
-        cudaFreeHost(_doubled_buffer[0]);
-        cudaFreeHost(_doubled_buffer[1]);
-    }
+          _adamw_mode(adamw_mode){}
+    ~Adam_Optimizer(){}
     
     STEP(1)
     STEP(4)
     STEP(8)
-    inline void SynchronizeStreams()
-    {
-        for (int i = 0; i < 2; i++) cudaStreamSynchronize(_streams[i]);
-    }
     inline void IncrementStep(size_t step, float beta1, float beta2)
     {
         if (beta1 != _betta1 || beta2 != _betta2) {
@@ -155,9 +138,5 @@ private:
     float _bias_correction1;
     float _bias_correction2;
 
-    float* _doubled_buffer[2];
-    bool _buf_index;
     bool _adamw_mode;
-
-    cudaStream_t _streams[2];
 };
