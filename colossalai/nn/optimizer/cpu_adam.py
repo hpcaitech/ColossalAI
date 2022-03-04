@@ -18,16 +18,15 @@ class CPUAdam(torch.optim.Optimizer):
                         0.999),
                  eps=1e-8,
                  weight_decay=0,
-                 amsgrad=False,
                  adamw_mode=True,
-                 loss_scale=-1):
+                 loss_scale=-1,
+                 simd_log=False):
 
         default_args = dict(lr=lr,
                             betas=betas,
                             eps=eps,
                             weight_decay=weight_decay,
-                            bias_correction=bias_correction,
-                            amsgrad=amsgrad)
+                            bias_correction=bias_correction)
         super(CPUAdam, self).__init__(model_params, default_args)
         self.opt_id = CPUAdam.optimizer_id
         CPUAdam.optimizer_id = CPUAdam.optimizer_id + 1
@@ -45,15 +44,10 @@ class CPUAdam(torch.optim.Optimizer):
                                      eps,
                                      weight_decay,
                                      adamw_mode,
-                                     True)
+                                     simd_log)
 
     def __del__(self):
         self.cpu_adam_op.destroy_adam(self.opt_id)
-
-    def __setstate__(self, state):
-        super(CPUAdam, self).__setstate__(state)
-        for group in self.param_groups:
-            group.setdefault('amsgrad', False)
 
     @torch.no_grad()
     def step(self, closure=None):
