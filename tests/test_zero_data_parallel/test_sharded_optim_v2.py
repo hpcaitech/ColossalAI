@@ -16,19 +16,18 @@ from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from torch.optim import Adam
 
-from common import (CONFIG, Net, check_grads, check_grads_padding, check_params, check_params_padding)
+from common import (CONFIG, Net, check_grads, check_grads_padding, check_params, check_sharded_params_padding)
 
 
 def run_step(model, optimizer, x, enable_autocast=False):
     model.train()
+    optimizer.zero_grad()
     with torch.cuda.amp.autocast(enabled=enable_autocast):
         y = model(x)
         loss = y.sum()
     loss = loss.float()
     if isinstance(model, ShardedModelV2):
         optimizer.backward(loss)
-        for p in model.parameters():
-            assert p.ca_attr.is_sharded
     else:
         loss.backward()
     optimizer.step()
@@ -51,7 +50,7 @@ def run_dist(rank, world_size, port):
         run_step(model, optim, x, False)
         if dist.get_world_size() > 1:
             check_grads_padding(model, zero_model)
-            check_params_padding(model, zero_model)
+            check_sharded_params_padding(model, zero_model)
         else:
             check_grads(model, zero_model)
             check_params(model, zero_model)
