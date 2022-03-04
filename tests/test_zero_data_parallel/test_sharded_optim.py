@@ -6,7 +6,7 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 from colossalai.zero import ShardedOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-
+from common import Net
 from colossalai.utils import free_port
 from functools import partial
 
@@ -25,6 +25,8 @@ def check_completely_equal(a, b):
     assert torch.all(a == b), f'a = {a}, b = {b}'
 
 
+LAYER_NAME = ['fc1', 'fc2', 'fc3']
+
 def check_sharded_param_consistency():
     """
     In this test, we want to test whether zero stage 1 and 2
@@ -37,12 +39,8 @@ def check_sharded_param_consistency():
 
     """
 
-    # create layers
-    oss_linear1 = nn.Linear(128, 256)
-    oss_linear2 = nn.Linear(256, 512)
-
     # create model
-    oss_model = nn.Sequential(oss_linear1, oss_linear2)
+    oss_model = Net().cuda()
     pg_model = copy.deepcopy(oss_model)
 
     oss_model = oss_model.cuda().half()
@@ -59,7 +57,7 @@ def check_sharded_param_consistency():
                                     clip_grad_norm=0.0)
 
     # create
-    input_data = torch.rand(32, 128).cuda().half()
+    input_data = torch.rand(4, 5)
 
     # forward
     oss_output = oss_model(input_data)
@@ -73,12 +71,10 @@ def check_sharded_param_consistency():
     # check grad
     # as this param is small, the backward reduction
     # will not be fired
-    oss_linear1_grad = oss_model[0].weight.grad
-    oss_linear2_grad = oss_model[1].weight.grad
-    pg_linear1_grad = pg_model[0].weight.grad
-    pg_linear2_grad = pg_model[1].weight.grad
-    check_completely_equal(oss_linear1_grad, pg_linear1_grad)
-    check_completely_equal(oss_linear2_grad, pg_linear2_grad)
+    for layer_name in LAYER_NAME:
+        oss_grad = getattr(oss_model, layer_name).weight.grad
+        pg_grad = getattr(pg_model, layer_name).weight.grad
+        check_completely_equal(oss_grad, pg_grad)
 
     # step
     oss_optimizer.sync_grad()
@@ -89,8 +85,10 @@ def check_sharded_param_consistency():
     pg_optimizer.step()
 
     # check updated param
-    check_completely_equal(oss_model[0].weight, pg_model[0].weight)
-    check_completely_equal(oss_model[1].weight, pg_model[1].weight)
+    for layer_name in LAYER_NAME:
+        oss_weight = getattr(oss_model, layer_name).weight
+        pg_weight = getattr(pg_model, layer_name).weight
+        check_completely_equal(oss_weight, pg_weight)
 
 
 def check_sharded_optim_against_torch_ddp():
@@ -104,11 +102,7 @@ def check_sharded_optim_against_torch_ddp():
     """
 
     # create layer
-    zero_linear1 = nn.Linear(128, 256)
-    zero_linear2 = nn.Linear(256, 512)
-
-    # create model
-    zero_model = nn.Sequential(zero_linear1, zero_linear2)
+    zero_model = Net().cuda()
     torch_model = copy.deepcopy(zero_model)
 
     zero_model = zero_model.cuda().half()
@@ -125,7 +119,7 @@ def check_sharded_optim_against_torch_ddp():
     torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=0.001)
 
     # create
-    input_data = torch.rand(32, 128).cuda()
+    input_data = torch.rand(32, 5).cuda()
 
     # zero-dp forward
     zero_output = zero_model(input_data.half())
@@ -141,12 +135,10 @@ def check_sharded_optim_against_torch_ddp():
     torch_output.mean().backward()
 
     # check grad
-    zero_linear1_grad = zero_model[0].weight.grad
-    zero_linear2_grad = zero_model[1].weight.grad
-    torch_linear1_grad = torch_model.module[0].weight.grad
-    torch_linear2_grad = torch_model.module[1].weight.grad
-    check_equal(zero_linear1_grad, torch_linear1_grad)
-    check_equal(zero_linear2_grad, torch_linear2_grad)
+    for layer_name in LAYER_NAME:
+        oss_grad = getattr(zero_model, layer_name).weight.grad
+        pg_grad = getattr(torch_model, layer_name).weight.grad
+        check_completely_equal(oss_grad, pg_grad)
 
     # zero-dp step
     zero_optimizer.sync_grad()
@@ -156,9 +148,10 @@ def check_sharded_optim_against_torch_ddp():
     torch_optimizer.step()
 
     # check updated param
-    check_equal(zero_model[0].weight, torch_model.module[0].weight)
-    check_equal(zero_model[1].weight, torch_model.module[1].weight)
-
+    for layer_name in LAYER_NAME:
+        oss_weight = getattr(zero_model, layer_name).weight
+        pg_weight = getattr(torch_model, layer_name).weight
+        check_completely_equal(oss_weight, pg_weight)
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')

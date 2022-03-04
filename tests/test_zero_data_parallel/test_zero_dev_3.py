@@ -19,29 +19,6 @@ def checkpoint_wrapper(module, enable=True):
         module.forward = partial(checkpoint, module.forward)
     return module
 
-
-class Net(nn.Module):
-    def __init__(self, checkpoint=False) -> None:
-        super().__init__()
-        self.fc1 = nn.Linear(5, 5)
-        self.fc2 = nn.Linear(5, 5)
-        self.fc3 = nn.Linear(5, 1)
-        if checkpoint:
-            self.fc1 = checkpoint_wrapper(self.fc1)
-        self.layers = [
-            self.fc1,
-            self.fc2,
-            self.fc1,
-            self.fc2,
-            self.fc3
-        ]
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
-
-
 def run_step(model, optimizer, x, enable_autocast=False):
     model.train()
     optimizer.zero_grad()
