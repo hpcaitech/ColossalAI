@@ -13,13 +13,15 @@ class TensorShardStrategy(BaseShardStrategy):
     def __init__(self, process_group: Optional[dist.ProcessGroup] = None) -> None:
         super().__init__(process_group)
 
-    def shard(self, tensor_list: List[ShardedTensor]):
+    def shard(self, tensor_list: List[ShardedTensor]) -> List[ShardedTensor]:
         for t in tensor_list:
             self._shard_tensor(t)
+        return tensor_list
 
-    def gather(self, tensor_list: List[ShardedTensor]):
+    def gather(self, tensor_list: List[ShardedTensor]) -> List[ShardedTensor]:
         for t in tensor_list:
             self._gather_tensor(t)
+        return tensor_list
 
     def _shard_tensor(self, t: ShardedTensor):
         if t.is_sharded:

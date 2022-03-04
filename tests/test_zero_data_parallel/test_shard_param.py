@@ -9,32 +9,71 @@ from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.zero.shard_utils import TensorShardStrategy
+
+from colossalai.zero.shard_utils import TensorShardStrategy, TensorListShardStrategy, FlatShardStrategy
 from colossalai.zero.sharded_param import ShardedTensor, ShardedParam
 from colossalai.utils import free_port
 from colossalai.logging import get_dist_logger, disable_existing_loggers
 from tests.test_zero_data_parallel.common import Net, CONFIG, allclose
 
 
-def run_shard_tensor(rank, world_size, port):
+def run_shard_straties(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     t = ShardedTensor(tensor=torch.randn(world_size * 2, 3))
     assert list(t.origin_shape) == [world_size * 2, 3]
     assert list(t.shape) == [world_size * 2, 3]
+    tensor_shard_strategy = TensorShardStrategy(process_group=None)
 
-    shard_strategy = TensorShardStrategy(process_group=None)
+    # test tensor shard strategy
+    tensor_shard_strategy.shard([t])
+    assert list(t.shape) == [6]
+    tensor_shard_strategy.gather([t])
+    assert list(t.shape) == [world_size * 2, 3]
 
-    # test shard strategy
-    shard_strategy.shard([t])
-    assert list(t.shape) == [6], f"{list(t.shape)} vs 6"
-    shard_strategy.gather([t])
-    assert list(t.shape) == [world_size * 2, 3], f"{list(t.shape)} vs {[world_size * 2, 3]}"
+
+    # test tensor list shard strategy
+    # this test does not test for gather
+    # as it is not supported
+    tensor_list = []
+    
+    for i in range(world_size * 2):
+        if i < world_size:
+            shape = (2, 2)
+        else:
+            shape = (4, 4)
+        tensor = torch.rand(shape)
+        tensor_list.append(tensor)
+    
+    tensor_list_shard_strategy = TensorListShardStrategy(process_group=None)
+    shard = tensor_list_shard_strategy.shard(tensor_list)
+    assert len(shard) == 2
+    assert sum([tensor.numel() for tensor in shard]) == 2*2 + 4*4
+
+    # test flat shard strategy
+    # we test for 3 tensors (numel = 27)
+    # each shard should have 14 elements
+    tensor_list = []
+    
+    for i in range(world_size + 1):
+        tensor = torch.rand(3, 3).cuda()
+        tensor_list.append(tensor)
+    
+    flat_shard_strategy = FlatShardStrategy(process_group=None)
+    shard = flat_shard_strategy.shard(tensor_list)
+    assert len(shard) == 1
+    assert shard[0].numel() == 14
+
+    shard = flat_shard_strategy.gather(shard)
+    assert len(shard) == world_size + 1
+    for i in range(world_size+1):
+        assert shard[i].shape == (3, 3)
+    assert all([torch.all(tensor_list[i] == shard[i]) for i in range(world_size)])
 
 
 @pytest.mark.dist
 def test_shard_tensor():
     world_size = 2
-    run_func = partial(run_shard_tensor, world_size=world_size, port=free_port())
+    run_func = partial(run_shard_straties, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
