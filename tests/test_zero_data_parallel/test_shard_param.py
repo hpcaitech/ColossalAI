@@ -17,28 +17,16 @@ from tests.test_zero_data_parallel.common import Net, CONFIG
 def run_shard_tensor(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     t = ShardedTensor(tensor=torch.randn(world_size * 2, 3))
-
+    assert list(t.origin_shape) == [world_size * 2, 3]
     assert list(t.shape) == [world_size * 2, 3]
-    t.shard()
-    # The shape is flattened
-    assert list(t.shape) == [6]
-    # Do nothing
-    t.shard()
-    assert list(t.shape) == [6]
-
-    t.gather()
-    assert list(t.shape) == [world_size * 2, 3]
-
-    t.payload = torch.zeros(world_size * 2, 3)
-    assert torch.sum(t.payload).cpu() == 0
 
     shard_strategy = TensorShardStrategy(process_group=None)
 
     # test shard strategy
     shard_strategy.shard([t])
-    assert list(t.shape) == [6]
+    assert list(t.shape) == [6], f"{list(t.shape)} vs 6"
     shard_strategy.gather([t])
-    assert list(t.shape) == [world_size * 2, 3]
+    assert list(t.shape) == [world_size * 2, 3], f"{list(t.shape)} vs {[world_size * 2, 3]}"
 
 
 @pytest.mark.dist
@@ -104,5 +92,5 @@ def test_init_shard_param():
 
 if __name__ == '__main__':
     test_shard_tensor()
-    test_shard_shape()
-    test_init_shard_param()
+    # test_shard_shape()
+    # test_init_shard_param()
