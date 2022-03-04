@@ -7,6 +7,7 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+from colossalai.zero.shard_utils import TensorShardStrategy
 from colossalai.zero.sharded_param import ShardedTensor, ShardedParam
 from colossalai.utils import free_port
 from colossalai.logging import get_dist_logger, disable_existing_loggers
@@ -30,6 +31,14 @@ def run_shard_tensor(rank, world_size, port):
 
     t.payload = torch.zeros(world_size * 2, 3)
     assert torch.sum(t.payload).cpu() == 0
+
+    shard_strategy = TensorShardStrategy(process_group=None)
+
+    # test shard strategy
+    shard_strategy.shard([t])
+    assert list(t.shape) == [6]
+    shard_strategy.gather([t])
+    assert list(t.shape) == [world_size * 2, 3]
 
 
 @pytest.mark.dist
