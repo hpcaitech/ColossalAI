@@ -152,7 +152,7 @@ class ShardedOptimizer(ColossalaiOptimizer):
             fp16_flat_current_rank = self._param_store.get_flat_fp16_param_by_rank_group(self._local_rank, group_id)
             # when using cpu offload, our cpu adam support fp16 paramters
             if self._cpu_fp16_param:
-                fp32_flat_current_rank = fp16_flat_current_rank.clone().detach()
+                fp32_flat_current_rank = fp16_flat_current_rank.detach()
             else:
                 fp32_flat_current_rank = fp16_flat_current_rank.clone().float().detach()
             device = 'cpu' if self._cpu_offload else get_current_device()
@@ -214,7 +214,7 @@ class ShardedOptimizer(ColossalaiOptimizer):
         # set this dummpy zero tensor as grad
         for group_id in range(len(self._fp32_flat_param_groups_of_current_rank)):
             fp32_partition_param = self._fp32_flat_param_groups_of_current_rank[group_id]
-            fp32_partition_grad = torch.zeros_like(fp32_partition_param, dtype=fp32_partition_param.dtype)
+            fp32_partition_grad = torch.zeros_like(fp32_partition_param)
             fp32_partition_param.grad = fp32_partition_grad
 
         # update the parameter with zero gradients for initialization of optimizer stateus
