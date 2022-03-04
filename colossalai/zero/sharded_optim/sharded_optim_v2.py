@@ -14,6 +14,7 @@ from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 
+from ..sharded_model._zero3_utils import free_storage
 from ._utils import has_inf_or_nan
 
 
@@ -62,6 +63,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 if hasattr(p, 'ca_attr'):
                     assert p.ca_attr.is_sharded, 'ShardedAdam can be only used with sharded model'
                     self.master_params[p] = p.ca_attr.payload(self.device)
+                    if dist.get_rank() == 0:
+                        print(f'load payload {p._name} {self.master_params[p].shape}')
                 else:
                     self.master_params[p] = p.data.to(device=self.device)
                 if torch.is_floating_point(self.master_params[p]) and self.master_params[p].dtype != torch.float:
@@ -84,19 +87,27 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             for p in group['params']:
                 p.data = self.master_params[p]
         ret = self.optim.step(*args, **kwargs)
-        # Write master param to payload and set p.data to None
+        # Write master param to payload
         for group in self.optim.param_groups:
             for p in group['params']:
                 if hasattr(p, 'ca_attr'):
-                    # TODO: update payload
-                    p.data = None
+                    if dist.get_rank() == 0:
+                        print(f'write {p._name} {p.shape}  orig_shape {p.ca_attr._origin_shape} \
+                                payload shape {p.ca_attr._param_payload.shape} sharded {p.ca_attr.is_sharded}')
+                    p.ca_attr.set_payload(p.data)
+                    # We cannot set p.data to None directly, so we free storage
+                    free_storage(p.data)
         return ret
 
     def backward(self, loss: Tensor) -> None:
         loss = self.loss_scale * loss
         self.optim_state = OptimState.SCALED
         if self.model_is_sharded:
+            if dist.get_rank() == 0:
+                print('sharded model backward')
             self.model.backward(loss)
+            if dist.get_rank() == 0:
+                print('sharded model backward done')
         else:
             super().backward(loss)
 
