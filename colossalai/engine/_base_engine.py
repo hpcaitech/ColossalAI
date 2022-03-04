@@ -26,6 +26,8 @@ class Engine:
     :type gradient_handlers: list
     :param clip_grad_norm: The norm of gradient clipping
     :type clip_grad_norm: float, optional
+    :param ophook_list: List of ophook
+    :type ophook_list: list
     :param verbose: whether to display log info
     :type verbose: bool
     """

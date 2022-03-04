@@ -22,6 +22,7 @@ def test_load_config():
 
 @pytest.mark.cpu
 def test_load_ophooks():
-    dict = {'type': 'MemTracerOpHook', 'niter': 2}
+    dict = {'type': 'MemTracerOpHook', 'warmup': 10, 'refreshrate': 20}
     ophook = build_ophooks(dict)
-    assert ophook.niter() == 2
+    assert ophook.refreshrate == 20
+    assert ophook.warmup == 10

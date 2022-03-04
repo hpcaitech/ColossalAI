@@ -19,6 +19,11 @@ class Timer:
     def has_history(self):
         return len(self._history) != 0
 
+    @property
+    def current_time(self) -> float:
+        synchronize()
+        return time.time()
+
     def start(self):
         """Fisrtly synchronize cuda, reset the clock and then start the timer.
         """
@@ -26,6 +31,11 @@ class Timer:
         synchronize()
         self._start_time = time.time()
         self._started = True
+
+    def lap(self):
+        """lap time and return elapsed time
+        """
+        return self.current_time - self._start_time
 
     def stop(self, keep_in_history: bool = False):
         """Stop the timer and record the start-stop time interval.
