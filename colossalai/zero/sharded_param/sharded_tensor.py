@@ -1,6 +1,5 @@
 import torch
 import torch.distributed as dist
-from colossalai.zero.sharded_model._zero3_utils import get_shard
 from typing import Optional
 
 
@@ -22,46 +21,37 @@ class ShardedTensor(object):
         self._origin_dtype = tensor.dtype
 
     @property
+    def origin_numel(self):
+        return self._origin_numel
+
+    @property
+    def origin_shape(self):
+        return self._origin_shape
+
+    @property
     def is_sharded(self):
         return self._is_sharded
+
+    @is_sharded.setter
+    def is_sharded(self, flag: bool):
+        self._is_sharded = flag
 
     @property
     def payload(self):
         return self._payload
 
-    @payload.setter
-    def payload(self, tensor):
+    def copy_payload(self, tensor):
         self._payload.copy_(tensor)
+
+    def reset_payload(self, tensor):
+        del self._payload
+        self._payload = tensor
 
     @property
     def dtype(self):
+        assert self._payload.dtype == self._origin_dtype
         return self._origin_dtype
 
     @property
     def shape(self):
         return self._payload.shape
-
-    def shard(self):
-        if self._is_sharded:
-            return
-        self._payload, _ = get_shard(self._payload, self.local_rank, self.world_size)
-        self._is_sharded = True
-
-    def gather(self):
-        if not self._is_sharded:
-            return
-
-        buffer_list = []
-        payload_numel = self._payload.numel()
-        for i in range(self.world_size):
-            if i == self.local_rank:
-                buffer_list.append(self._payload.cuda())
-            else:
-                buffer_list.append(torch.zeros(payload_numel).cuda())
-
-        torch.distributed.all_gather(buffer_list,
-                                     buffer_list[self.local_rank],
-                                     group=self.process_group,
-                                     async_op=False)
-        self._payload = torch.narrow(torch.cat(buffer_list), 0, 0, self._origin_numel).view(self._origin_shape)
-        self._is_sharded = False
