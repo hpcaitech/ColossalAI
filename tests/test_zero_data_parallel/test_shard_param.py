@@ -92,5 +92,5 @@ def test_init_shard_param():
 
 if __name__ == '__main__':
     test_shard_tensor()
-    # test_shard_shape()
-    # test_init_shard_param()
+    test_shard_shape()
+    test_init_shard_param()
