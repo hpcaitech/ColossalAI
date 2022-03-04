@@ -7,6 +7,7 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+
 from colossalai.zero.shard_utils import TensorShardStrategy
 from colossalai.zero.sharded_param import ShardedTensor, ShardedParam
 from colossalai.utils import free_port
@@ -19,19 +20,6 @@ def run_shard_tensor(rank, world_size, port):
     t = ShardedTensor(tensor=torch.randn(world_size * 2, 3))
 
     assert list(t.shape) == [world_size * 2, 3]
-    t.shard()
-    # The shape is flattened
-    assert list(t.shape) == [6]
-    # Do nothing
-    t.shard()
-    assert list(t.shape) == [6]
-
-    t.gather()
-    assert list(t.shape) == [world_size * 2, 3]
-
-    t.payload = torch.zeros(world_size * 2, 3)
-    assert torch.sum(t.payload).cpu() == 0
-
     shard_strategy = TensorShardStrategy(process_group=None)
 
     # test shard strategy

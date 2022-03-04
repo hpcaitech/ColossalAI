@@ -6,12 +6,13 @@ import torch.distributed as dist
 import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine.ophooks import (ShardGradHook, ShardParamHook, register_ophooks_recursively)
+from colossalai.engine.ophooks import (ShardGradHook, ShardParamHook,
+                                       register_ophooks_recursively)
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
-from colossalai.zero.sharded_param import ShardedParam
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_model.sharded_grad import ShardedGradient
+from colossalai.zero.sharded_param import ShardedParam
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
@@ -64,10 +65,10 @@ class ShardedModelV2(nn.Module):
         self._cpu_offload: bool = offload_config.get('device', None) == 'cpu' if offload_config else False
         # We find if gradient_predivide_factor != 1.0, there may be wrong precision problem
         # So we use 1.0 as the default gradient_predivide_factor
-        # However, if you set gradient_predivide_factor to None,
-        # we will set gradient_predivide_factor to a value >= 1.0 automatically
-        self.gradient_predivide_factor: float = \
-            gradient_predivide_factor if gradient_predivide_factor is not None else \
+        # However, if you set gradient_predivide_factor to None, we will set
+        # gradient_predivide_factor to a value >= 1.0 automatically
+        self.gradient_predivide_factor: float = gradient_predivide_factor if \
+            gradient_predivide_factor is not None else \
             get_gradient_predivide_factor(self.world_size)
         self.gradient_postdivide_factor: float = self.world_size / self.gradient_predivide_factor
 
@@ -81,6 +82,10 @@ class ShardedModelV2(nn.Module):
 
     def backward(self, loss):
         loss.backward()
+        self._final_backward_hook()
+
+    def backward_by_grad(self, tensor, grad):
+        torch.autograd.backward(tensors=tensor, grad_tensors=grad)
         self._final_backward_hook()
 
     @torch.no_grad()
@@ -110,7 +115,7 @@ class ShardedModelV2(nn.Module):
         """
         At the start of :func:`_grad_post_backward_hook`, ``param.grad`` contains the
         full gradient for the local batch. The reduce-scatter op will save
-         a single shard of the summed gradient across all
+        a single shard of the summed gradient across all
         GPUs to param._sharded_grad. This shard will align with the current GPU rank. For example::
 
             before reduce_scatter:
