@@ -29,6 +29,7 @@ class LRSchedulerHook(MetricHook):
         self.store_lr_in_state = store_lr_in_state
 
     def after_hook_is_attached(self, trainer):
+        self._check_metric_states_initialization(trainer)
         trainer.states['metrics']['train']['LR'] = LearningRateMetric(epoch_only=self.by_epoch,
                                                                       initial_lr=self.lr_scheduler.get_last_lr()[0])
 
