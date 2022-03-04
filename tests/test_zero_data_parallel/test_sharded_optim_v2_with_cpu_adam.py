@@ -11,6 +11,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.nn.optimizer import CPUAdam
 from colossalai.utils import free_port
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
@@ -28,6 +29,8 @@ def run_step(model, optimizer, x, enable_autocast=False):
     loss = loss.float()
     if isinstance(model, ShardedModelV2):
         optimizer.backward(loss)
+        for p in model.parameters():
+            p.grad.data = p.grad.data.cpu()
     else:
         loss.backward()
     optimizer.step()
@@ -40,9 +43,9 @@ def run_dist(rank, world_size, port):
     zero_model = copy.deepcopy(model)
     zero_model = ShardedModelV2(zero_model, process_group=gpc.get_group(ParallelMode.DATA))
     optim = Adam(model.parameters(), lr=1e-3)
-    sharded_optim = ShardedOptimizerV2(Adam(zero_model.parameters(), lr=1e-3), zero_model)
+    sharded_optim = ShardedOptimizerV2(CPUAdam(zero_model.parameters(), lr=1e-3), zero_model, cpu_offload=True)
 
-    for _ in range(2):
+    for _ in range(1):
         x = torch.rand(2, 5).cuda()
         run_step(zero_model, sharded_optim, x, False)
         run_step(model, optim, x, False)

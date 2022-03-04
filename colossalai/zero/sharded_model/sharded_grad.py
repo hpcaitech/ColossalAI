@@ -6,13 +6,11 @@ from torch.nn.parameter import Parameter
 
 
 class ShardedGradient:
-    def __init__(self,
-                 param: Parameter,
-                 sharded_module: nn.Module,
-                 offload_config: Optional[dict] = None
-                 ) -> None:
+
+    def __init__(self, param: Parameter, sharded_module: nn.Module, offload_config: Optional[dict] = None) -> None:
         assert hasattr(
-            param, 'ca_attr') and param.ca_attr.is_sharded, 'ShardedGradient can only be initialized with sharded parameter'
+            param,
+            'ca_attr') and param.ca_attr.is_sharded, 'ShardedGradient can only be initialized with sharded parameter'
 
         self.param = param
         self.sharded_module = sharded_module
@@ -27,7 +25,7 @@ class ShardedGradient:
 
         if self._cpu_offload:
             # this buffer will be held and reused every iteration
-            self._cpu_grad = torch.zeros(param.ca_attr.payload('cpu'), dtype=torch.float).pin_memory()
+            self._cpu_grad = torch.zeros_like(param.ca_attr.payload('cpu'), dtype=torch.float).pin_memory()
 
     @torch.no_grad()
     def setup(self) -> None:
@@ -39,8 +37,8 @@ class ShardedGradient:
         if self.sharded_module._require_backward_grad_sync and self.param.grad is not None:
             if self.param.grad.device != self.param.data.device:
                 # TODO: offload?
-                raise RuntimeError(
-                    'grad and param are on different device, grad {self.param.grad.device} vs. param {self.param.data.device}')
+                raise RuntimeError('grad and param are on different device, grad {self.param.grad.device} vs.\
+                         param {self.param.data.device}')
             else:
                 self._gpu_grad = self.param.grad.data
             self.param.grad = None
@@ -76,7 +74,9 @@ class ShardedGradient:
                 'cpu'), f'Incorrect param device, expected CPU, got {self.param.device}'
             self.param.grad.data = self._cpu_grad
         elif self._gpu_grad is not None:
-            assert self.param.device == self._gpu_grad.device, f'Incorrect _gpu_grad device, param on {self.param.device} but _gpu_grad on {self._gpu_grad.device}'
+            assert self.param.device == self._gpu_grad.device, f'Incorrect _gpu_grad device,\
+                 param on {self.param.device} but _gpu_grad on {self._gpu_grad.device}'
+
             self.param.grad.data = self._gpu_grad
         else:
             raise RuntimeError('No grad to write back')

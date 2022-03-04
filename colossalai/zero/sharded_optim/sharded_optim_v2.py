@@ -52,7 +52,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                                              growth_interval=growth_interval,
                                              hysteresis=hysteresis,
                                              max_scale=max_scale)
-        self._found_overflow: Tensor = torch.FloatTensor([0]).to(self.device)
+        self._found_overflow: Tensor = torch.FloatTensor([0]).to(torch.cuda.current_device())
 
         # Store fp32 params
         self.master_params: Dict[Parameter, Tensor] = {}
@@ -113,7 +113,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
     @property
     def loss_scale(self):
-        return self.grad_scaler.scale
+        return self.grad_scaler.scale.item()
 
     def _check_overflow(self):
         # clear previous overflow record
