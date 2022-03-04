@@ -124,12 +124,12 @@ if build_cuda_ext:
     # https://github.com/pytorch/pytorch/commit/eb7b39e02f7d75c26d8a795ea8c7fd911334da7e#diff-4632522f237f1e4e728cb824300403ac
     version_dependent_macros = ['-DVERSION_GE_1_1', '-DVERSION_GE_1_3', '-DVERSION_GE_1_5']
 
-    def cuda_ext_helper(name, sources, extra_cuda_flags):
+    def cuda_ext_helper(name, sources, extra_cuda_flags, extra_cxx_flags=[]):
         return CUDAExtension(name=name,
                              sources=[os.path.join('colossalai/kernel/cuda_native/csrc', path) for path in sources],
                              include_dirs=[os.path.join(
                                  this_dir, 'colossalai/kernel/cuda_native/csrc/kernels/include')],
-                             extra_compile_args={'cxx': ['-O3'] + version_dependent_macros,
+                             extra_compile_args={'cxx': ['-O3'] + version_dependent_macros + extra_cxx_flags,
                                                  'nvcc': append_nvcc_threads(['-O3',
                                                                               '--use_fast_math'] + version_dependent_macros + extra_cuda_flags)})
 
@@ -188,6 +188,12 @@ if build_cuda_ext:
                                         'kernels/general_kernels.cu',
                                         'kernels/cuda_util.cu'],
                                        extra_cuda_flags + cc_flag))
+    
+    extra_cxx_flags = ['-std=c++14', '-lcudart', '-lcublas', '-g', '-Wno-reorder', '-fopenmp', '-march=native']
+    ext_modules.append(cuda_ext_helper('cpu_adam',
+                                        ['cpu_adam.cpp'],
+                                        extra_cuda_flags,
+                                        extra_cxx_flags))
 
 setup(
     name='colossalai',

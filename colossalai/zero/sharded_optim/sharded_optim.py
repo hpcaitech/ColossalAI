@@ -45,7 +45,9 @@ class ShardedOptimizer(ColossalaiOptimizer):
             mp_parallel_mode=ParallelMode.MODEL,
             
             # cpu offload
-            cpu_offload=False):
+            cpu_offload=False,
+            cpu_fp16_param=False,
+            cpu_fp16_grad=False):
 
         # TODO: add support for
         # 1. fp16 master weights
@@ -63,6 +65,8 @@ class ShardedOptimizer(ColossalaiOptimizer):
 
         # cpu_offload
         self._cpu_offload = cpu_offload
+        self._cpu_fp16_param = cpu_fp16_param
+        self._cpu_fp16_grad = cpu_fp16_grad
 
         # get process groups
         self._dp_parallel_mode = dp_parallel_mode
@@ -146,7 +150,11 @@ class ShardedOptimizer(ColossalaiOptimizer):
 
             # create a copy of fp32 weights of the parameters for which this rank is responsible
             fp16_flat_current_rank = self._param_store.get_flat_fp16_param_by_rank_group(self._local_rank, group_id)
-            fp32_flat_current_rank = fp16_flat_current_rank.clone().float().detach()
+            # when using cpu offload, our cpu adam support fp16 paramters
+            if self._cpu_fp16_param:
+                fp32_flat_current_rank = fp16_flat_current_rank.detach()
+            else:
+                fp32_flat_current_rank = fp16_flat_current_rank.detach().float()
             device = 'cpu' if self._cpu_offload else get_current_device()
             fp32_flat_current_rank = fp32_flat_current_rank.to(device)
             fp32_flat_current_rank.requires_grad = True
@@ -209,7 +217,7 @@ class ShardedOptimizer(ColossalaiOptimizer):
             fp32_partition_grad = torch.zeros_like(fp32_partition_param)
             fp32_partition_param.grad = fp32_partition_grad
 
-        # update the parameter with zero gradients for initialization of optimizer states
+        # update the parameter with zero gradients for initialization of optimizer stateus
         self._optimizer.step()
 
         # remove the grad of the paramter to save memory
