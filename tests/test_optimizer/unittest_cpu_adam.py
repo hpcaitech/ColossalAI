@@ -146,7 +146,7 @@ class Test():
 
         var = p_data_copy - p_data
         data_diff = torch.max(torch.abs(var))
-        threshold = 1e-2 if grad_dtype else 1e-4
+        threshold = 2e-3 if grad_dtype else 1e-4
         self.assertLess(
             data_diff,
             threshold,
@@ -162,12 +162,12 @@ class Test():
             max_exp_avg_sq_diff < threshold, f"max_exp_avg_sq_diff {max_exp_avg_sq_diff}"
         )
 
-    def test_ds_adam(self):
+    def test_cpu_adam(self):
         lr = 0.9
         eps = 1e-6
         weight_decay = 0
         for use_adamw in [False, True]:
-            for shape in [(1024, 32, 1024)]:
+            for shape in [(1023, ), (32, 1024)]:
                 for step in range(1, 2):
                     for lr in [0.01]:
                         for eps in [1e-8]:
@@ -193,5 +193,5 @@ class Test():
 
 if __name__ == "__main__":
     test = Test()
-    test.test_ds_adam()
-    print('All is right')
+    test.test_cpu_adam()
+    print('All is well.')
