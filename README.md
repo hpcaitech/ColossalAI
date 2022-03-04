@@ -13,6 +13,8 @@
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
+   [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
+   [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](./docs/images/WeChat.png)
 
    | [English](README.md) | [中文](README-zh-Hans.md) |
 </div>
@@ -99,6 +101,7 @@ If you don't want to install and enable CUDA kernel fusion (compulsory installat
 pip install --global-option="--no_cuda_ext" .
 ```
 
+
 ## Use Docker
 
 Run the following command to build a docker image from Dockerfile provided.
@@ -114,10 +117,24 @@ Run the following command to start the docker container in interactive mode.
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
 
+
+## Community
+
+Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
+[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+and [WeChat](./docs/images/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
+
+
+
 ## Contributing
 
-If you wish to contribute to this project, you can follow the guideline in [Contributing](./CONTRIBUTING.md)
+If you wish to contribute to this project, please follow the guideline in [Contributing](./CONTRIBUTING.md).
 
+Thanks so much to all of our amazing contributors!
+
+<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors"><img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/contributor_avatar.png" width="800px"></a>
+
+*The order of contributor avatars is randomly shuffled.*
 
 ## Quick View
 
@@ -201,11 +218,6 @@ class MLP_2D(nn.Module):
 
 ```
 
-## Community
-
-Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
-[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-and [WeChat](./docs/images/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
 
 
 ## Cite Us

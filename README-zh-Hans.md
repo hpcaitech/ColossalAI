@@ -13,6 +13,8 @@
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
+   [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
+   [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](./docs/images/WeChat.png)
 
    | [English](README.md) | [中文](README-zh-Hans.md) |
 </div>
@@ -110,9 +112,22 @@ docker build -t colossalai ./docker
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
 
+
+## 社区
+欢迎通过[论坛](https://github.com/hpcaitech/ColossalAI/discussions),
+[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+或[微信](./docs/images/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
+
+
 ## 做出贡献
 
 欢迎为该项目做出贡献，请参阅[贡献指南](./CONTRIBUTING.md)。
+
+真诚感谢所有贡献者！
+
+<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors"><img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/contributor_avatar.png" width="800px"></a>
+
+*贡献者头像的展示顺序是随机的。*
 
 
 ## 快速预览
@@ -195,11 +210,6 @@ class MLP_2D(nn.Module):
 ```
 
 
-## 社区
-欢迎通过[论坛](https://github.com/hpcaitech/ColossalAI/discussions)
-[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
-或 [微信](./docs/images/WeChat.png "qrcode")
-加入Colossal-AI社区，与我们分享你的建议和问题。
 
 
 ## 引用
