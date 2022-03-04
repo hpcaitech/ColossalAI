@@ -154,7 +154,7 @@ class ShardedOptimizer(ColossalaiOptimizer):
             if self._cpu_fp16_param:
                 fp32_flat_current_rank = fp16_flat_current_rank.detach()
             else:
-                fp32_flat_current_rank = fp16_flat_current_rank.clone().float().detach()
+                fp32_flat_current_rank = fp16_flat_current_rank.detach().float()
             device = 'cpu' if self._cpu_offload else get_current_device()
             fp32_flat_current_rank = fp32_flat_current_rank.to(device)
             fp32_flat_current_rank.requires_grad = True
