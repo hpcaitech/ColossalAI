@@ -48,8 +48,6 @@ class CPUAdam(torch.optim.Optimizer):
                                      True)
 
     def __del__(self):
-        # need to destroy the C++ object explicitly to avoid a memory leak when deepspeed.initialize
-        # is used multiple times in the same process (notebook or pytest worker)
         self.cpu_adam_op.destroy_adam(self.opt_id)
 
     def __setstate__(self, state):
@@ -86,7 +84,6 @@ class CPUAdam(torch.optim.Optimizer):
                     state['exp_avg'] = torch.zeros_like(p.data,
                                                         dtype=torch.float,
                                                         device=device)
-                    # memory_format=torch.preserve_format)
                     # gradient variances
                     state['exp_avg_sq'] = torch.zeros_like(p.data,
                                                            dtype=torch.float,
