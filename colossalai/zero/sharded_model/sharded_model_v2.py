@@ -6,8 +6,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine.ophooks import (ShardGradHook, ShardParamHook,
-                                       register_ophooks_recursively)
+from colossalai.engine.ophooks import (ShardGradHook, ShardParamHook, register_ophooks_recursively)
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
@@ -109,6 +108,10 @@ class ShardedModelV2(nn.Module):
             if not self._require_backward_grad_sync:
                 continue
             p._sharded_grad.write_back()
+        # In case some post bwd hook is not fired
+        for p in self.module.parameters():
+            if not p.ca_attr.is_sharded:
+                p.ca_attr.shard()
 
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
