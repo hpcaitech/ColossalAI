@@ -12,6 +12,8 @@ import torch.multiprocessing as mp
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
+from colossalai.zero.shard_utils.tensor_shard_strategy import \
+    TensorShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
 
 from common import CONFIG, Net, check_grads, check_grads_padding
@@ -33,10 +35,13 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     model = Net(checkpoint=True).cuda()
-    zero_model = copy.deepcopy(model)
-    zero_model = ShardedModelV2(zero_model, process_group=gpc.get_group(ParallelMode.DATA))
 
-    for _ in range(2):
+    shard_strategy = TensorShardStrategy()
+    zero_model = copy.deepcopy(model)
+    zero_model = ShardedModelV2(zero_model, shard_strategy, process_group=gpc.get_group(ParallelMode.DATA))
+
+    for _ in range(3):
+        print(_)
         x = torch.rand(2, 5).cuda()
         run_fwd_bwd(zero_model, x, False)
         run_fwd_bwd(model, x, False)

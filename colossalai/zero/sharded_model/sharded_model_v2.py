@@ -10,12 +10,12 @@ from colossalai.engine.ophooks import register_ophooks_recursively
 from colossalai.engine.ophooks.zero_hook import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
-from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
+from ..sharded_param import ShardedParamV2
 from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad,
                            get_gradient_predivide_factor)
 
@@ -24,13 +24,14 @@ class ShardedModelV2(nn.Module):
 
     def __init__(self,
                  module: nn.Module,
+                 shard_strategy: BaseShardStrategy,
                  process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_bucket_size_mb: int = 25,
                  fp32_reduce_scatter: bool = False,
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 is_shard_param: bool = True):
+                 shard_param: bool = True):
         r"""
         A demo to reconfigure zero1 shared_model.
         Currently do not consider the Optimizer States.
@@ -43,19 +44,21 @@ class ShardedModelV2(nn.Module):
         self.world_size = dist.get_world_size(self.process_group)
         self.rank = dist.get_rank(self.process_group)
 
-        # The module has to be placed on GPU
+        # Cast module to fp16 and cuda, in case user didn't use ZeroInitContext
         self.module = module.half().cuda()
 
-        self.shard_strategy = TensorShardStrategy(process_group)
-        self.is_shard_param = is_shard_param
-        # Shard the parameters at first
-        for _, param in self.module.named_parameters():
-            param.col_attr = ShardedParamV2(param, process_group)
-            if self.is_shard_param:
-                self.shard_strategy.shard([param.col_attr.data])
+        self.shard_strategy = shard_strategy
+        self.shard_param = shard_param
+
+        # In case user didn't use ZeroInitContext
+        for param in self.module.parameters():
+            if not hasattr(param, 'col_attr'):
+                param.col_attr = ShardedParamV2(param, process_group)
+                if self.shard_param:
+                    self.shard_strategy.shard([param.col_attr.data])
 
         # Register hooks
-        register_ophooks_recursively(self.module, [ZeroHook(process_group)])
+        register_ophooks_recursively(self.module, [ZeroHook(self.shard_strategy)])
         self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
@@ -111,7 +114,7 @@ class ShardedModelV2(nn.Module):
             p.grad.data = p.col_attr.grad
             p.col_attr.grad = None
         # In case some post bwd hook is not fired
-        if self.is_shard_param:
+        if self.shard_param:
             for p in self.module.parameters():
                 if not p.col_attr.param_is_sharded:
                     self.shard_strategy.shard([p.col_attr.data])
