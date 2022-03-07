@@ -38,11 +38,11 @@ def _format_memory(nbytes):
     MB = 1024 * KB
     GB = 1024 * MB
     if (abs(nbytes) >= GB):
-        return '{:.2f} Gb'.format(nbytes * 1.0 / GB)
+        return '{:.2f} GB'.format(nbytes * 1.0 / GB)
     elif (abs(nbytes) >= MB):
-        return '{:.2f} Mb'.format(nbytes * 1.0 / MB)
+        return '{:.2f} MB'.format(nbytes * 1.0 / MB)
     elif (abs(nbytes) >= KB):
-        return '{:.2f} Kb'.format(nbytes * 1.0 / KB)
+        return '{:.2f} KB'.format(nbytes * 1.0 / KB)
     else:
         return str(nbytes) + ' b'
 
@@ -52,9 +52,9 @@ def _format_bandwith(volme: float, time_us: int):
     mb_per_sec = volme / time_us * sec_div_mb
 
     if mb_per_sec >= 1024.0:
-        return '{:.3f} Gb/s'.format(mb_per_sec / 1024.0)
+        return '{:.3f} GB/s'.format(mb_per_sec / 1024.0)
     else:
-        return '{:.3f} Mb/s'.format(mb_per_sec)
+        return '{:.3f} MB/s'.format(mb_per_sec)
 
 
 class CommEvent(object):
