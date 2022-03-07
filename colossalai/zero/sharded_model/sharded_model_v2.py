@@ -6,12 +6,12 @@ import torch.distributed as dist
 import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine.ophooks import (ShardGradHook, ShardParamHook, register_ophooks_recursively)
+from colossalai.engine.ophooks import (ZeroHook, register_ophooks_recursively)
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_model.sharded_grad import ShardedGradient
-from colossalai.zero.sharded_param import ShardedParam
+from colossalai.zero.sharded_param import ShardedParamv2
+from colossalai.zero.shard_utils import TensorShardStrategy
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
@@ -20,18 +20,18 @@ from ._zero3_utils import chunk_and_pad, get_gradient_predivide_factor
 
 class ShardedModelV2(nn.Module):
 
-    def __init__(
-        self,
-        module: nn.Module,
-        process_group: Optional[ProcessGroup] = None,
-        reduce_scatter_process_group: Optional[ProcessGroup] = None,
-        reduce_scatter_bucket_size_mb: int = 25,
-        reshard_after_forward: bool = True,
-        mixed_precision: bool = False,
-        fp32_reduce_scatter: bool = False,
-        offload_config: Optional[dict] = None,
-        gradient_predivide_factor: Optional[float] = 1.0,
-    ):
+    def __init__(self,
+                 module: nn.Module,
+                 process_group: Optional[ProcessGroup] = None,
+                 reduce_scatter_process_group: Optional[ProcessGroup] = None,
+                 reduce_scatter_bucket_size_mb: int = 25,
+                 reshard_after_forward: bool = True,
+                 mixed_precision: bool = False,
+                 fp32_reduce_scatter: bool = False,
+                 offload_config: Optional[dict] = None,
+                 gradient_predivide_factor: Optional[float] = 1.0,
+                 is_shard_param: bool = True,
+                 is_shard_grad: bool = True):
         r"""
         A demo to reconfigure zero1 shared_model.
         Currently do not consider the Optimizer States.
@@ -47,14 +47,22 @@ class ShardedModelV2(nn.Module):
         # The module has to be placed on GPU
         self.module = module.cuda()
 
+        self.shard_strategy = TensorShardStrategy(process_group)
+        self.is_shard_param = is_shard_param
+        self.is_shard_grad = is_shard_grad
         # Shard the parameters at first
         for _, param in self.module.named_parameters():
-            param.ca_attr = ShardedParam(param)
-            param.ca_attr.shard()
-            param._sharded_grad = ShardedGradient(param, self, offload_config)
+            param.ca_attr = ShardedParamv2(param, process_group)
+            if self.is_shard_param:
+                self.shard_strategy.shard([param.ca_attr.data])
+            if self.is_shard_grad:
+                self.shard_strategy.shard([param.ca_attr.grad])
+            # param.ca_attr = ShardedParam(param)
+            # param.ca_attr.shard()
+            # param._sharded_grad = ShardedGradient(param, self, offload_config)
 
         # Register hooks
-        register_ophooks_recursively(self.module, [ShardParamHook(), ShardGradHook()])
+        register_ophooks_recursively(self.module, [ZeroHook(process_group)])
         self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
