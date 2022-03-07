@@ -1,4 +1,5 @@
 import functools
+from colossalai.utils.cuda import get_current_device
 import torch
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param import ShardedParamV2
@@ -84,12 +85,14 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     def __init__(
         self,
         is_convert_fp16: bool,
+        is_convert_cuda: bool,
         shard_strategy: BaseShardStrategy,
         is_shard_param: bool = False,
         is_shard_grad: bool = False,
     ):
         super().__init__()
         self.is_convert_fp16 = is_convert_fp16
+        self.is_convert_cuda = is_convert_cuda
         self.is_shard_param = is_shard_param
         self.is_shard_grad = is_shard_grad
         self.shard_strategy = shard_strategy
@@ -102,14 +105,24 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     def _post_init_method(self, module):
         r"""The function to call at the end of the constructor of each nn.Module.
         """
-        print(f'post init submodule {module.__class__.__name__}')
         for param in module.parameters():
-            # convert to fp16
+            # avoid adapting a param to ShardedParam twice
+            if hasattr(param, 'ca_attr'):
+                continue
+
+            if self.is_convert_cuda:
+                target_device = get_current_device()
+            else:
+                target_device = param.data.device
+
+            # convert to fp16 and cuda if necessary
             if self.is_convert_fp16:
-                param.data = param.data.to(torch.half)
+                param.data = param.data.to(torch.half).to(target_device)
                 if param.grad is not None:
-                    param.grad = param.grad.to(torch.half)
+                    param.grad = param.grad.to(torch.half).to(target_device)
+
             param.ca_attr = ShardedParamV2(param)
-            self.shard_strategy.shard(tensor_list=[param.ca_attr._data_sharded_tensor])
-            if param.ca_attr.grad:
+            if self.is_shard_param:
+                self.shard_strategy.shard(tensor_list=[param.ca_attr._data_sharded_tensor])
+            if param.ca_attr.grad and self.is_shard_grad:
                 self.shard_strategy.shard(tensor_list=[param.ca_attr._grad_sharded_tensor])
