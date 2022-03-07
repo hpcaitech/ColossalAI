@@ -38,6 +38,12 @@ class ZeroHook(BaseOpHook):
             self.shard_strategy.shard([param.ca_attr.data])
             param.data = None
 
+            # save param.grad to some place  in case gradient accumulation.
+            # at the moment, the ca_attr.grad payload is useless.
+            # gather the memory first
+            self.shard_strategy.gather([param.ca_attr.grad])
+            param.grad = None
+
     def pre_iter(self):
         pass
 
