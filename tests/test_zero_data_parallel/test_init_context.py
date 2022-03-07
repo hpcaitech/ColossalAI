@@ -16,10 +16,7 @@ from colossalai.utils import free_port
 def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    with ZeroInitContext(is_convert_fp16=True,
-                         is_convert_cuda=True,
-                         shard_strategy=TensorShardStrategy(),
-                         is_shard_param=True):
+    with ZeroInitContext(convert_fp16=True, convert_cuda=True, shard_strategy=TensorShardStrategy(), shard_param=True):
         # Note Net(checkpoint=True).cuda() moving to cuda is useless
         model = Net(checkpoint=True)
 

@@ -84,17 +84,17 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
     def __init__(
         self,
-        is_convert_fp16: bool,
-        is_convert_cuda: bool,
+        convert_fp16: bool,
+        convert_cuda: bool,
         shard_strategy: BaseShardStrategy,
-        is_shard_param: bool = False,
-        is_shard_grad: bool = False,
+        shard_param: bool = False,
+        shard_grad: bool = False,
     ):
         super().__init__()
-        self.is_convert_fp16 = is_convert_fp16
-        self.is_convert_cuda = is_convert_cuda
-        self.is_shard_param = is_shard_param
-        self.is_shard_grad = is_shard_grad
+        self.convert_fp16 = convert_fp16
+        self.convert_cuda = convert_cuda
+        self.shard_param = shard_param
+        self.shard_grad = shard_grad
         self.shard_strategy = shard_strategy
 
     def _post_context_exec(self):
@@ -110,19 +110,19 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if hasattr(param, 'ca_attr'):
                 continue
 
-            if self.is_convert_cuda:
+            if self.convert_cuda:
                 target_device = get_current_device()
             else:
                 target_device = param.data.device
 
             # convert to fp16 and cuda if necessary
-            if self.is_convert_fp16:
+            if self.convert_fp16:
                 param.data = param.data.to(torch.half).to(target_device)
                 if param.grad is not None:
                     param.grad = param.grad.to(torch.half).to(target_device)
 
             param.ca_attr = ShardedParamV2(param)
-            if self.is_shard_param:
+            if self.shard_param:
                 self.shard_strategy.shard(tensor_list=[param.ca_attr._data_sharded_tensor])
-            if param.ca_attr.grad and self.is_shard_grad:
+            if param.ca_attr.grad and self.shard_grad:
                 self.shard_strategy.shard(tensor_list=[param.ca_attr._grad_sharded_tensor])
