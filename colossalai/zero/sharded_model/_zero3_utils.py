@@ -1,4 +1,3 @@
-
 from collections import OrderedDict
 from typing import Any, Callable, Dict, List, Tuple, Union
 
@@ -42,27 +41,21 @@ def free_storage(data: torch.Tensor) -> None:
 @torch.no_grad()
 def alloc_storage(data: torch.Tensor, size: torch.Size) -> None:
     """Allocate storage for a tensor."""
-    if data.storage().size() == size.numel():  # no need to reallocate
+    if data.storage().size() == size.numel():    # no need to reallocate
         return
     assert data.storage().size() == 0
     data.storage().resize_(size.numel())
 
 
-def cast_trensor_to_fp16(tensor: torch.Tensor) -> torch.Tensor:
-    if tensor.dtype is torch.float32:
-        out = tensor.half()
-        if tensor.is_leaf:
-            out.requires_grad = tensor.requires_grad
-        return out
+def cast_tensor_to_fp16(tensor: torch.Tensor) -> torch.Tensor:
+    if torch.is_floating_point(tensor) and tensor.dtype is torch.float32:
+        return tensor.half()
     return tensor
 
 
-def cast_trensor_to_fp32(tensor: torch.Tensor) -> torch.Tensor:
-    if tensor.dtype is torch.float16:
-        out = tensor.float()
-        if tensor.is_leaf:
-            out.requires_grad = tensor.requires_grad
-        return out
+def cast_tensor_to_fp32(tensor: torch.Tensor) -> torch.Tensor:
+    if torch.is_floating_point(tensor) and tensor.dtype is torch.float16:
+        return tensor.float()
     return tensor
 
 
@@ -102,9 +95,8 @@ def assert_in_engine(cond: Any, s: Any) -> None:
         raise AssertionError
 
 
-def replace_state_dict_prefix(
-    state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"], old_prefix: str, new_prefix: str
-) -> None:
+def replace_state_dict_prefix(state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"],
+                              old_prefix: str, new_prefix: str) -> None:
     """
     Replace all keys that match a given old_prefix with a new_prefix (in-place).
 

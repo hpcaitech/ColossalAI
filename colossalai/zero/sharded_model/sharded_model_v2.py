@@ -6,16 +6,18 @@ import torch.distributed as dist
 import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine.ophooks import (ZeroHook, register_ophooks_recursively)
+from colossalai.engine.ophooks import register_ophooks_recursively
+from colossalai.engine.ophooks.zero_hook import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
-from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_param import ShardedParamv2
 from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
+from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
-from ._zero3_utils import chunk_and_pad, get_gradient_predivide_factor
+from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad,
+                           get_gradient_predivide_factor)
 
 
 class ShardedModelV2(nn.Module):
@@ -25,13 +27,10 @@ class ShardedModelV2(nn.Module):
                  process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_bucket_size_mb: int = 25,
-                 reshard_after_forward: bool = True,
-                 mixed_precision: bool = False,
                  fp32_reduce_scatter: bool = False,
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 is_shard_param: bool = True,
-                 is_shard_grad: bool = True):
+                 is_shard_param: bool = True):
         r"""
         A demo to reconfigure zero1 shared_model.
         Currently do not consider the Optimizer States.
@@ -45,29 +44,21 @@ class ShardedModelV2(nn.Module):
         self.rank = dist.get_rank(self.process_group)
 
         # The module has to be placed on GPU
-        self.module = module.cuda()
+        self.module = module.half().cuda()
 
         self.shard_strategy = TensorShardStrategy(process_group)
         self.is_shard_param = is_shard_param
-        self.is_shard_grad = is_shard_grad
         # Shard the parameters at first
         for _, param in self.module.named_parameters():
-            param.ca_attr = ShardedParamv2(param, process_group)
+            param.col_attr = ShardedParamV2(param, process_group)
             if self.is_shard_param:
-                self.shard_strategy.shard([param.ca_attr.data])
-            if self.is_shard_grad:
-                self.shard_strategy.shard([param.ca_attr.grad])
-            # param.ca_attr = ShardedParam(param)
-            # param.ca_attr.shard()
-            # param._sharded_grad = ShardedGradient(param, self, offload_config)
+                self.shard_strategy.shard([param.col_attr.data])
 
         # Register hooks
         register_ophooks_recursively(self.module, [ZeroHook(process_group)])
         self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
-        self.reshard_after_forward = reshard_after_forward
-        self.mixed_precision = mixed_precision
         self.fp32_reduce_scatter = fp32_reduce_scatter
         self._cpu_offload: bool = offload_config.get('device', None) == 'cpu' if offload_config else False
         # We find if gradient_predivide_factor != 1.0, there may be wrong precision problem
@@ -84,6 +75,7 @@ class ShardedModelV2(nn.Module):
         self._require_backward_grad_sync: bool = True
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
         return outputs
 
@@ -115,11 +107,14 @@ class ShardedModelV2(nn.Module):
             # sync passes, if desired.
             if not self._require_backward_grad_sync:
                 continue
-            p._sharded_grad.write_back()
+            # Write grad back to p.grad and set p.col_attr.grad to None
+            p.grad.data = p.col_attr.grad
+            p.col_attr.grad = None
         # In case some post bwd hook is not fired
-        for p in self.module.parameters():
-            if not p.ca_attr.is_sharded:
-                p.ca_attr.shard()
+        if self.is_shard_param:
+            for p in self.module.parameters():
+                if not p.col_attr.param_is_sharded:
+                    self.shard_strategy.shard([p.col_attr.data])
 
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
@@ -127,7 +122,7 @@ class ShardedModelV2(nn.Module):
         At the start of :func:`_grad_post_backward_hook`, ``param.grad`` contains the
         full gradient for the local batch. The reduce-scatter op will save
         a single shard of the summed gradient across all
-        GPUs to param._sharded_grad. This shard will align with the current GPU rank. For example::
+        GPUs to param.col_attr.grad. This shard will align with the current GPU rank. For example::
 
             before reduce_scatter:
                 param.grad (GPU #0): [1, 2, 3, 4]
@@ -139,7 +134,7 @@ class ShardedModelV2(nn.Module):
 
         The local GPU's ``optim.step`` is responsible for updating a single
         shard of params, also corresponding to the current GPU's rank. This
-        alignment is created by `param._sharded_grad`, which ensures that
+        alignment is created by `param.col_attr.grad`, which ensures that
         the local optimizer only sees the relevant parameter shard.
         """
         if grad is None:
@@ -150,7 +145,7 @@ class ShardedModelV2(nn.Module):
         self.comm_stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(self.comm_stream):
             new_grad = grad.clone()
-            if self.mixed_precision and self.fp32_reduce_scatter:
+            if self.fp32_reduce_scatter:
                 new_grad.data = new_grad.data.to(param.dtype)
             if self.gradient_predivide_factor > 1.0:
                 # Average grad by world_size for consistency with PyTorch DDP.
@@ -169,13 +164,15 @@ class ShardedModelV2(nn.Module):
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
-        # Cast grad to param's dtype (typically FP32). Note: we do this
-        # before the cpu offload step so that this entire hook remains
-        # non-blocking. The downside is a bit more D2H transfer in that case.
-        if self.mixed_precision:
-            orig_param_grad_data = reduced_grad.data
-            reduced_grad.data = reduced_grad.data.to(dtype=param.ca_attr.origin_dtype)
-            # Don't let this memory get reused until after the transfer.
-            orig_param_grad_data.record_stream(torch.cuda.current_stream())
 
-        param._sharded_grad.reduce_scatter_callback(reduced_grad)
+        # Make sure we store fp32 grad
+        reduced_grad.data = cast_tensor_to_fp32(reduced_grad.data)
+
+        # Maybe offload
+        if self._cpu_offload:
+            reduced_grad.data = reduced_grad.data.cpu()
+
+        if param.col_attr.grad is None:
+            param.col_attr.grad = reduced_grad.data
+        else:
+            param.col_attr.grad.add_(reduced_grad.data)

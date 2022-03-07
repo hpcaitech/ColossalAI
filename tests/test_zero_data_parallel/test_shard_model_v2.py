@@ -41,9 +41,9 @@ def run_dist(rank, world_size, port):
         run_fwd_bwd(zero_model, x, False)
         run_fwd_bwd(model, x, False)
         if dist.get_world_size() > 1:
-            check_grads_padding(model, zero_model)
+            check_grads_padding(model, zero_model, loose=True)
         else:
-            check_grads(model, zero_model)
+            check_grads(model, zero_model, loose=True)
 
 
 @pytest.mark.dist
