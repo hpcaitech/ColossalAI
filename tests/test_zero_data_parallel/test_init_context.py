@@ -30,7 +30,7 @@ def run_dist(rank, world_size, port):
         for param in model.parameters():
             assert hasattr(param, 'col_attr')
             assert param.col_attr.data.dtype == torch.half
-            assert param.col_attr.data.payload.is_sharded
+            assert param.col_attr.data.is_sharded
             assert param.col_attr.data.payload.device.type == 'cuda'
 
 
