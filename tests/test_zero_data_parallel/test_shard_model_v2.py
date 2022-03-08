@@ -30,12 +30,7 @@ def run_fwd_bwd(model, x, enable_autocast=False):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=CONFIG,
-                      rank=rank,
-                      world_size=world_size,
-                      host='localhost',
-                      port=port,
-                      backend='nccl')
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     model = Net(checkpoint=True).cuda()
     zero_model = copy.deepcopy(model)
@@ -52,11 +47,11 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-def test_shard_model_v2():
-    world_size = 2
+@pytest.mark.parametrize("world_size", [1, 2, 4])
+def test_shard_model_v2(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_shard_model_v2()
+    test_shard_model_v2(world_size=2)
