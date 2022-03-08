@@ -102,6 +102,11 @@ class ShardedModelV2(nn.Module):
                 # Wait for the non-blocking GPU -> CPU grad transfers to finish.
                 torch.cuda.current_stream().synchronize()
         self.reducer.free()
+        # In case some post bwd hook is not fired
+        if self.shard_param:
+            for p in self.module.parameters():
+                if not p.col_attr.param_is_sharded:
+                    self.shard_strategy.shard([p.col_attr.data])
         for p in self.module.parameters():
             p.col_attr.bwd_count = 0
             if not p.requires_grad:
@@ -113,13 +118,12 @@ class ShardedModelV2(nn.Module):
             if not self._require_backward_grad_sync:
                 continue
             # Write grad back to p.grad and set p.col_attr.grad to None
-            p.grad.data = p.col_attr.grad
+            # We have to make sure grad and param have the same shape
+            # If world size > 1, and sharded param, `.view()` may be not needed
+            # If world size == 1, and sharded param, `data` is a flatten tensor
+            # But the shape `grad` is the same as unsharded param
+            p.grad.data = p.col_attr.grad.view(p.col_attr.data.shape)
             p.col_attr.grad = None
-        # In case some post bwd hook is not fired
-        if self.shard_param:
-            for p in self.module.parameters():
-                if not p.col_attr.param_is_sharded:
-                    self.shard_strategy.shard([p.col_attr.data])
 
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
