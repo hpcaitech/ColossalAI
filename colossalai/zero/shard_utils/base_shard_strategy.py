@@ -19,18 +19,8 @@ class BaseShardStrategy(ABC):
 
     @abstractmethod
     def shard(self, tensor_list: List[ShardedTensor]):
-        """shard resulting to only one copy of tensor payloads on multiple processes.
-
-        Args:
-            tensor_list (List[ShardedTensor]): a list of ShardedTensor
-        """
         pass
 
     @abstractmethod
     def gather(self, tensor_list: List[ShardedTensor]):
-        """gather resulting to duplicated tensor payload on each processes.
-
-        Args:
-            tensor_list (List[ShardedTensor]): a list of ShardedTensor
-        """
         pass
