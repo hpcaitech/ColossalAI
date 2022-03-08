@@ -4,18 +4,16 @@
 from copy import deepcopy
 from functools import partial
 
+import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-
-import colossalai
-from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from colossalai.zero.shard_utils import TensorShardStrategy
-from colossalai.zero.sharded_param import ShardedTensor, ShardedParam
+from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.utils import free_port
-from colossalai.logging import get_dist_logger, disable_existing_loggers
-
-from tests.test_zero_data_parallel.common import Net, CONFIG, allclose
+from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.sharded_param import ShardedParam, ShardedTensor
+from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
+from tests.test_zero_data_parallel.common import CONFIG, Net, allclose
 
 
 def _run_shard_tensor(rank, world_size, port):
@@ -47,7 +45,7 @@ def _run_shard_param_v2(rank, world_size, port):
     param_ref = deepcopy(param)
     sparam = ShardedParamV2(param=param, process_group=None)
 
-    allclose(sparam.data, param_ref.data)
+    allclose(sparam.data.payload, param_ref.data)
 
     sparam.remove_torch_payload()
     assert (param.data.numel() == 1)

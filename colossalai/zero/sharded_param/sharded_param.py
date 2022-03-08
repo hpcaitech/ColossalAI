@@ -1,3 +1,5 @@
+from typing import Optional, Tuple, Union
+
 import numpy
 import torch
 import torch.distributed as dist
@@ -5,7 +7,6 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.zero.sharded_model._zero3_utils import get_shard
 from colossalai.zero.sharded_param import ShardedTensor
-from typing import Union, Tuple, Optional
 
 
 class ShardedParamV2(object):
@@ -14,12 +15,8 @@ class ShardedParamV2(object):
                  param: torch.nn.Parameter,
                  process_group: Optional[dist.ProcessGroup] = None,
                  rm_torch_payload=False) -> None:
-        self._data_sharded_tensor = ShardedTensor(param.data, process_group)
-        if param.requires_grad and param.grad is not None:
-            self._grad_sharded_tensor = ShardedTensor(param.grad, process_group)
-            param.grad = None
-        else:
-            self._grad_sharded_tensor = None
+        self._data_sharded_tensor: ShardedTensor = ShardedTensor(param.data, process_group)
+        self._grad_sharded_tensor: Optional[torch.Tensor] = None
 
         # make sure the shared param is the only owner of payload
         # The param.data maybe used to init the other part of the model.
@@ -30,27 +27,29 @@ class ShardedParamV2(object):
         if rm_torch_payload:
             self.remove_torch_payload()
 
+        # Backward count for handle local grad accumulation
+        # This value will increment by 1 in every pre-bwd hook
+        # And will be reset to 0 in every final-bwd hook
+        self.bwd_count = 0
+
     def remove_torch_payload(self):
         self.param.data = torch.empty([], dtype=self.param.dtype, device=self.param.device)
 
     @property
     def data(self):
-        return self._data_sharded_tensor.payload
-
-    @data.setter
-    def data(self, t: torch.Tensor):
-        self._data_sharded_tensor.payload = t
+        return self._data_sharded_tensor
 
     @property
     def grad(self):
-        if self._grad_sharded_tensor:
-            return self._grad_sharded_tensor.payload
-        else:
-            return None
+        return self._grad_sharded_tensor
 
     @grad.setter
     def grad(self, t: torch.Tensor):
-        self._grad_sharded_tensor.payload = t
+        self._grad_sharded_tensor = t
+
+    @property
+    def param_is_sharded(self):
+        return self._data_sharded_tensor.is_sharded
 
 
 class ShardedParam(object):

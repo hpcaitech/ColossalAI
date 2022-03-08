@@ -1,6 +1,7 @@
 import functools
-from colossalai.utils.cuda import get_current_device
+
 import torch
+from colossalai.utils.cuda import get_current_device
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param import ShardedParamV2
 
@@ -103,8 +104,8 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         """
         if not self.rm_torch_payload_on_the_fly:
             for param in self.initialized_param_list:
-                assert hasattr(param, 'ca_attr')
-                param.ca_attr.remove_torch_payload()
+                assert hasattr(param, 'col_attr')
+                param.col_attr.remove_torch_payload()
 
             del self.initialized_param_list
 
@@ -113,7 +114,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         """
         for param in module.parameters():
             # avoid adapting a param to ShardedParam twice
-            if hasattr(param, 'ca_attr'):
+            if hasattr(param, 'col_attr'):
                 continue
 
             if self.convert_cuda:
@@ -127,11 +128,11 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                 if param.grad is not None:
                     param.grad = param.grad.to(torch.half).to(target_device)
 
-            param.ca_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
+            param.col_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
 
             self.initialized_param_list.append(param)
 
             if self.shard_param:
-                self.shard_strategy.shard(tensor_list=[param.ca_attr._data_sharded_tensor])
-            if param.ca_attr.grad and self.shard_grad:
-                self.shard_strategy.shard(tensor_list=[param.ca_attr._grad_sharded_tensor])
+                self.shard_strategy.shard(tensor_list=[param.col_attr._data_sharded_tensor])
+            if param.col_attr.grad and self.shard_grad:
+                self.shard_strategy.shard(tensor_list=[param.col_attr._grad_sharded_tensor])

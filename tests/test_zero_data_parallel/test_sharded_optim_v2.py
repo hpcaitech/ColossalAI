@@ -56,7 +56,7 @@ def run_dist(rank, world_size, port):
             check_params(model, zero_model)
 
 
-@pytest.mark.dist
+@pytest.mark.skip
 def test_sharded_optim_v2():
     world_size = 2
     run_func = partial(run_dist, world_size=world_size, port=free_port())

@@ -5,8 +5,7 @@ import os
 import traceback
 from collections import OrderedDict
 from enum import Enum, auto
-from typing import (Any, Callable, Dict, Generator, List, NamedTuple, Optional,
-                    Set, Union)
+from typing import (Any, Callable, Dict, Generator, List, NamedTuple, Optional, Set, Union)
 
 import torch
 import torch.distributed as dist
@@ -15,16 +14,14 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
-from .param_manager import Zero3ParameterManager
 from torch.autograd import Variable
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
-from ._zero3_utils import (apply_to_tensors, assert_in_engine,
-                           cast_float_arguments, cast_trensor_to_fp16,
-                           cast_trensor_to_fp32, chunk_and_pad, free_storage,
-                           get_gradient_predivide_factor, get_shard,
+from ._zero3_utils import (apply_to_tensors, assert_in_engine, cast_float_arguments, cast_tensor_to_fp16,
+                           cast_tensor_to_fp32, chunk_and_pad, free_storage, get_gradient_predivide_factor, get_shard,
                            replace_state_dict_prefix)
+from .param_manager import Zero3ParameterManager
 from .reduce_scatter import ReduceScatterBucketer
 
 # TODO: Remove the toggle-enable_nccl_base_collectives in the future
@@ -41,11 +38,13 @@ class TrainingState(Enum):
     POST_BACKWARD = auto()
     GATHER_FULL_PARAMS = auto()
 
+
 # TODO: Add clip_grad_norm_
 # TODO: Add gather_full_optim_state_dict and get_shard_from_optim_state_dict
 
 
 class ShardedModel(nn.Module):
+
     def __init__(self,
                  module: nn.Module,
                  process_group: Optional[ProcessGroup] = None,
@@ -96,8 +95,10 @@ class ShardedModel(nn.Module):
 
         # We find if gradient_predivide_factor != 1.0, there may be wrong precision problem
         # So we use 1.0 as the default gradient_predivide_factor
-        # However, if you set gradient_predivide_factor to None, we will set gradient_predivide_factor to a value >= 1.0 automatically
-        self.gradient_predivide_factor: float = gradient_predivide_factor if gradient_predivide_factor is not None else \
+        # However, if you set gradient_predivide_factor to None
+        # we will set gradient_predivide_factor to a value >= 1.0 automatically
+        self.gradient_predivide_factor: float = gradient_predivide_factor if \
+            gradient_predivide_factor is not None else \
             get_gradient_predivide_factor(self.world_size)
         self.gradient_postdivide_factor: float = self.world_size / self.gradient_predivide_factor
 
@@ -111,8 +112,12 @@ class ShardedModel(nn.Module):
 
         self.module = module
 
-        self.param_manager = Zero3ParameterManager(module, process_group=self.process_group, mixed_precision=self.mixed_precision,
-                                                   flatten_parameters=flatten_parameters, compute_dtype=self.compute_dtype, compute_device=self.compute_device,
+        self.param_manager = Zero3ParameterManager(module,
+                                                   process_group=self.process_group,
+                                                   mixed_precision=self.mixed_precision,
+                                                   flatten_parameters=flatten_parameters,
+                                                   compute_dtype=self.compute_dtype,
+                                                   compute_device=self.compute_device,
                                                    offload_config=offload_config)
 
         self._reset_lazy_init_info()
@@ -145,13 +150,13 @@ class ShardedModel(nn.Module):
         # For root and mixed precision, we convert the input to FP16 (no_grad is needed for
         # the conversion).
         if self._is_root and self.mixed_precision:
-            args, kwargs = cast_float_arguments(cast_trensor_to_fp16, *args, **kwargs)
+            args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
 
         # If enabled, convert the input to FP32 if we are in full precision.
         # no_grad is not used because the input might be for a non-root instance,
         # which mean autograd needs to go through the conversion.
         if self.force_input_to_fp32 and not self.mixed_precision:
-            args, kwargs = cast_float_arguments(cast_trensor_to_fp32, *args, **kwargs)
+            args, kwargs = cast_float_arguments(cast_tensor_to_fp32, *args, **kwargs)
 
         # All-gather full parameters. This will also transfer FP32 parameters to
         # ``self.compute_dtype`` (e.g., FP16 if *mixed_precision* is ``True``).
@@ -201,10 +206,9 @@ class ShardedModel(nn.Module):
             input_tensor = torch.ones(1).to(self.compute_device)
             output = list(torch.zeros(self.world_size).to(self.compute_device).chunk(self.world_size))
             dist.all_gather(output, input_tensor, group=self.process_group)
-            assert torch.cat(output).sum() == float(self.world_size), (
-                f"found {torch.cat(output).sum()} devices in process group but "
-                f"world_size={self.world_size}. Check torch.cuda.set_device is called properly"
-            )
+            assert torch.cat(output).sum() == float(
+                self.world_size), (f"found {torch.cat(output).sum()} devices in process group but "
+                                   f"world_size={self.world_size}. Check torch.cuda.set_device is called properly")
 
     def _reset_lazy_init_info(self) -> None:
         self._is_root: Optional[bool] = None
@@ -277,9 +281,10 @@ class ShardedModel(nn.Module):
 
                 # if child instance in its own (smaller) world, that was probably an attempt to avoid OOM.
                 # Therefore gathering this child's optim state will probably cause OOM, so we won't do it.
-                m.no_broadcast_optim_state = m.no_broadcast_optim_state or (
-                    (m.world_size == 1) and (m.world_size < self.world_size) and (m.process_group != self.process_group)
-                )
+                m.no_broadcast_optim_state = m.no_broadcast_optim_state or \
+                    ((m.world_size == 1)
+                     and (m.world_size < self.world_size)
+                     and (m.process_group != self.process_group))
 
     def _setup_streams(self) -> None:
         """Create streams to overlap data transfer and computation."""
@@ -330,9 +335,10 @@ class ShardedModel(nn.Module):
         else:
             self._streams["all_gather"].wait_stream(torch.cuda.current_stream())
 
-    def _cast_buffers(
-        self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None, memo: Optional[Set] = None
-    ) -> None:
+    def _cast_buffers(self,
+                      device: Optional[torch.device] = None,
+                      dtype: Optional[torch.dtype] = None,
+                      memo: Optional[Set] = None) -> None:
         """Move all buffers to the given *device* and *dtype*.
 
         If *device* or *dtype* are not given, then they will default to
@@ -398,7 +404,7 @@ class ShardedModel(nn.Module):
             outputs: new outputs with hooks registered if they requires gradient.
         """
         if not torch.is_grad_enabled():
-            return outputs  # don't register hooks if grad isn't enabled
+            return outputs    # don't register hooks if grad isn't enabled
 
         if self._is_root:
             # This actually means that only root instance has
@@ -523,7 +529,7 @@ class ShardedModel(nn.Module):
         a new hook, which is needed for a new forward pass.
         """
         if not torch.is_grad_enabled():
-            return  # don't register grad hooks if grad isn't enabled
+            return    # don't register grad hooks if grad isn't enabled
         for p in self.params:
             if p.requires_grad:
                 if hasattr(p, "zero_shard_bwd_hook"):
@@ -612,7 +618,8 @@ class ShardedModel(nn.Module):
             if param.zero_is_sharded:
                 assert self._reducer is not None
                 # Save the unsharded grad for reduction. We will asynchronously accumulate the reduced gradient into
-                # param.zero_saved_grad_shard. If this ShardedModel module was called multiple times it's possible that multiple
+                # param.zero_saved_grad_shard. If this ShardedModel module was called multiple times
+                # it's possible that multiple
                 # gradient reductions will happen in an undefined order. But addition commutes, so this order doesn't
                 # matter, neglecting rounding.
                 # Clear grad on the tensor, so any repeated gradient computations do not interfere with this reduction.
@@ -628,9 +635,9 @@ class ShardedModel(nn.Module):
                 # unsharded gradients allocated; one for a pending reduction, and one for gradient computation.
                 callback_fn = functools.partial(self._reduce_scatter_callback, param)
                 grad_chunks = chunk_and_pad(orig_grad_data, self.reduce_scatter_process_group.size())
-                self._reducer.reduce_scatter_async(
-                    grad_chunks, group=self.reduce_scatter_process_group, callback_fn=callback_fn
-                )
+                self._reducer.reduce_scatter_async(grad_chunks,
+                                                   group=self.reduce_scatter_process_group,
+                                                   callback_fn=callback_fn)
             else:
                 # Currently the only way for _is_sharded to be False is if
                 # world_size == 1. This could be relaxed in the future, in which
@@ -667,8 +674,9 @@ class ShardedModel(nn.Module):
                 param.zero_saved_grad_shard = reduced_grad.data
             else:
                 assert (
-                    param.zero_saved_grad_shard.shape == reduced_grad.shape
-                ), f"{param.zero_saved_grad_shard.shape} vs {reduced_grad.shape}"
+                    param.zero_saved_grad_shard.shape == reduced_grad.shape), f"{param.zero_saved_grad_shard.shape} \
+                           vs {reduced_grad.shape}"
+
                 param.zero_saved_grad_shard.data += reduced_grad.data
             reduced_grad = param.zero_saved_grad_shard.data
         else:
@@ -717,7 +725,7 @@ class ShardedModel(nn.Module):
             # Flush any unreduced buckets in the post_backward stream.
             with torch.cuda.stream(self._streams["post_backward"]):
                 assert_in_engine(self._reducer is not None, "FinalBackwardHook: reducer is None")
-                assert self._reducer is not None  # make mypy happy
+                assert self._reducer is not None    # make mypy happy
                 self._reducer.flush()
             torch.cuda.current_stream().wait_stream(self._streams["post_backward"])
             if self._cpu_offload:
@@ -753,7 +761,8 @@ class ShardedModel(nn.Module):
                 elif hasattr(p, "zero_saved_grad_shard"):
                     assert_in_engine(
                         p.device == p.zero_saved_grad_shard.device,
-                        f"FinalBackwardHook: incorrect saved_grad_shard device {p.device} vs {p.zero_saved_grad_shard.device}",
+                        f"FinalBackwardHook: incorrect saved_grad_shard device \
+                            {p.device} vs {p.zero_saved_grad_shard.device}",
                     )
                     p.grad = p.zero_saved_grad_shard
                 elif hasattr(p, 'zero_saved_grad'):
@@ -765,7 +774,7 @@ class ShardedModel(nn.Module):
                     delattr(p, "zero_saved_grad")
 
         # Update root and nested ShardedModel's hooks and flags.
-        for m in self.modules():  # includes self
+        for m in self.modules():    # includes self
             if isinstance(m, ShardedModel):
                 _finalize_parameters(m)
                 m._pre_backward_hook_has_run = False
@@ -796,7 +805,7 @@ class ShardedModel(nn.Module):
                         self._output_pre_backward_hook_registered is not None,
                         "FinalBackwardHook: self._output_pre_backward_hook_registered should not be None",
                     )
-                    assert self._output_pre_backward_hook_registered is not None  # make mypy happy
+                    assert self._output_pre_backward_hook_registered is not None    # make mypy happy
                     self._output_pre_backward_hook_registered.clear()
 
     @contextlib.contextmanager
@@ -908,9 +917,9 @@ class ShardedModel(nn.Module):
         state["is_sharded"] = [p.zero_is_sharded for p in self.params]
         state["orig_sizes"] = [p.zero_orig_size for p in self.params]
         if state["process_group"] is not None:
-            state["process_group"] = "MISSING"  # process_group isn't pickleable
+            state["process_group"] = "MISSING"    # process_group isn't pickleable
         if state["process_group_reduce_scatter"] is not None:
-            state["process_group_reduce_scatter"] = "MISSING"  # process_group_reduce_scatter isn't pickleable
+            state["process_group_reduce_scatter"] = "MISSING"    # process_group_reduce_scatter isn't pickleable
         self._reset_lazy_init_info()
         return state
 
@@ -920,7 +929,7 @@ class ShardedModel(nn.Module):
 
         def fixup(p: Parameter, is_sharded: bool, size: torch.Size) -> Parameter:
             assert isinstance(p, Parameter)
-            p.data = p.data.clone()  # move tensors out of shared memory
+            p.data = p.data.clone()    # move tensors out of shared memory
             p.zero_is_sharded = is_sharded
             p.zero_orig_size = size
             return p
@@ -958,7 +967,7 @@ class ShardedModel(nn.Module):
         # This instance may wrap other ShardedModel instances and we
         # need to set all of them to accumulate gradients.
         old_flags = []
-        for m in self.modules():  # includes self
+        for m in self.modules():    # includes self
             if isinstance(m, ShardedModel):
                 old_flags.append((m, m._require_backward_grad_sync))
                 m._require_backward_grad_sync = False
@@ -986,22 +995,18 @@ class ShardedModel(nn.Module):
             raise ValueError(msg)
 
     def extra_repr(self) -> str:
-        repr = (
-            f"world_size={self.world_size}, "
-            f"mixed_precision={self.mixed_precision}, "
-        )
+        repr = (f"world_size={self.world_size}, "
+                f"mixed_precision={self.mixed_precision}, ")
         if self.verbose:
-            repr = (
-                f"rank={self.rank}, " + repr + f"reshard_after_forward={self.reshard_after_forward}, "
-                f"compute_dtype={self.compute_dtype}, "
-                f"buffer_dtype={self.buffer_dtype}, "
-                f"fp32_reduce_scatter={self.fp32_reduce_scatter}, "
-                f"compute_device={self.compute_device}"
-                f"reduce_scatter_bucket_size_mb={self.reduce_scatter_bucket_size_mb}, "
-                f"clear_autocast_cache={self.clear_autocast_cache}"
-                f"force_input_to_fp32={self.force_input_to_fp32}"
-                f"offload_config={self.offload_config}"
-            )
+            repr = (f"rank={self.rank}, " + repr + f"reshard_after_forward={self.reshard_after_forward}, "
+                    f"compute_dtype={self.compute_dtype}, "
+                    f"buffer_dtype={self.buffer_dtype}, "
+                    f"fp32_reduce_scatter={self.fp32_reduce_scatter}, "
+                    f"compute_device={self.compute_device}"
+                    f"reduce_scatter_bucket_size_mb={self.reduce_scatter_bucket_size_mb}, "
+                    f"clear_autocast_cache={self.clear_autocast_cache}"
+                    f"force_input_to_fp32={self.force_input_to_fp32}"
+                    f"offload_config={self.offload_config}")
         return repr
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
@@ -1039,9 +1044,9 @@ class ShardedModel(nn.Module):
         maybe_cast_buffers()
         return state_dict
 
-    def load_state_dict(
-        self, state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"], strict: bool = True
-    ) -> NamedTuple:
+    def load_state_dict(self,
+                        state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"],
+                        strict: bool = True) -> NamedTuple:
         """
         Load a whole (unsharded) state_dict.
 
@@ -1094,7 +1099,6 @@ def _post_state_dict_hook(
     return state_dict
 
 
-def _pre_load_state_dict_hook(
-    state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"], prefix: str, *args: Any
-) -> None:
+def _pre_load_state_dict_hook(state_dict: Union[Dict[str, torch.Tensor], "OrderedDict[str, torch.Tensor]"], prefix: str,
+                              *args: Any) -> None:
     replace_state_dict_prefix(state_dict, prefix, prefix + "_zero3_module.")
