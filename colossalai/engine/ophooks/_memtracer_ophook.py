@@ -42,10 +42,6 @@ class AsyncMemoryMonitor:
     def __len__(self):
         return len(self.mem_stats)
 
-    def _synchronize(self):
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-
     def set_interval(self, power: int):
         self.clear()
         self.interval = 1 / (10**power)
@@ -54,12 +50,10 @@ class AsyncMemoryMonitor:
         return self.keep_measuring
 
     def start(self):
-        self._synchronize()
         self.keep_measuring = True
         self.monitor_thread = self.executor.submit(self._measure_usage)
 
     def finish(self):
-        self._synchronize()
         if self.keep_measuring is False:
             return 0
         self.keep_measuring = False
