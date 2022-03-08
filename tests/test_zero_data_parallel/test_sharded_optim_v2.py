@@ -17,7 +17,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Adam
 
-from common import CONFIG, check_params, check_sharded_params_padding
+from common import CONFIG, check_sharded_params_padding
 
 
 def run_step(model, optimizer, data, label, criterion, enable_autocast=False):
@@ -41,7 +41,7 @@ def run_dist(rank, world_size, port):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         shard_strategy = TensorShardStrategy()
         model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
-        model = model().half().cuda()
+        model = model().cuda()
         zero_model = ShardedModelV2(copy.deepcopy(model), shard_strategy)
         if dist.get_world_size() > 1:
             model = DDP(model)
@@ -49,18 +49,14 @@ def run_dist(rank, world_size, port):
         sharded_optim = ShardedOptimizerV2(Adam(zero_model.parameters(), lr=1e-3),
                                            zero_model,
                                            shard_strategy,
-                                           initial_scale=1)
-        # TODO: debug
+                                           initial_scale=2**5)
         for i, (data, label) in enumerate(train_dataloader):
             if i > 2:
                 break
-            data, label = data.half().cuda(), label.cuda()
+            data, label = data.cuda(), label.cuda()
             run_step(model, optim, data, label, criterion, False)
             run_step(zero_model, sharded_optim, data, label, criterion, False)
-            if dist.get_world_size() > 1 or True:
-                check_sharded_params_padding(model, zero_model, loose=True)
-            else:
-                check_params(model, zero_model, loose=True)
+            check_sharded_params_padding(model, zero_model, loose=True)
 
 
 @pytest.mark.dist

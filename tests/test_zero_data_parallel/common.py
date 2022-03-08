@@ -103,4 +103,4 @@ def check_sharded_params_padding(model, zero_model, loose=False):
         if zero_p.size(0) > p.size(0):
             zero_p = zero_p[:p.size(0)]
         assert p.dtype == zero_p.dtype
-        assert allclose(p, zero_p, loose=loose)
+        assert allclose(p, zero_p, loose=loose), f'{p} vs {zero_p}'

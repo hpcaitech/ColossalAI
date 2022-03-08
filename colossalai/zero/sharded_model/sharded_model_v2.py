@@ -184,7 +184,11 @@ class ShardedModelV2(nn.Module):
         if param.col_attr.grad is None:
             param.col_attr.grad = reduced_grad.data
         else:
-            param.col_attr.grad.add_(reduced_grad.data)
+            # When dp size = 1
+            # param.col_attr.grad is local accumulated grad shard (full but flatten)
+            # But reduced_grad here is full grad
+            # We should call `view_as`
+            param.col_attr.grad.add_(reduced_grad.data.view_as(param.col_attr.grad))
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.col_attr.data for p in self.module.parameters()])

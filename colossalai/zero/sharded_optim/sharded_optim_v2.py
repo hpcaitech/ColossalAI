@@ -152,3 +152,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 if p.grad is not None:
                     p.grad.data.div_(self.loss_scale)
         self.optim_state = OptimState.UNSCALED
+
+    def zero_grad(self, *args, **kwargs):
+        # We must set grad to None
+        # Because we will judge whether local grad accumulation
+        # is enabled by wheter grad is None
+        self.optim.zero_grad(set_to_none=True)
