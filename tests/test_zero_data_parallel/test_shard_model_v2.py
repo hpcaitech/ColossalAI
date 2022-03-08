@@ -38,7 +38,7 @@ def run_dist(rank, world_size, port):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         shard_strategy = TensorShardStrategy()
         model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
-        model = model.half().cuda()
+        model = model().half().cuda()
         zero_model = ShardedModelV2(copy.deepcopy(model), shard_strategy)
         if dist.get_world_size() > 1:
             model = DDP(model)
