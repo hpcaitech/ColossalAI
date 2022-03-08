@@ -12,10 +12,14 @@ import math
 
 
 def get_cuda_memory_used(device: Optional[torch.device]) -> int:
-    """
-    Get the free memory info of device.
+    """Get the free memory info of device.
     Notice that for CPU, this function will return 1/N of the total free memory,
     where N is the world size.
+
+    :param device: device id
+    :type device: torch.device
+    :return: current memory usage, sized by MB
+    :rtype: int
     """
     ret: int = torch.cuda.memory_allocated(device)
     # get the peak memory to report correct data, so reset the counter for the next call
@@ -25,13 +29,16 @@ def get_cuda_memory_used(device: Optional[torch.device]) -> int:
 
 
 class AsyncMemoryMonitor:
-
-    def __init__(self, power=10):
-        """
-        An Async Mem Monitor runing during computing.
-        Sampling GPU memory usage of the current GPU dev
+    """
+        An Async Mem Monitor runing during computing. Sampling GPU memory usage of the current GPU
         at interval of 1/(10**power) sec.
+
+        :param power: the power of time interval, defaults to 10
+        :type power: int
         """
+
+    def __init__(self, power: int = 10):
+
         self.keep_measuring = False
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.monitor_thread = None
@@ -94,19 +101,12 @@ class MemTracerOpHook(BaseOpHook):
     """
     Collect GPU memory usage information
 
-    Args:
-        warmup (int): This parameter indicates how many iterations to truncate
-        before profiling, e.g. set to 5 and the data will start from 6-th iteration
-        refreshrate (int): This parameter decides the frequency of write file.
-        datafile(string): the name of the stats data file
-    Attributes:
-        _warmup (int): warmup iterations
-        _refreshrate(int): how many iterations we shall refresh the file
-        _logger (colossalai.logging.logger): output log file
-        _curiter (int): current iteration number
-        _count (int): the number of times the data file was written
-        _data_prefix (string): the prefix of the stats data file
-        _rank (int): the rank of current node
+    :param warmup: This parameter indicates how many iterations to truncate before profiling, defaults to 50
+    :type warmup: int
+    :param refreshrate: This parameter decides the frequency of write file, defaults to 10
+    :type refreshrate: int
+    :param data_prefix: The prefix of the stats data file, defaults to "memstats"
+    :type data_prefix: string
     """
 
     def __init__(self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"):
@@ -123,7 +123,6 @@ class MemTracerOpHook(BaseOpHook):
             self._rank = gpc.get_global_rank()
         else:
             self._rank = 0
-        self._logger.debug("initialized MemTracerOpHook")
 
     def _isvalid(self, module) -> bool:
         assert isinstance(module, torch.nn.Module)
