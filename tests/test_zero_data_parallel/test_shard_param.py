@@ -46,6 +46,8 @@ def _run_shard_param_v2(rank, world_size, port):
     sparam = ShardedParamV2(param=param, process_group=None)
 
     allclose(sparam.data, param_ref.data)
+
+    sparam.remove_torch_payload()
     assert (param.data.numel() == 1)
 
 
