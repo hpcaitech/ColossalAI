@@ -16,10 +16,11 @@ CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None
 
 def run_train():
     for get_components_func in non_distributed_component_funcs:
-        model, train_dataloader, _, optimizer, criterion = get_components_func()
+        model_builder, train_dataloader, _, optimizer_builder, criterion = get_components_func()
 
+        model = model_builder(checkpoint=False)
         engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                                optimizer=optimizer,
+                                                                optimizer=optimizer_builder(model),
                                                                 criterion=criterion,
                                                                 train_dataloader=train_dataloader)
 

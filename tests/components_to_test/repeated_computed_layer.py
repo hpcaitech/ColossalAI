@@ -38,7 +38,7 @@ class DummyDataLoader(DummyDataGenerator):
 def get_training_components():
 
     def model_builder(checkpoint=True):
-        return NetWithRepeatedlyComputedLayers()
+        return NetWithRepeatedlyComputedLayers(checkpoint)
 
     trainloader = DummyDataLoader()
     testloader = DummyDataLoader()
