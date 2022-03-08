@@ -82,25 +82,31 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     3. Shard the param and grad according to flags.
     """
 
-    def __init__(
-        self,
-        convert_fp16: bool,
-        convert_cuda: bool,
-        shard_strategy: BaseShardStrategy,
-        shard_param: bool = False,
-        shard_grad: bool = False,
-    ):
+    def __init__(self,
+                 convert_fp16: bool,
+                 convert_cuda: bool,
+                 shard_strategy: BaseShardStrategy,
+                 shard_param: bool = False,
+                 shard_grad: bool = False,
+                 rm_torch_payload_on_the_fly=False):
         super().__init__()
         self.convert_fp16 = convert_fp16
         self.convert_cuda = convert_cuda
         self.shard_param = shard_param
         self.shard_grad = shard_grad
         self.shard_strategy = shard_strategy
+        self.rm_torch_payload_on_the_fly = rm_torch_payload_on_the_fly
+        self.initialized_param_list = []
 
     def _post_context_exec(self):
         """The callback function when the context exits.
         """
-        pass
+        if not self.rm_torch_payload_on_the_fly:
+            for param in self.initialized_param_list:
+                assert hasattr(param, 'ca_attr')
+                param.ca_attr.remove_torch_payload()
+
+            del self.initialized_param_list
 
     def _post_init_method(self, module):
         r"""The function to call at the end of the constructor of each nn.Module.
@@ -121,7 +127,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                 if param.grad is not None:
                     param.grad = param.grad.to(torch.half).to(target_device)
 
-            param.ca_attr = ShardedParamV2(param)
+            param.ca_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
+
+            self.initialized_param_list.append(param)
+
             if self.shard_param:
                 self.shard_strategy.shard(tensor_list=[param.ca_attr._data_sharded_tensor])
             if param.ca_attr.grad and self.shard_grad:

@@ -36,9 +36,15 @@ class DummyDataLoader(DummyDataGenerator):
 
 @non_distributed_component_funcs.register(name='repeated_computed_layers')
 def get_training_components():
-    model = NetWithRepeatedlyComputedLayers(checkpoint=True)
+
+    def model_builder(checkpoint=True):
+        return NetWithRepeatedlyComputedLayers(checkpoint)
+
     trainloader = DummyDataLoader()
     testloader = DummyDataLoader()
-    optim = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    def optim_builder(model):
+        return torch.optim.Adam(model.parameters(), lr=0.001)
+
     criterion = torch.nn.CrossEntropyLoss()
-    return model, trainloader, testloader, optim, criterion
+    return model_builder, trainloader, testloader, optim_builder, criterion
