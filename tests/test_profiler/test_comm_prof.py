@@ -1,10 +1,11 @@
 from functools import partial
-import torch
-import torch.multiprocessing as mp
-import torch.distributed as dist
+
 import colossalai
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 from colossalai.utils import free_port, get_current_device
-from colossalai.utils.profiler import enable_communication_prof, communication_prof_show
+from colossalai.utils.profiler.comm_profiler import communication_prof_show, enable_communication_prof
 
 BATCH_SIZE = 1024
 D_MODEL = 1024
