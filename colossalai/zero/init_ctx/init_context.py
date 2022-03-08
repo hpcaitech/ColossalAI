@@ -104,8 +104,8 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         """
         if not self.rm_torch_payload_on_the_fly:
             for param in self.initialized_param_list:
-                assert hasattr(param, 'ca_attr')
-                param.ca_attr.remove_torch_payload()
+                assert hasattr(param, 'col_attr')
+                param.col_attr.remove_torch_payload()
 
             del self.initialized_param_list
 
@@ -128,7 +128,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                 if param.grad is not None:
                     param.grad = param.grad.to(torch.half).to(target_device)
 
-            param.ca_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
+            param.col_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
 
             self.initialized_param_list.append(param)
 
