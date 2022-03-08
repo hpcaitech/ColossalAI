@@ -1,4 +1,5 @@
 import functools
+from collections import OrderedDict
 from typing import Any, Optional
 
 import torch
@@ -180,3 +181,18 @@ class ShardedModelV2(nn.Module):
             param.col_attr.grad = reduced_grad.data
         else:
             param.col_attr.grad.add_(reduced_grad.data)
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
+        self.shard_strategy.gather([p.col_attr.data for p in self.module.parameters()])
+        prev_params = {}
+        for p in self.module.parameters():
+            prev_params[p] = p.data
+            p.data = p.col_attr.data.payload
+        gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
+        self.shard_strategy.shard([p.col_attr.data for p in self.module.parameters()])
+        for p in self.module.parameters():
+            p.data = prev_params[p]
+        return gathered_state_dict
+
+    def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):
+        raise NotImplementedError
