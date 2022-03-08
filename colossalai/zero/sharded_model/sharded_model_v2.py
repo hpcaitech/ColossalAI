@@ -13,10 +13,10 @@ from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
+from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
-from ..sharded_param import ShardedParamV2
 from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad,
                            get_gradient_predivide_factor)
 
