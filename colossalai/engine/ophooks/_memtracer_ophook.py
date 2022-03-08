@@ -1,4 +1,3 @@
-from re import S
 from colossalai.context.parallel_mode import ParallelMode
 import torch
 from . import BaseOpHook
@@ -7,7 +6,7 @@ from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from time import sleep, time
 import pickle
-from typing import Union, Optional
+from typing import Optional
 from colossalai.core import global_context as gpc
 import math
 
@@ -20,12 +19,13 @@ def get_cuda_memory_used(device: Optional[torch.device]) -> int:
     """
     ret: int = torch.cuda.memory_allocated(device)
     # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
+    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
         torch.cuda.reset_peak_memory_stats(device)
     return ret
 
 
 class AsyncMemoryMonitor:
+
     def __init__(self, power=10):
         """
         An Async Mem Monitor runing during computing.
@@ -115,9 +115,7 @@ class MemTracerOpHook(BaseOpHook):
         _rank (int): the rank of current node
     """
 
-    def __init__(
-        self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"
-    ):
+    def __init__(self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"):
         super().__init__()
         self.async_mem_monitor = AsyncMemoryMonitor()
         self._curiter = 0
@@ -139,10 +137,7 @@ class MemTracerOpHook(BaseOpHook):
 
     def _resample(self):
         # calculate the average iteration time
-        total_time = (
-            self.async_mem_monitor.time_stamps[-1]
-            - self.async_mem_monitor.time_stamps[0]
-        )
+        total_time = (self.async_mem_monitor.time_stamps[-1] - self.async_mem_monitor.time_stamps[0])
         avg_it_time = total_time / self.warmup
         self._logger.debug(f"total time for {self.warmup} iterations is {total_time}s")
         # adjust the sampling power
@@ -201,9 +196,7 @@ class MemTracerOpHook(BaseOpHook):
             # every `refreshrate` times, refresh the file
             if self.valid_iter != 0 and self.valid_iter % self.refreshrate == 0:
                 # output file info
-                self._logger.info(
-                    f"dump a memory statistics as pickle to {self._data_prefix}-{self._rank}.pkl"
-                )
+                self._logger.info(f"dump a memory statistics as pickle to {self._data_prefix}-{self._rank}.pkl")
                 self.save_results()
                 self._count += 1
                 self._logger.debug(f"data file has been refreshed {self._count} times")
