@@ -1,3 +1,4 @@
+from re import S
 from colossalai.context.parallel_mode import ParallelMode
 import torch
 from . import BaseOpHook
@@ -6,8 +7,9 @@ from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from time import sleep, time
 import pickle
-from typing import Optional
+from typing import Union, Optional
 from colossalai.core import global_context as gpc
+import math
 
 
 def get_cuda_memory_used(device: Optional[torch.device]) -> int:
@@ -18,13 +20,12 @@ def get_cuda_memory_used(device: Optional[torch.device]) -> int:
     """
     ret: int = torch.cuda.memory_allocated(device)
     # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
+    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
         torch.cuda.reset_peak_memory_stats(device)
     return ret
 
 
 class AsyncMemoryMonitor:
-
     def __init__(self, power=10):
         """
         An Async Mem Monitor runing during computing.
@@ -41,17 +42,24 @@ class AsyncMemoryMonitor:
     def __len__(self):
         return len(self.mem_stats)
 
+    def _synchronize(self):
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
     def set_interval(self, power: int):
+        self.clear()
         self.interval = 1 / (10**power)
 
     def is_measuring(self):
         return self.keep_measuring
 
     def start(self):
+        self._synchronize()
         self.keep_measuring = True
         self.monitor_thread = self.executor.submit(self._measure_usage)
 
     def finish(self):
+        self._synchronize()
         if self.keep_measuring is False:
             return 0
         self.keep_measuring = False
@@ -89,7 +97,7 @@ class AsyncMemoryMonitor:
 
 @OPHOOKS.register_module
 class MemTracerOpHook(BaseOpHook):
-    '''
+    """
     Collect GPU memory usage information
 
     Args:
@@ -105,9 +113,11 @@ class MemTracerOpHook(BaseOpHook):
         _count (int): the number of times the data file was written
         _data_prefix (string): the prefix of the stats data file
         _rank (int): the rank of current node
-    '''
+    """
 
-    def __init__(self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"):
+    def __init__(
+        self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"
+    ):
         super().__init__()
         self.async_mem_monitor = AsyncMemoryMonitor()
         self._curiter = 0
@@ -121,10 +131,24 @@ class MemTracerOpHook(BaseOpHook):
             self._rank = gpc.get_global_rank()
         else:
             self._rank = 0
+        self._logger.debug("initialized MemTracerOpHook")
 
     def _isvalid(self, module) -> bool:
         assert isinstance(module, torch.nn.Module)
         return module.training
+
+    def _resample(self):
+        # calculate the average iteration time
+        total_time = (
+            self.async_mem_monitor.time_stamps[-1]
+            - self.async_mem_monitor.time_stamps[0]
+        )
+        avg_it_time = total_time / self.warmup
+        self._logger.debug(f"total time for {self.warmup} iterations is {total_time}s")
+        # adjust the sampling power
+        power: int = round(-math.log(avg_it_time, 10)) + 1
+        self._logger.debug(f"the power is {power}")
+        self.async_mem_monitor.set_interval(power)
 
     @property
     def refreshrate(self) -> int:
@@ -146,23 +170,19 @@ class MemTracerOpHook(BaseOpHook):
         if self._isvalid(module):
             self.async_mem_monitor.finish()
             self.async_mem_monitor.start()
-            self._logger.debug(f'FWD PRE {module.__class__.__name__}')
 
     def post_fwd_exec(self, module: torch.nn.Module, *args):
         if self._isvalid(module):
             self.async_mem_monitor.finish()
-            self._logger.debug(f'FWD POST {module.__class__.__name__}')
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
         if self._isvalid(module):
             self.async_mem_monitor.finish()
             self.async_mem_monitor.start()
-            self._logger.debug(f'BWD PRE {module.__class__.__name__}')
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
         if self._isvalid(module):
             self.async_mem_monitor.finish()
-            self._logger.debug(f'BWD POST {module.__class__.__name__}')
 
     def pre_iter(self):
         pass
@@ -170,19 +190,23 @@ class MemTracerOpHook(BaseOpHook):
     def post_iter(self):
         self.async_mem_monitor.finish()
         # in the warmup stage
-        if self._curiter < self.warmup:
-            # TODO: record time and adaptively change sampling rate
+        if self.curiter < self.warmup:
             pass
-        elif self._curiter == self._warmup:
-            self.async_mem_monitor.clear()
+        # adjust the sampling rate
+        elif self.curiter == self.warmup:
+            # use adaptive sample rate
+            self._resample()
+        # record data to log file
         else:
             # every `refreshrate` times, refresh the file
             if self.valid_iter != 0 and self.valid_iter % self.refreshrate == 0:
                 # output file info
-                self._logger.info(f'dump a memory statistics as pickle to {self._dataprefix}-{self._rank}.pkl')
+                self._logger.info(
+                    f"dump a memory statistics as pickle to {self._data_prefix}-{self._rank}.pkl"
+                )
                 self.save_results()
                 self._count += 1
-                self._logger.debug(f'data file has been refreshed {self._count} times')
+                self._logger.debug(f"data file has been refreshed {self._count} times")
         # finish a iteration
         self._curiter += 1
 
