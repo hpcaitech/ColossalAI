@@ -23,7 +23,6 @@ def run_dist(rank, world_size, port):
                              convert_cuda=True,
                              shard_strategy=TensorShardStrategy(),
                              shard_param=True):
-            # Note Net(checkpoint=True).cuda() moving to cuda is useless
             model = model_builder(checkpoint=True)
 
             for param in model.parameters():
