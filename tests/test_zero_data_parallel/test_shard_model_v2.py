@@ -41,7 +41,6 @@ def run_dist(rank, world_size, port):
     zero_model = ShardedModelV2(zero_model, shard_strategy, process_group=gpc.get_group(ParallelMode.DATA))
 
     for _ in range(3):
-        print(_)
         x = torch.rand(2, 5).cuda()
         run_fwd_bwd(zero_model, x, False)
         run_fwd_bwd(model, x, False)

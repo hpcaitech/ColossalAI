@@ -34,14 +34,16 @@ class ZeroHook(BaseOpHook):
             param.data = param.col_attr.data.payload
             # Store local accumulated grad shard
             if param.grad is not None:
-                if param.col_attr.grad is None:
+                if param.col_attr.bwd_count == 0:
                     # We haven't stored local accumulated grad yet
+                    assert param.col_attr.grad is None
                     param.col_attr.grad = param.grad.data
                     param.grad = None
                 else:
                     # We have stored local accumulated grad
                     # The grad here must be locally computed full grad in this backward pass
                     assert param.grad.shape == param.col_attr.data.origin_shape
+            param.col_attr.bwd_count += 1
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
         for param in module.parameters():

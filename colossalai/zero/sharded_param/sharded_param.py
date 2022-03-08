@@ -30,6 +30,11 @@ class ShardedParamV2(object):
     def remove_torch_payload(self):
         self.param.data = torch.empty([], dtype=self.param.dtype, device=self.param.device)
 
+        # Backward count for handle local grad accumulation
+        # This value will increment by 1 in every pre-bwd hook
+        # And will be reset to 0 in every final-bwd hook
+        self.bwd_count = 0
+
     @property
     def data(self):
         return self._data_sharded_tensor

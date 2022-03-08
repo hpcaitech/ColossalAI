@@ -102,6 +102,7 @@ class ShardedModelV2(nn.Module):
                 torch.cuda.current_stream().synchronize()
         self.reducer.free()
         for p in self.module.parameters():
+            p.col_attr.bwd_count = 0
             if not p.requires_grad:
                 continue
             # Leave the gradient accumulation state as-is if not synchronizing this pass. This ensures p.grad
