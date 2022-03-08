@@ -52,9 +52,9 @@ def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> boo
 def check_grads(model, zero_model, loose=False):
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
         zero_grad = zero_p.grad.clone().to(p.device)
-        assert p.grad.dtype == zero_grad.dtype
-        assert allclose(p.grad, zero_grad, loose=loose)
-        LOGGER.info(torch.sum(p.grad - zero_grad))
+        grad = p.grad.float()
+        assert grad.dtype == zero_grad.dtype
+        assert allclose(grad, zero_grad, loose=loose)
 
 
 def check_params(model, zero_model, loose=False):
@@ -71,11 +71,11 @@ def check_grads_padding(model, zero_model, loose=False):
         chunks = torch.flatten(p.grad).chunk(dist.get_world_size())
         if rank >= len(chunks):
             continue
-        grad = chunks[rank]
+        grad = chunks[rank].float()
         if zero_grad.size(0) > grad.size(0):
             zero_grad = zero_grad[:grad.size(0)]
         assert grad.dtype == zero_grad.dtype
-        assert allclose(grad, zero_grad, loose=loose)
+        assert allclose(grad, zero_grad, loose=loose), f'{grad} vs {zero_grad}'
 
 
 def check_params_padding(model, zero_model, loose=False):

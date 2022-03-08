@@ -9,21 +9,21 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 from colossalai.zero.shard_utils.tensor_shard_strategy import \
     TensorShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
+from tests.components_to_test.registry import non_distributed_component_funcs
+from torch.nn.parallel import DistributedDataParallel as DDP
 
-from common import CONFIG, Net, check_grads, check_grads_padding
+from common import CONFIG, check_grads, check_grads_padding
 
 
-def run_fwd_bwd(model, x, enable_autocast=False):
+def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
     model.train()
     with torch.cuda.amp.autocast(enabled=enable_autocast):
-        y = model(x)
-        loss = y.sum()
+        y = model(data)
+        loss = criterion(y, label)
     loss = loss.float()
     if isinstance(model, ShardedModelV2):
         model.backward(loss)
@@ -33,21 +33,26 @@ def run_fwd_bwd(model, x, enable_autocast=False):
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-
-    model = Net(checkpoint=True).cuda()
-
-    shard_strategy = TensorShardStrategy()
-    zero_model = copy.deepcopy(model)
-    zero_model = ShardedModelV2(zero_model, shard_strategy, process_group=gpc.get_group(ParallelMode.DATA))
-
-    for _ in range(3):
-        x = torch.rand(2, 5).cuda()
-        run_fwd_bwd(zero_model, x, False)
-        run_fwd_bwd(model, x, False)
+    test_models = ['repeated_computed_layers', 'resnet18']
+    for model_name in test_models:
+        get_components_func = non_distributed_component_funcs.get_callable(model_name)
+        shard_strategy = TensorShardStrategy()
+        model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
+        model = model.half().cuda()
+        zero_model = ShardedModelV2(copy.deepcopy(model), shard_strategy)
         if dist.get_world_size() > 1:
-            check_grads_padding(model, zero_model, loose=True)
-        else:
-            check_grads(model, zero_model, loose=True)
+            model = DDP(model)
+
+        for i, (data, label) in enumerate(train_dataloader):
+            if i > 2:
+                break
+            data, label = data.half().cuda(), label.cuda()
+            run_fwd_bwd(model, data, label, criterion, False)
+            run_fwd_bwd(zero_model, data, label, criterion, False)
+            if dist.get_world_size() > 1:
+                check_grads_padding(model, zero_model, loose=True)
+            else:
+                check_grads(model, zero_model, loose=True)
 
 
 @pytest.mark.dist
