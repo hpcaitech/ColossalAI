@@ -45,7 +45,7 @@ class Net(nn.Module):
 
 def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
     if loose:
-        return torch.allclose(tensor_a, tensor_b, atol=1e-3, rtol=1e-3)
+        return torch.allclose(tensor_a, tensor_b, atol=1e-2, rtol=1e-3)
     return torch.allclose(tensor_a, tensor_b)
 
 
