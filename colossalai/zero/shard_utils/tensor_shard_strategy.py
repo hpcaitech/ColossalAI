@@ -1,11 +1,10 @@
-import torch
-import torch.distributed as dist
-
 from typing import List, Optional
 
+import torch
+import torch.distributed as dist
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 from colossalai.zero.sharded_model._zero3_utils import get_shard
+from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 
 
 class TensorShardStrategy(BaseShardStrategy):
@@ -38,7 +37,7 @@ class TensorShardStrategy(BaseShardStrategy):
             if i == self.local_rank:
                 buffer_list.append(t.payload.cuda())
             else:
-                buffer_list.append(torch.zeros(payload_numel).cuda())
+                buffer_list.append(torch.zeros(payload_numel, dtype=t.dtype).cuda())
 
         torch.distributed.all_gather(buffer_list,
                                      buffer_list[self.local_rank],
