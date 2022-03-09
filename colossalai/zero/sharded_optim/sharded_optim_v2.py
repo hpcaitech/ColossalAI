@@ -66,7 +66,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
                 is_param_sharded = p.col_attr.data.is_sharded
                 if not is_param_sharded:
-                    # TODO: we may not use shard / gather here
+                    # TODO (ver217): we may not use shard / gather here
                     # Param is no sharded, which means we use ZeRO-2 here
                     # As we only store param shard, we shard it here
                     self.shard_strategy.shard([p.col_attr.data])
