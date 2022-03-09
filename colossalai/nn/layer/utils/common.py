@@ -38,7 +38,7 @@ class CheckpointModule(nn.Module):
 
 def divide(numerator, denominator):
     """Only allow exact division
-    
+
     :param numerator: Numerator of the division
     :param denominator: Denominator of the division
     """
