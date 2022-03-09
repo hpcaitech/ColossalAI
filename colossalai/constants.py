@@ -24,7 +24,7 @@ INPUT_GROUP_3D = 'input_group_3d'
 WEIGHT_GROUP_3D = 'weight_group_3d'
 OUTPUT_GROUP_3D = 'output_group_3d'
 
-# Attributes of tensor parallel parameters 
+# Attributes of tensor parallel parameters
 IS_TENSOR_PARALLEL = 'is_tensor_parallel'
 NUM_PARTITIONS = 'num_partitions'
 TENSOR_PARALLEL_ATTRIBUTES = [IS_TENSOR_PARALLEL, NUM_PARTITIONS]
