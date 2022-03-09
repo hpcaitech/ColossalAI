@@ -9,8 +9,12 @@ from torch.optim import Optimizer
 from colossalai.logging import get_dist_logger
 from torch import Tensor
 from colossalai.engine.ophooks import register_ophooks_recursively, BaseOpHook
+<<<<<<< HEAD
 from typing import Optional
 from colossalai.engine.gradient_handler import BaseGradientHandler
+=======
+from typing import Type
+>>>>>>> 5f7d42e (modify `Engine` to support dynamically add/remove ophooks)
 
 
 class Engine:
@@ -65,6 +69,11 @@ class Engine:
         register_ophooks_recursively(self._model, self._ophook_list)
 
     @property
+    def ophooks(self):
+        """show current activated ophooks"""
+        return self._ophook_list
+
+    @property
     def model(self):
         """Model attached to the engine"""
         return self._model
@@ -78,6 +87,20 @@ class Engine:
     def criterion(self):
         """Criterion attached to the engine"""
         return self._criterion
+
+    def add_hook(self, ophook: Type[BaseOpHook]) -> None:
+        """add necessary hook"""
+        # whether this hook exist
+        for h in self._ophook_list:
+            if type(h) == type(ophook):
+                # TODO: what error should be raised
+                raise NotImplementedError
+        self._ophook_list.append(ophook)
+        register_ophooks_recursively(self._model, self._ophook_list)
+
+    def remove_hook(self, ophook: Type[BaseOpHook]) -> None:
+        """remove hook"""
+        pass
 
     def zero_grad(self):
         """Set the gradient of parameters to zero
