@@ -158,7 +158,6 @@ class Initializer_3D_Output(ProcessGroupInitializer):
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_3D(ProcessGroupInitializer):
     """Serve as the single entry point to 3D parallel initialization.
-
     :param args: Args used to initialize ProcessGroupInitializer
     """
 
@@ -176,10 +175,12 @@ class Initializer_3D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 3D tensor parallel groups, and assign local_ranks and groups to each gpu.
-        
         :return: 3D tensor parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """
-        parallel_setting = [self.input_initializer.init_dist_group(), self.weight_initializer.init_dist_group(),
-                            self.output_initializer.init_dist_group()]
+        parallel_setting = [
+            self.input_initializer.init_dist_group(),
+            self.weight_initializer.init_dist_group(),
+            self.output_initializer.init_dist_group()
+        ]
         return parallel_setting
