@@ -18,6 +18,7 @@ from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp16
 
 from tests.components_to_test.registry import non_distributed_component_funcs
 from common import CONFIG, check_grads_padding, run_fwd_bwd
+from colossalai.zero.sharded_model.utils import col_model_deepcopy
 
 
 def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
@@ -35,7 +36,7 @@ def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
             zero_model = ShardedModelV2(zero_model, shard_strategy)
 
             model = model_builder(checkpoint=True).half()
-            zero_model.deepcopy_to(model)
+            col_model_deepcopy(zero_model, model)
             model = model.cuda()
         else:
             model = model_builder(checkpoint=True).half().cuda()
