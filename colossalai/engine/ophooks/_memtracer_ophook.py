@@ -1,4 +1,3 @@
-from re import S
 from colossalai.context.parallel_mode import ParallelMode
 import torch
 from . import BaseOpHook
@@ -7,7 +6,7 @@ from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from time import sleep, time
 import pickle
-from typing import Union, Optional
+from typing import Optional
 from colossalai.core import global_context as gpc
 
 
@@ -81,7 +80,7 @@ class AsyncMemoryMonitor:
     def save(self, filename):
         with open(filename, "wb") as f:
             pickle.dump(self.state_dict(), f)
-    
+
     def clear(self):
         self.mem_stats.clear()
         self.time_stamps.clear()
@@ -92,7 +91,7 @@ class MemTracerOpHook(BaseOpHook):
     '''
     Collect GPU memory usage information
 
-    Args: 
+    Args:
         warmup (int): This parameter indicates how many iterations to truncate
         before profiling, e.g. set to 5 and the data will start from 6-th iteration
         refreshrate (int): This parameter decides the frequency of write file.
@@ -128,7 +127,7 @@ class MemTracerOpHook(BaseOpHook):
     @property
     def refreshrate(self) -> int:
         return self._refreshrate
-    
+
     @property
     def warmup(self) -> int:
         return self._warmup
