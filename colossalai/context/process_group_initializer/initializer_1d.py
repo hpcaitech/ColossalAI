@@ -20,7 +20,6 @@ class Initializer_1D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 1D tensor parallel groups, and assign local_ranks and groups to each gpu.
-        
         :return: (local_rank, group_world_size, process_group, ranks_in_group, mode)
         :rtype: Tuple
         """
