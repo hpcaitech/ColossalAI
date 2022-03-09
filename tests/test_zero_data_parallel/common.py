@@ -95,12 +95,12 @@ def check_params_padding(model, zero_model, loose=False):
 def check_sharded_params_padding(model, zero_model, loose=False):
     rank = dist.get_rank()
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_p = zero_p.ca_attr.payload(p.device)
+        zero_p = zero_p.col_attr.data.payload.to(p.device).float()
         chunks = torch.flatten(p).chunk(dist.get_world_size())
         if rank >= len(chunks):
             continue
-        p = chunks[rank]
+        p = chunks[rank].float()
         if zero_p.size(0) > p.size(0):
             zero_p = zero_p[:p.size(0)]
         assert p.dtype == zero_p.dtype
-        assert allclose(p, zero_p, loose=loose)
+        assert allclose(p, zero_p, loose=loose), f'{p} vs {zero_p}'
