@@ -134,8 +134,9 @@ class LayerNorm2p5D(ParallelLayer):
     r"""
     Layer Normalization for 2.5D parallelism
 
-    :param normalized_shape: input shape from an expected input
-        of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
+    :param normalized_shape: input shape from an expected input of size.
+        :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+        \times \ldots \times \text{normalized_shape}[-1]]`
         If a single integer is used, it is treated as a singleton list, and this module will
         normalize over the last dimension which is expected to be of that specific size.
     :type normalized_shape: int
@@ -431,7 +432,7 @@ class VocabParallelEmbedding2p5D(torch.nn.Module):
 
     def _fill_padding_idx_with_zero(self) -> None:
         if self.padding_idx is not None and \
-            self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
+                self.vocab_start_index <= self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
