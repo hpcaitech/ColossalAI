@@ -2,8 +2,6 @@
 # -*- encoding: utf-8 -*-
 
 import torch.distributed as dist
-
-from colossalai.context import Config
 from colossalai.registry import DIST_GROUP_INITIALIZER
 from .process_group_initializer import ProcessGroupInitializer
 from ..parallel_mode import ParallelMode
