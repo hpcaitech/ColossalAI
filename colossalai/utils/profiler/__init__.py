@@ -1,1 +1,2 @@
-from .comm_profiler import enable_communication_prof, communication_prof_show
+from .comm_profiler import CommProfiler
+from .prof_utils import ProfilerContext
