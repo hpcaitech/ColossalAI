@@ -75,7 +75,7 @@ def check_grads_padding(model, zero_model, loose=False):
         if zero_grad.size(0) > grad.size(0):
             zero_grad = zero_grad[:grad.size(0)]
         assert grad.dtype == zero_grad.dtype
-        assert allclose(grad, zero_grad, loose=loose), f'{grad} vs {zero_grad}'
+        assert allclose(grad, zero_grad, loose=loose), f'diff: {grad - zero_grad}'
 
 
 def check_params_padding(model, zero_model, loose=False):
