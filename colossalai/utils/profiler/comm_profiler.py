@@ -5,7 +5,6 @@ import torch
 from torch.autograd.profiler import profile
 import torch.distributed as dist
 from torch.distributed import ReduceOp
-import torch.utils.tensorboard as tb
 from colossalai.utils import get_current_device
 from .prof_utils import BaseProfiler
 from typing import List, Optional
@@ -126,7 +125,7 @@ class CommProfiler(BaseProfiler):
         dist.broadcast = torch_broadcast
         dist.reduce = torch_reduce
 
-    def to_tensorboard(self, writer: tb.writer):
+    def to_tensorboard(self, writer):
         writer.add_text(tag="Collective Communication", text_string=self.result_list("\n\n"))
 
     def to_file(self, filename: Path):
