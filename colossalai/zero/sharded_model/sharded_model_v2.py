@@ -17,6 +17,8 @@ from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
+import copy
+
 from ._zero3_utils import (cast_tensor_to_fp32, chunk_and_pad, get_gradient_predivide_factor)
 from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16)
 
@@ -90,6 +92,20 @@ class ShardedModelV2(nn.Module):
     def backward_by_grad(self, tensor, grad):
         torch.autograd.backward(tensors=tensor, grad_tensors=grad)
         self._final_backward_hook()
+
+    def deepcopy_to(self, other_model: nn.Module):
+        """
+        copy param of the ShardedModelV2 to other_model.
+        Note the other_model has to be the same as self.
+        """
+        for zero_param, param in zip(self.module.parameters(), other_model.parameters()):
+            assert hasattr(zero_param, 'col_attr')
+            shard_flag = zero_param.col_attr.data.is_sharded
+            if shard_flag:
+                self.shard_strategy.gather([zero_param.col_attr.data])
+            param.data = copy.deepcopy(zero_param.col_attr.data.payload)
+            if shard_flag:
+                self.shard_strategy.shard([zero_param.col_attr.data])
 
     @torch.no_grad()
     def _final_backward_hook(self) -> None:
