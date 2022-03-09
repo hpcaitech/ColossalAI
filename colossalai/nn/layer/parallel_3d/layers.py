@@ -17,7 +17,8 @@ from torch import Tensor
 from torch.nn import Parameter
 
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
-from ._operation import *
+from ._operation import layernorm_3d, linear_3d, classifier_3d, split_tensor_3d
+from ._operation import all_gather_tensor_3d, reduce_scatter_tensor_3d, broadcast_weight_3d_from_diagonal
 from ._utils import get_depth_from_env, get_last_group, get_parallel_mode_from_env, swap_in_out_group
 
 
@@ -26,8 +27,9 @@ class LayerNorm3D(ParallelLayer):
     r"""
     Layer Normalization for 3D parallelism
 
-    :param normalized_shape: input shape from an expected input
-        of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
+    :param normalized_shape: input shape from an expected input of size.
+    :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+    \times \ldots \times \text{normalized_shape}[-1]]`
         If a single integer is used, it is treated as a singleton list, and this module will
         normalize over the last dimension which is expected to be of that specific size.
     :type normalized_shape: int
@@ -38,6 +40,7 @@ class LayerNorm3D(ParallelLayer):
     """
 
     def __init__(self, normalized_shape: int, eps: float = 1e-12, dtype=None):
+
         super().__init__()
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
         self.weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
@@ -405,7 +408,7 @@ class PatchEmbedding3D(ParallelLayer):
         input_ = split_tensor_3d(input_, 0, self.input_parallel_mode)
         output = F.conv2d(input_, self.weight, self.bias, stride=self.patch_size)
         if self.flatten:
-            output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
+            output = output.flatten(2).transpose(1, 2)    # BCHW -> BNC
 
         cls_token = self.cls_token.expand(output.shape[0], -1, -1)
         output = torch.cat((cls_token, output), dim=1)
@@ -549,7 +552,7 @@ class VocabParallelEmbedding3D(torch.nn.Module):
 
     def _fill_padding_idx_with_zero(self) -> None:
         if self.padding_idx is not None and \
-            self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
+                self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
