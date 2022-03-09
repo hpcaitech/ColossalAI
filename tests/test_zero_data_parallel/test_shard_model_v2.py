@@ -17,7 +17,7 @@ from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp16
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from common import CONFIG, check_grads, check_grads_padding
+from common import CONFIG, check_grads_padding
 
 
 def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
@@ -69,10 +69,7 @@ def run_dist(rank, world_size, port):
                 run_fwd_bwd(model, data, label, criterion, False)
                 run_fwd_bwd(zero_model, data, label, criterion, False)
 
-            if dist.get_world_size() > 1:
-                check_grads_padding(model, zero_model, loose=True)
-            else:
-                check_grads(model, zero_model, loose=True)
+            check_grads_padding(model, zero_model, loose=True)
 
 
 @pytest.mark.dist
