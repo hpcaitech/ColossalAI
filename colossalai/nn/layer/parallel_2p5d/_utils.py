@@ -21,4 +21,5 @@ def assert_tesseract_initialization():
            gpc.is_initialized(ParallelMode.PARALLEL_2P5D_ROW) and \
            gpc.is_initialized(ParallelMode.PARALLEL_2P5D_DEP) and \
            gpc.is_initialized(ParallelMode.PARALLEL_2P5D_XZ), \
-        'Both PARALLEL_2P5D_COL, PARALLEL_2P5D_ROW, PARALLEL_2P5D_DEP and PARALLEL_2P5D_XZ must be initialized by the process group initializer'
+           'Both PARALLEL_2P5D_COL, PARALLEL_2P5D_ROW, PARALLEL_2P5D_DEP and PARALLEL_2P5D_XZ ' \
+           'must be initialized by the process group initializer'
