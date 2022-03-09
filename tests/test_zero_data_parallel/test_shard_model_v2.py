@@ -76,6 +76,7 @@ def run_dist(rank, world_size, port):
                 check_grads(model, zero_model, loose=True)
 
 
+@pytest.mark.skip(reason="Under development")
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2, 4])
 def test_shard_model_v2(world_size):
