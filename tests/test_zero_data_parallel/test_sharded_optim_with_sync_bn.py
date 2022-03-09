@@ -15,6 +15,8 @@ import torch.distributed as dist
 
 
 def run_dist(rank, world_size, port):
+    # this test only runs on resnet18
+    # as this model has sync batch normalization
     # need to configure cudnn deterministic so that
     # randomness of convolution layers will be disabled
     colossalai.launch(config=dict(zero=dict(level=2, partition_grad=True),
