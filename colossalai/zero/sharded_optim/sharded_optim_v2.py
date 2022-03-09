@@ -66,7 +66,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
                 is_param_sharded = p.col_attr.data.is_sharded
                 if not is_param_sharded:
-                    # Param is no sharded
+                    # TODO: we may not use shard / gather here
+                    # Param is no sharded, which means we use ZeRO-2 here
                     # As we only store param shard, we shard it here
                     self.shard_strategy.shard([p.col_attr.data])
                 self.master_params[p] = cast_tensor_to_fp32(p.col_attr.data.payload).to(self.device)
@@ -91,17 +92,22 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         for group in self.optim.param_groups:
             for p in group['params']:
                 p.data = self.master_params[p]
+                # Now p.data is sharded
+                # So optimizer states are sharded naturally
         ret = self.optim.step(*args, **kwargs)
         # Write master param to payload
         for group in self.optim.param_groups:
             for p in group['params']:
                 is_param_sharded = p.col_attr.data.is_sharded
                 if not is_param_sharded:
+                    # We use ZeRO-2 here
                     # The `p.col_attr.data` saves full fp16 param
                     # But we only have updated fp32 param shard here
                     # So we first shard full fp16 param and copy fp32 param shard to it
                     # Then we will gather them
                     self.shard_strategy.shard([p.col_attr.data])
+                # We have to use `copy_payload` instead of `reset_payload`
+                # Since p.data is fp32 and p.col_attr.data is fp16
                 p.col_attr.data.copy_payload(p.data)
                 if not is_param_sharded:
                     # We gather full fp16 param here
