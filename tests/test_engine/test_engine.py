@@ -15,6 +15,7 @@ CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None
 
 
 def run_train():
+    assert non_distributed_component_funcs.get_callable('bert')
     for get_components_func in non_distributed_component_funcs:
         model_builder, train_dataloader, _, optimizer_builder, criterion = get_components_func()
 
@@ -71,9 +72,9 @@ def run_engine(rank, world_size, port):
     # init dist env
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_with_no_amp()
-    run_with_torch_amp()
-    run_with_apex_amp()
-    run_with_naive_amp()
+    # run_with_torch_amp()
+    # run_with_apex_amp()
+    # run_with_naive_amp()
 
 
 @pytest.mark.dist

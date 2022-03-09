@@ -1,1 +1,1 @@
-from . import repeated_computed_layer, resnet, nested_model
+from . import repeated_computed_layer, resnet, nested_model, bert
