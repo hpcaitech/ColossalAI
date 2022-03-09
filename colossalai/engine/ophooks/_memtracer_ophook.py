@@ -14,7 +14,6 @@ import math
 class MemTracerOpHook(BaseOpHook):
     """
     Collect GPU memory usage information
-
     :param warmup: This parameter indicates how many iterations to truncate before profiling, defaults to 50
     :type warmup: int
     :param refreshrate: This parameter decides the frequency of write file, defaults to 10
