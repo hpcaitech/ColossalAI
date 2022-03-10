@@ -48,9 +48,16 @@ class ShardedTensor(object):
         self._payload = tensor
 
     @property
+    def device(self):
+        return self._payload.device
+
+    @property
     def dtype(self):
         assert self._payload.dtype == self._origin_dtype
         return self._origin_dtype
+
+    def to(self, device: torch.device):
+        self._payload = self._payload.to(device)
 
     @property
     def shape(self):
