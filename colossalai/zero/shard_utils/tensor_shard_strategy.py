@@ -30,7 +30,7 @@ class TensorShardStrategy(BaseShardStrategy):
     def _gather_tensor(self, t: ShardedTensor):
         if not t.is_sharded:
             return
-
+        target_device = t.device
         buffer_list = []
         payload_numel = t.payload.numel()
         for i in range(self.world_size):
@@ -45,4 +45,5 @@ class TensorShardStrategy(BaseShardStrategy):
                                      async_op=False)
         gathered_payload = torch.narrow(torch.cat(buffer_list), 0, 0, t.origin_numel).reshape(t.origin_shape)
         t.reset_payload(gathered_payload)
+        t.to(target_device)
         t.is_sharded = False

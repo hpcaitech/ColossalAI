@@ -1,7 +1,7 @@
 import torch
 from colossalai.registry import OPHOOKS
 from colossalai.zero.shard_utils import BaseShardStrategy
-
+from colossalai.utils import get_current_device
 from ._base_ophook import BaseOpHook
 
 
@@ -14,11 +14,15 @@ class ZeroHook(BaseOpHook):
     def __init__(self, shard_strategy: BaseShardStrategy):
         super().__init__()
         self.shard_strategy = shard_strategy
+        # NOTE(jiaruifang) Now the computing device of FWD and BWD is always on GPU
+        self.computing_device = torch.device(f'cuda:{get_current_device()}')
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
             self.shard_strategy.gather([param.col_attr.data])
+            if param.col_attr.data.device != self.computing_device:
+                param.col_attr.data.to(self.computing_device)
             param.data = param.col_attr.data.payload
 
     def post_fwd_exec(self, module: torch.nn.Module, *args):
@@ -31,6 +35,8 @@ class ZeroHook(BaseOpHook):
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
             self.shard_strategy.gather([param.col_attr.data])
+            if param.col_attr.data.device != self.computing_device:
+                param.col_attr.data.to(self.computing_device)
             param.data = param.col_attr.data.payload
             # Store local accumulated grad shard
             if param.grad is not None:

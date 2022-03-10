@@ -5,6 +5,7 @@ import copy
 from functools import partial
 import pytest
 
+import torch
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -30,8 +31,14 @@ def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
 
+        rm_torch_payload_on_the_fly = False
+
         if use_zero_init_ctx:
-            with ZeroInitContext(convert_fp16=True, convert_cuda=True, shard_strategy=shard_strategy, shard_param=True):
+            with ZeroInitContext(convert_fp16=True,
+                                 target_device=torch.device('cpu'),
+                                 shard_strategy=shard_strategy,
+                                 shard_param=True,
+                                 rm_torch_payload_on_the_fly=rm_torch_payload_on_the_fly):
                 zero_model = model_builder(checkpoint=True)
             zero_model = ShardedModelV2(zero_model, shard_strategy)
 

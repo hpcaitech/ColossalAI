@@ -1,7 +1,6 @@
 import functools
 
 import torch
-from colossalai.utils.cuda import get_current_device
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param import ShardedParamV2
 from colossalai.utils.memory_tracer.allocator import GLOBAL_MODEL_DATA_TRACER
@@ -82,6 +81,12 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     1. Convert the model to fp16.
     2. The paramaters of the module are adapted to type ShardedParameter.
     3. Shard the param and grad according to flags.
+
+    target_device: the device where param data after exiting the context
+    shard_strategy: shard strategy instance
+    shard_param: is param sharded after exiting the context
+    shard_grad: is param sharded after exiting the context
+
     rm_torch_payload_on_the_fly:
     True: remove tensor payload on param.data after module init finished.
     False: remove tensor payload on param.data afther the context exist.
@@ -91,18 +96,19 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
     def __init__(self,
                  convert_fp16: bool,
-                 convert_cuda: bool,
+                 target_device: torch.device,
                  shard_strategy: BaseShardStrategy,
                  shard_param: bool = False,
                  shard_grad: bool = False,
                  rm_torch_payload_on_the_fly=False):
         super().__init__()
         self.convert_fp16 = convert_fp16
-        self.convert_cuda = convert_cuda
+        self.target_device = target_device
         self.shard_param = shard_param
         self.shard_grad = shard_grad
         self.shard_strategy = shard_strategy
-        self.rm_torch_payload_on_the_fly = rm_torch_payload_on_the_fly
+        # FIXME(jiaruifang) now setting it to True is invalid.
+        self.rm_torch_payload_on_the_fly = False
         self.initialized_param_list = []
 
     def _post_context_exec(self):
@@ -123,16 +129,18 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if hasattr(param, 'col_attr'):
                 continue
 
-            if self.convert_cuda:
-                target_device = get_current_device()
-            else:
-                target_device = param.data.device
+            target_device = self.target_device
 
-            # convert to fp16 and cuda if necessary
+            # convert to fp16 if necessary
             if self.convert_fp16:
-                param.data = param.data.to(torch.half).to(target_device)
+                param.data = param.data.to(torch.half)
                 if param.grad is not None:
                     param.grad = param.grad.to(torch.half).to(target_device)
+
+            # move torch parameters to the target device
+            param.data = param.data.to(target_device)
+            if param.grad is not None:
+                param.grad = param.grad.to(target_device)
 
             param.col_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
 
