@@ -38,24 +38,22 @@ distributed training in a few lines.
 
 ## Examples
 ### ViT
-
-<img src="./docs/images/ViT.png" width="450" />
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
 
 - 14x larger batch size, and 5x faster training for Tensor Parallel = 64
 
 ### GPT-3
-
-<img src="./docs/images/GPT3.png" width=700/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
 
 - Free 50% GPU resources, or 10.7% acceleration
 
 ### GPT-2
-<img src="./docs/images/GPT2.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2.png" width=800/>
 
 - 11x lower GPU RAM, or superlinear scaling
 
 ### BERT
-<img src="./docs/images/BERT.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
 
 - 2x faster training, or 50% longer sequence length
 
