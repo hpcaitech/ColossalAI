@@ -56,9 +56,9 @@ def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [1, 2, 4])
+@pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("enable_autocast", [True])
-@pytest.mark.parametrize("use_zero_init_ctx", [True, False])
+@pytest.mark.parametrize("use_zero_init_ctx", [True])
 def test_shard_model_v2(world_size, use_zero_init_ctx, enable_autocast):
     run_func = partial(run_dist,
                        world_size=world_size,
