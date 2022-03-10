@@ -17,13 +17,14 @@ def forward(x, weight):
         out_ = F.dropout(out, p=0.4, training=True)
     return out_
 
-
 @pytest.mark.gpu
-def test_activation_checkpointing(flag):
-    add_seed(ParallelMode.GLOBAL, 1024)
+@pytest.mark.parametrize("cpu_offload", [True, False])
+def test_activation_checkpointing(cpu_offload):
+    if cpu_offload:
+        add_seed(ParallelMode.GLOBAL, 1024)
+        add_seed(ParallelMode.DATA, 1026)
     set_mode(ParallelMode.GLOBAL)
     global_cuda_rng_state = torch.cuda.get_rng_state()
-    add_seed(ParallelMode.DATA, 1026)
     set_mode(ParallelMode.DATA)
     data_parallel_cuda_rng_state = torch.cuda.get_rng_state()
     set_mode(ParallelMode.GLOBAL)
@@ -40,7 +41,6 @@ def test_activation_checkpointing(flag):
     weight_.requires_grad = True
 
     out = forward(data, weight)
-    print("no ckpt: ", out)
     loss = out.sum()
     loss.backward()
 
@@ -50,18 +50,10 @@ def test_activation_checkpointing(flag):
     set_mode(ParallelMode.DATA)
     torch.cuda.set_rng_state(data_parallel_cuda_rng_state)
     set_mode(ParallelMode.GLOBAL)
-    out = checkpoint(forward, flag, data_, weight_)
-    print("with ckpt: ", out)
+    out = checkpoint(forward, cpu_offload, data_, weight_)
     loss = out.sum()
     loss.backward()
-    print("grad", data_.grad)
 
     assert torch.all(data.grad == data_.grad), 'Gradient of the input does not match'
     torch.cuda.empty_cache()
-    print(f"Offload = {flag}, Pass")
 
-
-if __name__ == '__main__':
-    flag = True
-    test_activation_checkpointing(flag)
-    print("All is well.")

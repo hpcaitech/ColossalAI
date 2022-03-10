@@ -13,17 +13,18 @@ from torch import Tensor, nn
 
 
 class CheckpointModule(nn.Module):
-    def __init__(self, checkpoint: bool = True):
+    def __init__(self, checkpoint: bool = True, offload : bool = False):
         super().__init__()
         self.checkpoint = checkpoint
         self._use_checkpoint = checkpoint
+        self._offload = offload
 
     def _forward(self, *args, **kwargs):
         raise NotImplementedError('CheckpointModule should implement _forward method instead of origin forward')
 
     def forward(self, *args, **kwargs):
         if self._use_checkpoint:
-            return checkpoint(self._forward, *args, **kwargs)
+            return checkpoint(self._forward, self._offload, *args, **kwargs)
         else:
             return self._forward(*args, **kwargs)
 
