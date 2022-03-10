@@ -38,7 +38,11 @@ def run_dist(rank, world_size, port, init_device):
 
     print(f'cpu usgae {GLOBAL_MODEL_DATA_TRACER.cpu_usage}')
     print(f'cuda usgae {GLOBAL_MODEL_DATA_TRACER.cuda_usage}')
-    # assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
+
+    if init_device.type == 'cuda':
+        assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
+    elif init_device.type == 'cpu':
+        assert (GLOBAL_MODEL_DATA_TRACER.cpu_usage > 0)
 
 
 @pytest.mark.dist
