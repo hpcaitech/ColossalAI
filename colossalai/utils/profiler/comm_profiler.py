@@ -140,7 +140,7 @@ class CommProfiler(BaseProfiler):
         kernel_name, code_location, vol = self.pending_metadata
         self.profiler.__exit__(None, None, None)
 
-        if self.profiler.enabled:
+        if self.profiler.enabled and dist.get_world_size(group) > 1:
             assert_flag = 0
             current_comm_event = None
             events = self.profiler.function_events

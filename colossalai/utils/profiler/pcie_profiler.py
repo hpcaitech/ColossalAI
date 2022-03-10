@@ -80,8 +80,10 @@ class PcieProfiler(BaseProfiler):
             events = self.profiler.function_events
             for event in events:
                 if event.name == "aten::_to_copy":
-                    current_comm_event = PcieEvent(1, self.data_size * _get_numel(event.input_shapes[0]),
-                                                   event.cuda_time_total)
+                    t_shape = event.input_shapes[0]
+                    if len(t_shape) == 0 or event.cuda_time_total == 0:
+                        continue
+                    current_comm_event = PcieEvent(1, self.data_size * _get_numel(t_shape), event.cuda_time_total)
                     self.total_count += current_comm_event.count
                     self.total_pcie_vol += current_comm_event.pcie_vol
                     self.total_cuda_time += current_comm_event.cuda_time
