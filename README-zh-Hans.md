@@ -36,22 +36,22 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 ## 样例
 ### ViT
 
-<img src="./docs/images/ViT.png" width="450" />
+<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/ViT.png" width="450" />
 
 - 14倍批大小和5倍训练速度（张量并行=64）
 
 ### GPT-3
-<img src="./docs/images/GPT3.png" width=700/>
+<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/GPT3.png" width=700/>
 
 - 释放 50% GPU 资源占用, 或 10.7% 加速
 
 ### GPT-2
-<img src="./docs/images/GPT2.png" width=800/>
+<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/GPT2.png" width=800/>
 
 - 降低11倍GPU显存占用，或超线性扩展 
 
 ### BERT
-<img src="./docs/images/BERT.png" width=800/>
+<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/BERT.png" width=800/>
 
 - 2倍训练速度，或1.5倍序列长度
 
@@ -116,7 +116,7 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 ## 社区
 欢迎通过[论坛](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-或[微信](./docs/images/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
+或[微信](https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
 
 
 ## 做出贡献

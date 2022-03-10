@@ -49,8 +49,7 @@ class Initializer_2D_Row(ProcessGroupInitializer):
 
         for i in range(self.num_group):
             for j in range(self.summa_dim):
-                ranks = [i * self.tensor_parallel_size + j * self.summa_dim + k
-                         for k in range(self.summa_dim)]
+                ranks = [i * self.tensor_parallel_size + j * self.summa_dim + k for k in range(self.summa_dim)]
                 group = dist.new_group(ranks)
 
                 if self.rank in ranks:
@@ -93,8 +92,7 @@ class Initializer_2D_Col(ProcessGroupInitializer):
 
         for i in range(self.num_group):
             for j in range(self.summa_dim):
-                ranks = [i * self.tensor_parallel_size + j + k * self.summa_dim
-                         for k in range(self.summa_dim)]
+                ranks = [i * self.tensor_parallel_size + j + k * self.summa_dim for k in range(self.summa_dim)]
                 group = dist.new_group(ranks)
 
                 if self.rank in ranks:
@@ -129,7 +127,6 @@ class Initializer_2D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 2D tensor row and col parallel groups, and assign local_ranks and groups to each gpu.
-        
         :return: 2D tensor parallelism's information
         :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
         """

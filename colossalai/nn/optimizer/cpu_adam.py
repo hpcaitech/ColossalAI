@@ -1,10 +1,4 @@
-# modified from https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/ops/adam/cpu_adam.py
-
-import math
 import torch
-import time
-from pathlib import Path
-import colossalai
 
 
 class CPUAdam(torch.optim.Optimizer):

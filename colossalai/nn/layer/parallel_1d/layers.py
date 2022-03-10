@@ -35,7 +35,8 @@ class Linear1D(torch.nn.Module):
     :type bias: bool, optional
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
+        which is preserved for kernel fusion, defaults to False
     :type skip_bias_add: bool, optional
     :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
     :type weight_initializer: typing.Callable, optional
@@ -265,7 +266,8 @@ class Linear1D_Col(ParallelLayer):
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
     :type gather_output: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
+        which is preserved for kernel fusion, defaults to False
     :type skip_bias_add: bool, optional
     :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
     :type weight_initializer: typing.Callable, optional
@@ -353,7 +355,8 @@ class Linear1D_Row(ParallelLayer):
     :type dtype: torch.dtype, optional
     :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
     :type parallel_input: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
+        which is preserved for kernel fusion, defaults to False
     :type skip_bias_add: bool, optional
     :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
     :type weight_initializer: typing.Callable, optional
