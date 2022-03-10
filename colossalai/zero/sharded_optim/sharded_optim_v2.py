@@ -4,6 +4,11 @@ from typing import Dict, Optional
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch import Tensor
+from torch.distributed import ProcessGroup
+from torch.nn.parameter import Parameter
+from torch.optim import Optimizer
+
 from colossalai.amp.naive_amp._fp16_optimizer import DynamicGradScaler
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
@@ -11,10 +16,7 @@ from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp32
-from torch import Tensor
-from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
-from torch.optim import Optimizer
+from colossalai.utils.commons import BucketizedTensorCopy
 
 from ._utils import has_inf_or_nan
 
@@ -39,7 +41,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
                  dp_process_group: Optional[ProcessGroup] = None,
-                 mp_process_group: Optional[ProcessGroup] = None) -> None:
+                 mp_process_group: Optional[ProcessGroup] = None,
+                 use_bucket_tensor_copy=True) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
         super().__init__(optimizer)
         self.shard_strategy = shard_strategy
@@ -48,6 +51,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self.optim_state: OptimState = OptimState.UNSCALED
         self.dp_process_group = dp_process_group or gpc.get_group(ParallelMode.DATA)
         self.mp_process_group = mp_process_group or gpc.get_group(ParallelMode.MODEL)
+        self.use_bucket_tensor_copy = use_bucket_tensor_copy
+
         # Grad scaler
         self.grad_scaler = DynamicGradScaler(initial_scale=initial_scale,
                                              min_scale=min_scale,
@@ -101,6 +106,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # Copy master param data (fp32) to payload of col_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
+
+        # FIXME(jiaruifang) chunk size now hardcoded
+        if self.use_bucket_tensor_copy:
+            bucket_copyer = BucketizedTensorCopy(chunk_size=1024 * 1024 * 128)
         for group in self.optim.param_groups:
             for p in group['params']:
                 is_param_sharded = p.col_attr.data.is_sharded
@@ -111,16 +120,24 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # So we first shard full fp16 param and copy fp32 param shard to it
                     # Then we will gather them
                     self.shard_strategy.shard([p.col_attr.data])
+
                 # We have to use `copy_payload` instead of `reset_payload`
                 # Since p.data is fp32 and p.col_attr.data is fp16
 
                 # TODO() optimize this line
-                p.col_attr.data.copy_payload(p.data)
+
+                # p.col_attr.data.copy_payload(p.data)
+                if p.data.device.type == 'cpu' and p.col_attr.data.device and self.use_bucket_tensor_copy:
+                    bucket_copyer.copy(p, p.col_attr)
+                else:
+                    p.col_attr.data.copy_payload(p.data)
 
                 if not is_param_sharded:
                     # We gather full fp16 param here
                     self.shard_strategy.gather([p.col_attr.data])
                 p.data = p.col_attr.data.payload
+        if self.use_bucket_tensor_copy:
+            bucket_copyer.flush()
         return ret
 
     def backward(self, loss: Tensor) -> None:
