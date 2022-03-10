@@ -4,6 +4,7 @@ import torch
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param import ShardedParamV2
+from colossalai.utils.memory_tracer.allocator import GLOBAL_MODEL_DATA_TRACER
 
 
 # Inserts _post_init_method at the end of init method
@@ -76,11 +77,16 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
 
 class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
-    """
+    r"""
     A context to initialize model.
     1. Convert the model to fp16.
     2. The paramaters of the module are adapted to type ShardedParameter.
     3. Shard the param and grad according to flags.
+    rm_torch_payload_on_the_fly:
+    True: remove tensor payload on param.data after module init finished.
+    False: remove tensor payload on param.data afther the context exist.
+            This is used when you add some logic to operate tensors in __init__ of module.
+            See torchvision resnet18.
     """
 
     def __init__(self,
@@ -134,5 +140,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
             if self.shard_param:
                 self.shard_strategy.shard(tensor_list=[param.col_attr._data_sharded_tensor])
+                GLOBAL_MODEL_DATA_TRACER.trace_tensor(param.col_attr._data_sharded_tensor.payload)
             if param.col_attr.grad and self.shard_grad:
                 self.shard_strategy.shard(tensor_list=[param.col_attr._grad_sharded_tensor])
+                GLOBAL_MODEL_DATA_TRACER.trace_tensor(param.col_attr._grad_sharded_tensor.payload)

@@ -13,7 +13,8 @@ from colossalai.zero.shard_utils.tensor_shard_strategy import \
     TensorShardStrategy
 from tests.components_to_test.registry import non_distributed_component_funcs
 
-from common import CONFIG, Net
+from common import CONFIG
+from colossalai.utils.memory_tracer.allocator import GLOBAL_MODEL_DATA_TRACER
 
 
 def run_dist(rank, world_size, port):
@@ -32,6 +33,8 @@ def run_dist(rank, world_size, port):
             assert param.col_attr.data.dtype == torch.half
             assert param.col_attr.data.is_sharded
             assert param.col_attr.data.payload.device.type == 'cuda'
+
+    assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
 
 
 @pytest.mark.dist
