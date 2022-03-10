@@ -1,3 +1,4 @@
+from ast import Try
 import functools
 from collections import OrderedDict
 from typing import Any, Optional
@@ -54,7 +55,7 @@ class ShardedModelV2(nn.Module):
         # In case user didn't use ZeroInitContext
         for param in self.module.parameters():
             if not hasattr(param, 'col_attr'):
-                param.col_attr = ShardedParamV2(param, process_group)
+                param.col_attr = ShardedParamV2(param, process_group, rm_torch_payload=True)
                 if self.shard_param:
                     self.shard_strategy.shard([param.col_attr.data])
 

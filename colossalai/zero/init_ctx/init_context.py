@@ -139,7 +139,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if self.convert_fp16:
                 param.data = param.data.to(torch.half)
                 if param.grad is not None:
-                    param.grad = param.grad.to(torch.half).to(target_device)
+                    param.grad = param.grad.to(torch.half)
 
             # move torch parameters to the target device
             param.data = param.data.to(target_device)
