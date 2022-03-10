@@ -14,7 +14,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import (print_rank_0, copy_tensor_parallel_attributes,
-                              clip_grad_norm_fp32, count_zeros_fp32, multi_tensor_applier, is_using_pp)
+                              clip_grad_norm_fp32, count_zeros_fp32, multi_tensor_applier)
 
 
 def _zero_grad_group_helper(group, set_to_none):
