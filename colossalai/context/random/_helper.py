@@ -56,7 +56,7 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
     :type parallel_mode: :class:`colossalai.context.ParallelMode`
     :param seed: The seed to be added
     :type seed: int
-    :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of 
+    :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
         :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
     """
     _SEED_MANAGER.add_seed(parallel_mode, seed, overwrite)
