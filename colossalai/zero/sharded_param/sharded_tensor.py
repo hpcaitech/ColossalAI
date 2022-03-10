@@ -7,7 +7,7 @@ class ShardedTensor(object):
 
     def __init__(self, tensor: torch.Tensor, process_group: Optional[dist.ProcessGroup] = None) -> None:
         r"""
-        A tensor sharded in multiple processes.
+        A tensor sharded in multiple processes. Constructed from an existing torch.Tensor instance.
         """
         self._payload = tensor
         self.process_group = process_group
