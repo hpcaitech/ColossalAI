@@ -4,10 +4,6 @@ repos:
     hooks:
     - id: yapf
       args: ['--style=.style.yapf', '--parallel', '--in-place']
-  - repo: https://github.com/pycqa/flake8
-    rev: '4.0.1'
-    hooks:
-    - id: flake8
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v13.0.1
     hooks:
