@@ -14,7 +14,6 @@ class ShardedTensor(object):
         self.world_size = dist.get_world_size(self.process_group)
         self.local_rank = dist.get_rank(self.process_group)
         self._is_sharded = False
-        self._payload = tensor
 
         self._origin_shape = tensor.shape
         self._origin_numel = tensor.numel()
@@ -41,7 +40,7 @@ class ShardedTensor(object):
         return self._payload
 
     def copy_payload(self, tensor):
-        self._payload.copy_(tensor)
+        self._payload.view(-1).copy_(tensor.view(-1))
 
     def reset_payload(self, tensor):
         del self._payload
