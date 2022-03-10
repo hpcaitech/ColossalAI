@@ -63,7 +63,7 @@ class SeedManager:
         :type seed: int
         :param overwrtie: Whether allows to overwrite the seed that has been set already
         :type overwrtie: bool, optional
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of 
+        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
             :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
         """
         assert isinstance(
