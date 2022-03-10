@@ -100,7 +100,8 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                  shard_strategy: BaseShardStrategy,
                  shard_param: bool = False,
                  shard_grad: bool = False,
-                 rm_torch_payload_on_the_fly=False):
+                 rm_torch_payload_on_the_fly=False,
+                 model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.int)):
         super().__init__()
         self.convert_fp16 = convert_fp16
         self.target_device = target_device
@@ -110,6 +111,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         # FIXME(jiaruifang) now setting it to True is invalid.
         self.rm_torch_payload_on_the_fly = False
         self.initialized_param_list = []
+        self.model_numel_tensor = model_numel_tensor
 
     def _post_context_exec(self):
         """The callback function when the context exits.
@@ -128,6 +130,8 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             # avoid adapting a param to ShardedParam twice
             if hasattr(param, 'col_attr'):
                 continue
+
+            self.model_numel_tensor += param.numel()
 
             target_device = self.target_device
 

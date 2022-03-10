@@ -23,10 +23,12 @@ def run_dist(rank, world_size, port, init_device):
 
     for get_components_func in non_distributed_component_funcs:
         model_builder, _, _, _, _ = get_components_func()
+        model_numel_tensor = torch.zeros(1, dtype=torch.int)
         with ZeroInitContext(convert_fp16=True,
                              target_device=init_device,
                              shard_strategy=TensorShardStrategy(),
-                             shard_param=True):
+                             shard_param=True,
+                             model_numel_tensor=model_numel_tensor):
             model = model_builder(checkpoint=True)
 
         for param in model.parameters():
@@ -38,7 +40,7 @@ def run_dist(rank, world_size, port, init_device):
 
     print(f'cpu usgae {GLOBAL_MODEL_DATA_TRACER.cpu_usage}')
     print(f'cuda usgae {GLOBAL_MODEL_DATA_TRACER.cuda_usage}')
-
+    print(f'numel {model_numel_tensor}')
     if init_device.type == 'cuda':
         assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
     elif init_device.type == 'cpu':
