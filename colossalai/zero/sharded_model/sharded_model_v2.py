@@ -180,6 +180,7 @@ class ShardedModelV2(nn.Module):
         reduced_grad.data = cast_tensor_to_fp32(reduced_grad.data)
 
         # Maybe offload
+        # TODO() Optimize PCI-E bandwidth for grad fp16 copy
         if self._cpu_offload:
             reduced_grad.data = reduced_grad.data.cpu()
 
