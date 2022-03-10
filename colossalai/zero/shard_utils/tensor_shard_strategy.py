@@ -5,6 +5,7 @@ import torch.distributed as dist
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._zero3_utils import get_shard
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
+from colossalai.utils import get_current_device
 
 
 class TensorShardStrategy(BaseShardStrategy):
@@ -37,7 +38,7 @@ class TensorShardStrategy(BaseShardStrategy):
             if i == self.local_rank:
                 buffer_list.append(t.payload.cuda())
             else:
-                buffer_list.append(torch.zeros(payload_numel, dtype=t.dtype).cuda())
+                buffer_list.append(torch.zeros(payload_numel, dtype=t.dtype, device=get_current_device()))
 
         torch.distributed.all_gather(buffer_list,
                                      buffer_list[self.local_rank],
