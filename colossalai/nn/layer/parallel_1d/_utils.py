@@ -81,6 +81,7 @@ class _ReduceGrad(torch.autograd.Function):
     :param input_: input matrix
     :param parallel_mode: parallel mode
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return input_
@@ -102,6 +103,7 @@ class _ReduceInput(torch.autograd.Function):
     :param input_: input matrix
     :param parallel_mode: parallel mode
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return _reduce(input_)
@@ -123,6 +125,7 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     :param parallel_mode: parallel mode
     :param dim: dimension
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return _split(input_)
@@ -146,6 +149,7 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     :param parallel_mode: parallel mode
     :param dim: dimension
     """
+
     @staticmethod
     def symbolic(graph, input_):
         return _gather(input_)
