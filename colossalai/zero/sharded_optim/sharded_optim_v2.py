@@ -88,19 +88,14 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self.zero_grad()
             return
 
-        # assign master param pointers to p.data.
-        # We will not trigger data copy here.
+        # Write master param to p.data
         for group in self.optim.param_groups:
             for p in group['params']:
                 p.data = self.master_params[p]
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
-
         ret = self.optim.step(*args, **kwargs)
-
-        # Copy master param data (fp32) to payload of col_attr (fp16)
-        # TODO() improve efficiency by gathering tensors into a chunk and transfering
-        # a chunk.
+        # Write master param to payload
         for group in self.optim.param_groups:
             for p in group['params']:
                 is_param_sharded = p.col_attr.data.is_sharded
@@ -113,10 +108,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     self.shard_strategy.shard([p.col_attr.data])
                 # We have to use `copy_payload` instead of `reset_payload`
                 # Since p.data is fp32 and p.col_attr.data is fp16
-
-                # TODO() optimize this line
                 p.col_attr.data.copy_payload(p.data)
-
                 if not is_param_sharded:
                     # We gather full fp16 param here
                     self.shard_strategy.gather([p.col_attr.data])
