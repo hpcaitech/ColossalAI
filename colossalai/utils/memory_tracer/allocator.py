@@ -10,14 +10,7 @@ def col_tensor_mem_usage(t: Union[torch.Tensor, ShardedTensor]) -> int:
         target = t.payload
     else:
         target = t
-    unit_in_byte = 0
-    if target.dtype == torch.half:
-        unit_in_byte = 2
-    elif target.dtype == torch.float:
-        unit_in_byte = 4
-    else:
-        raise RuntimeError(f"col_mem_used gets input tensor of invalid type {target.dtype}")
-    return target.numel() * unit_in_byte
+    return target.numel() * target.element_size()
 
 
 class ModelDataTracer(metaclass=SingletonMeta):

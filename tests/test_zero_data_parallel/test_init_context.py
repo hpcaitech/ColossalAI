@@ -34,11 +34,12 @@ def run_dist(rank, world_size, port):
             assert param.col_attr.data.is_sharded
             assert param.col_attr.data.payload.device.type == 'cuda'
 
+    print(f'cuda usgae {GLOBAL_MODEL_DATA_TRACER.cuda_usage}')
     assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [1, 2, 4])
+@pytest.mark.parametrize("world_size", [1, 4])
 def test_zero_init_context(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
