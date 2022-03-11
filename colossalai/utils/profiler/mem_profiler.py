@@ -3,9 +3,10 @@ from typing import Union
 from colossalai.engine import Engine
 from torch.utils.tensorboard import SummaryWriter
 from colossalai.engine.ophooks import MemTracerOpHook
+from colossalai.utils.profiler import BaseProfiler
 
 
-class MemProfiler(object):
+class MemProfiler(BaseProfiler):
     """Wraper of MemOpHook, used to show GPU memory usage through each iteration
 
     """
