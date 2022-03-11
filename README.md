@@ -1,25 +1,56 @@
 # Colossal-AI
+<div id="top" align="center">
 
-[![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
+   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-<div align="center">
+   An integrated large-scale model training system with efficient parallelization techniques.
+
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
    <a href="https://www.colossalai.org/"> Documentation </a> | 
    <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
-   <a href="https://medium.com/@hpcaitech"> Blog </a></h3> 
-   <br/>
+   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
    [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
-   [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](./docs/images/WeChat.png)
+   [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
 
    | [English](README.md) | [中文](README-zh-Hans.md) |
-</div>
-An integrated large-scale model training system with efficient parallelization techniques.
 
+</div>
+
+## Table of Contents
+<ul>
+ <li><a href="#Features">Features</a> </li>
+ <li>
+   <a href="#Demo">Demo</a> 
+   <ul>
+     <li><a href="#ViT">ViT</a></li>
+     <li><a href="#GPT-3">GPT-3</a></li>
+     <li><a href="#GPT-2">GPT-2</a></li>
+     <li><a href="#BERT">BERT</a></li>
+   </ul>
+ </li>
+
+ <li>
+   <a href="#Installation">Installation</a>
+   <ul>
+     <li><a href="#PyPI">PyPI</a></li>
+     <li><a href="#Install-From-Source">Install From Source</a></li>
+   </ul>
+ </li>
+ <li><a href="#Use-Docker">Use Docker</a></li>
+ <li><a href="#Community">Community</a></li>
+ <li><a href="#contributing">Contributing</a></li>
+ <li><a href="#Quick-View">Quick View</a></li>
+   <ul>
+     <li><a href="#Start-Distributed-Training-in-Lines">Start Distributed Training in Lines</a></li>
+     <li><a href="#Write-a-Simple-2D-Parallel-Model">Write a Simple 2D Parallel Model</a></li>
+   </ul>
+ <li><a href="#Cite-Us">Cite Us</a></li>
+</ul>
 
 ## Features
 
@@ -36,7 +67,9 @@ distributed training in a few lines.
 - Mixed Precision Training
 - Zero Redundancy Optimizer (ZeRO)
 
-## Examples
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Demo
 ### ViT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
 
@@ -59,6 +92,7 @@ distributed training in a few lines.
 
 Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
 
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Installation
 
@@ -99,6 +133,7 @@ If you don't want to install and enable CUDA kernel fusion (compulsory installat
 pip install --global-option="--no_cuda_ext" .
 ```
 
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Use Docker
 
@@ -115,14 +150,13 @@ Run the following command to start the docker container in interactive mode.
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
 
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Community
 
 Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-and [WeChat](./docs/images/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
-
-
+and [WeChat](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
 
 ## Contributing
 
@@ -133,6 +167,8 @@ Thanks so much to all of our amazing contributors!
 <a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors"><img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/contributor_avatar.png" width="800px"></a>
 
 *The order of contributor avatars is randomly shuffled.*
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Quick View
 
@@ -216,7 +252,7 @@ class MLP_2D(nn.Module):
 
 ```
 
-
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Cite Us
 
@@ -228,3 +264,5 @@ class MLP_2D(nn.Module):
   year={2021}
 }
 ```
+
+<p align="right">(<a href="#top">back to top</a>)</p>
