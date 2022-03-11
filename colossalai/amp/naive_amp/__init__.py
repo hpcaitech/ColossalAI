@@ -1,13 +1,12 @@
+import inspect
 import torch.nn as nn
 from torch.optim import Optimizer
 from colossalai.utils import is_no_pp_or_last_stage
-
 from .naive_amp import NaiveAMPOptimizer, NaiveAMPModel
+from .grad_scaler import DynamicGradScaler, ConstantGradScaler
 
 
-def convert_to_naive_amp(model: nn.Module,
-                         optimizer: Optimizer,
-                         amp_config):
+def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     """A helper function to wrap training components with naive AMP modules
 
     :param model: your model object
@@ -31,7 +30,19 @@ def convert_to_naive_amp(model: nn.Module,
         output_to_fp32 = is_no_pp_or_last_stage()
         model = NaiveAMPModel(model, output_to_fp32=output_to_fp32)
 
-    optimizer = NaiveAMPOptimizer(optimizer, **amp_config)
+    use_dynamic_grad_scaler = amp_config.pop('dynamic_grad_scale', True)
+    if use_dynamic_grad_scaler:
+        scaler_class = DynamicGradScaler
+    else:
+        scaler_class = ConstantGradScaler
+
+    sig = inspect.signature(scaler_class.__init__)
+    kwargs = dict()
+    for param in sig.parameters.values():
+        if param.name in amp_config:
+            kwargs[param.name] = amp_config.pop(param.name)
+    grad_scaler = scaler_class(**kwargs)
+    optimizer = NaiveAMPOptimizer(optimizer, grad_scaler, **amp_config)
     return model, optimizer
 
 

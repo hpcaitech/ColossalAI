@@ -16,7 +16,7 @@ class DynamicGradScaler(BaseGradScaler):
                  growth_interval: int = 1000,
                  min_scale: int = None,
                  max_scale: int = None,
-                 hysteresis: int = None,
+                 hysteresis: int = 2,
                  verbose: bool = False):
         super().__init__(initial_scale, verbose)
         self._min_scale = min_scale

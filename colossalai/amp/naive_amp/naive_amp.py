@@ -26,17 +26,11 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):
-        optim = FP16Optimizer(optimizer=optim, *args, **kwargs)
+        optim = FP16Optimizer(optim, *args, **kwargs)
         super().__init__(optim)
 
     def backward(self, loss: Tensor):
-        """Backward with gradient scaler
-
-        :param loss: loss computed by a loss function
-        :type loss: torch.Tensor
-        """
-        loss = self.optim.scale_loss(loss)
-        loss.backward()
+        self.optim.backward(loss)
 
     def step(self):
         return self.optim.step()
