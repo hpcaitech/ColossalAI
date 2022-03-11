@@ -1,12 +1,13 @@
+from pathlib import Path
 from colossalai.context.parallel_mode import ParallelMode
 import torch
 from colossalai.engine.ophooks import BaseOpHook
 from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc
-
+from typing import Union
 from colossalai.utils.memory_tracer import AsyncMemoryMonitor
-
+import os
 import math
 
 
@@ -109,6 +110,6 @@ class MemTracerOpHook(BaseOpHook):
         # finish a iteration
         self._curiter += 1
 
-    def save_results(self):
-        datafile = f"{self._data_prefix}-{self._rank}.pkl"
+    def save_results(self, file_dir: Union[str, Path] = "/tmp"):
+        datafile = os.path.join(file_dir, f"{self._data_prefix}-{self._rank}.pkl")
         self.async_mem_monitor.save(datafile)

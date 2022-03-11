@@ -22,20 +22,29 @@ class MemProfiler(object):
         self._engine.remove_hook(self._mem_tracer)
 
     def to_tensorboard(self, writer: SummaryWriter) -> None:
-        pass
+        stats = self._mem_tracer.async_mem_monitor.state_dict()['mem_stats']
+        for i in range(len(stats)):
+            writer.add_scalar(
+                "single GPU memory usage",
+                stats[i],
+                i
+            )
 
     def to_file(self, log_dir: Union[str, Path]) -> None:
         if isinstance(log_dir, str):
             log_dir = Path(log_dir)
         if not log_dir.exists():
             log_dir.mkdir(parents=True, exist_ok=True)
-        pass
+        
+        self._mem_tracer.save_results(log_dir)
 
     def show(self) -> None:
         pass
 
     def get_latest(self) -> float:
-        pass
+        stats = self._mem_tracer.async_mem_monitor.state_dict()['mem_stats']
+        return stats[-1]
 
     def get_avg(self) -> float:
-        pass
+        stats = self._mem_tracer.async_mem_monitor.state_dict()['mem_stats']
+        return sum(stats) / len(stats)
