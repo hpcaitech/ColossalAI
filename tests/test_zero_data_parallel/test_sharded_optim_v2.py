@@ -24,21 +24,13 @@ def run_step(model, optimizer, data, label, criterion, enable_autocast=False):
     model.train()
     optimizer.zero_grad()
     with torch.cuda.amp.autocast(enabled=enable_autocast):
-        y = model(data)
-        loss = criterion(y, label)
+        if criterion:
+            y = model(data)
+            loss = criterion(y, label)
+        else:
+            loss = model(data, label)
+
     loss = loss.float()
-    if isinstance(model, ShardedModelV2):
-        optimizer.backward(loss)
-    else:
-        loss.backward()
-    optimizer.step()
-
-
-def run_step_no_criterion(model, optimizer, data, label, enable_autocast=False):
-    model.train()
-    optimizer.zero_grad()
-    with torch.cuda.amp.autocast(enabled=enable_autocast):
-        loss = model(data, label)
     if isinstance(model, ShardedModelV2):
         optimizer.backward(loss)
     else:
@@ -69,12 +61,8 @@ def run_dist(rank, world_size, port, cpu_offload):
             if i > 2:
                 break
             data, label = data.cuda(), label.cuda()
-            if criterion is None:
-                run_step_no_criterion(model, optim, data, label, False)
-                run_step_no_criterion(zero_model, sharded_optim, data, label, False)
-            else:
-                run_step(model, optim, data, label, criterion, False)
-                run_step(zero_model, sharded_optim, data, label, criterion, False)
+            run_step(model, optim, data, label, criterion, False)
+            run_step(zero_model, sharded_optim, data, label, criterion, False)
             check_sharded_params_padding(model, zero_model, loose=True)
 
 

@@ -79,6 +79,10 @@ class ShardedModelV2(nn.Module):
         self.reducer = ReduceScatterBucketer(reduce_scatter_bucket_size_mb)
         self._require_backward_grad_sync: bool = True
 
+    @property
+    def cpu_offload(self):
+        return self._cpu_offload
+
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
         outputs = self.module(*args, **kwargs)

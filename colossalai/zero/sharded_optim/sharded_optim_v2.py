@@ -44,6 +44,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         super().__init__(optimizer)
         self.shard_strategy = shard_strategy
         self.model: ShardedModelV2 = sharded_model
+        if cpu_offload and not sharded_model.cpu_offload:
+            raise RuntimeError(
+                f"ShardedOptimizerV2 using cpu_offload, but the sharded_model used to initialize it dose not use cpu_offload"
+            )
         self.device = torch.cuda.current_device() if not cpu_offload else torch.device('cpu')
         self.optim_state: OptimState = OptimState.UNSCALED
         self.dp_process_group = dp_process_group or gpc.get_group(ParallelMode.DATA)
