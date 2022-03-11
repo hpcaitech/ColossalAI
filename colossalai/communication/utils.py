@@ -107,3 +107,34 @@ def gather_split_1d_tensor(tensor):
     chunks = [gathered[i*numel:(i+1)*numel] for i in range(world_size)]
     dist.all_gather(chunks, tensor, group=gpc.get_group(ParallelMode.PARALLEL_1D))
     return gathered
+
+import os
+import torch
+import warnings
+def check_single_machine_multi_gpu_p2p_available(gpu_list):
+    unavailble = []
+    check_p2p_result = os.popen("./simpleP2P")
+    p2p_info = check_p2p_result.read().split('\n')
+    for index in range(len(p2p_info)):
+        if "No" in p2p_info[index]:
+            unavailble.append(p2p_info[index])
+    print(unavailble)
+    count = 0
+    if len(unavailble) == 0:
+        return True
+    elif torch.cuda.device_count() >= len(unavailble):
+        for p2p_unavailable_gpu in unavailble:
+            gpu_id = p2p_unavailable_gpu.split(" ")[6][4:5]
+            print(gpu_id)
+            if gpu_id in gpu_list:
+                warnings.warn(p2p_unavailable_gpu)
+                count += 1
+        if count > 0:
+            return True
+        else:
+            return False
+    return True
+
+
+if __name__ == "__main__":
+    check_single_machine_multi_gpu_p2p_available(['0', '1'])
