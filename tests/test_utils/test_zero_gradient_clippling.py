@@ -20,6 +20,7 @@ from torch.nn.utils import clip_grad_norm_
 
 
 class Enumerator:
+
     def __init__(self, arg_names: List[str], arg_values: List[tuple]) -> None:
         self.arg_names = arg_names
         self.enums = Enumerator.all_enumerate(arg_values)
@@ -49,11 +50,12 @@ class Enumerator:
 
 def checkpoint_wrapper(module, enable=True):
     if enable:
-        module.forward = partial(checkpoint, module.forward)
+        module.forward = partial(checkpoint, module.forward, False)
     return module
 
 
 class Net(nn.Module):
+
     def __init__(self, checkpoint=False) -> None:
         super().__init__()
         self.fc1 = nn.Linear(5, 5)
@@ -61,13 +63,7 @@ class Net(nn.Module):
         self.fc3 = nn.Linear(5, 1)
         if checkpoint:
             self.fc1 = checkpoint_wrapper(self.fc1)
-        self.layers = [
-            self.fc1,
-            self.fc2,
-            self.fc1,
-            self.fc2,
-            self.fc3
-        ]
+        self.layers = [self.fc1, self.fc2, self.fc1, self.fc2, self.fc3]
 
     def forward(self, x):
         for layer in self.layers:
@@ -158,12 +154,7 @@ def check_config(checkpoint=False, fp16=False, offload=False, norm_type=2.0):
 
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={},
-                      rank=rank,
-                      world_size=world_size,
-                      host='localhost',
-                      port=port,
-                      backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     args = ['checkpoint', 'fp16', 'offload', 'norm_type']
     arg_values = [(False, True), (False, True), (False, True), (1.0, 2.0, float('inf'))]
@@ -176,7 +167,7 @@ def run_dist(rank, world_size, port):
     check_config()
 
 
-@ pytest.mark.dist
+@pytest.mark.dist
 def test_zero_clip_grad():
     world_size = 4
     run_func = partial(run_dist, world_size=world_size, port=free_port())

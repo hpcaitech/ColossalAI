@@ -43,23 +43,6 @@ def checkpoint_wrapper(module, enable=True):
     return module
 
 
-class Net(nn.Module):
-
-    def __init__(self, checkpoint=False) -> None:
-        super().__init__()
-        self.fc1 = nn.Linear(5, 5)
-        self.fc2 = nn.Linear(5, 5)
-        self.fc3 = nn.Linear(5, 1)
-        if checkpoint:
-            self.fc1 = checkpoint_wrapper(self.fc1)
-        self.layers = [self.fc1, self.fc2, self.fc1, self.fc2, self.fc3]
-
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return x
-
-
 def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
     if loose:
         return torch.allclose(tensor_a, tensor_b, atol=1e-2, rtol=1e-3)
