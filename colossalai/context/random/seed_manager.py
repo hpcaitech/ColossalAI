@@ -66,8 +66,7 @@ class SeedManager:
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
             :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
         """
-        assert isinstance(
-            parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
+        assert isinstance(parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
         if overwrtie is False:
             assert parallel_mode not in self._seed_states, f'The seed for {parallel_mode} has been added'
         elif parallel_mode in self._seed_states:
@@ -78,3 +77,8 @@ class SeedManager:
         self._seed_states[parallel_mode] = torch.cuda.get_rng_state()
         self._seeds[parallel_mode] = seed
         torch.cuda.set_rng_state(current_state)
+
+    def reset(self):
+        self._current_mode = None
+        self._seeds = dict()
+        self._seed_states = dict()
