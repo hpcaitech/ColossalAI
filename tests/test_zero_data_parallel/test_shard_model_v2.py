@@ -20,12 +20,14 @@ from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp16
 from tests.components_to_test.registry import non_distributed_component_funcs
 from common import CONFIG, check_grads_padding, run_fwd_bwd
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
+from colossalai.utils import get_current_device
 
 
 def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    test_models = ['repeated_computed_layers', 'resnet18', 'bert']
+    # test_models = ['repeated_computed_layers', 'resnet18', 'bert']
+    test_models = ['bert']
     shard_strategy = TensorShardStrategy()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
@@ -35,12 +37,12 @@ def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
 
         if use_zero_init_ctx:
             with ZeroInitContext(convert_fp16=True,
-                                 target_device=torch.device('cpu'),
+                                 target_device=torch.device(f'cpu:0'),
                                  shard_strategy=shard_strategy,
                                  shard_param=True,
                                  rm_torch_payload_on_the_fly=rm_torch_payload_on_the_fly):
                 zero_model = model_builder(checkpoint=True)
-            zero_model = ShardedModelV2(zero_model, shard_strategy)
+            zero_model = ShardedModelV2(zero_model, shard_strategy, use_memory_tracer=True)
 
             model = model_builder(checkpoint=True).half()
             col_model_deepcopy(zero_model, model)
@@ -60,6 +62,9 @@ def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
             run_fwd_bwd(zero_model, data, label, criterion, enable_autocast)
 
             check_grads_padding(model, zero_model, loose=True)
+
+        print('overall cuda ', zero_model._memstats_collector._overall_cuda)
+        print('model cuda ', zero_model._memstats_collector._model_data_cuda)
 
 
 @pytest.mark.dist

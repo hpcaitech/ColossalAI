@@ -15,7 +15,7 @@ from colossalai.zero.shard_utils.tensor_shard_strategy import \
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 from common import CONFIG
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
+from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
 
 
 def run_dist(rank, world_size, port, init_device):
@@ -38,13 +38,10 @@ def run_dist(rank, world_size, port, init_device):
             assert param.col_attr.data.payload.device.type == init_device.type, \
                 f'{param.col_attr.data.payload.device.type} vs. {init_device.type}'
 
-    print(f'cpu usgae {GLOBAL_MODEL_DATA_TRACER.cpu_usage}')
-    print(f'cuda usgae {GLOBAL_MODEL_DATA_TRACER.cuda_usage}')
+    print(f'cuda usgae {ModelDataTracer().cuda_usage}')
     print(f'numel {model_numel_tensor}')
     if init_device.type == 'cuda':
-        assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
-    elif init_device.type == 'cpu':
-        assert (GLOBAL_MODEL_DATA_TRACER.cpu_usage > 0)
+        assert (ModelDataTracer().cuda_usage > 0)
 
 
 @pytest.mark.dist

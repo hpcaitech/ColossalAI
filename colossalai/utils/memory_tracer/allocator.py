@@ -1,19 +1,19 @@
 import torch
-from colossalai.zero.sharded_param import ShardedTensor
-from typing import Union
+from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
 
 
-def col_tensor_mem_usage(t: Union[torch.Tensor, ShardedTensor]) -> int:
-    if isinstance(t, ShardedTensor):
-        target = t.payload
-    else:
-        target = t
-    return target.numel() * target.element_size()
+def col_move_to_cpu(t: torch.Tensor):
+    assert isinstance(t, torch.Tensor)
+    if t.device.type == 'cpu':
+        return
+
+    ModelDataTracer().delete_tensor(t)
+    t.data = t.data.cpu()
 
 
-def col_allocate_payload(device: torch.device) -> torch.Tensor:
+def col_modeldata_allocate(device: torch.device) -> torch.Tensor:
     pass
 
 
-def col_release_payload(t: torch.Tensor):
+def col_modeldata_release(t: torch.Tensor):
     pass
