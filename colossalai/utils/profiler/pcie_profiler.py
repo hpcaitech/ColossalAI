@@ -79,7 +79,7 @@ class PcieProfiler(BaseProfiler):
         if self.profiler.enabled:
             events = self.profiler.function_events
             for event in events:
-                if event.name == "aten::_to_copy":
+                if event.name == "aten::copy_":
                     t_shape = event.input_shapes[0]
                     if len(t_shape) == 0 or event.cuda_time_total == 0:
                         continue
