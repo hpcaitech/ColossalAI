@@ -1,24 +1,57 @@
 # Colossal-AI
+<div id="top" align="center">
 
-[![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
+   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-<div align="center">
+   一个整合高效并行技术的AI大模型训练系统。
+
    <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> | 
    <a href="https://www.colossalai.org/"> 文档 </a> | 
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 样例 </a> |   
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 例程 </a> |   
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> | 
-   <a href="https://medium.com/@hpcaitech"> 博客 </a></h3> 
-   <br/>
+   <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
 
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
    [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
-   [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](./docs/images/WeChat.png)
+   [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
 
    | [English](README.md) | [中文](README-zh-Hans.md) |
+
 </div>
-一个整合高效并行技术的AI大模型训练系统。
+
+
+## 目录
+<ul>
+ <li><a href="#特点">特点</a> </li>
+ <li>
+   <a href="#展示样例">展示样例</a> 
+   <ul>
+     <li><a href="#ViT">ViT</a></li>
+     <li><a href="#GPT-3">GPT-3</a></li>
+     <li><a href="#GPT-2">GPT-2</a></li>
+     <li><a href="#BERT">BERT</a></li>
+   </ul>
+ </li>
+
+ <li>
+   <a href="#安装">安装</a>
+   <ul>
+     <li><a href="#PyPI">PyPI</a></li>
+     <li><a href="#从源代码安装">从源代码安装</a></li>
+   </ul>
+ </li>
+ <li><a href="#使用-Docker">使用 Docker</a></li>
+ <li><a href="#社区">社区</a></li>
+ <li><a href="#做出贡献">做出贡献</a></li>
+ <li><a href="#快速预览">快速预览</a></li>
+   <ul>
+     <li><a href="#几行代码开启分布式训练">几行代码开启分布式训练</a></li>
+     <li><a href="#构建一个简单的2维并行模型">构建一个简单的2维并行模型</a></li>
+   </ul>
+ <li><a href="#引用我们">引用我们</a></li>
+</ul>
 
 ## 特点
 
@@ -33,30 +66,33 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 - 混合精度
 - 零冗余优化器 (ZeRO)
 
-## 样例
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
+## 展示样例
 ### ViT
 
-<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/ViT.png" width="450" />
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
 
 - 14倍批大小和5倍训练速度（张量并行=64）
 
 ### GPT-3
-<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/GPT3.png" width=700/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
 
 - 释放 50% GPU 资源占用, 或 10.7% 加速
 
 ### GPT-2
-<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/GPT2.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2.png" width=800/>
 
 - 降低11倍GPU显存占用，或超线性扩展 
 
 ### BERT
-<img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/BERT.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
 
 - 2倍训练速度，或1.5倍序列长度
 
 请访问我们的[文档和教程](https://www.colossalai.org/)以了解详情。
 
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 安装
 
@@ -97,6 +133,8 @@ pip install .
 pip install --global-option="--no_cuda_ext" .
 ```
 
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
 ## 使用 Docker
 
 运行以下命令从我们提供的docker文件中建立docker镜像。
@@ -112,11 +150,12 @@ docker build -t colossalai ./docker
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
 
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 社区
 欢迎通过[论坛](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-或[微信](https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
+或[微信](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
 
 
 ## 做出贡献
@@ -129,10 +168,11 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 *贡献者头像的展示顺序是随机的。*
 
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 快速预览
 
-### Start Distributed Training in Lines
+### 几行代码开启分布式训练
 
 ```python
 import colossalai
@@ -209,10 +249,9 @@ class MLP_2D(nn.Module):
 
 ```
 
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
-
-
-## 引用
+## 引用我们
 
 ```
 @article{bian2021colossal,
@@ -222,3 +261,5 @@ class MLP_2D(nn.Module):
   year={2021}
 }
 ```
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
