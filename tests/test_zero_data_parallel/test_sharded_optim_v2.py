@@ -61,6 +61,7 @@ def run_dist(rank, world_size, port):
         sharded_optim = ShardedOptimizerV2(Adam(zero_model.parameters(), lr=1e-3),
                                            zero_model,
                                            shard_strategy,
+                                           cpu_offload=True,
                                            initial_scale=2**5)
         for i, (data, label) in enumerate(train_dataloader):
             if i > 2:
