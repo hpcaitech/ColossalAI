@@ -11,7 +11,7 @@
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> | 
    <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
 
-   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
+   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
    [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
    [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
@@ -155,7 +155,11 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 ## 社区
 欢迎通过[论坛](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+<<<<<<< HEAD
 或[微信](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
+=======
+或[微信](https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
+>>>>>>> [polish] fix format (#370)
 
 
 ## 做出贡献
