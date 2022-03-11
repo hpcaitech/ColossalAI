@@ -13,7 +13,8 @@ from colossalai.utils import free_port
 from colossalai.zero.shard_utils import TensorShardStrategy
 from colossalai.zero.sharded_param import ShardedParam, ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from tests.test_zero_data_parallel.common import CONFIG, Net, allclose
+from tests.test_zero_data_parallel.common import CONFIG, allclose
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def _run_shard_tensor(rank, world_size, port):
@@ -68,21 +69,22 @@ def _run_test_shard_param(rank, world_size, port):
     print(param_ref.data)
 
     logger = get_dist_logger()
-    model = Net()
+    for get_components_func in non_distributed_component_funcs:
+        model_builder, *_ = get_components_func()
+        model = model_builder(checkpoint=True)
+        # add an attribute as col_attr to hijack the access to param.data
+        for _, param in model.named_parameters():
+            numel_ref = (param.numel() + world_size - 1) // world_size
+            param.col_attr = ShardedParam(param)
+            param.col_attr.shard()
+            param_data = param.col_attr.payload(torch.device('cpu'))
+            assert (numel_ref == param_data.numel())
 
-    # add an attribute as ca_attr to hijack the access to param.data
-    for _, param in model.named_parameters():
-        numel_ref = (param.numel() + world_size - 1) // world_size
-        param.ca_attr = ShardedParam(param)
-        param.ca_attr.shard()
-        param_data = param.ca_attr.payload(torch.device('cpu'))
-        assert (numel_ref == param_data.numel())
+        for _, param in model.named_parameters():
+            param.col_attr.gather()
+            param_data = param.col_attr.payload(torch.device('cpu'))
 
-    for _, param in model.named_parameters():
-        param.ca_attr.gather()
-        param_data = param.ca_attr.payload(torch.device('cpu'))
-
-    disable_existing_loggers([logger])
+        disable_existing_loggers([logger])
 
 
 @pytest.mark.dist
