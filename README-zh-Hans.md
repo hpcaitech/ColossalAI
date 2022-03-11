@@ -155,19 +155,7 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 ## 社区
 欢迎通过[论坛](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
 或[微信](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
-=======
-或[微信](https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
->>>>>>> [polish] fix format (#370)
-=======
-或[微信](https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
->>>>>>> [polish] fix format (#370)
-=======
-或[微信](https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
->>>>>>> [polish] fix format (#370)
 
 
 ## 做出贡献
