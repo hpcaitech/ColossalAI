@@ -6,8 +6,8 @@ import torch
 class ModelDataTracer(metaclass=SingletonMeta):
     """
     A singleton to trace model data usage during runtime.
-    tracer all model-data memory allocation, release and moving.
-    GLOBAL_MODEL_DATA_TRACER = ModelDataTracer()
+    We have to trigger our API (trace_tensor, detach_tensor) when do model-data memory operation,
+    including allocation, releasing and moving.
     """
 
     def __init__(self) -> None:
