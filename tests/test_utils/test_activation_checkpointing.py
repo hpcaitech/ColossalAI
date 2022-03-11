@@ -56,8 +56,3 @@ def test_activation_checkpointing(cpu_offload):
 
     assert torch.all(data.grad == data_.grad), 'Gradient of the input does not match'
     torch.cuda.empty_cache()
-<<<<<<< HEAD
-    print(f"Offload = {cpu_offload}, Pass")
-=======
->>>>>>> Fixed the import bug, used the pytest
-
