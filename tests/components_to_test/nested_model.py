@@ -43,7 +43,7 @@ class DummyDataLoader(DummyDataGenerator):
 @non_distributed_component_funcs.register(name='nested_model')
 def get_training_components():
 
-    def model_builder(checkpoint):
+    def model_builder(checkpoint=True):
         return NestedNet(checkpoint)
 
     trainloader = DummyDataLoader()
