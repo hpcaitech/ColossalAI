@@ -15,7 +15,7 @@ from colossalai.zero.shard_utils.tensor_shard_strategy import \
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 from common import CONFIG
-from colossalai.utils.memory_tracer.allocator import GLOBAL_MODEL_DATA_TRACER
+from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
 
 def run_dist(rank, world_size, port, init_device):

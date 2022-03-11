@@ -3,7 +3,7 @@ import functools
 import torch
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param import ShardedParamV2
-from colossalai.utils.memory_tracer.allocator import GLOBAL_MODEL_DATA_TRACER
+from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
 
 # Inserts _post_init_method at the end of init method

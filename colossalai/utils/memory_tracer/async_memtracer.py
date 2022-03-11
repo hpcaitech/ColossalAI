@@ -6,7 +6,7 @@ from colossalai.utils import get_current_device
 import torch
 
 
-def _get_cuda_memory_used(device: torch.device) -> int:
+def get_cuda_memory_used(device: torch.device) -> int:
     """
     Get the free memory info of device.
     :param device: device id
@@ -87,7 +87,7 @@ class AsyncMemoryMonitor:
         while self.keep_measuring:
             max_usage = max(
                 max_usage,
-                _get_cuda_memory_used(torch.device(f'cuda:{get_current_device()}')),
+                get_cuda_memory_used(torch.device(f'cuda:{get_current_device()}')),
             )
             sleep(self.interval)
         return max_usage
