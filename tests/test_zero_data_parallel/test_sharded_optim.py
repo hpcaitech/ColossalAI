@@ -3,19 +3,13 @@ import colossalai
 import copy
 import pytest
 import torch.multiprocessing as mp
-import torch.nn as nn
 from colossalai.zero import ShardedOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from colossalai.utils import free_port
 from functools import partial
-
-
-def check_equal(a, b):
-    """
-    This function checks if two tensors are equal within tolerance
-    """
-    assert torch.allclose(a.float(), b.float(), rtol=1e-4, atol=1e-3), f'a = {a}, b = {b}'
+from common import allclose
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def check_completely_equal(a, b):
@@ -36,61 +30,56 @@ def check_sharded_param_consistency():
     pg: partition gradients and optimizer states
 
     """
+    test_models = ['repeated_computed_layers', 'resnet18', 'nested_model']
 
-    # create layers
-    oss_linear1 = nn.Linear(128, 256)
-    oss_linear2 = nn.Linear(256, 512)
+    for name in test_models:
+        get_components_func = non_distributed_component_funcs.get_callable(name)
+        model_builder, train_dataloader, *_ = get_components_func()
 
-    # create model
-    oss_model = nn.Sequential(oss_linear1, oss_linear2)
-    pg_model = copy.deepcopy(oss_model)
+        # create model
+        oss_model = model_builder(checkpoint=True).cuda().half()
+        pg_model = copy.deepcopy(oss_model)
 
-    oss_model = oss_model.cuda().half()
-    pg_model = pg_model.cuda().half()
+        # create optimizer
+        oss_optimizer = torch.optim.Adam(oss_model.parameters(), lr=0.001)
+        pg_optimizer = torch.optim.Adam(pg_model.parameters(), lr=0.001)
+        oss_optimizer = ShardedOptimizer(oss_optimizer, overlap_communication=True, initial_scale=1, clip_grad_norm=0.0)
+        pg_optimizer = ShardedOptimizer(pg_optimizer,
+                                        overlap_communication=True,
+                                        partition_grad=True,
+                                        initial_scale=1,
+                                        clip_grad_norm=0.0)
 
-    # create optimizer
-    oss_optimizer = torch.optim.Adam(oss_model.parameters(), lr=0.001)
-    pg_optimizer = torch.optim.Adam(pg_model.parameters(), lr=0.001)
-    oss_optimizer = ShardedOptimizer(oss_optimizer, overlap_communication=True, initial_scale=1, clip_grad_norm=0.0)
-    pg_optimizer = ShardedOptimizer(pg_optimizer,
-                                    overlap_communication=True,
-                                    partition_grad=True,
-                                    initial_scale=1,
-                                    clip_grad_norm=0.0)
+        # create
+        data, label = next(iter(train_dataloader))
+        input_data = data.cuda().half()
 
-    # create
-    input_data = torch.rand(32, 128).cuda().half()
+        # forward
+        oss_output = oss_model(input_data)
+        pg_output = pg_model(input_data)
+        check_completely_equal(oss_output, pg_output)
 
-    # forward
-    oss_output = oss_model(input_data)
-    pg_output = pg_model(input_data)
-    check_completely_equal(oss_output, pg_output)
+        # backward
+        oss_optimizer.backward(oss_output.mean().float())
+        pg_optimizer.backward(pg_output.mean().float())
 
-    # backward
-    oss_optimizer.backward(oss_output.mean().float())
-    pg_optimizer.backward(pg_output.mean().float())
+        # check grad
+        # as this param is small, the backward reduction
+        # will not be fired
+        for oss_param, pg_param in zip(oss_model.parameters(), pg_model.parameters()):
+            check_completely_equal(oss_param.grad, pg_param.grad)
 
-    # check grad
-    # as this param is small, the backward reduction
-    # will not be fired
-    oss_linear1_grad = oss_model[0].weight.grad
-    oss_linear2_grad = oss_model[1].weight.grad
-    pg_linear1_grad = pg_model[0].weight.grad
-    pg_linear2_grad = pg_model[1].weight.grad
-    check_completely_equal(oss_linear1_grad, pg_linear1_grad)
-    check_completely_equal(oss_linear2_grad, pg_linear2_grad)
+        # step
+        oss_optimizer.sync_grad()
+        pg_optimizer.sync_grad()
 
-    # step
-    oss_optimizer.sync_grad()
-    pg_optimizer.sync_grad()
+        # step
+        oss_optimizer.step()
+        pg_optimizer.step()
 
-    # step
-    oss_optimizer.step()
-    pg_optimizer.step()
-
-    # check updated param
-    check_completely_equal(oss_model[0].weight, pg_model[0].weight)
-    check_completely_equal(oss_model[1].weight, pg_model[1].weight)
+        # check updated param
+        for oss_param, pg_param in zip(oss_model.parameters(), pg_model.parameters()):
+            check_completely_equal(oss_param, pg_param)
 
 
 def check_sharded_optim_against_torch_ddp():
@@ -103,61 +92,62 @@ def check_sharded_optim_against_torch_ddp():
     differences in model output and updated parameters are within tolerance.
     """
 
-    # create layer
-    zero_linear1 = nn.Linear(128, 256)
-    zero_linear2 = nn.Linear(256, 512)
+    test_models = ['repeated_computed_layers', 'resnet18', 'nested_model']
 
-    # create model
-    zero_model = nn.Sequential(zero_linear1, zero_linear2)
-    torch_model = copy.deepcopy(zero_model)
+    for name in test_models:
+        get_components_func = non_distributed_component_funcs.get_callable(name)
+        model_builder, train_dataloader, *_ = get_components_func()
 
-    zero_model = zero_model.cuda().half()
-    torch_model = DDP(torch_model.cuda())
+        # create model
+        zero_model = model_builder(checkpoint=True).cuda()
+        torch_model = copy.deepcopy(zero_model)
 
-    # create optimizer
-    zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=0.001)
+        zero_model = zero_model.half()
+        torch_model = DDP(torch_model.cuda())
 
-    # we only test stage 1 here
-    # in `check_sharded_param_consistency.py`, we will test whether
-    # level 1 and 2 will produce exactly the same results
-    zero_optimizer = ShardedOptimizer(zero_optimizer, overlap_communication=True, initial_scale=1, clip_grad_norm=0.0)
+        # create optimizer
+        zero_optimizer = torch.optim.Adam(zero_model.parameters(), lr=0.001)
 
-    torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=0.001)
+        # we only test stage 1 here
+        # in `check_sharded_param_consistency.py`, we will test whether
+        # level 1 and 2 will produce exactly the same results
+        zero_optimizer = ShardedOptimizer(zero_optimizer,
+                                          overlap_communication=True,
+                                          initial_scale=1,
+                                          clip_grad_norm=0.0)
+        torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=0.001)
 
-    # create
-    input_data = torch.rand(32, 128).cuda()
+        # create
+        input_data, _ = next(iter(train_dataloader))
+        input_data = input_data.cuda()
 
-    # zero-dp forward
-    zero_output = zero_model(input_data.half())
+        # zero-dp forward
+        zero_output = zero_model(input_data.half())
 
-    # torch-ddp forward
-    torch_output = torch_model(input_data)
-    check_equal(zero_output, torch_output)
+        # torch-ddp forward
+        torch_output = torch_model(input_data)
+        allclose(zero_output, torch_output.half())
 
-    # zero-dp backward
-    zero_optimizer.backward(zero_output.mean().float())
+        # zero-dp backward
+        zero_optimizer.backward(zero_output.mean().float())
 
-    # torch-ddp backward
-    torch_output.mean().backward()
+        # torch-ddp backward
+        torch_output.mean().backward()
 
-    # check grad
-    zero_linear1_grad = zero_model[0].weight.grad
-    zero_linear2_grad = zero_model[1].weight.grad
-    torch_linear1_grad = torch_model.module[0].weight.grad
-    torch_linear2_grad = torch_model.module[1].weight.grad
-    check_equal(zero_linear1_grad, torch_linear1_grad)
-    check_equal(zero_linear2_grad, torch_linear2_grad)
+        # check grad
+        for oss_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
+            allclose(oss_param.grad, torch_param.grad.half())
 
-    # zero-dp step
-    zero_optimizer.sync_grad()
-    zero_optimizer.step()
+        # zero-dp step
+        zero_optimizer.sync_grad()
+        zero_optimizer.step()
 
-    # torch ddp step
-    torch_optimizer.step()
+        # torch ddp step
+        torch_optimizer.step()
 
-    # check updated param
-    check_equal(zero_model[0].weight, torch_model.module[0].weight)
-    check_equal(zero_model[1].weight, torch_model.module[1].weight)
+        # check updated param
+        for oss_param, torch_param in zip(zero_model.parameters(), torch_model.parameters()):
+            allclose(oss_param, torch_param.half())
 
 
 def run_dist(rank, world_size, port):

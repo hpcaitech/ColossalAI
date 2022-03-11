@@ -22,8 +22,8 @@ def run_dist(rank, world_size, port):
     test_models = ['repeated_computed_layers', 'resnet18']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
-        model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
-        model = model()
+        model_builder, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
+        model = model_builder()
         shard_strategy = TensorShardStrategy()
         model = model.half().cuda()
         zero_model = ShardedModelV2(deepcopy(model), shard_strategy)
