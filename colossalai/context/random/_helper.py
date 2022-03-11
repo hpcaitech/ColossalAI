@@ -154,4 +154,9 @@ def moe_set_seed(seed):
         global_rank = gpc.get_global_rank()
         add_seed(ParallelMode.TENSOR, global_rank, True)
         print(f"moe seed condition: {global_rank} with moe seed {moe_mp_seed}, ",
-              f"tensor seed {global_rank}", flush=True)
+              f"tensor seed {global_rank}",
+              flush=True)
+
+
+def reset_seeds():
+    _SEED_MANAGER.reset()

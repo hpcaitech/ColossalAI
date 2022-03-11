@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.context.random import add_seed, seed, set_mode
+from colossalai.context.random import add_seed, seed, set_mode, reset_seeds
 from colossalai.utils import checkpoint
 
 
@@ -16,6 +16,7 @@ def forward(x, weight):
     with seed(ParallelMode.DATA):
         out_ = F.dropout(out, p=0.4, training=True)
     return out_
+
 
 @pytest.mark.gpu
 @pytest.mark.parametrize("cpu_offload", [True, False])
@@ -57,3 +58,8 @@ def test_activation_checkpointing(cpu_offload):
     assert torch.all(data.grad == data_.grad), 'Gradient of the input does not match'
     torch.cuda.empty_cache()
 
+    # as seed manager is singleton
+    # if we don't reset seeds here,
+    # other tests will fail if running together with this test
+    # as other tests can't overwrite the seed set by this test
+    reset_seeds()

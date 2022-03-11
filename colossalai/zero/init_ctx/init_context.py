@@ -5,8 +5,9 @@ from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param import ShardedParamV2
 from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
 
-
 # Inserts _post_init_method at the end of init method
+
+
 # for all sub classes of torch.nn.Module
 class InsertPostInitMethodToModuleSubClasses(object):
 
