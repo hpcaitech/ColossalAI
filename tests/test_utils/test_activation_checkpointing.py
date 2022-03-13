@@ -21,9 +21,8 @@ def forward(x, weight):
 @pytest.mark.gpu
 @pytest.mark.parametrize("cpu_offload", [True, False])
 def test_activation_checkpointing(cpu_offload):
-    if cpu_offload:
-        add_seed(ParallelMode.GLOBAL, 1024)
-        add_seed(ParallelMode.DATA, 1026)
+    add_seed(ParallelMode.GLOBAL, 1024)
+    add_seed(ParallelMode.DATA, 1026)
     set_mode(ParallelMode.GLOBAL)
     global_cuda_rng_state = torch.cuda.get_rng_state()
     set_mode(ParallelMode.DATA)
