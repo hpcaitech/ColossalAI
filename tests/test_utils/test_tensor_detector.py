@@ -6,16 +6,18 @@ import torch.nn as nn
 
 from colossalai.utils import TensorDetector
 
+
 class MLP(nn.Module):
+
     def __init__(self):
         super().__init__()
-        self.mlp = nn.Sequential(nn.Linear(64, 8),
-                                 nn.ReLU(),
-                                 nn.Linear(8, 32))
-    
+        self.mlp = nn.Sequential(nn.Linear(64, 8), nn.ReLU(), nn.Linear(8, 32))
+
     def forward(self, x):
         return self.mlp(x)
-    
+
+
+@pytest.mark.skip("no assert in this test")
 def test_tensor_detect():
 
     data = torch.rand(64, requires_grad=True).cuda()
@@ -36,6 +38,7 @@ def test_tensor_detect():
     detector.detect()
     detector.close()
     torch.cuda.empty_cache()
+
 
 if __name__ == '__main__':
     test_tensor_detect()
