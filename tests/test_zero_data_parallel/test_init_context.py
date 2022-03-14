@@ -57,5 +57,5 @@ def test_zero_init_context(world_size, init_device, shard_strategy):
 
 
 if __name__ == '__main__':
-    test_zero_init_context(2, torch.device('cpu'), TensorShardStrategy)
-    test_zero_init_context(2, torch.device(f'cuda:{get_current_device()}'), TensorShardStrategy)
+    # test_zero_init_context(2, torch.device('cpu'), TensorShardStrategy)
+    test_zero_init_context(4, torch.device('cpu'), BucketTensorShardStrategy)
