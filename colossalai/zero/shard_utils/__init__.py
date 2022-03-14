@@ -1,4 +1,5 @@
-from colossalai.zero.shard_utils.base_shard_strategy import BaseShardStrategy
-from colossalai.zero.shard_utils.tensor_shard_strategy import TensorShardStrategy
+from .base_shard_strategy import BaseShardStrategy
+from .bucket_tensor_shard_strategy import BucketTensorShardStrategy
+from .tensor_shard_strategy import TensorShardStrategy
 
-__all__ = ['BaseShardStrategy', 'TensorShardStrategy']
+__all__ = ['BaseShardStrategy', 'TensorShardStrategy', 'BucketTensorShardStrategy']

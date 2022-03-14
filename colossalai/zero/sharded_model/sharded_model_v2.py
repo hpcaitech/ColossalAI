@@ -17,7 +17,8 @@ from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
-
+from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
+from colossalai.utils.memory_tracer.allocator import col_move_to_cpu
 from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad,
                            get_gradient_predivide_factor)
 
@@ -33,7 +34,8 @@ class ShardedModelV2(nn.Module):
                  fp32_reduce_scatter: bool = False,
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 shard_param: bool = True):
+                 shard_param: bool = True,
+                 use_memory_tracer: bool = False):
         r"""
         A demo to reconfigure zero1 shared_model.
         Currently do not consider the Optimizer States.
@@ -59,8 +61,16 @@ class ShardedModelV2(nn.Module):
                 if self.shard_param:
                     self.shard_strategy.shard([param.col_attr.data])
 
+        # Init Memory Statistics Collector
+        self._use_memory_tracer = use_memory_tracer
+        if self._use_memory_tracer:
+            self._memstats_collector = MemStatsCollector()
+        else:
+            self._memstats_collector = None
+        self._iter_cnter = 0
+
         # Register hooks
-        register_ophooks_recursively(self.module, [ZeroHook(self.shard_strategy)])
+        register_ophooks_recursively(self.module, [ZeroHook(self.shard_strategy, self._memstats_collector)])
         self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
@@ -84,6 +94,9 @@ class ShardedModelV2(nn.Module):
         return self._cpu_offload
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        if self._iter_cnter == 0 and self._memstats_collector:
+            # the opeartion will affect the flag in ZeroHook
+            self._memstats_collector.start_collection()
         args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
         return outputs
@@ -98,6 +111,12 @@ class ShardedModelV2(nn.Module):
 
     @torch.no_grad()
     def _final_backward_hook(self) -> None:
+        if self._iter_cnter == 0 and self._memstats_collector:
+            self._memstats_collector.finish_collection()
+        if self._memstats_collector:
+            self._memstats_collector.reset_sampling_cnter()
+        self._iter_cnter += 1
+
         if self._require_backward_grad_sync:
             # Flush any unreduced buckets in the post_backward stream.
             with torch.cuda.stream(self.comm_stream):
@@ -185,8 +204,10 @@ class ShardedModelV2(nn.Module):
         reduced_grad.data = cast_tensor_to_fp32(reduced_grad.data)
 
         # Maybe offload
+        # TODO() optimize GPU->CPU bandwidth utilization
         if self._cpu_offload:
-            reduced_grad.data = reduced_grad.data.cpu()
+            col_move_to_cpu(reduced_grad)
+            # reduced_grad.data = reduced_grad.data.cpu()
 
         if param.col_attr.grad is None:
             param.col_attr.grad = reduced_grad.data

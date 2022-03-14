@@ -10,7 +10,7 @@ from .data_sampler import DataParallelSampler, get_dataloader
 from .gradient_accumulation import accumulate_gradient
 from .memory import report_memory_usage
 from .timer import MultiTimer, Timer
-#from .tensor_detector import TensorDetector
+from .tensor_detector import TensorDetector
 
 __all__ = [
     'checkpoint', 'free_port', 'print_rank_0', 'sync_model_param', 'is_dp_rank_0', 'is_tp_rank_0',

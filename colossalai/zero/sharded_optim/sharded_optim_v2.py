@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -15,7 +15,7 @@ from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
-
+from typing import Type, Any
 from ._utils import has_inf_or_nan
 
 
@@ -27,8 +27,8 @@ class OptimState(Enum):
 class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def __init__(self,
-                 optimizer: Optimizer,
                  sharded_model: ShardedModelV2,
+                 optimizer_class: Type[Optimizer],
                  shard_strategy: BaseShardStrategy,
                  cpu_offload: bool = False,
                  initial_scale: float = 2**32,
@@ -39,9 +39,34 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
                  dp_process_group: Optional[ProcessGroup] = None,
-                 mp_process_group: Optional[ProcessGroup] = None) -> None:
+                 mp_process_group: Optional[ProcessGroup] = None,
+                 **defaults: Any) -> None:
+        """
+        :param sharded_model: A sharded model initialized by class ShardedModelV2
+        :type sharded_model: sharded_model
+        
+        :param optimizer_class: A type of Optimizer
+        :type optimizer_class: Type[Optimizer]
+        
+        :param shard_strategy: The strategy to shard the sharded_model and optimizer model parameters.
+        :type shard_strategy: BaseShardStrategy
+        
+        :param cpu_offload: is offloading the optimizer states to CPU.
+        :type cpu_offload: bool
+
+        :param shard_strategy: The strategy to shard the sharded_model and optimizer model parameters.
+        :type shard_strategy: BaseShardStrategy
+        :**defaults: any trailing arguments, which are forwarded to the local optimizer.
+        :type defaults: dict()
+        """
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
-        super().__init__(optimizer)
+
+        self._optim_defaults = defaults
+        # initialize the M, V as zeros tensors and initialize param fp32 from sharded_model.parameters()
+
+        self.optimizer = optimizer_class(sharded_model.parameters(), **self._optim_defaults)
+
+        super().__init__(self.optimizer)
         self.shard_strategy = shard_strategy
         self.model: ShardedModelV2 = sharded_model
         if cpu_offload and not sharded_model.cpu_offload:
@@ -65,7 +90,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # Store fp32 param shards
         self.master_params: Dict[Parameter, Tensor] = {}
 
-        for group in optimizer.param_groups:
+        for group in self.optimizer.param_groups:
             for p in group['params']:
                 assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
                 is_param_sharded = p.col_attr.data.is_sharded
@@ -118,7 +143,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # We have to use `copy_payload` instead of `reset_payload`
                 # Since p.data is fp32 and p.col_attr.data is fp16
 
-                # TODO() optimize this line
+                # TODO() optimize this line CPU (fp32) -> GPU (fp16)
                 p.col_attr.data.copy_payload(p.data)
 
                 if not is_param_sharded:

@@ -56,6 +56,7 @@ def test_activation_checkpointing(cpu_offload):
 
     assert torch.all(data.grad == data_.grad), 'Gradient of the input does not match'
     torch.cuda.empty_cache()
+
     # as seed manager is singleton
     # if we don't reset seeds here,
     # other tests will fail if running together with this test
