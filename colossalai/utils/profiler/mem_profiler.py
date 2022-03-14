@@ -26,7 +26,7 @@ class MemProfiler(BaseProfiler):
         stats = self._mem_tracer.async_mem_monitor.state_dict()['mem_stats']
         for i in range(len(stats)):
             writer.add_scalar(
-                "single GPU memory usage",
+                "memory_usage/GPU",
                 stats[i],
                 i
             )
@@ -43,9 +43,7 @@ class MemProfiler(BaseProfiler):
         pass
 
     def get_latest(self) -> float:
-        stats = self._mem_tracer.async_mem_monitor.state_dict()['mem_stats']
-        return stats[-1]
+        pass
 
     def get_avg(self) -> float:
-        stats = self._mem_tracer.async_mem_monitor.state_dict()['mem_stats']
-        return sum(stats) / len(stats)
+        pass
