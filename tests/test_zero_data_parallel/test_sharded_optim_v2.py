@@ -10,7 +10,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.utils import free_port
-from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -38,12 +38,12 @@ def run_step(model, optimizer, data, label, criterion, enable_autocast=False):
     optimizer.step()
 
 
-def run_dist(rank, world_size, port, cpu_offload):
+def run_dist(rank, world_size, port, cpu_offload, shard_strategy):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     test_models = ['repeated_computed_layers', 'resnet18', 'bert']
+    shard_strategy = shard_strategy()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
-        shard_strategy = TensorShardStrategy()
         model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
         model = model(checkpoint=True).cuda()
         zero_model = ShardedModelV2(copy.deepcopy(model),
@@ -69,10 +69,15 @@ def run_dist(rank, world_size, port, cpu_offload):
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("cpu_offload", [True, False])
-def test_sharded_optim_v2(world_size, cpu_offload):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), cpu_offload=cpu_offload)
+@pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
+def test_sharded_optim_v2(world_size, cpu_offload, shard_strategy):
+    run_func = partial(run_dist,
+                       world_size=world_size,
+                       port=free_port(),
+                       cpu_offload=cpu_offload,
+                       shard_strategy=shard_strategy)
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_sharded_optim_v2(world_size=2, cpu_offload=True)
+    test_sharded_optim_v2(world_size=2, cpu_offload=True, shard_strategy=TensorShardStrategy)

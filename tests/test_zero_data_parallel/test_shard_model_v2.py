@@ -3,30 +3,28 @@
 
 import copy
 from functools import partial
-import pytest
-
-import torch
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
-from colossalai.zero.init_ctx import ZeroInitContext
+import pytest
+import torch
+import torch.multiprocessing as mp
 from colossalai.utils import free_port
-from colossalai.zero.shard_utils.tensor_shard_strategy import \
-    TensorShardStrategy
+from colossalai.zero.init_ctx import ZeroInitContext
+from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp16
-
-from tests.components_to_test.registry import non_distributed_component_funcs
-from common import CONFIG, check_grads_padding, run_fwd_bwd
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
+from tests.components_to_test.registry import non_distributed_component_funcs
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+from common import CONFIG, check_grads_padding, run_fwd_bwd
 
 
-def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
+def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast, shard_strategy):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     test_models = ['repeated_computed_layers', 'resnet18', 'bert']
-    shard_strategy = TensorShardStrategy()
+    shard_strategy = shard_strategy()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
@@ -66,14 +64,16 @@ def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
 @pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("enable_autocast", [True])
 @pytest.mark.parametrize("use_zero_init_ctx", [True])
-def test_shard_model_v2(world_size, use_zero_init_ctx, enable_autocast):
+@pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
+def test_shard_model_v2(world_size, use_zero_init_ctx, enable_autocast, shard_strategy):
     run_func = partial(run_dist,
                        world_size=world_size,
                        port=free_port(),
                        use_zero_init_ctx=use_zero_init_ctx,
-                       enable_autocast=enable_autocast)
+                       enable_autocast=enable_autocast,
+                       shard_strategy=shard_strategy)
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_shard_model_v2(world_size=2, use_zero_init_ctx=True, enable_autocast=True)
+    test_shard_model_v2(world_size=2, use_zero_init_ctx=True, enable_autocast=True, shard_strategy=TensorShardStrategy)

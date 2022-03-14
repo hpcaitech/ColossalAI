@@ -10,20 +10,20 @@ import torch
 import torch.multiprocessing as mp
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.utils import free_port
-from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_param import ShardedParam, ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from tests.test_zero_data_parallel.common import CONFIG, allclose
 from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.test_zero_data_parallel.common import CONFIG, allclose
 
 
-def _run_shard_tensor(rank, world_size, port):
+def _run_shard_tensor(rank, world_size, port, shard_strategy):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     t = ShardedTensor(tensor=torch.randn(world_size * 2, 3))
     assert list(t.origin_shape) == [world_size * 2, 3]
     assert list(t.shape) == [world_size * 2, 3]
 
-    shard_strategy = TensorShardStrategy(process_group=None)
+    shard_strategy = shard_strategy(process_group=None)
 
     # test shard strategy
     shard_strategy.shard([t])
@@ -34,8 +34,9 @@ def _run_shard_tensor(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
-def test_shard_tensor(world_size):
-    run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port())
+@pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
+def test_shard_tensor(world_size, shard_strategy):
+    run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port(), shard_strategy=shard_strategy)
     mp.spawn(run_func, nprocs=world_size)
 
 
@@ -121,7 +122,7 @@ def test_init_shard_param(world_size):
 
 
 if __name__ == '__main__':
-    test_shard_tensor(2)
+    test_shard_tensor(2, TensorShardStrategy)
     test_shard_param(2)
     test_shard_param_v2(2)
     test_init_shard_param(4)
