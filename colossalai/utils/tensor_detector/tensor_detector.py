@@ -175,7 +175,8 @@ class TensorDetector():
                 f.write(self.info)
 
     
-    def detect(self):
+    def detect(self, include_cpu = False):
+        self.include_cpu = include_cpu
         self.collect_tensors_state()
         self.print_tensors_state()
         self.saved_tensor_info.update(self.tensor_info)
