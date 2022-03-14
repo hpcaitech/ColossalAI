@@ -6,20 +6,25 @@ from torch.autograd.profiler import profile
 import torch.distributed as dist
 from torch.distributed import ReduceOp
 from colossalai.utils import get_current_device
-from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwith
+from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwidth
 from typing import List, Optional
 
 
 def _get_code_location(depth: int):
-    ret = ""
-    length = len(inspect.stack())
-    for i in range(3, min(length, depth + 1)):
+    ret = []
+    length = min(len(inspect.stack()), depth + 1)
+    for i in range(3, length):
         upper_frame = inspect.stack()[i]
         function_name = inspect.stack()[i - 1].function
-        info = upper_frame.filename + "(" + str(upper_frame.lineno) + "): " + function_name + "\n"
-        ret += info
+        ret.append(upper_frame.filename)
+        ret.append('(')
+        ret.append(str(upper_frame.lineno))
+        ret.append('): ')
+        ret.append(function_name)
+        if i != length - 1:
+            ret.append('\n')
 
-    return ret
+    return ''.join(ret)
 
 
 torch_all_reduce = dist.all_reduce
@@ -100,8 +105,9 @@ class CommProfiler(BaseProfiler):
     def result_list(self, sep: str = "\n"):
         res = []
 
-        def append(s: str):
-            res.append(s)
+        def append(s: str = None):
+            if s is not None:
+                res.append(s)
             res.append(sep)
 
         if self.warn_flag:
@@ -110,19 +116,26 @@ class CommProfiler(BaseProfiler):
 
         append("Collective communication profiling result:")
         append("total cuda time: {}".format(_format_time(self.total_cuda_time)))
-        append("average bandwith: {}".format(_format_bandwith(self.total_comm_vol, self.total_cuda_time)))
+        append("average bandwidth: {}".format(_format_bandwidth(self.total_comm_vol, self.total_cuda_time)))
         append("total number of calls: {}".format(self.total_count))
-        append("All events:\n----------------------------------------")
+        append("All events:")
+
+        seperation = '-' * 74
+        row_format = '{:^10}' + '{:^12}' * 2 + '{:^16}' + '{:^12}' * 2
+
+        append(seperation)
+        append(row_format.format('Location', 'GPU time', 'Percentage', 'Comm volume', 'Bandwidth', 'Num of calls'))
+        append(seperation)
 
         show_list = sorted(self.ops_record.items(), key=lambda kv: -kv[1].self_cuda_time)
         for location, event in show_list:
             append(location)
-            append("self cuda time: {}".format(_format_time(event.self_cuda_time)))
-            append("{:.1f}% of total communication time".format(event.self_cuda_time / self.total_cuda_time * 100.0))
-            append("self communication volme: {}".format(_format_memory(event.self_comm_vol)))
-            append("average bandwith: {}".format(_format_bandwith(event.self_comm_vol, event.self_cuda_time)))
-            append("number of calls: {}".format(event.self_count))
-            append("----------------------------------------")
+            append(
+                row_format.format('', _format_time(event.self_cuda_time),
+                                  '{:.1f}%'.format(event.self_cuda_time / self.total_cuda_time * 100.0),
+                                  _format_memory(event.self_comm_vol),
+                                  _format_bandwidth(event.self_comm_vol, event.self_cuda_time), event.self_count))
+            append()
 
         return ''.join(res)
 
