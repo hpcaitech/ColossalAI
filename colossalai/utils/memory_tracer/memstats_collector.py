@@ -67,5 +67,15 @@ class MemStatsCollector:
             raise RuntimeError
         return (self._model_data_cuda[sampling_cnt], self._overall_cuda[sampling_cnt])
 
-    def reset(self) -> None:
+    def reset_sampling_cnter(self) -> None:
+        self._sampling_cnter.reset()
+
+    def clear(self) -> None:
+        self._model_data_cuda = []
+        self._overall_cuda = []
+
+        self._model_data_cpu = []
+        self._overall_cpu = []
+
+        self._start_flag = False
         self._sampling_cnter.reset()
