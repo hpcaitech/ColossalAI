@@ -93,16 +93,16 @@ class CommProfiler(BaseProfiler):
         dist.reduce = torch_reduce
 
     def to_tensorboard(self, writer):
-        writer.add_text(tag="Collective Communication", text_string=self.result_list("\n\n"))
+        writer.add_text(tag="Collective Communication", text_string=self.result_str("\n\n"))
 
     def to_file(self, filename: Path):
         with open(filename, "w") as f:
-            f.write(self.result_list())
+            f.write(self.result_str())
 
     def show(self):
-        print(self.result_list())
+        print(self.result_str())
 
-    def result_list(self, sep: str = "\n"):
+    def result_str(self, sep: str = "\n"):
         res = []
 
         def append(s: str = None):
@@ -113,6 +113,9 @@ class CommProfiler(BaseProfiler):
         if self.warn_flag:
             append("Warnning: there exists multiple communication operations in the same time. As a result, "
                    "the profiling result is not accurate.")
+
+        if self.total_cuda_time == 0:
+            return "No collective communication has been called yet!"
 
         append("Collective communication profiling result:")
         append("total cuda time: {}".format(_format_time(self.total_cuda_time)))

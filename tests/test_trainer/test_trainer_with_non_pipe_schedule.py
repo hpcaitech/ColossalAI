@@ -25,9 +25,9 @@ def run_trainer_no_pipeline(rank, world_size, port):
     test_models = ['repeated_computed_layers', 'resnet18', 'nested_model']
     for name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(name)
-        model_builder, train_dataloader, test_dataloader, optimizer_builder, criterion = get_components_func()
+        model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
         model = model_builder()
-        optimizer = optimizer_builder(model)
+        optimizer = optimizer_class(model.parameters(), lr=1e-3)
         engine, train_dataloader, *_ = colossalai.initialize(model=model,
                                                              optimizer=optimizer,
                                                              criterion=criterion,

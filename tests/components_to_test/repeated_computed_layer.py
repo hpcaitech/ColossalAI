@@ -43,8 +43,5 @@ def get_training_components():
     trainloader = DummyDataLoader()
     testloader = DummyDataLoader()
 
-    def optim_builder(model):
-        return torch.optim.Adam(model.parameters(), lr=0.001)
-
     criterion = torch.nn.CrossEntropyLoss()
-    return model_builder, trainloader, testloader, optim_builder, criterion
+    return model_builder, trainloader, testloader, torch.optim.Adam, criterion
