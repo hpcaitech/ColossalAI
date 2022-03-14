@@ -1,7 +1,8 @@
 import torch
 from colossalai.registry import OPHOOKS
-from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.utils import get_current_device
+from colossalai.zero.shard_utils import BaseShardStrategy
+
 from ._base_ophook import BaseOpHook
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
@@ -23,10 +24,13 @@ class ZeroHook(BaseOpHook):
         self._memstarts_collector = memstarts_collector
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
+        tensor_list = []
+        global_model_data_tracer = ModelDataTracer()
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
-            self.shard_strategy.gather([param.col_attr.data])
-            global_model_data_tracer = ModelDataTracer()
+            tensor_list.append(param.col_attr.data)
+        self.shard_strategy.gather(tensor_list)
+        for param in module.parameters():
             if param.col_attr.data.device != self.computing_device:
                 param.col_attr.data.to(self.computing_device)
                 global_model_data_tracer.add_tensor(param.col_attr.data.payload)
@@ -36,16 +40,22 @@ class ZeroHook(BaseOpHook):
             self._memstarts_collector.sample_memstats()
 
     def post_fwd_exec(self, module: torch.nn.Module, *args):
+        tensor_list = []
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
-            self.shard_strategy.shard([param.col_attr.data])
-            param.data = torch.empty([], dtype=param.col_attr.data.dtype, device=param.col_attr.data.payload.device)
+            tensor_list.append(param.col_attr.data)
+        self.shard_strategy.shard(tensor_list)
+        for param in module.parameters():
+            param.col_attr.remove_torch_payload()
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
+        tensor_list = []
+        global_model_data_tracer = ModelDataTracer()
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
-            global_model_data_tracer = ModelDataTracer()
-            self.shard_strategy.gather([param.col_attr.data])
+            tensor_list.append(param.col_attr.data)
+        self.shard_strategy.gather(tensor_list)
+        for param in module.parameters():
             if param.col_attr.data.device != self.computing_device:
                 param.col_attr.data.to(self.computing_device)
                 global_model_data_tracer.add_tensor(param.col_attr.data.payload)
@@ -66,10 +76,13 @@ class ZeroHook(BaseOpHook):
             self._memstarts_collector.sample_memstats()
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
+        tensor_list = []
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
-            self.shard_strategy.shard([param.col_attr.data])
-            param.data = torch.empty([], dtype=param.col_attr.data.dtype, device=param.col_attr.data.payload.device)
+            tensor_list.append(param.col_attr.data)
+        self.shard_strategy.shard(tensor_list)
+        for param in module.parameters():
+            param.col_attr.remove_torch_payload()
 
     def pre_iter(self):
         pass
