@@ -3,10 +3,11 @@ import functools
 import torch
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param import ShardedParamV2
-from colossalai.utils.memory_tracer.allocator import GLOBAL_MODEL_DATA_TRACER
-
+from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
 
 # Inserts _post_init_method at the end of init method
+
+
 # for all sub classes of torch.nn.Module
 class InsertPostInitMethodToModuleSubClasses(object):
 
@@ -152,7 +153,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
             if self.shard_param:
                 self.shard_strategy.shard(tensor_list=[param.col_attr._data_sharded_tensor])
-                GLOBAL_MODEL_DATA_TRACER.trace_tensor(param.col_attr._data_sharded_tensor.payload)
+                ModelDataTracer().add_tensor(param.col_attr._data_sharded_tensor.payload)
             if param.col_attr.grad and self.shard_grad:
                 self.shard_strategy.shard(tensor_list=[param.col_attr._grad_sharded_tensor])
-                GLOBAL_MODEL_DATA_TRACER.trace_tensor(param.col_attr._grad_sharded_tensor.payload)
+                ModelDataTracer().add_tensor(param.col_attr._grad_sharded_tensor.payload)

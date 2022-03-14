@@ -9,12 +9,12 @@ import torch
 import torch.multiprocessing as mp
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory_tracer.allocator import GLOBAL_MODEL_DATA_TRACER
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 from common import CONFIG
+from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
 
 
 def run_dist(rank, world_size, port, init_device, shard_strategy):
@@ -37,13 +37,10 @@ def run_dist(rank, world_size, port, init_device, shard_strategy):
             assert param.col_attr.data.payload.device.type == init_device.type, \
                 f'{param.col_attr.data.payload.device.type} vs. {init_device.type}'
 
-    print(f'cpu usgae {GLOBAL_MODEL_DATA_TRACER.cpu_usage}')
-    print(f'cuda usgae {GLOBAL_MODEL_DATA_TRACER.cuda_usage}')
+    print(f'cuda usgae {ModelDataTracer().cuda_usage}')
     print(f'numel {model_numel_tensor}')
     if init_device.type == 'cuda':
-        assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
-    elif init_device.type == 'cpu':
-        assert (GLOBAL_MODEL_DATA_TRACER.cpu_usage > 0)
+        assert (ModelDataTracer().cuda_usage > 0)
 
 
 @pytest.mark.dist
@@ -60,5 +57,5 @@ def test_zero_init_context(world_size, init_device, shard_strategy):
 
 
 if __name__ == '__main__':
-    test_zero_init_context(2, torch.device('cpu'), TensorShardStrategy)
-    test_zero_init_context(2, torch.device(f'cuda:{get_current_device()}'), TensorShardStrategy)
+    # test_zero_init_context(2, torch.device('cpu'), TensorShardStrategy)
+    test_zero_init_context(4, torch.device('cpu'), BucketTensorShardStrategy)

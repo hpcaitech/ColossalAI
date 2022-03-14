@@ -143,7 +143,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # We have to use `copy_payload` instead of `reset_payload`
                 # Since p.data is fp32 and p.col_attr.data is fp16
 
-                # TODO() optimize this line
+                # TODO() optimize this line CPU (fp32) -> GPU (fp16)
                 p.col_attr.data.copy_payload(p.data)
 
                 if not is_param_sharded:
