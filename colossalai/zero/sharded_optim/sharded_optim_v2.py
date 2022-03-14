@@ -57,7 +57,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         :param shard_strategy: The strategy to shard the sharded_model and optimizer model parameters.
         :type shard_strategy: BaseShardStrategy
         :**defaults: any trailing arguments, which are forwarded to the local optimizer.
-        :type sharded_model: sharded_model
+        :type defaults: dict()
         """
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
 
