@@ -114,7 +114,7 @@ class ShardedModelV2(nn.Module):
         if self._iter_cnter == 0 and self._memstats_collector:
             self._memstats_collector.finish_collection()
         if self._memstats_collector:
-            self._memstats_collector.reset()
+            self._memstats_collector.reset_sampling_cnter()
         self._iter_cnter += 1
 
         if self._require_backward_grad_sync:

@@ -26,8 +26,7 @@ from colossalai.utils import get_current_device
 def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    # test_models = ['repeated_computed_layers', 'resnet18', 'bert']
-    test_models = ['bert']
+    test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     shard_strategy = TensorShardStrategy()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
