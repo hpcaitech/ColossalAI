@@ -32,7 +32,7 @@ def _format_memory(nbytes):
         return str(nbytes) + ' B'
 
 
-def _format_bandwith(volme: float or int, time_us: int):
+def _format_bandwidth(volme: float or int, time_us: int):
     sec_div_mb = (1000.0 / 1024.0)**2
     mb_per_sec = volme / time_us * sec_div_mb
 
