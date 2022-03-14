@@ -38,25 +38,27 @@ def run_step(model, optimizer, data, label, criterion, enable_autocast=False):
     optimizer.step()
 
 
-def run_dist(rank, world_size, port, cpu_offload):
+def _run_dist_step(rank, world_size, port, cpu_offload):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         shard_strategy = TensorShardStrategy()
-        model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
+        model, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
         model = model(checkpoint=True).cuda()
         zero_model = ShardedModelV2(copy.deepcopy(model),
                                     shard_strategy,
                                     offload_config=dict(device='cpu') if cpu_offload else None)
         if dist.get_world_size() > 1:
             model = DDP(model)
-        optim = Adam(model.parameters(), lr=1e-3)
-        sharded_optim = ShardedOptimizerV2(Adam(zero_model.parameters(), lr=1e-3),
-                                           zero_model,
+        lr = 1e-3
+        optim = optimizer_class(model.parameters(), lr=lr)
+        sharded_optim = ShardedOptimizerV2(zero_model,
+                                           optimizer_class,
                                            shard_strategy,
                                            cpu_offload=cpu_offload,
-                                           initial_scale=2**5)
+                                           initial_scale=2**5,
+                                           lr=lr)
         for i, (data, label) in enumerate(train_dataloader):
             if i > 2:
                 break
@@ -70,7 +72,7 @@ def run_dist(rank, world_size, port, cpu_offload):
 @pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("cpu_offload", [True, False])
 def test_sharded_optim_v2(world_size, cpu_offload):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), cpu_offload=cpu_offload)
+    run_func = partial(_run_dist_step, world_size=world_size, port=free_port(), cpu_offload=cpu_offload)
     mp.spawn(run_func, nprocs=world_size)
 
 

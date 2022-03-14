@@ -74,8 +74,5 @@ def get_training_components():
                                       sequence_length=sequence_length,
                                       is_distrbuted=True)
 
-    def get_optim(model):
-        return torch.optim.Adam(model.parameters(), lr=0.001)
-
     criterion = None
-    return bert_model_builder, trainloader, testloader, get_optim, criterion
+    return bert_model_builder, trainloader, testloader, torch.optim.Adam, criterion
