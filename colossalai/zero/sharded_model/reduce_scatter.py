@@ -20,12 +20,23 @@ else:
 
 
 class Bucket:
-    def __init__(self, shard_size: int, dtype: torch.dtype, device: torch.device, group: ProcessGroup):
+
+    def __init__(self, shard_size: int, dtype: torch.dtype, device: torch.device, target_device: torch.device,
+                 group: ProcessGroup):
         self.buffer = torch.zeros((group.size(), shard_size), dtype=dtype, device=device)
         self.group = group
         self.offset = 0
         self.callbacks: List[Callable] = []
         self.output_shard = torch.zeros_like(self.buffer[0])
+        self._need_move = target_device != device
+        if self._need_move:
+            self._target_shard = self.output_shard.to(target_device)
+
+    @property
+    def target_shard(self):
+        if self._need_move:
+            return self._target_shard
+        return self.output_shard
 
     def flush(self) -> None:
         """Flush content of the bucket."""
@@ -34,18 +45,20 @@ class Bucket:
             return
         # reduce-scatter bucket
         if hasattr(dist, "_reduce_scatter_base") and enable_nccl_base_collectives:
-            dist._reduce_scatter_base(
-                self.output_shard[: self.offset], self.buffer[:, : self.offset].contiguous(), group=self.group
-            )
+            dist._reduce_scatter_base(self.output_shard[:self.offset],
+                                      self.buffer[:, :self.offset].contiguous(),
+                                      group=self.group)
         else:
-            dist.reduce_scatter(
-                self.output_shard[: self.offset], list(self.buffer[:, : self.offset].unbind(0)), group=self.group
-            )
+            dist.reduce_scatter(self.output_shard[:self.offset],
+                                list(self.buffer[:, :self.offset].unbind(0)),
+                                group=self.group)
+        if self._need_move:
+            self._target_shard[:self.offset].copy_(self.output_shard[:self.offset])
         # execute post-reduction callbacks
         for callback_fn in self.callbacks:
             callback_fn()
         # reuse input bucket but allocate a fresh output shard
-        self.buffer[:, : self.offset].zero_()
+        self.buffer[:, :self.offset].zero_()
         self.offset = 0
         self.callbacks.clear()
         self.output_shard = torch.zeros_like(self.buffer[0])
@@ -58,14 +71,20 @@ class Bucket:
         memory to other parts of the training process, such as the forward pass
         for activation memory.
         """
-        for tensor in [self.buffer, self.output_shard]:
+        tensors = [self.buffer, self.output_shard]
+        if self._need_move:
+            tensors.append(self._target_shard)
+        for tensor in tensors:
             if tensor.storage().size() == 0:
                 tensor.storage().resize_(tensor.size().numel())
 
     def free(self) -> None:
         """Tear down the bucket by freeing the memory"""
         assert self.offset == 0 and self.callbacks == [], "Incorrect call of teardown"
-        for tensor in [self.buffer, self.output_shard]:
+        tensors = [self.buffer, self.output_shard]
+        if self._need_move:
+            tensors.append(self._target_shard)
+        for tensor in tensors:
             tensor.storage().resize_(0)
 
     def append(self, tensor_list: List[Tensor], callback_fn: Callable):
@@ -73,12 +92,12 @@ class Bucket:
         tensor_size = tensor_list[0].numel()
         stacked_input = torch.stack(tensor_list).view(self.group.size(), tensor_size)
         offset = self.offset
-        self.buffer[:, offset: offset + tensor_size].copy_(stacked_input)
+        self.buffer[:, offset:offset + tensor_size].copy_(stacked_input)
         self.offset += tensor_size
 
         # callback will be given the reduced result
         if callback_fn is not None:
-            result_view = self.output_shard[offset: offset + tensor_size].view_as(tensor_list[0])
+            result_view = self.target_shard[offset:offset + tensor_size].view_as(tensor_list[0])
             self.callbacks.append(functools.partial(callback_fn, result_view))
 
 
@@ -110,9 +129,10 @@ class ReduceScatterBucketer:
             are sub-divided based on world_size. Values <= 0 disable bucketing.
     """
 
-    def __init__(self, bucket_size_mb: int = 25):
+    def __init__(self, target_device: torch.device, bucket_size_mb: int = 25):
         self.bucket_size_mb = bucket_size_mb
         self.buckets: Dict[Tuple[torch.dtype, torch.device, ProcessGroup], Bucket] = {}
+        self.target_device = target_device
 
     @torch.no_grad()
     def reduce_scatter_async(
@@ -141,9 +161,8 @@ class ReduceScatterBucketer:
         """
         world_size = group.size()
 
-        assert (
-            len(input_list) == world_size
-        ), f"reduce_scatter received {len(input_list)} inputs, expected group.size() ({world_size})"
+        assert (len(input_list) == world_size
+               ), f"reduce_scatter received {len(input_list)} inputs, expected group.size() ({world_size})"
 
         first_input = input_list[0]
         first_input_size = first_input.numel()
@@ -159,6 +178,7 @@ class ReduceScatterBucketer:
             else:
                 # fallback
                 dist.reduce_scatter(output, input_list, group=group)
+            output = output.to(self.target_device)
             if callback_fn is not None:
                 callback_fn(output)
             return
@@ -183,7 +203,7 @@ class ReduceScatterBucketer:
 
     @functools.lru_cache()
     def _get_shard_size(self, element_size: int, num_shards: int) -> int:
-        if self.bucket_size_mb <= 0:  # Values <= 0 disable bucketing.
+        if self.bucket_size_mb <= 0:    # Values <= 0 disable bucketing.
             return 0
         MB = 1024 * 1024
         bucket_size = self.bucket_size_mb * MB / element_size
@@ -195,6 +215,6 @@ class ReduceScatterBucketer:
             # buckets are divided into world_size pieces, bucket.data shaped (world_size, shard_size)
             world_size = group.size()
             shard_size = self._get_shard_size(tensor.element_size(), world_size)
-            self.buckets[key] = Bucket(shard_size, tensor.dtype, tensor.device, group)
+            self.buckets[key] = Bucket(shard_size, tensor.dtype, tensor.device, self.target_device, group)
         self.buckets[key].alloc()
         return self.buckets[key]

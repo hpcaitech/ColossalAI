@@ -1,5 +1,5 @@
-from ast import Try
 import functools
+from ast import Try
 from collections import OrderedDict
 from typing import Any, Optional
 
@@ -76,7 +76,8 @@ class ShardedModelV2(nn.Module):
         self.gradient_postdivide_factor: float = self.world_size / self.gradient_predivide_factor
 
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
-        self.reducer = ReduceScatterBucketer(reduce_scatter_bucket_size_mb)
+        _device = torch.device('cpu') if self._cpu_offload else torch.cuda.current_device()
+        self.reducer = ReduceScatterBucketer(_device, reduce_scatter_bucket_size_mb)
         self._require_backward_grad_sync: bool = True
 
     @property
@@ -173,6 +174,8 @@ class ShardedModelV2(nn.Module):
                                                   group=self.reduce_scatter_process_group,
                                                   callback_fn=functools.partial(self._reduce_scatter_callback, param))
             else:
+                if self._cpu_offload:
+                    new_grad.data = new_grad.data.cpu()
                 self._reduce_scatter_callback(param, new_grad)
             orig_grad_data.record_stream(self.comm_stream)
 
@@ -184,9 +187,9 @@ class ShardedModelV2(nn.Module):
         # Make sure we store fp32 grad
         reduced_grad.data = cast_tensor_to_fp32(reduced_grad.data)
 
-        # Maybe offload
         if self._cpu_offload:
-            reduced_grad.data = reduced_grad.data.cpu()
+            # reduced_grad must be on CPU here
+            assert reduced_grad.data.device == torch.device('cpu')
 
         if param.col_attr.grad is None:
             param.col_attr.grad = reduced_grad.data
