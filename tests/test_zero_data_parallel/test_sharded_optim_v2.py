@@ -44,19 +44,21 @@ def run_dist(rank, world_size, port, cpu_offload, shard_strategy):
     shard_strategy = shard_strategy()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
-        model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
+        model, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
         model = model(checkpoint=True).cuda()
         zero_model = ShardedModelV2(copy.deepcopy(model),
                                     shard_strategy,
                                     offload_config=dict(device='cpu') if cpu_offload else None)
         if dist.get_world_size() > 1:
             model = DDP(model)
-        optim = Adam(model.parameters(), lr=1e-3)
-        sharded_optim = ShardedOptimizerV2(Adam(zero_model.parameters(), lr=1e-3),
-                                           zero_model,
+        lr = 1e-3
+        optim = optimizer_class(model.parameters(), lr=lr)
+        sharded_optim = ShardedOptimizerV2(zero_model,
+                                           optimizer_class,
                                            shard_strategy,
                                            cpu_offload=cpu_offload,
-                                           initial_scale=2**5)
+                                           initial_scale=2**5,
+                                           lr=lr)
         for i, (data, label) in enumerate(train_dataloader):
             if i > 2:
                 break
