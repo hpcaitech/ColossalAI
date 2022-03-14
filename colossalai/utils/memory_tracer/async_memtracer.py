@@ -105,7 +105,6 @@ class AsyncMemoryMonitor:
 
     def save(self, filename):
         with open(filename, "wb") as f:
-            print(self.state_dict())
             pickle.dump(self.state_dict(), f)
 
     def clear(self):
