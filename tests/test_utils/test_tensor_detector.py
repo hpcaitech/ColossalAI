@@ -22,16 +22,19 @@ def test_tensor_detect():
     data.retain_grad()
     model = MLP().cuda()
 
-    detector = TensorDetector(False, module=model)
+    detector = TensorDetector(log='test', include_cpu=False, module=model)
 
     detector.detect()
     out = model(data)
 
     detector.detect()
     loss = out.sum()
+    detector.detect()
     loss.backward()
     detector.detect()
-
+    model = MLP().cuda()
+    detector.detect()
+    detector.close()
     torch.cuda.empty_cache()
 
 if __name__ == '__main__':

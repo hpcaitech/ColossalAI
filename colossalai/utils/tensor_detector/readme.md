@@ -65,7 +65,6 @@ Totle GPU Memery Allocated on cuda:0 is 4.5 KB
 ------------------------------------------------------------------------------------------------------------
 
 
-
 ------------------------------------------------------------------------------------------------------------
    Tensor                            device               shape      grad               dtype            Mem
 ------------------------------------------------------------------------------------------------------------
@@ -77,19 +76,48 @@ Totle GPU Memery Allocated on cuda:0 is 5.5 KB
 ------------------------------------------------------------------------------------------------------------
 
 
+------------------------------------------------------------------------------------------------------------
+   Tensor                            device               shape      grad               dtype            Mem
+------------------------------------------------------------------------------------------------------------
++  Tensor                            cuda:0                  ()      True       torch.float32            4 B    # loss
+------------------------------------------------------------------------------------------------------------
+Detect Location: "test_tensor_detector.py" line 32
+Totle GPU Memery Allocated on cuda:0 is 6.0 KB
+------------------------------------------------------------------------------------------------------------
+
 
 ------------------------------------------------------------------------------------------------------------
    Tensor                            device               shape      grad               dtype            Mem
 ------------------------------------------------------------------------------------------------------------
 +  Tensor (with grad)                cuda:0               (64,)      True       torch.float32          512 B    # data with grad
-+  mlp.0.weight (with grad)          cuda:0             (8, 64)      True       torch.float32         4.0 KB
++  mlp.0.weight (with grad)          cuda:0             (8, 64)      True       torch.float32         4.0 KB    # for use data.retain_grad()
 +  mlp.0.bias (with grad)            cuda:0                (8,)      True       torch.float32           64 B
 +  mlp.2.weight (with grad)          cuda:0             (32, 8)      True       torch.float32         2.0 KB
 +  mlp.2.bias (with grad)            cuda:0               (32,)      True       torch.float32          256 B
-+  Tensor                            cuda:0                  ()      True       torch.float32            4 B    # loss
+
+-  mlp.0.weight                      cuda:0             (8, 64)      True       torch.float32         2.0 KB
+-  mlp.0.bias                        cuda:0                (8,)      True       torch.float32           32 B
+-  mlp.2.weight                      cuda:0             (32, 8)      True       torch.float32         1.0 KB
+-  mlp.2.bias                        cuda:0               (32,)      True       torch.float32          128 B
+-  Tensor                            cuda:0               (64,)      True       torch.float32          256 B
+-  Tensor                            cuda:0                (8,)      True       torch.float32           32 B    # deleted activation
 ------------------------------------------------------------------------------------------------------------
-Detect Location: "test_tensor_detector.py" line 33
+Detect Location: "test_tensor_detector.py" line 34
 Totle GPU Memery Allocated on cuda:0 is 10.0 KB
+------------------------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------------------------
+   Tensor                            device               shape      grad               dtype            Mem
+------------------------------------------------------------------------------------------------------------
++  Tensor                            cuda:0               (64,)     False       torch.float32          256 B
++  Tensor                            cuda:0             (8, 64)     False       torch.float32         2.0 KB
++  Tensor                            cuda:0                (8,)     False       torch.float32           32 B
++  Tensor                            cuda:0             (32, 8)     False       torch.float32         1.0 KB
++  Tensor                            cuda:0               (32,)     False       torch.float32          128 B
+------------------------------------------------------------------------------------------------------------
+Detect Location: "test_tensor_detector.py" line 36
+Totle GPU Memery Allocated on cuda:0 is 14.0 KB
 ------------------------------------------------------------------------------------------------------------
 ```
 
