@@ -12,7 +12,7 @@ class MemProfiler(BaseProfiler):
     """
 
     def __init__(self, engine: Engine, warmup: int = 50, refreshrate: int = 10) -> None:
-        super().__init__(profiler_name="Memory Profiler", priority=0)
+        super().__init__(profiler_name="MemoryProfiler", priority=0)
         self._mem_tracer = MemTracerOpHook(warmup=warmup, refreshrate=refreshrate)
         self._engine = engine
 
