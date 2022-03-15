@@ -16,7 +16,8 @@ class ShardedParamV2(object):
                  process_group: Optional[dist.ProcessGroup] = None,
                  rm_torch_payload=False) -> None:
         self._data_sharded_tensor: ShardedTensor = ShardedTensor(param.data, process_group)
-        self._grad_sharded_tensor: Optional[torch.Tensor] = None
+        self.fp16_grad: Optional[torch.Tensor] = None
+        self.fp32_grad: Optional[torch.Tensor] = None
 
         # make sure the shared param is the only owner of payload
         # The param.data maybe used to init the other part of the model.
@@ -38,14 +39,6 @@ class ShardedParamV2(object):
     @property
     def data(self):
         return self._data_sharded_tensor
-
-    @property
-    def grad(self):
-        return self._grad_sharded_tensor
-
-    @grad.setter
-    def grad(self, t: torch.Tensor):
-        self._grad_sharded_tensor = t
 
     @property
     def param_is_sharded(self):
