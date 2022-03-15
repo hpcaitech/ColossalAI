@@ -1,5 +1,5 @@
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
-from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
+from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 import torch
 
 
@@ -14,7 +14,7 @@ def test_mem_collector():
     collector.sample_memstats()
 
     m_a = torch.randn(10).cuda()
-    ModelDataTracer().add_tensor(m_a)
+    GLOBAL_MODEL_DATA_TRACER.add_tensor(m_a)
     b = torch.randn(10).cuda()
 
     # sampling at time 1
@@ -26,7 +26,7 @@ def test_mem_collector():
     collector.sample_memstats()
 
     collector.finish_collection()
-    collector.reset()
+    collector.reset_sampling_cnter()
 
     # do nothing after collection, just advance sampling cnter
     collector.sample_memstats()
