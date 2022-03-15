@@ -1,4 +1,3 @@
-from itertools import groupby
 from colossalai.utils.cuda import get_current_device
 import torch
 import torch.distributed as dist
@@ -7,7 +6,7 @@ from torch.optim import Optimizer
 from .bookkeeping import ParameterStore, GradientStore, BucketStore, TensorBucket
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.amp.naive_amp._fp16_optimizer import DynamicGradScaler
+from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from ._utils import (move_tensor, flatten, get_grad_accumulate_object, split_half_float_double, reduce_tensor,
                      release_param_grad, calculate_global_norm_from_list, compute_norm, sync_param, has_inf_or_nan)
@@ -16,38 +15,26 @@ from functools import partial
 
 class ShardedOptimizer(ColossalaiOptimizer):
 
-    def __init__(
-            self,
-            optimizer: Optimizer,
-
-            # grad scaler config
-            initial_scale=2**32,
-            min_scale=1,
-            growth_factor=2,
-            backoff_factor=0.5,
-            growth_interval=1000,
-            hysteresis=2,
-            max_scale: int = 2**32,
-
-            # grad clipping
-            clip_grad_norm=2.0,
-            verbose=False,
-
-            # communication
-            reduce_bucket_size=500000000,
-            communication_dtype=torch.float16,
-            overlap_communication=False,
-
-            # stage 2
-            partition_grad=False,
-            
-            dp_parallel_mode=ParallelMode.DATA,
-            mp_parallel_mode=ParallelMode.MODEL,
-            
-            # cpu offload
-            cpu_offload=False,
-            cpu_fp16_param=False,
-            cpu_fp16_grad=False):
+    def __init__(self,
+                 optimizer: Optimizer,
+                 initial_scale=2**32,
+                 min_scale=1,
+                 growth_factor=2,
+                 backoff_factor=0.5,
+                 growth_interval=1000,
+                 hysteresis=2,
+                 max_scale: int = 2**32,
+                 clip_grad_norm=2.0,
+                 verbose=False,
+                 reduce_bucket_size=500000000,
+                 communication_dtype=torch.float16,
+                 overlap_communication=False,
+                 partition_grad=False,
+                 dp_parallel_mode=ParallelMode.DATA,
+                 mp_parallel_mode=ParallelMode.MODEL,
+                 cpu_offload=False,
+                 cpu_fp16_param=False,
+                 cpu_fp16_grad=False):
 
         # TODO: add support for
         # 1. fp16 master weights
@@ -257,12 +244,13 @@ class ShardedOptimizer(ColossalaiOptimizer):
                         reduction_func = partial(self._reduce_and_remove_grads_by_bucket,
                                                  param=param,
                                                  reduce_rank=reduce_rank)
-                        
+
                         # define hook
                         # NOT IMPORTANT BUT GOOD TO KNOW:
                         # args here is not grad, but allow_unreacable and accumulate_grad
                         def reduce_grad_hook(*args):
                             reduction_func()
+
                         accum_grad_obj.register_hook(reduce_grad_hook)
 
                     _define_and_attach(param, reduce_rank)
@@ -293,8 +281,8 @@ class ShardedOptimizer(ColossalaiOptimizer):
     def _reduce_grads_in_bucket(self, reduce_rank=None):
         # reduce grads
         self._reduce_grads_by_rank(reduce_rank=reduce_rank,
-                                    grads=self._bucket_store.get_grad(reduce_rank=reduce_rank),
-                                    bucket_size=self._bucket_store.num_elements_in_bucket(reduce_rank))
+                                   grads=self._bucket_store.get_grad(reduce_rank=reduce_rank),
+                                   bucket_size=self._bucket_store.num_elements_in_bucket(reduce_rank))
 
         # use communication stream if overlapping
         # communication with computation
@@ -323,7 +311,7 @@ class ShardedOptimizer(ColossalaiOptimizer):
                 # we do not keep the gradient after reduction
                 if self._partition_grads and not self._param_store.belongs_to_current_rank(param):
                     if self._overlap_communication:
-                        # we need to keep this gradient for now as reduction may 
+                        # we need to keep this gradient for now as reduction may
                         # be completed yet since it is using a different cuda stream
                         self._param_store.add_previous_reduced_param(param)
                     else:
@@ -444,7 +432,6 @@ class ShardedOptimizer(ColossalaiOptimizer):
             self._grad_store._averaged_gradients[group_id] = []
             self._grad_store._averaged_gradients[group_id] = []
 
-
         # unscale and clip grads
         global_norm = calculate_global_norm_from_list(norm_list=norm_groups)
         self._unscale_and_clip_grads(single_grad_partition_groups, global_norm)
@@ -501,7 +488,7 @@ class ShardedOptimizer(ColossalaiOptimizer):
     def _unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
         combined_scale = self.loss_scale
-        
+
         if self._clip_grad_norm > 0.:
             # norm is in fact norm*scale
             clip = ((total_norm / self.loss_scale) + 1e-6) / self._clip_grad_norm
@@ -562,7 +549,7 @@ class ShardedOptimizer(ColossalaiOptimizer):
                 for param in param_group:
                     if param.grad is not None:
                         self._reduce_and_remove_grads_by_bucket(param)
-        
+
         # we need to reduce the gradients
         # left in the communication bucket
         self._reduce_grads_in_bucket()

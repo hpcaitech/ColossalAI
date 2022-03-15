@@ -4,7 +4,7 @@ from typing import Callable, Dict, Optional, Union
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from colossalai.amp.naive_amp._fp16_optimizer import DynamicGradScaler
+from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn.optimizer import ColossalaiOptimizer
