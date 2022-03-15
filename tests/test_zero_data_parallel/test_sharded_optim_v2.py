@@ -12,7 +12,6 @@ from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.optim import Adam
 
 from common import CONFIG, check_sharded_params_padding
 
