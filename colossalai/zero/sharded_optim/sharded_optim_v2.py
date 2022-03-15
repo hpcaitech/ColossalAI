@@ -111,23 +111,46 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         # Store fp32 param shards
         self.master_params: Dict[Parameter, Tensor] = {}
-
-        for group in self.optimizer.param_groups:
-            for p in group['params']:
-                assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
-                is_param_sharded = p.col_attr.data.is_sharded
-                if not is_param_sharded:
-                    # TODO (ver217): we may not use shard / gather here
-                    # Param is no sharded, which means we use ZeRO-2 here
-                    # As we only store param shard, we shard it here
-                    self.shard_strategy.shard([p.col_attr.data])
-                self.master_params[p] = cast_tensor_to_fp32(p.col_attr.data.payload).to(self.device)
-                if not is_param_sharded:
-                    # In this branch, there's no need to shard param
-                    # So we gather here
-                    self.shard_strategy.gather([p.col_attr.data])
+        self._first = True
 
     def step(self, *args, **kwargs):
+
+        # When the first time enter the step(), we calculate the margin space for OS
+        # If margin space is enough, part of param fp32 are initialized on GPU.
+        if self._first:
+            self._first = False
+            cuda_margin_space = self.model.cuda_margin_space
+            # div 3 because the space is shared with param fp32, M and V
+            cuda_margin_space_param_fp32 = cuda_margin_space / 3
+            print(f'cuda_margin_space_param_fp32 {cuda_margin_space_param_fp32}')
+
+            acc_param_fp32_cuda_used = 0
+            for group in self.optimizer.param_groups:
+                for p in group['params']:
+                    assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
+                    is_param_sharded = p.col_attr.data.is_sharded
+                    if not is_param_sharded:
+                        # TODO (ver217): we may not use shard / gather here
+                        # Param is no sharded, which means we use ZeRO-2 here
+                        # As we only store param shard, we shard it here
+                        self.shard_strategy.shard([p.col_attr.data])
+
+                    # move as many as param fp32 tensors to cuda
+                    cur_param_fp32_used = p.col_attr.data.payload.numel() * 4    # 4 Bytes
+                    if acc_param_fp32_cuda_used + cur_param_fp32_used < cuda_margin_space_param_fp32:
+                        print('host a param fp32 on cuda')
+                        self.master_params[p] = cast_tensor_to_fp32(p.col_attr.data.payload).to(
+                            torch.cuda.current_device())
+                    else:
+                        self.master_params[p] = cast_tensor_to_fp32(p.col_attr.data.payload).to(self.device)
+
+                    acc_param_fp32_cuda_used += cur_param_fp32_used
+
+                    if not is_param_sharded:
+                        # In this branch, there's no need to shard param
+                        # So we gather here
+                        self.shard_strategy.gather([p.col_attr.data])
+
         # unscale grads if scaled
         if self.optim_state == OptimState.SCALED:
             self._unscale_grads()

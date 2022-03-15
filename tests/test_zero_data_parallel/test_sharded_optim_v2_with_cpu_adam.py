@@ -5,6 +5,7 @@ import copy
 from functools import partial
 
 import colossalai
+from colossalai.utils.cuda import get_current_device
 import pytest
 import torch
 import torch.distributed as dist
@@ -55,10 +56,14 @@ def run_dist(rank, world_size, port, shard_strategy):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
         model = model(checkpoint=True).cuda()
-        zero_model = ShardedModelV2(copy.deepcopy(model), shard_strategy, offload_config={'device': 'cpu'})
+        zero_model = ShardedModelV2(copy.deepcopy(model),
+                                    shard_strategy,
+                                    offload_config={'device': 'cpu'},
+                                    use_memory_tracer=True)
         if dist.get_world_size() > 1:
             model = DDP(model)
         optim = Adam(model.parameters(), lr=1e-3)
+
         sharded_optim = ShardedOptimizerV2(zero_model, CPUAdam, initial_scale=2**5, cpu_offload=True, lr=1e-3)
         for i, (data, label) in enumerate(train_dataloader):
             if i > 2:
