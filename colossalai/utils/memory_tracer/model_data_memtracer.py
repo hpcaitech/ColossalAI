@@ -5,10 +5,9 @@ import torch
 
 class ModelDataTracer(metaclass=SingletonMeta):
     """
-    A singleton to trace model data usage during runtime.
-    We have to trigger our API (trace_tensor, detach_tensor) when do model-data memory operation,
-    including allocation, releasing and moving.
-
+    A tracer singleton to trace model data usage during runtime.
+    The tracer is designed to trace the memory layout change during model-data tensors allocation, releasing, and moving.
+    To achieve this goal, the developers have to call `ModelDataTracer` in the corresponding code explicitly.
     NOTE() now the class only trace cuda memory usage
     """
 
@@ -32,3 +31,6 @@ class ModelDataTracer(metaclass=SingletonMeta):
     @property
     def cuda_usage(self):
         return self._cuda_usage
+
+
+GLOBAL_MODEL_DATA_TRACER = ModelDataTracer()

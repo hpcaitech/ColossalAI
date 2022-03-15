@@ -1,5 +1,5 @@
 import torch
-from colossalai.utils.memory_tracer.model_data_memtracer import ModelDataTracer
+from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
 
 def col_move_to_cpu(t: torch.Tensor):
@@ -7,7 +7,7 @@ def col_move_to_cpu(t: torch.Tensor):
     if t.device.type == 'cpu':
         return
 
-    ModelDataTracer().delete_tensor(t)
+    GLOBAL_MODEL_DATA_TRACER.delete_tensor(t)
     t.data = t.data.cpu()
 
 

@@ -26,15 +26,15 @@ def run_naive_amp():
     test_models = ['repeated_computed_layers', 'nested_model']
     for test_name in test_models:
         get_component_func = non_distributed_component_funcs.get_callable(test_name)
-        model_builder, train_dataloader, _, optim_builder, _ = get_component_func()
+        model_builder, train_dataloader, _, optim_class, _ = get_component_func()
 
         # create model
         amp_model = model_builder(checkpoint=True).cuda()
         torch_model = copy.deepcopy(amp_model)
 
         # create optimizer
-        amp_optimizer = optim_builder(amp_model)
-        torch_optimizer = optim_builder(torch_model)
+        amp_optimizer = optim_class(amp_model.parameters(), lr=1e-3)
+        torch_optimizer = optim_class(torch_model.parameters(), lr=1e-3)
 
         # inject naive amp
         amp_config = dict(initial_scale=1)
