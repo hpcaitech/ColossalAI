@@ -304,7 +304,7 @@ def initialize(model: nn.Module,
         if is_using_pp():
             assert amp_mode == AMP_TYPE.NAIVE, 'Pipeline only support NaiveAMP currently'
         if amp_mode == AMP_TYPE.NAIVE:
-            cfg_['clip_grad'] = clip_grad_norm
+            cfg_['clip_grad_norm'] = clip_grad_norm
         model, optimizer, criterion = convert_to_amp(model=model,
                                                      optimizer=optimizer,
                                                      criterion=criterion,

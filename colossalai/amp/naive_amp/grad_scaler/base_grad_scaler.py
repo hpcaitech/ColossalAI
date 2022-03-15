@@ -28,12 +28,10 @@ class BaseGradScaler(ABC):
     def inv_scale(self) -> Tensor:
         return self._scale.double().reciprocal().float()
 
-    @abstractmethod
     def state_dict(self) -> Dict:
         state_dict = dict()
         state_dict['scale'] = self.scale
 
-    @abstractmethod
     def load_state_dict(self, state_dict: Dict) -> None:
         self._scale = state_dict['scale']
 
