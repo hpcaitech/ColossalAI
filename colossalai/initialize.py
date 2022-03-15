@@ -25,7 +25,7 @@ from colossalai.global_variables import moe_env
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import (accumulate_gradient, get_current_device, is_using_ddp, is_using_pp, is_using_sequence,
-                              sync_model_param)
+                              sync_model_param, sync_moe_model_param)
 from colossalai.zero import convert_to_zero, ShardedOptimizer
 from colossalai.engine.ophooks import BaseOpHook
 
@@ -273,6 +273,8 @@ def initialize(model: nn.Module,
     if not moe_env.is_initialized() and not use_zero3:
         if is_using_sequence():
             sync_model_param(model, ParallelMode.SEQUENCE_DP)
+        elif moe_env.is_initialized():
+            sync_moe_model_param(model)
         elif is_using_ddp():
             sync_model_param(model, ParallelMode.DATA)
     else:
