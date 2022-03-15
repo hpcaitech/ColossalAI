@@ -42,10 +42,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  **defaults: Any) -> None:
         """
         :param sharded_model: A sharded model initialized by class ShardedModelV2. The optimizer will use the
-        shard strategy provided by sharded model to shard param fp16 tensors.
+        shard strategy provided by sharded model to shard param fp32 tensors.
         :type sharded_model: sharded_model
         
-        :param optimizer_class: A type of Optimizer
+        :param optimizer_class: A class type of Optimizer
         :type optimizer_class: Type[Optimizer]
         
         :param cpu_offload: is offloading the optimizer states to CPU.
