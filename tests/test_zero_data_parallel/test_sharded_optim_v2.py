@@ -52,7 +52,6 @@ def run_dist(rank, world_size, port, cpu_offload, shard_strategy):
         optim = optimizer_class(model.parameters(), lr=lr)
         sharded_optim = ShardedOptimizerV2(zero_model,
                                            optimizer_class,
-                                           shard_strategy,
                                            cpu_offload=cpu_offload,
                                            initial_scale=2**5,
                                            lr=lr)

@@ -59,12 +59,7 @@ def run_dist(rank, world_size, port, shard_strategy):
         if dist.get_world_size() > 1:
             model = DDP(model)
         optim = Adam(model.parameters(), lr=1e-3)
-        sharded_optim = ShardedOptimizerV2(zero_model,
-                                           CPUAdam,
-                                           shard_strategy,
-                                           initial_scale=2**5,
-                                           cpu_offload=True,
-                                           lr=1e-3)
+        sharded_optim = ShardedOptimizerV2(zero_model, CPUAdam, initial_scale=2**5, cpu_offload=True, lr=1e-3)
         for i, (data, label) in enumerate(train_dataloader):
             if i > 2:
                 break
