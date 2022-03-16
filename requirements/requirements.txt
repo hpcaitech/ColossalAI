@@ -6,3 +6,4 @@ psutil
 tensorboard
 packaging
 pre-commit
+rich
