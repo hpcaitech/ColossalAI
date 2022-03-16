@@ -39,6 +39,10 @@ def _run_dist(rank, world_size, port, cpu_offload, shard_strategy, use_cpuadam):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     shard_strategy = shard_strategy()
+
+    if use_cpuadam and cpu_offload is False:
+        return
+
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model, train_dataloader, _, optimizer_class, criterion = get_components_func()
@@ -102,6 +106,6 @@ def test_sharded_optim_v2_cpu_adam(world_size, cpu_offload, shard_strategy, use_
 
 if __name__ == '__main__':
     test_sharded_optim_v2_cpu_adam(world_size=2,
-                                   cpu_offload=True,
+                                   cpu_offload=False,
                                    shard_strategy=TensorShardStrategy,
-                                   use_cpuadam=False)
+                                   use_cpuadam=True)
