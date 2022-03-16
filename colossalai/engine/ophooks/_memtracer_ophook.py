@@ -1,3 +1,5 @@
+import json
+import pickle
 from pathlib import Path
 from colossalai.context.parallel_mode import ParallelMode
 import torch
@@ -104,12 +106,13 @@ class MemTracerOpHook(BaseOpHook):
             if self.valid_iter != 0 and self.valid_iter % self.refreshrate == 0:
                 # output file info
                 self._logger.info(f"dump a memory statistics as pickle to {self._data_prefix}-{self._rank}.pkl")
-                self.save_results()
+                with open (f"/tmp/mem-{self._rank}.pkl", "wb") as f:
+                    pickle.dump(self.async_mem_monitor.state_dict, f)
                 self._count += 1
                 self._logger.debug(f"data file has been refreshed {self._count} times")
         # finish a iteration
         self._curiter += 1
 
-    def save_results(self, file_dir: Union[str, Path] = "/tmp"):
-        datafile = os.path.join(file_dir, f"{self._data_prefix}-{self._rank}.pkl")
-        self.async_mem_monitor.save(datafile)
+    def save_results(self, data_file: Union[str, Path]):
+        with open(data_file, "w") as f:
+            f.write(json.dumps(self.async_mem_monitor.state_dict))

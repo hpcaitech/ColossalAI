@@ -97,6 +97,7 @@ class AsyncMemoryMonitor:
             sleep(self.interval)
         return max_usage
 
+    @property
     def state_dict(self):
         return {
             "time_stamps": self.time_stamps,

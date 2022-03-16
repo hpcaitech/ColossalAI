@@ -31,13 +31,8 @@ class MemProfiler(BaseProfiler):
                 i
             )
 
-    def to_file(self, log_dir: Union[str, Path]) -> None:
-        if isinstance(log_dir, str):
-            log_dir = Path(log_dir)
-        if not log_dir.exists():
-            log_dir.mkdir(parents=True, exist_ok=True)
-        
-        self._mem_tracer.save_results(log_dir)
+    def to_file(self, data_file: Path) -> None:
+        self._mem_tracer.save_results(data_file)
 
     def show(self) -> None:
         pass
