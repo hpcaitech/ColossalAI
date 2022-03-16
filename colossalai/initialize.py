@@ -6,6 +6,7 @@ import os
 import pprint
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple, Union
+from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
 
 import torch
 import torch.nn as nn
@@ -26,7 +27,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import (accumulate_gradient, get_current_device, is_using_ddp, is_using_pp, is_using_sequence,
                               sync_model_param)
-from colossalai.zero import convert_to_zero, ShardedOptimizer
+from colossalai.zero import convert_to_zero_v2, ShardedOptimizer
 from colossalai.engine.ophooks import BaseOpHook
 
 
@@ -269,7 +270,9 @@ def initialize(model: nn.Module,
 
     # first sync model across dp ranks
     model.to(get_current_device())
-    use_zero3 = hasattr(gpc.config, 'zero') and gpc.config.zero.level == 3
+
+    #FIXME
+    use_zero3 = False    #hasattr(gpc.config, 'zero') and gpc.config.zero.level == 3
     if not moe_env.is_initialized() and not use_zero3:
         if is_using_sequence():
             sync_model_param(model, ParallelMode.SEQUENCE_DP)
@@ -313,8 +316,9 @@ def initialize(model: nn.Module,
 
     if zero_cfg is not None:
         cfg_ = zero_cfg.copy()
-        level = cfg_.pop('level')
-        model, optimizer = convert_to_zero(model=model, optimizer=optimizer, level=level, zero_config=cfg_)
+        # level = cfg_.pop('level')
+        # model, optimizer = convert_to_zero(model=model, optimizer=optimizer, level=level, zero_config=cfg_)
+        model, optimizer = convert_to_zero_v2(model=model, optimizer_class=torch.optim.Adam, **cfg_)
 
     # gradient handler
     gradient_handler_cfg = gpc.config.get('gradient_handler', None)
@@ -324,7 +328,7 @@ def initialize(model: nn.Module,
         # 1. if optimizer is ZERO, then use zero grad handler
         # 2. if dp size is larger than 1 and pipeline is not used, use pytorch ddp
         # 3. if using pipeline and dp size larger than 1, use data parallel grad handler
-        if isinstance(optimizer, ShardedOptimizer):
+        if isinstance(optimizer, ShardedOptimizerV2):
             gradient_handler_cfg = [dict(type='ZeROGradientHandler')]
             if verbose:
                 logger.info(
@@ -392,7 +396,7 @@ def initialize(model: nn.Module,
         gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
 
     # check if optimizer is ColossalaiOptimizer
-    if not isinstance(optimizer, (ColossalaiOptimizer, ShardedOptimizer)):
+    if not isinstance(optimizer, (ColossalaiOptimizer, ShardedOptimizerV2)):
         optimizer = ColossalaiOptimizer(optim=optimizer)
 
     # gradient accumulation
