@@ -75,7 +75,7 @@ def _run_dist(rank, world_size, port, cpu_offload, shard_strategy, use_cpuadam):
 @pytest.mark.parametrize("cpu_offload", [False])
 @pytest.mark.parametrize("use_cpuadam", [False])
 @pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def test_sharded_optim_v2_cpu_adam(world_size, cpu_offload, shard_strategy, use_cpuadam):
+def test_sharded_optim_v2(world_size, cpu_offload, shard_strategy, use_cpuadam):
     run_func = partial(_run_dist,
                        world_size=world_size,
                        port=free_port(),
