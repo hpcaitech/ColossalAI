@@ -218,6 +218,7 @@ class ShardedModelV2(nn.Module):
             else:
                 self._reduce_scatter_callback(param, new_grad)
             orig_grad_data.record_stream(self.comm_stream)
+        torch.cuda.current_stream().wait_stream(self.comm_stream)
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
         return empty_grad
