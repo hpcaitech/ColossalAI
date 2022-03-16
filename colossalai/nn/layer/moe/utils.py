@@ -25,6 +25,27 @@ class NormalNoiseGenerator:
         return inputs + noisy
 
 
+class UniformNoiseGenerator:
+    """Generates a random noisy mask for logtis tensor.
+    copied from mesh tensorflow:
+    Multiply values by a random number between 1-epsilon and 1+epsilon.
+    Makes models more resilient to rounding errors introduced by bfloat16.
+    This seems particularly important for logits.
+
+    :param eps: Epsilon in generator
+    :type eps: float
+    """
+
+    def __init__(self, eps: float):
+        self.uniform = torch.distributions.uniform.Uniform(low=torch.tensor(1.0 - eps, device=get_current_device()),
+                                                           high=torch.tensor(1.0 + eps,
+                                                                             device=get_current_device())).rsample
+
+    def __call__(self, inputs: torch.Tensor):
+        noisy = self.uniform(inputs.shape)
+        return inputs * noisy
+
+
 def autocast_softmax(inputs: torch.Tensor, dim: int):
     assert inputs.dtype in {torch.float16, torch.float32}
     fp16_flag = (inputs.dtype == torch.float16)
