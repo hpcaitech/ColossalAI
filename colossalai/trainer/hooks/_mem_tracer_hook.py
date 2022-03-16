@@ -7,7 +7,7 @@ from ._metric_hook import LearningRateMetric, MetricHook
 
 @HOOKS.register_module
 class MemTraceHook(BaseHook):
-    """This class allows users to trace memory"""
+    """Save memory stats and pass it to states"""
     def __init__(
         self,
         priority: int = 0,
@@ -16,24 +16,26 @@ class MemTraceHook(BaseHook):
         self._memory_monitor = AsyncMemoryMonitor()
 
     def after_hook_is_attached(self, trainer):
-        # Initialize the memory monitor      
-        self._check_metric_states_initialization(trainer)
-        trainer.states['metrics']['train']['LR'] = LearningRateMetric(epoch_only=self.by_epoch,
-                                                                      initial_lr=self.lr_scheduler.get_last_lr()[0])
-    
+        # Initialize the data
+        trainer.states['metrics']['train'] = self._memory_monitor.state_dict
+        trainer.states['metrics']['test'] = self._memory_monitor.state_dict
+
     def before_train_iter(self, trainer):
+        self._memory_monitor.start()
         return super().before_train_iter(trainer)
 
     def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
-        trainer.states['metrics']
+        self._memory_monitor.finish()
+        trainer.states['metrics']['train'] = self._memory_monitor.state_dict
+        trainer.states['metrics']['test'] = self._memory_monitor.state_dict
         return super().after_train_iter(trainer, output, label, loss)
-    
-    def after_train_epoch(self, trainer):
-        if self.by_epoch:
-            self.lr_scheduler.step()
-            trainer.states['metrics']['train']['LR'].update(self.lr_scheduler.get_last_lr()[0])
 
-    def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
-        if not self.by_epoch:
-            self.lr_scheduler.step()
-            trainer.states['metrics']['train']['LR'].update(self.lr_scheduler.get_last_lr()[0])
+    def before_test_iter(self, trainer):
+        self._memory_monitor.start()
+        return super().before_test(trainer)
+    
+    def after_test_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
+        self._memory_monitor.finish()
+        trainer.states['metrics']['train'] = self._memory_monitor.state_dict
+        trainer.states['metrics']['test'] = self._memory_monitor.state_dict
+        return super().after_test_iter(trainer, output, label, loss)
