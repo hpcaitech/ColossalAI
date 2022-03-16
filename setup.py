@@ -201,6 +201,7 @@ setup(
     description='An integrated large-scale model training system with efficient parallelization techniques',
     long_description=fetch_readme(),
     long_description_content_type='text/markdown',
+    license='Apache Software License 2.0',
     url='https://www.colossalai.org',
     project_urls={
         'Forum': 'https://github.com/hpcaitech/ColossalAI/discussions',
