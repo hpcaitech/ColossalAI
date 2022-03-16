@@ -3,29 +3,34 @@
 
 import copy
 from functools import partial
+import pytest
 
 import colossalai
-import pytest
-import torch.multiprocessing as mp
 from colossalai.utils import free_port
+
+import torch
+import torch.multiprocessing as mp
+
 from tests.components_to_test.registry import non_distributed_component_funcs
+
 from common import check_sharded_params_padding
 
 
 def run_dist(rank, world_size, port):
-    CONFIG = dict(fp16=dict(mode=None,),
-                  zero=dict(offload_optimizer_config=dict(device='cpu',
-                                                          pin_memory=True,
-                                                          buffer_count=5,
-                                                          fast_init=False),
-                            offload_param_config=dict(device='cpu',
-                                                      pin_memory=True,
-                                                      buffer_count=5,
-                                                      buffer_size=1e8,
-                                                      max_in_cpu=1e9)),
-                  parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
+    _config = dict(fp16=dict(mode=None,),
+                   zero=dict(optimzer=dict(optimizer_type=torch.optim.Adam, optimizer_config=dict(lr=1e-3)),
+                             offload_optimizer_config=dict(device='cpu',
+                                                           pin_memory=True,
+                                                           buffer_count=5,
+                                                           fast_init=False),
+                             offload_param_config=dict(device='cpu',
+                                                       pin_memory=True,
+                                                       buffer_count=5,
+                                                       buffer_size=1e8,
+                                                       max_in_cpu=1e9)),
+                   parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
 
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config=_config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     # FIXME revert back
     # test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     test_models = ['bert']

@@ -5,9 +5,7 @@ import argparse
 import os
 import pprint
 from pathlib import Path
-from statistics import mode
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
-from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Type
 
 import torch
 import torch.nn as nn
@@ -30,7 +28,7 @@ from colossalai.utils import (accumulate_gradient, get_current_device, is_using_
                               sync_model_param)
 from colossalai.zero import convert_to_zero_v2
 from colossalai.engine.ophooks import BaseOpHook
-from typing import Type
+from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
 
 
 def get_default_parser():
@@ -277,7 +275,8 @@ def initialize(model: Union[Callable, nn.Module],
             cfg_ = zero_cfg.copy()
         else:
             cfg_ = {}
-        model, optimizer = convert_to_zero_v2(model_builder=model, optimizer_class=torch.optim.Adam, **cfg_)
+        optimizer_config = zero_cfg.get('optimzer', None)
+        model, optimizer = convert_to_zero_v2(model_builder=model, optimizer_config=optimizer_config)
 
         logger.info("Initializing ZeRO model and optimzer finished!", ranks=[0])
         #FIXME() throw a warning if using zero with MP
