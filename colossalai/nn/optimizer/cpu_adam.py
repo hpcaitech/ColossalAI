@@ -40,17 +40,14 @@ class CPUAdam(torch.optim.Optimizer):
 
     def torch_adam_update(self, data, grad, exp_avg, exp_avg_sq, lr, beta1, beta2, eps, weight_decay, bias_correction1,
                           bias_correction2, loss_scale):
-        print('here in torch_adam_update')
         if loss_scale is not None:
             # grad.div_(loss_scaler.loss_scale)
             grad.div_(loss_scale)
 
         if weight_decay != 0:
-            if False:    #self.use_adamw:
-                # Perform stepweight decay
-                data.mul_(1 - lr * weight_decay)
-            else:
-                grad = grad.add(data, alpha=weight_decay)
+            # FIXME(jiaruifang) we do not consider the ADAMW
+            # data.mul_(1 - lr * weight_decay)
+            grad = grad.add(data, alpha=weight_decay)
 
         # Decay the first and second moment running average coefficient
         exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
@@ -81,43 +78,28 @@ class CPUAdam(torch.optim.Optimizer):
                 #     "sure the cpu_offload is Ture"
                 state = self.state[p]
 
-                if p.device.type == 'cpu':
-                    # State initialization
-                    # intended device for step
-                    cpu_device = torch.device('cpu')
-                    if len(state) == 0:
-                        state['step'] = 0
+                target_device = p.device
+                if len(state) == 0:
+                    state['step'] = 0
 
-                        # gradient momentums
-                        state['exp_avg'] = torch.zeros_like(p.data, dtype=torch.float, device=cpu_device)
-                        # gradient variances
-                        state['exp_avg_sq'] = torch.zeros_like(p.data, dtype=torch.float, device=cpu_device)
-                        # memory_format=torch.preserve_format)
+                    # gradient momentums
+                    state['exp_avg'] = torch.zeros_like(p.data, dtype=torch.float, device=target_device)
+                    # gradient variances
+                    state['exp_avg_sq'] = torch.zeros_like(p.data, dtype=torch.float, device=target_device)
 
-                    state['step'] += 1
-                    beta1, beta2 = group['betas']
+                state['step'] += 1
+                beta1, beta2 = group['betas']
 
+                if target_device.type == 'cpu':
+                    assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
+                    assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
                     self.cpu_adam_op.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
                                                  group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
                                                  state['exp_avg'], state['exp_avg_sq'], self.loss_scale)
-                elif p.device.type == 'cuda':
-                    # State initialization on cuda
-                    cuda_device = torch.device(f'cuda:{get_current_device()}')
-                    if len(state) == 0:
-                        state['step'] = 0
-
-                        # gradient momentums
-                        state['exp_avg'] = torch.zeros_like(p.data, dtype=torch.float, device=cuda_device)
-                        # gradient variances
-                        state['exp_avg_sq'] = torch.zeros_like(p.data, dtype=torch.float, device=cuda_device)
-                        # memory_format=torch.preserve_format)
-
-                    state['step'] += 1
-                    beta1, beta2 = group['betas']
-
+                elif target_device.type == 'cuda':
                     # FIXME() prepare grad on cuda
                     if p.grad.device.type == 'cpu':
-                        p.grad = p.grad.to(cuda_device)
+                        p.grad = p.grad.to(target_device)
 
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
                     assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"

@@ -139,7 +139,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # move as many as param fp32 tensors to cuda
                     cur_param_fp32_used = p.col_attr.data.payload.numel() * 4    # 4 Bytes
                     if acc_param_fp32_cuda_used + cur_param_fp32_used < cuda_margin_space_param_fp32:
-                        print('host a param fp32 on cuda')
                         self.master_params[p] = cast_tensor_to_fp32(p.col_attr.data.payload).to(
                             torch.cuda.current_device())
                     else:
