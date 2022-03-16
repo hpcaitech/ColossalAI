@@ -120,9 +120,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         if self._first:
             self._first = False
             cuda_margin_space = self.model.cuda_margin_space
-            # div 3 because the space is shared with param fp32, M and V
-            cuda_margin_space_param_fp32 = cuda_margin_space / 3
-            print(f'cuda_margin_space_param_fp32 {cuda_margin_space_param_fp32}')
+            # TODO(jiaruifang) The calculation assumes ADAM as Optimizer.
+            # We can use a function def calc_margin_space(optimimzer : Optimzer) -> int instead
+            # div 4 because the space is shared with param fp32, M and V and grad fp32
+            cuda_margin_space_param_fp32 = cuda_margin_space / 4
 
             acc_param_fp32_cuda_used = 0
             for group in self.optimizer.param_groups:
