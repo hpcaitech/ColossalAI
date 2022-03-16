@@ -223,3 +223,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # Because we will judge whether local grad accumulation
         # is enabled by wheter grad is None
         self.optim.zero_grad(set_to_none=True)
+
+    def sync_grad(self):
+        pass
