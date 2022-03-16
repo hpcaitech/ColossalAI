@@ -10,10 +10,12 @@ from colossalai.core import global_context as gpc
 from torch.optim import Optimizer
 from .sharded_model import ShardedModel
 from .sharded_optim import ShardedOptimizer
-from typing import Type
+from colossalai.zero.init_ctx import ZeroInitContext
+from typing import Callable, Type
+from colossalai.core import global_context as gpc
 
 
-def convert_to_zero_v2(model: nn.Module, optimizer_class: Type[Optimizer],
+def convert_to_zero_v2(model_builder: Callable, optimizer_class: Type[Optimizer],
                        **zero_config) -> (ShardedModelV2, ShardedOptimizerV2):
     """
     A helper function to integrate the model and optimizer with ZeRO optimizer and off-loading
@@ -28,10 +30,21 @@ def convert_to_zero_v2(model: nn.Module, optimizer_class: Type[Optimizer],
     :return: (model, optimizer)
     :rtype: Tuple
     """
-    assert isinstance(model, nn.Module)
-    #FIXME() zero init context
-    zero_model = ShardedModelV2(model, shard_strategy=TensorShardStrategy())
-    #FIXME()
+    # FIXME() can we use gpc here?
+    stard_strategy = TensorShardStrategy()
+
+    if isinstance(model_builder, nn.Module):
+        model = model_builder
+    elif isinstance(model_builder, Callable):
+        with ZeroInitContext(convert_fp16='fp16' in gpc.config,
+                             target_device=torch.cuda.current_device(),
+                             shard_strategy=stard_strategy,
+                             shard_param=True):
+            model = model_builder()
+    else:
+        raise TypeError(f"convert_to_zero_v2 dose not support model_builder of type {type(convert_to_zero_v2)}")
+
+    zero_model = ShardedModelV2(model, shard_strategy=stard_strategy)
     zero_optimizer = ShardedOptimizerV2(zero_model, optimizer_class, lr=1e-3)
     return zero_model, zero_optimizer
 
