@@ -11,7 +11,7 @@ from torch import Tensor
 from colossalai.engine.ophooks import register_ophooks_recursively, BaseOpHook
 from typing import Optional, Type
 from colossalai.engine.gradient_handler import BaseGradientHandler
-
+from colossalai.logging import get_dist_logger
 
 class Engine:
     """Basic engine class for training and evaluation. It runs a specific process method
@@ -89,8 +89,8 @@ class Engine:
         # whether this hook exist
         for h in self._ophook_list:
             if type(h) == type(ophook):
-                # TODO: what error should be raised
-                raise NotImplementedError
+                logger = get_dist_logger()
+                logger.warning(f"duplicate hooks, at least two instance of {type(ophook)}")
         self._ophook_list.append(ophook)
         register_ophooks_recursively(self._model, self._ophook_list)
 
