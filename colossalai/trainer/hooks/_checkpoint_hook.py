@@ -7,7 +7,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.registry import HOOKS
 from colossalai.trainer.hooks import BaseHook
 from colossalai.utils import is_dp_rank_0
-from colossalai.utils.checkpointing import get_latest_checkpoint_path, get_checkpoint_path
+from colossalai.utils.checkpointing import get_latest_epoch, get_checkpoint_path, get_old_world_sizes, assert_divisiblity
 from colossalai.utils.checkpointing import save_checkpoint, load_checkpoint
 from ._lr_scheduler_hook import LRSchedulerHook
 
@@ -109,26 +109,27 @@ class LoadCheckpointHook(BaseHook):
             if isinstance(hook, LRSchedulerHook):
                 lr_scheduler = hook.lr_scheduler
                 break
-
+        
+        old_tp_size, old_pp_size = get_old_world_sizes(self.checkpoint_dir)
+        assert_divisiblity(old_tp_size, old_pp_size)
         # use latest checkpoint if epoch = -1
         if self.epoch == -1:
-            path = get_latest_checkpoint_path(self.checkpoint_dir, suffix=self.suffix)
+            self.epoch = get_latest_epoch(self.checkpoint_dir, old_tp_size, old_pp_size, suffix=self.suffix)
+        
+        # if osp.exists(path):
+        last_epoch, _ = load_checkpoint(self.checkpoint_dir, old_tp_size, old_pp_size, self.epoch,
+                                        trainer.engine.model,
+                                        trainer.engine.optimizer,
+                                        lr_scheduler,
+                                        suffix=self.suffix,
+                                        finetune=self.finetune,
+                                        strict=self.strict)
+        if self.finetune:
+            trainer.cur_epoch = 0
         else:
-            path = get_checkpoint_path(self.checkpoint_dir, epoch=self.epoch, suffix=self.suffix)
+            trainer.cur_epoch = last_epoch
 
-        if osp.exists(path):
-            last_epoch, _ = load_checkpoint(path,
-                                            trainer.engine.model,
-                                            trainer.engine.optimizer,
-                                            lr_scheduler,
-                                            finetune=self.finetune,
-                                            strict=self.strict)
-            if self.finetune:
-                trainer.cur_epoch = 0
-            else:
-                trainer.cur_epoch = last_epoch
-
-            self.logger.info(
-                f'loaded checkpoint from {path}', ranks=[0])
-        else:
-            raise FileNotFoundError(f'checkpoint is not found at {path}')
+        self.logger.info(
+            f'loaded checkpoint', ranks=[0])
+        # else:
+        #     raise FileNotFoundError(f'checkpoint is not found at {path}')
