@@ -8,32 +8,21 @@ import pytest
 import colossalai
 from colossalai.utils import free_port
 
-import torch
 import torch.multiprocessing as mp
 
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-from common import check_sharded_params_padding
+from common import check_sharded_params_padding, ZERO_PARALLEL_CONFIG
 
 
 def run_dist(rank, world_size, port):
-    _config = dict(fp16=dict(mode=None,),
-                   zero=dict(optimzer=dict(optimizer_type=torch.optim.Adam, optimizer_config=dict(lr=1e-3)),
-                             offload_optimizer_config=dict(device='cpu',
-                                                           pin_memory=True,
-                                                           buffer_count=5,
-                                                           fast_init=False),
-                             offload_param_config=dict(device='cpu',
-                                                       pin_memory=True,
-                                                       buffer_count=5,
-                                                       buffer_size=1e8,
-                                                       max_in_cpu=1e9)),
-                   parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
+    colossalai.launch(config=ZERO_PARALLEL_CONFIG,
+                      rank=rank,
+                      world_size=world_size,
+                      host='localhost',
+                      port=port,
+                      backend='nccl')
 
-    colossalai.launch(config=_config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    # FIXME revert back
-    # test_models = ['repeated_computed_layers', 'resnet18', 'bert']
-    test_models = ['bert']
+    test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
@@ -65,8 +54,8 @@ def run_dist(rank, world_size, port):
                 output = engine(data)
                 loss = engine.criterion(output, label)
 
-                torch_model(data, label)
-                torch_loss = engine.criterion(output, label)
+                torch_output = torch_model(data)
+                torch_loss = engine.criterion(torch_output, label)
             else:
                 loss = engine(data, label)
                 torch_loss = torch_model(data, label)
