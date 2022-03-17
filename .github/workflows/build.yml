@@ -8,8 +8,8 @@ jobs:
   build:
     name: Build and Test Colossal-AI
     if: |
-        github.event.pull_request.draft == false && 
-        (github.base_ref == 'main' || github.base_ref == 'develop') && 
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
         contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
     runs-on: [self-hosted, gpu]
@@ -18,9 +18,6 @@ jobs:
       options: --gpus all --rm --ipc=host -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 40
     steps:
-      - name: Setup Environment
-        run: |
-          export https_proxy=http://172.17.0.1:7890 http_proxy=http://172.17.0.1:7890 all_proxy=socks5://172.17.0.1:7890
       - name: Install dependencies
         run: |
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
