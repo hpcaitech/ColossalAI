@@ -10,7 +10,7 @@ from colossalai.amp.amp_type import AMP_TYPE
 from colossalai.builder import build_pipeline_model
 from colossalai.engine.schedule import PipelineSchedule
 from colossalai.logging import get_dist_logger
-from colossalai.nn import Accuracy, LinearWarmupLR
+from colossalai.nn import LinearWarmupLR
 from colossalai.nn.loss import CrossEntropyLoss
 from colossalai.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, free_port, get_dataloader
@@ -19,7 +19,7 @@ from model_zoo.vit import vit_tiny_patch4_32
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 NUM_EPOCHS = 60
 WARMUP_EPOCHS = 5
 CONFIG = dict(parallel=dict(pipeline=2, tensor=dict(size=2, mode='1d')),
