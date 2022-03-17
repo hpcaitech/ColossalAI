@@ -1,11 +1,11 @@
-name: Publish to PyPI
+name: Publish to Test PyPI
 
 on: workflow_dispatch
 
 jobs:
   build-n-publish:
     if: github.base_ref == 'main' && github.repository == 'hpcaitech/ColossalAI' && contains('["FrankLeeeee", "ver217", "feifeibear", "kurisusnowdeng"]', github.actor)
-    name: Build and publish Python 🐍 distributions 📦 to PyPI
+    name: Build and publish Python 🐍 distributions 📦 to Test PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -15,9 +15,10 @@ jobs:
         python-version: '3.7.4'
     # publish to PyPI if executed on the main branch
     # publish to Test PyPI if executed on the develop branch
-    - name: Publish package to PyPI
+    - name: Publish package to Test PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
+        password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        repository_url: https://test.pypi.org/legacy/
         verbose: true

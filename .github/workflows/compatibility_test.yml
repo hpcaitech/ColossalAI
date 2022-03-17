@@ -5,7 +5,7 @@ on: workflow_dispatch
 jobs:
   build:
     name: Test for PyTorch compatibility
-    if: (github.base_ref == 'main'  || github.base_ref == 'develop') && github.repository == 'hpcaitech/ColossalAI'
+    if: github.base_ref == 'main' && github.repository == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, aws]
     strategy:
       fail-fast: false
