@@ -46,6 +46,7 @@ def free_port():
     while True:
         try:
             sock = socket.socket()
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             port = random.randint(20000, 65000)
             sock.bind(('localhost', port))
             sock.close()

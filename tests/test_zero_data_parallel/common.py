@@ -2,13 +2,41 @@ from functools import partial
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 
 from colossalai.logging import get_dist_logger
 from colossalai.utils import checkpoint
 from colossalai.zero.sharded_model import ShardedModelV2
+from colossalai.nn.optimizer import CPUAdam
 
-LOGGER = get_dist_logger()
+LOGGER = get_dist_logger('zero_test')
+
+MP_PARALLEL_CONFIG = dict(fp16=dict(mode=None,), parallel=dict(pipeline=dict(size=1), tensor=dict(size=2, mode=None)))
+
+_ZERO_MODEL_CONFIG = dict(reduce_scatter_bucket_size_mb=25,
+                          fp32_reduce_scatter=False,
+                          offload_config=None,
+                          gradient_predivide_factor=1.0,
+                          shard_param=True,
+                          use_memory_tracer=False)
+
+_ZERO_OPTIMIZER_CONFIG = dict(
+    optimizer_class=torch.optim.Adam,    #CPUAdam
+    cpu_offload=False,
+    initial_scale=2**5,
+    min_scale=1,
+    growth_factor=2,
+    backoff_factor=0.5,
+    growth_interval=1000,
+    hysteresis=2,
+    max_scale=2**32,
+    lr=1e-3)
+
+ZERO_PARALLEL_CONFIG = dict(fp16=dict(mode=None,),
+                            zero=dict(
+                                model_config=_ZERO_MODEL_CONFIG,
+                                optimizer_config=_ZERO_OPTIMIZER_CONFIG,
+                            ),
+                            parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
 
 CONFIG = dict(fp16=dict(mode=None,),
               zero=dict(level=3,
@@ -60,8 +88,8 @@ def check_grads(model, zero_model, loose=False):
 def check_params(model, zero_model, loose=False):
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
         zero_p = zero_p.clone().to(p.device)
-        assert p.dtype == zero_p.dtype
-        assert allclose(p, zero_p, loose=loose)
+        # assert p.dtype == zero_p.dtype
+        assert allclose(p.float(), zero_p.float(), loose=loose), f"diff {p.float() - zero_p.float()}"
 
 
 def check_grads_padding(model, zero_model, loose=False):

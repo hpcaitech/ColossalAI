@@ -1,5 +1,4 @@
 import functools
-from asyncio.log import logger
 from collections import OrderedDict
 from typing import Any, Optional
 
