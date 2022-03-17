@@ -1,21 +1,11 @@
-colossalai.amp.torch\_amp package
-=================================
-
-Submodules
-----------
-
-colossalai.amp.torch\_amp.torch\_amp module
--------------------------------------------
-
-.. automodule:: colossalai.amp.torch_amp.torch_amp
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
+colossalai.amp.torch\_amp
+=========================
 
 .. automodule:: colossalai.amp.torch_amp
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.amp.torch_amp.torch_amp

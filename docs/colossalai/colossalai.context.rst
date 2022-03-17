@@ -1,46 +1,19 @@
-colossalai.context package
-==========================
+colossalai.context
+==================
 
-Subpackages
------------
+.. automodule:: colossalai.context
+   :members:
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
 
    colossalai.context.process_group_initializer
    colossalai.context.random
 
-Submodules
-----------
 
-colossalai.context.config module
---------------------------------
+.. toctree::
+   :maxdepth: 2
 
-.. automodule:: colossalai.context.config
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-colossalai.context.parallel\_context module
--------------------------------------------
-
-.. automodule:: colossalai.context.parallel_context
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-colossalai.context.parallel\_mode module
-----------------------------------------
-
-.. automodule:: colossalai.context.parallel_mode
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: colossalai.context
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   colossalai.context.config
+   colossalai.context.parallel_context
+   colossalai.context.parallel_mode

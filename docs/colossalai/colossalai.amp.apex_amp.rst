@@ -1,21 +1,11 @@
-colossalai.amp.apex\_amp package
-================================
-
-Submodules
-----------
-
-colossalai.amp.apex\_amp.apex\_amp module
------------------------------------------
-
-.. automodule:: colossalai.amp.apex_amp.apex_amp
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
+colossalai.amp.apex\_amp
+========================
 
 .. automodule:: colossalai.amp.apex_amp
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.amp.apex_amp.apex_amp

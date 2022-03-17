@@ -1,22 +1,13 @@
-colossalai.zero package
-=======================
-
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 4
-
-   colossalai.zero.init_ctx
-   colossalai.zero.shard_utils
-   colossalai.zero.sharded_model
-   colossalai.zero.sharded_optim
-   colossalai.zero.sharded_param
-
-Module contents
----------------
+colossalai.zero
+===============
 
 .. automodule:: colossalai.zero
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.zero.loss_scaler
+   colossalai.zero.zero_redundancy_optimizer_level_2
+   colossalai.zero.zero_redundancy_optimizer_level_3

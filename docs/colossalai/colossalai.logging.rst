@@ -1,21 +1,11 @@
-colossalai.logging package
-==========================
-
-Submodules
-----------
-
-colossalai.logging.logging module
----------------------------------
-
-.. automodule:: colossalai.logging.logging
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
+colossalai.logging
+==================
 
 .. automodule:: colossalai.logging
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.logging.logging

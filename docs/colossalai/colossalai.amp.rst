@@ -1,31 +1,18 @@
-colossalai.amp package
-======================
+colossalai.amp
+==============
 
-Subpackages
------------
+.. automodule:: colossalai.amp
+   :members:
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
 
    colossalai.amp.apex_amp
    colossalai.amp.naive_amp
    colossalai.amp.torch_amp
 
-Submodules
-----------
 
-colossalai.amp.amp\_type module
--------------------------------
+.. toctree::
+   :maxdepth: 2
 
-.. automodule:: colossalai.amp.amp_type
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: colossalai.amp
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   colossalai.amp.amp_type

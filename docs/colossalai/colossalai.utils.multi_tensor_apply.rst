@@ -1,21 +1,11 @@
-colossalai.utils.multi\_tensor\_apply package
-=============================================
-
-Submodules
-----------
-
-colossalai.utils.multi\_tensor\_apply.multi\_tensor\_apply module
------------------------------------------------------------------
-
-.. automodule:: colossalai.utils.multi_tensor_apply.multi_tensor_apply
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
+colossalai.utils.multi\_tensor\_apply
+=====================================
 
 .. automodule:: colossalai.utils.multi_tensor_apply
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.utils.multi_tensor_apply.multi_tensor_apply

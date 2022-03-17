@@ -1,10 +1,5 @@
-colossalai.trainer.hooks package
-================================
-
-Module contents
----------------
+colossalai.trainer.hooks
+========================
 
 .. automodule:: colossalai.trainer.hooks
    :members:
-   :undoc-members:
-   :show-inheritance:

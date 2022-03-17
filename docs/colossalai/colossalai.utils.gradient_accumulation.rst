@@ -1,10 +1,5 @@
-colossalai.utils.gradient\_accumulation package
-===============================================
-
-Module contents
----------------
+colossalai.utils.gradient\_accumulation
+=======================================
 
 .. automodule:: colossalai.utils.gradient_accumulation
    :members:
-   :undoc-members:
-   :show-inheritance:

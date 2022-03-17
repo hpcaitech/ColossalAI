@@ -1,21 +1,11 @@
-colossalai.context.random package
-=================================
-
-Submodules
-----------
-
-colossalai.context.random.seed\_manager module
-----------------------------------------------
-
-.. automodule:: colossalai.context.random.seed_manager
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
+colossalai.context.random
+=========================
 
 .. automodule:: colossalai.context.random
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.context.random.seed_manager

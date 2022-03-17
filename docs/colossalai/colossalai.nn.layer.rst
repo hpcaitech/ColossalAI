@@ -1,11 +1,11 @@
-colossalai.nn.layer package
-===========================
+colossalai.nn.layer
+===================
 
-Subpackages
------------
+.. automodule:: colossalai.nn.layer
+   :members:
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
 
    colossalai.nn.layer.colossalai_layer
    colossalai.nn.layer.moe
@@ -18,21 +18,8 @@ Subpackages
    colossalai.nn.layer.vanilla
    colossalai.nn.layer.wrapper
 
-Submodules
-----------
 
-colossalai.nn.layer.base\_layer module
---------------------------------------
+.. toctree::
+   :maxdepth: 2
 
-.. automodule:: colossalai.nn.layer.base_layer
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: colossalai.nn.layer
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   colossalai.nn.layer.base_layer

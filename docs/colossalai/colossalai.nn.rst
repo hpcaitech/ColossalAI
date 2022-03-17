@@ -1,11 +1,11 @@
-colossalai.nn package
-=====================
+colossalai.nn
+=============
 
-Subpackages
------------
+.. automodule:: colossalai.nn
+   :members:
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 2
 
    colossalai.nn.layer
    colossalai.nn.loss
@@ -14,21 +14,8 @@ Subpackages
    colossalai.nn.model
    colossalai.nn.optimizer
 
-Submodules
-----------
 
-colossalai.nn.init module
--------------------------
+.. toctree::
+   :maxdepth: 2
 
-.. automodule:: colossalai.nn.init
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
-
-.. automodule:: colossalai.nn
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   colossalai.nn.init

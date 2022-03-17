@@ -1,29 +1,12 @@
-colossalai.nn.layer.wrapper package
-===================================
-
-Submodules
-----------
-
-colossalai.nn.layer.wrapper.lambda\_wrapper module
---------------------------------------------------
-
-.. automodule:: colossalai.nn.layer.wrapper.lambda_wrapper
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-colossalai.nn.layer.wrapper.pipeline\_wrapper module
-----------------------------------------------------
-
-.. automodule:: colossalai.nn.layer.wrapper.pipeline_wrapper
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Module contents
----------------
+colossalai.nn.layer.wrapper
+===========================
 
 .. automodule:: colossalai.nn.layer.wrapper
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.nn.layer.wrapper.lambda_wrapper
+   colossalai.nn.layer.wrapper.pipeline_wrapper
