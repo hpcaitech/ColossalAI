@@ -28,14 +28,30 @@ class Initializer_3D_Input(ProcessGroupInitializer):
 
     :param num_group: The number of all tensor groups
     :param depth: Depth of 3D parallelism
-    :param args: Args used in base class
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     :type num_group: int
     :type depth: int
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, num_group: int, depth: int, *args):
-        super().__init__(*args)
+    def __init__(self, num_group: int, depth: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.num_group = num_group
         self.depth = depth
 
@@ -72,14 +88,30 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
 
     :param num_group: The number of all tensor groups
     :param depth: Depth of 3D parallelism
-    :param args: Args used in base class
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     :type num_group: int
     :type depth: int
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, num_group: int, depth: int, *args):
-        super().__init__(*args)
+    def __init__(self, num_group: int, depth: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.num_group = num_group
         self.depth = depth
 
@@ -116,14 +148,30 @@ class Initializer_3D_Output(ProcessGroupInitializer):
 
     :param num_group: The number of all tensor groups
     :param depth: Depth of 3D parallelism
-    :param args: Args used in base class
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     :type num_group: int
     :type depth: int
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, num_group: int, depth: int, *args):
-        super().__init__(*args)
+    def __init__(self, num_group: int, depth: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.num_group = num_group
         self.depth = depth
 
@@ -158,11 +206,28 @@ class Initializer_3D_Output(ProcessGroupInitializer):
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_3D(ProcessGroupInitializer):
     """Serve as the single entry point to 3D parallel initialization.
+
     :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.depth = round(math.pow(self.tensor_parallel_size, 1 / 3))
         assert self.tensor_parallel_size == self.depth ** 3, \

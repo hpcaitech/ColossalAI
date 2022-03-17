@@ -61,6 +61,11 @@ def sync_model_param(model, parallel_mode):
     :param parallel_mode: Parallel mode to be checked
     :type model: torch.nn.Module
     :type parallel_mode:  colossalai.context.ParallelMode
+
+    .. note:
+        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        could be found in ../context/parallel_mode.py or
+        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
         for param in model.parameters():
@@ -150,8 +155,10 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     """Clips gradient norm of an iterable of parameters whose gradients are in fp32.
 
     This is adapted from :func:`torch.nn.utils.clip_grad.clip_grad_norm_` and
-    added functionality to handle model parallel parameters. Note that
-    the gradients are modified in place.
+    added functionality to handle model parallel parameters.
+
+    .. note::
+        the gradients are modified in place.
 
     :param parameters: An iterable of Tensors or a single Tensor that will have gradients normalized
     :type parameters: (Iterable[Tensor] or Tensor)

@@ -31,8 +31,8 @@ from colossalai.engine.ophooks import BaseOpHook
 
 
 def get_default_parser():
-    """Reads user command line and uses an argument parser to parse the input arguments.
-    Input arguments include configuration, host, port, world size, local rank, backend for torch.distributed.
+    """Uses an argument parser to parse the input arguments from user command line.
+    Input arguments include `config`, `host`, `port`, `world_size`, `local_rank`, `backend` for torch.distributed.
 
     :return: Returns the parser with the default arguments, the user may add customized arguments into this parser
     :rtype: Namespace

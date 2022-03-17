@@ -43,11 +43,13 @@ class PipelineSchedule(BaseSchedule):
 
     :param num_microbatches: The number of microbatches
     :type num_microbatches: int
-    :param batch_data_process_func: The preprocessing function which receives a batch of data, and it will be executed in `load_batch`
+    :param batch_data_process_func: The preprocessing function which receives a batch of data,
+     and it will be executed in `load_batch`
     :type batch_data_process_func: Callable, optional
     :param tensor_shape: Specified shape in pipeline communication
     :type tensor_shape: torch.Size, optional
-    :param scatter_gather_tensors: If set to `True`, communication will be reduced over pipeline when using 1D tensor parallelization
+    :param scatter_gather_tensors: If set to `True`, communication will be reduced over pipeline
+     when using 1D tensor parallelization
     :type scatter_gather_tensors: bool, optional
     """
 

@@ -23,7 +23,8 @@ class DistributedLogger:
 
     @staticmethod
     def get_instance(name: str):
-        """Get the unique single logger instance based on name.
+        """Get the unique single logger instance based on name. If this logger doesn't exist, create a new logger using
+        input name
 
         :param name: The name of the logger
         :type name: str
@@ -116,6 +117,11 @@ class DistributedLogger:
         :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
         :param ranks: List of parallel ranks
         :type ranks: list
+
+        .. note::
+            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            could be found in ../context/parallel_mode.py or
+            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('info', message, parallel_mode, ranks)
 
@@ -128,6 +134,11 @@ class DistributedLogger:
         :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
         :param ranks: List of parallel ranks
         :type ranks: list
+
+        .. note::
+            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            could be found in ../context/parallel_mode.py or
+            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('warning', message, parallel_mode, ranks)
 
@@ -140,6 +151,11 @@ class DistributedLogger:
         :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
         :param ranks: List of parallel ranks
         :type ranks: list
+
+        .. note::
+            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            could be found in ../context/parallel_mode.py or
+            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('debug', message, parallel_mode, ranks)
 
@@ -152,5 +168,10 @@ class DistributedLogger:
         :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
         :param ranks: List of parallel ranks
         :type ranks: list
+
+        .. note::
+            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            could be found in ../context/parallel_mode.py or
+            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('error', message, parallel_mode, ranks)

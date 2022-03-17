@@ -58,6 +58,11 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
     :type seed: int
     :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
         :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
+
+    .. note::
+        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        could be found in ../context/parallel_mode.py or
+        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     _SEED_MANAGER.add_seed(parallel_mode, seed, overwrite)
 
@@ -67,6 +72,11 @@ def set_mode(parallel_mode: ParallelMode):
 
     :param parallel_mode: The chosen parallel mode
     :type parallel_mode: :class:`colossalai.context.ParallelMode`
+
+    .. note::
+        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        could be found in ../context/parallel_mode.py or
+        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     _SEED_MANAGER.set_mode(parallel_mode)
 
@@ -98,6 +108,10 @@ def seed(parallel_mode: ParallelMode):
         with seed(ParallelMode.DATA):
             output = F.dropout(input)
 
+    .. note::
+        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        could be found in ../context/parallel_mode.py or
+        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     try:
         # set to new mode
@@ -125,6 +139,10 @@ def with_seed(func, parallel_mode: ParallelMode):
         wrapper_forward = with_seed(forward, ParallelMode.DATA)
         out = wrapped_forward(input)
 
+    .. note::
+        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        could be found in ../context/parallel_mode.py or
+        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
 
     @functools.wraps(func)

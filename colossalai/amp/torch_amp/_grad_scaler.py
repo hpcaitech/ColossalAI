@@ -167,7 +167,7 @@ class GradScaler(object):
         Returns scaled outputs.  If this instance of :class:`GradScaler` is not enabled, outputs are returned
         unmodified.
 
-        Args:
+        Args:   
             outputs (Tensor or iterable of Tensors):  Outputs to scale.
         """
         if not self._enabled:

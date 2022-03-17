@@ -14,6 +14,11 @@ from colossalai.utils import get_current_device
 def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: bool = False) -> Tensor:
     """Gathers all tensors from the parallel group and concatenates them in a 
     specific dimension.
+
+    .. note::
+        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        could be found in ../context/parallel_mode.py or
+        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     
     :param tensor: Tensor to be gathered
     :param dim: The dimension concatenating in
@@ -56,7 +61,12 @@ def reduce_scatter(tensor: Tensor,
                    async_op: bool = False) -> Tensor:
     """Reduces all tensors then scatters it in a specific dimension to all 
     members in the parallel group.
-    
+
+    .. note::
+        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        could be found in ../context/parallel_mode.py or
+        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+
     :param tensor: Tensor to be reduced and scattered
     :param dim: The dimension scattering in
     :param parallel_mode: Parallel group mode used in this communication

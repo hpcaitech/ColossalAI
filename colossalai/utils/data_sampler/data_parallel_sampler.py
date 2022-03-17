@@ -130,6 +130,8 @@ def get_dataloader(dataset,
     :param drop_last: Drop the last incomplete batch of data
     :param pin_memory: Whether to pin memory address in CPU memory
     :param num_workers: Number of worker threads for this dataloader
+    :param kwargs: parameters for torch.utils.data.DataLoader, more details could be found in
+                https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader
 
     :type dataset: :class:`torch.utils.data.Dataset`
     :type shuffle: bool, optional. Default is False

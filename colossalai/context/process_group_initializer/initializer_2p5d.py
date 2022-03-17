@@ -35,14 +35,30 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
 
     :param tesseract_dim: The dimension of tesseract
     :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     :type tesseract_dim: int
     :type tesseract_dep: int
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
-        super(Initializer_2p5D_ROW, self).__init__(*args)
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args, **kwargs):
+        super(Initializer_2p5D_ROW, self).__init__(*args, **kwargs)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
@@ -84,14 +100,30 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
 
     :param tesseract_dim: The dimension of tesseract
     :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     :type tesseract_dim: int
     :type tesseract_dep: int
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
-        super(Initializer_2p5D_Col, self).__init__(*args)
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args, **kwargs):
+        super(Initializer_2p5D_Col, self).__init__(*args, **kwargs)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
@@ -133,14 +165,30 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
 
     :param tesseract_dim: The dimension of tesseract
     :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     :type tesseract_dim: int
     :type tesseract_dep: int
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
-        super(Initializer_2p5D_Dep, self).__init__(*args)
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args, **kwargs):
+        super(Initializer_2p5D_Dep, self).__init__(*args, **kwargs)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
@@ -183,14 +231,30 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
 
     :param tesseract_dim: The dimension of tesseract
     :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
+    :param args: Args used to initialize ProcessGroupInitializer
+    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     :type tesseract_dim: int
     :type tesseract_dep: int
+
+    details of args and kwargs:
+    :param rank: The rank of current process
+    :param world_size: Size of whole communication world
+    :param config: Running configuration
+    :param data_parallel_size: Size of data parallel
+    :param pipeline_parallel_size: Size of pipeline parallel
+    :param tensor_parallel_size: Size of tensor parallel
+
+    :type rank: int
+    :type world_size: int
+    :type config: Config
+    :type data_parallel_size: int
+    :type pipeline_parallel_size: int
+    :type tensor_parallel_size: int
     """
 
-    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
-        super(Initializer_2p5D_XZ, self).__init__(*args)
+    def __init__(self, tesseract_dim: int, tesseract_dep: int, *args, **kwargs):
+        super(Initializer_2p5D_XZ, self).__init__(*args, **kwargs)
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim

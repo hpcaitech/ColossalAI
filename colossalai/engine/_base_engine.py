@@ -32,6 +32,8 @@ class Engine:
     :type ophook_list: list
     :param verbose: whether to display log info
     :type verbose: bool
+
+    example of using Engine in training could b find in https://www.colossalai.org/docs/basics/engine_trainer
     """
 
     def __init__(self,

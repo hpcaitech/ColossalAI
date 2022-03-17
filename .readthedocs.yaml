@@ -28,3 +28,6 @@ python:
    install:
    - requirements: requirements/requirements.txt
    - requirements: docs/requirements.txt
+
+submodules:
+    exclude: engine

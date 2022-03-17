@@ -15,6 +15,10 @@ class NonPipelineSchedule(BaseSchedule):
     During one process, it loads a batch of dataset and feeds it to the model.
     After getting the output and calculating the loss, it will use :meth:`step`
     to update the parameters if it is in training mode.
+
+    :param batch_data_process_func: The preprocessing function which receives a batch of data,
+     and it will be executed in load_batch
+    :type batch_data_process_func: Callable, optional
     """
 
     def forward_backward_step(self,
@@ -27,12 +31,12 @@ class NonPipelineSchedule(BaseSchedule):
         The returned labels and loss will None if :attr:`return_loss` is False.
 
         :param engine: Model for training and inference
-        :param data_iter: Data iterator of the dataloader, e.g. iter(dataloader)
+        :param data_iter: Dataloader as the form of an iterator, obtained by calling iter(dataloader)
         :param forward_only: If True, the model is run for the forward pass, else back propagation will be executed
         :param return_loss: Loss will be returned if True
         :param return_output_label: Output and label will be returned if True
         :type engine: Iterator
-        :type data_iter: Iterator
+        :type data_iter: Iterable
         :type forward_only: bool, optional
         :type return_loss: bool, optional
         :type return_output_label: bool, optional

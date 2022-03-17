@@ -153,7 +153,13 @@ def partition_balanced(weights, pipeline_parallel_size, num_chunks):
 
 def count_layer_params(layers):
     """Count the number of parameters in each layer
+
+    :param layers: `LAYERS` object for counting parameters
+    :type layers: `torch.nn.Sequential`
+    :return: The number of parameters of input layer
+    :rtype: int
     """
+
     param_counts = [0] * len(layers)
     for idx, cfg in enumerate(layers):
         layer = build_layer(cfg)
@@ -238,7 +244,7 @@ def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method:
 
 def build_pipeline_model(layers: nn.Sequential, num_chunks: int = 1, verbose: bool = False):
     """An intializer to split the model into different stages for pipeline parallelism.
-    Note that `layer` must be `torch.nn.Sequential`.
+    .. Note:: that `layer` must be `torch.nn.Sequential`.
 
     :param layers: Layers of model
     :type layers: `torch.nn.Sequential`
