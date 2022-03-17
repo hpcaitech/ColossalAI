@@ -33,10 +33,6 @@ def run_dist(rank, world_size, port, parallel_config):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
 
-        # adapt to a Callbale with empty parameters
-        # def module_builder_new():
-        #     return model_builder(checkpoint=True)
-
         colo_model = model_builder(checkpoint=True)
         torch_model = copy.deepcopy(colo_model).cuda()
         engine, train_dataloader, _, _ = colossalai.initialize(colo_model,
