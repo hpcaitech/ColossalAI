@@ -13,7 +13,7 @@ def assert_not_equal(a: Tensor, b: Tensor):
 def assert_close(a: Tensor, b: Tensor, rtol: float = 1e-5, atol: float = 1e-8):
     assert torch.allclose(a, b, rtol=rtol, atol=atol), f'expected a and b to be close but they are not, {a} vs {b}'
 
-def assert_close_loose(a: Tensor, b: Tensor, rtol: float = 1e-2, atol: float = 1e-3):
+def assert_close_loose(a: Tensor, b: Tensor, rtol: float = 1e-3, atol: float = 1e-3):
     assert_close(a, b, rtol, atol)
 
 def assert_equal_in_group(tensor: Tensor, process_group: ProcessGroup = None):

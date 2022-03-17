@@ -449,6 +449,7 @@ class ParallelContext:
                 dist.destroy_process_group(group)
         # destroy global process group
         dist.destroy_process_group()
+        self._groups.clear()
 
     def set_device(self, device_ordinal: int = None):
         """Sets distributed processes to be bound to devices.
