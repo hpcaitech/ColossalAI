@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from asyncio.log import logger
 from typing import List
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
@@ -96,7 +97,8 @@ class Engine:
 
     def remove_hook(self, ophook: Type[BaseOpHook]) -> None:
         """remove hook"""
-        pass
+        logger = get_dist_logger()
+        logger.warning(f"removing hooks is currently not supported")
 
     def zero_grad(self):
         """Set the gradient of parameters to zero
