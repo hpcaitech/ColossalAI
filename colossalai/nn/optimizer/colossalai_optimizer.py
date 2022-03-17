@@ -9,6 +9,7 @@ from colossalai.utils import clip_grad_norm_fp32
 
 
 class ColossalaiOptimizer(Optimizer):
+    """The wrapper of torch.optim.Optimizer to adapt colossalai"""
 
     def __init__(self, optim: Optimizer):
         self.optim = optim

@@ -63,7 +63,7 @@ def sync_model_param(model, parallel_mode):
     :type parallel_mode:  colossalai.context.ParallelMode
 
     .. note:
-        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
         could be found in ../context/parallel_mode.py or
         https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """

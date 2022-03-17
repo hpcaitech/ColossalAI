@@ -18,8 +18,10 @@ class Accuracy3D(nn.Module):
     def forward(self, logits, targets):
         """Calculate the accuracy of predicted labels.
 
-         :param logits: Predicted labels
-         :param targets: True labels from data
+        :param logits: Predicted labels
+        :param targets: True labels from data
+        :return: the accuracy of prediction
+        :rtype: float
          """
         with torch.no_grad():
             targets = split_tensor_3d(targets, 0, self.weight_parallel_mode)

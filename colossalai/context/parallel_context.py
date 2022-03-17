@@ -112,7 +112,7 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about `ParallelMode`
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -130,7 +130,7 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -148,7 +148,7 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -166,7 +166,7 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -190,7 +190,7 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -216,7 +216,7 @@ class ParallelContext:
         :rtype: bool
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -236,7 +236,7 @@ class ParallelContext:
         :rtype: bool
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -268,7 +268,7 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -286,7 +286,7 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -304,7 +304,7 @@ class ParallelContext:
         :rtype: torch.distributed.ProcessGroup
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -322,7 +322,7 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -340,7 +340,7 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -358,7 +358,7 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -505,7 +505,7 @@ class ParallelContext:
         :rtype: bool
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """

@@ -65,6 +65,11 @@ class OneCycleLR(_OneCycleLR):
         number of *batches* computed, not the total number of epochs computed.
         When last_epoch=-1, the schedule is started from the beginning, defaults to -1
     :type last_epoch: int, optional
+    :param kwargs: kwargs for initializing torch.optim.lr_scheduler.OneCycleLR
+
+    the parameters could be contained in kwargs: [epochs (int, optional), steps_per_epoch (int, optional),
+    three_phase (bool, optional), verbose (bool, optional)], more details about kwargs could be found in
+    https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html#torch.optim.lr_scheduler.OneCycleLR
 
     .. _Super-Convergence\: Very Fast Training of Neural Networks Using Large Learning Rates:
         https://arxiv.org/abs/1708.07120

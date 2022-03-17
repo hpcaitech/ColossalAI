@@ -60,7 +60,7 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
         :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
 
     .. note::
-        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
         could be found in ../context/parallel_mode.py or
         https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
@@ -74,7 +74,7 @@ def set_mode(parallel_mode: ParallelMode):
     :type parallel_mode: :class:`colossalai.context.ParallelMode`
 
     .. note::
-        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
         could be found in ../context/parallel_mode.py or
         https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
@@ -109,7 +109,7 @@ def seed(parallel_mode: ParallelMode):
             output = F.dropout(input)
 
     .. note::
-        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
         could be found in ../context/parallel_mode.py or
         https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
@@ -140,7 +140,7 @@ def with_seed(func, parallel_mode: ParallelMode):
         out = wrapped_forward(input)
 
     .. note::
-        the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
         could be found in ../context/parallel_mode.py or
         https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """

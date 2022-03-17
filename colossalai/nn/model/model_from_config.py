@@ -9,6 +9,8 @@ from colossalai.builder import build_layer
 
 
 class ModelFromConfig(nn.Module, ABC):
+    """Build model from the config
+    """
 
     def __init__(self):
         super(ModelFromConfig, self).__init__()

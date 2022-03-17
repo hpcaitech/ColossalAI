@@ -68,7 +68,7 @@ def build_layer(config):
     """Returns a layer object of :class:`nn.Module` constructed from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `LAYERS`
+        containing information used in the construction of the ``LAYERS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.nn.Module`
     :rtype: :class:`torch.nn.Module`
@@ -81,7 +81,7 @@ def build_loss(config):
     from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `LOSSES`
+        containing information used in the construction of the ``LOSSES``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.nn.modules.loss._Loss`
     :rtype: :class:`torch.nn.modules.loss._Loss`
@@ -93,7 +93,7 @@ def build_model(config):
     """Returns a model object of :class:`nn.Module` constructed from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `MODELS`
+        containing information used in the construction of the ``MODELS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.nn.Module`
     :rtype: :class:`torch.nn.Module`
@@ -106,7 +106,7 @@ def build_dataset(config):
     from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `DATASETS`
+        containing information used in the construction of the ``DATASETS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.utils.data.Dataset`
     :rtype: :class:`torch.utils.data.Dataset`
@@ -119,7 +119,7 @@ def build_optimizer(config, model):
     'model' and 'params'.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `OPTIMIZERS`
+        containing information used in the construction of the ``OPTIMIZERS``
     :type config: dict or :class:`colossalai.context.Config`
     :param model: A model containing parameters for the optimizer
     :type model: :class:`nn.Module`
@@ -136,7 +136,7 @@ def build_gradient_handler(config, model, optimizer):
     `model` and `optimizer`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `GRADIENT_HANDLER`
+        containing information used in the construction of the ``GRADIENT_HANDLER``
     :type config: dict or :class:`colossalai.context.Config`
     :param model: A model containing parameters for the gradient handler
     :type model: :class:`nn.Module`
@@ -155,7 +155,7 @@ def build_hooks(config, trainer):
     """Returns a hook object of :class:`BaseHook` constructed from `config` and `trainer`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `HOOKS`
+        containing information used in the construction of the ``HOOKS``
     :type config: dict or :class:`colossalai.context.Config`
     :param trainer: A :class:`Trainer` object containing parameters for the hook
     :type trainer: :class:`Trainer`
@@ -171,7 +171,7 @@ def build_ophooks(config):
     """Returns a hook object of :class:`BaseOpHook` constructed from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `OPHOOKS`
+        containing information used in the construction of the ``OPHOOKS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`colossalai.trainer.hooks.BaseOpHook`
     :rtype: :class:`colossalai.trainer.hooks.BaseOpHook`
@@ -185,7 +185,7 @@ def build_transform(config):
     from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `TRANSFORMS`
+        containing information used in the construction of the ``TRANSFORMS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torchvision.transforms`
     :rtype: :class:`torchvision.transforms`
@@ -198,7 +198,7 @@ def build_data_sampler(config, dataset):
     constructed from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `DATA_SAMPLERS`
+        containing information used in the construction of the ``DATA_SAMPLERS``
     :type config: dict or :class:`colossalai.context.Config`
     :param dataset: An object of :class:`torch.utils.data.Dataset` containing information
         used in the construction of the return object
@@ -216,7 +216,7 @@ def build_lr_scheduler(config, optimizer):
     constructed from `config`, `optimizer`, `total_steps` and `num_steps_per_epoch`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `LR_SCHEDULERS`
+        containing information used in the construction of the ``LR_SCHEDULERS``
     :type config: dict or :class:`colossalai.context.Config`
     :param optimizer: An optimizer object containing parameters for the learning rate
         scheduler
@@ -233,7 +233,7 @@ def build_schedule(config):
     """Returns a schedule of :class:`colossalai.engine.schedule.BaseSchedule`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the `SCHEDULE`
+        containing information used in the construction of the ``SCHEDULE``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`colossalai.engine.schedule.BaseSchedule`
     :rtype: :class:`colossalai.engine.schedule.BaseSchedule`

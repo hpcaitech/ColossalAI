@@ -15,6 +15,12 @@ from ..utils import to_2tuple
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
+
+    :param drop_prob: probability of dropping path
+    :type drop_prob: float
+    :param training: whether in training progress
+    :type training: bool
+
     This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
     the original name is misleading as 'Drop Connect' is a different form of dropout in a separate paper...
     See discussion: https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956 ... I've opted for
@@ -34,6 +40,10 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
 class DropPath(nn.Module):
     """
     Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+
+    :param drop_prob: probability of dropping path
+    :type drop_prob: float
+
     Adapted from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers/drop.py
     """
 
@@ -46,7 +56,21 @@ class DropPath(nn.Module):
 
 
 class WrappedDropout(nn.Module):
-    """Same as torch.nn.Dropout. But it is wrapped with the context of seed manager.
+    """Same as torch.nn.Dropout. But it is wrapped with the context of seed manager. During training, randomly zeroes
+    some of the elements of the input tensor with probability p using samples from a Bernoulli distribution. Each
+    channel will be zeroed out independently on every forward call. Furthermore, the outputs are scaled by a factor of
+    1/(1-p) during training. This means that during evaluation the module simply computes an identity function.
+
+    :param p:
+    :type p: float
+    :param inplace: whether to do dropout in-place, default to be False
+    :type inplace: bool
+    :param mode: The chosen parallel mode
+    :type mode: :class:`colossalai.context.ParallelMode`
+
+    .. note::
+        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
 
     def __init__(self, p: float = 0.5, inplace: bool = False, mode=None):
@@ -76,6 +100,15 @@ class WrappedDropout(nn.Module):
 class WrappedDropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     Here, it is wrapped with the context of seed manager.
+
+    :param p:
+    :type p: float
+    :param mode: The chosen parallel mode
+    :type mode: :class:`colossalai.context.ParallelMode`
+
+    .. note::
+        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
 
     def __init__(self, p: float = 0., mode=None):
@@ -181,7 +214,7 @@ class VanillaClassifier(nn.Module):
     :type in_features: int
     :param num_classes: number of classes
     :type num_classes: int
-    :param weight: weight of the classifier, defaults to True
+    :param weight: weight of the classifier, defaults to None
     :type weight: torch.nn.Parameter, optional
     :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
     :type bias: bool, optional

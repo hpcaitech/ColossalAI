@@ -68,6 +68,7 @@ class FusedAdam(torch.optim.Optimizer):
             raise RuntimeError('FusedAdam requires cuda extensions')
 
     def zero_grad(self):
+        """Set all gradients to zero"""
         if self.set_grad_none:
             for group in self.param_groups:
                 for p in group['params']:

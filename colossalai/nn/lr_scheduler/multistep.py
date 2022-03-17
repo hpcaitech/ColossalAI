@@ -47,7 +47,8 @@ class MultiStepWarmupLR(WarmupScheduler):
     :type gamma: float, optional
     :param num_steps_per_epoch: Number of steps per epoch, defaults to -1
     :type num_steps_per_epoch: int, optional
-    :param last_epoch: The index of last epoch, defaults to -1
+    :param last_epoch: The index of last epoch, defaults to -1. When last_epoch=-1, the schedule is started
+            from the beginning or When last_epoch=-1, sets initial lr as lr.
     :type last_epoch: int, optional
     """
 

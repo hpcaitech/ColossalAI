@@ -17,10 +17,15 @@ class CrossEntropyLoss3D(_Loss):
     Cross entropy loss for 3D parallelism
 
     :param reduction: whether to average the loss, defaults to True
-    :param args: Args for loss function
-    :param kwargs: Kwargs for loss function
-
     :type reduction: bool, optional
+    :param args: Args for torch.nn.functional.cross_entropy
+    :param kwargs: Kwargs for torch.nn.functional.cross_entropy
+
+    the parameters args and kwargs could contain: [weight (Tensor, optional), size_average (bool, optional),
+    ignore_index (int, optional), label_smoothing (float, optional)]
+
+    more details about args, kwargs and torch.nn.functional.cross_entropy could be found in
+    https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy
     """
 
     def __init__(self, reduction=True, *args, **kwargs):

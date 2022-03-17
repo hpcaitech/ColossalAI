@@ -47,6 +47,11 @@ class Linear(nn.Module):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
     :param kwargs: Kwargs used for particular parallelisms
+
+    ..note: kwargs would contain different parameters when you use different parallelisms,
+    the dict of kwargs are showing below: {Linear1D: {gather_output: bool (optional, default to be false),
+    skip_bias_add: bool (optional, default to be false)}, Linear2D: {skip_bias_add: bool (optional,
+    default to be false)}, Linear2p5D: {skip_bias_add: bool (optional, default to be false)}, Linear3D: {None}}
     """
 
     def __init__(self,
@@ -95,6 +100,8 @@ class Classifier(nn.Module):
     :type in_features: int
     :param num_classes: number of total classes for the dataset
     :type num_classes: int
+    :param weight: pretrained weights for this layer
+    :type weight: ``nn.Parameter``
     :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
     :type bias: bool, optional
     :param dtype: The dtype of parameters, defaults to None
@@ -103,6 +110,8 @@ class Classifier(nn.Module):
     :type weight_initializer: typing.Callable, optional
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
+    :param vocab_parallel_limit:
+    :type vocab_parallel_limit:
     """
 
     def __init__(self,

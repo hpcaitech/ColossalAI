@@ -8,11 +8,16 @@ from colossalai.global_variables import moe_env
 class MoeCrossEntropyLoss(_Loss):
     """torch.nn.CrossEntropyLoss added with auxiliary loss.
 
-    :param aux_weight: Weight of auxiliary loss in total loss
-    :param args: Args in CrossEntropyLoss
-    :param kwargs: Kwargs in CrossEntropyLoss
+    :param reduction: whether to average the loss, defaults to True
+    :type reduction: bool, optional
+    :param args: Args for torch.nn.functional.cross_entropy
+    :param kwargs: Kwargs for torch.nn.functional.cross_entropy
 
-    :type aux_weight: float, optional
+    the parameters args and kwargs could contain: [weight (Tensor, optional), size_average (bool, optional),
+    ignore_index (int, optional), label_smoothing (float, optional)]
+
+    more details about args, kwargs and torch.nn.functional.cross_entropy could be found in
+    https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy
     """
     def __init__(self, aux_weight: float = 0.01, *args, **kwargs):
         super().__init__()
@@ -31,8 +36,8 @@ class MoeLoss(_Loss):
 
     :param aux_weight: Weight of auxiliary loss in total loss
     :param loss_fn: Loss function
-    :param args: Args in loss function
-    :param kwargs: Kwargs in loss function
+    :param args: Args in the loss function loss_fn
+    :param kwargs: Kwargs in the loss function loss_fn
 
     :type aux_weight: float
     :type loss_fn: Callable

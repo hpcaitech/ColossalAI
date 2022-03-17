@@ -23,7 +23,7 @@ class Experts(MoeExperts):
 
     :param expert: The class of all experts
     :param num_experts: The number of experts
-    :param expert_args: Args used to initialize experts
+    :param expert_args: Args used to initialize experts, the args could be found in corresponding expert class
 
     :type num_experts: int
     """
@@ -57,6 +57,20 @@ class Experts(MoeExperts):
 
 
 class FFNExperts(MoeExperts):
+    """FFNExperts
+
+    :param num_experts: The number of experts
+    :type num_experts: int
+    :param d_model:
+    :type d_model: int
+    :param d_ff:
+    :type d_ff: int
+    :param activation:
+    :type activation: optional, default to be None
+    :param drop_rate:
+    :type drop_rate: float
+
+    """
 
     def __init__(self, num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
         super().__init__("all_to_all")
@@ -111,7 +125,20 @@ class FFNExperts(MoeExperts):
 
 
 class TPExperts(MoeExperts):
+    """TPExperts
 
+    :param num_experts: The number of experts
+    :type num_experts: int
+    :param d_model:
+    :type d_model: int
+    :param d_ff:
+    :type d_ff: int
+    :param activation:
+    :type activation: optional, default to be None
+    :param drop_rate:
+    :type drop_rate: float
+
+    """
     def __init__(self, num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
         super().__init__("all_gather")
 

@@ -42,14 +42,22 @@ class Embedding(nn.Module):
     :type num_embeddings: int
     :param embedding_dim: dimension of embedding
     :type embedding_dim: int
-    :param padding_idx: index of padding, defaults to None
+    :param padding_idx: If specified, the entries at padding_idx do not contribute to the gradient; therefore,
+     the embedding vector at padding_idx is not updated during training, i.e. it remains as a fixed “pad”,
+     defaults to None.
     :type padding_idx: int, optional
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     :param weight_initializer: The intializer of weight, defaults to normal initializer
     :type weight_initializer: typing.Callable, optional
-    :param args: Args used in F.embedding
-    :param kwargs: Kwargs used in F.embedding
+    :param args: Args used in torch.nn.functional.embedding
+    :param kwargs: Kwargs used in torch.nn.functional.embedding
+    :param vocab_parallel_limit:
+    :type vocab_parallel_limit:
+
+    the args and kwargs contains these parameters: [max_norm (float, optional), norm_type (float, optional),
+    scale_grad_by_freq (boolean, optional), sparse (bool, optional)]. More details could be found in
+    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
     """
 
     def __init__(self,

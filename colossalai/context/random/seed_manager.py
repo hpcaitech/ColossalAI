@@ -38,7 +38,7 @@ class SeedManager:
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -52,7 +52,7 @@ class SeedManager:
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
@@ -77,7 +77,7 @@ class SeedManager:
             :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
 
         .. note::
-            the parallel_mode should be concluded in `ParallelMode`, more details about `ParallelMode`
+            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
             could be found in ../context/parallel_mode.py or
             https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
