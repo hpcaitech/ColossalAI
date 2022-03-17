@@ -51,7 +51,6 @@ class CPUAdam(torch.optim.Optimizer):
                           loss_scale,
                           use_adamw=False):
         if loss_scale is not None:
-            # grad.div_(loss_scaler.loss_scale)
             grad.div_(loss_scale)
 
         if weight_decay != 0:
