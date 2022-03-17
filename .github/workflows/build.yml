@@ -24,6 +24,8 @@ jobs:
           pip install -U pip setuptools wheel --user
           pip install pytest tensorboard transformers
       - uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
       - name: Install Colossal-AI      
         run: |
           pip install -r requirements/requirements.txt
