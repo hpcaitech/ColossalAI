@@ -7,8 +7,8 @@ import colossalai
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port, get_current_device
-from colossalai.nn.layer.moe import Top1Router, MoeLayer
-from colossalai.global_variables import moe_env
+from colossalai.nn.layer.moe import Top1Router, MoeLayer, Experts
+from colossalai.core import moe_context as moe_env
 
 BATCH_SIZE = 32
 NUM_EXPERTS = 4
@@ -21,7 +21,7 @@ def check_equal(A, B, atol=1e-06):
 
 def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.float32):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-
+    moe_env.setup(42)
     # torch.set_printoptions(precision=30)
     torch.backends.cuda.matmul.allow_tf32 = False
     local_rank = gpc.get_local_rank(ParallelMode.GLOBAL)
@@ -29,8 +29,9 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     moe_env.reset_loss()
     tokens = torch.randn(BATCH_SIZE, hidden_size, dtype=data_type, device=get_current_device(), requires_grad=True)
     # print(f"tokens:\n{tokens}")
-    router = Top1Router(1)
-    layer = MoeLayer(hidden_size, NUM_EXPERTS, router, nn.Identity())
+    router = Top1Router(capacity_factor_train=1.0)
+    expert = Experts(nn.Identity, NUM_EXPERTS)
+    layer = MoeLayer(hidden_size, NUM_EXPERTS, router, expert)
     if data_type == torch.float16:
         layer = layer.half()
     layer.cuda_mode = False

@@ -4,10 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-from colossalai.core import global_context as gpc
-from colossalai.global_variables import moe_env
-from colossalai.context import ParallelMode
 from colossalai.utils import get_current_device
+from colossalai.core import moe_context as moe_env
 from ._operation import U_CUDA_MODE, AllToAll, AllGather, ReduceScatter, MoeDispatch, MoeCombine, moe_cumsum
 from .experts import MoeExperts
 from .utils import autocast_softmax
@@ -19,8 +17,8 @@ class Top1Router(nn.Module):
     for routing usage. More deailted function can be found in the paper about Switch Transformer
     of Google.
 
-    :param capacity_factor_train: Capacity factor in routing of training
-    :param capacity_factor_eval: Capacity factor in routing of evaluation
+    :param capacity_factor_train: Capacity factor in routing during training
+    :param capacity_factor_eval: Capacity factor in routing during evaluation
     :param min_capacity: The minimum number of the capacity of each expert
     :param select_policy: The policy about tokens selection
     :param noisy_func: Noisy function used in logits
@@ -66,7 +64,7 @@ class Top1Router(nn.Module):
         assert capacity > 0
         return capacity
 
-    def forward(self, inputs: torch.Tensor, cuda_mode: bool = False):
+    def forward(self, inputs: torch.Tensor, cuda_mode: bool = False, ep_group=None):
 
         if self.noisy_func is not None and self.training:
             inputs = self.noisy_func(inputs)
@@ -85,7 +83,7 @@ class Top1Router(nn.Module):
             moe_env.add_loss(l_aux)
         elif not self.drop_tks:
             max_num = torch.max(torch.sum(mask, dim=0))
-            dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=gpc.get_group(ParallelMode.MOE_MODEL))
+            dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
         else:
             pass
@@ -120,8 +118,8 @@ class Top2Router(nn.Module):
     """Top2 router that returns the dispatch mask [s, e, c] and combine weight [s, e, c]
     for routing usage. More deailted function can be found in the paper about ViT-MoE.
 
-    :param capacity_factor_train: Capacity factor in routing of training
-    :param capacity_factor_eval: Capacity factor in routing of evaluation
+    :param capacity_factor_train: Capacity factor in routing during training
+    :param capacity_factor_eval: Capacity factor in routing during evaluation
     :param min_capacity: The minimum number of the capacity of each expert
     :param noisy_func: Noisy function used in logits
     :param drop_tks: Whether drops tokens in evaluation
@@ -157,7 +155,7 @@ class Top2Router(nn.Module):
         assert capacity > 0
         return capacity
 
-    def forward(self, inputs: torch.Tensor, cuda_mode: bool = False):
+    def forward(self, inputs: torch.Tensor, cuda_mode: bool = False, ep_group=None):
         # inputs: [s, h]
         if self.noisy_func is not None and self.training:
             inputs = self.noisy_func(inputs)
@@ -180,7 +178,7 @@ class Top2Router(nn.Module):
             moe_env.add_loss(l_aux)
         elif not self.drop_tks:
             max_num = torch.max(torch.sum(cmask, dim=0))
-            dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=gpc.get_group(ParallelMode.MOE_MODEL))
+            dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
         else:
             pass
@@ -242,31 +240,33 @@ class MoeLayer(nn.Module):
         self.router = router
         self.experts = experts
         self.cuda_mode = True if U_CUDA_MODE and moe_env.enable_cuda else False
+        self.ep_group = experts.dist_info.ep_group
+        self.ep_size = experts.dist_info.ep_size
+        self.num_local_experts = experts.num_local_experts
 
     def a2a_process(self, dispatch_data: torch.Tensor):
-        expert_input = AllToAll.apply(dispatch_data, ParallelMode.MOE_MODEL)
+        expert_input = AllToAll.apply(dispatch_data, self.ep_group)
 
         input_shape = expert_input.shape
 
-        expert_input = expert_input.reshape(moe_env.model_parallel_size,
-                                            self.num_experts // moe_env.model_parallel_size, -1, self.d_model)
+        expert_input = expert_input.reshape(self.ep_size, self.num_local_experts, -1, self.d_model)
 
         expert_output = self.experts(expert_input)
         expert_output = expert_output.reshape(input_shape)
 
-        expert_output = AllToAll.apply(expert_output, ParallelMode.MOE_MODEL)
+        expert_output = AllToAll.apply(expert_output, self.ep_group)
         return expert_output
 
     def tp_process(self, dispatch_data: torch.Tensor):
-        expert_in = AllGather.apply(dispatch_data, ParallelMode.MOE_MODEL)
+        expert_in = AllGather.apply(dispatch_data, self.ep_group)
         expert_out = self.experts(expert_in)
-        expert_out = ReduceScatter.apply(expert_out, ParallelMode.MOE_MODEL)
+        expert_out = ReduceScatter.apply(expert_out, self.ep_group)
         return expert_out
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         tokens = inputs.reshape(-1, self.d_model)
         gate_output = self.gate(tokens)
-        router_res = self.router(gate_output, self.cuda_mode)
+        router_res = self.router(inputs=gate_output, cuda_mode=self.cuda_mode, ep_group=self.ep_group)
 
         if self.cuda_mode:
             dispatch_data = MoeDispatch.apply(tokens, *router_res[1:])

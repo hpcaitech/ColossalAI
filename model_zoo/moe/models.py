@@ -7,7 +7,7 @@ from colossalai.nn.layer import VanillaPatchEmbedding, VanillaClassifier, \
 from colossalai.nn.layer.moe import build_ffn_experts, MoeLayer, Top2Router, NormalNoiseGenerator
 from .util import moe_sa_args, moe_mlp_args
 from ..helper import TransformerLayer
-from colossalai.global_variables import moe_env
+from colossalai.core import moe_context as moe_env
 from colossalai.utils import get_current_device
 
 
