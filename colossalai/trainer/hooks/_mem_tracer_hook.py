@@ -7,7 +7,10 @@ from ._metric_hook import LearningRateMetric, MetricHook
 
 @HOOKS.register_module
 class MemTraceHook(BaseHook):
-    """Save memory stats and pass it to states"""
+    """Save memory stats and pass it to states
+    This hook is used to record memory usage info, and pass to trainer.states
+    You can use it as other trainer hook and fetch data from trainer.states['metrics][mode]
+    """
     def __init__(
         self,
         priority: int = 0,
