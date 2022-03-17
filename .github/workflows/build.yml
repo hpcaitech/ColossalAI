@@ -22,8 +22,10 @@ jobs:
         run: |
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip install -U pip setuptools wheel --user
-          pip install pytest tensorboard deepspeed apex transformers
+          pip install pytest tensorboard transformers
       - uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
       - name: Install Colossal-AI      
         run: |
           pip install -r requirements/requirements.txt
