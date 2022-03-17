@@ -23,11 +23,11 @@ class MemProfiler(BaseProfiler):
         self._engine.remove_hook(self._mem_tracer)
 
     def to_tensorboard(self, writer: SummaryWriter) -> None:
-        stats = self._mem_tracer.async_mem_monitor.state_dict()['mem_stats']
-        for i in range(len(stats)):
+        stats = self._mem_tracer.async_mem_monitor.state_dict['mem_stats']
+        for info, i in enumerate(stats):
             writer.add_scalar(
                 "memory_usage/GPU",
-                stats[i],
+                info,
                 i
             )
 
@@ -35,10 +35,5 @@ class MemProfiler(BaseProfiler):
         self._mem_tracer.save_results(data_file)
 
     def show(self) -> None:
-        pass
-
-    def get_latest(self) -> float:
-        pass
-
-    def get_avg(self) -> float:
-        pass
+        stats = self._mem_tracer.async_mem_monitor.state_dict['mem_stats'] 
+        print(stats)
