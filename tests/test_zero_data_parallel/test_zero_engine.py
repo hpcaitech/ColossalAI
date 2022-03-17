@@ -26,8 +26,7 @@ def run_dist(rank, world_size, port, parallel_config):
                       port=port,
                       backend='nccl')
 
-    # test_models = ['repeated_computed_layers', 'resnet18', 'bert']
-    test_models = ['repeated_computed_layers']
+    test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
@@ -76,9 +75,6 @@ def run_dist(rank, world_size, port, parallel_config):
 
             torch_optimizer.step()
             i += 1
-
-        # for torch_param, zero_param in zip(torch_model.parameters(), colo_model.parameters()):
-        #     assert torch.allclose(torch_param, zero_param), f"diff {torch_param - zero_param}"
 
         if parallel_config == MP_PARALLEL_CONFIG:
             check_params(torch_model, colo_model, loose=True)
