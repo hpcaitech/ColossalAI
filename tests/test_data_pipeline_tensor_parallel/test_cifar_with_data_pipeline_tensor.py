@@ -37,21 +37,12 @@ def run_trainer(rank, world_size, port):
 
     # build dataloaders
     transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.CIFAR10),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
-    transform_test = transforms.Compose([
-        transforms.Resize(32),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
 
     train_dataset = CIFAR10(root=Path(os.environ['DATA']), train=True, download=True, transform=transform_train)
-    test_dataset = CIFAR10(root=Path(os.environ['DATA']), train=False, transform=transform_test)
     train_dataloader = get_dataloader(dataset=train_dataset, shuffle=True, batch_size=BATCH_SIZE, pin_memory=True)
-    test_dataloader = get_dataloader(dataset=test_dataset, batch_size=BATCH_SIZE, pin_memory=True)
 
     # build criterion
     criterion = CrossEntropyLoss()
@@ -65,33 +56,29 @@ def run_trainer(rank, world_size, port):
     warmup_steps = steps_per_epoch * WARMUP_EPOCHS
     lr_scheduler = LinearWarmupLR(optimizer, total_steps=total_steps, warmup_steps=warmup_steps)
 
-    engine, train_dataloader, test_dataloader, lr_scheduler = colossalai.initialize(pipe_model, optimizer, criterion,
-                                                                                    train_dataloader, test_dataloader,
-                                                                                    lr_scheduler)
+    engine, train_dataloader, _, lr_scheduler = colossalai.initialize(pipe_model,
+                                                                      optimizer,
+                                                                      criterion,
+                                                                      train_dataloader,
+                                                                      lr_scheduler=lr_scheduler)
 
-    timer = MultiTimer()
+    schedule = PipelineSchedule(num_microbatches=2)
+    logger = get_dist_logger()
 
-    schedule = PipelineSchedule(num_microbatches=4)
-
-    trainer = Trainer(engine=engine, timer=timer, logger=logger, schedule=schedule)
+    trainer = Trainer(engine=engine, logger=logger, schedule=schedule)
 
     hook_list = [
-        hooks.LossHook(),
         hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=False),
-        hooks.LogMetricByEpochHook(logger),
     ]
 
     trainer.fit(train_dataloader=train_dataloader,
                 epochs=NUM_EPOCHS,
-                max_steps=5,
-                test_dataloader=test_dataloader,
-                test_interval=1,
+                max_steps=2,
                 hooks=hook_list,
                 display_progress=True)
 
 
 @pytest.mark.dist
-# @pytest.mark.skip("This test requires more than 8 GPUs, you should invoke this test script using test.sh provided manually")
 def test_hybrid_parallel():
     world_size = 8
     run_func = partial(run_trainer, world_size=world_size, port=free_port())
