@@ -30,4 +30,4 @@ python:
    - requirements: docs/requirements.txt
 
 submodules:
-    exclude: engine
+    exclude: all
