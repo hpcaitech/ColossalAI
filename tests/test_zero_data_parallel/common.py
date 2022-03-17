@@ -8,19 +8,22 @@ from colossalai.logging import get_dist_logger
 from colossalai.utils import checkpoint
 from colossalai.zero.sharded_model import ShardedModelV2
 
-LOGGER = get_dist_logger()
+LOGGER = get_dist_logger('zero_test')
 
 _ZERO_OPTIMIZER_CONFIG = dict(optimizer_type=torch.optim.Adam, optimizer_config=dict(lr=1e-3))
 _ZERO_OFFLOAD_OPTIMIZER_CONFIG = dict(device='cpu', pin_memory=True, buffer_count=5, fast_init=False)
 _ZERO_OFFLOAD_PARAM_CONFIG = dict(device='cpu', pin_memory=True, buffer_count=5, buffer_size=1e8, max_in_cpu=1e9)
 
-ZERO_PARALLEL_CONFIG = dict(fp16=dict(mode=None,),
-                            zero=dict(
-                                optimzer=_ZERO_OPTIMIZER_CONFIG,
-                                offload_optimizer_config=_ZERO_OFFLOAD_OPTIMIZER_CONFIG,
-                                offload_param_config=_ZERO_OFFLOAD_PARAM_CONFIG,
-                            ),
-                            parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
+ZERO_PARALLEL_CONFIG = dict(
+    fp16=dict(mode=None,),
+    # zero=dict(
+    #     optimizer=_ZERO_OPTIMIZER_CONFIG,
+    #     offload_optimizer_config=_ZERO_OFFLOAD_OPTIMIZER_CONFIG,
+    #     offload_param_config=_ZERO_OFFLOAD_PARAM_CONFIG,
+    # ),
+    parallel=dict(pipeline=dict(size=1), tensor=dict(size=2, mode=None)))
+
+MP_PARALLEL_CONFIG = dict(fp16=dict(mode=None,), parallel=dict(pipeline=dict(size=1), tensor=dict(size=2, mode=None)))
 
 CONFIG = dict(fp16=dict(mode=None,),
               zero=dict(level=3,

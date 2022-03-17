@@ -12,7 +12,7 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     :param model: your model object
     :type model: :class:`torch.nn.Module`
     :param optimizer: your optimizer object
-    :type optimizer: :class:`torch.optim.Optimzer`
+    :type optimizer: :class:`torch.optim.Optimizer`
     :param amp_config: configuration for naive mode amp
     :type amp_config: :class:`colossalai.context.Config` or dict
 
