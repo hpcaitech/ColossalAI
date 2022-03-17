@@ -17,7 +17,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from tests.components_to_test.registry import non_distributed_component_funcs
 from common import check_sharded_params_padding, ZERO_PARALLEL_CONFIG, MP_PARALLEL_CONFIG, check_params
-import torch
 
 
 def run_dist(rank, world_size, port, parallel_config):
@@ -75,12 +74,10 @@ def run_dist(rank, world_size, port, parallel_config):
         # for torch_param, zero_param in zip(torch_model.parameters(), colo_model.parameters()):
         #     assert torch.allclose(torch_param, zero_param), f"diff {torch_param - zero_param}"
 
-        if isinstance(colo_model, torch.nn.Module):
+        if parallel_config == MP_PARALLEL_CONFIG:
             check_params(torch_model, colo_model, loose=True)
         elif isinstance(colo_model, ShardedModelV2):
             check_sharded_params_padding(torch_model, colo_model, loose=True)
-        else:
-            pass
 
 
 @pytest.mark.dist
@@ -91,11 +88,11 @@ def test_mp_engine(world_size):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.parametrize("world_size", [1, 2])
 def test_zero_engine(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port(), parallel_config=ZERO_PARALLEL_CONFIG)
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_mp_engine(world_size=4)
+    test_zero_engine(world_size=4)

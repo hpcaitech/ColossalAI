@@ -276,8 +276,11 @@ def initialize(model: Union[Callable, nn.Module],
             cfg_ = zero_cfg.copy()
         else:
             cfg_ = {}
-        optimizer_config = zero_cfg.get('optimizer', None)
-        model, optimizer = convert_to_zero_v2(model_builder=model, optimizer_config=optimizer_config)
+        optimizer_config = zero_cfg.get('optimizer_config', None)
+        model_config = zero_cfg.get('model_config', None)
+        model, optimizer = convert_to_zero_v2(model_builder=model,
+                                              model_config=model_config,
+                                              optimizer_config=optimizer_config)
 
         logger.info("Initializing ZeRO model and optimizer finished!", ranks=[0])
         #FIXME() throw a warning if using zero with MP
