@@ -19,7 +19,7 @@ def run_dist(rank, world_size, port):
     # as this model has sync batch normalization
     # need to configure cudnn deterministic so that
     # randomness of convolution layers will be disabled
-    zero_config = dict(optimzer=dict(optimizer_type=torch.optim.Adam, optimizer_config=dict(lr=1e-3)))
+    zero_config = dict(optimizer_config=dict(optimizer_class=torch.optim.Adam, lr=1e-3))
     colossalai.launch(config=dict(zero=zero_config, cudnn_determinstic=True, cudnn_benchmark=False),
                       rank=rank,
                       world_size=world_size,

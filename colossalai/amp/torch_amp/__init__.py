@@ -15,7 +15,7 @@ def convert_to_torch_amp(model: nn.Module,
     :param model: your model object
     :type model: :class:`torch.nn.Module`
     :param optimizer: your optimizer object
-    :type optimizer: :class:`torch.optim.Optimzer`
+    :type optimizer: :class:`torch.optim.Optimizer`
     :param criterion: your loss function object
     :type criterion: :class:`torch.nn.modules.loss._Loss`, optional
     :param amp_config: configuration for different amp modes

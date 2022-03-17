@@ -268,6 +268,7 @@ def initialize(model: Union[Callable, nn.Module],
     if verbose:
         logger.info(f"cuDNN benchmark = {cudnn_benchmark}, deterministic = {cudnn_deterministic}", ranks=[0])
 
+    # zero
     use_zero = hasattr(gpc.config, 'zero')
     if use_zero:
         zero_cfg = gpc.config.get('zero', None)
@@ -275,10 +276,13 @@ def initialize(model: Union[Callable, nn.Module],
             cfg_ = zero_cfg.copy()
         else:
             cfg_ = {}
-        optimizer_config = zero_cfg.get('optimzer', None)
-        model, optimizer = convert_to_zero_v2(model_builder=model, optimizer_config=optimizer_config)
+        optimizer_config = zero_cfg.get('optimizer_config', None)
+        model_config = zero_cfg.get('model_config', None)
+        model, optimizer = convert_to_zero_v2(model_builder=model,
+                                              model_config=model_config,
+                                              optimizer_config=optimizer_config)
 
-        logger.info("Initializing ZeRO model and optimzer finished!", ranks=[0])
+        logger.info("Initializing ZeRO model and optimizer finished!", ranks=[0])
         #FIXME() throw a warning if using zero with MP
         if gpc.get_world_size(ParallelMode.MODEL) > 1:
             logger.warning("ZeRO currently has not been tested with model parallelism.", ranks=[0])
@@ -288,6 +292,11 @@ def initialize(model: Union[Callable, nn.Module],
             model.to(get_current_device())
         elif isinstance(model, Callable):
             model = model().to(get_current_device())
+
+        # optimizer maybe a optimizer_cls
+        logger.warning("Initializing an non ZeRO model with optimizer class")
+        if isinstance(optimizer, Callable):
+            optimizer = optimizer(model.parameters())
 
     if not moe_env.is_initialized() and not use_zero:
         if is_using_sequence():
