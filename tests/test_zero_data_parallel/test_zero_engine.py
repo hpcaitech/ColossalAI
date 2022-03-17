@@ -2,10 +2,8 @@
 # -*- encoding: utf-8 -*-
 
 import copy
-from distutils.command.config import config
 from functools import partial
 from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
-from examples.language.bert.sequene_parallel import model
 import pytest
 
 import colossalai
