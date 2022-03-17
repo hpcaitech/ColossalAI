@@ -22,16 +22,8 @@ def ones_():
 
 
 def uniform_(a: float = 0., b: float = 1.):
-    """Return the initializer filling the input `Tensor` with values according to the method
-    described in `Understanding the difficulty of training deep feedforward
-    neural networks` - Glorot, X. & Bengio, Y. (2010), using a uniform
-    distribution. The resulting tensor will have values sampled from
-    :math:`\mathcal{U}(-a, a)` where
-
-    .. math::
-        a = \text{gain} \times \sqrt{\frac{6}{\text{fan\_in} + \text{fan\_out}}}
-
-    Also known as Glorot initialization.
+    r"""Return the initializer filling the input Tensor with values drawn from the uniform
+    distribution :math:`\mathcal{U}(a, b)`.
 
     :param a: the lower bound of the uniform distribution
     :param b: the upper bound of the uniform distribution
@@ -46,7 +38,7 @@ def uniform_(a: float = 0., b: float = 1.):
 
 
 def normal_(mean: float = 0., std: float = 1.):
-    """Return the initializer filling the input Tensor with values drawn from the normal distribution
+    r"""Return the initializer filling the input Tensor with values drawn from the normal distribution
 
      :math:
         `\mathcal{N}(\text{mean}, \text{std}^2)
@@ -63,7 +55,7 @@ def normal_(mean: float = 0., std: float = 1.):
 
 
 def trunc_normal_(mean: float = 0., std: float = 1., a: float = -2., b: float = 2.):
-    """Return the initializer filling the input Tensor with values drawn from a truncated
+    r"""Return the initializer filling the input Tensor with values drawn from a truncated
     normal distribution. The values are effectively drawn from the
     normal distribution :math:`\mathcal{N}(\text{mean}, \text{std}^2)`
     with values outside :math:`[a, b]` redrawn until they are within
@@ -86,7 +78,7 @@ def trunc_normal_(mean: float = 0., std: float = 1., a: float = -2., b: float = 
 
 
 def kaiming_uniform_(a=0, mode='fan_in', nonlinearity='leaky_relu'):
-    """Return the initializer filling the input `Tensor` with values according to the method
+    r"""Return the initializer filling the input `Tensor` with values according to the method
     described in `Delving deep into rectifiers: Surpassing human-level
     performance on ImageNet classification` - He, K. et al. (2015), using a
     uniform distribution. The resulting tensor will have values sampled from
@@ -131,7 +123,7 @@ def kaiming_uniform_(a=0, mode='fan_in', nonlinearity='leaky_relu'):
 
 
 def kaiming_normal_(a=0, mode='fan_in', nonlinearity='leaky_relu'):
-    """Return the initializer filling the input `Tensor` with values according to the method
+    r"""Return the initializer filling the input `Tensor` with values according to the method
     described in `Delving deep into rectifiers: Surpassing human-level
     performance on ImageNet classification` - He, K. et al. (2015), using a
     normal distribution. The resulting tensor will have values sampled from
@@ -175,7 +167,7 @@ def kaiming_normal_(a=0, mode='fan_in', nonlinearity='leaky_relu'):
 
 
 def xavier_uniform_(a: float = math.sqrt(3.), scale: float = 2., gain: float = 1.):
-    """Return the initializer filling the input `Tensor` with values according to the method
+    r"""Return the initializer filling the input `Tensor` with values according to the method
     described in `Understanding the difficulty of training deep feedforward
     neural networks` - Glorot, X. & Bengio, Y. (2010), using a uniform
     distribution. The resulting tensor will have values sampled from
@@ -209,7 +201,7 @@ def xavier_uniform_(a: float = math.sqrt(3.), scale: float = 2., gain: float = 1
 
 
 def xavier_normal_(scale: float = 2., gain: float = 1.):
-    """Return the initializer filling the input `Tensor` with values according to the method
+    r"""Return the initializer filling the input `Tensor` with values according to the method
     described in `Understanding the difficulty of training deep feedforward
     neural networks` - Glorot, X. & Bengio, Y. (2010), using a normal
     distribution. The resulting tensor will have values sampled from
