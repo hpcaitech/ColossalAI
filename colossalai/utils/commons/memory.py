@@ -1,4 +1,3 @@
-import imp
 import torch
 from colossalai.utils import get_current_device
 
