@@ -13,6 +13,7 @@ from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.optimizer import CPUAdam
+from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 
 from common import CONFIG, check_sharded_params_padding
 
@@ -71,6 +72,8 @@ def _run_dist(rank, world_size, port, cpu_offload, shard_strategy, use_cpuadam):
             _run_step(model, optim, data, label, criterion, False)
             _run_step(zero_model, sharded_optim, data, label, criterion, False)
             check_sharded_params_padding(model, zero_model, loose=True)
+            for param in model.parameters():
+                assert not has_inf_or_nan(param)
 
 
 # use_cpuadam = True can be used with cpu_offload = False
@@ -105,7 +108,4 @@ def test_sharded_optim_v2_cpu_adam(world_size, cpu_offload, shard_strategy, use_
 
 
 if __name__ == '__main__':
-    test_sharded_optim_v2_cpu_adam(world_size=2,
-                                   cpu_offload=False,
-                                   shard_strategy=TensorShardStrategy,
-                                   use_cpuadam=True)
+    test_sharded_optim_v2_cpu_adam(world_size=2, cpu_offload=True, shard_strategy=TensorShardStrategy, use_cpuadam=True)

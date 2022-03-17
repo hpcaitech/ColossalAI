@@ -2,6 +2,7 @@ from typing import List, Optional
 
 import torch
 import torch.distributed as dist
+
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._zero3_utils import get_shard
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor

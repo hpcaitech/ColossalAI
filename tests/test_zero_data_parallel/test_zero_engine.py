@@ -8,6 +8,7 @@ import pytest
 
 import colossalai
 from colossalai.utils import free_port
+from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 
 import torch.multiprocessing as mp
 import torch.distributed as dist
@@ -25,19 +26,21 @@ def run_dist(rank, world_size, port, parallel_config):
                       port=port,
                       backend='nccl')
 
-    test_models = ['repeated_computed_layers', 'resnet18', 'bert']
+    # test_models = ['repeated_computed_layers', 'resnet18', 'bert']
+    test_models = ['repeated_computed_layers']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
 
         colo_model = model_builder(checkpoint=True)
         torch_model = copy.deepcopy(colo_model).cuda()
+        torch_model.train()
         engine, train_dataloader, _, _ = colossalai.initialize(colo_model,
                                                                optimizer=optimizer_class,
                                                                criterion=criterion,
                                                                train_dataloader=train_dataloader)
         engine.train()
-        torch_optimizer = optimizer_class(torch_model.parameters())
+        torch_optimizer = optimizer_class(torch_model.parameters(), lr=1e-3)
 
         if dist.get_world_size() > 1:
             torch_model = DDP(torch_model)
@@ -66,6 +69,11 @@ def run_dist(rank, world_size, port, parallel_config):
             engine.step()
 
             torch_loss.backward()
+
+            for param in torch_model.parameters():
+                if param.grad is not None:
+                    assert not has_inf_or_nan(param.grad)
+
             torch_optimizer.step()
             i += 1
 
@@ -74,7 +82,7 @@ def run_dist(rank, world_size, port, parallel_config):
 
         if parallel_config == MP_PARALLEL_CONFIG:
             check_params(torch_model, colo_model, loose=True)
-        elif isinstance(colo_model, ShardedModelV2):
+        elif parallel_config == ZERO_PARALLEL_CONFIG:
             check_sharded_params_padding(torch_model, colo_model, loose=True)
 
 
