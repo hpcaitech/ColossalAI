@@ -1,4 +1,8 @@
+from asyncio.log import logger
 from distutils.command.config import config
+from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
+from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
+from colossalai.zero.shard_utils import TensorShardStrategy
 import torch
 import torch.nn as nn
 from colossalai.amp.naive_amp import NaiveAMPModel
@@ -7,6 +11,53 @@ from colossalai.core import global_context as gpc
 from torch.optim import Optimizer
 from .sharded_model import ShardedModel
 from .sharded_optim import ShardedOptimizer
+from colossalai.zero.init_ctx import ZeroInitContext
+from typing import Callable, Type
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+
+
+def convert_to_zero_v2(model_builder: Callable, optimizer_config) -> (ShardedModelV2, ShardedOptimizerV2):
+    """
+    A helper function to integrate the model and optimizer with ZeRO optimizer and off-loading
+
+    :param model: Your model object
+    :type model: :class:`torch.nn.Module`
+    :param optimizer_config: Your optimizer object
+    :type optimizer_config: :class:`dict`
+
+    :return: (model, optimizer)
+    :rtype: Tuple
+    """
+
+    logger = get_dist_logger('convert_to_zero_v2')
+
+    # FIXME() pass shard strategy from config
+    shard_strategy = TensorShardStrategy()
+
+    if isinstance(model_builder, nn.Module):
+        model = model_builder
+    elif isinstance(model_builder, Callable):
+        with ZeroInitContext(convert_fp16='fp16' in gpc.config,
+                             target_device=torch.cuda.current_device(),
+                             shard_strategy=shard_strategy,
+                             shard_param=True):
+            model = model_builder()
+    else:
+        raise TypeError(f"convert_to_zero_v2 dose not support model_builder of type {type(convert_to_zero_v2)}")
+
+    zero_model = ShardedModelV2(model, shard_strategy=shard_strategy)
+
+    optimizer_class = optimizer_config.get('optimizer_type', None)
+    if optimizer_class is None:
+        raise RuntimeError("Set optimizer_class in zero_config")
+    logger.info(f'optimizer class is {optimizer_class}')
+
+    cfg = optimizer_config.get('optimizer_config', None)
+    logger.info(f'optimizer_config is {cfg}')
+
+    zero_optimizer = ShardedOptimizerV2(zero_model, optimizer_class, **optimizer_config.get('optimizer_config', None))
+    return zero_model, zero_optimizer
 
 
 def convert_to_zero(model: nn.Module, optimizer: Optimizer, level: int, zero_config: dict):
