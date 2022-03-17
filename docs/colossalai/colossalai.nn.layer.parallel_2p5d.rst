@@ -1,11 +1,21 @@
-colossalai.nn.layer.parallel\_2p5d
-==================================
+colossalai.nn.layer.parallel\_2p5d package
+==========================================
+
+Submodules
+----------
+
+colossalai.nn.layer.parallel\_2p5d.layers module
+------------------------------------------------
+
+.. automodule:: colossalai.nn.layer.parallel_2p5d.layers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
 
 .. automodule:: colossalai.nn.layer.parallel_2p5d
    :members:
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.nn.layer.parallel_2p5d.layers
+   :undoc-members:
+   :show-inheritance:

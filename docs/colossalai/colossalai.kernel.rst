@@ -1,11 +1,19 @@
-colossalai.kernel
-=================
+colossalai.kernel package
+=========================
 
-.. automodule:: colossalai.kernel
-   :members:
+Subpackages
+-----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    colossalai.kernel.cuda_native
    colossalai.kernel.jit
+
+Module contents
+---------------
+
+.. automodule:: colossalai.kernel
+   :members:
+   :undoc-members:
+   :show-inheritance:

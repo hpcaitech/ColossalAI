@@ -40,8 +40,8 @@ def uniform_(a: float = 0., b: float = 1.):
 def normal_(mean: float = 0., std: float = 1.):
     r"""Return the initializer filling the input Tensor with values drawn from the normal distribution
 
-     :math:
-        `\mathcal{N}(\text{mean}, \text{std}^2)
+     .. math::
+        \mathcal{N}(\text{mean}, \text{std}^2)
 
     :param mean: the mean of the normal distribution
     :param std: the standard deviation of the normal distribution

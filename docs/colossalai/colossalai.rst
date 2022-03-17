@@ -1,11 +1,11 @@
-colossalai
-==========
+colossalai package
+==================
 
-.. automodule:: colossalai
-   :members:
+Subpackages
+-----------
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
 
    colossalai.amp
    colossalai.builder
@@ -16,12 +16,50 @@ colossalai
    colossalai.logging
    colossalai.nn
    colossalai.registry
+   colossalai.testing
    colossalai.trainer
    colossalai.utils
    colossalai.zero
 
+Submodules
+----------
 
-.. toctree::
-   :maxdepth: 2
+colossalai.constants module
+---------------------------
 
-   colossalai.initialize
+.. automodule:: colossalai.constants
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+colossalai.core module
+----------------------
+
+.. automodule:: colossalai.core
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+colossalai.global\_variables module
+-----------------------------------
+
+.. automodule:: colossalai.global_variables
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+colossalai.initialize module
+----------------------------
+
+.. automodule:: colossalai.initialize
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: colossalai
+   :members:
+   :undoc-members:
+   :show-inheritance:

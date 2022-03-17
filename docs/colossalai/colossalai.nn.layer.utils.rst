@@ -1,11 +1,21 @@
-colossalai.nn.layer.utils
-=========================
+colossalai.nn.layer.utils package
+=================================
+
+Submodules
+----------
+
+colossalai.nn.layer.utils.common module
+---------------------------------------
+
+.. automodule:: colossalai.nn.layer.utils.common
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
 
 .. automodule:: colossalai.nn.layer.utils
    :members:
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.nn.layer.utils.common
+   :undoc-members:
+   :show-inheritance:

@@ -1,13 +1,13 @@
-colossalai.context.random package
+colossalai.zero.init\_ctx package
 =================================
 
 Submodules
 ----------
 
-colossalai.context.random.seed\_manager module
+colossalai.zero.init\_ctx.init\_context module
 ----------------------------------------------
 
-.. automodule:: colossalai.context.random.seed_manager
+.. automodule:: colossalai.zero.init_ctx.init_context
    :members:
    :undoc-members:
    :show-inheritance:
@@ -15,7 +15,7 @@ colossalai.context.random.seed\_manager module
 Module contents
 ---------------
 
-.. automodule:: colossalai.context.random
+.. automodule:: colossalai.zero.init_ctx
    :members:
    :undoc-members:
    :show-inheritance:

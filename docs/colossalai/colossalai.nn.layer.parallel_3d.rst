@@ -1,11 +1,21 @@
-colossalai.nn.layer.parallel\_3d
-================================
+colossalai.nn.layer.parallel\_3d package
+========================================
+
+Submodules
+----------
+
+colossalai.nn.layer.parallel\_3d.layers module
+----------------------------------------------
+
+.. automodule:: colossalai.nn.layer.parallel_3d.layers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
 
 .. automodule:: colossalai.nn.layer.parallel_3d
    :members:
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.nn.layer.parallel_3d.layers
+   :undoc-members:
+   :show-inheritance:

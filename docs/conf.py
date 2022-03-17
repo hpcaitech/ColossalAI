@@ -47,7 +47,8 @@ autodoc_typehints = 'none'
 # Enable overriding of function signatures in the first line of the docstring.
 autodoc_docstring_signature = True
 autodoc_default_options = {
-    'member-order': 'bysource'
+    'member-order': 'bysource',
+    'special-members': '__init__'
 }
 
 # Add any paths that contain templates here, relative to this directory.

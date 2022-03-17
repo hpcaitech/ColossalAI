@@ -1,10 +1,18 @@
-colossalai.trainer
-==================
+colossalai.trainer package
+==========================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   colossalai.trainer.hooks
+
+Module contents
+---------------
 
 .. automodule:: colossalai.trainer
    :members:
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.trainer.hooks
+   :undoc-members:
+   :show-inheritance:

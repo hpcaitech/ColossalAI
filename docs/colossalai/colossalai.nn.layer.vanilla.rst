@@ -1,11 +1,21 @@
-colossalai.nn.layer.vanilla
-===========================
+colossalai.nn.layer.vanilla package
+===================================
+
+Submodules
+----------
+
+colossalai.nn.layer.vanilla.layers module
+-----------------------------------------
+
+.. automodule:: colossalai.nn.layer.vanilla.layers
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
 
 .. automodule:: colossalai.nn.layer.vanilla
    :members:
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.nn.layer.vanilla.layers
+   :undoc-members:
+   :show-inheritance:

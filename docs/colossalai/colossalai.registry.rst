@@ -1,11 +1,21 @@
-colossalai.registry
-===================
+colossalai.registry package
+===========================
+
+Submodules
+----------
+
+colossalai.registry.registry module
+-----------------------------------
+
+.. automodule:: colossalai.registry.registry
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
 
 .. automodule:: colossalai.registry
    :members:
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.registry.registry
+   :undoc-members:
+   :show-inheritance:

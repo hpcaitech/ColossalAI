@@ -1,12 +1,29 @@
-colossalai.builder
-==================
+colossalai.builder package
+==========================
+
+Submodules
+----------
+
+colossalai.builder.builder module
+---------------------------------
+
+.. automodule:: colossalai.builder.builder
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+colossalai.builder.pipeline module
+----------------------------------
+
+.. automodule:: colossalai.builder.pipeline
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
 
 .. automodule:: colossalai.builder
    :members:
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.builder.builder
-   colossalai.builder.pipeline
+   :undoc-members:
+   :show-inheritance:

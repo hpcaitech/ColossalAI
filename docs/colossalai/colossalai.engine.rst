@@ -1,11 +1,21 @@
-colossalai.engine
-=================
+colossalai.engine package
+=========================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   colossalai.engine.gradient_handler
+   colossalai.engine.ophooks
+   colossalai.engine.paramhooks
+   colossalai.engine.schedule
+
+Module contents
+---------------
 
 .. automodule:: colossalai.engine
    :members:
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.engine.gradient_handler
-   colossalai.engine.schedule
+   :undoc-members:
+   :show-inheritance:

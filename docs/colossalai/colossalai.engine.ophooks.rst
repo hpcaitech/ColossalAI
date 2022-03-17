@@ -1,13 +1,13 @@
-colossalai.amp.torch\_amp package
+colossalai.engine.ophooks package
 =================================
 
 Submodules
 ----------
 
-colossalai.amp.torch\_amp.torch\_amp module
+colossalai.engine.ophooks.zero\_hook module
 -------------------------------------------
 
-.. automodule:: colossalai.amp.torch_amp.torch_amp
+.. automodule:: colossalai.engine.ophooks.zero_hook
    :members:
    :undoc-members:
    :show-inheritance:
@@ -15,7 +15,7 @@ colossalai.amp.torch\_amp.torch\_amp module
 Module contents
 ---------------
 
-.. automodule:: colossalai.amp.torch_amp
+.. automodule:: colossalai.engine.ophooks
    :members:
    :undoc-members:
    :show-inheritance:
