@@ -7,6 +7,7 @@ import torch.nn as nn
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp32
@@ -101,6 +102,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                                              hysteresis=hysteresis,
                                              max_scale=max_scale)
         self._found_overflow: Tensor = torch.FloatTensor([0]).to(torch.cuda.current_device())
+        self._logger = get_dist_logger()
 
         # Store fp32 param shards
         self.master_params: Dict[Parameter, Tensor] = {}
