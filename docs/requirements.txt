@@ -4,4 +4,3 @@ apex
 sphinx 
 sphinx-rtd-theme 
 myst-parser
-blocks
