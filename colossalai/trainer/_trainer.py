@@ -310,25 +310,23 @@ class Trainer:
             display_progress: bool = False,
             return_output_label: bool = True,
     ):
-        """Trains the model to fit training data.
+        r"""Trains the model to fit training data.
 
-        :param train_dataloader: DataLoader in training
-        :param epochs: Maximum number of epoches
+        :param train_dataloader: DataLoader for training
+        :param epochs: Maximum number of epochs
         :param max_steps: Maximum number of running iterations
-        :param test_dataloader: DataLoader in testing
-        :param test_interval: Interval of testing
+        :param test_dataloader: DataLoader for validation
+        :param test_interval: Interval of validation
         :param hooks: A list of hooks used in training
-        :param display_progress: If True, the training progress will be printed
-        :param return_output_label: If True, the output of model and the label will be returned
+        :param display_progress: If True, a progress bar will be displayed
 
         :type train_dataloader: DataLoader
         :type epochs: int
         :type max_steps: int, optional
         :type test_dataloader: DataLoader, optional
         :type test_interval: int, optional
-        :type hooks: list, optional
+        :type hooks: list[BaseHook], optional, `BaseHook<https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>_`
         :type display_progress: bool, optional
-        :type return_output_label: bool, optional
         """
 
         # set epochs and steps, consider gradient accumulation

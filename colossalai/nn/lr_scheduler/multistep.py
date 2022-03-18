@@ -21,14 +21,15 @@ class MultiStepLR(_MultiStepLR):
     :type milestones: List[int], optional
     :param gamma: Multiplicative factor of learning rate decay, defaults to 0.1
     :type gamma: float, optional
-    :param num_steps_per_epoch: Number of steps per epoch, defaults to -1
-    :type num_steps_per_epoch: int, optional
     :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional
+    :param verbose: If True, prints a message to stdout for each update. Default: False.
+    :type verbose: bool
     """
 
-    def __init__(self, optimizer, total_steps: int, milestones: List[int] = None, gamma: float = 0.1, last_epoch: int = -1, **kwargs):
-        super().__init__(optimizer, milestones, gamma=gamma, last_epoch=last_epoch)
+    def __init__(self, optimizer, total_steps: int, milestones: List[int] = None,
+                 gamma: float = 0.1, last_epoch: int = -1, verbose: bool = False):
+        super().__init__(optimizer, milestones, gamma=gamma, last_epoch=last_epoch, verbose=verbose)
 
 
 @LR_SCHEDULERS.register_module

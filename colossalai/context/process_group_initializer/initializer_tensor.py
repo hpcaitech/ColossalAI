@@ -16,6 +16,7 @@ class Initializer_Tensor(ProcessGroupInitializer):
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration

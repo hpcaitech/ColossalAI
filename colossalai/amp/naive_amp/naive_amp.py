@@ -23,7 +23,16 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
     :param kwargs: Kwargs used to initialize FP16 optimizer
     :type optim: torch.optim.Optimizer
 
-    The parameter list of args and kwargs: [clip_grad (float, optional), ]
+    Args and kwargs should contain:
+
+    :param grad_scaler: grad scaler for gradient
+    :param verbose: if set to `True`, will print debug info. Default False.
+    :param clip_grad_norm: clip gradeints with this global L2 norm. Default 0.
+                        Note that clipping is ignored if clip_grad == 0
+    :type grad_scaler: BaseGradScaler
+    :type verbose: bool
+    :type clip_grad_norm: float
+
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):

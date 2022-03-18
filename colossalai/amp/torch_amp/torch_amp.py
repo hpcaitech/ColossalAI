@@ -21,9 +21,16 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
     :param kwargs: Kwargs used to initialize gradient scaler
     :type optim: torch.optim.Optimizer
 
-    The parameters list of args and kwargs: [init_scale (float, optional, default=2.**16),
-    growth_factor (float, optional, default=2.0), backoff_factor (float, optional, default=0.5),
-    growth_interval (int, optional, default=2000), enabled (bool, optional, default=True)]
+    Args:
+        init_scale (float, optional, default=2.**16):  Initial scale factor.
+        growth_factor (float, optional, default=2.0):  Factor by which the scale is multiplied during
+            :meth:`update` if no inf/NaN gradients occur for ``growth_interval`` consecutive iterations.
+        backoff_factor (float, optional, default=0.5):  Factor by which the scale is multiplied during
+            :meth:`update` if inf/NaN gradients occur in an iteration.
+        growth_interval (int, optional, default=2000):  Number of consecutive iterations without inf/NaN gradients
+            that must occur for the scale to be multiplied by ``growth_factor``.
+        enabled (bool, optional, default=True):  If ``False``, disables gradient scaling. :meth:`step` simply
+            invokes the underlying ``optimizer.step()``, and other methods become no-ops.
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):

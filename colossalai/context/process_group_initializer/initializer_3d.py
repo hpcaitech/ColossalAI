@@ -35,6 +35,7 @@ class Initializer_3D_Input(ProcessGroupInitializer):
     :type depth: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -95,6 +96,7 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
     :type depth: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -155,6 +157,7 @@ class Initializer_3D_Output(ProcessGroupInitializer):
     :type depth: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -211,6 +214,7 @@ class Initializer_3D(ProcessGroupInitializer):
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration

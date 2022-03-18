@@ -44,21 +44,10 @@ class FP16Optimizer(Optimizer):
 
     :param optimizer: base optimizer such as Adam or SGD
     :type optimizer: torch.optim.Optimizer
-    :param clip_grad: clip gradeints with this global L2 norm. Note that clipping is ignored if clip_grad == 0
-    :type param clip_grad: float
-    :param log_num_zeros_in_grad: return number of zeros in the gradients.
-    :type log_num_zeros_in_grad: bool
-    :param initial_scale: initial scale of gradient scaler
-    :type initial_scale: int
-    :param growth_factor: the growth rate of loss scale
-    :type growth_factor: int
-    :param backoff_factor: the decrease rate of loss scale
-    :type backoff_factor: float
-    :param hysterisis: delay shift in dynamic loss scaling
-    :type hysterisis: int
-    :param max_scale: maximum loss scale allowed
-    :type max_scale: int
-    :param verbose: if set to `True`, will print debug info
+    :param clip_grad_norm: clip gradeints with this global L2 norm. Default 0.
+                        Note that clipping is ignored if clip_grad == 0
+    :type clip_grad_norm: float
+    :param verbose: if set to `True`, will print debug info. Default False.
     :type verbose: bool
     """
 

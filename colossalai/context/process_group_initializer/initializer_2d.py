@@ -32,6 +32,7 @@ class Initializer_2D_Row(ProcessGroupInitializer):
     :type summa_dim: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -90,6 +91,7 @@ class Initializer_2D_Col(ProcessGroupInitializer):
     :type summa_dim: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -145,6 +147,7 @@ class Initializer_2D(ProcessGroupInitializer):
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration

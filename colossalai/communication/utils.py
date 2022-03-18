@@ -8,9 +8,9 @@ from colossalai.utils import get_current_device
 
 def send_tensor_meta(tensor, need_meta=True, next_rank=None):
     """Sends tensor meta information (including shape and number of dimension) before sending a specific tensor.
-    Since the recipient must know the shape of the tensor in p2p communications,
-    meta information of the tensor should be sent before communications. This function
-    synchronizes with :func:`recv_tensor_meta`.
+    Since the recipient must know the shape of the tensor in p2p communications.
+    Meta information of the tensor should be sent before communications.
+    This function synchronizes with :func:`recv_tensor_meta`.
 
     :param tensor: Tensor to be sent
     :param need_meta: If False, meta information won't be sent
@@ -36,7 +36,7 @@ def send_tensor_meta(tensor, need_meta=True, next_rank=None):
 
 
 def recv_tensor_meta(tensor_shape, prev_rank=None):
-    """Recieves tensor meta information (including shape and number of dimension) before receiving a specific tensor.
+    """Receives tensor meta information (including shape and number of dimension) before receiving a specific tensor.
     Since the recipient must know the shape of the tensor in p2p communications,
     meta information of the tensor should be received before communications. This function
     synchronizes with :func:`send_tensor_meta`.

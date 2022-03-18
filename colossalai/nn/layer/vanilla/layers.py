@@ -155,6 +155,8 @@ class VanillaPatchEmbedding(nn.Module):
     :type bias_initializer: typing.Callable, optional
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,
@@ -224,6 +226,8 @@ class VanillaClassifier(nn.Module):
     :type weight_initializer: typing.Callable, optional
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,

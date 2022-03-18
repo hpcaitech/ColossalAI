@@ -67,8 +67,24 @@ class OneCycleLR(_OneCycleLR):
     :type last_epoch: int, optional
     :param kwargs: kwargs for initializing torch.optim.lr_scheduler.OneCycleLR
 
-    the parameters could be contained in kwargs: [epochs (int, optional), steps_per_epoch (int, optional),
-    three_phase (bool, optional), verbose (bool, optional)], more details about kwargs could be found in
+    the parameters could be contained in kwargs:
+
+    :param epochs:  The number of epochs to train for. This is used along with steps_per_epoch
+                    in order to infer the total number of steps in the cycle if a value for total_steps
+                    is not provided. Default: None
+    :param steps_per_epoch: The number of steps per epoch to train for. This is used along with epochs
+                            in order to infer the total number of steps in the cycle if a value for
+                            total_steps is not provided. Default: None
+    :param three_phase: If True, use a third phase of the schedule to annihilate the learning rate according to
+                        ‘final_div_factor’ instead of modifying the second phase (the first two phases will be
+                        symmetrical about the step indicated by ‘pct_start’).
+    :param verbose: If True, prints a message to stdout for each update. Default: False.
+    :type epochs: int
+    :type steps_per_epoch: int
+    :type three_phase: bool
+    :type verbose: bool
+
+    More details about kwargs could be found in
     https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html#torch.optim.lr_scheduler.OneCycleLR
 
     .. _Super-Convergence\: Very Fast Training of Neural Networks Using Large Learning Rates:
@@ -93,4 +109,4 @@ class OneCycleLR(_OneCycleLR):
                          max_momentum=max_momentum,
                          div_factor=div_factor,
                          final_div_factor=final_div_factor,
-                         last_epoch=last_epoch)
+                         last_epoch=last_epoch, **kwargs)

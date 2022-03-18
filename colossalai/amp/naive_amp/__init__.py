@@ -18,7 +18,13 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     :return: (model, optimizer)
     :rtype: Tuple
 
-    The parameter list of amp_config: [clip_grad (float, optional), ]
+    The amp_config should contain:
+    {
+    verbose: bool (if set to `True`, will print debug info. Default False.)
+    clip_grad_norm: float (clip gradeints with this global L2 norm. Default 0.
+                        Note that clipping is ignored if clip_grad == 0)
+    dynamic_grad_scale: bool
+    }
     """
     if isinstance(model, nn.ModuleList):
         # interleaved pipeline

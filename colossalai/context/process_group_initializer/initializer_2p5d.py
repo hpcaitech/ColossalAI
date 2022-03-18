@@ -42,6 +42,7 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
     :type tesseract_dep: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -107,6 +108,7 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
     :type tesseract_dep: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -172,6 +174,7 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
     :type tesseract_dep: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration
@@ -238,6 +241,7 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
     :type tesseract_dep: int
 
     details of args and kwargs:
+
     :param rank: The rank of current process
     :param world_size: Size of whole communication world
     :param config: Running configuration

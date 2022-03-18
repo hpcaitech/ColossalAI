@@ -167,7 +167,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     :param norm_type: Type of the used p-norm. Can be ``'inf'`` for infinity norm.
     :type norm_type: float or int 
 
-    :return: Total norm of the parameters (viewed as a single vector).
+    :return: Total norm of the parameters.
     :rtype: float
     """
 

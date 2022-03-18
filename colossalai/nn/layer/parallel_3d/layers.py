@@ -86,6 +86,8 @@ class Linear3D(ParallelLayer):
     :type weight_initializer: typing.Callable, optional
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,
@@ -163,6 +165,8 @@ class Classifier3D(ParallelLayer):
     :type weight_initializer: typing.Callable, optional
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,
@@ -242,6 +246,8 @@ class VocabParallelClassifier3D(ParallelLayer):
     :type weight_initializer: typing.Callable, optional
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,
@@ -332,6 +338,8 @@ class PatchEmbedding3D(ParallelLayer):
     :type bias_initializer: typing.Callable, optional
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,
@@ -437,9 +445,23 @@ class Embedding3D(ParallelLayer):
     :param args: Args used in torch.nn.functional.embedding
     :param kwargs: Kwargs used in torch.nn.functional.embedding
 
-    the args and kwargs contains these parameters: [max_norm (float, optional), norm_type (float, optional),
-    scale_grad_by_freq (boolean, optional), sparse (bool, optional)]. More details could be found in
+    The args and kwargs contain:
+
+    :param max_norm: If given, each embedding vector with norm larger than max_norm is
+                    renormalized to have norm max_norm. Note: this will modify weight in-place.
+    :param norm_type: The p of the p-norm to compute for the max_norm option. Default 2.
+    :param scale_grad_by_freq: If given, this will scale gradients by the inverse
+                               of frequency of the words in the mini-batch. Default False.
+    :param sparse: If True, gradient w.r.t. weight will be a sparse tensor. Default False.
+    :type max_norm: float
+    :type norm_type: float
+    :type scale_grad_by_freq: bool
+    :type sparse: bool
+
+    More details about args and kwargs could be found in
     https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,
@@ -514,9 +536,23 @@ class VocabParallelEmbedding3D(torch.nn.Module):
     :param args: Args used in torch.nn.functional.embedding
     :param kwargs: Kwargs used in torch.nn.functional.embedding
 
-    the args and kwargs contains these parameters: [max_norm (float, optional), norm_type (float, optional),
-    scale_grad_by_freq (boolean, optional), sparse (bool, optional)]. More details could be found in
+    The args and kwargs contain:
+
+    :param max_norm: If given, each embedding vector with norm larger than max_norm is
+                    renormalized to have norm max_norm. Note: this will modify weight in-place.
+    :param norm_type: The p of the p-norm to compute for the max_norm option. Default 2.
+    :param scale_grad_by_freq: If given, this will scale gradients by the inverse
+                               of frequency of the words in the mini-batch. Default False.
+    :param sparse: If True, gradient w.r.t. weight will be a sparse tensor. Default False.
+    :type max_norm: float
+    :type norm_type: float
+    :type scale_grad_by_freq: bool
+    :type sparse: bool
+
+    More details about args and kwargs could be found in
     https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+
+    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
     """
 
     def __init__(self,

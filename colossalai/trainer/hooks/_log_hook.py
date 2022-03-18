@@ -75,6 +75,7 @@ class LogMetricByEpochHook(LogByEpochHook):
     """Specialized hook to record the metric to log.
 
     :param logger: Logger for the log
+    :type logger: colossalai.logging.DistributedLogger
     :param interval: Recording interval, defaults to 1
     :type interval: int, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
