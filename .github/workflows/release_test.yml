@@ -4,7 +4,7 @@ on: workflow_dispatch
 
 jobs:
   build-n-publish:
-    if: github.base_ref == 'main' && github.repository == 'hpcaitech/ColossalAI' && contains(fromJson('["FrankLeeeee", "ver217", "feifeibear", "kurisusnowdeng"]'), github.actor)
+    if: github.ref_name == 'main' && github.repository == 'hpcaitech/ColossalAI' && contains(fromJson('["FrankLeeeee", "ver217", "feifeibear", "kurisusnowdeng"]'), github.actor)
     name: Build and publish Python 🐍 distributions 📦 to Test PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
