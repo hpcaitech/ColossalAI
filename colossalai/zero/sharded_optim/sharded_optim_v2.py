@@ -7,6 +7,7 @@ import torch.nn as nn
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp32
@@ -101,6 +102,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                                              hysteresis=hysteresis,
                                              max_scale=max_scale)
         self._found_overflow: Tensor = torch.FloatTensor([0]).to(torch.cuda.current_device())
+        self._logger = get_dist_logger()
 
         # Store fp32 param shards
         self.master_params: Dict[Parameter, Tensor] = {}
@@ -113,12 +115,12 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # TODO (ver217): we may not use shard / gather here
                     # Param is no sharded, which means we use ZeRO-2 here
                     # As we only store param shard, we shard it here
-                    self.shard_strategy.shard([p.col_attr.data])
+                    self.shard_strategy.shard([p.col_attr.data], self.dp_process_group)
                 self.master_params[p] = cast_tensor_to_fp32(p.col_attr.data.payload).to(self.device)
                 if not is_param_sharded:
                     # In this branch, there's no need to shard param
                     # So we gather here
-                    self.shard_strategy.gather([p.col_attr.data])
+                    self.shard_strategy.gather([p.col_attr.data], self.dp_process_group)
 
     def step(self, *args, **kwargs):
         # unscale grads if scaled
@@ -155,7 +157,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # But we only have updated fp32 param shard here
                     # So we first shard full fp16 param and copy fp32 param shard to it
                     # Then we will gather them
-                    self.shard_strategy.shard([p.col_attr.data])
+                    self.shard_strategy.shard([p.col_attr.data], self.dp_process_group)
                 # We have to use `copy_payload` instead of `reset_payload`
                 # Since p.data is fp32 and p.col_attr.data is fp16
 
@@ -164,7 +166,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
                 if not is_param_sharded:
                     # We gather full fp16 param here
-                    self.shard_strategy.gather([p.col_attr.data])
+                    self.shard_strategy.gather([p.col_attr.data], self.dp_process_group)
                 p.data = p.col_attr.data.payload
         return ret
 

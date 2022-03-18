@@ -16,7 +16,7 @@ _ZERO_MODEL_CONFIG = dict(reduce_scatter_bucket_size_mb=25,
                           offload_config=None,
                           gradient_predivide_factor=1.0,
                           use_memory_tracer=False,
-                          shard_strategy=TensorShardStrategy)
+                          shard_strategy=TensorShardStrategy())
 
 _ZERO_OPTIMIZER_CONFIG = dict(cpu_offload=False,
                               initial_scale=2**5,
@@ -25,8 +25,7 @@ _ZERO_OPTIMIZER_CONFIG = dict(cpu_offload=False,
                               backoff_factor=0.5,
                               growth_interval=1000,
                               hysteresis=2,
-                              max_scale=2**32,
-                              lr=1e-3)
+                              max_scale=2**32)
 
 ZERO_PARALLEL_CONFIG = dict(fp16=dict(mode=None,),
                             zero=dict(

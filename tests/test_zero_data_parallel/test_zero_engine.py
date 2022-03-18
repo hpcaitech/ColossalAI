@@ -8,7 +8,6 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
@@ -17,8 +16,7 @@ from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from common import (MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params,
-                    check_sharded_params_padding)
+from common import (MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_params_padding)
 
 
 def run_dist(rank, world_size, port, parallel_config):
@@ -35,18 +33,19 @@ def run_dist(rank, world_size, port, parallel_config):
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
         with ZeroInitContext(convert_fp16=hasattr(gpc.config, 'fp16'),
                              target_device=torch.cuda.current_device(),
-                             shard_strategy=gpc.config.zero.model_config.shared_strategy(
-                                 gpc.get_group(ParallelMode.DATA)),
+                             shard_strategy=gpc.config.zero.model_config.shard_strategy,
                              shard_param=True):
             colo_model = model_builder(checkpoint=True)
 
-        torch_model = model_builder(checkpoint=True).half()
-        col_model_deepcopy(colo_model, torch_model)
-        torch_model = torch_model.cuda().float()
+        colo_optimizer = optimizer_class(colo_model.parameters(), lr=1e-3)
         engine, train_dataloader, _, _ = colossalai.initialize(colo_model,
-                                                               optimizer=optimizer_class,
+                                                               optimizer=colo_optimizer,
                                                                criterion=criterion,
                                                                train_dataloader=train_dataloader)
+        torch_model = model_builder(checkpoint=True).half()
+        col_model_deepcopy(engine.model, torch_model)
+        torch_model = torch_model.cuda().float()
+
         engine.train()
         torch_optimizer = optimizer_class(torch_model.parameters(), lr=1e-3)
 
@@ -102,7 +101,6 @@ def test_mp_engine(world_size):
     mp.spawn(run_func, nprocs=world_size)
 
 
-@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
 def test_zero_engine(world_size):

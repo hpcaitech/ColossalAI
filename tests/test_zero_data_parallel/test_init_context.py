@@ -7,26 +7,27 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+from colossalai.testing import parameterize
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
+from colossalai.utils.memory_tracer.model_data_memtracer import \
+    GLOBAL_MODEL_DATA_TRACER
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 from common import CONFIG
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
-from colossalai.testing import parameterize
 
 
 @parameterize("init_device", [torch.device('cpu'), torch.device(f'cuda:{get_current_device()}')])
-@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def run_model_test(init_device, shard_strategy):
+@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_model_test(init_device, shard_strategy_class):
     for get_components_func in non_distributed_component_funcs:
         model_builder, _, _, _, _ = get_components_func()
         model_numel_tensor = torch.zeros(1, dtype=torch.int)
         with ZeroInitContext(convert_fp16=True,
                              target_device=init_device,
-                             shard_strategy=shard_strategy(),
+                             shard_strategy=shard_strategy_class(),
                              shard_param=True,
                              model_numel_tensor=model_numel_tensor):
             model = model_builder(checkpoint=True)

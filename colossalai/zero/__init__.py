@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import torch
 import torch.nn as nn
 from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.logging import get_dist_logger
@@ -11,7 +12,8 @@ from .sharded_model import ShardedModel
 from .sharded_optim import ShardedOptimizer
 
 
-def convert_to_zero_v2(model: nn.Module, model_config, optimizer_config) -> Tuple[ShardedModelV2, ShardedOptimizerV2]:
+def convert_to_zero_v2(model: nn.Module, optimizer: torch.optim.Optimizer, model_config,
+                       optimizer_config) -> Tuple[ShardedModelV2, ShardedOptimizerV2]:
     """
     A helper function to integrate the model and optimizer with ZeRO optimizer and off-loading
 
@@ -34,7 +36,7 @@ def convert_to_zero_v2(model: nn.Module, model_config, optimizer_config) -> Tupl
         model_config = dict()
 
     zero_model = ShardedModelV2(model, **model_config)
-    zero_optimizer = ShardedOptimizerV2(zero_model, **optimizer_config)
+    zero_optimizer = ShardedOptimizerV2(zero_model, optimizer, **optimizer_config)
     return zero_model, zero_optimizer
 
 

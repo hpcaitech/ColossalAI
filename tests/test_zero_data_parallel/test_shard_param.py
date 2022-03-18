@@ -9,22 +9,22 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 from colossalai.logging import disable_existing_loggers, get_dist_logger
+from colossalai.testing import parameterize
 from colossalai.utils import free_port
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_param import ShardedParam, ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_zero_data_parallel.common import CONFIG, allclose
-from colossalai.testing import parameterize
 
 
-@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def run_shard_tensor_with_strategy(shard_strategy, world_size):
+@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_shard_tensor_with_strategy(shard_strategy_class, world_size):
     t = ShardedTensor(tensor=torch.randn(world_size * 2, 3))
     assert list(t.origin_shape) == [world_size * 2, 3]
     assert list(t.shape) == [world_size * 2, 3]
 
-    shard_strategy = shard_strategy(process_group=None)
+    shard_strategy = shard_strategy_class()
 
     # test shard strategy
     shard_strategy.shard([t])
