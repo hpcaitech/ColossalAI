@@ -208,9 +208,10 @@ def xavier_normal_(scale: float = 2., gain: float = 1.):
     :math:`\mathcal{N}(0, \text{std}^2)` where
 
     .. math::
-        \text{std} = \text{gain} \times \sqrt{\frac{2}{\text{fan\_in} + \text{fan\_out}}}
+        \text{std} = \text{gain} \times \sqrt{\frac{2}{\text{fan_{in}} + \text{fan_{out}}}}
 
     Also known as Glorot initialization.
+
     :param scale: an optional scaling factor used to calculate standard deviation
     :param gain: an optional scaling factor
     :type scale: float

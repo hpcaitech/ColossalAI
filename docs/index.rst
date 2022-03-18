@@ -20,13 +20,13 @@ Indices and tables
 Useful links for Colossal-AI
 -----------------------------
 If you are interested in the source code of Colossal-AI, please check
-`Github<https://github.com/hpcaitech/ColossalAI>`.
+`Colossal-AI Github Homepage <https://github.com/hpcaitech/ColossalAI>`_.
 
 If you are looking for the tutorial of using Colossal-AI, please check
-`Tutorial<https://github.com/hpcaitech/ColossalAI>`.
+`Colossal-AI Tutorial <https://github.com/hpcaitech/ColossalAI>`_.
 
 If you are looking for the example code of using Colossal-AI in CV or NLP, please check
-`Example<https://github.com/hpcaitech/ColossalAI-Examples>`.
+`Colossal-AI Example <https://github.com/hpcaitech/ColossalAI-Examples>`_.
 
 If you are interested in the performance or the features of Colossal-AI, please check
-`Benchmark<https://github.com/hpcaitech/ColossalAI-Benchmark>`
+`Colossal-AI Benchmark <https://github.com/hpcaitech/ColossalAI-Benchmark>`_.
