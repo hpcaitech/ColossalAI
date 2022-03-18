@@ -48,7 +48,7 @@ class Linear(nn.Module):
     :type bias_initializer: typing.Callable, optional
     :param kwargs: Kwargs used for particular parallelisms
 
-    ..note: kwargs would contain different parameters when you use different parallelisms,
+    .. note:: kwargs would contain different parameters when you use different parallelisms,
     the dict of kwargs are showing below: {Linear1D: {gather_output: bool (optional, default to be false),
     skip_bias_add: bool (optional, default to be false)}, Linear2D: {skip_bias_add: bool (optional,
     default to be false)}, Linear2p5D: {skip_bias_add: bool (optional, default to be false)}, Linear3D: {None}}

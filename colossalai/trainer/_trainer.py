@@ -30,7 +30,7 @@ class Trainer:
     :param logger: Logger used to record the whole training
     :type logger: :class:`colossalai.logging.DistributedLogger`, optional
 
-    ..note: when `schedule` is None, the ``NonPipelineSchedule`` would be used. If you are using pipeline,
+    .. note:: when `schedule` is None, the ``NonPipelineSchedule`` would be used. If you are using pipeline,
     you should choose ``PipelineSchedule`` or ``InterleavedPipelineSchedule`` for the `schedule`
 
     Examples:
@@ -325,9 +325,13 @@ class Trainer:
         :type max_steps: int, optional
         :type test_dataloader: DataLoader, optional
         :type test_interval: int, optional
-        :type hooks: list[BaseHook], optional, `BaseHook<https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>_`
+        :type hooks: list[BaseHook], optional
         :type display_progress: bool, optional
+
+        `BaseHook <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>`_
+        `Colossal-AI Tutorial <https://github.com/hpcaitech/ColossalAI>`_
         """
+
 
         # set epochs and steps, consider gradient accumulation
         self._steps_per_epoch = len(train_dataloader)
