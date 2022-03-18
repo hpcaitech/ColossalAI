@@ -10,8 +10,7 @@ import torch.multiprocessing as mp
 from colossalai.testing import parameterize
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy,
-                                         TensorShardStrategy)
+from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
@@ -22,10 +21,10 @@ from common import CONFIG, check_grads_padding, run_fwd_bwd
 
 
 @parameterize("enable_autocast", [True])
-@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def run_model_test(enable_autocast, shard_strategy):
+@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_model_test(enable_autocast, shard_strategy_class):
     test_models = ['repeated_computed_layers', 'resnet18', 'bert']
-    shard_strategy = shard_strategy()
+    shard_strategy = shard_strategy_class()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
