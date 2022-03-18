@@ -115,7 +115,7 @@ class LogMetricByEpochHook(LogByEpochHook):
 
 @HOOKS.register_module
 class TensorboardHook(BaseHook):
-    """Specialized hook to record the metric to Tensorboard.
+    r"""Specialized hook to record the metric to Tensorboard.
 
     :param log_dir: Directory of log
     :type log_dir: str
@@ -127,8 +127,8 @@ class TensorboardHook(BaseHook):
     :type priority: int, optional
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
 
     def __init__(self,

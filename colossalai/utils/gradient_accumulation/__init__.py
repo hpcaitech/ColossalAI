@@ -13,7 +13,7 @@ def accumulate_gradient(model: nn.Module,
                         accumulate_size: int,
                         gradient_handlers: List[BaseGradientHandler] = None,
                         lr_scheduler: _LRScheduler = None):
-    """
+    r"""
     :param model: your model object
     :type model: :class:`torch.nn.Module`
     :param optimizer: your optimizer object
@@ -27,12 +27,13 @@ def accumulate_gradient(model: nn.Module,
     :param lr_scheduler: your lr scheduler object. Default is None
     :type lr_scheduler: `torch.optim.lr_scheduler` or `colossalai.nn.lr_scheduler`
 
-    more details about `gradient_handlers` could be found in .../engine/gradient_handler or
-    https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/engine/gradient_handler
+    More details about `gradient_handlers` could be found in
+    `Gradient_handler <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/engine/gradient_handler>`_.
 
-    more details about `lr_scheduler` could be found in .../nn/lr_scheduler or
-    https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/nn/lr_scheduler and
-    https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate
+
+    More details about `lr_scheduler` could be found
+    `lr_scheduler <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/nn/lr_scheduler>`_. and
+    `how to adjust learning rate <https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate>`_.
     """
     optimizer = GradAccumOptimizer(optimizer, accumulate_size=accumulate_size, model=model)
     dataloader = GradAccumDataloader(dataloader, accumulate_size=accumulate_size)

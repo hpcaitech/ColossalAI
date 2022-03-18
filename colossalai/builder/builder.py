@@ -24,15 +24,15 @@ def build_from_config(module, config: dict):
 
 
 def build_from_registry(config, registry: Registry):
-    """Returns an object constructed from `config`, the type of the object
+    r"""Returns an object constructed from `config`, the type of the object
     is specified by `registry`.
 
     .. note::
         the `config` is used to construct the return object such as `LAYERS`,
          `OPTIMIZERS` and other support types in `registry`. The `config` should contain
          all required parameters of corresponding object. The details of support
-         types in `registry` and the `mod_type` in `config` could be found in ../registry/__init__.py
-         or https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/registry/__init__.py
+         types in `registry` and the `mod_type` in `config` could be found in
+         `registry <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/registry/__init__.py>`_.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
         containing information used in the construction of the return object

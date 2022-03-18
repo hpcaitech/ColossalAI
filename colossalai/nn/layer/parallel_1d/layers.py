@@ -24,7 +24,7 @@ from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_g
 
 @LAYERS.register_module
 class Linear1D(torch.nn.Module):
-    """
+    r"""
     Linear layer for 1D parallelism
 
     :param in_features: size of each input sample
@@ -43,7 +43,8 @@ class Linear1D(torch.nn.Module):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -90,7 +91,7 @@ class Linear1D(torch.nn.Module):
 
 @LAYERS.register_module
 class Classifier1D(ParallelLayer):
-    """RowLinear with given weight
+    r"""RowLinear with given weight
     Classifier of 1D parallelism
     
     :param in_features: size of input features
@@ -108,7 +109,8 @@ class Classifier1D(ParallelLayer):
     :param bias_initializer: The initializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -175,7 +177,7 @@ class Classifier1D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelClassifier1D(ParallelLayer):
-    """ColLinear with given weight
+    r"""ColLinear with given weight
     Classifier of 1D parallelism
     
     :param in_features: size of input features
@@ -193,7 +195,8 @@ class VocabParallelClassifier1D(ParallelLayer):
     :param bias_initializer: The initializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    more details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -255,7 +258,7 @@ class VocabParallelClassifier1D(ParallelLayer):
 
 @LAYERS.register_module
 class Linear1D_Col(ParallelLayer):
-    """Linear layer with column parallelism.
+    r"""Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
     its second dimension as :math:`A = [A_1, ..., A_p]`.
@@ -280,7 +283,8 @@ class Linear1D_Col(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    more details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -351,7 +355,7 @@ class Linear1D_Col(ParallelLayer):
 
 @LAYERS.register_module
 class Linear1D_Row(ParallelLayer):
-    """ Linear layer with row parallelism 
+    r""" Linear layer with row parallelism
 
     :param in_features: size of each input sample
     :type in_features: int
@@ -371,7 +375,8 @@ class Linear1D_Row(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    more details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -442,7 +447,7 @@ class Linear1D_Row(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding1D(ParallelLayer):
-    """
+    r"""
     Embedding for 1D parallelism
 
     :param num_embeddings: number of embeddings
@@ -474,9 +479,10 @@ class Embedding1D(ParallelLayer):
     :type sparse: bool
 
     More details about args and kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -529,7 +535,7 @@ class Embedding1D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelEmbedding1D(torch.nn.Module):
-    """Embedding parallelized in the vocabulary dimension.
+    r"""Embedding parallelized in the vocabulary dimension.
 
     :param num_embeddings: number of embeddings
     :type num_embeddings: int
@@ -560,9 +566,10 @@ class VocabParallelEmbedding1D(torch.nn.Module):
     :type sparse: bool
 
     More details about args and kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,

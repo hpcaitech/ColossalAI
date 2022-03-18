@@ -85,8 +85,9 @@ class Engine:
         >>>         correct += torch.sum(pred == label)
         >>>         total += img.size(0)
 
-    The example of using Engine in training could be find in https://www.colossalai.org/docs/basics/engine_trainer
-    or https://github.com/hpcaitech/ColossalAI-Examples/blob/main/image/resnet/run_resnet_cifar10_with_engine.py
+    The example of using Engine in training could be find in
+    `Training with engine and trainer <https://www.colossalai.org/docs/basics/engine_trainer>`_. and
+    `Run resnet cifar10 with engine <https://github.com/hpcaitech/ColossalAI-Examples/blob/main/image/resnet/run_resnet_cifar10_with_engine.py>`_.
     """
 
     def __init__(self,

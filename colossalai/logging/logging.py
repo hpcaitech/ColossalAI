@@ -110,7 +110,7 @@ class DistributedLogger:
                 getattr(self._logger, level)(message)
 
     def info(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Log an info message.
+        r"""Log an info message.
 
         :param message: The message to be logged
         :type message: str
@@ -120,13 +120,13 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._log('info', message, parallel_mode, ranks)
 
     def warning(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Log a warning message.
+        r"""Log a warning message.
 
         :param message: The message to be logged
         :type message: str
@@ -136,13 +136,13 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._log('warning', message, parallel_mode, ranks)
 
     def debug(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Log a debug message.
+        r"""Log a debug message.
 
         :param message: The message to be logged
         :type message: str
@@ -152,13 +152,13 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._log('debug', message, parallel_mode, ranks)
 
     def error(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
-        """Log an error message.
+        r"""Log an error message.
 
         :param message: The message to be logged
         :type message: str
@@ -168,7 +168,7 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._log('error', message, parallel_mode, ranks)

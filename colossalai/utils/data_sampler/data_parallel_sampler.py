@@ -118,7 +118,7 @@ def get_dataloader(dataset,
                    pin_memory=False,
                    num_workers=0,
                    **kwargs):
-    """Set up a deterministic dataloader (also configure seed workers, samplers and whether shuffle or not)
+    r"""Set up a deterministic dataloader (also configure seed workers, samplers and whether shuffle or not)
 
     .. note:: When pipeline parallel is enabled, shuffle cannot be True as it will result in mismatch between input data
         on the 1st stage and label on the last stage
@@ -131,7 +131,7 @@ def get_dataloader(dataset,
     :param pin_memory: Whether to pin memory address in CPU memory
     :param num_workers: Number of worker threads for this dataloader
     :param kwargs: parameters for torch.utils.data.DataLoader, more details could be found in
-                https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader
+                `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
 
     :type dataset: :class:`torch.utils.data.Dataset`
     :type shuffle: bool, optional. Default is False

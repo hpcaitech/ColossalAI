@@ -56,7 +56,7 @@ class DropPath(nn.Module):
 
 
 class WrappedDropout(nn.Module):
-    """Same as torch.nn.Dropout. But it is wrapped with the context of seed manager. During training, randomly zeroes
+    r"""Same as torch.nn.Dropout. But it is wrapped with the context of seed manager. During training, randomly zeroes
     some of the elements of the input tensor with probability p using samples from a Bernoulli distribution. Each
     channel will be zeroed out independently on every forward call. Furthermore, the outputs are scaled by a factor of
     1/(1-p) during training. This means that during evaluation the module simply computes an identity function.
@@ -69,8 +69,8 @@ class WrappedDropout(nn.Module):
     :type mode: :class:`colossalai.context.ParallelMode`
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
 
     def __init__(self, p: float = 0.5, inplace: bool = False, mode=None):
@@ -98,7 +98,7 @@ class WrappedDropout(nn.Module):
 
 
 class WrappedDropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    r"""Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     Here, it is wrapped with the context of seed manager.
 
     :param p:
@@ -107,8 +107,8 @@ class WrappedDropPath(nn.Module):
     :type mode: :class:`colossalai.context.ParallelMode`
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
 
     def __init__(self, p: float = 0., mode=None):
@@ -134,7 +134,7 @@ class WrappedDropPath(nn.Module):
 
 @LAYERS.register_module
 class VanillaPatchEmbedding(nn.Module):
-    """
+    r"""
     2D Image to Patch Embedding
 
     :param img_size: image size
@@ -156,7 +156,8 @@ class VanillaPatchEmbedding(nn.Module):
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -209,7 +210,7 @@ class VanillaPatchEmbedding(nn.Module):
 
 @LAYERS.register_module
 class VanillaClassifier(nn.Module):
-    """
+    r"""
     Dense linear classifier
 
     :param in_features: size of each input sample
@@ -227,7 +228,8 @@ class VanillaClassifier(nn.Module):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,

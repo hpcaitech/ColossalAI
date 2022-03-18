@@ -50,7 +50,7 @@ def get_current_mode():
 
 
 def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
-    """Adds a seed to the seed manager for `parallel_mode`.
+    r"""Adds a seed to the seed manager for `parallel_mode`.
 
     :param parallel_mode: The chosen parallel mode
     :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -60,21 +60,21 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
         :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     _SEED_MANAGER.add_seed(parallel_mode, seed, overwrite)
 
 
 def set_mode(parallel_mode: ParallelMode):
-    """Sets the current mode of the seed manager.
+    r"""Sets the current mode of the seed manager.
 
     :param parallel_mode: The chosen parallel mode
     :type parallel_mode: :class:`colossalai.context.ParallelMode`
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     _SEED_MANAGER.set_mode(parallel_mode)
 
@@ -99,7 +99,7 @@ def sync_states():
 
 @contextmanager
 def seed(parallel_mode: ParallelMode):
-    """ A context for seed switch
+    r""" A context for seed switch
 
     Examples::
 
@@ -107,8 +107,8 @@ def seed(parallel_mode: ParallelMode):
             output = F.dropout(input)
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     try:
         # set to new mode
@@ -120,7 +120,7 @@ def seed(parallel_mode: ParallelMode):
 
 
 def with_seed(func, parallel_mode: ParallelMode):
-    """
+    r"""
     A function wrapper which executes the function with a specified seed.
 
     Examples::
@@ -137,8 +137,8 @@ def with_seed(func, parallel_mode: ParallelMode):
         out = wrapped_forward(input)
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
     @functools.wraps(func)

@@ -276,8 +276,9 @@ def initialize(model: nn.Module,
         >>>    return_output_label=False
         >>>    )
 
-    more examples and details could be found in https://www.colossalai.org/docs/basics/engine_trainer and
-    https://github.com/hpcaitech/ColossalAI-Examples/tree/main
+    more examples and details could be found in
+    `training with engine and trainer <https://www.colossalai.org/docs/basics/engine_trainer>`_ and
+    `ColossalAI-Examples <https://github.com/hpcaitech/ColossalAI-Examples/tree/main>`_.
     """
     # get logger
     logger = get_dist_logger()

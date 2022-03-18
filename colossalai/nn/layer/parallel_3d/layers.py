@@ -71,7 +71,7 @@ class LayerNorm3D(ParallelLayer):
 
 @LAYERS.register_module
 class Linear3D(ParallelLayer):
-    """
+    r"""
     Linear layer for 3D parallelism
 
     :param in_features: size of each input sample
@@ -87,7 +87,8 @@ class Linear3D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -148,7 +149,7 @@ class Linear3D(ParallelLayer):
 
 @LAYERS.register_module
 class Classifier3D(ParallelLayer):
-    """
+    r"""
     Classifier for 3D parallelism
 
     :param in_features: size of each input sample
@@ -166,7 +167,8 @@ class Classifier3D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -229,7 +231,7 @@ class Classifier3D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelClassifier3D(ParallelLayer):
-    """
+    r"""
     Vocab parallel classifier layer for 2D parallelism
 
     :param in_features: size of each input sample
@@ -247,7 +249,8 @@ class VocabParallelClassifier3D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -317,7 +320,7 @@ class VocabParallelClassifier3D(ParallelLayer):
 
 @LAYERS.register_module
 class PatchEmbedding3D(ParallelLayer):
-    """
+    r"""
     2D Image to Patch Embedding
 
     :param img_size: image size
@@ -339,7 +342,8 @@ class PatchEmbedding3D(ParallelLayer):
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -427,7 +431,7 @@ class PatchEmbedding3D(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding3D(ParallelLayer):
-    """
+    r"""
     Embedding for 3D parallelism
 
     :param num_embeddings: number of embeddings
@@ -459,9 +463,10 @@ class Embedding3D(ParallelLayer):
     :type sparse: bool
 
     More details about args and kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_
     """
 
     def __init__(self,
@@ -519,7 +524,7 @@ class Embedding3D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelEmbedding3D(torch.nn.Module):
-    """Embedding parallelized in the vocabulary dimension.
+    r"""Embedding parallelized in the vocabulary dimension.
 
     :param num_embeddings: number of embeddings
     :type num_embeddings: int
@@ -550,9 +555,10 @@ class VocabParallelEmbedding3D(torch.nn.Module):
     :type sparse: bool
 
     More details about args and kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,

@@ -56,7 +56,7 @@ def free_port():
 
 
 def sync_model_param(model, parallel_mode):
-    """Make sure data parameters are consistent during Data Parallel Mode
+    r"""Make sure data parameters are consistent during Data Parallel Mode
 
     :param model: A pyTorch nn.model on whose parameters you check the consistency
     :param parallel_mode: Parallel mode to be checked
@@ -64,8 +64,8 @@ def sync_model_param(model, parallel_mode):
     :type parallel_mode:  colossalai.context.ParallelMode
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
         for param in model.parameters():

@@ -35,7 +35,7 @@ _parallel_patchembedding = {
 
 
 class Embedding(nn.Module):
-    """
+    r"""
     Embedding for colossalai
 
     :param num_embeddings: number of embeddings
@@ -69,9 +69,10 @@ class Embedding(nn.Module):
     :type sparse: bool
 
     More details about args and kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,

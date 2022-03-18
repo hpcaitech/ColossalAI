@@ -85,7 +85,7 @@ class OneCycleLR(_OneCycleLR):
     :type verbose: bool
 
     More details about kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html#torch.optim.lr_scheduler.OneCycleLR
+    `OneCycleLR <https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html#torch.optim.lr_scheduler.OneCycleLR>`_.
 
     .. _Super-Convergence\: Very Fast Training of Neural Networks Using Large Learning Rates:
         https://arxiv.org/abs/1708.07120

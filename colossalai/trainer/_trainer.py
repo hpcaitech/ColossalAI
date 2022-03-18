@@ -64,8 +64,8 @@ class Trainer:
         >>>    return_output_label=False
         >>>    )
 
-    More examples and details could be found in https://www.colossalai.org/docs/basics/engine_trainer and
-    https://github.com/hpcaitech/ColossalAI-Examples/tree/main
+    More examples and details could be found in `Training with engine and trainer <https://www.colossalai.org/docs/basics/engine_trainer>`_
+    and `ColossalAI-Examples <https://github.com/hpcaitech/ColossalAI-Examples/tree/main>`_.
     """
     def __init__(
             self,

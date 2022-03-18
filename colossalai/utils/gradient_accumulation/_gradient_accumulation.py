@@ -173,7 +173,7 @@ class GradAccumLrSchedulerByStep(_LRScheduler):
 
 
 class GradAccumGradientHandler:
-    """A wrapper for the gradient handler to enable gradient accumulation by skipping the steps 
+    r"""A wrapper for the gradient handler to enable gradient accumulation by skipping the steps
     before accumulation size is reached
 
     :param grad_handler: Your gradient handler object, would be called when achieving `accumulate_size`
@@ -181,8 +181,9 @@ class GradAccumGradientHandler:
     :param accumulate_size: The number of steps to accumulate gradients
     :type accumulate_size: int
 
-    more details about `gradient_handlers` could be found in .../engine/gradient_handler or
-    https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/engine/gradient_handler
+    More details about `gradient_handlers` could be found in
+    `Gradient_handler <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/engine/gradient_handler>`_.
+
     """
 
     def __init__(self, grad_handler: BaseGradientHandler, accumulate_size: int) -> None:

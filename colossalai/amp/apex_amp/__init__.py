@@ -4,7 +4,7 @@ from torch.optim import Optimizer
 
 
 def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
-    """A helper function to wrap training components with Apex AMP modules
+    r"""A helper function to wrap training components with Apex AMP modules
 
     :param model: your model object
     :type model: :class:`torch.nn.Module`
@@ -31,7 +31,7 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     max_loss_scale:float (optional, default to be 2.**24)
     }
 
-    more details about amp_config refer to https://nvidia.github.io/apex/amp.html?highlight=apex%20amp
+    More details about amp_config refer to `amp_config <https://nvidia.github.io/apex/amp.html?highlight=apex%20amp>`_.
     """
     import apex.amp as apex_amp
     model, optimizer = apex_amp.initialize(model, optimizer, **amp_config)

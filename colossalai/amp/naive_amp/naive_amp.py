@@ -50,7 +50,7 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
 
 
 class NaiveAMPModel(nn.Module):
-    """A wrapper class for model to cast the model into fp16 and
+    r"""A wrapper class for model to cast the model into fp16 and
     automatically cast the input and output
 
     :param model: torch.nn.Module to be wrapped.
@@ -63,8 +63,8 @@ class NaiveAMPModel(nn.Module):
     :type sync_buffer: bool, default to be True
 
     .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
-        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
     def __init__(self,

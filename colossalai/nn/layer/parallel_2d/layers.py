@@ -22,7 +22,7 @@ from ._utils import assert_summa_initialization, get_summa_dim_from_env
 
 @LAYERS.register_module
 class Linear2D(ParallelLayer):
-    """
+    r"""
     Linear layer for 2D parallelism
 
     :param in_features: size of each input sample
@@ -40,7 +40,8 @@ class Linear2D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    more details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
     def __init__(self,
                  in_features: int,
@@ -191,7 +192,7 @@ class LayerNorm2D(ParallelLayer):
 
 @LAYERS.register_module
 class PatchEmbedding2D(ParallelLayer):
-    """
+    r"""
     2D Image to Patch Embedding
 
     :param img_size: image size
@@ -213,7 +214,8 @@ class PatchEmbedding2D(ParallelLayer):
     :param position_embed_initializer: The intializer of position embedding, defaults to zero
     :type position_embed_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    more details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
     def __init__(self,
                  img_size: int,
@@ -295,7 +297,7 @@ class PatchEmbedding2D(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding2D(ParallelLayer):
-    """
+    r"""
     Embedding for 2D parallelism
 
     :param num_embeddings: number of embeddings
@@ -325,9 +327,10 @@ class Embedding2D(ParallelLayer):
     :type sparse: bool
 
     More details about args and kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
     def __init__(self,
                  num_embeddings: int,
@@ -380,7 +383,7 @@ class Embedding2D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelEmbedding2D(torch.nn.Module):
-    """Embedding parallelized in the vocabulary dimension.
+    r"""Embedding parallelized in the vocabulary dimension.
 
     :param num_embeddings: number of embeddings
     :type num_embeddings: int
@@ -411,9 +414,10 @@ class VocabParallelEmbedding2D(torch.nn.Module):
     :type sparse: bool
 
     More details about args and kwargs could be found in
-    https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding.
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
     def __init__(self,
                  num_embeddings: int,
@@ -477,7 +481,7 @@ class VocabParallelEmbedding2D(torch.nn.Module):
 
 @LAYERS.register_module
 class Classifier2D(ParallelLayer):
-    """
+    r"""
     Classifier for 2D parallelism
 
     :param in_features: size of each input sample
@@ -495,7 +499,8 @@ class Classifier2D(ParallelLayer):
     :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    more details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
     def __init__(self,
                  in_features: int,
@@ -559,7 +564,7 @@ class Classifier2D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelClassifier2D(ParallelLayer):
-    """
+    r"""
     Vocab parallel classifier layer for 2D parallelism
 
     :param in_features: size of each input sample
@@ -577,7 +582,8 @@ class VocabParallelClassifier2D(ParallelLayer):
     :param bias_initializer: The initializer of bias, defaults to xavier uniform initializer
     :type bias_initializer: typing.Callable, optional
 
-    More details about initializer please refer https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
     def __init__(self,
                  in_features: int,
