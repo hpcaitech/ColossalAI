@@ -20,12 +20,13 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from common import CONFIG, check_grads_padding, run_fwd_bwd
+from colossalai.testing import parameterize
 
 
-def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast, shard_strategy):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    logger = get_dist_logger()
-    logger.set_level('DEBUG')
+@parameterize("enable_autocast", [True])
+@parameterize("use_zero_init_ctx", [True])
+@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_model_test(enable_autocast, use_zero_init_ctx, shard_strategy, logger):
     test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     shard_strategy = shard_strategy()
     for model_name in test_models:
@@ -66,20 +67,19 @@ def run_dist(rank, world_size, port, use_zero_init_ctx, enable_autocast, shard_s
         # logger.debug('model cuda ', zero_model._memstats_collector._model_data_cuda)
 
 
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    logger = get_dist_logger()
+    logger.set_level('DEBUG')
+    run_model_test(logger=logger)
+
+
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
-@pytest.mark.parametrize("enable_autocast", [True])
-@pytest.mark.parametrize("use_zero_init_ctx", [True])
-@pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def test_shard_model_v2(world_size, use_zero_init_ctx, enable_autocast, shard_strategy):
-    run_func = partial(run_dist,
-                       world_size=world_size,
-                       port=free_port(),
-                       use_zero_init_ctx=use_zero_init_ctx,
-                       enable_autocast=enable_autocast,
-                       shard_strategy=shard_strategy)
+def test_shard_model_v2(world_size):
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_shard_model_v2(world_size=2, use_zero_init_ctx=True, enable_autocast=True, shard_strategy=TensorShardStrategy)
+    test_shard_model_v2(world_size=2)

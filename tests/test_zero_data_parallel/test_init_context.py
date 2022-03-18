@@ -15,11 +15,12 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 
 from common import CONFIG
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
+from colossalai.testing import parameterize
 
 
-def run_dist(rank, world_size, port, init_device, shard_strategy):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-
+@parameterize("init_device", [torch.device('cpu'), torch.device(f'cuda:{get_current_device()}')])
+@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_model_test(init_device, shard_strategy):
     for get_components_func in non_distributed_component_funcs:
         model_builder, _, _, _, _ = get_components_func()
         model_numel_tensor = torch.zeros(1, dtype=torch.int)
@@ -43,19 +44,18 @@ def run_dist(rank, world_size, port, init_device, shard_strategy):
         assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage > 0)
 
 
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_model_test()
+
+
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 4])
-@pytest.mark.parametrize("init_device", [torch.device('cpu'), torch.device(f'cuda:{get_current_device()}')])
-@pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def test_zero_init_context(world_size, init_device, shard_strategy):
-    run_func = partial(run_dist,
-                       world_size=world_size,
-                       port=free_port(),
-                       init_device=init_device,
-                       shard_strategy=shard_strategy)
+def test_zero_init_context(world_size):
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
     # test_zero_init_context(2, torch.device('cpu'), TensorShardStrategy)
-    test_zero_init_context(4, torch.device('cpu'), BucketTensorShardStrategy)
+    test_zero_init_context(4)

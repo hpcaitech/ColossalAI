@@ -17,35 +17,7 @@ from colossalai.utils import checkpoint, clip_grad_norm_fp32, free_port
 from colossalai.zero.sharded_model import ShardedModel
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad_norm_
-
-
-class Enumerator:
-
-    def __init__(self, arg_names: List[str], arg_values: List[tuple]) -> None:
-        self.arg_names = arg_names
-        self.enums = Enumerator.all_enumerate(arg_values)
-
-    def __len__(self):
-        return len(self.enums)
-
-    def __getitem__(self, idx):
-        return {name: self.enums[idx][i] for i, name in enumerate(self.arg_names)}
-
-    @staticmethod
-    def all_enumerate(args: List[tuple]):
-        num_states = reduce(op.mul, map(lambda xs: len(xs), args))
-        idxs = [0] * len(args)
-        states = []
-        for _ in range(num_states):
-            states.append(tuple(args[j][idx] for j, idx in enumerate(idxs)))
-            if len(states) == num_states:
-                break
-            i = 0
-            while idxs[i] + 1 == len(args[i]):
-                idxs[i] = 0
-                i += 1
-            idxs[i] += 1
-        return states
+from colossalai.testing import parameterize
 
 
 def checkpoint_wrapper(module, enable=True):
@@ -125,6 +97,10 @@ def check_params(model, zero_model, loose=False):
         assert allclose(p, zero_p, loose=loose)
 
 
+@parameterize('checkpoint', [False, True])
+@parameterize('fp16', [False, True])
+@parameterize('offload', [False, True])
+@parameterize('norm_type', [1.0, 2.0, float('inf')])
 def check_config(checkpoint=False, fp16=False, offload=False, norm_type=2.0):
     model = Net(checkpoint=checkpoint).cuda()
     zero_model = copy.deepcopy(model)
@@ -155,15 +131,6 @@ def check_config(checkpoint=False, fp16=False, offload=False, norm_type=2.0):
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-
-    args = ['checkpoint', 'fp16', 'offload', 'norm_type']
-    arg_values = [(False, True), (False, True), (False, True), (1.0, 2.0, float('inf'))]
-    arg_enumerator = Enumerator(args, arg_values)
-
-    for kwargs in arg_enumerator:
-        if dist.get_rank() == 0:
-            print(kwargs)
-        check_config(**kwargs)
     check_config()
 
 

@@ -15,10 +15,11 @@ from colossalai.zero.sharded_param import ShardedParam, ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_zero_data_parallel.common import CONFIG, allclose
+from colossalai.testing import parameterize
 
 
-def _run_shard_tensor(rank, world_size, port, shard_strategy):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_shard_tensor_with_strategy(shard_strategy, world_size):
     t = ShardedTensor(tensor=torch.randn(world_size * 2, 3))
     assert list(t.origin_shape) == [world_size * 2, 3]
     assert list(t.shape) == [world_size * 2, 3]
@@ -32,11 +33,15 @@ def _run_shard_tensor(rank, world_size, port, shard_strategy):
     assert list(t.shape) == [world_size * 2, 3], f"{list(t.shape)} vs {[world_size * 2, 3]}"
 
 
+def _run_shard_tensor(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_shard_tensor_with_strategy(world_size=world_size)
+
+
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
-@pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def test_shard_tensor(world_size, shard_strategy):
-    run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port(), shard_strategy=shard_strategy)
+def test_shard_tensor(world_size):
+    run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
@@ -122,7 +127,7 @@ def test_init_shard_param(world_size):
 
 
 if __name__ == '__main__':
-    test_shard_tensor(2, TensorShardStrategy)
+    test_shard_tensor(2)
     test_shard_param(2)
     test_shard_param_v2(2)
     test_init_shard_param(4)
