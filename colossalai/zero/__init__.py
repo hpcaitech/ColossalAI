@@ -1,17 +1,22 @@
-from typing import Tuple
+from typing import Callable
 
+import torch
 import torch.nn as nn
-from colossalai.amp.naive_amp import NaiveAMPModel
-from colossalai.logging import get_dist_logger
+from torch.optim import Optimizer
+
 from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
-from torch.optim import Optimizer
+from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.amp.naive_amp import NaiveAMPModel
+from colossalai.core import global_context as gpc
+from colossalai.zero.init_ctx import ZeroInitContext
+from colossalai.logging import get_dist_logger
 
 from .sharded_model import ShardedModel
 from .sharded_optim import ShardedOptimizer
 
 
-def convert_to_zero_v2(model: nn.Module, model_config, optimizer_config) -> Tuple[ShardedModelV2, ShardedOptimizerV2]:
+def convert_to_zero_v2(model_builder: Callable, model_config, optimizer_config) -> (ShardedModelV2, ShardedOptimizerV2):
     """
     A helper function to integrate the model and optimizer with ZeRO optimizer and off-loading
 
@@ -26,6 +31,9 @@ def convert_to_zero_v2(model: nn.Module, model_config, optimizer_config) -> Tupl
 
     logger = get_dist_logger('convert_to_zero_v2')
 
+    # FIXME() pass shard strategy from config
+    shard_strategy = TensorShardStrategy()
+
     logger.info(f'optimizer_config is {optimizer_config}')
     if optimizer_config is None:
         optimizer_config = dict()
@@ -33,7 +41,18 @@ def convert_to_zero_v2(model: nn.Module, model_config, optimizer_config) -> Tupl
     if model_config is None:
         model_config = dict()
 
-    zero_model = ShardedModelV2(model, **model_config)
+    if isinstance(model_builder, nn.Module):
+        model = model_builder
+    elif isinstance(model_builder, Callable):
+        with ZeroInitContext(convert_fp16='fp16' in gpc.config,
+                             target_device=torch.cuda.current_device(),
+                             shard_strategy=shard_strategy,
+                             shard_param=model_config.get('shard_param', True)):
+            model = model_builder()
+    else:
+        raise TypeError(f"convert_to_zero_v2 dose not support model_builder of type {type(convert_to_zero_v2)}")
+
+    zero_model = ShardedModelV2(model, shard_strategy=shard_strategy, **model_config)
     zero_optimizer = ShardedOptimizerV2(zero_model, **optimizer_config)
     return zero_model, zero_optimizer
 

@@ -1,6 +1,6 @@
 import functools
 from collections import OrderedDict
-from typing import Any, Optional, Type
+from typing import Any, Optional
 
 import torch
 import torch.distributed as dist
@@ -28,13 +28,14 @@ class ShardedModelV2(nn.Module):
 
     def __init__(self,
                  module: nn.Module,
-                 shard_strategy: Type[BaseShardStrategy],
+                 shard_strategy: BaseShardStrategy,
                  process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_bucket_size_mb: int = 25,
                  fp32_reduce_scatter: bool = False,
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
+                 shard_param: bool = True,
                  use_memory_tracer: bool = False):
         r"""
         A demo to reconfigure zero1 shared_model.
@@ -43,23 +44,23 @@ class ShardedModelV2(nn.Module):
         super().__init__()
         self.logger = get_dist_logger()
 
-        # We force users to use ZeroInitContext
-        sharded = []
-        unsharded = []
-        for param in module.parameters():
-            assert hasattr(param, 'col_attr'), 'You must use ZeroInitContext to init your module first.'
-            sharded.append(param.col_attr.param_is_sharded)
-            unsharded.append(not param.col_attr.param_is_sharded)
-        assert all(sharded) or all(
-            unsharded), 'Parameters must be all sharded or all unsharded! Parameters are partially sharded nwo.'
-        self.shard_param = all(sharded)
-        self.module = module
-
         self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
         self.reduce_scatter_process_group = reduce_scatter_process_group or self.process_group
         self.world_size = dist.get_world_size(self.process_group)
         self.rank = dist.get_rank(self.process_group)
+
+        # Cast module to fp16 and cuda, in case user didn't use ZeroInitContext
+        self.module = module.half().cuda()
+
         self.shard_strategy = shard_strategy
+        self.shard_param = shard_param
+
+        # In case user didn't use ZeroInitContext
+        for param in self.module.parameters():
+            if not hasattr(param, 'col_attr'):
+                param.col_attr = ShardedParamV2(param, process_group, rm_torch_payload=True)
+                if self.shard_param:
+                    self.shard_strategy.shard([param.col_attr.data])
 
         # Init Memory Statistics Collector
         self._use_memory_tracer = use_memory_tracer
