@@ -4,6 +4,7 @@ import torch
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
 from colossalai.zero.shard_utils import BaseShardStrategy
+from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
 
 # Inserts _post_init_method at the end of init method
@@ -158,3 +159,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             # if param.col_attr.grad and self.shard_grad:
             #     self.shard_strategy.shard(tensor_list=[param.col_attr._grad_sharded_tensor])
             #     GLOBAL_MODEL_DATA_TRACER.add_tensor(param.col_attr._grad_sharded_tensor.payload)
+        # We must cast buffers
+        # If we use BN, buffers may be on CPU and Float
+        # We must cast them
+        for buffer in module.buffers():
+            buffer.data = buffer.data.to(device=torch.cuda.current_device())
+            if self.convert_fp16:
+                buffer.data = cast_tensor_to_fp16(buffer.data)

@@ -1,12 +1,13 @@
+import imp
 from functools import partial
 
 import torch
 import torch.distributed as dist
-
 from colossalai.logging import get_dist_logger
-from colossalai.utils import checkpoint
-from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.nn.optimizer import CPUAdam
+from colossalai.utils import checkpoint
+from colossalai.zero.shard_utils import TensorShardStrategy
+from colossalai.zero.sharded_model import ShardedModelV2
 
 LOGGER = get_dist_logger('zero_test')
 
@@ -16,11 +17,10 @@ _ZERO_MODEL_CONFIG = dict(reduce_scatter_bucket_size_mb=25,
                           fp32_reduce_scatter=False,
                           offload_config=None,
                           gradient_predivide_factor=1.0,
-                          shard_param=True,
-                          use_memory_tracer=False)
+                          use_memory_tracer=False,
+                          shard_strategy=TensorShardStrategy)
 
 _ZERO_OPTIMIZER_CONFIG = dict(
-    optimizer_class=torch.optim.Adam,    #CPUAdam
     cpu_offload=False,
     initial_scale=2**5,
     min_scale=1,
@@ -35,8 +35,8 @@ ZERO_PARALLEL_CONFIG = dict(fp16=dict(mode=None,),
                             zero=dict(
                                 model_config=_ZERO_MODEL_CONFIG,
                                 optimizer_config=_ZERO_OPTIMIZER_CONFIG,
-                            ),
-                            parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
+),
+    parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)))
 
 CONFIG = dict(fp16=dict(mode=None,),
               zero=dict(level=3,
