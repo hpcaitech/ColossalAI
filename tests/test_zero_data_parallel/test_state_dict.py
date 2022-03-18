@@ -8,20 +8,21 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+from colossalai.testing import parameterize
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.testing import parameterize
+
 from common import CONFIG
 
 
-@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def run_zero_state_dict(shard_strategy):
+@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_zero_state_dict(shard_strategy_class):
     test_models = ['repeated_computed_layers', 'resnet18']
-    shard_strategy = shard_strategy()
+    shard_strategy = shard_strategy_class()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
