@@ -39,13 +39,15 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  max_scale: int = 2**32,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None) -> None:
-        """
+        """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO) stage 3.
+        You must use `ShardedOptimizerV2` with `ShardedModelV2`.
+
         :param sharded_model: A sharded model initialized by class ShardedModelV2. The optimizer will use the
         shard strategy provided by sharded model to shard param fp32 tensors.
         :type sharded_model: sharded_model
 
-        :param optimizer_class: A class type of Optimizer
-        :type optimizer_class: Type[Optimizer]
+        :param optimizer: A Optimizer instance.
+        :type optimizer: Optimizer
 
         :param cpu_offload: is offloading the optimizer states to CPU.
         :type cpu_offload: bool
@@ -76,9 +78,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         :param mp_process_group: model paralle process group
         :type mp_process_group: Optional[ProcessGroup]
-
-        :**defaults: any trailing arguments, which are forwarded to the local optimizer.
-        :type defaults: dict()
         """
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
 

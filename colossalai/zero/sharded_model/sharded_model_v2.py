@@ -38,6 +38,7 @@ class ShardedModelV2(nn.Module):
         """A wrapper for a sharded module, which implements Zero Redundancy Optimizer (ZeRO) stage 3.
         Parameter, gradient and optimizer states are sharded, so memory efficiency is boosted drastically 
         compared to classic data parallelism while the computational granularity and communication efficiency are retained.
+        Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
 
         :param module: A sharded module, which must be initialized by `ZeroInitContext`.
         :type module: nn.Module
