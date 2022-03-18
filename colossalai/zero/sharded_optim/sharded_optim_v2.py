@@ -1,19 +1,22 @@
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict, Optional, Type, Any
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp32
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
+
+from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.zero.shard_utils import BaseShardStrategy
+from colossalai.zero.sharded_model import ShardedModelV2
+from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp32
+from colossalai.logging import get_dist_logger
 
 from ._utils import has_inf_or_nan
 
@@ -27,7 +30,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def __init__(self,
                  sharded_model: ShardedModelV2,
-                 optimizer: Optimizer,
+                 optimizer_class: Type[Optimizer],
                  cpu_offload: bool = False,
                  initial_scale: float = 2**32,
                  min_scale: float = 1,
@@ -37,15 +40,16 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
                  dp_process_group: Optional[ProcessGroup] = None,
-                 mp_process_group: Optional[ProcessGroup] = None) -> None:
+                 mp_process_group: Optional[ProcessGroup] = None,
+                 **defaults: Any) -> None:
         """
         :param sharded_model: A sharded model initialized by class ShardedModelV2. The optimizer will use the
         shard strategy provided by sharded model to shard param fp32 tensors.
         :type sharded_model: sharded_model
-
+        
         :param optimizer_class: A class type of Optimizer
         :type optimizer_class: Type[Optimizer]
-
+        
         :param cpu_offload: is offloading the optimizer states to CPU.
         :type cpu_offload: bool
 
@@ -80,8 +84,13 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         :type defaults: dict()
         """
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
+        self._logger = get_dist_logger('ShardedOptimV2 logger')
+        self._optim_defaults = defaults
+        # initialize the M, V as zeros tensors and initialize param fp32 from sharded_model.parameters()
 
-        super().__init__(optimizer)
+        self.optimizer = optimizer_class(sharded_model.parameters(), **self._optim_defaults)
+
+        super().__init__(self.optimizer)
         self.shard_strategy = sharded_model.shard_strategy
         self.model: ShardedModelV2 = sharded_model
         if cpu_offload and not sharded_model.cpu_offload:
@@ -105,7 +114,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # Store fp32 param shards
         self.master_params: Dict[Parameter, Tensor] = {}
 
-        for group in self.optim.param_groups:
+        for group in self.optimizer.param_groups:
             for p in group['params']:
                 assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
                 is_param_sharded = p.col_attr.data.is_sharded
@@ -135,18 +144,18 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         # assign master param pointers to p.data.
         # We will not trigger data copy here.
-        for group in self.optim.param_groups:
+        for group in self.optimizer.param_groups:
             for p in group['params']:
                 p.data = self.master_params[p]
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
 
-        ret = self.optim.step(*args, **kwargs)
+        ret = self.optimizer.step(*args, **kwargs)
 
         # Copy master param data (fp32) to payload of col_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
-        for group in self.optim.param_groups:
+        for group in self.optimizer.param_groups:
             for p in group['params']:
                 is_param_sharded = p.col_attr.data.is_sharded
                 if not is_param_sharded:
@@ -190,7 +199,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._found_overflow.fill_(0.0)
 
         # check for overflow
-        for group in self.optim.param_groups:
+        for group in self.optimizer.param_groups:
             for p in group['params']:
                 if has_inf_or_nan(p.grad):
                     self._found_overflow.fill_(1.0)
@@ -206,7 +215,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def _unscale_grads(self):
         assert self.optim_state == OptimState.SCALED
-        for group in self.optim.param_groups:
+        for group in self.optimizer.param_groups:
             for p in group['params']:
                 if p.grad is not None:
                     p.grad.data.div_(self.loss_scale)
@@ -216,7 +225,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # We must set grad to None
         # Because we will judge whether local grad accumulation
         # is enabled by wheter grad is None
-        self.optim.zero_grad(set_to_none=True)
+        self.optimizer.zero_grad(set_to_none=True)
 
     def sync_grad(self):
         pass
