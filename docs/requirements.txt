@@ -4,3 +4,5 @@ apex
 sphinx 
 sphinx-rtd-theme 
 myst-parser
+inspect
+blocks
