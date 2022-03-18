@@ -1,6 +1,6 @@
 import functools
 from collections import OrderedDict
-from typing import Any, Optional, Type
+from typing import Any, Optional
 
 import torch
 import torch.distributed as dist
@@ -16,7 +16,6 @@ from colossalai.utils.memory_tracer.allocator import col_move_to_cpu
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
@@ -25,10 +24,34 @@ from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tenso
 
 
 class ShardedModelV2(nn.Module):
+    """A wrapper for a sharded module, which implements Zero Redundancy Optimizer (ZeRO) stage 3.
+    Parameter, gradient and optimizer states are sharded, so memory efficiency is boosted drastically 
+    compared to classic data parallelism while the computational granularity and communication efficiency are retained.
+    Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
+
+    :param module: A sharded module, which must be initialized by `ZeroInitContext`.
+    :type module: nn.Module
+    :param shard_strategy: A shard strategy to manage shard behavior.
+    :type shard_strategy: BaseShardStrategy
+    :param process_group: Data parallel process group, defaults to None
+    :type process_group: Optional[ProcessGroup], optional
+    :param reduce_scatter_process_group: Reduce-scatter process group, defaults to None. Generally, it should be `None`.
+    :type reduce_scatter_process_group: Optional[ProcessGroup], optional
+    :param reduce_scatter_bucket_size_mb: Reduce-scatter bucket size in *MB*, defaults to 25
+    :type reduce_scatter_bucket_size_mb: int, optional
+    :param fp32_reduce_scatter: If set to `True`, gradients are forced to FP32 before reduce-scatter, defaults to False
+    :type fp32_reduce_scatter: bool, optional
+    :param offload_config: We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload, defaults to None
+    :type offload_config: Optional[dict], optional
+    :param gradient_predivide_factor: Gradient is divived by this value before reduce-scatter, defaults to 1.0
+    :type gradient_predivide_factor: Optional[float], optional
+    :param use_memory_tracer: Whether to use memoty tracer, defaults to False
+    :type use_memory_tracer: bool, optional
+    """
 
     def __init__(self,
                  module: nn.Module,
-                 shard_strategy: Type[BaseShardStrategy],
+                 shard_strategy: BaseShardStrategy,
                  process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_bucket_size_mb: int = 25,
@@ -36,10 +59,6 @@ class ShardedModelV2(nn.Module):
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
                  use_memory_tracer: bool = False):
-        r"""
-        A demo to reconfigure zero1 shared_model.
-        Currently do not consider the Optimizer States.
-        """
         super().__init__()
         self.logger = get_dist_logger()
 

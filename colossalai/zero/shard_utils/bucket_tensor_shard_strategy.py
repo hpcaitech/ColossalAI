@@ -10,6 +10,11 @@ from .tensor_shard_strategy import TensorShardStrategy
 
 
 class BucketTensorShardStrategy(TensorShardStrategy):
+    """Use the same shard scheme as `TensorShardStrategy`'s, but it gathers tensors of a sub-module together, 
+    which will fully utilize network bandwidth. 
+    It is especially useful when sub-module contains bias, 
+    since we cannot utilize network bandwidth well if we only gather a bias tensor (bias is usaully small).
+    """
 
     def gather(self, tensor_list: List[ShardedTensor], process_group: Optional[dist.ProcessGroup] = None):
         tensor_list: List[ShardedTensor] = [t for t in tensor_list if t.is_sharded]
