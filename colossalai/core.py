@@ -4,4 +4,4 @@
 from colossalai.context import ParallelContext, MoeContext
 
 global_context = ParallelContext.get_instance()
-moe_context = MoeContext.get_instance()
+MOE_CONTEXT = MoeContext.get_instance()
