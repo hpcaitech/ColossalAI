@@ -9,6 +9,8 @@ from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 
 
 class TensorShardStrategy(BaseShardStrategy):
+    """A naive implementation which shard each tensor evenly over all ranks
+    """
 
     def shard(self, tensor_list: List[ShardedTensor], process_group: Optional[dist.ProcessGroup] = None):
         for t in tensor_list:
