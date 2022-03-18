@@ -208,7 +208,7 @@ def xavier_normal_(scale: float = 2., gain: float = 1.):
     :math:`\mathcal{N}(0, \text{std}^2)` where
 
     .. math::
-        \text{std} = \text{gain} \times \sqrt{\frac{2}{\text{fan_{in}} + \text{fan_{out}}}}
+        \text{std} = \text{gain} \times \sqrt{\frac{2}{\text{fan_in} + \text{fan_out}}}
 
     Also known as Glorot initialization.
 
