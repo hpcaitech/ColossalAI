@@ -19,8 +19,11 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
     :param optim: A normal optimizer like Adam or SGD
     :param args: Args used to initialize gradient scaler
     :param kwargs: Kwargs used to initialize gradient scaler
-
     :type optim: torch.optim.Optimizer
+
+    The parameters list of args and kwargs: [init_scale (float, optional, default=2.**16),
+    growth_factor (float, optional, default=2.0), backoff_factor (float, optional, default=0.5),
+    growth_interval (int, optional, default=2000), enabled (bool, optional, default=True)]
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):
@@ -57,6 +60,9 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
 class TorchAMPModel(nn.Module):
     """A wrapper class for a model object which executes forward with values automatically
     cast to fp16
+
+    :param model: torch.nn.Module to be wrapped.
+    :type model: torch.nn.Module
     """
 
     def __init__(self, model: nn.Module) -> None:

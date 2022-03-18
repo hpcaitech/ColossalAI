@@ -5,6 +5,9 @@ from enum import Enum
 
 
 class AMP_TYPE(Enum):
+    """The amp types, containing ['apex', 'torch', 'naive']
+
+    """
     APEX = 'apex'
     TORCH = 'torch'
     NAIVE = 'naive'

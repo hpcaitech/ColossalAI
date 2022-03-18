@@ -13,6 +13,20 @@ Colossal-AI API documentation
 
 
 Indices and tables
-==================
+--------------------
 
 * :ref:`genindex`
+
+Useful links for Colossal-AI
+-----------------------------
+If you are interested in the source code of Colossal-AI, please check
+`Github<https://github.com/hpcaitech/ColossalAI>`.
+
+If you are looking for the tutorial of using Colossal-AI, please check
+`Tutorial<https://github.com/hpcaitech/ColossalAI>`.
+
+If you are looking for the example code of using Colossal-AI in CV or NLP, please check
+`Example<https://github.com/hpcaitech/ColossalAI-Examples>`.
+
+If you are interested in the performance or the features of Colossal-AI, please check
+`Benchmark<https://github.com/hpcaitech/ColossalAI-Benchmark>`

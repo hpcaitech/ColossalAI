@@ -246,6 +246,7 @@ def initialize(model: Union[Callable, nn.Module],
     :rtype: Tuple
 
     Examples:
+        >>> # define model, criterion, optimizer, lr_scheduler, train_dataloader for your training
         >>> model = gpc.config.model.pop('type')(**gpc.config.model)
         >>> criterion = getattr(gpc.config, 'loss_fn', None)
         >>> optimizer = gpc.config.optimizer.pop('type')(model.parameters(), **gpc.config.optimizer)
@@ -256,11 +257,13 @@ def initialize(model: Union[Callable, nn.Module],
         >>>                                pin_memory=True,
         >>>                                shuffle=True,
         >>>                                drop_last=True)
+        >>> # Initialize your engine, train_dataloader, test_dataloader, lr_scheduler
         >>> engine, train_dataloader, _, lr_scheduler = colossalai.initialize(model,
         >>>                                                              optimizer,
         >>>                                                              criterion,
         >>>                                                              train_dataloader=train_dataloader,
         >>>                                                              lr_scheduler=lr_scheduler)
+        >>> # Beginning training progress
         >>> timier = MultiTimer()
         >>> trainer = Trainer(engine=engine, logger=logger, schedule=schedule, timer=timier)
         >>> hook_list = []

@@ -101,12 +101,12 @@ class BaseHook(ABC):
         pass
 
     def init_runner_states(self, trainer, key, val):
-        """Initializes trainer's state.
+        """Initializes trainer's state which would be used in :class: ``HOOK``.
 
         :param trainer: Trainer which is using this hook
         :type trainer: :class:`Trainer`
-        :param key: Key of reseting state
-        :param val: Value of reseting state
+        :param key: Key of state to be initialized
+        :param val: Value of state to be initialized
         """
         if key not in trainer.states:
             trainer.states[key] = val

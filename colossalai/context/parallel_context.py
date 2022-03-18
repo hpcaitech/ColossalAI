@@ -112,9 +112,8 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about `ParallelMode`
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         self._global_ranks[parallel_mode] = rank
@@ -130,9 +129,8 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         return self._local_ranks[parallel_mode]
@@ -148,9 +146,8 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         self._local_ranks[parallel_mode] = rank
@@ -166,9 +163,8 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
 
@@ -190,9 +186,8 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
 
@@ -216,9 +211,8 @@ class ParallelContext:
         :rtype: bool
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         rank = self.get_local_rank(parallel_mode)
         return rank == 0
@@ -236,9 +230,8 @@ class ParallelContext:
         :rtype: bool
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         rank = self.get_local_rank(parallel_mode)
         world_size = self.get_world_size(parallel_mode)
@@ -268,9 +261,8 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         return self._world_sizes[parallel_mode]
@@ -286,9 +278,8 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         self._world_sizes[parallel_mode] = world_size
@@ -304,9 +295,8 @@ class ParallelContext:
         :rtype: torch.distributed.ProcessGroup
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         return self._groups[parallel_mode]
@@ -322,9 +312,8 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         self._groups[parallel_mode] = group
@@ -340,9 +329,8 @@ class ParallelContext:
         :rtype: int
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         return self._ranks_in_group[parallel_mode]
@@ -358,9 +346,8 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._check_parallel_mode(parallel_mode)
         self._ranks_in_group[parallel_mode] = ranks
@@ -505,9 +492,8 @@ class ParallelContext:
         :rtype: bool
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         return parallel_mode in self._groups
 

@@ -14,7 +14,7 @@ from colossalai.utils import clip_grad_norm_fp32
 
 
 class ApexAMPOptimizer(ColossalaiOptimizer):
-    """ A wrapper class for APEX optimizer and it implements apex-specific backward and clip_grad_norm
+    """ A wrapper class for APEX optimizer. And the wrapper implements apex-specific backward and clip_grad_norm
     methods
     """
 

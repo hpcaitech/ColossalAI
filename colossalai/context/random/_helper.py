@@ -60,9 +60,8 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
         :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in ../context/parallel_mode.py or
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     _SEED_MANAGER.add_seed(parallel_mode, seed, overwrite)
 
@@ -74,9 +73,8 @@ def set_mode(parallel_mode: ParallelMode):
     :type parallel_mode: :class:`colossalai.context.ParallelMode`
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in ../context/parallel_mode.py or
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     _SEED_MANAGER.set_mode(parallel_mode)
 
@@ -109,9 +107,8 @@ def seed(parallel_mode: ParallelMode):
             output = F.dropout(input)
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in ../context/parallel_mode.py or
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     try:
         # set to new mode
@@ -140,9 +137,8 @@ def with_seed(func, parallel_mode: ParallelMode):
         out = wrapped_forward(input)
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in ../context/parallel_mode.py or
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
 
     @functools.wraps(func)

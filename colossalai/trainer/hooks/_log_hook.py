@@ -124,6 +124,10 @@ class TensorboardHook(BaseHook):
     :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
+
+    .. note::
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
 
     def __init__(self,

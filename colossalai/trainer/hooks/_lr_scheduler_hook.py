@@ -6,9 +6,11 @@ from ._metric_hook import LearningRateMetric, MetricHook
 
 @HOOKS.register_module
 class LRSchedulerHook(MetricHook):
-    """Build LR scheduler
+    """Build LR scheduler for trainer
 
-    :param lr_scheduler: LR scheduler
+    :param lr_scheduler: The specific LR scheduler in range of ``colossalai.nn.lr_scheduler``,
+                        more details about ``lr_scheduler`` could be found in
+                        https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/nn/lr_scheduler
     :param by_epoch: If `True`, the LR will be scheduled every epoch. Else, the LR will be scheduled every batch
     :type by_epoch: bool
     :param store_lr_in_state: If `True`, store the learning rate in each state, defaults to `True`

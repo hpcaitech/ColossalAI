@@ -21,8 +21,9 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
     :param optim: A normal optimizer like Adam or SGD
     :param args: Args used to initialize FP16 optimizer
     :param kwargs: Kwargs used to initialize FP16 optimizer
-
     :type optim: torch.optim.Optimizer
+
+    The parameter list of args and kwargs: [clip_grad (float, optional), ]
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):
@@ -42,6 +43,19 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
 class NaiveAMPModel(nn.Module):
     """A wrapper class for model to cast the model into fp16 and
     automatically cast the input and output
+
+    :param model: torch.nn.Module to be wrapped.
+    :param output_to_fp32: Whether cast output of this module into fp32.
+    :param parallel_mode: Parallel group mode used in this module
+    :param sync_buffer:
+    :type model: torch.nn.Module
+    :type output_to_fp32: bool, default to be True
+    :type parallel_mode: :class:`colossalai.context.ParallelMode`, default to be ``ParallelMode.DATA``
+    :type sync_buffer: bool, default to be True
+
+    .. note::
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
 
     def __init__(self,

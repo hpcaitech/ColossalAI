@@ -73,13 +73,14 @@ class LoadCheckpointHook(BaseHook):
 
     :param checkpoint_dir: Directory of saving checkpoint, defaults to None
     :type checkpoint_dir: str, optional
-    :param epoch: Epoch number to be set, defaults to -1
+    :param epoch: Loading checkpoint of setting epoch numbers, defaults to -1.
+                 Epoch equals to -1 means choosing the latest checkpoint.
     :type epoch: str, optional
     :param finetune: Whether allows to load a part of the model, defaults to False
     :type finetune: bool, optional
     :param strict: Whether loads a model that has the same shape of parameters, defaults to False
     :type strict: bool, optional
-    :param suffix: Suffic, defaults to ''
+    :param suffix: Suffix, defaults to ''
     :type suffix: str, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 0
     :type priority: int, optional

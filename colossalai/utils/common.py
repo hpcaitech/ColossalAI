@@ -63,10 +63,9 @@ def sync_model_param(model, parallel_mode):
     :type model: torch.nn.Module
     :type parallel_mode:  colossalai.context.ParallelMode
 
-    .. note:
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in ../context/parallel_mode.py or
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+    .. note::
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
         for param in model.parameters():

@@ -48,7 +48,7 @@ autodoc_typehints = 'none'
 autodoc_docstring_signature = True
 autodoc_default_options = {
     'member-order': 'bysource',
-    'special-members': '__init__'
+    'exclude-members': '__init__'
 }
 
 # Add any paths that contain templates here, relative to this directory.

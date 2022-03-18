@@ -69,7 +69,7 @@ class WrappedDropout(nn.Module):
     :type mode: :class:`colossalai.context.ParallelMode`
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
         could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
 

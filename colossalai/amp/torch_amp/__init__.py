@@ -18,10 +18,14 @@ def convert_to_torch_amp(model: nn.Module,
     :type optimizer: :class:`torch.optim.Optimizer`
     :param criterion: your loss function object
     :type criterion: :class:`torch.nn.modules.loss._Loss`, optional
-    :param amp_config: configuration for different amp modes
+    :param amp_config: configuration for torch mode amp
     :type amp_config: :class:`colossalai.context.Config` or dict, optional
     :return: (model, optimizer, criterion)
     :rtype: Tuple
+
+    The parameters list of amp_config: [init_scale (float, optional, default=2.**16),
+    growth_factor (float, optional, default=2.0), backoff_factor (float, optional, default=0.5),
+    growth_interval (int, optional, default=2000), enabled (bool, optional, default=True)]
     """
     model = TorchAMPModel(model)
     if amp_config is None:

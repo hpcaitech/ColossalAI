@@ -38,9 +38,8 @@ class SeedManager:
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         assert parallel_mode in self._seed_states, f'Parallel mode {parallel_mode} is not found in the seed manager'
         self._seed_states[parallel_mode] = state
@@ -52,9 +51,8 @@ class SeedManager:
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         if self.current_mode:
             # save the current state for current mode
@@ -77,9 +75,8 @@ class SeedManager:
             :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         assert isinstance(parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
         if overwrtie is False:

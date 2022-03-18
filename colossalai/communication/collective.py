@@ -16,9 +16,8 @@ def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: 
     specific dimension.
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in ../context/parallel_mode.py or
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     
     :param tensor: Tensor to be gathered
     :param dim: The dimension concatenating in
@@ -63,9 +62,8 @@ def reduce_scatter(tensor: Tensor,
     members in the parallel group.
 
     .. note::
-        the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-        could be found in ../context/parallel_mode.py or
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
 
     :param tensor: Tensor to be reduced and scattered
     :param dim: The dimension scattering in

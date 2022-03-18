@@ -120,9 +120,8 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('info', message, parallel_mode, ranks)
 
@@ -137,9 +136,8 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('warning', message, parallel_mode, ranks)
 
@@ -154,9 +152,8 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('debug', message, parallel_mode, ranks)
 
@@ -171,8 +168,7 @@ class DistributedLogger:
         :type ranks: list
 
         .. note::
-            the parallel_mode should be concluded in ``ParallelMode``, more details about ``ParallelMode``
-            could be found in ../context/parallel_mode.py or
-            https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+            could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
         """
         self._log('error', message, parallel_mode, ranks)

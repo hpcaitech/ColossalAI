@@ -312,9 +312,8 @@ def split_batch_3d(input_: Tensor,
     :rtype output: torch.Tensor
 
     .. note::
-        the input_parallel_mode and weight_parallel_mode should be concluded in ``ParallelMode``,
-        more details about ``ParallelMode`` could be found in
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     if input_.size(dim) <= 1:
         return input_
@@ -346,9 +345,8 @@ def reduce_tensor_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
     :param parallel_mode: Parallel mode
 
     .. note::
-        the input_parallel_mode and weight_parallel_mode should be concluded in ``ParallelMode``,
-        more details about ``ParallelMode`` could be found in
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     return _ReduceTensor3D.apply(tensor, parallel_mode)
 
@@ -376,9 +374,8 @@ def all_gather_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) 
     :param parallel_mode: Parallel mode
 
     .. note::
-        the input_parallel_mode and weight_parallel_mode should be concluded in ``ParallelMode``,
-        more details about ``ParallelMode`` could be found in
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     return _AllGatherTensor3D.apply(tensor, dim, parallel_mode)
 
@@ -406,9 +403,8 @@ def reduce_scatter_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMo
     :param parallel_mode: Parallel mode
 
     .. note::
-        the input_parallel_mode and weight_parallel_mode should be concluded in ``ParallelMode``,
-        more details about ``ParallelMode`` could be found in
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     return _ReduceScatterTensor3D.apply(tensor, dim, parallel_mode)
 
@@ -456,9 +452,8 @@ def reduce_by_batch_3d(tensor: Tensor,
     :type reduce_mean: int, optional
 
     .. note::
-        the input_parallel_mode and weight_parallel_mode should be concluded in ``ParallelMode``,
-        more details about ``ParallelMode`` could be found in
-        https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode``
+        could be found in https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py
     """
     return _ReduceByBatch3D.apply(tensor, input_parallel_mode, weight_parallel_mode, reduce_mean)
 
