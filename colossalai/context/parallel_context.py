@@ -9,7 +9,6 @@ import torch
 import torch.distributed as dist
 from colossalai.constants import ALLOWED_MODES, INITIALIZER_MAPPING
 from colossalai.context.config import Config
-from colossalai.global_variables import moe_env
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.logging import get_dist_logger
 from colossalai.registry import DIST_GROUP_INITIALIZER
@@ -406,13 +405,6 @@ class ParallelContext:
 
             # add this config to initialize later
             pg_init.append(dict(type=INITIALIZER_MAPPING[tensor_parallel_mode.lower()], **tensor_parallel_cfg))
-
-        # initialization for moe environment
-        if parallel_config is not None and 'moe' in parallel_config:
-            param = parallel_config['moe']
-            assert 'size' in param, "Moe model parallel size should be given"
-            moe_env.setup(param['size'])
-            pg_init.append(dict(type=INITIALIZER_MAPPING['moe']))
 
         # run initialization of different process groups
         for initializer_cfg in pg_init:

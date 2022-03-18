@@ -147,15 +147,10 @@ def with_seed(func, parallel_mode: ParallelMode):
 def moe_set_seed(seed):
     if torch.cuda.is_available():
         from colossalai.core import global_context as gpc
-        moe_mp_rank = gpc.get_local_rank(ParallelMode.MOE_MODEL)
-        moe_mp_seed = seed + moe_mp_rank
-        add_seed(ParallelMode.MOE_MODEL, moe_mp_seed)
-
         global_rank = gpc.get_global_rank()
-        add_seed(ParallelMode.TENSOR, global_rank, True)
-        print(f"moe seed condition: {global_rank} with moe seed {moe_mp_seed}, ",
-              f"tensor seed {global_rank}",
-              flush=True)
+        diff_seed = seed + global_rank
+        add_seed(ParallelMode.TENSOR, diff_seed, True)
+        print(f"moe seed condition: {global_rank} with tensor seed {diff_seed}", flush=True)
 
 
 def reset_seeds():
