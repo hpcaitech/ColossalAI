@@ -1,6 +1,7 @@
 from typing import Optional
 
 import torch
+import torch.distributed as dist
 from colossalai.registry import OPHOOKS
 from colossalai.utils import get_current_device
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
@@ -17,9 +18,13 @@ class ZeroHook(BaseOpHook):
     A hook to process sharded param for ZeRO method.
     """
 
-    def __init__(self, shard_strategy: BaseShardStrategy, memstarts_collector: Optional[MemStatsCollector]):
+    def __init__(self,
+                 shard_strategy: BaseShardStrategy,
+                 memstarts_collector: Optional[MemStatsCollector],
+                 process_group: Optional[dist.ProcessGroup] = None):
         super().__init__()
         self.shard_strategy = shard_strategy
+        self.process_group = process_group
         # NOTE(jiaruifang) Now the computing device of FWD and BWD is always on GPU
         self.computing_device = torch.device(f'cuda:{get_current_device()}')
 
@@ -30,7 +35,7 @@ class ZeroHook(BaseOpHook):
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.data)
-        self.shard_strategy.gather(tensor_list)
+        self.shard_strategy.gather(tensor_list, self.process_group)
         for param in module.parameters():
             if param.col_attr.data.device != self.computing_device:
                 param.col_attr.data.to(self.computing_device)
@@ -45,7 +50,7 @@ class ZeroHook(BaseOpHook):
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.data)
-        self.shard_strategy.shard(tensor_list)
+        self.shard_strategy.shard(tensor_list, self.process_group)
         for param in module.parameters():
             param.col_attr.remove_torch_payload()
 
@@ -54,7 +59,7 @@ class ZeroHook(BaseOpHook):
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.data)
-        self.shard_strategy.gather(tensor_list)
+        self.shard_strategy.gather(tensor_list, self.process_group)
         for param in module.parameters():
             if param.col_attr.data.device != self.computing_device:
                 param.col_attr.data.to(self.computing_device)
@@ -80,7 +85,7 @@ class ZeroHook(BaseOpHook):
         for param in module.parameters():
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.data)
-        self.shard_strategy.shard(tensor_list)
+        self.shard_strategy.shard(tensor_list, self.process_group)
         for param in module.parameters():
             param.col_attr.remove_torch_payload()
 

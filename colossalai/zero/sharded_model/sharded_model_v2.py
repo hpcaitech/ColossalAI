@@ -70,7 +70,8 @@ class ShardedModelV2(nn.Module):
         self._iter_cnter = 0
 
         # Register hooks
-        register_ophooks_recursively(self.module, [ZeroHook(self.shard_strategy, self._memstats_collector)])
+        register_ophooks_recursively(self.module,
+                                     [ZeroHook(self.shard_strategy, self._memstats_collector, self.process_group)])
         self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
@@ -145,7 +146,7 @@ class ShardedModelV2(nn.Module):
         if self.shard_param:
             for p in self.module.parameters():
                 if not p.col_attr.param_is_sharded:
-                    self.shard_strategy.shard([p.col_attr.data])
+                    self.shard_strategy.shard([p.col_attr.data], self.process_group)
         for p in self.module.parameters():
             p.col_attr.bwd_count = 0
             if not p.requires_grad:
@@ -229,13 +230,13 @@ class ShardedModelV2(nn.Module):
         param.col_attr.fp16_grad = reduced_grad.data
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
-        self.shard_strategy.gather([p.col_attr.data for p in self.module.parameters()])
+        self.shard_strategy.gather([p.col_attr.data for p in self.module.parameters()], self.process_group)
         prev_params = {}
         for p in self.module.parameters():
             prev_params[p] = p.data
             p.data = p.col_attr.data.payload
         gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
-        self.shard_strategy.shard([p.col_attr.data for p in self.module.parameters()])
+        self.shard_strategy.shard([p.col_attr.data for p in self.module.parameters()], self.process_group)
         for p in self.module.parameters():
             p.data = prev_params[p]
         return gathered_state_dict
