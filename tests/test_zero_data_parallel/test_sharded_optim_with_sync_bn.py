@@ -4,6 +4,7 @@
 from functools import partial
 
 import colossalai
+import pyte
 import pytest
 import torch
 import torch.distributed as dist
