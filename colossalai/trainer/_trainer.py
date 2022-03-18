@@ -325,11 +325,9 @@ class Trainer:
         :type max_steps: int, optional
         :type test_dataloader: DataLoader, optional
         :type test_interval: int, optional
-        :type hooks: list[BaseHook], optional
+        :type hooks: list[`BaseHook <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>`_],
+                    optional
         :type display_progress: bool, optional
-
-        `BaseHook <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>`_
-        `Colossal-AI Tutorial <https://github.com/hpcaitech/ColossalAI>`_
         """
 
 
