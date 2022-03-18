@@ -4,14 +4,15 @@
 from functools import partial
 
 import colossalai
+import pyte
 import pytest
 import torch
-import torch.multiprocessing as mp
-from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
-from torchvision.models import resnet50
 import torch.distributed as dist
+import torch.multiprocessing as mp
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.utils import free_port
+from torchvision.models import resnet50
 
 
 def run_dist(rank, world_size, port):
@@ -64,6 +65,10 @@ def run_dist(rank, world_size, port):
         'expected the output from different ranks to be the same, but got different values'
 
 
+# FIXME: enable this test in next PR
+
+
+@pytest.mark.skip
 @pytest.mark.dist
 def test_sharded_optim_with_sync_bn():
     """
