@@ -46,7 +46,7 @@ def run_model_test(enable_autocast, shard_strategy_class):
         model = DDP(model)
 
         for i, (data, label) in enumerate(train_dataloader):
-            if i > 3:
+            if i > 5:
                 break
 
             data, label = cast_tensor_to_fp16(data).cuda(), label.cuda()

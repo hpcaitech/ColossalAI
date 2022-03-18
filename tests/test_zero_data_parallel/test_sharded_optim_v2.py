@@ -18,6 +18,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from common import CONFIG, check_sharded_params_padding
+from colossalai.amp import convert_to_apex_amp
 
 
 def _run_step(model, optimizer, data, label, criterion, enable_autocast=False):
@@ -65,8 +66,6 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam):
         model = model_builder(checkpoint=True).half()
         col_model_deepcopy(zero_model, model)
         model = model.cuda().float()
-        if dist.get_world_size() > 1:
-            model = DDP(model)
 
         if use_cpuadam:
             optimizer_class = CPUAdam
@@ -74,12 +73,16 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam):
         sharded_optim = optimizer_class(zero_model.parameters(), lr=1e-3)
         sharded_optim = ShardedOptimizerV2(zero_model, sharded_optim, cpu_offload=cpu_offload, initial_scale=2**5)
 
+        amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False)
+        apex_model, apex_optimizer = convert_to_apex_amp(model, optim, amp_config)
+        if dist.get_world_size() > 1:
+            apex_model = DDP(apex_model)
+
         for i, (data, label) in enumerate(train_dataloader):
-            # FIXME() if i > 5, the unittest will fail
-            if i > 3:
+            if i > 5:
                 break
             data, label = data.cuda(), label.cuda()
-            _run_step(model, optim, data, label, criterion, False)
+            _run_step(apex_model, apex_optimizer, data, label, criterion, False)
             _run_step(zero_model, sharded_optim, data, label, criterion, False)
             check_sharded_params_padding(model, zero_model, loose=True)
             for param in model.parameters():
