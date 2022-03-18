@@ -12,12 +12,12 @@ from colossalai.utils import free_port
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_model import ShardedModelV2
 from tests.components_to_test.registry import non_distributed_component_funcs
-
+from colossalai.testing import parameterize
 from common import CONFIG
 
 
-def run_dist(rank, world_size, port, shard_strategy):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+@parameterize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
+def run_zero_state_dict(shard_strategy):
     test_models = ['repeated_computed_layers', 'resnet18']
     shard_strategy = shard_strategy()
     for model_name in test_models:
@@ -31,11 +31,15 @@ def run_dist(rank, world_size, port, shard_strategy):
             assert torch.equal(val, zero_state_dict[key])
 
 
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_zero_state_dict()
+
+
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
-@pytest.mark.parametrize("shard_strategy", [TensorShardStrategy, BucketTensorShardStrategy])
-def test_zero_state_dict(world_size, shard_strategy):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), shard_strategy=shard_strategy)
+def test_zero_state_dict(world_size):
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
