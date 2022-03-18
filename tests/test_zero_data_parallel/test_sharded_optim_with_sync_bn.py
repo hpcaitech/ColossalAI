@@ -6,12 +6,14 @@ from functools import partial
 import colossalai
 import pytest
 import torch
-import torch.multiprocessing as mp
-from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
-from torchvision.models import resnet50
 import torch.distributed as dist
+import torch.multiprocessing as mp
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.utils import free_port
+from colossalai.zero.init_ctx import ZeroInitContext
+from colossalai.zero.shard_utils import TensorShardStrategy
+from torchvision.models import resnet50
 
 
 def run_dist(rank, world_size, port):
@@ -19,7 +21,7 @@ def run_dist(rank, world_size, port):
     # as this model has sync batch normalization
     # need to configure cudnn deterministic so that
     # randomness of convolution layers will be disabled
-    zero_config = dict(optimizer_config=dict(optimizer_class=torch.optim.Adam, lr=1e-3))
+    zero_config = dict(model_config=dict(shard_strategy=TensorShardStrategy()))
     colossalai.launch(config=dict(zero=zero_config, cudnn_determinstic=True, cudnn_benchmark=False),
                       rank=rank,
                       world_size=world_size,
@@ -27,7 +29,11 @@ def run_dist(rank, world_size, port):
                       port=port,
                       backend='nccl')
 
-    model = resnet50()
+    with ZeroInitContext(convert_fp16=True,
+                         target_device=torch.cuda.current_device(),
+                         shard_strategy=gpc.config.zero.model_config.shard_strategy,
+                         shard_param=True):
+        model = resnet50()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = torch.nn.CrossEntropyLoss()
 

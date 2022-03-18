@@ -16,7 +16,6 @@ from colossalai.utils.memory_tracer.allocator import col_move_to_cpu
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
@@ -25,6 +24,30 @@ from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tenso
 
 
 class ShardedModelV2(nn.Module):
+    """A wrapper for a sharded module, which implements Zero Redundancy Optimizer (ZeRO) stage 3.
+    Parameter, gradient and optimizer states are sharded, so memory efficiency is boosted drastically 
+    compared to classic data parallelism while the computational granularity and communication efficiency are retained.
+    Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
+
+    :param module: A sharded module, which must be initialized by `ZeroInitContext`.
+    :type module: nn.Module
+    :param shard_strategy: A shard strategy to manage shard behavior.
+    :type shard_strategy: BaseShardStrategy
+    :param process_group: Data parallel process group, defaults to None
+    :type process_group: Optional[ProcessGroup], optional
+    :param reduce_scatter_process_group: Reduce-scatter process group, defaults to None. Generally, it should be `None`.
+    :type reduce_scatter_process_group: Optional[ProcessGroup], optional
+    :param reduce_scatter_bucket_size_mb: Reduce-scatter bucket size in *MB*, defaults to 25
+    :type reduce_scatter_bucket_size_mb: int, optional
+    :param fp32_reduce_scatter: If set to `True`, gradients are forced to FP32 before reduce-scatter, defaults to False
+    :type fp32_reduce_scatter: bool, optional
+    :param offload_config: We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload, defaults to None
+    :type offload_config: Optional[dict], optional
+    :param gradient_predivide_factor: Gradient is divived by this value before reduce-scatter, defaults to 1.0
+    :type gradient_predivide_factor: Optional[float], optional
+    :param use_memory_tracer: Whether to use memoty tracer, defaults to False
+    :type use_memory_tracer: bool, optional
+    """
 
     def __init__(self,
                  module: nn.Module,
@@ -35,32 +58,27 @@ class ShardedModelV2(nn.Module):
                  fp32_reduce_scatter: bool = False,
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 shard_param: bool = True,
                  use_memory_tracer: bool = False):
-        r"""
-        A demo to reconfigure zero1 shared_model.
-        Currently do not consider the Optimizer States.
-        """
         super().__init__()
         self.logger = get_dist_logger()
+
+        # We force users to use ZeroInitContext
+        sharded = []
+        unsharded = []
+        for param in module.parameters():
+            assert hasattr(param, 'col_attr'), 'You must use ZeroInitContext to init your module first.'
+            sharded.append(param.col_attr.param_is_sharded)
+            unsharded.append(not param.col_attr.param_is_sharded)
+        assert all(sharded) or all(
+            unsharded), 'Parameters must be all sharded or all unsharded! Parameters are partially sharded nwo.'
+        self.shard_param = all(sharded)
+        self.module = module
 
         self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
         self.reduce_scatter_process_group = reduce_scatter_process_group or self.process_group
         self.world_size = dist.get_world_size(self.process_group)
         self.rank = dist.get_rank(self.process_group)
-
-        # Cast module to fp16 and cuda, in case user didn't use ZeroInitContext
-        self.module = module.half().cuda()
-
         self.shard_strategy = shard_strategy
-        self.shard_param = shard_param
-
-        # In case user didn't use ZeroInitContext
-        for param in self.module.parameters():
-            if not hasattr(param, 'col_attr'):
-                param.col_attr = ShardedParamV2(param, process_group, rm_torch_payload=True)
-                if self.shard_param:
-                    self.shard_strategy.shard([param.col_attr.data])
 
         # Init Memory Statistics Collector
         self._use_memory_tracer = use_memory_tracer
@@ -71,7 +89,8 @@ class ShardedModelV2(nn.Module):
         self._iter_cnter = 0
 
         # Register hooks
-        register_ophooks_recursively(self.module, [ZeroHook(self.shard_strategy, self._memstats_collector)])
+        register_ophooks_recursively(self.module,
+                                     [ZeroHook(self.shard_strategy, self._memstats_collector, self.process_group)])
         self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
@@ -146,7 +165,7 @@ class ShardedModelV2(nn.Module):
         if self.shard_param:
             for p in self.module.parameters():
                 if not p.col_attr.param_is_sharded:
-                    self.shard_strategy.shard([p.col_attr.data])
+                    self.shard_strategy.shard([p.col_attr.data], self.process_group)
         for p in self.module.parameters():
             p.col_attr.bwd_count = 0
             if not p.requires_grad:
@@ -230,13 +249,13 @@ class ShardedModelV2(nn.Module):
         param.col_attr.fp16_grad = reduced_grad.data
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
-        self.shard_strategy.gather([p.col_attr.data for p in self.module.parameters()])
+        self.shard_strategy.gather([p.col_attr.data for p in self.module.parameters()], self.process_group)
         prev_params = {}
         for p in self.module.parameters():
             prev_params[p] = p.data
             p.data = p.col_attr.data.payload
         gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
-        self.shard_strategy.shard([p.col_attr.data for p in self.module.parameters()])
+        self.shard_strategy.shard([p.col_attr.data for p in self.module.parameters()], self.process_group)
         for p in self.module.parameters():
             p.data = prev_params[p]
         return gathered_state_dict
