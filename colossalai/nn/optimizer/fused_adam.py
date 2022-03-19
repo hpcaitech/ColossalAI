@@ -41,21 +41,26 @@ class FusedAdam(torch.optim.Optimizer):
         set_grad_none (bool, optional): whether set grad to None when zero_grad()
             method is called. (default: True)
 
-    .. _Adam\: A Method for Stochastic Optimization:
+    .. _Adam: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ
     """
 
-    def __init__(self, params, lr=1e-3, bias_correction=True,
-                 betas=(0.9, 0.999), eps=1e-8, adam_w_mode=True,
-                 weight_decay=0., amsgrad=False, set_grad_none=True):
+    def __init__(self,
+                 params,
+                 lr=1e-3,
+                 bias_correction=True,
+                 betas=(0.9, 0.999),
+                 eps=1e-8,
+                 adam_w_mode=True,
+                 weight_decay=0.,
+                 amsgrad=False,
+                 set_grad_none=True):
 
         if amsgrad:
-            raise RuntimeError(
-                'FusedAdam does not support the AMSGrad variant.')
-        defaults = dict(lr=lr, bias_correction=bias_correction,
-                        betas=betas, eps=eps, weight_decay=weight_decay)
+            raise RuntimeError('FusedAdam does not support the AMSGrad variant.')
+        defaults = dict(lr=lr, bias_correction=bias_correction, betas=betas, eps=eps, weight_decay=weight_decay)
         super(FusedAdam, self).__init__(params, defaults)
         self.adam_w_mode = 1 if adam_w_mode else 0
         self.set_grad_none = set_grad_none
@@ -86,7 +91,8 @@ class FusedAdam(torch.optim.Optimizer):
         """
         if any(p is not None for p in [grads, output_params, scale, grad_norms]):
             raise RuntimeError(
-                'FusedAdam has been updated.  Simply initialize it identically to torch.optim.Adam, and call step() with no arguments.')
+                'FusedAdam has been updated.  Simply initialize it identically to torch.optim.Adam, and call step() with no arguments.'
+            )
         loss = None
         if closure is not None:
             loss = closure()
@@ -135,28 +141,12 @@ class FusedAdam(torch.optim.Optimizer):
                     raise RuntimeError('FusedAdam only support fp16 and fp32.')
 
             if (len(g_16) > 0):
-                multi_tensor_applier(self.multi_tensor_adam,
-                                     self._dummy_overflow_buf,
-                                     [g_16, p_16, m_16, v_16],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     group['step'],
-                                     self.adam_w_mode,
-                                     bias_correction,
-                                     group['weight_decay'])
+                multi_tensor_applier(self.multi_tensor_adam, self._dummy_overflow_buf, [g_16, p_16, m_16, v_16],
+                                     group['lr'], beta1, beta2, group['eps'], group['step'], self.adam_w_mode,
+                                     bias_correction, group['weight_decay'])
             if (len(g_32) > 0):
-                multi_tensor_applier(self.multi_tensor_adam,
-                                     self._dummy_overflow_buf,
-                                     [g_32, p_32, m_32, v_32],
-                                     group['lr'],
-                                     beta1,
-                                     beta2,
-                                     group['eps'],
-                                     group['step'],
-                                     self.adam_w_mode,
-                                     bias_correction,
-                                     group['weight_decay'])
+                multi_tensor_applier(self.multi_tensor_adam, self._dummy_overflow_buf, [g_32, p_32, m_32, v_32],
+                                     group['lr'], beta1, beta2, group['eps'], group['step'], self.adam_w_mode,
+                                     bias_correction, group['weight_decay'])
 
         return loss
