@@ -4,7 +4,8 @@ import torch.distributed as dist
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
-
+import os
+import logging
 
 def send_tensor_meta(tensor, need_meta=True, next_rank=None):
     """Sends tensor meta information before sending a specific tensor. 
@@ -108,32 +109,39 @@ def gather_split_1d_tensor(tensor):
     dist.all_gather(chunks, tensor, group=gpc.get_group(ParallelMode.PARALLEL_1D))
     return gathered
 
-import os
-import torch
-import warnings
+
 def check_single_machine_multi_gpu_p2p_available(gpu_list):
+    """Opposite of above function, gather values from model parallel ranks.
+
+    :param gpu_list: Queue of gpu to be tested
+    :type list
+
+    :return True or False: gpus returns True if both can access each other via peer to peer, otherwise returns False
+    :rtype bool
+    """
+    logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s', level = logging.DEBUG)
     unavailble = []
     check_p2p_result = os.popen("./simpleP2P")
     p2p_info = check_p2p_result.read().split('\n')
-    for index in range(len(p2p_info)):
-        if "No" in p2p_info[index]:
-            unavailble.append(p2p_info[index])
-    print(unavailble)
+    for info_index,info_value in enumerate(p2p_info):
+        if "No" in info_value:
+            unavailble.append(info_value)
+
     count = 0
     if len(unavailble) == 0:
+        logging.info("All GPUs have peer to peer access to each other.")
         return True
     elif torch.cuda.device_count() >= len(unavailble):
+        logging.warn("Peer to peer access is available between some GPUs.")
         for p2p_unavailable_gpu in unavailble:
             gpu_id = p2p_unavailable_gpu.split(" ")[6][4:5]
-            print(gpu_id)
             if gpu_id in gpu_list:
-                warnings.warn(p2p_unavailable_gpu)
+                logging.warn(p2p_unavailable_gpu)
                 count += 1
         if count > 0:
-            return True
-        else:
             return False
-    return True
+        else:
+            return True
 
 
 if __name__ == "__main__":
