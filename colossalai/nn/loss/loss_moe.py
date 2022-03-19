@@ -1,7 +1,7 @@
 import torch.nn as nn
 from colossalai.registry import LOSSES
 from torch.nn.modules.loss import _Loss
-from colossalai.global_variables import moe_env
+from colossalai.core import MOE_CONTEXT
 
 
 @LOSSES.register_module
@@ -14,6 +14,7 @@ class MoeCrossEntropyLoss(_Loss):
 
     :type aux_weight: float, optional
     """
+
     def __init__(self, aux_weight: float = 0.01, *args, **kwargs):
         super().__init__()
         self.loss = nn.CrossEntropyLoss(*args, **kwargs)
@@ -21,7 +22,7 @@ class MoeCrossEntropyLoss(_Loss):
 
     def forward(self, *args):
         main_loss = self.loss(*args)
-        aux_loss = moe_env.get_loss()
+        aux_loss = MOE_CONTEXT.get_loss()
         return main_loss + self.aux_weight * aux_loss
 
 
@@ -37,6 +38,7 @@ class MoeLoss(_Loss):
     :type aux_weight: float
     :type loss_fn: Callable
     """
+
     def __init__(self, aux_weight: float, loss_fn, *args, **kwargs):
         super().__init__()
         self.loss_fn = loss_fn(*args, **kwargs)
@@ -44,5 +46,5 @@ class MoeLoss(_Loss):
 
     def forward(self, *args, **kwargs):
         main_loss = self.loss_fn(*args, **kwargs)
-        aux_loss = moe_env.get_loss()
+        aux_loss = MOE_CONTEXT.get_loss()
         return main_loss + self.aux_weight * aux_loss

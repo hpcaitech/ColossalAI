@@ -4,11 +4,11 @@ from torch import Tensor
 from typing import Any, Tuple, Optional
 from torch.distributed import ProcessGroup
 
-U_CUDA_MODE = False
+COL_MOE_KERNEL_FLAG = False
 try:
     import colossal_moe_cuda
 
-    U_CUDA_MODE = True
+    COL_MOE_KERNEL_FLAG = True
 except ImportError:
     print("If you want to activate cuda mode for MoE, please install with cuda_ext!")
 
@@ -17,7 +17,6 @@ class AllGather(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, inputs: Tensor, group: Optional[ProcessGroup] = None) -> Tensor:
-
         if ctx is not None:
             ctx.comm_grp = group
 
@@ -40,7 +39,6 @@ class ReduceScatter(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, inputs: Tensor, group: Optional[ProcessGroup] = None) -> Tensor:
-
         if ctx is not None:
             ctx.comm_grp = group
 
@@ -149,7 +147,7 @@ class MoeCombine(torch.autograd.Function):
 def moe_cumsum(inputs: Tensor):
     dim0 = inputs.size(0)
     flag = (dim0 <= 1024) or (dim0 <= 2048 and dim0 % 2 == 0) or (dim0 % 4 == 0)
-    if flag and U_CUDA_MODE:
+    if flag and COL_MOE_KERNEL_FLAG:
         return colossal_moe_cuda.cumsum_sub_one(inputs)
     else:
         return torch.cumsum(inputs, dim=0) - 1

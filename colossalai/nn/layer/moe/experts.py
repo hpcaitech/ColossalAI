@@ -2,18 +2,24 @@ import math
 
 import torch
 import torch.nn as nn
-from colossalai.global_variables import moe_env
 from colossalai.context import ParallelMode, seed
 from colossalai.utils import get_current_device
+from colossalai.core import MOE_CONTEXT
 
 
 class MoeExperts(nn.Module):
+    """Basic class for experts in MoE. It stores what kind of communication expersts use
+    to exchange tokens, how many experts in a single GPU and parallel information such as
+    expert parallel size, data parallel size and their distributed communication groups.
+    """
 
-    def __init__(self, comm: str):
+    def __init__(self, comm_name: str, num_experts: int):
         super().__init__()
-        assert comm in {"all_to_all", "all_gather"}, \
+        assert comm_name in {"all_to_all", "all_gather"}, \
             "This kind of communication has not been implemented yet.\n Please use Experts build function."
-        self.comm = comm
+        self.comm_name = comm_name
+        # Get the configuration of experts' deployment and parallel information from moe contex
+        self.num_local_experts, self.dist_info = MOE_CONTEXT.get_info(num_experts)
 
 
 class Experts(MoeExperts):
@@ -29,53 +35,48 @@ class Experts(MoeExperts):
     """
 
     def __init__(self, expert, num_experts, **expert_args):
-        super().__init__("all_to_all")
+        super().__init__("all_to_all", num_experts)
 
-        assert num_experts % moe_env.model_parallel_size == 0, \
-            "The number of experts should be divied by moe model size"
+        # Use seed to make every expert different from others
+        with seed(ParallelMode.TENSOR):
+            self.experts = nn.ModuleList([expert(**expert_args) for _ in range(self.num_local_experts)])
 
-        num_local_experts = num_experts // moe_env.model_parallel_size
-
-        with seed(ParallelMode.MOE_MODEL):
-            self.experts = nn.ModuleList([expert(**expert_args) for _ in range(num_local_experts)])
-
+        # Attach parallel information for all parameters in Experts
         for exp in self.experts:
             for param in exp.parameters():
-                param.__setattr__('moe_param', True)
+                param.__setattr__('moe_info', self.dist_info)
 
-        self.num_local_experts = num_local_experts
-
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor):
+        # Split inputs for each expert
         expert_input = torch.chunk(inputs, self.num_local_experts, dim=1)
         expert_output = []
 
+        # Get outputs from each expert
         for i in range(self.num_local_experts):
             expert_output.append(self.experts[i](expert_input[i]))
 
+        # Concatenate all outputs together
         output = torch.cat(expert_output, dim=1).contiguous()
         return output
 
 
 class FFNExperts(MoeExperts):
+    """Use torch.bmm to speed up for multiple experts.
+    """
 
     def __init__(self, num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
-        super().__init__("all_to_all")
+        super().__init__("all_to_all", num_experts)
 
-        assert num_experts % moe_env.model_parallel_size == 0, \
-            "The number of experts should be divied by moe model size"
+        self.w1 = nn.Parameter(torch.empty(self.num_local_experts, d_model, d_ff, device=get_current_device()))
+        self.b1 = nn.Parameter(torch.empty(self.num_local_experts, 1, d_ff, device=get_current_device()))
 
-        num_local_experts = num_experts // moe_env.model_parallel_size
-
-        self.w1 = nn.Parameter(torch.empty(num_local_experts, d_model, d_ff, device=get_current_device()))
-        self.b1 = nn.Parameter(torch.empty(num_local_experts, 1, d_ff, device=get_current_device()))
-
-        self.w2 = nn.Parameter(torch.empty(num_local_experts, d_ff, d_model, device=get_current_device()))
-        self.b2 = nn.Parameter(torch.empty(num_local_experts, 1, d_model, device=get_current_device()))
+        self.w2 = nn.Parameter(torch.empty(self.num_local_experts, d_ff, d_model, device=get_current_device()))
+        self.b2 = nn.Parameter(torch.empty(self.num_local_experts, 1, d_model, device=get_current_device()))
 
         s1 = math.sqrt(0.1 / d_model)
         s2 = math.sqrt(0.1 / d_ff)
 
-        with seed(ParallelMode.MOE_MODEL):
+        with seed(ParallelMode.TENSOR):
             nn.init.trunc_normal_(self.w1, std=s1)
             nn.init.trunc_normal_(self.b1, std=s1)
             nn.init.trunc_normal_(self.w2, std=s2)
@@ -85,7 +86,7 @@ class FFNExperts(MoeExperts):
         self.drop = nn.Dropout(p=drop_rate)
 
         for param in self.parameters():
-            param.__setattr__('moe_param', True)
+            param.__setattr__('moe_info', self.dist_info)
 
     def forward(self, inputs):    # inputs [g, el, c, h]
 
@@ -99,9 +100,9 @@ class FFNExperts(MoeExperts):
         out_ff = torch.baddbmm(self.b1, inputs, self.w1)
         out_act = self.act(out_ff)
         with seed(ParallelMode.TENSOR):
-            inter = self.drop(out_act)
+            out_inter = self.drop(out_act)
 
-        out_model = torch.baddbmm(self.b2, inter, self.w2)
+        out_model = torch.baddbmm(self.b2, out_inter, self.w2)
         with seed(ParallelMode.TENSOR):
             outputs = self.drop(out_model)    # outputs [el, gc, h]
 
@@ -111,14 +112,18 @@ class FFNExperts(MoeExperts):
 
 
 class TPExperts(MoeExperts):
+    """Use tensor parallelism to split each expert evenly, which can deploy experts in
+    case that the number of experts can't be divied by maximum expert parallel size or
+    maximum expert parallel size can't be divied by the number of experts.
+    """
 
     def __init__(self, num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
-        super().__init__("all_gather")
+        super().__init__("all_gather", MOE_CONTEXT.max_ep_size)
 
-        assert d_ff % moe_env.model_parallel_size == 0, \
-            "d_ff should be divied by moe model size"
+        assert d_ff % MOE_CONTEXT.max_ep_size == 0, \
+            "d_ff should be divied by maximum expert parallel size"
 
-        p_ff = d_ff // moe_env.model_parallel_size
+        p_ff = d_ff // MOE_CONTEXT.max_ep_size
 
         self.w1 = nn.Parameter(torch.empty(num_experts, d_model, p_ff, device=get_current_device()))
         self.b1 = nn.Parameter(torch.empty(num_experts, 1, p_ff, device=get_current_device()))
@@ -129,7 +134,7 @@ class TPExperts(MoeExperts):
         s1 = math.sqrt(0.1 / d_model)
         s2 = math.sqrt(0.1 / d_ff)
 
-        with seed(ParallelMode.MOE_MODEL):
+        with seed(ParallelMode.TENSOR):
             nn.init.trunc_normal_(self.w1, std=s1)
             nn.init.trunc_normal_(self.b1, std=s1)
             nn.init.trunc_normal_(self.w2, std=s2)
@@ -139,9 +144,9 @@ class TPExperts(MoeExperts):
         self.act = nn.GELU() if activation is None else activation
         self.drop = nn.Dropout(p=drop_rate)
 
-        self.w1.__setattr__('moe_param', True)
-        self.w2.__setattr__('moe_param', True)
-        self.b1.__setattr__('moe_param', True)
+        self.w1.__setattr__('moe_info', self.dist_info)
+        self.w2.__setattr__('moe_info', self.dist_info)
+        self.b1.__setattr__('moe_info', self.dist_info)
 
     def forward(self, inputs):    # inputs [g, e, c, h]
 
@@ -155,9 +160,9 @@ class TPExperts(MoeExperts):
         out_ff = torch.baddbmm(self.b1, inputs, self.w1)
         out_act = self.act(out_ff)
         with seed(ParallelMode.TENSOR):
-            inter = self.drop(out_act)
+            out_inter = self.drop(out_act)
 
-        out_model = torch.baddbmm(self.b2, inter, self.w2)
+        out_model = torch.baddbmm(self.b2, out_inter, self.w2)
         outputs = self.drop(out_model)    # outputs [e, gc, h]
 
         outputs = outputs.reshape(inshape)

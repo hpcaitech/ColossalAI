@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from colossalai.utils import get_current_device
-from colossalai.global_variables import moe_env
+from colossalai.core import MOE_CONTEXT
 from .experts import FFNExperts, TPExperts
 
 
@@ -36,7 +36,7 @@ class UniformNoiseGenerator:
     :type eps: float
     """
 
-    def __init__(self, eps: float):
+    def __init__(self, eps: float = 1e-2):
         self.uniform = torch.distributions.uniform.Uniform(low=torch.tensor(1.0 - eps, device=get_current_device()),
                                                            high=torch.tensor(1.0 + eps,
                                                                              device=get_current_device())).rsample
@@ -55,10 +55,10 @@ def autocast_softmax(inputs: torch.Tensor, dim: int):
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
-    moe_mp_size = moe_env.model_parallel_size
-    if num_experts % moe_mp_size == 0:
+    mep_size = MOE_CONTEXT.max_ep_size
+    if num_experts % mep_size == 0 or mep_size % num_experts == 0:
         return FFNExperts(num_experts, d_model, d_ff, activation, drop_rate)
-    elif d_ff % moe_mp_size == 0:
+    elif d_ff % mep_size == 0:
         return TPExperts(num_experts, d_model, d_ff, activation, drop_rate)
     else:
-        raise NotImplementedError(f"Can not build {num_experts} experts in {moe_mp_size} GPUS.")
+        raise NotImplementedError(f"Can not build {num_experts} experts in {mep_size} GPUS.")
