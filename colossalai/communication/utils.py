@@ -121,12 +121,14 @@ def check_single_machine_multi_gpu_p2p_available(gpu_list):
     """
     logging.basicConfig(format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s', level = logging.DEBUG)
     unavailble = []
-    check_p2p_result = os.popen("./simpleP2P")
-    p2p_info = check_p2p_result.read().split('\n')
+    check_p2p_result = subprocess.Popen("./simpleP2P", shell=False, stdout=subprocess.PIPE)
+    std=""
+    for line in iter(check_p2p_result.stdout.readline, b''):
+        std += line.decode()
+    p2p_info = std.split('\n')
     for info_index,info_value in enumerate(p2p_info):
         if "No" in info_value:
             unavailble.append(info_value)
-
     count = 0
     if len(unavailble) == 0:
         logging.info("All GPUs have peer to peer access to each other.")
