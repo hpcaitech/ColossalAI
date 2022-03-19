@@ -6,7 +6,7 @@ from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
 import os
 import logging
-
+import subprocess
 def send_tensor_meta(tensor, need_meta=True, next_rank=None):
     """Sends tensor meta information before sending a specific tensor. 
     Since the recipient must know the shape of the tensor in p2p communications,
