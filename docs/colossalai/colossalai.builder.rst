@@ -1,10 +1,6 @@
 colossalai.builder
 ==================
 
-.. automodule:: colossalai.builder
-   :members:
-
-
 .. toctree::
    :maxdepth: 2
 

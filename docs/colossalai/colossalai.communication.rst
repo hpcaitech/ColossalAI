@@ -1,10 +1,6 @@
 colossalai.communication
 ========================
 
-.. automodule:: colossalai.communication
-   :members:
-
-
 .. toctree::
    :maxdepth: 2
 
