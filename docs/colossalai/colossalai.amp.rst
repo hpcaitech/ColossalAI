@@ -1,7 +1,7 @@
 colossalai.amp
 ==============
 
-This module contains different amp model and optimizer.
+*This module contains different amp models and optimizers.*
 
 .. toctree::
    :maxdepth: 2

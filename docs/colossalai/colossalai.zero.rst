@@ -1,9 +1,7 @@
 colossalai.zero
 ===============
 
-.. automodule:: colossalai.zero
-   :members:
-
+*This part contains methods for ZeRO. Now we support all three level ZeRO optimization*
 
 .. toctree::
    :maxdepth: 2
@@ -13,3 +11,6 @@ colossalai.zero
    colossalai.zero.sharded_model
    colossalai.zero.sharded_optim
    colossalai.zero.sharded_param
+
+.. automodule:: colossalai.zero
+   :members:

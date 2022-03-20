@@ -1,6 +1,8 @@
 colossalai.utils
 ================
 
+*This part contains useful utils for colossalai*
+
 .. toctree::
    :maxdepth: 2
 
