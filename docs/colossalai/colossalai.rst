@@ -7,11 +7,7 @@ colossalai
 .. toctree::
    :maxdepth: 2
 
-   amp/index
-
-.. toctree::
-   :maxdepth: 2
-
+   colossalai.amp
    colossalai.builder
    colossalai.communication
    colossalai.context

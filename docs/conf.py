@@ -71,7 +71,7 @@ html_theme_options = {
 }
 
 html_context = {
-    'display_github': True,
+    'display_github': False,
     'github_user': 'hpcaitech',
     'github_repo': 'ColossalAI',
     #   'github_version': 'master/docs/',
