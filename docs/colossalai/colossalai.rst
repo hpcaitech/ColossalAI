@@ -16,6 +16,7 @@ colossalai
    colossalai.logging
    colossalai.nn
    colossalai.registry
+   colossalai.testing
    colossalai.trainer
    colossalai.utils
    colossalai.zero

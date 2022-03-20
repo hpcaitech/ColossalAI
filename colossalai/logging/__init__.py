@@ -2,7 +2,7 @@ from typing import List
 from .logging import DistributedLogger
 import logging
 
-__all__ = ['get_dist_logger', 'DistributedLogger']
+__all__ = ['get_dist_logger', 'DistributedLogger', 'disable_existing_loggers']
 
 
 def get_dist_logger(name='colossalai'):
