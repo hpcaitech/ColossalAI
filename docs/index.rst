@@ -6,7 +6,7 @@
 Colossal-AI API documentation
 ======================================
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: API REFERENCE
 
    colossalai/colossalai
