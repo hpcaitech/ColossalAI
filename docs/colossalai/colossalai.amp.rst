@@ -7,12 +7,12 @@ colossalai.amp
 .. toctree::
    :maxdepth: 2
 
-   colossalai.amp.apex_amp
-   colossalai.amp.naive_amp
-   colossalai.amp.torch_amp
+   amp.apex_amp/colossalai.amp.apex_amp
+   amp.naive_amp/colossalai.amp.naive_amp
+   amp.torch_amp/colossalai.amp.torch_amp
 
 
 .. toctree::
    :maxdepth: 2
 
-   colossalai.amp.amp_type
+   amp.amp_type/colossalai.amp.amp_type
