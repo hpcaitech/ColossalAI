@@ -85,7 +85,7 @@ def kaiming_uniform_(a=0, mode='fan_in', nonlinearity='leaky_relu'):
     :math:`\mathcal{U}(-\text{bound}, \text{bound})` where
 
     .. math::
-        \text{bound} = \text{gain} \times \sqrt{\frac{3}{\text{fan\_mode}}}
+        \text{bound} = \text{gain} \times \sqrt{\frac{3}{\text{fan_{mode}}}}
 
     Also known as He initialization.
 
@@ -130,7 +130,7 @@ def kaiming_normal_(a=0, mode='fan_in', nonlinearity='leaky_relu'):
     :math:`\mathcal{N}(0, \text{std}^2)` where
 
     .. math::
-        \text{std} = \frac{\text{gain}}{\sqrt{\text{fan\_mode}}}
+        \text{std} = \frac{\text{gain}}{\sqrt{\text{fan_{mode}}}}
 
     Also known as He initialization.
 
@@ -174,7 +174,7 @@ def xavier_uniform_(a: float = math.sqrt(3.), scale: float = 2., gain: float = 1
     :math:`\mathcal{U}(-a, a)` where
 
     .. math::
-        a = \text{gain} \times \sqrt{\frac{6}{\text{fan\_in} + \text{fan\_out}}}
+        a = \text{gain} \times \sqrt{\frac{6}{\text{fan_{in}} + \text{fan_{out}}}}
 
     Also known as Glorot initialization.
 
@@ -208,7 +208,7 @@ def xavier_normal_(scale: float = 2., gain: float = 1.):
     :math:`\mathcal{N}(0, \text{std}^2)` where
 
     .. math::
-        \text{std} = \text{gain} \times \sqrt{\frac{2}{\text{fan_in} + \text{fan_out}}}
+        \text{std} = \text{gain} \times \sqrt{\frac{2}{\text{fan_{in}} + \text{fan_{out}}}}
 
     Also known as Glorot initialization.
 

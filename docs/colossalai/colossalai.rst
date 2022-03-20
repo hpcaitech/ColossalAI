@@ -5,7 +5,7 @@ colossalai
    :members:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    colossalai.amp
    colossalai.builder
