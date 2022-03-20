@@ -53,4 +53,4 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     return model, optimizer
 
 
-__all__ = ['convert_to_naive_amp', 'NaiveAMPOptimizer']
+__all__ = ['convert_to_naive_amp', 'NaiveAMPOptimizer', 'NaiveAMPModel']

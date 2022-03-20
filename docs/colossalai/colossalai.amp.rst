@@ -2,7 +2,7 @@ colossalai.amp
 ==============
 
 .. automodule:: colossalai.amp
-   :members:
+   :members: convert_to_amp
 
 .. toctree::
    :maxdepth: 2
