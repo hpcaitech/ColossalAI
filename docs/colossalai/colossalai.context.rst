@@ -16,4 +16,5 @@ colossalai.context
 
    colossalai.context.config
    colossalai.context.parallel_context
+   colossalai.context.moe_context
    colossalai.context.parallel_mode
