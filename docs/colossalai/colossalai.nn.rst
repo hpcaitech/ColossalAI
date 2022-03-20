@@ -4,8 +4,8 @@ colossalai.nn
 *This part contains different colossalai layers for constructing your model.
 You can easily use them as the way of using layers in torch.nn.*
 
-*Now colossalai support layer types below: ``Linear``, ``Classifier``, ``Embedding``,
-``PatchEmbedding``, ``LayerNorm``, ``Dropout`` for different parallelisms.*
+*Now colossalai support layer types below:* ``Linear``, ``Classifier``, ``Embedding``,
+``PatchEmbedding``, ``LayerNorm``, ``Dropout`` *for different parallelisms.*
 
 .. toctree::
    :maxdepth: 2
