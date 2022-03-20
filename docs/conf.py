@@ -49,7 +49,6 @@ autodoc_typehints = 'none'
 autodoc_docstring_signature = True
 autodoc_default_options = {
     'member-order': 'bysource',
-    'exclude-members': '__init__'
 }
 
 # Add any paths that contain templates here, relative to this directory.
@@ -68,11 +67,11 @@ exclude_patterns = ['.build', 'Thumbs.db', '.DS_Store']
 html_theme = 'sphinx_rtd_theme'
 html_show_sourcelink = False
 html_theme_options = {
-    'navigation_depth': 2,
+    'navigation_depth': 3,
 }
 
 html_context = {
-    'display_github': False,
+    'display_github': True,
     'github_user': 'hpcaitech',
     'github_repo': 'ColossalAI',
     #   'github_version': 'master/docs/',
