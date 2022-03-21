@@ -1,4 +1,4 @@
-The link of Colossal-AI tutorial
+Colossal-AI tutorial
 ==================================
 
 *If you are looking for the tutorial of using Colossal-AI, please check*

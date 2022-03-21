@@ -1,4 +1,4 @@
-The link of Colossal-AI benchmarks
+Colossal-AI benchmarks
 ==================================
 
 *If you are interested in the performance or the features of Colossal-AI, please check*
