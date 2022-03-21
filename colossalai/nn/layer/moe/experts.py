@@ -5,7 +5,7 @@ import torch.nn as nn
 from colossalai.context import ParallelMode, seed
 from colossalai.utils import get_current_device
 from colossalai.core import MOE_CONTEXT
-from typing import TYPE
+from typing import Type
 
 
 class MoeExperts(nn.Module):
@@ -35,7 +35,7 @@ class Experts(MoeExperts):
     :type num_experts: int
     """
 
-    def __init__(self, expert_cls: TYPE[nn.Module], num_experts: int, **expert_args):
+    def __init__(self, expert_cls: Type[nn.Module], num_experts: int, **expert_args):
         super().__init__("all_to_all", num_experts)
 
         # Use seed to make every expert different from others
