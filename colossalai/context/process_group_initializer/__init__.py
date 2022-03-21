@@ -7,12 +7,9 @@ from .initializer_pipeline import Initializer_Pipeline
 from .initializer_sequence import Initializer_Sequence
 from .initializer_tensor import Initializer_Tensor
 from .initializer_model import Initializer_Model
-from .initializer_moe import Initializer_Moe
 from .process_group_initializer import ProcessGroupInitializer
 
 __all__ = [
-    'Initializer_Tensor', 'Initializer_Sequence', 'Initializer_Pipeline',
-    'Initializer_Data', 'Initializer_2p5D', 'Initializer_2D', 'Initializer_3D',
-    'Initializer_1D', 'ProcessGroupInitializer', 'Initializer_Model',
-    'Initializer_Moe'
+    'Initializer_Tensor', 'Initializer_Sequence', 'Initializer_Pipeline', 'Initializer_Data', 'Initializer_2p5D',
+    'Initializer_2D', 'Initializer_3D', 'Initializer_1D', 'ProcessGroupInitializer', 'Initializer_Model'
 ]
