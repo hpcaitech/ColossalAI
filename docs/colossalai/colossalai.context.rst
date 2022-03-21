@@ -15,5 +15,6 @@ colossalai.context
    :maxdepth: 2
 
    colossalai.context.config
+   colossalai.context.moe_context
    colossalai.context.parallel_context
    colossalai.context.parallel_mode
