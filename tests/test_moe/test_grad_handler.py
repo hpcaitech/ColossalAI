@@ -36,7 +36,7 @@ def run_test(rank, world_size, port):
     model = model.to(get_current_device())
     sync_moe_model_param(model)
 
-    dist_dict = MOE_CONTEXT.information
+    dist_dict = MOE_CONTEXT.parallel_info_dict
     assert_equal_in_group(layer_list[0].experts.experts[0].weight.data, dist_dict[1].dp_group)
     assert_equal_in_group(layer_list[1].experts.experts[0].weight.data, dist_dict[2].dp_group)
     # MoE model synchronization passed
