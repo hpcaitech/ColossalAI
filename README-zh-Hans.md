@@ -86,7 +86,7 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 
 - 降低11倍GPU显存占用，或超线性扩展（张量并行）
 
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI%20with%20ZeRO.jpg" width=400>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI%20with%20ZeRO.jpg" width=393>
 
 - 能训练接近11倍大小的模型（ZeRO） 
 
