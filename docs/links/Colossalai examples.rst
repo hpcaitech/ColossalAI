@@ -1,4 +1,4 @@
-Colossal-AI examples
+Colossal-AI Examples
 ==================================
 
 *If you are looking for the example code of using Colossal-AI in CV or NLP, please check*
