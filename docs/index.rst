@@ -5,11 +5,17 @@
 
 Colossal-AI API documentation
 ======================================
+
 .. toctree::
    :maxdepth: 2
    :caption: API REFERENCE
 
    colossalai/colossalai
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Colossal-AI links
+
    links/Colossalai examples
    links/Colossalai benchmarks
    links/Colossalai tutorial

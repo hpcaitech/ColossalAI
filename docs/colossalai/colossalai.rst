@@ -1,4 +1,4 @@
-colossalai
+Colossal-AI
 ==========
 
 .. automodule:: colossalai
