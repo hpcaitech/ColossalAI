@@ -34,12 +34,8 @@ def convert_to_zero_v2(model: nn.Module, optimizer: torch.optim.Optimizer, model
     logger.info(f'model_config is {model_config}')
     if model_config is None:
         model_config = dict()
-    if isinstance(model, nn.ModuleList):
-        # Interleaved pipeline
-        module_list = [ShardedModelV2(m, **model_config) for m in model]
-        zero_model = nn.ModuleList(module_list)
-    else:
-        zero_model = ShardedModelV2(model, **model_config)
+
+    zero_model = ShardedModelV2(model, **model_config)
     zero_optimizer = ShardedOptimizerV2(zero_model, optimizer, **optimizer_config)
     return zero_model, zero_optimizer
 

@@ -382,23 +382,16 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         self.num_model_chunks = num_model_chunks
 
     def pre_processing(self, engine):
-
         if isinstance(engine.model, ShardedModelV2):
             self.dtype = torch.half
         elif isinstance(engine.model[0], NaiveAMPModel):
             self.dtype = torch.half
-        if isinstance(engine.model, ShardedModelV2):
-            for model in engine.model.module:
-                sig = inspect.signature(model.forward)
-                for p in sig.parameters.values():
-                    assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
-        else:
-            for model in engine.model:
-                if isinstance(model, NaiveAMPModel):
-                    model = model.model
-                sig = inspect.signature(model.forward)
-                for p in sig.parameters.values():
-                    assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
+        for model in engine.model:
+            if isinstance(model, NaiveAMPModel):
+                model = model.model
+            sig = inspect.signature(model.forward)
+            for p in sig.parameters.values():
+                assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
 
     def load_batch(self, data_iter):
         super().load_batch(data_iter)
