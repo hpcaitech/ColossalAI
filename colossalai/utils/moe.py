@@ -46,6 +46,6 @@ def sync_moe_model_param(model: nn.Module):
         for ep_size in param_dict:
             # When ep_size = world_size, communication is not needed
             if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
-                src_rank = dist.get_rank(MOE_CONTEXT.information[ep_size].ep_group)
+                src_rank = dist.get_rank(MOE_CONTEXT.parallel_info_dict[ep_size].ep_group)
                 for param in param_dict[ep_size]:
                     dist.broadcast(param, src=src_rank, group=param.moe_info.dp_group)

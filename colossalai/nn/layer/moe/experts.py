@@ -34,7 +34,7 @@ class Experts(MoeExperts):
     :type num_experts: int
     """
 
-    def __init__(self, expert, num_experts, **expert_args):
+    def __init__(self, expert: nn.Module, num_experts: int, **expert_args):
         super().__init__("all_to_all", num_experts)
 
         # Use seed to make every expert different from others

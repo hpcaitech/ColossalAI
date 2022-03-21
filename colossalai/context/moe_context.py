@@ -1,6 +1,7 @@
 import torch
 import torch.distributed as dist
 from .parallel_mode import ParallelMode
+from typing import Tuple
 
 
 def _check_sanity():
@@ -10,7 +11,7 @@ def _check_sanity():
                                   "pipeline parallel at present.")
 
 
-class MoeInfo:
+class MoeParallelInfo:
     """Moe parallelism information, storing parallel sizes and groups.
     """
 
@@ -78,11 +79,11 @@ class MoeContext:
         self.use_kernel_optim = True
 
         self.has_setup = False
-        self._info_dict = dict()
+        self._parallel_info_dict = dict()
 
     @property
-    def information(self):
-        return self._info_dict
+    def parallel_info_dict(self):
+        return self._parallel_info_dict
 
     @property
     def is_initialized(self):
@@ -110,17 +111,27 @@ class MoeContext:
         moe_set_seed(seed)
         self.has_setup = True
 
-    def get_info(self, num_experts: int):
-        """Automatically deploys experts and returns parallel infomation about
-        distributed communication groups.
+    def get_info(self, num_experts: int) -> Tuple[int, MoeParallelInfo]:
+        """Calculate the Data Parallel Group and Expert Parallel Group.
+
+        Parameters
+        ----------
+        num_experts : int
+            The number experts
+
+        Returns
+        -------
+        int, MoeParallelInfo
+            number of local experts, the MoeParallelInfo of the current ep_size
         """
 
         gt_flag = num_experts % self.max_ep_size == 0    # check whether num_experts is greater
         lt_flag = self.max_ep_size % num_experts == 0    # check whether num_experts is less
 
-        assert gt_flag or lt_flag, "Automatic experts placement do not support such situation right now."
+        assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number"\
+                            " is not a multiple of ep size or vice versa."
 
-        # If the number of experts is greater than maximum expert parallel size,
+        # If the number of experts is greater than maximum expert parallel size. a.k.a ep_size,
         # there are multiple experts in each GPU and each GPU has different experts
         # So it's data parallel size is 1
         # Otherwise, there is only one expert in each GPU
@@ -133,10 +144,10 @@ class MoeContext:
 
         # Don't forget to multiply minimum data parallel size
         dp_size *= self.min_dp_size
-        if not (ep_size in self.information):
-            self.information[ep_size] = MoeInfo(ep_size, dp_size)
+        if not (ep_size in self.parallel_info_dict):
+            self.parallel_info_dict[ep_size] = MoeParallelInfo(ep_size, dp_size)
 
-        return num_local_experts, self.information[ep_size]
+        return num_local_experts, self.parallel_info_dict[ep_size]
 
     def set_kernel_not_use(self):
         self.use_kernel_optim = False
