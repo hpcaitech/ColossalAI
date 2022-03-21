@@ -117,13 +117,10 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
                     try_count += 1
                     func(*args, **kwargs)
                 except exception_type as e:
-                    if isinstance(e, exception_type):
-                        if pattern is None or re.match(pattern, str(e)):
-                            # when pattern is not specified, we always skip the exception
-                            # when pattern is specified, we only skip when pattern is matched
-                            continue
-                        else:
-                            raise e
+                    if pattern is None or re.match(pattern, str(e)):
+                        # when pattern is not specified, we always skip the exception
+                        # when pattern is specified, we only skip when pattern is matched
+                        continue
                     else:
                         raise e
 
