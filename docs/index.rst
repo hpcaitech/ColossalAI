@@ -10,7 +10,7 @@ Colossal-AI API documentation
    :maxdepth: 2
    :caption: API REFERENCE
 
-   colossalai/ColossalAI
+   colossalai/Colossalai
 
 .. toctree::
    :maxdepth: 2
