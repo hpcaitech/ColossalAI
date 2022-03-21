@@ -25,7 +25,5 @@ colossalai
 .. toctree::
    :maxdepth: 2
 
-   colossalai.constants
-   colossalai.core
    colossalai.global_variables
    colossalai.initialize
