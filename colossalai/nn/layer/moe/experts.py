@@ -35,12 +35,12 @@ class Experts(MoeExperts):
     :type num_experts: int
     """
 
-    def __init__(self, expert: TYPE[nn.Module], num_experts: int, **expert_args):
+    def __init__(self, expert_cls: TYPE[nn.Module], num_experts: int, **expert_args):
         super().__init__("all_to_all", num_experts)
 
         # Use seed to make every expert different from others
         with seed(ParallelMode.TENSOR):
-            self.experts = nn.ModuleList([expert(**expert_args) for _ in range(self.num_local_experts)])
+            self.experts = nn.ModuleList([expert_cls(**expert_args) for _ in range(self.num_local_experts)])
 
         # Attach parallel information for all parameters in Experts
         for exp in self.experts:
