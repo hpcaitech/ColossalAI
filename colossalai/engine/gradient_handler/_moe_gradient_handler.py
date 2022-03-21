@@ -31,4 +31,5 @@ class MoeGradientHandler(BaseGradientHandler):
 
             for ep_size in param_dict:
                 if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
-                    bucket_allreduce(param_list=param_dict[ep_size], group=MOE_CONTEXT.information[ep_size].dp_group)
+                    bucket_allreduce(param_list=param_dict[ep_size],
+                                     group=MOE_CONTEXT.parallel_info_dict[ep_size].dp_group)
