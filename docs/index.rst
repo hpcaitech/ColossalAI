@@ -10,11 +10,11 @@ Colossal-AI API documentation
    :maxdepth: 2
    :caption: API REFERENCE
 
-   colossalai/colossalai
+   colossalai/ColossalAI
 
 .. toctree::
    :maxdepth: 2
-   :caption: Colossal-AI links
+   :caption: Useful links for Colossal-AI
 
    links/Colossalai examples
    links/Colossalai benchmarks
@@ -25,18 +25,3 @@ Indices and tables
 --------------------
 
 * :ref:`genindex`
-
-Useful links for Colossal-AI
------------------------------
-
-*If you are interested in the source code of Colossal-AI, please check*
-`Colossal-AI Github Homepage <https://github.com/hpcaitech/ColossalAI>`_.
-
-*If you are looking for the tutorial of using Colossal-AI, please check*
-`Colossal-AI Tutorial <https://github.com/hpcaitech/ColossalAI>`_.
-
-*If you are looking for the example code of using Colossal-AI in CV or NLP, please check*
-`Colossal-AI Example <https://github.com/hpcaitech/ColossalAI-Examples>`_.
-
-*If you are interested in the performance or the features of Colossal-AI, please check*
-`Colossal-AI Benchmark <https://github.com/hpcaitech/ColossalAI-Benchmark>`_.

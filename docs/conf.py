@@ -86,7 +86,7 @@ html_css_files = [
     'css/rtd_theme.css',
 ]
 
-html_logo = './_static/logo.png'
+
 # -- Extension configuration -------------------------------------------------
 source_suffix = ['.rst', '.md', '.MD']
 
