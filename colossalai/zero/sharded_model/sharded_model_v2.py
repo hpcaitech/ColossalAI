@@ -262,3 +262,15 @@ class ShardedModelV2(nn.Module):
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):
         raise NotImplementedError
+
+    def __getitem__(self, idx: int):
+        assert isinstance(self.module, nn.ModuleList)
+        return self.module[idx]
+
+    def __len__(self):
+        assert isinstance(self.module, nn.ModuleList)
+        return len(self.module)
+
+    def __iter__(self):
+        assert isinstance(self.module, nn.ModuleList)
+        return iter(self.module)
