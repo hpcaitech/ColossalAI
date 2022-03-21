@@ -10,6 +10,9 @@ Colossal-AI API documentation
    :caption: API REFERENCE
 
    colossalai/colossalai
+   links/Colossalai examples
+   links/Colossalai benchmarks
+   links/Colossalai tutorial
 
 
 Indices and tables
@@ -19,6 +22,7 @@ Indices and tables
 
 Useful links for Colossal-AI
 -----------------------------
+
 *If you are interested in the source code of Colossal-AI, please check*
 `Colossal-AI Github Homepage <https://github.com/hpcaitech/ColossalAI>`_.
 
