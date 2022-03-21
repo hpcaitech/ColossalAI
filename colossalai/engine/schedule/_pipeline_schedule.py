@@ -81,7 +81,7 @@ class PipelineSchedule(BaseSchedule):
     def _get_data_slice(self, data, offset):
         if isinstance(data, torch.Tensor):
             return data[offset:offset + self.microbatch_size]
-        else:
+        elif isinstance(data, dict):
             return {k: v[offset:offset + self.microbatch_size] for k, v in data.items()}
 
     def load_micro_batch(self):
@@ -95,12 +95,9 @@ class PipelineSchedule(BaseSchedule):
         if isinstance(engine.optimizer, ShardedOptimizer) or isinstance(engine.model, ShardedModel):
             raise TypeError("Pipeline schedule is currently not compatible with ZeRO")
         model = engine.model
-        if isinstance(model, NaiveAMPModel):
+        if isinstance(model, (NaiveAMPModel, ShardedModelV2)):
             self.dtype = torch.half
             model = model.model
-        elif isinstance(model, ShardedModelV2):
-            self.dtype = torch.half
-            model = model.module
         sig = inspect.signature(model.forward)
         for p in sig.parameters.values():
             assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
