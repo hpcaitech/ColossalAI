@@ -87,7 +87,7 @@ distributed training in a few lines.
 
 - 11x lower GPU RAM, or superlinear scaling with Tensor Parallel
 
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI%20with%20ZeRO.jpg" width=400>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI%20with%20ZeRO.jpg" width=393>
 
 - 10.7x larger model size with ZeRO
 ### BERT
