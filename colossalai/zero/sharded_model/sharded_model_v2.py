@@ -70,7 +70,7 @@ class ShardedModelV2(nn.Module):
             sharded.append(param.col_attr.param_is_sharded)
             unsharded.append(not param.col_attr.param_is_sharded)
         assert all(sharded) or all(
-            unsharded), 'Parameters must be all sharded or all unsharded! Parameters are partially sharded nwo.'
+            unsharded), 'Parameters must be all sharded or all unsharded! Parameters are partially sharded now.'
         self.shard_param = all(sharded)
         self.module = module
 
@@ -96,6 +96,10 @@ class ShardedModelV2(nn.Module):
 
         self.fp32_reduce_scatter = fp32_reduce_scatter
         self._cpu_offload: bool = offload_config.get('device', None) == 'cpu' if offload_config else False
+        for param in module.parameters():
+            # Init `offload_fp32_grad`
+            param.col_attr.offload_fp32_grad = self._cpu_offload
+
         # We find if gradient_predivide_factor != 1.0, there may be wrong precision problem
         # So we use 1.0 as the default gradient_predivide_factor
         # However, if you set gradient_predivide_factor to None, we will set
@@ -184,7 +188,7 @@ class ShardedModelV2(nn.Module):
             # the shape `grad` is the same as unsharded param
             # So we can just use `view(-1)` to ensure grad is a flat tensor shard
             grad = cast_tensor_to_fp32(p.col_attr.fp16_grad)
-            if self._cpu_offload:
+            if p.col_attr.offload_fp32_grad:
                 col_move_to_cpu(grad)
             if p.col_attr.fp32_grad is not None:
                 p.col_attr.fp32_grad.add_(grad.view_as(p.col_attr.fp32_grad))

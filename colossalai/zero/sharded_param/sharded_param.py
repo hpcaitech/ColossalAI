@@ -13,6 +13,8 @@ class ShardedParamV2(object):
         self._sharded_data_tensor: ShardedTensor = ShardedTensor(param.data, process_group)
         self.fp16_grad: Optional[torch.Tensor] = None
         self.fp32_grad: Optional[torch.Tensor] = None
+        # This attribute must be initialized in ShardedModel
+        self.offload_fp32_grad: bool = False
 
         # make sure the shared param is the only owner of payload
         # The param.data maybe used to init the other part of the model.
