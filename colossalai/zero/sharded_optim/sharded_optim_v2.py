@@ -70,6 +70,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  sharded_model: ShardedModelV2,
                  optimizer: Optimizer,
                  cpu_offload: bool = False,
+                 gpu_margin_mem_ratio: float = 0.0,
                  initial_scale: float = 2**32,
                  min_scale: float = 1,
                  growth_factor: float = 2,
@@ -88,6 +89,13 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             raise RuntimeError(
                 f"ShardedOptimizerV2 using cpu_offload, but the sharded_model used to initialize it dose not use cpu_offload"
             )
+        self.gpu_margin_mem_ratio: float = float(gpu_margin_mem_ratio)
+        assert 0.0 <= self.gpu_margin_mem_ratio <= 1.0, f'gpu_margin_mem_ratio must >=0.0 and <=1.0'
+        # Only move fp32 shards from CPU to GPU when user allows and inner optimizer is valid
+        # Inner optimizer must support optimizing hybrid (CPU and CUDA) tensors,
+        # and it must set `num_fp32_shards_per_param` correctly
+        self._should_move_fp32_shards_h2d: bool = cpu_offload and self.gpu_margin_mem_ratio > 0.0 and getattr(
+            optimizer, 'num_fp32_shards_per_param', 0) >= 2
         self.device = torch.cuda.current_device() if not cpu_offload else torch.device('cpu')
         self.optim_state: OptimState = OptimState.UNSCALED
         self.dp_process_group = dp_process_group or gpc.get_group(ParallelMode.DATA)
@@ -122,6 +130,20 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     self.shard_strategy.gather([p.col_attr.data], self.dp_process_group)
 
     def step(self, *args, **kwargs):
+        if self._should_move_fp32_shards_h2d:
+            self._should_move_fp32_shards_h2d = False
+            available_cuda_margin_mem = self.model.cuda_margin_space * self.gpu_margin_mem_ratio
+            fp32_shards_available_cuda_margin_mem = available_cuda_margin_mem / self.optim.num_fp32_shards_per_param
+            fp32_shards_used_cuda_margin_mem = 0
+            for group in self.optim.param_groups:
+                for p in group['params']:
+                    shard_mem = self.master_params[p].numel() * self.master_params[p].element_size()
+                    if fp32_shards_used_cuda_margin_mem + shard_mem < fp32_shards_available_cuda_margin_mem:
+                        self.master_params[p] = self.master_params[p].to(torch.cuda.current_device())
+                        p.grad.data = p.grad.data.to(torch.cuda.current_device())
+                        p.col_attr.offload_fp32_grad = False
+                        fp32_shards_used_cuda_margin_mem += shard_mem
+
         # unscale grads if scaled
         if self.optim_state == OptimState.SCALED:
             self._unscale_grads()
