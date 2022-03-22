@@ -111,9 +111,9 @@ def gather_split_1d_tensor(tensor):
 
 
 def check_single_machine_multi_gpu_p2p_available(gpu_list):
-    """Opposite of above function, gather values from model parallel ranks.
+    """Check if multiple gpu's can access each other on the node via peer to peer..
 
-    :param gpu_list: Queue of gpu to be tested
+    :param gpu_list: list of gpu to be tested
     :type list
 
     :return True or False: gpus returns True if both can access each other via peer to peer, otherwise returns False
