@@ -1,71 +1,33 @@
-import os
 from functools import partial
-from pathlib import Path
 
 import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-import torch.nn as nn
 from colossalai.amp.amp_type import AMP_TYPE
-from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.trainer import Trainer
-from colossalai.utils import MultiTimer, free_port, get_dataloader
-from torch.optim import Adam
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
-from torchvision.models import resnet18
+from colossalai.utils import MultiTimer, free_port
+from tests.components_to_test.registry import non_distributed_component_funcs
+from colossalai.testing import parameterize
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 IMG_SIZE = 32
 NUM_EPOCHS = 200
 
-CONFIG = dict(
-    # Config
-    fp16=dict(mode=AMP_TYPE.TORCH))
+CONFIG = dict(fp16=dict(mode=AMP_TYPE.TORCH))
 
 
-def run_trainer_no_pipeline(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-
-    # build model
-    model = resnet18(num_classes=10)
-
-    # build dataloaders
-    train_dataset = CIFAR10(root=Path(os.environ['DATA']),
-                            download=True,
-                            transform=transforms.Compose([
-                                transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
-                                transforms.ToTensor(),
-                                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-                            ]))
-
-    test_dataset = CIFAR10(root=Path(os.environ['DATA']),
-                           train=False,
-                           download=True,
-                           transform=transforms.Compose([
-                               transforms.Resize(size=(IMG_SIZE, IMG_SIZE)),
-                               transforms.ToTensor(),
-                               transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-                           ]))
-
-    train_dataloader = get_dataloader(dataset=train_dataset,
-                                      shuffle=True,
-                                      batch_size=BATCH_SIZE,
-                                      pin_memory=True,
-                                      drop_last=True)
-
-    test_dataloader = get_dataloader(dataset=test_dataset, batch_size=BATCH_SIZE, pin_memory=True, drop_last=True)
-
-    # build optimizer
-    optimizer = Adam(model.parameters(), lr=0.001)
-    criterion = nn.CrossEntropyLoss()
-
-    engine, train_dataloader, *args = colossalai.initialize(model=model,
-                                                            optimizer=optimizer,
-                                                            criterion=criterion,
-                                                            train_dataloader=train_dataloader)
+@parameterize('model_name', ['repeated_computed_layers', 'resnet18', 'nested_model'])
+def run_trainer(model_name):
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
+    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    model = model_builder()
+    optimizer = optimizer_class(model.parameters(), lr=1e-3)
+    engine, train_dataloader, *_ = colossalai.initialize(model=model,
+                                                         optimizer=optimizer,
+                                                         criterion=criterion,
+                                                         train_dataloader=train_dataloader)
 
     logger = get_dist_logger()
     logger.info("engine is built", ranks=[0])
@@ -78,17 +40,20 @@ def run_trainer_no_pipeline(rank, world_size, port):
     trainer.fit(train_dataloader=train_dataloader,
                 test_dataloader=test_dataloader,
                 epochs=NUM_EPOCHS,
-                max_steps=100,
+                max_steps=3,
                 display_progress=True,
                 test_interval=5)
-    gpc.destroy()
     torch.cuda.empty_cache()
+
+
+def run_dist(rank, world_size, port):
+    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
 
 @pytest.mark.dist
 def test_trainer_no_pipeline():
     world_size = 4
-    run_func = partial(run_trainer_no_pipeline, world_size=world_size, port=free_port())
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 

@@ -45,7 +45,3 @@ class ParallelMode(Enum):
     PARALLEL_2P5D_COL = '2p5d_col'
     PARALLEL_2P5D_DEP = '2p5d_dep'
     PARALLEL_2P5D_XZ = '2p5d_xz'
-
-    # MOE parallel
-    MOE_DATA = 'moe_data'
-    MOE_MODEL = 'moe_model'

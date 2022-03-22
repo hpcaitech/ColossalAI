@@ -1,20 +1,103 @@
 # Colossal-AI
+<div id="top" align="center">
 
-[![logo](./docs/images/Colossal-AI_logo.png)](https://www.colossalai.org/)
+   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-<div align="center">
+   An integrated large-scale model training system with efficient parallelization techniques.
+
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
    <a href="https://www.colossalai.org/"> Documentation </a> | 
    <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
-   <a href="https://medium.com/@hpcaitech"> Blog </a></h3> 
-   <br/>
+   <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
-   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/PR_CI.yml)
+   [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
    [![Documentation](https://readthedocs.org/projects/colossalai/badge/?version=latest)](https://colossalai.readthedocs.io/en/latest/?badge=latest)
-   [![codebeat badge](https://codebeat.co/badges/bfe8f98b-5d61-4256-8ad2-ccd34d9cc156)](https://codebeat.co/projects/github-com-hpcaitech-colossalai-main)
+   [![CodeFactor](https://www.codefactor.io/repository/github/hpcaitech/colossalai/badge)](https://www.codefactor.io/repository/github/hpcaitech/colossalai)
+   [![HuggingFace badge](https://img.shields.io/badge/%F0%9F%A4%97HuggingFace-Join-yellow)](https://huggingface.co/hpcai-tech)
+   [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
+   [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
+   
+
+   | [English](README.md) | [中文](README-zh-Hans.md) |
+
 </div>
-An integrated large-scale model training system with efficient parallelization techniques.
+
+## Table of Contents
+<ul>
+ <li><a href="#Features">Features</a> </li>
+ <li>
+   <a href="#Demo">Demo</a> 
+   <ul>
+     <li><a href="#ViT">ViT</a></li>
+     <li><a href="#GPT-3">GPT-3</a></li>
+     <li><a href="#GPT-2">GPT-2</a></li>
+     <li><a href="#BERT">BERT</a></li>
+   </ul>
+ </li>
+
+ <li>
+   <a href="#Installation">Installation</a>
+   <ul>
+     <li><a href="#PyPI">PyPI</a></li>
+     <li><a href="#Install-From-Source">Install From Source</a></li>
+   </ul>
+ </li>
+ <li><a href="#Use-Docker">Use Docker</a></li>
+ <li><a href="#Community">Community</a></li>
+ <li><a href="#contributing">Contributing</a></li>
+ <li><a href="#Quick-View">Quick View</a></li>
+   <ul>
+     <li><a href="#Start-Distributed-Training-in-Lines">Start Distributed Training in Lines</a></li>
+     <li><a href="#Write-a-Simple-2D-Parallel-Model">Write a Simple 2D Parallel Model</a></li>
+   </ul>
+ <li><a href="#Cite-Us">Cite Us</a></li>
+</ul>
+
+## Features
+
+Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
+distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
+distributed training in a few lines.
+
+- Data Parallelism
+- Pipeline Parallelism
+- 1D, 2D, 2.5D, 3D tensor parallelism
+- Sequence parallelism
+- Friendly trainer and engine
+- Extensible for new parallelism
+- Mixed Precision Training
+- Zero Redundancy Optimizer (ZeRO)
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Demo
+### ViT
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+
+- 14x larger batch size, and 5x faster training for Tensor Parallel = 64
+
+### GPT-3
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
+
+- Free 50% GPU resources, or 10.7% acceleration
+
+### GPT-2
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2.png" width=800/>
+
+- 11x lower GPU RAM, or superlinear scaling with Tensor Parallel
+
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI%20with%20ZeRO.jpg" width=393>
+
+- 10.7x larger model size with ZeRO
+### BERT
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
+
+- 2x faster training, or 50% longer sequence length
+
+Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Installation
 
@@ -37,7 +120,7 @@ pip install colossalai[zero]
 
 ### Install From Source
 
-> The documentation will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -55,6 +138,8 @@ If you don't want to install and enable CUDA kernel fusion (compulsory installat
 pip install --global-option="--no_cuda_ext" .
 ```
 
+<p align="right">(<a href="#top">back to top</a>)</p>
+
 ## Use Docker
 
 Run the following command to build a docker image from Dockerfile provided.
@@ -70,10 +155,25 @@ Run the following command to start the docker container in interactive mode.
 docker run -ti --gpus all --rm --ipc=host colossalai bash
 ```
 
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+## Community
+
+Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
+[Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
+and [WeChat](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
+
 ## Contributing
 
-If you wish to contribute to this project, you can follow the guideline in [Contributing](./CONTRIBUTING.md)
+If you wish to contribute to this project, please follow the guideline in [Contributing](./CONTRIBUTING.md).
 
+Thanks so much to all of our amazing contributors!
+
+<a href="https://github.com/hpcaitech/ColossalAI/graphs/contributors"><img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/contributor_avatar.png" width="800px"></a>
+
+*The order of contributor avatars is randomly shuffled.*
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Quick View
 
@@ -107,13 +207,13 @@ train_dataloader = get_dataloader(dataset=dataset,
                                 )
 
 
-# build your
+# build your optimizer
 optimizer = ...
 
 # build your loss function
 criterion = ...
 
-# build your lr_scheduler
+# initialize colossalai
 engine, train_dataloader, _, _ = colossalai.initialize(
     model=model,
     optimizer=optimizer,
@@ -157,21 +257,7 @@ class MLP_2D(nn.Module):
 
 ```
 
-## Features
-
-Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
-distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
-distributed training in a few lines.
-
-- Data Parallelism
-- Pipeline Parallelism
-- 1D, 2D, 2.5D, 3D and sequence parallelism
-- Friendly trainer and engine
-- Extensible for new parallelism
-- Mixed Precision Training
-- Zero Redundancy Optimizer (ZeRO)
-
-Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Cite Us
 
@@ -183,3 +269,5 @@ Please visit our [documentation and tutorials](https://www.colossalai.org/) for 
   year={2021}
 }
 ```
+
+<p align="right">(<a href="#top">back to top</a>)</p>

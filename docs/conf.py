@@ -16,6 +16,12 @@ import sys
 
 sys.path.insert(0, os.path.abspath('..'))
 
+
+def get_version():
+    with open('../version.txt') as f:
+        return f.read().strip()
+
+
 # -- Project information -----------------------------------------------------
 
 project = 'Colossal-AI'
@@ -23,8 +29,7 @@ copyright = f'{datetime.datetime.now().year}, HPC-AI Tech'
 author = 'HPC-AI Technology Inc.'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
-
+release = get_version()
 
 # -- General configuration ---------------------------------------------------
 
@@ -46,9 +51,7 @@ autodoc_typehints = 'none'
 
 # Enable overriding of function signatures in the first line of the docstring.
 autodoc_docstring_signature = True
-autodoc_default_options = {
-    'member-order': 'bysource'
-}
+autodoc_default_options = {'member-order': 'bysource'}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
