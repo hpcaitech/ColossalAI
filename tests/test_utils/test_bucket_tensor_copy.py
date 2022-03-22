@@ -29,9 +29,11 @@ def test_bucket_copy():
     copyer.flush()
 
     for src_param, tgt_param in zip(src_param_list, tgt_param_list):
-        print(tgt_param.data.payload)
-        diff = src_param.cpu().float() - tgt_param.data.payload.cpu().float()
-        assert torch.allclose(src_param.cpu().float(), tgt_param.data.payload.cpu().float(), rtol=1e-03,
+        print(tgt_param.data.sharded_data_tensor)
+        diff = src_param.cpu().float() - tgt_param.data.sharded_data_tensor.cpu().float()
+        assert torch.allclose(src_param.cpu().float(),
+                              tgt_param.data.sharded_data_tensor.cpu().float(),
+                              rtol=1e-03,
                               atol=1e-03), f"diff {diff}"
 
 
