@@ -1,8 +1,13 @@
 import torch
-import torch.nn.functional as F
 from colossalai.utils import get_current_device
 from colossalai.core import MOE_CONTEXT
 from .experts import FFNExperts, TPExperts
+
+
+class ForceFP32Parameter(torch.nn.Parameter):
+
+    def half(self, memory_format=None):
+        return self
 
 
 class NormalNoiseGenerator:
@@ -44,14 +49,6 @@ class UniformNoiseGenerator:
     def __call__(self, inputs: torch.Tensor):
         noisy = self.uniform(inputs.shape)
         return inputs * noisy
-
-
-def autocast_softmax(inputs: torch.Tensor, dim: int):
-    assert inputs.dtype in {torch.float16, torch.float32}
-    fp16_flag = (inputs.dtype == torch.float16)
-    sm_input = inputs.to(torch.float32) if fp16_flag else inputs
-    sm_output = F.softmax(sm_input, dim)
-    return sm_output
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):
