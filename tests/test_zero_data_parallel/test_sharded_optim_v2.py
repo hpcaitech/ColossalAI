@@ -15,6 +15,7 @@ from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
+from colossalai.testing import rerun_on_exception
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -106,6 +107,7 @@ def _run_dist(rank, world_size, port):
 # use_cpuadam = True can be used with cpu_offload = False
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_sharded_optim_v2(world_size):
     run_func = partial(_run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

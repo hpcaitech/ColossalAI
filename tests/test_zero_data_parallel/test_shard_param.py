@@ -10,6 +10,7 @@ from colossalai.utils import free_port
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_param import ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
+from colossalai.testing import rerun_on_exception
 from tests.test_zero_data_parallel.common import CONFIG, allclose
 
 
@@ -35,6 +36,7 @@ def _run_shard_tensor(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_shard_tensor(world_size):
     run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
@@ -55,6 +57,7 @@ def _run_shard_param_v2(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_shard_param_v2(world_size):
     run_func = partial(_run_shard_param_v2, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
