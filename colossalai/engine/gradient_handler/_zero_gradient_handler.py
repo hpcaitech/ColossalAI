@@ -5,7 +5,7 @@ from ._base_gradient_handler import BaseGradientHandler
 @GRADIENT_HANDLER.register_module
 class ZeROGradientHandler(BaseGradientHandler):
     """A helper class to handle all-reduce operations in a data parallel group.
-    A all-reduce collective communication will be operated in 
+    A all-reduce collective communication will be operated in
     :func:`handle_gradient` among a data parallel group.
     This class is specialized with ZeRO optimization.
     """
@@ -13,4 +13,4 @@ class ZeROGradientHandler(BaseGradientHandler):
     def handle_gradient(self):
         """A method running a all-reduce operation in a data parallel group.
         """
-        self._optimizer.allreduce_gradients()
+        self._optimizer.sync_grad()

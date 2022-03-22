@@ -56,7 +56,7 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
     :type parallel_mode: :class:`colossalai.context.ParallelMode`
     :param seed: The seed to be added
     :type seed: int
-    :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of 
+    :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
         :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
     """
     _SEED_MANAGER.add_seed(parallel_mode, seed, overwrite)
@@ -147,11 +147,11 @@ def with_seed(func, parallel_mode: ParallelMode):
 def moe_set_seed(seed):
     if torch.cuda.is_available():
         from colossalai.core import global_context as gpc
-        moe_mp_rank = gpc.get_local_rank(ParallelMode.MOE_MODEL)
-        moe_mp_seed = seed + moe_mp_rank
-        add_seed(ParallelMode.MOE_MODEL, moe_mp_seed)
-
         global_rank = gpc.get_global_rank()
-        add_seed(ParallelMode.TENSOR, global_rank, True)
-        print(f"moe seed condition: {global_rank} with moe seed {moe_mp_seed}, ",
-              f"tensor seed {global_rank}", flush=True)
+        diff_seed = seed + global_rank
+        add_seed(ParallelMode.TENSOR, diff_seed, True)
+        print(f"moe seed condition: {global_rank} with tensor seed {diff_seed}", flush=True)
+
+
+def reset_seeds():
+    _SEED_MANAGER.reset()

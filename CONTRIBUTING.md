@@ -33,13 +33,13 @@ We use [PyTest](https://docs.pytest.org/en/latest/) to execute tests. You can in
 If you only want to run CPU tests, you can run
 
 ```bash
-python -m cpu tests/
+pytest -m cpu tests/
 ```
 
 If you have 8 GPUs on your machine, you can run the full test
 
 ```bash
-python tests/
+pytest tests/
 ```
 
 If you do not have 8 GPUs on your machine, do not worry. Unit testing will be automatically conducted when you put up a pull request to the main branch.
@@ -60,7 +60,7 @@ Code format checking will be automatically executed when you commit your changes
 
 ## Contribution Guide
 
-You need to follow these steps below to make contribution to the main repository via pull request. You can learn about the details of pull request [here](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests). We follow the [Gitflow workflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow) during development. Thus, we work on the `develop` branch instead of the `main` branch in most of the time. The `main` branch is mainly served for version release.
+You need to follow these steps below to make contribution to the main repository via pull request. You can learn about the details of pull request [here](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests).
 
 ### 1. Fork the Official Repository
 
@@ -95,16 +95,16 @@ Before you make changes to the codebase, it is always good to fetch the latest u
 
 ```shell
 git fetch upstream
-git checkout develop
-git merge upstream/develop
-git push origin develop
+git checkout main
+git merge upstream/main
+git push origin main
 ```
 
 Otherwise, you can click the `fetch upstream` button on the github webpage of the main branch of your forked repository. Then, use these commands to sync.
 
 ```
-git checkout develop
-git fetch develop
+git checkout main
+git fetch main
 ```
 
 ### 4. Choose/Create an Issue for Your Pull Request
@@ -114,7 +114,7 @@ Generally, your code change should be only targeted at one problem. Stacking mul
 
 ### 5. Create a New Branch
 
-You should not make changes to the `main` or `develop` branch of your forked repository as this might make upstream synchronization difficult. You can create a new branch with the appropriate name. General branch name format should start with `hotfix/` and `feature/`. `hotfix` is for bug fix and `feature` is for addition of a new feature.
+You should not make changes to the `main` branch of your forked repository as this might make upstream synchronization difficult. You can create a new branch with the appropriate name. General branch name format should start with `hotfix/` and `feature/`. `hotfix` is for bug fix and `feature` is for addition of a new feature.
 
 
 ```shell
@@ -134,7 +134,7 @@ git push -u origin <NEW-BRANCH-NAME>
 
 ### 7. Open a Pull Request
 
-You can now create a pull request on the GitHub webpage of your repository. The source branch is `<NEW-BRANCH-NAME>` of your repository and the target branch should be `develop` of `hpcaitech/ColossalAI`. After creating this pull request, you should be able to see it [here](https://github.com/hpcaitech/ColossalAI/pulls).
+You can now create a pull request on the GitHub webpage of your repository. The source branch is `<NEW-BRANCH-NAME>` of your repository and the target branch should be `main` of `hpcaitech/ColossalAI`. After creating this pull request, you should be able to see it [here](https://github.com/hpcaitech/ColossalAI/pulls).
 
 Do write clearly the description of your pull request and [link the pull request to your target issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue). This will automatically close the issue when the pull request is approved.
 

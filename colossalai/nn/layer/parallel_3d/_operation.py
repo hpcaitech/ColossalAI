@@ -5,15 +5,12 @@ from typing import Optional, Tuple
 
 import torch
 from colossalai.communication import (all_gather, all_reduce, broadcast, reduce, reduce_scatter)
-from colossalai.context import parallel_mode
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 from ._utils import get_parallel_mode_from_env
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
-
-from colossalai.nn.layer.base_layer import ParallelLayer
 
 
 class _Linear3D(torch.autograd.Function):
@@ -33,6 +30,7 @@ class _Linear3D(torch.autograd.Function):
         ctx.use_bias = bias is not None
 
         input_ = all_gather(input_, input_dim, input_parallel_mode)
+        weight = all_gather(weight, weight_dim, weight_parallel_mode)
         ctx.save_for_backward(input_, weight)
 
         output = torch.matmul(input_, weight)
@@ -64,7 +62,7 @@ class _Linear3D(torch.autograd.Function):
 
             weight_grad = torch.matmul(
                 input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1]))
-            weight_grad, op = all_reduce(weight_grad, ctx.weight_parallel_mode, async_op=True)
+            weight_grad, op = reduce_scatter(weight_grad, ctx.weight_dim, ctx.weight_parallel_mode, async_op=True)
             async_ops.append(op)
 
             if ctx.use_bias:
@@ -246,7 +244,7 @@ class _Layernorm3D(torch.autograd.Function):
 def layernorm_3d(input_: Tensor, weight: Tensor, bias: Tensor, normalized_shape: int, eps: float,
                  input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,
                  output_parallel_mode: ParallelMode) -> Tensor:
-    """
+    r"""
     3D parallel Layernorm
 
     :param input_: input maxtrix
@@ -255,8 +253,9 @@ def layernorm_3d(input_: Tensor, weight: Tensor, bias: Tensor, normalized_shape:
     :type weight: torch.tensor
     :param bias: matrix of bias
     :type bias: torch.tensor
-    :param normalized_shape: input shape from an expected input
-        of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
+    :param normalized_shape: input shape from an expected input of size.
+    :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+    \times \ldots \times \text{normalized_shape}[-1]]`
         If a single integer is used, it is treated as a singleton list, and this module will
         normalize over the last dimension which is expected to be of that specific size.
     :type normalized_shape: int
@@ -284,7 +283,7 @@ def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Te
     :type tensor: torch.Tensor
     :type dim: int
     :type parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    
+
     :return output: Splitted tensor
     :rtype output: torch.Tensor
     """
@@ -296,9 +295,9 @@ def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Te
 
 
 def split_batch_3d(input_: Tensor,
-                    dim: int = 0,
-                    input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
-                    weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT) -> Tensor:
+                   dim: int = 0,
+                   input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
+                   weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT) -> Tensor:
     """Splits 3D tensor in batch
     :param input_: Input tensor
     :param dim: Specified dimension in which to split
@@ -335,35 +334,37 @@ class _ReduceTensor3D(torch.autograd.Function):
 
 def reduce_tensor_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
     """
-    All-reduce the input.
-    
+    All-reduce the input
+
     :param tensor: Input tensor
     :param parallel_mode: Parallel mode
     """
     return _ReduceTensor3D.apply(tensor, parallel_mode)
 
 
-class _ReduceGrad3D(torch.autograd.Function):
+class _AllGatherTensor3D(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, input_, parallel_mode):
+    def forward(ctx, input_, dim, parallel_mode):
+        ctx.dim = dim
         ctx.parallel_mode = parallel_mode
-        return input_
+        output = all_gather(input_, dim, parallel_mode)
+        return output
 
     @staticmethod
     def backward(ctx, output_grad):
-        input_grad = all_reduce(output_grad, ctx.parallel_mode)
-        return input_grad, None
+        input_grad = reduce_scatter(output_grad, ctx.dim, ctx.parallel_mode)
+        return input_grad, None, None
 
 
-def reduce_grad_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
+def all_gather_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
     """
     All-reduce the gradient in backward pass.
-    
+
     :param tensor: Input tensor
     :param parallel_mode: Parallel mode
     """
-    return _ReduceGrad3D.apply(tensor, parallel_mode)
+    return _AllGatherTensor3D.apply(tensor, dim, parallel_mode)
 
 
 class _ReduceScatterTensor3D(torch.autograd.Function):
@@ -383,7 +384,7 @@ class _ReduceScatterTensor3D(torch.autograd.Function):
 def reduce_scatter_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
     """
     Reduce-scatter the input.
-    
+
     :param tensor: Input tensor
     :param dim: Dimension to scatter
     :param parallel_mode: Parallel mode
@@ -431,7 +432,8 @@ def reduce_by_batch_3d(tensor: Tensor,
     :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     :param weight_parallel_mode: weight parallel mode
     :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param reduce_mean:  If set to ``True``, it will divide the output by (input parallel size * weight parallel size), default to False
+    :param reduce_mean:  If set to ``True``, it will divide the output by (input parallel size * weight parallel size),
+    default to False
     :type reduce_mean: int, optional
     """
     return _ReduceByBatch3D.apply(tensor, input_parallel_mode, weight_parallel_mode, reduce_mean)

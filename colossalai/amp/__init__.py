@@ -11,17 +11,13 @@ from .apex_amp import convert_to_apex_amp
 from .naive_amp import convert_to_naive_amp
 
 
-def convert_to_amp(model: nn.Module,
-                   optimizer: Optimizer,
-                   criterion: _Loss,
-                   mode: AMP_TYPE,
-                   amp_config: Config = None):
+def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mode: AMP_TYPE, amp_config: Config = None):
     """A helper function to wrap training components with Torch AMP modules
 
     :param model: your model object
     :type model: :class:`torch.nn.Module`
     :param optimizer: your optimizer object
-    :type optimizer: :class:`torch.optim.Optimzer`
+    :type optimizer: :class:`torch.optim.Optimizer`
     :param criterion: your loss function object
     :type criterion: :class:`torch.nn.modules.loss._Loss`
     :param mode: amp mode

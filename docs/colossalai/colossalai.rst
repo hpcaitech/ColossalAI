@@ -16,6 +16,7 @@ colossalai
    colossalai.logging
    colossalai.nn
    colossalai.registry
+   colossalai.testing
    colossalai.trainer
    colossalai.utils
    colossalai.zero
@@ -24,4 +25,5 @@ colossalai
 .. toctree::
    :maxdepth: 2
 
+   colossalai.global_variables
    colossalai.initialize

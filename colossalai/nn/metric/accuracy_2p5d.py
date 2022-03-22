@@ -1,5 +1,5 @@
 import torch
-from colossalai.nn.layer.parallel_2p5d import reduce_by_batch_2p5d
+from colossalai.nn.layer.parallel_2p5d import reduce_by_batch_2p5d, split_tensor_2p5d
 from torch import nn
 
 from ._utils import calc_acc

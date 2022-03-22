@@ -101,7 +101,7 @@ class WrappedDropPath(nn.Module):
 
 @LAYERS.register_module
 class VanillaPatchEmbedding(nn.Module):
-    """ 
+    """
     2D Image to Patch Embedding
 
     :param img_size: image size

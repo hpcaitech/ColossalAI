@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Unifed distributed layers
+- Unified distributed layers
 - MoE support
 - DevOps tools such as github action, code review automation, etc.
 - New project official website

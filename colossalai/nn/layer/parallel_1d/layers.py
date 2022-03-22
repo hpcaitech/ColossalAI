@@ -18,8 +18,8 @@ from torch.nn.parameter import Parameter
 
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition
-from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad,
-                     reduce_input, set_parallel_input, split_forward_gather_backward)
+from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
+                     split_forward_gather_backward)
 
 
 @LAYERS.register_module
@@ -35,7 +35,8 @@ class Linear1D(torch.nn.Module):
     :type bias: bool, optional
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
+        which is preserved for kernel fusion, defaults to False
     :type skip_bias_add: bool, optional
     :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
     :type weight_initializer: typing.Callable, optional
@@ -265,7 +266,8 @@ class Linear1D_Col(ParallelLayer):
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
     :type gather_output: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
+        which is preserved for kernel fusion, defaults to False
     :type skip_bias_add: bool, optional
     :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
     :type weight_initializer: typing.Callable, optional
@@ -353,7 +355,8 @@ class Linear1D_Row(ParallelLayer):
     :type dtype: torch.dtype, optional
     :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
     :type parallel_input: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion, defaults to False
+    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
+        which is preserved for kernel fusion, defaults to False
     :type skip_bias_add: bool, optional
     :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
     :type weight_initializer: typing.Callable, optional
@@ -551,9 +554,10 @@ class VocabParallelEmbedding1D(torch.nn.Module):
             self._fill_padding_idx_with_zero()
 
     def _fill_padding_idx_with_zero(self) -> None:
-        if self.padding_idx is not None:
+        if self.padding_idx is not None and \
+            self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
-                self.weight[self.padding_idx].fill_(0)
+                self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
     def forward(self, input_: Tensor) -> Tensor:
         # Build the mask.
