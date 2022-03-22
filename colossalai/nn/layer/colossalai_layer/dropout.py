@@ -3,9 +3,10 @@ from colossalai.context import ParallelMode, seed
 
 from ..parallel_1d import *
 from ..utils import get_tensor_parallel_mode
+from ._utils import ColossalaiModule
 
 
-class Dropout(nn.Module):
+class Dropout(ColossalaiModule):
     """
     Dropout layer of colossalai
 
@@ -18,13 +19,14 @@ class Dropout(nn.Module):
         super().__init__()
         self.tensor_parallel = get_tensor_parallel_mode()
         if self.tensor_parallel == '1d':
-            self.drop = Dropout1D(p, inplace)
+            drop = Dropout1D(p, inplace)
         else:
-            self.drop = nn.Dropout(p, inplace)
+            drop = nn.Dropout(p, inplace)
+        super().__init__(drop)
 
     def forward(self, *args):
         if self.tensor_parallel in [None, '1d']:
-            return self.drop(*args)
+            return self._forward_func(*args)
         else:
             with seed(ParallelMode.TENSOR):
-                return self.drop(*args)
+                return self._forward_func(*args)

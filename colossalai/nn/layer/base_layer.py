@@ -25,3 +25,11 @@ class ParallelLayer(nn.Module):
             ParallelMode.PIPELINE)
         self.pipeline_parallel_size = 1 if not gpc.is_initialized(ParallelMode.PIPELINE) else gpc.get_world_size(
             ParallelMode.PIPELINE)
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
+                              error_msgs):
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys,
+                                      error_msgs)
+        if gpc.get_local_rank(ParallelMode.TENSOR) != 0:
+            missing_keys.clear()
+            unexpected_keys.clear()

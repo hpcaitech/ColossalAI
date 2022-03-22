@@ -11,6 +11,7 @@ from ..parallel_2p5d import *
 from ..parallel_3d import *
 from ..utils import get_tensor_parallel_mode
 from ..vanilla import *
+from ._utils import ColossalaiModule
 
 _parallel_linear = {'1d': Linear1D, '2d': Linear2D, '2.5d': Linear2p5D, '3d': Linear3D}
 
@@ -30,7 +31,7 @@ _vocab_parallel_classifier = {
 }
 
 
-class Linear(nn.Module):
+class Linear(ColossalaiModule):
     """
     Linear layer of colossalai
 
@@ -57,15 +58,14 @@ class Linear(nn.Module):
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
                  **kwargs) -> None:
-        super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
         if tensor_parallel is None:
-            self.layer = nn.Linear(in_features, out_features, bias=bias).to(dtype).to(get_current_device())
-            weight_initializer(self.layer.weight, fan_in=in_features, fan_out=out_features)
-            if self.layer.bias is not None:
-                bias_initializer(self.layer.bias, fan_in=in_features)
+            layer = nn.Linear(in_features, out_features, bias=bias).to(dtype).to(get_current_device())
+            weight_initializer(layer.weight, fan_in=in_features, fan_out=out_features)
+            if layer.bias is not None:
+                bias_initializer(layer.bias, fan_in=in_features)
         else:
-            self.layer = _parallel_linear[tensor_parallel](
+            layer = _parallel_linear[tensor_parallel](
                 in_features,
                 out_features,
                 bias=bias,
@@ -74,20 +74,10 @@ class Linear(nn.Module):
                 bias_initializer=bias_initializer,
                 **kwargs,
             )
-
-    @property
-    def weight(self):
-        return self.layer.weight
-
-    @property
-    def bias(self):
-        return self.layer.bias
-
-    def forward(self, *args):
-        return self.layer(*args)
+        super().__init__(layer)
 
 
-class Classifier(nn.Module):
+class Classifier(ColossalaiModule):
     """
     Classifier layer of colossalai
 
@@ -114,10 +104,9 @@ class Classifier(nn.Module):
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
                  vocab_parallel_limit: int = 2048) -> None:
-        super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
         if num_classes <= vocab_parallel_limit or tensor_parallel is None:
-            self.layer = _parallel_classifier[tensor_parallel](
+            layer = _parallel_classifier[tensor_parallel](
                 in_features,
                 num_classes,
                 weight=weight,
@@ -127,7 +116,7 @@ class Classifier(nn.Module):
                 bias_initializer=bias_initializer,
             )
         else:
-            self.layer = _vocab_parallel_classifier[tensor_parallel](
+            layer = _vocab_parallel_classifier[tensor_parallel](
                 in_features,
                 num_classes,
                 weight=weight,
@@ -136,14 +125,4 @@ class Classifier(nn.Module):
                 weight_initializer=weight_initializer,
                 bias_initializer=bias_initializer,
             )
-
-    @property
-    def weight(self):
-        return self.layer.weight
-
-    @property
-    def bias(self):
-        return self.layer.bias
-
-    def forward(self, *args):
-        return self.layer(*args)
+        super().__init__(layer)
