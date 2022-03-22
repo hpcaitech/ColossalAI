@@ -1,6 +1,7 @@
 import re
 from typing import Callable, List, Any
 from functools import partial
+from inspect import signature
 
 
 def parameterize(argument: str, values: List[Any]) -> Callable:
@@ -115,7 +116,8 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
             while max_try is None or try_count < max_try:
                 try:
                     try_count += 1
-                    func(*args, **kwargs)
+                    ret = func(*args, **kwargs)
+                    return ret
                 except exception_type as e:
                     if pattern is None or re.match(pattern, str(e)):
                         # when pattern is not specified, we always skip the exception
@@ -123,6 +125,12 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
                         continue
                     else:
                         raise e
+
+        # Override signature
+        # otherwise pytest.mark.parameterize will raise the following error:
+        # function does not use argumetn xxx
+        sig = signature(func)
+        _run_until_success.__signature__ = sig
 
         return _run_until_success
 

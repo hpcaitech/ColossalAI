@@ -5,7 +5,7 @@ import pytest
 import torch.multiprocessing as mp
 from colossalai.zero import ShardedOptimizer
 from torch.nn.parallel import DistributedDataParallel as DDP
-
+from colossalai.testing import rerun_on_exception
 from colossalai.utils import free_port
 from functools import partial
 from common import allclose
@@ -158,6 +158,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=RuntimeError, pattern="Address already in use")
 def test_sharded_optim():
     world_size = 2
     run_func = partial(run_dist, world_size=world_size, port=free_port())

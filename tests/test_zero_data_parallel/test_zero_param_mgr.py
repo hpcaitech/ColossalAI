@@ -12,6 +12,7 @@ from colossalai.zero.sharded_model.param_manager import Zero3ParameterManager
 from colossalai.core import global_context as gpc
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.utils import free_port
+from colossalai.testing import rerun_on_exception
 from common import CONFIG
 
 
@@ -30,6 +31,7 @@ def run_shard_shape_check(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2, 4])
+@rerun_on_exception(exception_type=RuntimeError, pattern="Address already in use")
 def test_run_shard_shape(world_size):
     run_func = partial(run_shard_shape_check, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
