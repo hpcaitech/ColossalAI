@@ -160,8 +160,8 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             self.initialized_param_list.append(param)
 
             if self.shard_param:
-                self.shard_strategy.shard([param.col_attr._data_sharded_tensor], self.dp_process_group)
-                GLOBAL_MODEL_DATA_TRACER.add_tensor(param.col_attr._data_sharded_tensor.payload)
+                self.shard_strategy.shard([param.col_attr.sharded_data_tensor], self.dp_process_group)
+                GLOBAL_MODEL_DATA_TRACER.add_tensor(param.col_attr.sharded_data_tensor.payload)
             # if param.col_attr.grad and self.shard_grad:
             #     self.shard_strategy.shard([param.col_attr._grad_sharded_tensor], self.dp_process_group)
             #     GLOBAL_MODEL_DATA_TRACER.add_tensor(param.col_attr._grad_sharded_tensor.payload)

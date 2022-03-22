@@ -17,7 +17,6 @@ def test_bucket_copy():
     for shape in shape_list:
         # on CPU
         src_param = torch.nn.Parameter(torch.randn(shape, dtype=torch.float, device=torch.device('cpu')))
-        print(src_param)
         # on GPU
         tgt_param = ShardedParamV2(torch.nn.Parameter(torch.ones(shape, dtype=torch.half, device=torch.device('cuda'))))
 
@@ -29,9 +28,10 @@ def test_bucket_copy():
     copyer.flush()
 
     for src_param, tgt_param in zip(src_param_list, tgt_param_list):
-        print(tgt_param.data.payload)
-        diff = src_param.cpu().float() - tgt_param.data.payload.cpu().float()
-        assert torch.allclose(src_param.cpu().float(), tgt_param.data.payload.cpu().float(), rtol=1e-03,
+        diff = src_param.cpu().float() - tgt_param.sharded_data_tensor.payload.cpu().float()
+        assert torch.allclose(src_param.cpu().float(),
+                              tgt_param.sharded_data_tensor.payload.cpu().float(),
+                              rtol=1e-03,
                               atol=1e-03), f"diff {diff}"
 
 

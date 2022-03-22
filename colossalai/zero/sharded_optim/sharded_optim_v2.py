@@ -109,17 +109,17 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         for group in self.optim.param_groups:
             for p in group['params']:
                 assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
-                is_param_sharded = p.col_attr.data.is_sharded
+                is_param_sharded = p.col_attr.sharded_data_tensor.is_sharded
                 if not is_param_sharded:
                     # TODO (ver217): we may not use shard / gather here
                     # Param is no sharded, which means we use ZeRO-2 here
                     # As we only store param shard, we shard it here
-                    self.shard_strategy.shard([p.col_attr.data], self.dp_process_group)
-                self.master_params[p] = cast_tensor_to_fp32(p.col_attr.data.payload).to(self.device)
+                    self.shard_strategy.shard([p.col_attr.sharded_data_tensor], self.dp_process_group)
+                self.master_params[p] = cast_tensor_to_fp32(p.col_attr.sharded_data_tensor.payload).to(self.device)
                 if not is_param_sharded:
                     # In this branch, there's no need to shard param
                     # So we gather here
-                    self.shard_strategy.gather([p.col_attr.data], self.dp_process_group)
+                    self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
 
     def step(self, *args, **kwargs):
         # unscale grads if scaled
@@ -149,24 +149,24 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # a chunk.
         for group in self.optim.param_groups:
             for p in group['params']:
-                is_param_sharded = p.col_attr.data.is_sharded
+                is_param_sharded = p.col_attr.sharded_data_tensor.is_sharded
                 if not is_param_sharded:
                     # We use ZeRO-2 here
-                    # The `p.col_attr.data` saves full fp16 param
+                    # The `p.col_attr.sharded_data_tensor` saves full fp16 param
                     # But we only have updated fp32 param shard here
                     # So we first shard full fp16 param and copy fp32 param shard to it
                     # Then we will gather them
-                    self.shard_strategy.shard([p.col_attr.data], self.dp_process_group)
+                    self.shard_strategy.shard([p.col_attr.sharded_data_tensor], self.dp_process_group)
                 # We have to use `copy_payload` instead of `reset_payload`
-                # Since p.data is fp32 and p.col_attr.data is fp16
+                # Since p.data is fp32 and p.col_attr.sharded_data_tensor is fp16
 
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-                p.col_attr.data.copy_payload(p.data)
+                p.col_attr.sharded_data_tensor.copy_payload(p.data)
 
                 if not is_param_sharded:
                     # We gather full fp16 param here
-                    self.shard_strategy.gather([p.col_attr.data], self.dp_process_group)
-                p.data = p.col_attr.data.payload
+                    self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
+                p.data = p.col_attr.sharded_data_tensor.payload
         return ret
 
     def backward(self, loss: Tensor) -> None:

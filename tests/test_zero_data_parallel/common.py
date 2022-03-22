@@ -119,7 +119,7 @@ def check_params_padding(model, zero_model, loose=False):
 def check_sharded_params_padding(model, zero_model, loose=False):
     rank = dist.get_rank()
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_p = zero_p.col_attr.data.payload.to(p.device).float()
+        zero_p = zero_p.col_attr.sharded_data_tensor.payload.to(p.device).float()
         chunks = torch.flatten(p).chunk(dist.get_world_size())
         if rank >= len(chunks):
             continue
