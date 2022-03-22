@@ -5,7 +5,8 @@ from .fused_sgd import FusedSGD
 from .lamb import Lamb
 from .lars import Lars
 from .cpu_adam import CPUAdam
+from .cpu_adamw import CPUAdamW
 
 __all__ = [
-    'ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam'
+    'ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam', 'CPUAdamW'
 ]

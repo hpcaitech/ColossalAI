@@ -1,13 +1,9 @@
+import torch
 import math
 
-import torch
 
-
-class CPUAdam(torch.optim.Optimizer):
+class CPUAdamW(torch.optim.Optimizer):
     optimizer_id = 0
-    # Number of fp32 shards for per parameter
-    # Param weight, grad, momentum and variance
-    num_fp32_shards_per_param = 4
 
     def __init__(self,
                  model_params,
@@ -25,10 +21,10 @@ class CPUAdam(torch.optim.Optimizer):
         """
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
-        super(CPUAdam, self).__init__(model_params, default_args)
-        self.opt_id = CPUAdam.optimizer_id
-        CPUAdam.optimizer_id = CPUAdam.optimizer_id + 1
-        adamw_mode = False
+        super(CPUAdamW, self).__init__(model_params, default_args)
+        self.opt_id = CPUAdamW.optimizer_id
+        CPUAdamW.optimizer_id = CPUAdamW.optimizer_id + 1
+        adamw_mode = True
         self.loss_scale = loss_scale
         try:
             import cpu_adam
@@ -41,7 +37,7 @@ class CPUAdam(torch.optim.Optimizer):
         if self.cpu_adam_op:
             self.cpu_adam_op.destroy_adam(self.opt_id)
 
-    def torch_adam_update(self,
+    def torch_adamw_update(self,
                           data,
                           grad,
                           exp_avg,
@@ -54,7 +50,7 @@ class CPUAdam(torch.optim.Optimizer):
                           bias_correction1,
                           bias_correction2,
                           loss_scale,
-                          use_adamw=False):
+                          use_adamw=True):
         if loss_scale is not None:
             grad.div_(loss_scale)
 
@@ -109,6 +105,10 @@ class CPUAdam(torch.optim.Optimizer):
                                                  group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
                                                  state['exp_avg'], state['exp_avg_sq'], self.loss_scale)
                 elif target_device.type == 'cuda':
+                    # FIXME() prepare grad on cuda
+                    if p.grad.device.type == 'cpu':
+                        p.grad = p.grad.to(target_device)
+
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
                     assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"
 
@@ -116,7 +116,7 @@ class CPUAdam(torch.optim.Optimizer):
                     bias_correction2 = 1 - beta2**state['step']
 
                     # adam on cuda
-                    self.torch_adam_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],
+                    self.torch_adamw_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],
                                            beta1, beta2, group['eps'], group['weight_decay'], bias_correction1,
                                            bias_correction2, self.loss_scale)
                 else:
