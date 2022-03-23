@@ -1,4 +1,3 @@
-import imp
 from .config import Config, ConfigException
 from .parallel_context import ParallelContext
 from .parallel_mode import ParallelMode
