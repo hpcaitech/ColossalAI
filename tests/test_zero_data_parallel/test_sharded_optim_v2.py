@@ -66,7 +66,7 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
                                     shard_strategy,
                                     offload_config=dict(device='cpu') if cpu_offload else None,
                                     use_memory_tracer=gpu_margin_mem_ratio > 0.0,
-                                    reuse_fp16_shard=True)
+                                    reuse_fp16_shard=use_cpuadam)
 
         model = model_builder(checkpoint=True).half()
         col_model_deepcopy(zero_model, model)

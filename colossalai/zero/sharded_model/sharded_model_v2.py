@@ -41,7 +41,10 @@ class ShardedModelV2(nn.Module):
         gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
         use_memory_tracer (bool, optional): Whether to use memoty tracer. Defaults to False.
         reuse_fp16_shard (bool, optional): Whether to reuse fp16 shard for param and grad. 
-            Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation. Defaults to False.
+            Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation. 
+            In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad). 
+            We find that PyTorch's optimizers don't support mixed precision, 
+            so we recommend you enable this only when using our CPUAdam with CPU offload. Defaults to False.
     """
 
     def __init__(self,

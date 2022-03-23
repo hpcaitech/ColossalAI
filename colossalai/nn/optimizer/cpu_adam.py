@@ -56,6 +56,8 @@ class CPUAdam(torch.optim.Optimizer):
                           bias_correction2,
                           loss_scale,
                           use_adamw=False):
+        # FIXME(ver217): remove the below line when replace torch adam with fused adam
+        grad = grad.float()
         if loss_scale is not None:
             grad.div_(loss_scale)
 
