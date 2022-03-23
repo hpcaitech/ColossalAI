@@ -18,7 +18,7 @@ from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from common import CONFIG, check_sharded_params_padding
+from common import CONFIG, check_sharded_model_params
 
 
 def _run_step(model, optimizer, data, label, criterion, enable_autocast=False):
@@ -65,7 +65,8 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         zero_model = ShardedModelV2(zero_model,
                                     shard_strategy,
                                     offload_config=dict(device='cpu') if cpu_offload else None,
-                                    use_memory_tracer=gpu_margin_mem_ratio > 0.0)
+                                    use_memory_tracer=gpu_margin_mem_ratio > 0.0,
+                                    reuse_fp16_shard=use_cpuadam)
 
         model = model_builder(checkpoint=True).half()
         col_model_deepcopy(zero_model, model)
@@ -92,7 +93,7 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
             data, label = data.cuda(), label.cuda()
             _run_step(apex_model, apex_optimizer, data, label, criterion, False)
             _run_step(zero_model, sharded_optim, data, label, criterion, False)
-            check_sharded_params_padding(model, zero_model, loose=True)
+            check_sharded_model_params(model, zero_model, loose=True, reuse_fp16_shard=use_cpuadam)
             for param in model.parameters():
                 assert not has_inf_or_nan(param)
 
