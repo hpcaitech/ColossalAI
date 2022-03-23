@@ -19,6 +19,23 @@ class ShardedTensor(object):
         self._origin_numel = tensor.numel()
         self._origin_dtype = tensor.dtype
 
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        from colossalai.nn.layer.parallel_ops.wrapper import _SHARDED_OPS
+        print('__torch_function__ args', len(args), args)
+        if func in _SHARDED_OPS:
+            # Find ShardedTensor instance to get process_group.
+            for arg in args:
+                if isinstance(arg, ShardedTensor):
+                    return _SHARDED_OPS[func](types, args, kwargs, arg.process_group)
+
+            for kwarg in kwargs.values():
+                if isinstance(kwarg, ShardedTensor):
+                    return _SHARDED_OPS[func](types, args, kwargs, kwarg.process_group)
+
+        raise RuntimeError(f"torch function '{func.__name__}', with args: {args} and "
+                           f"kwargs: {kwargs} not supported for ShardedTensor!")
+
     @property
     def origin_numel(self):
         return self._origin_numel
