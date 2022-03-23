@@ -16,7 +16,7 @@ from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from common import (MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_params_padding)
+from common import (MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_model_params)
 
 
 def run_dist(rank, world_size, port, parallel_config):
@@ -87,7 +87,7 @@ def run_dist(rank, world_size, port, parallel_config):
         if parallel_config == MP_PARALLEL_CONFIG:
             check_params(torch_model, colo_model, loose=True)
         elif parallel_config == ZERO_PARALLEL_CONFIG:
-            check_sharded_params_padding(torch_model, colo_model, loose=True)
+            check_sharded_model_params(torch_model, colo_model, loose=True)
 
 
 # FIXME: enable this test in next PR
