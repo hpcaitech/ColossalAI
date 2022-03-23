@@ -1,4 +1,4 @@
-from colossalai.utils.commons.singleton_meta import SingletonMeta
+from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.utils.memory_tracer.commons import col_tensor_mem_usage
 import torch
 

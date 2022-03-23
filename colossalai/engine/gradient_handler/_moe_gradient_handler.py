@@ -1,9 +1,10 @@
-from colossalai.core import global_context as gpc, MOE_CONTEXT
+from colossalai.core import global_context as gpc
 from colossalai.registry import GRADIENT_HANDLER
 from colossalai.utils.moe import get_moe_epsize_param_dict
 from ._base_gradient_handler import BaseGradientHandler
 from ...context.parallel_mode import ParallelMode
 from .utils import bucket_allreduce
+from colossalai.context.moe_context import MOE_CONTEXT
 
 
 @GRADIENT_HANDLER.register_module

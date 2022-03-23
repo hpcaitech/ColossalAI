@@ -6,7 +6,7 @@ import torch.distributed as dist
 import colossalai
 from colossalai.utils import free_port, get_current_device
 from colossalai.nn.layer.moe import Experts
-from colossalai.core import MOE_CONTEXT
+from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.utils.moe import sync_moe_model_param
 from colossalai.testing import assert_equal_in_group
 

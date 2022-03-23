@@ -1,6 +1,9 @@
 import torch
 import torch.distributed as dist
-from .parallel_mode import ParallelMode
+
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.context.singleton_meta import SingletonMeta
+
 from typing import Tuple
 
 
@@ -56,17 +59,10 @@ class MoeParallelInfo:
                 self.dp_group = group
 
 
-class MoeContext:
+class MoeContext(metaclass=SingletonMeta):
     """MoE parallel context manager. This class manages different
     parallel groups in MoE context and MoE loss in training.
     """
-    __instance = None
-
-    @staticmethod
-    def get_instance():
-        if MoeContext.__instance is None:
-            MoeContext.__instance = MoeContext()
-        return MoeContext.__instance
 
     def __init__(self):
         self.world_size = 1
@@ -160,3 +156,6 @@ class MoeContext:
 
     def get_loss(self):
         return self.aux_loss
+
+
+MOE_CONTEXT = MoeContext()
