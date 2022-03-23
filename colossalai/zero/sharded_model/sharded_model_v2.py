@@ -29,24 +29,19 @@ class ShardedModelV2(nn.Module):
     compared to classic data parallelism while the computational granularity and communication efficiency are retained.
     Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
 
-    :param module: A sharded module, which must be initialized by `ZeroInitContext`.
-    :type module: nn.Module
-    :param shard_strategy: A shard strategy to manage shard behavior.
-    :type shard_strategy: BaseShardStrategy
-    :param process_group: Data parallel process group, defaults to None
-    :type process_group: Optional[ProcessGroup], optional
-    :param reduce_scatter_process_group: Reduce-scatter process group, defaults to None. Generally, it should be `None`.
-    :type reduce_scatter_process_group: Optional[ProcessGroup], optional
-    :param reduce_scatter_bucket_size_mb: Reduce-scatter bucket size in *MB*, defaults to 25
-    :type reduce_scatter_bucket_size_mb: int, optional
-    :param fp32_reduce_scatter: If set to `True`, gradients are forced to FP32 before reduce-scatter, defaults to False
-    :type fp32_reduce_scatter: bool, optional
-    :param offload_config: We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload, defaults to None
-    :type offload_config: Optional[dict], optional
-    :param gradient_predivide_factor: Gradient is divived by this value before reduce-scatter, defaults to 1.0
-    :type gradient_predivide_factor: Optional[float], optional
-    :param use_memory_tracer: Whether to use memoty tracer, defaults to False
-    :type use_memory_tracer: bool, optional
+    Args:
+        module (nn.Module): A sharded module, which must be initialized by `ZeroInitContext`.
+        shard_strategy (BaseShardStrategy): A shard strategy to manage shard behavior.
+        process_group (Optional[ProcessGroup], optional): Data parallel process group. Defaults to None.
+        reduce_scatter_process_group (Optional[ProcessGroup], optional): Reduce-scatter process group. 
+            Generally, it should be `None`, and it's the same as `process_group`. Defaults to None.
+        reduce_scatter_bucket_size_mb (int, optional): Reduce-scatter bucket size in *MB*. Defaults to 25.
+        fp32_reduce_scatter (bool, optional): If set to `True`, gradients are forced to FP32 before reduce-scatter. Defaults to False.
+        offload_config (Optional[dict], optional): We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload. Defaults to None.
+        gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
+        use_memory_tracer (bool, optional): Whether to use memoty tracer. Defaults to False.
+        reuse_fp16_shard (bool, optional): Whether to reuse fp16 shard for param and grad. 
+            Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation. Defaults to False.
     """
 
     def __init__(self,
@@ -58,7 +53,8 @@ class ShardedModelV2(nn.Module):
                  fp32_reduce_scatter: bool = False,
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 use_memory_tracer: bool = False):
+                 use_memory_tracer: bool = False,
+                 reuse_fp16_shard: bool = False):
         super().__init__()
         self.logger = get_dist_logger()
 
@@ -114,6 +110,7 @@ class ShardedModelV2(nn.Module):
         self._require_backward_grad_sync: bool = True
 
         self._cuda_margin_space = 0
+        self.reuse_fp16_shard = reuse_fp16_shard
 
     @property
     def cuda_margin_space(self):
@@ -191,13 +188,17 @@ class ShardedModelV2(nn.Module):
             # If world size == 1 and sharded param,
             # the shape `grad` is the same as unsharded param
             # So we can just use `view(-1)` to ensure grad is a flat tensor shard
-            grad = cast_tensor_to_fp32(p.col_attr.fp16_grad)
+            if self.reuse_fp16_shard:
+                grad = p.col_attr.sharded_data_tensor.payload
+            else:
+                grad = cast_tensor_to_fp32(p.col_attr.fp16_grad)
             if p.col_attr.offload_fp32_grad:
                 col_move_to_cpu(grad)
             if p.col_attr.fp32_grad is not None:
+                assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
                 p.col_attr.fp32_grad.add_(grad.view_as(p.col_attr.fp32_grad))
                 grad = p.col_attr.fp32_grad
-            p.grad.data = grad.view(-1)
+            p.grad.data = grad
             p.col_attr.fp16_grad = None
             p.col_attr.fp32_grad = None
 
@@ -250,11 +251,15 @@ class ShardedModelV2(nn.Module):
         return empty_grad
 
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
+        reduced_grad = reduced_grad.view(-1)
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
-
-        param.col_attr.fp16_grad = reduced_grad.data
+        if self.reuse_fp16_shard:
+            param.col_attr.sharded_data_tensor.reset_payload(reduced_grad.data)
+            param.col_attr.sharded_data_tensor.is_sharded = True
+        else:
+            param.col_attr.fp16_grad = reduced_grad.data
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.col_attr.sharded_data_tensor for p in self.module.parameters()],
