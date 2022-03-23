@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch.distributed as dist
-from colossalai.core import global_context as gpc, MOE_CONTEXT
+from colossalai.core import global_context as gpc
+from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.context import ParallelMode
 from .common import is_using_ddp
 from typing import Dict, List

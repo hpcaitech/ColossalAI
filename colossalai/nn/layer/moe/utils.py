@@ -1,6 +1,6 @@
 import torch
 from colossalai.utils import get_current_device
-from colossalai.core import MOE_CONTEXT
+from colossalai.context.moe_context import MOE_CONTEXT
 from .experts import FFNExperts, TPExperts
 
 

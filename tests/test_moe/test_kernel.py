@@ -8,7 +8,7 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port, get_current_device
 from colossalai.nn.layer.moe import Top1Router, Top2Router, MoeLayer, Experts
-from colossalai.core import MOE_CONTEXT
+from colossalai.context.moe_context import MOE_CONTEXT
 
 BATCH_SIZE = 16
 NUM_EXPERTS = 4
