@@ -9,6 +9,9 @@ from packaging import version
 
 @sharded_op_impl(torch.nn.functional.linear)
 def sharded_linear(types, args, kwargs, pg):
+    """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.linear``.
+    This method computes a sharded linear.
+    """
     rank = dist.get_rank(pg)
     print(f'inside sharded_linear {len(args)}')
     print(f'inside sharded_linear kwargs {kwargs}')
@@ -27,6 +30,8 @@ def sharded_linear(types, args, kwargs, pg):
             bias = bias.payload
 
     print(bias)
+
+    # Add communication logic before and after linear call.
     if isinstance(weight, ShardedTensor):
         return torch.nn.functional.linear(input, weight.payload.t(), bias)
     else:
