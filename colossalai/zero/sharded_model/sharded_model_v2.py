@@ -143,11 +143,7 @@ class ShardedModelV2(nn.Module):
         for ophook in self._ophook_list:
             ophook.post_iter()
 
-    @torch.no_grad()
-    def _post_backward_operations(self) -> None:
-        """
-        The method includes operations required to be processed after backward
-        """
+    def _update_memstats(self):
         if self._iter_cnter == 0 and self._memstats_collector:
             self._memstats_collector.finish_collection()
         if self._memstats_collector:
@@ -160,6 +156,13 @@ class ShardedModelV2(nn.Module):
 
         self._iter_cnter += 1
 
+    @torch.no_grad()
+    def _post_backward_operations(self) -> None:
+        """
+        The method includes operations required to be processed after backward
+        """
+        self._update_memstats()
+
         if self._require_backward_grad_sync:
             # Flush any unreduced buckets in the post_backward stream.
             with torch.cuda.stream(self.comm_stream):
@@ -171,9 +174,11 @@ class ShardedModelV2(nn.Module):
         self.reducer.free()
         # In case some post bwd hook is not fired
         if self.shard_param:
+            tensor_list = []
             for p in self.module.parameters():
                 if not p.col_attr.param_is_sharded:
-                    self.shard_strategy.shard([p.col_attr.sharded_data_tensor], self.process_group)
+                    tensor_list.append(p.col_attr.sharded_data_tensor)
+            self.shard_strategy.shard(tensor_list, self.process_group)
         for p in self.module.parameters():
             p.col_attr.bwd_count = 0
             if not p.requires_grad:
