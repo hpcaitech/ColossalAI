@@ -224,5 +224,5 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     if fp32_shards_used_cuda_margin_mem + shard_mem < fp32_shards_available_cuda_margin_mem:
                         self.master_params[p] = self.master_params[p].to(torch.cuda.current_device())
                         p.grad.data = p.grad.data.to(torch.cuda.current_device())
-                        p.col_attr.offload_fp32_grad = False
+                        p.col_attr.offload_grad = False
                         fp32_shards_used_cuda_margin_mem += shard_mem
