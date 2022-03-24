@@ -8,7 +8,7 @@ from typing import Union
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
 
-def colo_set_process_memory_fraction(ratio: float):
+def colo_set_process_memory_fraction(ratio: float) -> Nones:
     """colo_set_process_memory_fraction 
 
     set how much cuda memory used on the gpu belonging to the current process.
@@ -21,7 +21,7 @@ def colo_set_process_memory_fraction(ratio: float):
     torch.cuda.set_per_process_memory_fraction(_GLOBAL_CUDA_MEM_FRACTION, get_current_device())
 
 
-def colo_cuda_memory_capacity():
+def colo_cuda_memory_capacity() -> float:
     """
     Get cuda memory capacity of the current cuda.
     """
@@ -65,7 +65,7 @@ def colo_model_data_tensor_move(src_t: Union[ShardedTensor, torch.Tensor], tgt_t
         src_t.data = torch.tensor([], device=src_dev, dtype=src_t_payload.dtype)
 
 
-def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]):
+def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]) -> None:
     """colo_model_data_move_to_cpu 
 
     move a model data tensor from gpu to cpu
