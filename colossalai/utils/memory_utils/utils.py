@@ -8,7 +8,7 @@ from typing import Union
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
 
-def colo_set_process_memory_fraction(ratio: float) -> Nones:
+def colo_set_process_memory_fraction(ratio: float) -> None:
     """colo_set_process_memory_fraction 
 
     set how much cuda memory used on the gpu belonging to the current process.
@@ -73,16 +73,17 @@ def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]) -> None:
     Args:
         t (Union[ShardedTensor, torch.Tensor]): _description_
     """
-    assert isinstance(t, torch.Tensor)
 
     if isinstance(t, ShardedTensor):
         t_payload = t.payload
     elif isinstance(t, torch.Tensor):
-        t_paylad = t
+        t_payload = t
+    else:
+        raise TypeError('colo_model_data_move_to_cpu dose not accept type {type(t)}')
 
-    if t_paylad.device.type == 'cpu':
+    if t_payload.device.type == 'cpu':
         return
 
     # TODO() optimize the tensor moving with non-blocking
-    GLOBAL_MODEL_DATA_TRACER.delete_tensor(t)
-    t.data = t.data.cpu()
+    GLOBAL_MODEL_DATA_TRACER.delete_tensor(t_payload)
+    t_payload.data = t_payload.data.cpu()
