@@ -63,5 +63,5 @@ def report_memory_usage(message, logger=None, report_cpu=False):
     logger.info(full_log)
 
     # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
+    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
         torch.cuda.reset_peak_memory_stats()

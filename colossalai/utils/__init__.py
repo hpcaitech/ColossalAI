@@ -8,7 +8,7 @@ from .common import (clip_grad_norm_fp32, conditional_context, copy_tensor_paral
                      sync_model_param)
 from .data_sampler import DataParallelSampler, get_dataloader
 from .gradient_accumulation import accumulate_gradient
-from .memory import report_memory_usage
+from .memory_utils.memory_monitor import report_memory_usage
 from .timer import MultiTimer, Timer
 from .tensor_detector import TensorDetector
 
