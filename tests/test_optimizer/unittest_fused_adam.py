@@ -53,12 +53,7 @@ def test_adam(adamw, p_dtype, g_dtype):
         torch_optim.step()
 
     assert len(optim.param_groups[0]['params']) == len(torch_optim.param_groups[0]['params'])
-    # we set the torch adam's dtype always being fp32
-    # when p and g both are fp16, there is a great loss
-    # so we make a loose threshold
     
-    #threshold = 1e-3
-    print(adamw, p_dtype, g_dtype)
     for i in range(len(optim.param_groups[0]['params'])):
         if torch.isnan(optim.param_groups[0]['params'][i]).any() \
            or torch.isnan(torch_optim.param_groups[0]['params'][i]).any():
