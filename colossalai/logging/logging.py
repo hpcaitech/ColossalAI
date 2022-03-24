@@ -5,12 +5,16 @@ import colossalai
 import logging
 from pathlib import Path
 from typing import Union
-from rich.logging import RichHandler
 
 from colossalai.context.parallel_mode import ParallelMode
 
-_FORMAT = 'colossalai - %(name)s - %(asctime)s %(levelname)s: %(message)s'
-logging.basicConfig(level=logging.INFO, format=_FORMAT, handlers=[RichHandler()])
+try:
+    from rich.logging import RichHandler
+    _FORMAT = 'colossalai - %(name)s - %(asctime)s %(levelname)s: %(message)s'
+    logging.basicConfig(level=logging.INFO, format=_FORMAT, handlers=[RichHandler()])
+except ImportError:
+    _FORMAT = 'colossalai - %(name)s - %(asctime)s %(levelname)s: %(message)s'
+    logging.basicConfig(level=logging.INFO, format=_FORMAT)
 
 
 class DistributedLogger:
