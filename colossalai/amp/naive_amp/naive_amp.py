@@ -26,10 +26,12 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
         Args and kwargs should contain:
 
         grad_scaler (BaseGradScaler): grad scaler for gradient chose in
-                                      constant grad scaler or dynamic grad scaler.
+                                      ``constant_grad_scaler`` or ``dynamic_grad_scaler``.
         clip_grad_norm (float, optional): clip gradients with this global L2 norm. Default 0.
-                                          Note that clipping is ignored if clip_grad == 0
         verbose (bool, optional): if set to `True`, will print debug info. Default False.
+
+    Note:
+        clipping is ignored if ``clip_grad_norm`` equals 0.
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):

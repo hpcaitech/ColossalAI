@@ -16,9 +16,9 @@ def convert_to_torch_amp(model: nn.Module,
         model (:class:`torch.nn.Module`): your model object.
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object
         criterion (:class:`torch.nn.modules.loss._Loss`, optional): your loss function object
-        amp_config (:class:`colossalai.context.Config` or dict, optional): configuration for torch mode amp.
+        **amp_config (:class:`colossalai.context.Config` or dict, optional): configuration for torch mode amp.
             The ``amp_config`` should contain ``init_scale``, ``growth_factor``, ``backoff_factor``,
-             ``growth_interval`` and ``enabled``.
+            ``growth_interval`` and ``enabled``.
 
         init_scale (float, optional, default=2.**16):  Initial scale factor.
         growth_factor (float, optional, default=2.0):  Factor by which the scale is multiplied during

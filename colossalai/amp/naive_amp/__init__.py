@@ -4,6 +4,7 @@ from torch.optim import Optimizer
 from colossalai.utils import is_no_pp_or_last_stage
 from .naive_amp import NaiveAMPOptimizer, NaiveAMPModel
 from .grad_scaler import DynamicGradScaler, ConstantGradScaler
+from _fp16_optimizer import FP16Optimizer
 
 
 def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
@@ -12,9 +13,8 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     Args:
         model (:class:`torch.nn.Module`): your model object
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object
-        amp_config (:class:`colossalai.context.Config` or dict): configuration for naive mode amp
-
-        The `amp_config` should contain:
+        **amp_config (:class:`colossalai.context.Config` or dict): configuration for naive mode amp.
+            The ``amp_config`` should contain ``verbose``, ``clip_grad_norm`` and ``dynamic_grad_scale``.
 
         verbose (bool, optional): if set to `True`, will print debug info (Default: False).
         clip_grad_norm (float, optional): clip gradients with this global L2 norm (Default 0).
@@ -51,4 +51,4 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     return model, optimizer
 
 
-__all__ = ['convert_to_naive_amp', 'NaiveAMPOptimizer']
+__all__ = ['convert_to_naive_amp', 'NaiveAMPOptimizer', 'FP16Optimizer']

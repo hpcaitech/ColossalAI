@@ -9,11 +9,11 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     Args:
         model (:class:`torch.nn.Module`): your model object.
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
-        amp_config (:class:`colossalai.context.Config` or dict): configuration for nvidia apex.
+        **amp_config (:class:`colossalai.context.Config` or dict): configuration for nvidia apex.
+            The ``amp_config`` should contain: ``enabled``, ``opt_level``, ``cast_model_type``,
+            ``patch_torch_functions``, ``keep_batchnorm_fp32``, ``master_weights``, ``loss_scale``,
+             ``cast_model_outputs``, ``num_losses``, ``verbosity``, ``min_loss_scale``, ``max_loss_scale``.
 
-    The `amp_config` should contain:
-
-    Args:
         enabled (bool, optional, default=True):  If False, renders all Amp calls no-ops, so your script
             should run as if Amp were not present.
         opt_level (str, optional, default="O1"):  Pure or mixed precision optimization level.  Accepted values are

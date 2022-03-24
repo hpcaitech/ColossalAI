@@ -19,11 +19,10 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
     Args:
         optim (torch.optim.Optimizer): A normal optimizer like Adam or SGD.
         args (list): Args used to initialize gradient scaler
-        kwargs (dict): Kwargs used to initialize gradient scaler
+        **kwargs (dict): Kwargs used to initialize gradient scaler.
+            kwargs should contain ``init_scale``, ``growth_factor``, ``backoff_factor``,
+            ``growth_interval`` and ``enabled``.
 
-    `args` and `kwargs` should contain:
-
-    Args:
         init_scale (float, optional, default=2.**16):  Initial scale factor.
         growth_factor (float, optional, default=2.0):  Factor by which the scale is multiplied during
             :meth:`update` if no inf/NaN gradients occur for ``growth_interval`` consecutive iterations.
