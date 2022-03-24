@@ -9,10 +9,23 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     Args:
         model (:class:`torch.nn.Module`): your model object.
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
-        **amp_config (:class:`colossalai.context.Config` or dict): configuration for nvidia apex.
+        amp_config (:class:`colossalai.context.Config` or dict): configuration for nvidia apex.
             The ``amp_config`` should contain ``enabled``, ``opt_level``, ``cast_model_type``,
             ``patch_torch_functions``, ``keep_batchnorm_fp32``, ``master_weights``, ``loss_scale``,
             ``cast_model_outputs``, ``num_losses``, ``verbosity``, ``min_loss_scale``, ``max_loss_scale``.
+
+    The config should include parameters below:
+     | enabled (bool, optional, default=True)
+     | opt_level (str, optional, default="O1")
+     | cast_model_type (``torch.dtype``, optional, default=None)
+     | patch_torch_functions (bool, optional, default=None)
+     | keep_batchnorm_fp32 (bool or str, optional, default=None)
+     | loss_scale (float or str, optional, default=None)
+     | cast_model_outputs (torch.dtype, optional, default=None)
+     |  num_losses (int, optional, default=1)
+     | verbosity (int, default=1)
+     | min_loss_scale (float, default=None)
+     | max_loss_scale (float, default=2.**24)
 
     The config should include parameters below
     ::
@@ -44,11 +57,6 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
             If dynamic loss scaling is not used, `min_loss_scale` is ignored.
         max_loss_scale (float, default=2.**24):  Sets a ceiling for the loss scale values that can be chosen by
             dynamic loss scaling.  If dynamic loss scaling is not used, `max_loss_scale` is ignored.
-
-    The config should include parameters below.
-     | enabled (bool, optional, default=True)
-     | opt_level (str, optional, default="O1")
-
 
     Returns:
         A tuple (model, optimizer).
