@@ -1,12 +1,15 @@
 import torch
-import colossalai
-import copy
-import pytest
 import torch.multiprocessing as mp
-from colossalai.amp import convert_to_naive_amp, convert_to_apex_amp
-from tests.components_to_test.registry import non_distributed_component_funcs
+
+import colossalai
 from colossalai.testing import assert_close_loose
 from colossalai.utils import free_port
+from colossalai.amp import convert_to_naive_amp, convert_to_apex_amp
+
+from tests.components_to_test.registry import non_distributed_component_funcs
+
+import copy
+import pytest
 from functools import partial
 
 

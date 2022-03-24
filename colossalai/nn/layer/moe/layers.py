@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-from colossalai.core import MOE_CONTEXT
+from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.utils import get_current_device
 from ._operation import COL_MOE_KERNEL_FLAG, AllToAll, AllGather, ReduceScatter, MoeDispatch, MoeCombine, moe_cumsum
 from .experts import MoeExperts, Experts
