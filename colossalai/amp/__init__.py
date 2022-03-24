@@ -24,8 +24,9 @@ def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mod
     Returns:
         A tuple (model, optimizer, criterion).
 
-    Note: `amp_config` may vary from different mode you choose. You should check the corresponding amp mode
-          for more details about `amp_config`.
+    Note:
+        `amp_config` may vary from different mode you choose. You should check the corresponding amp mode
+        for more details about `amp_config`.
     """
     assert isinstance(mode, AMP_TYPE), \
         f'expected the argument mode be AMP_TYPE, but got {type(mode)}'

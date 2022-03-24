@@ -11,8 +11,9 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
         amp_config (:class:`colossalai.context.Config` or dict): configuration for nvidia apex.
 
-        The `amp_config` should contain:
+    The `amp_config` should contain:
 
+    Args:
         enabled (bool, optional, default=True):  If False, renders all Amp calls no-ops, so your script
             should run as if Amp were not present.
         opt_level (str, optional, default="O1"):  Pure or mixed precision optimization level.  Accepted values are
@@ -41,7 +42,7 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         max_loss_scale (float, default=2.**24):  Sets a ceiling for the loss scale values that can be chosen by
             dynamic loss scaling.  If dynamic loss scaling is not used, `max_loss_scale` is ignored.
 
-        More details about amp_config refer to `amp_config <https://nvidia.github.io/apex/amp.html?highlight=apex%20amp>`_.
+    More details about amp_config refer to `amp_config <https://nvidia.github.io/apex/amp.html?highlight=apex%20amp>`_.
 
     Returns:
         A tuple (model, optimizer).
