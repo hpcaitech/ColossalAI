@@ -25,7 +25,6 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip install -U pip setuptools wheel --user
           pip install pytest tensorboard deepspeed apex
       - uses: actions/checkout@v2
