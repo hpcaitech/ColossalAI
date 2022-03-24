@@ -6,15 +6,15 @@ from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DAT
 from typing import Union
 
 
-def col_cuda_memory_capacity():
+def colo_cuda_memory_capacity():
     """
     Get cuda memory capacity of the current cuda.
     """
     return torch.cuda.get_device_properties(get_current_device()).total_memory
 
 
-def col_model_data_tensor_move(src_t: Union[ShardedTensor, torch.Tensor], tgt_t: Union[ShardedTensor,
-                                                                                       torch.Tensor]) -> None:
+def colo_model_data_tensor_move(src_t: Union[ShardedTensor, torch.Tensor], tgt_t: Union[ShardedTensor,
+                                                                                        torch.Tensor]) -> None:
     """ 
     A colossal API for model data tensor move. 
     The src and target tensors could be resident on both CPU and GPU.
@@ -50,7 +50,7 @@ def col_model_data_tensor_move(src_t: Union[ShardedTensor, torch.Tensor], tgt_t:
         src_t.data = torch.tensor([], device=src_dev, dtype=src_t_payload.dtype)
 
 
-def col_model_data_move_to_cpu(t: torch.Tensor):
+def colo_model_data_move_to_cpu(t: torch.Tensor):
     assert isinstance(t, torch.Tensor)
     if t.device.type == 'cpu':
         return
