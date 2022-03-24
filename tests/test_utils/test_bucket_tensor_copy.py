@@ -1,4 +1,4 @@
-from colossalai.utils.commons import BucketizedTensorCopy
+from colossalai.utils.memory_utils.bucket_tensor_copy import BucketizedTensorCopy
 from colossalai.zero.sharded_param import ShardedParamV2
 from colossalai.utils import free_port
 import torch
