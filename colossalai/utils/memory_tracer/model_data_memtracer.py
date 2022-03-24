@@ -1,6 +1,15 @@
 from colossalai.context.singleton_meta import SingletonMeta
-from colossalai.utils.memory_tracer.commons import col_tensor_mem_usage
+from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 import torch
+from typing import Union
+
+
+def _col_tensor_mem_usage(t: Union[torch.Tensor, ShardedTensor]) -> int:
+    if isinstance(t, ShardedTensor):
+        target = t.payload
+    else:
+        target = t
+    return target.numel() * target.element_size()
 
 
 class ModelDataTracer(metaclass=SingletonMeta):
@@ -16,12 +25,12 @@ class ModelDataTracer(metaclass=SingletonMeta):
 
     def add_tensor(self, t: torch.Tensor):
         assert isinstance(t, torch.Tensor), f"ModelDataTracer add_tensor() should accept a torch.Tensor"
-        mem_use = col_tensor_mem_usage(t)
+        mem_use = _col_tensor_mem_usage(t)
         self._cuda_usage += mem_use
 
     def delete_tensor(self, t: torch.Tensor):
         assert isinstance(t, torch.Tensor), f"ModelDataTracer delete_tensor() should accept a torch.Tensor"
-        mem_use = col_tensor_mem_usage(t)
+        mem_use = _col_tensor_mem_usage(t)
         self._cuda_usage -= mem_use
 
     @property
