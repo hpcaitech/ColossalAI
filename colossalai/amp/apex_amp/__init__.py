@@ -14,20 +14,7 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
             ``patch_torch_functions``, ``keep_batchnorm_fp32``, ``master_weights``, ``loss_scale``,
             ``cast_model_outputs``, ``num_losses``, ``verbosity``, ``min_loss_scale``, ``max_loss_scale``.
 
-    The config should include parameters below:
-     | enabled (bool, optional, default=True)
-     | opt_level (str, optional, default="O1")
-     | cast_model_type (``torch.dtype``, optional, default=None)
-     | patch_torch_functions (bool, optional, default=None)
-     | keep_batchnorm_fp32 (bool or str, optional, default=None)
-     | loss_scale (float or str, optional, default=None)
-     | cast_model_outputs (torch.dtype, optional, default=None)
-     |  num_losses (int, optional, default=1)
-     | verbosity (int, default=1)
-     | min_loss_scale (float, default=None)
-     | max_loss_scale (float, default=2.**24)
-
-    The config should include parameters below
+    The ``amp_config`` should include parameters below:
     ::
 
         enabled (bool, optional, default=True):  If False, renders all Amp calls no-ops, so your script
