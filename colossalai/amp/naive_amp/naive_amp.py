@@ -20,10 +20,9 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
 
     Args:
         optim (torch.optim.Optimizer): A normal optimizer like Adam or SGD.
-        args (list): Args used to initialize FP16 optimizer
-        kwargs (dict): Kwargs used to initialize FP16 optimizer
-
-        Args and kwargs should contain:
+        *args (list): Args used to initialize FP16 optimizer.
+        **kwargs (dict): Kwargs used to initialize FP16 optimizer. Args and kwargs should
+            contain ``grad_scaler``, ``clip_grad_norm``, ``verbose``.
 
         grad_scaler (BaseGradScaler): grad scaler for gradient chose in
                                       ``constant_grad_scaler`` or ``dynamic_grad_scaler``.
