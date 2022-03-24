@@ -1,4 +1,4 @@
-from colossalai.utils.commons.singleton_meta import SingletonMeta
+from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 import torch
 from typing import Union
