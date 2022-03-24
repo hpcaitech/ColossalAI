@@ -11,8 +11,7 @@ from colossalai.engine.ophooks import register_ophooks_recursively
 from colossalai.engine.ophooks.zero_hook import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
-from colossalai.utils.commons.memory import col_cuda_memory_capacity
-from colossalai.utils.memory_tracer.allocator import col_move_to_cpu
+from colossalai.utils.memory_utils.utils import colo_model_data_move_to_cpu, colo_cuda_memory_capacity
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
@@ -152,7 +151,7 @@ class ShardedModelV2(nn.Module):
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
-            self._cuda_margin_space = col_cuda_memory_capacity() - max(self._memstats_collector._overall_cuda)
+            self._cuda_margin_space = colo_cuda_memory_capacity() - max(self._memstats_collector._overall_cuda)
 
         self._iter_cnter += 1
 
@@ -201,7 +200,7 @@ class ShardedModelV2(nn.Module):
             else:
                 grad = cast_tensor_to_fp32(p.col_attr.fp16_grad)
             if p.col_attr.offload_grad:
-                col_move_to_cpu(grad)
+                colo_model_data_move_to_cpu(grad)
             if p.col_attr.fp32_grad is not None:
                 assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
                 p.col_attr.fp32_grad.add_(grad.view_as(p.col_attr.fp32_grad))

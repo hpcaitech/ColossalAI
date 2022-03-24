@@ -25,8 +25,18 @@ class OptimState(Enum):
 
 
 class ShardedOptimizerV2(ColossalaiOptimizer):
-    """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO) stage 3.
-    You must use `ShardedOptimizerV2` with `ShardedModelV2`.
+    """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO).
+    By default the ZeRO optimizer stage 3 offload Optimizer States on CPU.
+    We apply the Device-aware Operator Placement technique for OS placement from the following paper.
+    PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
+    https://arxiv.org/abs/2108.05818
+    GPU margin space is the remaining space after removing peak non-model data from the overall GPU memory,
+    which is detected by a runtime memory tracer. 
+    We place as many OS chunks in the margin space as possible. 
+    The size of margin space can be controlled by `gpu_margin_mem_ratio`
+    If it is set as 0.0, it is the same as classical ZeRO optimizer.
+
+    NOTE() You must use `ShardedOptimizerV2` with `ShardedModelV2`.
 
     Args:
         sharded_model (ShardedModelV2): A sharded model initialized by class ShardedModelV2. The optimizer will use the
