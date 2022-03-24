@@ -17,7 +17,7 @@ from colossalai.trainer.hooks import BaseHook
 
 
 class Trainer:
-    r"""This is a class tending for easy deployments of users' training and evaluation instead of
+    """This a class tending for easy deployments of users' training and evaluation instead of
     writing their own scripts. It is similar with ``ignite.engine`` and ``keras.engine``, but is
     called `Trainer`.
 
@@ -29,43 +29,6 @@ class Trainer:
     :type timer: :class:`MultiTimer`, optional
     :param logger: Logger used to record the whole training
     :type logger: :class:`colossalai.logging.DistributedLogger`, optional
-
-    .. note:: when `schedule` is None, the ``NonPipelineSchedule`` would be used. If you are using pipeline,
-    you should choose ``PipelineSchedule`` or ``InterleavedPipelineSchedule`` for the `schedule`
-
-    Examples:
-        >>> # define model, criterion, optimizer, lr_scheduler, train_dataloader for your training
-        >>> model = gpc.config.model.pop('type')(**gpc.config.model)
-        >>> criterion = getattr(gpc.config, 'loss_fn', None)
-        >>> optimizer = gpc.config.optimizer.pop('type')(model.parameters(), **gpc.config.optimizer)
-        >>> lr_scheduler = LinearWarmupLR(optimizer, total_steps=gpc.config.NUM_EPOCHS, warmup_steps=5)
-        >>> train_dataloader = utils.get_dataloader(train_ds,
-        >>>                                seed=42,
-        >>>                                batch_size=gpc.config.BATCH_SIZE,
-        >>>                                pin_memory=True,
-        >>>                                shuffle=True,
-        >>>                                drop_last=True)
-        >>> # Initialize your engine, train_dataloader, test_dataloader, lr_scheduler
-        >>> engine, train_dataloader, _, lr_scheduler = colossalai.initialize(model,
-        >>>                                                              optimizer,
-        >>>                                                              criterion,
-        >>>                                                              train_dataloader=train_dataloader,
-        >>>                                                              lr_scheduler=lr_scheduler)
-        >>> # Beginning training progress
-        >>> timier = MultiTimer()
-        >>> trainer = Trainer(engine=engine, logger=logger, schedule=schedule, timer=timier)
-        >>> hook_list = []
-        >>> trainer.fit(
-        >>>    train_dataloader=train_dataloader,
-        >>>    epochs=gpc.config.NUM_EPOCHS,
-        >>>    test_interval=1,
-        >>>    hooks=hook_list,
-        >>>    display_progress=True,
-        >>>    return_output_label=False
-        >>>    )
-
-    More examples and details could be found in `Training with engine and trainer <https://www.colossalai.org/docs/basics/engine_trainer>`_
-    and `ColossalAI-Examples <https://github.com/hpcaitech/ColossalAI-Examples/tree/main>`_.
     """
     def __init__(
             self,
@@ -310,26 +273,26 @@ class Trainer:
             display_progress: bool = False,
             return_output_label: bool = True,
     ):
-        r"""Trains the model to fit training data.
+        """Trains the model to fit training data.
 
-        :param train_dataloader: DataLoader for training
-        :param epochs: Maximum number of epochs
+        :param train_dataloader: DataLoader in training
+        :param epochs: Maximum number of epoches
         :param max_steps: Maximum number of running iterations
-        :param test_dataloader: DataLoader for validation
-        :param test_interval: Interval of validation
+        :param test_dataloader: DataLoader in testing
+        :param test_interval: Interval of testing
         :param hooks: A list of hooks used in training
-        :param display_progress: If True, a progress bar will be displayed
+        :param display_progress: If True, the training progress will be printed
+        :param return_output_label: If True, the output of model and the label will be returned
 
         :type train_dataloader: DataLoader
         :type epochs: int
         :type max_steps: int, optional
         :type test_dataloader: DataLoader, optional
         :type test_interval: int, optional
-        :type hooks: list[`BaseHook <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>`_],
-                    optional
+        :type hooks: list, optional
         :type display_progress: bool, optional
+        :type return_output_label: bool, optional
         """
-
 
         # set epochs and steps, consider gradient accumulation
         self._steps_per_epoch = len(train_dataloader)

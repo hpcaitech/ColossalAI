@@ -29,30 +29,22 @@ class SeedManager:
         return self._seed_states
 
     def set_state(self, parallel_mode: ParallelMode, state: Tensor):
-        r"""Sets the state of the seed manager for `parallel_mode`.
+        """Sets the state of the seed manager for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
         :param state: the state to be set
         :type state: :class:`torch.Tensor`
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         assert parallel_mode in self._seed_states, f'Parallel mode {parallel_mode} is not found in the seed manager'
         self._seed_states[parallel_mode] = state
 
     def set_mode(self, parallel_mode: ParallelMode):
-        r"""Sets the current mode of the seed manager.
+        """Sets the current mode of the seed manager.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         if self.current_mode:
             # save the current state for current mode
@@ -63,7 +55,7 @@ class SeedManager:
         torch.cuda.set_rng_state(self._seed_states[parallel_mode])
 
     def add_seed(self, parallel_mode: ParallelMode, seed: int, overwrtie: bool = False):
-        r"""Adds a seed to the seed manager for `parallel_mode`.
+        """Adds a seed to the seed manager for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -73,10 +65,6 @@ class SeedManager:
         :type overwrtie: bool, optional
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
             :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         assert isinstance(parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
         if overwrtie is False:

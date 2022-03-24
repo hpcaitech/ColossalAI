@@ -35,44 +35,21 @@ _parallel_patchembedding = {
 
 
 class Embedding(nn.Module):
-    r"""
+    """
     Embedding for colossalai
 
     :param num_embeddings: number of embeddings
     :type num_embeddings: int
     :param embedding_dim: dimension of embedding
     :type embedding_dim: int
-    :param padding_idx: If specified, the entries at padding_idx do not contribute to the gradient; therefore,
-     the embedding vector at padding_idx is not updated during training, i.e. it remains as a fixed “pad”,
-     defaults to None.
+    :param padding_idx: index of padding, defaults to None
     :type padding_idx: int, optional
     :param dtype: The dtype of parameters, defaults to None
     :type dtype: torch.dtype, optional
     :param weight_initializer: The intializer of weight, defaults to normal initializer
     :type weight_initializer: typing.Callable, optional
-    :param args: Args used in torch.nn.functional.embedding
-    :param kwargs: Kwargs used in torch.nn.functional.embedding
-    :param vocab_parallel_limit:
-    :type vocab_parallel_limit:
-
-    The args and kwargs contain:
-
-    :param max_norm: If given, each embedding vector with norm larger than max_norm is
-                    renormalized to have norm max_norm. Note: this will modify weight in-place.
-    :param norm_type: The p of the p-norm to compute for the max_norm option. Default 2.
-    :param scale_grad_by_freq: If given, this will scale gradients by the inverse
-                               of frequency of the words in the mini-batch. Default False.
-    :param sparse: If True, gradient w.r.t. weight will be a sparse tensor. Default False.
-    :type max_norm: float
-    :type norm_type: float
-    :type scale_grad_by_freq: bool
-    :type sparse: bool
-
-    More details about args and kwargs could be found in
-    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
-
-    More details about initializer please refer to
-    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    :param args: Args used in F.embedding
+    :param kwargs: Kwargs used in F.embedding
     """
 
     def __init__(self,

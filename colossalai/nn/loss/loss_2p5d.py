@@ -13,19 +13,14 @@ from torch.nn.modules.loss import _Loss
 
 @LOSSES.register_module
 class CrossEntropyLoss2p5D(_Loss):
-    r"""
+    """
     Cross entropy loss for 2.5D parallelism
 
     :param reduction: whether to average the loss, defaults to True
+    :param args: Args for loss function
+    :param kwargs: Kwargs for loss function
+
     :type reduction: bool, optional
-    :param args: Args for torch.nn.functional.cross_entropy
-    :param kwargs: Kwargs for torch.nn.functional.cross_entropy
-
-    the parameters args and kwargs could contain: [weight (Tensor, optional), size_average (bool, optional),
-    ignore_index (int, optional), label_smoothing (float, optional)]
-
-    More details about args, kwargs and torch.nn.functional.cross_entropy could be found in
-    `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
     """
     def __init__(self, reduction=True, *args, **kwargs):
         super().__init__()

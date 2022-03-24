@@ -20,20 +20,22 @@ from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.builder.builder import build_gradient_handler
 from colossalai.context import Config, ConfigException, ParallelMode
 from colossalai.core import global_context as gpc
+
+from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.engine import Engine
 from colossalai.engine.ophooks import BaseOpHook
-from colossalai.global_variables import moe_env
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import (accumulate_gradient, get_current_device, is_using_ddp, is_using_pp, is_using_sequence,
                               sync_model_param)
+from colossalai.utils.moe import sync_moe_model_param
 from colossalai.zero import convert_to_zero_v2
 from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
 
 
 def get_default_parser():
-    """Uses an argument parser to parse the input arguments from user command line.
-    Input arguments include `config`, `host`, `port`, `world_size`, `local_rank`, `backend` for torch.distributed.
+    """Reads user command line and uses an argument parser to parse the input arguments.
+    Input arguments include configuration, host, port, world size, local rank, backend for torch.distributed.
 
     :return: Returns the parser with the default arguments, the user may add customized arguments into this parser
     :rtype: Namespace
@@ -225,11 +227,11 @@ def initialize(model: nn.Module,
                lr_scheduler: Optional[_LRScheduler] = None,
                ophooks: Optional[List[BaseOpHook]] = None,
                verbose: bool = True) -> Tuple[Engine, DataLoader, DataLoader, _LRScheduler]:
-    r"""Core function to wrap the essential training components with our functionality based on the config which is
+    """Core function to wrap the essential training components with our functionality based on the config which is
     loaded into gpc.config.
 
     :param model: Your model instance or a function to build the model
-    :type model: :class:`torch.nn.Module` or Callable
+    :type model: :class:`torch.nn.Module` or Callbale
     :param optimizer: Your optimizer instance
     :type optimizer: :class:`torch.optim.optimizer.Optimizer` or :class:`Type[torch.optim.optimizer]`
     :param criterion: Your criterion instance
@@ -244,41 +246,6 @@ def initialize(model: nn.Module,
     :type verbose: bool, optional
     :return: (engine, train_dataloader, test_dataloader, lr_scheduler)
     :rtype: Tuple
-
-    Examples:
-        >>> # define model, criterion, optimizer, lr_scheduler, train_dataloader for your training
-        >>> model = gpc.config.model.pop('type')(**gpc.config.model)
-        >>> criterion = getattr(gpc.config, 'loss_fn', None)
-        >>> optimizer = gpc.config.optimizer.pop('type')(model.parameters(), **gpc.config.optimizer)
-        >>> lr_scheduler = LinearWarmupLR(optimizer, total_steps=gpc.config.NUM_EPOCHS, warmup_steps=5)
-        >>> train_dataloader = utils.get_dataloader(train_ds,
-        >>>                                seed=42,
-        >>>                                batch_size=gpc.config.BATCH_SIZE,
-        >>>                                pin_memory=True,
-        >>>                                shuffle=True,
-        >>>                                drop_last=True)
-        >>> # Initialize your engine, train_dataloader, test_dataloader, lr_scheduler
-        >>> engine, train_dataloader, _, lr_scheduler = colossalai.initialize(model,
-        >>>                                                              optimizer,
-        >>>                                                              criterion,
-        >>>                                                              train_dataloader=train_dataloader,
-        >>>                                                              lr_scheduler=lr_scheduler)
-        >>> # Beginning training progress
-        >>> timier = MultiTimer()
-        >>> trainer = Trainer(engine=engine, logger=logger, schedule=schedule, timer=timier)
-        >>> hook_list = []
-        >>> trainer.fit(
-        >>>    train_dataloader=train_dataloader,
-        >>>    epochs=gpc.config.NUM_EPOCHS,
-        >>>    test_interval=1,
-        >>>    hooks=hook_list,
-        >>>    display_progress=True,
-        >>>    return_output_label=False
-        >>>    )
-
-    more examples and details could be found in
-    `training with engine and trainer <https://www.colossalai.org/docs/basics/engine_trainer>`_ and
-    `ColossalAI-Examples <https://github.com/hpcaitech/ColossalAI-Examples/tree/main>`_.
     """
     # get logger
     logger = get_dist_logger()
@@ -334,9 +301,11 @@ def initialize(model: nn.Module,
         if isinstance(optimizer, Callable):
             optimizer = optimizer(model.parameters())
 
-    if not moe_env.is_initialized() and not use_zero:
+    if not use_zero:
         if is_using_sequence():
             sync_model_param(model, ParallelMode.SEQUENCE_DP)
+        elif MOE_CONTEXT.is_initialized:
+            sync_moe_model_param(model)
         elif is_using_ddp():
             sync_model_param(model, ParallelMode.DATA)
     else:
@@ -389,7 +358,7 @@ def initialize(model: nn.Module,
                     "Training with zero is detected, ZeROGradientHandler is automatically "
                     "added even though not specified in the configuration",
                     ranks=[0])
-        elif is_using_ddp() and moe_env.is_initialized():
+        elif is_using_ddp() and MOE_CONTEXT.is_initialized:
             gradient_handler_cfg = [dict(type='MoeGradientHandler')]
             if verbose:
                 logger.info(

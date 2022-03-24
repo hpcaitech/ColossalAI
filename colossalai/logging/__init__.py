@@ -2,15 +2,15 @@ from typing import List
 from .logging import DistributedLogger
 import logging
 
-__all__ = ['get_dist_logger', 'DistributedLogger', 'disable_existing_loggers']
+__all__ = ['get_dist_logger', 'DistributedLogger']
 
 
 def get_dist_logger(name='colossalai'):
     """Get logger instance based on name. The DistributedLogger will create singleton instances,
     which means that only one logger instance is created per name.
 
-    :param name: name of the logger, name must be unique, default to be 'colossalai'
-    :type name: str, optional
+    :param name: name of the logger, name must be unique
+    :type name: str
 
     :return: a distributed logger instance
     :rtype: :class:`colossalai.logging.DistributedLogger`

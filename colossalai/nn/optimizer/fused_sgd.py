@@ -98,7 +98,6 @@ class FusedSGD(Optimizer):
             group.setdefault('nesterov', False)
 
     def zero_grad(self):
-        """Set all gradients to zero"""
         if self.set_grad_none:
             for group in self.param_groups:
                 for p in group['params']:
@@ -107,19 +106,12 @@ class FusedSGD(Optimizer):
             super(FusedSGD, self).zero_grad()
 
     def get_momentums(self, params):
-        """get momentums from parameter state or initialize momentums
-
-        :param params: input parameters
-        :type params: tensor
-        :return: a tuple of (momentums, first_run), first_run is the flag to show whether we have initialized momentums.
-        :rtype: a tuple of (tensor, bool)
-        """
         momentums = []
         first_run = True
         for p in params:
             param_state = self.state[p]
             # torch.optim.SGD initializes momentum in the main loop, we have
-            # to do it here, and track whether we've done so, so that
+            # to do it here, and track whether or not we've done so, so that
             # momentum application can be skipped in the main kernel.
             if 'momentum_buffer' not in param_state:
                 first_run = True

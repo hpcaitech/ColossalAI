@@ -138,8 +138,6 @@ def recv_forward(input_tensor_shape, prev_rank=None, dtype=torch.float, scatter_
 
     :param input_tensor_shape: The shape of the tensor to be recieved
     :param prev_rank: The rank of the source of the tensor
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type input_tensor_shape: torch.Size
     :type prev_rank: int, optional
     :return: The input tensor in forward step
@@ -161,8 +159,6 @@ def recv_backward(output_grad_shape, next_rank=None, dtype=torch.float, scatter_
 
     :param output_grad_shape: The shape of the tensor to be recieved
     :param next_rank: The rank of the source of the tensor
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type output_grad_shape: torch.Size
     :type next_rank: int, optional
     :return: The grad of output tensor in forward step
@@ -184,11 +180,8 @@ def send_forward(output_tensor, next_rank=None, scatter_gather_tensors=False):
 
     :param output_tensor: Tensor to be sent
     :param next_rank: The rank of the recipient of the tensor
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type output_tensor: :class:`torch.Tensor`
     :type next_rank: int, optional
-    :type scatter_gather_tensors: bool
     """
     if not gpc.is_pipeline_last_stage():
         _communicate(tensor_send_next=output_tensor,
@@ -201,11 +194,8 @@ def send_backward(input_tensor_grad, prev_rank=None, scatter_gather_tensors=Fals
 
     :param input_tensor_grad: Tensor to be sent
     :param prev_rank: The rank of the recipient of the tensor
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type input_tensor_grad: :class:`torch.Tensor`
     :type prev_rank: int, optional
-    :type scatter_gather_tensors: bool
     """
     if not gpc.is_pipeline_first_stage():
         _communicate(tensor_send_prev=input_tensor_grad,
@@ -225,11 +215,8 @@ def send_forward_recv_backward(output_tensor,
 
     :param output_tensor: Tensor to be sent
     :param output_grad_shape: The shape of the tensor to be recieved
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type output_tensor: :class:`torch.Tensor`
     :type output_grad_shape: :class:`torch.Size`
-    :type scatter_gather_tensors: bool
     :return: The grad of output tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
@@ -257,11 +244,8 @@ def send_backward_recv_forward(input_tensor_grad,
 
     :param input_tensor_grad: Tensor to be sent
     :param input_tensor_shape: The shape of the tensor to be recieved
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type input_tensor_grad: :class:`torch.Tensor`
     :type input_tensor_shape: :class:`torch.Size`
-    :type scatter_gather_tensors: bool
     :return: The input tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
@@ -290,11 +274,8 @@ def send_forward_recv_forward(output_tensor,
 
     :param output_tensor: Tensor to be sent
     :param input_tensor_shape: The shape of the tensor to be recieved
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type output_tensor: :class:`torch.Tensor`
     :type input_tensor_shape: :class:`torch.Size`
-    :type scatter_gather_tensors: bool
     :return: The input tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
@@ -320,12 +301,9 @@ def send_backward_recv_backward(input_tensor_grad,
     next member in pipeline.
 
     :param input_tensor_grad: Tensor to be sent
-    :param output_grad_shape: The shape of the tensor to be received
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
+    :param output_grad_shape: The shape of the tensor to be recieved
     :type input_tensor_grad: :class:`torch.Tensor`
     :type output_grad_shape: :class:`torch.Size`
-    :type scatter_gather_tensors: bool
     :return: The grad of output tensor in forward step
     :rtype: :class:`torch.Tensor`
     """
@@ -349,21 +327,18 @@ def send_forward_backward_recv_forward_backward(output_tensor,
                                                 next_rank=None,
                                                 dtype=torch.float,
                                                 scatter_gather_tensors=False):
-    """Batched communication operation. Sends the input tensor to the next stage
-    in pipeline and the grad tensor to the previous stage in pipeline, while
-    receives the grad tensor from the next stage and the input tensor from the previous stage.
+    """Batched communication operation. Sends the input tensor to the next and 
+    the grad tensor to the previous, while recieves the grad tensor from the
+    next and the input tensor from the previous.
 
     :param output_tensor: Tensor sent to the next
     :param input_tensor_grad: Tensor sent to the previous
     :param input_tensor_shape: The shape of the tensor recieved from the previous
     :param output_grad_shape: The shape of the tensor recieved from the next
-    :param scatter_gather_tensors: Only using Pipeline and tensor parallel 1d, scatter_gather_tensors should be True.
-                                    default to be False.
     :type output_tensor: :class:`torch.Tensor`
     :type input_tensor_grad: :class:`torch.Tensor`
     :type input_tensor_shape: :class:`torch.Size`
     :type output_grad_shape: :class:`torch.Size`
-    :type scatter_gather_tensors: bool
     :return: (the input tensor in forward step, the grad of output tensor in forward step)
     :rtype: (Tensor, Tensor)
     """

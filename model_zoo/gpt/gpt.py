@@ -43,7 +43,7 @@ class GPTEmbedding(nn.Module):
     def word_embedding_weight(self):
         return self.word_embeddings.weight
 
-    def forward(self, input_ids, attention_mask=None, position_ids=None, tokentype_ids=None):
+    def forward(self, input_ids, position_ids=None, tokentype_ids=None):
         seq_length = input_ids.size(1)
         if position_ids is None:
             position_ids = torch.arange(seq_length, dtype=torch.long, device=get_current_device()).unsqueeze(0)
@@ -52,7 +52,7 @@ class GPTEmbedding(nn.Module):
             x = x + self.tokentype_embeddings(tokentype_ids)
         x = self.dropout(x)
 
-        return x, attention_mask
+        return x
 
 
 @LAYERS.register_module
@@ -285,14 +285,14 @@ class GPT(nn.Module):
                               dtype=dtype)
 
     def forward(self, input_ids, attention_mask=None):
-        x, attention_mask = self.embed(input_ids, attention_mask)
+        x = self.embed(input_ids)
 
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]
         # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
         # Adapted from huggingface
         if attention_mask is not None:
-            batch_size = x.shape[0]
+            batch_size = input_ids.shape[0]
             attention_mask = attention_mask.view(batch_size, -1)
             attention_mask = col_nn.partition_batch(attention_mask)
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
@@ -362,7 +362,7 @@ class PipelineGPT(nn.Module):
 
     def forward(self, x=None, input_ids=None, attention_mask=None):
         if self.first:
-            x, attention_mask = self.embed(input_ids, attention_mask)
+            x = self.embed(input_ids)
 
         # We create a 3D attention mask from a 2D tensor mask.
         # Sizes are [batch_size, 1, 1, to_seq_length]

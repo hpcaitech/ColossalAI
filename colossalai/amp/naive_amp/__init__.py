@@ -9,22 +9,20 @@ from .grad_scaler import DynamicGradScaler, ConstantGradScaler
 def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     """A helper function to wrap training components with naive AMP modules
 
-    :param model: your model object
-    :type model: :class:`torch.nn.Module`
-    :param optimizer: your optimizer object
-    :type optimizer: :class:`torch.optim.Optimizer`
-    :param amp_config: configuration for naive mode amp
-    :type amp_config: :class:`colossalai.context.Config` or dict
-    :return: (model, optimizer)
-    :rtype: Tuple
+    Args:
+        model (:class:`torch.nn.Module`): your model object
+        optimizer (:class:`torch.optim.Optimizer`): your optimizer object
+        amp_config (:class:`colossalai.context.Config` or dict): configuration for naive mode amp
 
-    The amp_config should contain:
-    {
-    verbose: bool (if set to `True`, will print debug info. Default False.)
-    clip_grad_norm: float (clip gradeints with this global L2 norm. Default 0.
-                        Note that clipping is ignored if clip_grad == 0)
-    dynamic_grad_scale: bool
-    }
+        The `amp_config` should contain:
+
+        verbose (bool, optional): if set to `True`, will print debug info (Default: False).
+        clip_grad_norm (float, optional): clip gradients with this global L2 norm (Default 0).
+                                          Note that clipping is ignored if clip_grad == 0.
+        dynamic_grad_scale (bool): whether to use dynamic grad scaler.
+
+    Returns:
+        A tuple (model, optimizer)
     """
     if isinstance(model, nn.ModuleList):
         # interleaved pipeline
@@ -53,4 +51,4 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     return model, optimizer
 
 
-__all__ = ['convert_to_naive_amp', 'NaiveAMPOptimizer', 'NaiveAMPModel']
+__all__ = ['convert_to_naive_amp', 'NaiveAMPOptimizer']

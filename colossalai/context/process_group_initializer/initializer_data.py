@@ -14,22 +14,6 @@ class Initializer_Data(ProcessGroupInitializer):
 
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
-
-    details of args and kwargs:
-
-    :param rank: The rank of current process
-    :param world_size: Size of whole communication world
-    :param config: Running configuration
-    :param data_parallel_size: Size of data parallel
-    :param pipeline_parallel_size: Size of pipeline parallel
-    :param tensor_parallel_size: Size of tensor parallel
-
-    :type rank: int
-    :type world_size: int
-    :type config: Config
-    :type data_parallel_size: int
-    :type pipeline_parallel_size: int
-    :type tensor_parallel_size: int
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

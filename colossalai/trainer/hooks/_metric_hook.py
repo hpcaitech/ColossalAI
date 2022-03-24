@@ -360,11 +360,9 @@ class ThroughputMetric(Metric):
 
 @HOOKS.register_module
 class ThroughputHook(MetricHook):
-    """Specialized hook class for :class:`Throughput`. Hook to measure execution throughput (samples/sec)
+    """Specialized hook class for :class:`Throughput`.
 
-    :param ignored_steps: the number of initial training steps to ignore
     :param priority: priority of throughput hook, defaults to 10
-    :type ignored_steps: int, optional
     :type priority: int, optional
     """
     def __init__(self, ignored_steps: int = 0, priority: int = 10):

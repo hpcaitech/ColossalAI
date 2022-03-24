@@ -54,8 +54,7 @@ class PolynomialWarmupLR(WarmupScheduler):
     :type end_lr: float, optional
     :param power: The power of polynomial, defaults to 1.0
     :type power: float, optional
-    :param last_epoch: The index of last epoch, defaults to -1. When last_epoch=-1, the schedule is started
-            from the beginning or When last_epoch=-1, sets initial lr as lr.
+    :param last_epoch: The index of last epoch, defaults to -1
     :type last_epoch: int, optional
     """
 

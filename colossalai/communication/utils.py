@@ -7,10 +7,10 @@ from colossalai.utils import get_current_device
 
 
 def send_tensor_meta(tensor, need_meta=True, next_rank=None):
-    """Sends tensor meta information (including shape and number of dimension) before sending a specific tensor.
-    Since the recipient must know the shape of the tensor in p2p communications.
-    Meta information of the tensor should be sent before communications.
-    This function synchronizes with :func:`recv_tensor_meta`.
+    """Sends tensor meta information before sending a specific tensor.
+    Since the recipient must know the shape of the tensor in p2p communications,
+    meta information of the tensor should be sent before communications. This function
+    synchronizes with :func:`recv_tensor_meta`.
 
     :param tensor: Tensor to be sent
     :param need_meta: If False, meta information won't be sent
@@ -36,16 +36,16 @@ def send_tensor_meta(tensor, need_meta=True, next_rank=None):
 
 
 def recv_tensor_meta(tensor_shape, prev_rank=None):
-    """Receives tensor meta information (including shape and number of dimension) before receiving a specific tensor.
+    """Recieves tensor meta information before recieving a specific tensor.
     Since the recipient must know the shape of the tensor in p2p communications,
-    meta information of the tensor should be received before communications. This function
+    meta information of the tensor should be recieved before communications. This function
     synchronizes with :func:`send_tensor_meta`.
 
-    :param tensor_shape: The shape of the tensor to be received
+    :param tensor_shape: The shape of the tensor to be recieved
     :param prev_rank: The rank of the source of the tensor
     :type tensor_shape: torch.Size
     :type prev_rank: int, optional
-    :return: The shape of the tensor to be received
+    :return: The shape of the tensor to be recieved
     :rtype: torch.Size
     """
     if tensor_shape is None:

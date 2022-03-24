@@ -22,30 +22,12 @@ def _check_summa_env_var(summa_dim):
 
 class Initializer_2D_Row(ProcessGroupInitializer):
     """2d tensor parallel initialization among rows.
-
     :param num_group: The number of all tensor groups
     :param summa_dim: The dimension of SUMMA
     :param args: Args used to initialize base class
     :param kwargs: Kwargs used to initialize base class
-
     :type num_group: int
     :type summa_dim: int
-
-    details of args and kwargs:
-
-    :param rank: The rank of current process
-    :param world_size: Size of whole communication world
-    :param config: Running configuration
-    :param data_parallel_size: Size of data parallel
-    :param pipeline_parallel_size: Size of pipeline parallel
-    :param tensor_parallel_size: Size of tensor parallel
-
-    :type rank: int
-    :type world_size: int
-    :type config: Config
-    :type data_parallel_size: int
-    :type pipeline_parallel_size: int
-    :type tensor_parallel_size: int
     """
 
     def __init__(self, num_group, summa_dim, *args, **kwargs):
@@ -89,22 +71,6 @@ class Initializer_2D_Col(ProcessGroupInitializer):
 
     :type num_group: int
     :type summa_dim: int
-
-    details of args and kwargs:
-
-    :param rank: The rank of current process
-    :param world_size: Size of whole communication world
-    :param config: Running configuration
-    :param data_parallel_size: Size of data parallel
-    :param pipeline_parallel_size: Size of pipeline parallel
-    :param tensor_parallel_size: Size of tensor parallel
-
-    :type rank: int
-    :type world_size: int
-    :type config: Config
-    :type data_parallel_size: int
-    :type pipeline_parallel_size: int
-    :type tensor_parallel_size: int
     """
 
     def __init__(self, num_group, summa_dim, *args, **kwargs):
@@ -145,22 +111,6 @@ class Initializer_2D(ProcessGroupInitializer):
 
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
-
-    details of args and kwargs:
-
-    :param rank: The rank of current process
-    :param world_size: Size of whole communication world
-    :param config: Running configuration
-    :param data_parallel_size: Size of data parallel
-    :param pipeline_parallel_size: Size of pipeline parallel
-    :param tensor_parallel_size: Size of tensor parallel
-
-    :type rank: int
-    :type world_size: int
-    :type config: Config
-    :type data_parallel_size: int
-    :type pipeline_parallel_size: int
-    :type tensor_parallel_size: int
     """
 
     def __init__(self, *args, **kwargs):

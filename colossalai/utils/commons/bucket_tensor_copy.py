@@ -50,7 +50,7 @@ class BucketizedTensorCopy(object):
         self._cuda_buffer.copy_(self._cpu_buffer)
         flush_offset = 0
         for sparam, numel in zip(self._buffered_param_list, self._numel_list):
-            sparam.data.copy_payload(self._cpu_buffer.narrow(0, flush_offset, numel))
+            sparam.sharded_data_tensor.copy_payload(self._cpu_buffer.narrow(0, flush_offset, numel))
             flush_offset += numel
 
         self.reset()

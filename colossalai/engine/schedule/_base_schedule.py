@@ -17,10 +17,6 @@ class BaseSchedule(ABC):
     optimizer_step for parameters update.
     For the convenience to enable FP16, we aggreate all codes that contain the
     control of FP16 in class schedule.
-
-    :param batch_data_process_func: The preprocessing function which receives a batch of data,
-     and it will be executed in load_batch
-    :type batch_data_process_func: Callable, optional
     """
 
     def __init__(self, batch_data_process_func: Callable = None):
@@ -50,8 +46,8 @@ class BaseSchedule(ABC):
         """Loads a batch from data iterator. It returns the data and labels which are
         already in the same GPU as where the model's.
 
-        :param data_iter: Dataloader as the form of an iterator, obtained by calling iter(dataloader)
-        :type data_iter: Iterable
+        :param data_iter: Data iterator from which get a batch of data
+        :type data_iter: DataIter
         :param to_gpu: Whether the data should be moved to GPU
         :type to_gpu: bool, optional
 
@@ -93,7 +89,7 @@ class BaseSchedule(ABC):
 
         :param engine: Colossalai training engine
         :type engine: colossalai.engine.Engine
-        :param data_iter: Data iterator from which get a batch of data, i.e. iter(DataLoader)
+        :param data_iter: Data iterator from which get a batch of data
         :type data_iter: DataIter
         :param forward_only: If True, the process won't include backward
         :type forward_only: bool

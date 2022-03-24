@@ -18,21 +18,18 @@ from ._fp16_optimizer import FP16Optimizer
 class NaiveAMPOptimizer(ColossalaiOptimizer):
     """A wrapper class for optimizer to cast all parameters to fp16
 
-    :param optim: A normal optimizer like Adam or SGD
-    :param args: Args used to initialize FP16 optimizer
-    :param kwargs: Kwargs used to initialize FP16 optimizer
-    :type optim: torch.optim.Optimizer
+    Args:
+        optim (torch.optim.Optimizer): A normal optimizer like Adam or SGD.
+        args (list): Args used to initialize FP16 optimizer
+        kwargs (dict): Kwargs used to initialize FP16 optimizer
 
-    Args and kwargs should contain:
+        Args and kwargs should contain:
 
-    :param grad_scaler: grad scaler for gradient
-    :param verbose: if set to `True`, will print debug info. Default False.
-    :param clip_grad_norm: clip gradeints with this global L2 norm. Default 0.
-                        Note that clipping is ignored if clip_grad == 0
-    :type grad_scaler: BaseGradScaler
-    :type verbose: bool
-    :type clip_grad_norm: float
-
+        grad_scaler (BaseGradScaler): grad scaler for gradient chose in
+                                      constant grad scaler or dynamic grad scaler.
+        clip_grad_norm (float, optional): clip gradients with this global L2 norm. Default 0.
+                                          Note that clipping is ignored if clip_grad == 0
+        verbose (bool, optional): if set to `True`, will print debug info. Default False.
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):
@@ -53,16 +50,14 @@ class NaiveAMPModel(nn.Module):
     r"""A wrapper class for model to cast the model into fp16 and
     automatically cast the input and output
 
-    :param model: torch.nn.Module to be wrapped.
-    :param output_to_fp32: Whether cast output of this module into fp32.
-    :param parallel_mode: Parallel group mode used in this module
-    :param sync_buffer:
-    :type model: torch.nn.Module
-    :type output_to_fp32: bool, default to be True
-    :type parallel_mode: :class:`colossalai.context.ParallelMode`, default to be ``ParallelMode.DATA``
-    :type sync_buffer: bool, default to be True
+    Args:
+        model (torch.nn.Module): torch.nn.Module to be wrapped.
+        output_to_fp32 (bool, optional): Whether cast output of this module into fp32. (Default: True)
+        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this module.
+                                                                  (Default: ``ParallelMode.DATA``)
+        sync_buffer (bool, optional): whether to synchronize buffer. (Default: True)
 
-    .. note::
+    Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """

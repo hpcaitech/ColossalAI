@@ -298,8 +298,7 @@ def split_batch_3d(input_: Tensor,
                    dim: int = 0,
                    input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
                    weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT) -> Tensor:
-    r"""Splits 3D tensor in batch
-
+    """Splits 3D tensor in batch
     :param input_: Input tensor
     :param dim: Specified dimension in which to split
     :param input_parallel_mode: Input parallel mode
@@ -310,10 +309,6 @@ def split_batch_3d(input_: Tensor,
     :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode, optional
     :return output: Splitted tensor
     :rtype output: torch.Tensor
-
-    .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     if input_.size(dim) <= 1:
         return input_
@@ -338,15 +333,11 @@ class _ReduceTensor3D(torch.autograd.Function):
 
 
 def reduce_tensor_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
-    r"""
+    """
     All-reduce the input
 
     :param tensor: Input tensor
     :param parallel_mode: Parallel mode
-
-    .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     return _ReduceTensor3D.apply(tensor, parallel_mode)
 
@@ -367,15 +358,11 @@ class _AllGatherTensor3D(torch.autograd.Function):
 
 
 def all_gather_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
-    r"""
+    """
     All-reduce the gradient in backward pass.
 
     :param tensor: Input tensor
     :param parallel_mode: Parallel mode
-
-    .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     return _AllGatherTensor3D.apply(tensor, dim, parallel_mode)
 
@@ -395,16 +382,12 @@ class _ReduceScatterTensor3D(torch.autograd.Function):
 
 
 def reduce_scatter_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
-    r"""
+    """
     Reduce-scatter the input.
 
     :param tensor: Input tensor
     :param dim: Dimension to scatter
     :param parallel_mode: Parallel mode
-
-    .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _ReduceScatterTensor3D.apply(tensor, dim, parallel_mode)
 
@@ -440,9 +423,11 @@ def reduce_by_batch_3d(tensor: Tensor,
                        input_parallel_mode: ParallelMode,
                        weight_parallel_mode: ParallelMode,
                        reduce_mean: bool = False) -> Tensor:
-    r"""
+    """
     All-reduce the input from the model parallel region.
 
+    :param input_: input maxtrix
+    :type input_: torch.tensor
     :param input_parallel_mode: input parallel mode
     :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     :param weight_parallel_mode: weight parallel mode
@@ -450,10 +435,6 @@ def reduce_by_batch_3d(tensor: Tensor,
     :param reduce_mean:  If set to ``True``, it will divide the output by (input parallel size * weight parallel size),
     default to False
     :type reduce_mean: int, optional
-
-    .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _ReduceByBatch3D.apply(tensor, input_parallel_mode, weight_parallel_mode, reduce_mean)
 

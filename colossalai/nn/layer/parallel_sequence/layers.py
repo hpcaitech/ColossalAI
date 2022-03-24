@@ -26,6 +26,8 @@ class TransformerSelfAttentionRing(nn.Module):
 
     :param hidden_size: hidden size
     :type hidden_size: int
+    :param kv_channels: channels of key/value tensor
+    :type kv_channels: int
     :param num_attention_heads: number of attention heads
     :type num_attention_heads: int
     :param attention_dropout: dropout probability for attention layer
@@ -36,8 +38,8 @@ class TransformerSelfAttentionRing(nn.Module):
                  hidden_size,
                  num_attention_heads,
                  attention_dropout,
+                 attention_mask_func,
                  layer_number,
-                 attention_mask_func = None,
                  apply_query_key_layer_scaling: bool = False,
                  convert_fp16_to_fp32_in_softmax: bool = False,
                  attn_mask_type=AttnMaskType.padding,

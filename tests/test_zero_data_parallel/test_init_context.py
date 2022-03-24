@@ -34,10 +34,10 @@ def run_model_test(init_device, shard_strategy_class):
 
         for param in model.parameters():
             assert hasattr(param, 'col_attr')
-            assert param.col_attr.data.dtype == torch.half
-            assert param.col_attr.data.is_sharded
-            assert param.col_attr.data.payload.device.type == init_device.type, \
-                f'{param.col_attr.data.payload.device.type} vs. {init_device.type}'
+            assert param.col_attr.sharded_data_tensor.dtype == torch.half
+            assert param.col_attr.sharded_data_tensor.is_sharded
+            assert param.col_attr.sharded_data_tensor.payload.device.type == init_device.type, \
+                f'{param.col_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
 
     print(f'cuda usgae {GLOBAL_MODEL_DATA_TRACER.cuda_usage}')
     print(f'numel {model_numel_tensor}')

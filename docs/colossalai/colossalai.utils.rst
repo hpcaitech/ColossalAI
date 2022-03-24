@@ -1,7 +1,8 @@
 colossalai.utils
 ================
 
-*This part contains useful utils for colossalai*
+.. automodule:: colossalai.utils
+   :members:
 
 .. toctree::
    :maxdepth: 2
@@ -11,7 +12,7 @@ colossalai.utils
    colossalai.utils.gradient_accumulation
    colossalai.utils.memory_tracer
    colossalai.utils.multi_tensor_apply
-   colossalai.utils.profile
+   colossalai.utils.profiler
    colossalai.utils.tensor_detector
 
 

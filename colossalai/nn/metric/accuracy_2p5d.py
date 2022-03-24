@@ -16,8 +16,6 @@ class Accuracy2p5D(nn.Module):
 
         :param logits: Predicted labels
         :param targets: True labels from data
-        :return: the accuracy of prediction
-        :rtype: float
         """
         with torch.no_grad():
             targets = split_tensor_2p5d(targets)

@@ -12,18 +12,14 @@ def convert_to_torch_amp(model: nn.Module,
                          amp_config: Optional[Config] = None):
     """A helper function to wrap training components with Torch AMP modules
 
-    :param model: your model object
-    :type model: :class:`torch.nn.Module`
-    :param optimizer: your optimizer object
-    :type optimizer: :class:`torch.optim.Optimizer`
-    :param criterion: your loss function object
-    :type criterion: :class:`torch.nn.modules.loss._Loss`, optional
-    :param amp_config: configuration for torch mode amp
-    :type amp_config: :class:`colossalai.context.Config` or dict, optional
-    :return: (model, optimizer, criterion)
-    :rtype: Tuple
-
     Args:
+        model (:class:`torch.nn.Module`): your model object.
+        optimizer (:class:`torch.optim.Optimizer`): your optimizer object
+        criterion (:class:`torch.nn.modules.loss._Loss`, optional): your loss function object
+        amp_config (:class:`colossalai.context.Config` or dict, optional): configuration for torch mode amp
+
+        The `amp_config` should contain:
+
         init_scale (float, optional, default=2.**16):  Initial scale factor.
         growth_factor (float, optional, default=2.0):  Factor by which the scale is multiplied during
             :meth:`update` if no inf/NaN gradients occur for ``growth_interval`` consecutive iterations.
@@ -34,6 +30,8 @@ def convert_to_torch_amp(model: nn.Module,
         enabled (bool, optional, default=True):  If ``False``, disables gradient scaling. :meth:`step` simply
             invokes the underlying ``optimizer.step()``, and other methods become no-ops.
 
+    Returns:
+        A tuple (model, optimizer, criterion)
     """
     model = TorchAMPModel(model)
     if amp_config is None:

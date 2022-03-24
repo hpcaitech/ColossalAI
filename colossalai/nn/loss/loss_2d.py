@@ -13,19 +13,14 @@ from torch.nn.modules.loss import _Loss
 
 @LOSSES.register_module
 class CrossEntropyLoss2D(_Loss):
-    r"""
+    """
     Cross entropy loss for 2D parallelism
 
     :param reduction: whether to average the loss, defaults to True
+    :param args: Args for loss function
+    :param kwargs: Kwargs for loss function
+
     :type reduction: bool, optional
-    :param args: Args for torch.nn.functional.cross_entropy
-    :param kwargs: Kwargs for torch.nn.functional.cross_entropy
-
-    the parameters args and kwargs could contain: [weight (Tensor, optional), size_average (bool, optional),
-    ignore_index (int, optional), label_smoothing (float, optional)]
-
-    More details about args, kwargs and torch.nn.functional.cross_entropy could be found in
-    `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
     """
 
     def __init__(self, reduction=True, *args, **kwargs):
@@ -39,11 +34,7 @@ class CrossEntropyLoss2D(_Loss):
         """Calculate loss between logits and targets
 
         :param logits: Output logits of model
-        :type logits: tensor
         :param targets: True targets from data
-        :type targets: tensor
-        :return: the loss between logits and targets
-        :retype: float
         """
         targets = split_tensor_2d(targets)
         loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)

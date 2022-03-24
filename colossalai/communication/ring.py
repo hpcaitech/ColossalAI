@@ -9,12 +9,8 @@ from colossalai.utils import get_current_device, synchronize
 
 
 def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode):
-    r"""Sends a tensor to the next member and recieves a tensor from the previous member.
+    """Sends a tensor to the next member and recieves a tensor from the previous member.
     This function returns the recieved tensor from the previous member.
-
-    .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
 
     :param tensor_send_next: Tensor sent to next member
     :param parallel_mode: Parallel group mode used in this communication

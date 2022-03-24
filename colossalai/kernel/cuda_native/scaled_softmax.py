@@ -91,21 +91,14 @@ class FusedScaleMaskSoftmax(nn.Module):
     """
     Fused operation: scaling + mask + softmax
 
-        :param input_in_fp16: Flag to indicate if input in fp16 data format.
-        :param input_in_bf16: Flag to indicate if input in bf16 data format.
-        :param attn_mask_type: Attention mask type (pad or causal)
-        :param scaled_masked_softmax_fusion: Flag to indicate user want to use softmax fusion
-        :param mask_func: Attention mask type (pad or causal)
-        :param softmax_in_fp32: If True, softmax in performed at fp32 precision.
-        :param scale: Scaling factor used in input tensor scaling.
-
-        :type input_in_fp16: bool
-        :type input_in_bf16: bool
-        :type attn_mask_type:
-        :type scaled_masked_softmax_fusion: bool
-        :type mask_func: Callable
-        :type softmax_in_fp32: bool
-        :type scale:
+    Arguments:
+        input_in_fp16: Flag to indicate if input in fp16 data format.
+        input_in_bf16: Flag to indicate if input in bf16 data format.
+        attn_mask_type: Attention mask type (pad or causal)
+        scaled_masked_softmax_fusion: Flag to indicate user want to use softmax fusion
+        mask_func: Mask function to be applied.
+        softmax_in_fp32: If True, softmax in performed at fp32 precision.
+        scale: Scaling factor used in input tensor scaling.
     """
 
     def __init__(

@@ -16,12 +16,13 @@ from colossalai.utils import clip_grad_norm_fp32
 class TorchAMPOptimizer(ColossalaiOptimizer):
     """A wrapper class which integrate pytorch amp with an optimizer
 
-    :param optim: A normal optimizer like Adam or SGD
-    :param args: Args used to initialize gradient scaler
-    :param kwargs: Kwargs used to initialize gradient scaler
-    :type optim: torch.optim.Optimizer
-
     Args:
+        optim (torch.optim.Optimizer): A normal optimizer like Adam or SGD.
+        args (list): Args used to initialize gradient scaler
+        kwargs (dict): Kwargs used to initialize gradient scaler
+
+        `args` and `kwargs` should contain:
+
         init_scale (float, optional, default=2.**16):  Initial scale factor.
         growth_factor (float, optional, default=2.0):  Factor by which the scale is multiplied during
             :meth:`update` if no inf/NaN gradients occur for ``growth_interval`` consecutive iterations.
@@ -40,8 +41,8 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
     def backward(self, loss: Tensor):
         """Backward with torch amp gradient scaler
 
-        :param loss: Loss computed by a loss function
-        :type loss: torch.Tensor
+        Args:
+            loss (torch.Tensor): Loss computed by a loss function
         """
         self.scaler.scale(loss).backward()
 
@@ -54,10 +55,9 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
         """Apply gradient clipping to the model parameters
 
-        :param model: Your model object
-        :type model: torch.nn.Module
-        :param max_norm: Max norm value for gradient clipping
-        :type max_norm: float
+        Args:
+            model (torch.nn.Module): Your model object
+            max_norm (float): Max norm value for gradient clipping
         """
         if max_norm > 0.0:
             self.scaler.unscale_(self.optim)
@@ -67,9 +67,6 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
 class TorchAMPModel(nn.Module):
     """A wrapper class for a model object which executes forward with values automatically
     cast to fp16
-
-    :param model: torch.nn.Module to be wrapped.
-    :type model: torch.nn.Module
     """
 
     def __init__(self, model: nn.Module) -> None:
@@ -84,8 +81,8 @@ class TorchAMPModel(nn.Module):
 class TorchAMPLoss(nn.Module):
     """A wrapper class for a criterion object which computes the loss in mixed-precision context
 
-    :param loss: A loss function object
-    :type loss: torch.nn.modules.loss._Loss
+    Args:
+        loss (torch.nn.modules.loss._Loss): A loss function object
     """
 
     def __init__(self, loss: _Loss):

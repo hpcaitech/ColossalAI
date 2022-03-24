@@ -42,10 +42,7 @@ def divide(numerator, denominator):
 
     :param numerator: Numerator of the division
     :param denominator: Denominator of the division
-    :return: the result of exact division
-    :retype: int
     """
-    assert denominator != 0, 'denominator can not be zero'
     assert numerator % denominator == 0, \
         '{} is not divisible by {}'.format(numerator, denominator)
     return numerator // denominator

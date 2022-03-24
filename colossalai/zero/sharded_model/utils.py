@@ -11,9 +11,9 @@ def col_model_deepcopy(sharded_model: ShardedModelV2, other_model: torch.nn.Modu
     """
     for zero_param, param in zip(sharded_model.parameters(), other_model.parameters()):
         assert hasattr(zero_param, 'col_attr')
-        shard_flag = zero_param.col_attr.data.is_sharded
+        shard_flag = zero_param.col_attr.sharded_data_tensor.is_sharded
         if shard_flag:
-            sharded_model.shard_strategy.gather([zero_param.col_attr.data])
-        param.data = copy.deepcopy(zero_param.col_attr.data.payload)
+            sharded_model.shard_strategy.gather([zero_param.col_attr.sharded_data_tensor])
+        param.data = copy.deepcopy(zero_param.col_attr.sharded_data_tensor.payload)
         if shard_flag:
-            sharded_model.shard_strategy.shard([zero_param.col_attr.data])
+            sharded_model.shard_strategy.shard([zero_param.col_attr.sharded_data_tensor])

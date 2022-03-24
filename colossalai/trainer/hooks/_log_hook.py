@@ -75,7 +75,6 @@ class LogMetricByEpochHook(LogByEpochHook):
     """Specialized hook to record the metric to log.
 
     :param logger: Logger for the log
-    :type logger: colossalai.logging.DistributedLogger
     :param interval: Recording interval, defaults to 1
     :type interval: int, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
@@ -115,7 +114,7 @@ class LogMetricByEpochHook(LogByEpochHook):
 
 @HOOKS.register_module
 class TensorboardHook(BaseHook):
-    r"""Specialized hook to record the metric to Tensorboard.
+    """Specialized hook to record the metric to Tensorboard.
 
     :param log_dir: Directory of log
     :type log_dir: str
@@ -125,10 +124,6 @@ class TensorboardHook(BaseHook):
     :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`, optional
     :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
     :type priority: int, optional
-
-    .. note::
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
 
     def __init__(self,

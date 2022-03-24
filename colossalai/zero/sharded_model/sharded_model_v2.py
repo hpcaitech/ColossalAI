@@ -29,24 +29,22 @@ class ShardedModelV2(nn.Module):
     compared to classic data parallelism while the computational granularity and communication efficiency are retained.
     Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
 
-    :param module: A sharded module, which must be initialized by `ZeroInitContext`.
-    :type module: nn.Module
-    :param shard_strategy: A shard strategy to manage shard behavior.
-    :type shard_strategy: BaseShardStrategy
-    :param process_group: Data parallel process group, defaults to None
-    :type process_group: Optional[ProcessGroup], optional
-    :param reduce_scatter_process_group: Reduce-scatter process group, defaults to None. Generally, it should be `None`.
-    :type reduce_scatter_process_group: Optional[ProcessGroup], optional
-    :param reduce_scatter_bucket_size_mb: Reduce-scatter bucket size in *MB*, defaults to 25
-    :type reduce_scatter_bucket_size_mb: int, optional
-    :param fp32_reduce_scatter: If set to `True`, gradients are forced to FP32 before reduce-scatter, defaults to False
-    :type fp32_reduce_scatter: bool, optional
-    :param offload_config: We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload, defaults to None
-    :type offload_config: Optional[dict], optional
-    :param gradient_predivide_factor: Gradient is divived by this value before reduce-scatter, defaults to 1.0
-    :type gradient_predivide_factor: Optional[float], optional
-    :param use_memory_tracer: Whether to use memoty tracer, defaults to False
-    :type use_memory_tracer: bool, optional
+    Args:
+        module (nn.Module): A sharded module, which must be initialized by `ZeroInitContext`.
+        shard_strategy (BaseShardStrategy): A shard strategy to manage shard behavior.
+        process_group (Optional[ProcessGroup], optional): Data parallel process group. Defaults to None.
+        reduce_scatter_process_group (Optional[ProcessGroup], optional): Reduce-scatter process group. 
+            Generally, it should be `None`, and it's the same as `process_group`. Defaults to None.
+        reduce_scatter_bucket_size_mb (int, optional): Reduce-scatter bucket size in *MB*. Defaults to 25.
+        fp32_reduce_scatter (bool, optional): If set to `True`, gradients are forced to FP32 before reduce-scatter. Defaults to False.
+        offload_config (Optional[dict], optional): We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload. Defaults to None.
+        gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
+        use_memory_tracer (bool, optional): Whether to use memoty tracer. Defaults to False.
+        reuse_fp16_shard (bool, optional): Whether to reuse fp16 shard for param and grad. 
+            Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation. 
+            In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad). 
+            We find that PyTorch's optimizers don't support mixed precision, 
+            so we recommend you enable this only when using our CPUAdam with CPU offload. Defaults to False.
     """
 
     def __init__(self,
@@ -58,7 +56,8 @@ class ShardedModelV2(nn.Module):
                  fp32_reduce_scatter: bool = False,
                  offload_config: Optional[dict] = None,
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 use_memory_tracer: bool = False):
+                 use_memory_tracer: bool = False,
+                 reuse_fp16_shard: bool = False):
         super().__init__()
         self.logger = get_dist_logger()
 
@@ -70,7 +69,7 @@ class ShardedModelV2(nn.Module):
             sharded.append(param.col_attr.param_is_sharded)
             unsharded.append(not param.col_attr.param_is_sharded)
         assert all(sharded) or all(
-            unsharded), 'Parameters must be all sharded or all unsharded! Parameters are partially sharded nwo.'
+            unsharded), 'Parameters must be all sharded or all unsharded! Parameters are partially sharded now.'
         self.shard_param = all(sharded)
         self.module = module
 
@@ -89,13 +88,17 @@ class ShardedModelV2(nn.Module):
         self._iter_cnter = 0
 
         # Register hooks
-        register_ophooks_recursively(self.module,
-                                     [ZeroHook(self.shard_strategy, self._memstats_collector, self.process_group)])
+        self._ophook_list = [ZeroHook(self.shard_strategy, self._memstats_collector, self.process_group)]
+        register_ophooks_recursively(self.module, self._ophook_list)
         self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
         self.fp32_reduce_scatter = fp32_reduce_scatter
         self._cpu_offload: bool = offload_config.get('device', None) == 'cpu' if offload_config else False
+        for param in module.parameters():
+            # Init `offload_grad`
+            param.col_attr.offload_grad = self._cpu_offload
+
         # We find if gradient_predivide_factor != 1.0, there may be wrong precision problem
         # So we use 1.0 as the default gradient_predivide_factor
         # However, if you set gradient_predivide_factor to None, we will set
@@ -110,6 +113,7 @@ class ShardedModelV2(nn.Module):
         self._require_backward_grad_sync: bool = True
 
         self._cuda_margin_space = 0
+        self.reuse_fp16_shard = reuse_fp16_shard
 
     @property
     def cuda_margin_space(self):
@@ -130,16 +134,16 @@ class ShardedModelV2(nn.Module):
     def backward(self, loss):
         loss.backward()
         self._post_backward_operations()
+        for ophook in self._ophook_list:
+            ophook.post_iter()
 
     def backward_by_grad(self, tensor, grad):
         torch.autograd.backward(tensors=tensor, grad_tensors=grad)
         self._post_backward_operations()
+        for ophook in self._ophook_list:
+            ophook.post_iter()
 
-    @torch.no_grad()
-    def _post_backward_operations(self) -> None:
-        """
-        The method includes operations required to be processed after backward
-        """
+    def _update_memstats(self):
         if self._iter_cnter == 0 and self._memstats_collector:
             self._memstats_collector.finish_collection()
         if self._memstats_collector:
@@ -152,6 +156,13 @@ class ShardedModelV2(nn.Module):
 
         self._iter_cnter += 1
 
+    @torch.no_grad()
+    def _post_backward_operations(self) -> None:
+        """
+        The method includes operations required to be processed after backward
+        """
+        self._update_memstats()
+
         if self._require_backward_grad_sync:
             # Flush any unreduced buckets in the post_backward stream.
             with torch.cuda.stream(self.comm_stream):
@@ -163,9 +174,11 @@ class ShardedModelV2(nn.Module):
         self.reducer.free()
         # In case some post bwd hook is not fired
         if self.shard_param:
+            tensor_list = []
             for p in self.module.parameters():
                 if not p.col_attr.param_is_sharded:
-                    self.shard_strategy.shard([p.col_attr.data], self.process_group)
+                    tensor_list.append(p.col_attr.sharded_data_tensor)
+            self.shard_strategy.shard(tensor_list, self.process_group)
         for p in self.module.parameters():
             p.col_attr.bwd_count = 0
             if not p.requires_grad:
@@ -183,13 +196,17 @@ class ShardedModelV2(nn.Module):
             # If world size == 1 and sharded param,
             # the shape `grad` is the same as unsharded param
             # So we can just use `view(-1)` to ensure grad is a flat tensor shard
-            grad = cast_tensor_to_fp32(p.col_attr.fp16_grad)
-            if self._cpu_offload:
+            if self.reuse_fp16_shard:
+                grad = p.col_attr.sharded_data_tensor.payload
+            else:
+                grad = cast_tensor_to_fp32(p.col_attr.fp16_grad)
+            if p.col_attr.offload_grad:
                 col_move_to_cpu(grad)
             if p.col_attr.fp32_grad is not None:
+                assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
                 p.col_attr.fp32_grad.add_(grad.view_as(p.col_attr.fp32_grad))
                 grad = p.col_attr.fp32_grad
-            p.grad.data = grad.view(-1)
+            p.grad.data = grad
             p.col_attr.fp16_grad = None
             p.col_attr.fp32_grad = None
 
@@ -242,23 +259,41 @@ class ShardedModelV2(nn.Module):
         return empty_grad
 
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
+        reduced_grad = reduced_grad.view(-1)
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
-
-        param.col_attr.fp16_grad = reduced_grad.data
+        if self.reuse_fp16_shard:
+            param.col_attr.sharded_data_tensor.reset_payload(reduced_grad.data)
+            param.col_attr.sharded_data_tensor.is_sharded = True
+        else:
+            param.col_attr.fp16_grad = reduced_grad.data
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
-        self.shard_strategy.gather([p.col_attr.data for p in self.module.parameters()], self.process_group)
+        self.shard_strategy.gather([p.col_attr.sharded_data_tensor for p in self.module.parameters()],
+                                   self.process_group)
         prev_params = {}
         for p in self.module.parameters():
             prev_params[p] = p.data
-            p.data = p.col_attr.data.payload
+            p.data = p.col_attr.sharded_data_tensor.payload
         gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
-        self.shard_strategy.shard([p.col_attr.data for p in self.module.parameters()], self.process_group)
+        self.shard_strategy.shard([p.col_attr.sharded_data_tensor for p in self.module.parameters()],
+                                  self.process_group)
         for p in self.module.parameters():
             p.data = prev_params[p]
         return gathered_state_dict
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):
         raise NotImplementedError
+
+    def __getitem__(self, idx: int):
+        assert isinstance(self.module, nn.ModuleList)
+        return self.module[idx]
+
+    def __len__(self):
+        assert isinstance(self.module, nn.ModuleList)
+        return len(self.module)
+
+    def __iter__(self):
+        assert isinstance(self.module, nn.ModuleList)
+        return iter(self.module)

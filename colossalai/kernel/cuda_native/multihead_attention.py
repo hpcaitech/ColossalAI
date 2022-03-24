@@ -110,21 +110,13 @@ class MultiHeadAttention(nn.Module):
         layer_id: The layer-index counter starting from 0 and incrementing by 1 every time a layer object is instantiated,
         e.g. if a model has 24 transformer layers, layer_id goes from 0 to 23.
 
-    :param hidden_size: Total dimension of hidden_size.
-    :param nhead: Number of parallel attention heads.
-    :param batch_size: Batch Size for one foward
-    :param max_seq_len: Max length of input sequence
-    :param dropout: Dropout probability
-    :param norm_first: perform LayerNorms before attention, default to be False
-    :param fp16: whether to use fp16, default to be True
-
-    :type hidden_size: int
-    :type nhead: int
-    :type batch_size: int
-    :type max_seq_len: int
-    :type dropout: float
-    :type norm_first: bool, optional
-    :type fp16: bool, optional
+    Arguments:
+        hidden_size: Total dimension of hidden_size.
+        nhead: Number of parallel attention heads.
+        batch_size: Batch Size for one foward
+        max_seq_len: Max length of input sequence
+        dropout: Dropout probability
+        norm_first: perform LayerNorms before attention
     """
 
     layer_id = 0

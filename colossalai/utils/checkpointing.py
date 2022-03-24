@@ -88,8 +88,8 @@ def get_latest_checkpoint_pattern(suffix: str = ''):
 
 
 def get_latest_checkpoint_path(checkpoint_dir: str, suffix: str = ''):
-    """This is a function to retrieve the latest checkpoint path from the (checkpoint_dir, suffix, gpu_parallel_rank)
-    tuple. This is useful during recuperation of the checkpoint, especially when you do not know the epoch number.
+    """This is a function to retrieve the latest checkpoint path from the (checkpoint_dir, suffix, gpu_parallel_rank) tuple.
+    This is useful during recuperation of the checkpoint, especially when you do not know the epoch number.
 
     :param checkpoint_dir: Directory for saving checkpoints
     :type checkpoint_dir: str
@@ -126,10 +126,11 @@ def save_checkpoint(checkpoint_path: str,
                     optimizer: torch.optim.Optimizer,
                     lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     **kwargs):
-    """Given a directory to store the checkpoints, saves all the training components' parameters or buffers, such as
-    model, optimizer, lr_scheduler etc. into a checkpoint dictionary.
+    """Given a directory to store the checkpoints, saves all the training components' parameters or buffers, such as model,
+     optimizer, lr_scheduler and etc. into a checkpoint dictionary.
 
-    This method can be used for both colossalai nn.BaseModel and normal pytorch nn.Module.
+    This method can be used for both colosalai nn.BaseModel and normal pytorch nn.Module.
+
 
     :param checkpoint_path: Set up a directory for saving checkpoints
     :type checkpoint_path: str
@@ -140,9 +141,7 @@ def save_checkpoint(checkpoint_path: str,
     :param optimizer: Optimizer to be registered
     :type optimizer: torch.optim.Optimizer
     :param lr_scheduler: lr_scheduler to be registered, defaults to None
-    :type lr_scheduler: `torch.optim.lr_scheduler` or `colossalai.nn.lr_scheduler`, optional
-    :param kwargs: additional parameters to be saved
-    :type kwargs: dict
+    :type lr_scheduler: torch.optim.lr_scheduler._LRScheduler, optional
     """
     # for compatibility with normal pytorch nn.Module
     if hasattr(model, 'state_dict_for_save_checkpoint'):
@@ -166,11 +165,9 @@ def load_checkpoint(checkpoint_path: str,
                     finetune: bool = False,
                     strict: bool = True) -> Tuple:
     """Loads the checkpoint file.
-
     If finetune is False, then we intend to continue/resume the training process from the checkpoint given.
     So we copy parameters and buffers from state_dict into these modules(model, optimizer,lr_scheduler)
-    and its descendants.
-
+     and its descendants.
     If finetune is True, then only the weights and buffers of model should be reload.
     If strict is True, then the keys of state_dict must exactly match the keys returned by this module’s
      state_dict() function.

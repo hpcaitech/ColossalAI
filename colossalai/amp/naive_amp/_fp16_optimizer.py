@@ -41,14 +41,15 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
 
 class FP16Optimizer(Optimizer):
     """Float16 optimizer for fp16 and bf16 data types.
-
-    :param optimizer: base optimizer such as Adam or SGD
-    :type optimizer: torch.optim.Optimizer
-    :param clip_grad_norm: clip gradeints with this global L2 norm. Default 0.
+    
+    Args:
+        optimizer (torch.optim.Optimizer): base optimizer such as Adam or SGD
+        grad_scaler (BaseGradScaler): grad scaler for gradient chose in
+                                      constant grad scaler or dynamic grad scaler.
+        clip_grad_norm (float, optional): clip gradients with this global L2 norm. Default 0.
                         Note that clipping is ignored if clip_grad == 0
-    :type clip_grad_norm: float
-    :param verbose: if set to `True`, will print debug info. Default False.
-    :type verbose: bool
+        verbose (bool, optional): if set to `True`, will print debug info. Default False.
+
     """
 
     def __init__(self,

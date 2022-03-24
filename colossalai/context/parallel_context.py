@@ -15,30 +15,16 @@ from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from .parallel_mode import ParallelMode
 from .random import add_seed, get_seeds, set_mode
+from colossalai.context.singleton_meta import SingletonMeta
 
 
-class ParallelContext:
+class ParallelContext(metaclass=SingletonMeta):
     """This class provides interface functions for users to get the parallel context,
     such as the global rank, the local rank, the world size, etc. of each device.
 
     """
 
-    __instance = None
-
-    @staticmethod
-    def get_instance():
-        if ParallelContext.__instance is None:
-            ParallelContext()
-        return ParallelContext.__instance
-
     def __init__(self):
-        # create a singleton instance
-        if ParallelContext.__instance is not None:
-            raise Exception(
-                'ParallelContext is a singleton class, you should get the instance by colossalai.core.global_context')
-        else:
-            ParallelContext.__instance = self
-
         # distributed settings
         self._global_ranks = dict()
         self._local_ranks = dict()
@@ -101,7 +87,7 @@ class ParallelContext:
         return self._global_ranks[ParallelMode.GLOBAL]
 
     def add_global_rank(self, parallel_mode: ParallelMode, rank: int):
-        r"""Adds the global rank of the current device for `parallel_mode` to the context.
+        """Adds the global rank of the current device for `parallel_mode` to the context.
 
         :param parallel_mode: The parallel mode for the rank
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -109,16 +95,12 @@ class ParallelContext:
         :type rank: int
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
             of :class:`colossalai.context.ParallelMode`
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         self._global_ranks[parallel_mode] = rank
 
     def get_local_rank(self, parallel_mode: ParallelMode):
-        r"""Returns the local rank of the current device.
+        """Returns the local rank of the current device.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -126,16 +108,12 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
         :return: The local rank of the current device for `parallel_mode`
         :rtype: int
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         return self._local_ranks[parallel_mode]
 
     def add_local_rank(self, parallel_mode: ParallelMode, rank: int):
-        r"""Adds the local rank of the current device for `parallel_mode` to the context.
+        """Adds the local rank of the current device for `parallel_mode` to the context.
 
         :param parallel_mode: The parallel mode for the rank
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -143,16 +121,12 @@ class ParallelContext:
         :type rank: int
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
             of :class:`colossalai.context.ParallelMode`
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         self._local_ranks[parallel_mode] = rank
 
     def get_next_global_rank(self, parallel_mode: ParallelMode):
-        r"""Returns the global rank of the next device.
+        """Returns the global rank of the next device.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -160,10 +134,6 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
         :return: The global rank of the next device for `parallel_mode`
         :rtype: int
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
 
@@ -175,7 +145,7 @@ class ParallelContext:
         return ranks_in_group[(local_rank + 1) % world_size]
 
     def get_prev_global_rank(self, parallel_mode: ParallelMode):
-        r"""Returns the global rank of the previous device.
+        """Returns the global rank of the previous device.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -183,10 +153,6 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
         :return: The global rank of the previous device for `parallel_mode`
         :rtype: int
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
 
@@ -198,7 +164,7 @@ class ParallelContext:
         return ranks_in_group[(local_rank - 1) % world_size]
 
     def is_first_rank(self, parallel_mode: ParallelMode):
-        r"""Returns a boolean value indicating whether the current device is the first one
+        """Returns a boolean value indicating whether the current device is the first one
         among its group for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
@@ -208,16 +174,12 @@ class ParallelContext:
         :return: a boolean value indicating whether the current device is the first one
             among its group for `parallel_mode`
         :rtype: bool
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         rank = self.get_local_rank(parallel_mode)
         return rank == 0
 
     def is_last_rank(self, parallel_mode: ParallelMode):
-        r"""Returns a boolean value indicating whether the current device is the last one
+        """Returns a boolean value indicating whether the current device is the last one
         among its group for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
@@ -227,10 +189,6 @@ class ParallelContext:
         :return: a boolean value indicating whether the current device is the last one
             among its group for `parallel_mode`
         :rtype: bool
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         rank = self.get_local_rank(parallel_mode)
         world_size = self.get_world_size(parallel_mode)
@@ -250,7 +208,7 @@ class ParallelContext:
         return self.is_last_rank(ParallelMode.PIPELINE)
 
     def get_world_size(self, parallel_mode: ParallelMode):
-        r"""Returns the world size for `parallel_mode`.
+        """Returns the world size for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -258,16 +216,12 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
         :return: The world size for `parallel_mode`
         :rtype: int
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         return self._world_sizes[parallel_mode]
 
     def add_world_size(self, parallel_mode: ParallelMode, world_size: int):
-        r"""Adds world size for `parallel_mode`.
+        """Adds world size for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -275,16 +229,12 @@ class ParallelContext:
         :type world_size: int
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
             of :class:`colossalai.context.ParallelMode`
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         self._world_sizes[parallel_mode] = world_size
 
     def get_group(self, parallel_mode: ParallelMode):
-        r"""Returns the group of the current device for `parallel_mode`.
+        """Returns the group of the current device for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -292,16 +242,12 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
         :return: The group of the current device for `parallel_mode`
         :rtype: torch.distributed.ProcessGroup
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         return self._groups[parallel_mode]
 
     def add_group(self, parallel_mode: ParallelMode, group: dist.ProcessGroup):
-        r"""Adds the group of the current device for `parallel_mode`.
+        """Adds the group of the current device for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -309,16 +255,12 @@ class ParallelContext:
         :type group: torch.distributed.ProcessGroup
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
             of :class:`colossalai.context.ParallelMode`
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         self._groups[parallel_mode] = group
 
     def get_ranks_in_group(self, parallel_mode: ParallelMode):
-        r"""Returns the rank of the current device for `parallel_mode` in the group.
+        """Returns the rank of the current device for `parallel_mode` in the group.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -326,16 +268,12 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
         :return: the rank of the current device for `parallel_mode` in the group
         :rtype: int
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         return self._ranks_in_group[parallel_mode]
 
     def add_ranks_in_group(self, parallel_mode: ParallelMode, ranks: list):
-        r"""Adds the ranks of the current device for `parallel_mode` in the group.
+        """Adds the ranks of the current device for `parallel_mode` in the group.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -343,10 +281,6 @@ class ParallelContext:
         :type ranks: list
         :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
             of :class:`colossalai.context.ParallelMode`
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         self._check_parallel_mode(parallel_mode)
         self._ranks_in_group[parallel_mode] = ranks
@@ -474,7 +408,7 @@ class ParallelContext:
                 self._register_dist(*parallel_setting)
 
     def is_initialized(self, parallel_mode: ParallelMode):
-        r"""Returns a boolean value indicating whether `parallel_mode` is initialized
+        """Returns a boolean value indicating whether `parallel_mode` is initialized
         in the current system.
 
         :param parallel_mode: The chosen parallel mode
@@ -482,10 +416,6 @@ class ParallelContext:
         :return: a boolean value indicating whether `parallel_mode` is initialized
             in the current system
         :rtype: bool
-
-        .. note::
-            The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-            in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
         """
         return parallel_mode in self._groups
 
@@ -566,3 +496,6 @@ class ParallelContext:
 
     def set_virtual_pipeline_parallel_rank(self, rank):
         self.virtual_pipeline_parallel_rank = rank
+
+
+global_context = ParallelContext()
