@@ -29,6 +29,10 @@ class AsyncMemoryMonitor:
     An Async Memory Monitor runing during computing. Sampling memory usage of the current GPU
     at interval of 1/(10**power) sec.
 
+    The idea comes from Runtime Memory Tracer of PatrickStar
+    PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
+    https://arxiv.org/abs/2108.05818
+    
     :param power: the power of time interval, defaults to 10
     :type power: int
 
@@ -54,6 +58,7 @@ class AsyncMemoryMonitor:
         self.keep_measuring = False
 
         current_device = get_current_device()
+
         def _set_cuda_device():
             torch.cuda.set_device(current_device)
 
