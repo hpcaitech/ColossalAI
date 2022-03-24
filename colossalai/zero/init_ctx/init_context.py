@@ -96,6 +96,8 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         shard_param (bool, optional): Is param sharded after exiting the context. Defaults to False.
         shard_grad (bool, optional): Is param sharded after exiting the context. Defaults to False.
         rm_torch_payload_on_the_fly (bool, optional): If set to `True`, remove tensor payload on `param.data` after module init finished.
+            This will reduce memory usage when initializing model. 
+            But it's not suitable for all models, especially when there are `weight init` operations in `__init__`.
             If set to `False`, remove tensor payload on param.data afther the context exist.
             This is used when you add some logic to operate tensors in __init__ of module.
             See torchvision resnet18. Defaults to False.
