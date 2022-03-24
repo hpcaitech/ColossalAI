@@ -23,9 +23,6 @@ jobs:
       options: --gpus all --rm --ipc=host -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 120
     steps:
-      - name: Setup Environment
-        run: |
-          export https_proxy=http://172.17.0.1:7890 http_proxy=http://172.17.0.1:7890 all_proxy=socks5://172.17.0.1:7890
       - name: Install dependencies
         run: |
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
