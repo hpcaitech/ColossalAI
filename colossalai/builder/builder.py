@@ -10,6 +10,10 @@ from colossalai.registry import *
 def build_from_config(module, config: dict):
     """Returns an object of :class:`module` constructed from `config`.
 
+    Args:
+        module: A python or user-defined class
+        config: A python dict containing information used in the construction of the return object
+
     :param module: A python or user-defined class
     :type module: class
     :param config: A python dict containing information used in the construction
@@ -24,8 +28,15 @@ def build_from_config(module, config: dict):
 
 
 def build_from_registry(config, registry: Registry):
-    """Returns an object constructed from `config`, the type of the object
+    r"""Returns an object constructed from `config`, the type of the object
     is specified by `registry`.
+
+    .. note::
+        the `config` is used to construct the return object such as `LAYERS`,
+         `OPTIMIZERS` and other support types in `registry`. The `config` should contain
+         all required parameters of corresponding object. The details of support
+         types in `registry` and the `mod_type` in `config` could be found in
+         `registry <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/registry/__init__.py>`_.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
         containing information used in the construction of the return object
@@ -61,7 +72,7 @@ def build_layer(config):
     """Returns a layer object of :class:`nn.Module` constructed from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
+        containing information used in the construction of the ``LAYERS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.nn.Module`
     :rtype: :class:`torch.nn.Module`
@@ -74,7 +85,7 @@ def build_loss(config):
     from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
+        containing information used in the construction of the ``LOSSES``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.nn.modules.loss._Loss`
     :rtype: :class:`torch.nn.modules.loss._Loss`
@@ -86,7 +97,7 @@ def build_model(config):
     """Returns a model object of :class:`nn.Module` constructed from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
+        containing information used in the construction of the ``MODELS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.nn.Module`
     :rtype: :class:`torch.nn.Module`
@@ -99,7 +110,7 @@ def build_dataset(config):
     from `config`.
 
     :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
+        containing information used in the construction of the ``DATASETS``
     :type config: dict or :class:`colossalai.context.Config`
     :return: An object of :class:`torch.utils.data.Dataset`
     :rtype: :class:`torch.utils.data.Dataset`

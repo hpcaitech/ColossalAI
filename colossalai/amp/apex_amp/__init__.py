@@ -14,6 +14,9 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
             ``patch_torch_functions``, ``keep_batchnorm_fp32``, ``master_weights``, ``loss_scale``,
             ``cast_model_outputs``, ``num_losses``, ``verbosity``, ``min_loss_scale``, ``max_loss_scale``.
 
+    ::
+
+        The config should include:
         enabled (bool, optional, default=True):  If False, renders all Amp calls no-ops, so your script
             should run as if Amp were not present.
         opt_level (str, optional, default="O1"):  Pure or mixed precision optimization level.  Accepted values are
@@ -41,6 +44,11 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
             If dynamic loss scaling is not used, `min_loss_scale` is ignored.
         max_loss_scale (float, default=2.**24):  Sets a ceiling for the loss scale values that can be chosen by
             dynamic loss scaling.  If dynamic loss scaling is not used, `max_loss_scale` is ignored.
+
+    The config should include parameters below.
+    | enabled (bool, optional, default=True)
+    | opt_level (str, optional, default="O1")
+
 
     Returns:
         A tuple (model, optimizer).
