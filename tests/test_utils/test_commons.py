@@ -16,6 +16,7 @@ def run_tensor_move(rank):
     colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
     assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage == 0)
+    GLOBAL_MODEL_DATA_TRACER.start()
 
     src_t = torch.ones(2, 3).cuda()
     GLOBAL_MODEL_DATA_TRACER.add_tensor(src_t)
@@ -39,6 +40,7 @@ def run_tensor_move(rank):
     colo_model_data_tensor_move(src_t, tgt_t)
     assert (GLOBAL_MODEL_DATA_TRACER.cuda_usage == 24), f"cuda usage {GLOBAL_MODEL_DATA_TRACER.cuda_usage}"
     assert (torch.sum(tgt_t.payload) == 6.0), f"{torch.sum(tgt_t.payload)} vs. 6.0"
+    GLOBAL_MODEL_DATA_TRACER.close()
 
 
 def test_tensor_move():
