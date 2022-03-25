@@ -46,8 +46,8 @@ class Initializer_3D_Input(ProcessGroupInitializer):
         """Initialize 3D tensor parallel groups among input, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 3D tensor parallelism's information among input in a tuple
-                (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among input in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -94,8 +94,8 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
         """Initialize 3D tensor parallel groups among weight, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 3D tensor parallelism's information among weight in a tuple
-                (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among weight in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -142,8 +142,8 @@ class Initializer_3D_Output(ProcessGroupInitializer):
         """Initialize 3D tensor parallel groups among output, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 3D tensor parallelism's information among output in a tuple
-                (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among output in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -196,8 +196,8 @@ class Initializer_3D(ProcessGroupInitializer):
         """Initialize 3D tensor parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            List[Tuple]: Whole 3D tensor parallelism's information in a list of tuples
-                (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                Whole 3D tensor parallelism's information in a list of tuples.
         """
         parallel_setting = [
             self.input_initializer.init_dist_group(),

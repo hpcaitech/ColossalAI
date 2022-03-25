@@ -56,8 +56,8 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
         """Initialize 2p5D tensor row parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 2p5D tensor row parallelism's information in a
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2p5D tensor row parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -109,8 +109,8 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
         """Initialize 2p5D tensor col parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 2p5D tensor col parallelism's information in a
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2p5D tensor col parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -162,8 +162,8 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
         """Initialize 2p5D tensor depth parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 2p5D tensor depth parallelism's information in a
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2p5D tensor depth parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -216,8 +216,8 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
         """Initialize 2p5D tensor colXdepth parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 2p5D tensor colXdepth parallelism's information in a
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2p5D tensor colXdepth parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -279,8 +279,8 @@ class Initializer_2p5D(ProcessGroupInitializer):
         """Initialize 2p5D tensor row, col, depth, and colXdepth parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            List[Tuple]: Whole 2p5D tensor parallelism's information in a list of
-                tuples (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                Whole 2p5D tensor parallelism's information in a list of tuples.
         """
         parallel_setting = [
             self.col_initializer.init_dist_group(),

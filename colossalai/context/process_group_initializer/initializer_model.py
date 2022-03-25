@@ -30,8 +30,8 @@ class Initializer_Model(ProcessGroupInitializer):
         """Initialize model parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: A Model parallelism's information
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                A Model parallelism's information tuple.
         """
         local_rank = None
         ranks_in_group = None

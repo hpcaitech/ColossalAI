@@ -42,8 +42,8 @@ class Initializer_2D_Row(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
         Returns:
-            Tuple: 2D tensor row parallelism's information in a
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2D tensor row parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -88,8 +88,8 @@ class Initializer_2D_Col(ProcessGroupInitializer):
         """Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 2D tensor col parallelism's information in a
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2D tensor col parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -141,8 +141,8 @@ class Initializer_2D(ProcessGroupInitializer):
         """Initialize 2D tensor row and col parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            List[Tuple]: 2D tensor parallelism's information in a list of
-                tuples (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                2D tensor parallelism's information in a list of tuples.
         """
         parallel_setting = [self.row_initializer.init_dist_group(), self.col_initializer.init_dist_group()]
         return parallel_setting

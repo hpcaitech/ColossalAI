@@ -80,8 +80,8 @@ class Initializer_Sequence(ProcessGroupInitializer):
         all-reduce to synchronize the model parameters.
 
         Returns:
-            List[Tuple]: A Sequence parallelism's information in list of
-                tuples (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                A Sequence parallelism's information in list of tuples.
         """
 
         parallel_setting = []

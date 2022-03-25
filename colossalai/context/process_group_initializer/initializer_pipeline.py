@@ -29,8 +29,8 @@ class Initializer_Pipeline(ProcessGroupInitializer):
         """Initialize pipeline parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            List[Tuple]: A Pipeline parallelism's information in list of
-                tuples (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                A Pipeline parallelism's information in list of tuples.
         """
         dist_settings = list()
         for i in range(self.data_parallel_size):
