@@ -18,20 +18,70 @@ class Engine:
     :meth:`step` which is based on the given :attr:`schedule` over each batch of a dataset.
     It controls a iteration in training.
 
-    :param model: The neural network model
-    :type model: ``torch.nn.Module``
-    :param optimizer: Optimizer for updating the parameters
-    :type optimizer: ``torch.optim.Optimizer``
-    :param criterion: Loss function for calculating loss
-    :type criterion: ``torch.nn.modules.loss._Loss``, optional
-    :param gradient_handlers: A list of gradient handler used in backward
-    :type gradient_handlers: a list of ``BaseGradientHandler``, optional
-    :param clip_grad_norm: The norm of gradient clipping
-    :type clip_grad_norm: float, optional
-    :param ophook_list: List of ophook
-    :type ophook_list: list
-    :param verbose: whether to display log info
-    :type verbose: bool
+    Args:
+        model (``torch.nn.Module``): The neural network model.
+        optimizer (``torch.optim.Optimizer``): Optimizer for updating the parameters.
+        criterion (``torch.nn.modules.loss._Loss``, optional): Loss function for calculating loss.
+        gradient_handlers (List[``BaseGradientHandler``], optional): A list of gradient handler used in backward.
+        clip_grad_norm (float, optional): The norm of gradient clipping.
+        ophook_list (list): List of ophook.
+        verbose (bool): whether to display log info.
+
+    Examples:
+        >>> # define model, criterion, optimizer, lr_scheduler, train_dataloader for your training
+        >>> model = gpc.config.model.pop('type')(**gpc.config.model)
+        >>> criterion = getattr(gpc.config, 'loss_fn', None)
+        >>> optimizer = gpc.config.optimizer.pop('type')(model.parameters(), **gpc.config.optimizer)
+        >>> lr_scheduler = LinearWarmupLR(optimizer, total_steps=gpc.config.NUM_EPOCHS, warmup_steps=5)
+        >>> train_dataloader = utils.get_dataloader(train_ds,
+        >>>                                seed=42,
+        >>>                                batch_size=gpc.config.BATCH_SIZE,
+        >>>                                pin_memory=True,
+        >>>                                shuffle=True,
+        >>>                                drop_last=True)
+        >>> # Initialize your engine, train_dataloader, test_dataloader, lr_scheduler
+        >>> engine, train_dataloader, _, lr_scheduler = colossalai.initialize(model,
+        >>>                                                              optimizer,
+        >>>                                                              criterion,
+        >>>                                                              train_dataloader=train_dataloader,
+        >>>                                                              lr_scheduler=lr_scheduler)
+        >>> # Beginning training progress
+        >>> for epoch in range(gpc.config.NUM_EPOCHS):
+        >>>     # execute a training iteration
+        >>>     engine.train()
+        >>>     for img, label in train_dataloader:
+        >>>         img = img.cuda()
+        >>>         label = label.cuda()
+        >>>         # set gradients to zero
+        >>>         engine.zero_grad()
+        >>>         # run forward pass
+        >>>         output = engine(img)
+        >>>         # compute loss value and run backward pass
+        >>>         train_loss = engine.criterion(output, label)
+        >>>         engine.backward(train_loss)
+        >>>         # update parameters
+        >>>         engine.step()
+        >>>     # update learning rate
+        >>>     lr_scheduler.step()
+        >>>     # execute a testing iteration
+        >>>     engine.eval()
+        >>>     correct = 0
+        >>>     total = 0
+        >>>     for img, label in test_dataloader:
+        >>>         img = img.cuda()
+        >>>         label = label.cuda()
+        >>>         # run prediction without back-propagation
+        >>>         with torch.no_grad():
+        >>>             output = engine(img)
+        >>>             test_loss = engine.criterion(output, label)
+        >>>         # compute the number of correct prediction
+        >>>         pred = torch.argmax(output, dim=-1)
+        >>>         correct += torch.sum(pred == label)
+        >>>         total += img.size(0)
+
+    The example of using Engine in training could be find in
+    `Training with engine and trainer <https://www.colossalai.org/docs/basics/engine_trainer>`_. and
+    `Run resnet cifar10 with engine <https://github.com/hpcaitech/ColossalAI-Examples/blob/main/image/resnet/run_resnet_cifar10_with_engine.py>`_.
     """
 
     def __init__(self,
@@ -92,10 +142,10 @@ class Engine:
         return self.optimizer.step()
 
     def backward(self, loss: Tensor):
-        """Start backward propagation given the loss value computed by a loss function
+        """Start backward propagation given the loss value computed by a loss function.
 
-        :param loss: Loss value computed by a loss function
-        :type loss: :class:`torch.Tensor`
+        Args:
+            loss (:class:`torch.Tensor`): Loss value computed by a loss function.
         """
         ret = self.optimizer.backward(loss)
         for ophook in self._ophook_list:
@@ -103,12 +153,11 @@ class Engine:
         return ret
 
     def backward_by_grad(self, tensor, grad):
-        """Start backward propagation given the gradient of the output tensor
+        """Start backward propagation given the gradient of the output tensor.
 
-        :param tensor: Output tensor
-        :type tensor: :class:`torch.Tensor`
-        :param grad: Gradient passed back to the output
-        :type grad: :class:`torch.Tensor`
+        Args:
+            tensor (:class:`torch.Tensor`): Output tensor.
+            grad (:class:`torch.Tensor`): Gradient passed back to the output.
         """
         ret = self.optimizer.backward_by_grad(tensor, grad)
         for ophook in self._ophook_list:
@@ -116,21 +165,22 @@ class Engine:
         return ret
 
     def calc_loss(self, *args, **kwargs):
-        """Compute the loss value
+        """Compute the loss value.
 
-        :param args: Args used in criterion function
-        :param kwargs: Kwargs used in criterion function
+        Args:
+            args (list): Args used in criterion function.
+            kwargs (dict): Kwargs used in criterion function.
 
-        :return: The loss value
-        :rtype: :class:`torch.Tensor`
+        Returns:
+            :class:`torch.Tensor`: The loss value.
         """
         return self.criterion(*args, **kwargs)
 
     def __call__(self, *args, **kwargs):
-        """Run the forward step for the model
+        """Run the forward step for the model.
 
-        :return: Output the model
-        :rtype: Tuple[:class:`torch.Tensor`] or :class:`torch.Tensor`
+        Returns:
+            Tuple[:class:`torch.Tensor`] or :class:`torch.Tensor`: Output of the model.
         """
         return self.model(*args, **kwargs)
 

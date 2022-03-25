@@ -10,34 +10,40 @@ from colossalai.registry import *
 def build_from_config(module, config: dict):
     """Returns an object of :class:`module` constructed from `config`.
 
-    :param module: A python or user-defined class
-    :type module: class
-    :param config: A python dict containing information used in the construction
-        of the return object
-    :type config: dict
-    :raises AssertionError: Raises an AssertionError if `module` is not a class
-    :return: An object of interest
-    :rtype: Object
+    Args:
+        module: A python or user-defined class
+        config: A python dict containing information used in the construction of the return object
+
+    Returns: An ``object`` of interest
+
+    Raises:
+        AssertionError: Raises an AssertionError if `module` is not a class
+
     """
     assert inspect.isclass(module), 'module must be a class'
     return module(**config)
 
 
 def build_from_registry(config, registry: Registry):
-    """Returns an object constructed from `config`, the type of the object
+    r"""Returns an object constructed from `config`, the type of the object
     is specified by `registry`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.colossalai.context.Config`
-    :param registry: A registry specifying the type of the return object
-    :type registry: :class:`Registry`
-    :raises AssertionError: Raises an AssertionError if `registry` is not an object
-        of :class:`Registry` or `mod_type` in `config` is not found in `registry`
-    :raises Exception: Raises an Exception if an error occurred when building
-        from registry
-    :return: An object specified by `registry`
-    :rtype: Python object specified by `registry`
+    Note:
+        the `config` is used to construct the return object such as `LAYERS`,
+         `OPTIMIZERS` and other support types in `registry`. The `config` should contain
+         all required parameters of corresponding object. The details of support
+         types in `registry` and the `mod_type` in `config` could be found in
+         `registry <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/registry/__init__.py>`_.
+
+    Args:
+        config (dict or :class:`colossalai.context.colossalai.context.Config`): information
+            used in the construction of the return object.
+        registry (:class:`Registry`): A registry specifying the type of the return object
+
+    Returns: A Python object specified by `registry`
+
+    Raises:
+        Exception: Raises an Exception if an error occurred when building from registry
     """
     config_ = config.copy()  # keep the original config untouched
     assert isinstance(
@@ -60,11 +66,13 @@ def build_from_registry(config, registry: Registry):
 def build_layer(config):
     """Returns a layer object of :class:`nn.Module` constructed from `config`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`torch.nn.Module`
-    :rtype: :class:`torch.nn.Module`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``LAYERS``.
+
+    Returns:
+        An object of :class:`torch.nn.Module`
     """
     return build_from_registry(config, LAYERS)
 
@@ -73,11 +81,13 @@ def build_loss(config):
     """Returns a loss function object of :class:`torch.autograd.Function` constructed
     from `config`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`torch.nn.modules.loss._Loss`
-    :rtype: :class:`torch.nn.modules.loss._Loss`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``LOSSES``.
+
+    Returns:
+        An object of :class:`torch.nn.modules.loss._Loss`
     """
     return build_from_registry(config, LOSSES)
 
@@ -85,11 +95,13 @@ def build_loss(config):
 def build_model(config):
     """Returns a model object of :class:`nn.Module` constructed from `config`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`torch.nn.Module`
-    :rtype: :class:`torch.nn.Module`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``MODELS``.
+
+    Returns:
+        An object of :class:`torch.nn.Module`
     """
     return build_from_registry(config, MODELS)
 
@@ -98,11 +110,13 @@ def build_dataset(config):
     """Returns a dataset object of :class:`torch.utils.data.Dataset` constructed
     from `config`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`torch.utils.data.Dataset`
-    :rtype: :class:`torch.utils.data.Dataset`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``DATASETS``.
+
+    Returns:
+        An object of :class:`torch.utils.data.Dataset`
     """
     return build_from_registry(config, DATASETS)
 
@@ -111,13 +125,14 @@ def build_optimizer(config, model):
     """Returns an optimizer object of :class:`torch.optim.Optimizer` constructed from `config`,
     'model' and 'params'.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :param model: A model containing parameters for the optimizer
-    :type model: :class:`nn.Module`
-    :return: An object of :class:`torch.optim.Optimizer`
-    :rtype: :class:`torch.optim.Optimizer`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``OPTIMIZERS``.
+        model (:class:`nn.Module`): A model containing parameters for the optimizer
+
+    Returns:
+        An object of :class:`torch.optim.Optimizer`
     """
     config_ = config.copy()
     config_['params'] = model.parameters()
@@ -128,15 +143,15 @@ def build_gradient_handler(config, model, optimizer):
     """Returns a gradient handler object of :class:`BaseGradientHandler` constructed from `config`,
     `model` and `optimizer`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :param model: A model containing parameters for the gradient handler
-    :type model: :class:`nn.Module`
-    :param optimizer: An optimizer object containing parameters for the gradient handler
-    :type optimizer: :class:`torch.optim.Optimizer`
-    :return: An object of :class:`colossalai.engine.BaseGradientHandler`
-    :rtype: :class:`colossalai.engine.BaseGradientHandler`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``GRADIENT_HANDLER``.
+        model (:class:`nn.Module`): A model containing parameters for the gradient handler
+        optimizer (:class:`torch.optim.Optimizer`): An optimizer object containing parameters for the gradient handler
+
+    Returns:
+        An object of :class:`colossalai.engine.BaseGradientHandler`
     """
     config_ = config.copy()
     config_['model'] = model
@@ -147,13 +162,13 @@ def build_gradient_handler(config, model, optimizer):
 def build_hooks(config, trainer):
     """Returns a hook object of :class:`BaseHook` constructed from `config` and `trainer`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :param trainer: A :class:`Trainer` object containing parameters for the hook
-    :type trainer: :class:`Trainer`
-    :return: An object of :class:`colossalai.trainer.hooks.BaseHook`
-    :rtype: :class:`colossalai.trainer.hooks.BaseHook`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``HOOKS``.
+
+    Returns:
+        An object of :class:`colossalai.trainer.hooks.BaseHook`
     """
     config_ = config.copy()
     config_['trainer'] = trainer
@@ -163,11 +178,13 @@ def build_hooks(config, trainer):
 def build_ophooks(config):
     """Returns a hook object of :class:`BaseOpHook` constructed from `config`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`colossalai.trainer.hooks.BaseOpHook`
-    :rtype: :class:`colossalai.trainer.hooks.BaseOpHook`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``OPHOOKS``.
+
+    Returns:
+        An object of :class:`colossalai.trainer.hooks.BaseOpHook`
     """
     config_ = config.copy()
     return build_from_registry(config_, OPHOOKS)
@@ -177,11 +194,13 @@ def build_transform(config):
     """Returns a transformation object of :class:`torchvision.transforms` constructed
     from `config`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`torchvision.transforms`
-    :rtype: :class:`torchvision.transforms`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``TRANSFORMS``.
+
+    Returns:
+        An object of :class:`torchvision.transforms`
     """
     return build_from_registry(config, TRANSFORMS)
 
@@ -190,14 +209,15 @@ def build_data_sampler(config, dataset):
     """Returns a data sampler object of :class:`colossalai.nn.data.sampler.BaseSampler`
     constructed from `config`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :param dataset: An object of :class:`torch.utils.data.Dataset` containing information
-        used in the construction of the return object
-    :type dataset: :class:`torch.utils.data.Dataset`
-    :return: An object of :class:`colossalai.utils.data_sampler.BaseSampler`
-    :rtype: :class:`colossalai.utils.data_sampler.BaseSampler`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``DATA_SAMPLERS``.
+        dataset (:class:`torch.utils.data.Dataset`): An object of
+            :class:`torch.utils.data.Dataset` containing information
+            used in the construction of the return object
+    Returns:
+        An object of :class:`colossalai.utils.data_sampler.BaseSampler`
     """
     config_ = config.copy()
     config_['dataset'] = dataset
@@ -208,14 +228,15 @@ def build_lr_scheduler(config, optimizer):
     """Returns a learning rate scheduler object of :class:`torch.optim.lr_scheduler`
     constructed from `config`, `optimizer`, `total_steps` and `num_steps_per_epoch`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :param optimizer: An optimizer object containing parameters for the learning rate
-        scheduler
-    :type optimizer: :class:`torch.optim.Optimizer`
-    :return: An object of :class:`torch.optim.lr_scheduler`
-    :rtype: :class:`torch.optim.lr_scheduler`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``lr_schedule``.
+        optimizer (:class:`torch.optim.Optimizer`): An optimizer object containing
+            parameters for the learning rate scheduler.
+
+    Returns:
+        An object of :class:`torch.optim.lr_scheduler`
     """
     config_ = config.copy()
     config_['optimizer'] = optimizer
@@ -225,10 +246,12 @@ def build_lr_scheduler(config, optimizer):
 def build_schedule(config):
     """Returns a schedule of :class:`colossalai.engine.schedule.BaseSchedule`.
 
-    :param config: A python dict or a :class:`colossalai.context.Config` object
-        containing information used in the construction of the return object
-    :type config: dict or :class:`colossalai.context.Config`
-    :return: An object of :class:`colossalai.engine.schedule.BaseSchedule`
-    :rtype: :class:`colossalai.engine.schedule.BaseSchedule`
+    Args:
+        config (dict or :class:`colossalai.context.Config`): A python dict or
+            a :class:`colossalai.context.Config` object containing information
+            used in the construction of the ``Schedule``.
+
+    Returns:
+        An object of :class:`colossalai.engine.schedule.BaseSchedule`
     """
     return build_from_registry(config, SCHEDULE)

@@ -9,6 +9,10 @@ from colossalai.context.parallel_mode import ParallelMode
 
 class SeedManager:
     """This class is a manager of all random seeds involved in the system.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
     def __init__(self):
@@ -30,12 +34,12 @@ class SeedManager:
 
     def set_state(self, parallel_mode: ParallelMode, state: Tensor):
         """Sets the state of the seed manager for `parallel_mode`.
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            state (:class:`torch.Tensor`): the state to be set.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :param state: the state to be set
-        :type state: :class:`torch.Tensor`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager.
         """
         assert parallel_mode in self._seed_states, f'Parallel mode {parallel_mode} is not found in the seed manager'
         self._seed_states[parallel_mode] = state
@@ -43,8 +47,8 @@ class SeedManager:
     def set_mode(self, parallel_mode: ParallelMode):
         """Sets the current mode of the seed manager.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
         """
         if self.current_mode:
             # save the current state for current mode
@@ -57,14 +61,14 @@ class SeedManager:
     def add_seed(self, parallel_mode: ParallelMode, seed: int, overwrtie: bool = False):
         """Adds a seed to the seed manager for `parallel_mode`.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :param seed: The seed to be added
-        :type seed: int
-        :param overwrtie: Whether allows to overwrite the seed that has been set already
-        :type overwrtie: bool, optional
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
-            :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            seed (int): The seed to be added.
+            overwrtie (bool, optional): Whether allows to overwrite the seed that has been set already
+
+        Raises
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
+                :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added.
         """
         assert isinstance(parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
         if overwrtie is False:

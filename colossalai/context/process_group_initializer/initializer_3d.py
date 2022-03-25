@@ -26,12 +26,15 @@ def _check_depth_env_var(depth):
 class Initializer_3D_Input(ProcessGroupInitializer):
     """3D tensor parallel initialization among input.
 
-    :param num_group: The number of all tensor groups
-    :param depth: Depth of 3D parallelism
-    :param args: Args used in base class
-
-    :type num_group: int
-    :type depth: int
+    Args:
+        num_group (int): The number of all tensor groups.
+        depth (int): Depth of 3D parallelism.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, num_group: int, depth: int, *args):
@@ -42,8 +45,9 @@ class Initializer_3D_Input(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize 3D tensor parallel groups among input, and assign local_ranks and groups to each gpu.
 
-        :return: 3D tensor parallelism's information among input
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among input in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -70,12 +74,15 @@ class Initializer_3D_Input(ProcessGroupInitializer):
 class Initializer_3D_Weight(ProcessGroupInitializer):
     """3D tensor parallel initialization among weight.
 
-    :param num_group: The number of all tensor groups
-    :param depth: Depth of 3D parallelism
-    :param args: Args used in base class
-
-    :type num_group: int
-    :type depth: int
+    Args:
+        num_group (int): The number of all tensor groups.
+        depth (int): Depth of 3D parallelism.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, num_group: int, depth: int, *args):
@@ -86,8 +93,9 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize 3D tensor parallel groups among weight, and assign local_ranks and groups to each gpu.
 
-        :return: 3D tensor parallelism's information among weight
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among weight in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -114,12 +122,15 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
 class Initializer_3D_Output(ProcessGroupInitializer):
     """3D tensor parallel initialization among output.
 
-    :param num_group: The number of all tensor groups
-    :param depth: Depth of 3D parallelism
-    :param args: Args used in base class
-
-    :type num_group: int
-    :type depth: int
+    Args:
+        num_group (int): The number of all tensor groups.
+        depth (int): Depth of 3D parallelism.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, num_group: int, depth: int, *args):
@@ -130,8 +141,9 @@ class Initializer_3D_Output(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize 3D tensor parallel groups among output, and assign local_ranks and groups to each gpu.
 
-        :return: 3D tensor parallelism's information among output
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among output in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -158,7 +170,14 @@ class Initializer_3D_Output(ProcessGroupInitializer):
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_3D(ProcessGroupInitializer):
     """Serve as the single entry point to 3D parallel initialization.
-    :param args: Args used to initialize ProcessGroupInitializer
+
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, *args):
@@ -175,8 +194,10 @@ class Initializer_3D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 3D tensor parallel groups, and assign local_ranks and groups to each gpu.
-        :return: 3D tensor parallelism's information
-        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+
+        Returns:
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                Whole 3D tensor parallelism's information in a list of tuples.
         """
         parallel_setting = [
             self.input_initializer.init_dist_group(),

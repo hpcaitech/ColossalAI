@@ -15,8 +15,12 @@ class BaseSchedule(ABC):
     """A basic helper class to control the process of training or evaluation.
     It mainly composes of forward_backward_step for gradient backward and
     optimizer_step for parameters update.
-    For the convenience to enable FP16, we aggreate all codes that contain the
+    For the convenience to enable FP16, we aggregate all codes that contain the
     control of FP16 in class schedule.
+
+    Args:
+        batch_data_process_func (Callable, optional): The preprocessing function which receives a batch of data,
+        and it will be executed in load_batch.
     """
 
     def __init__(self, batch_data_process_func: Callable = None):
@@ -46,13 +50,12 @@ class BaseSchedule(ABC):
         """Loads a batch from data iterator. It returns the data and labels which are
         already in the same GPU as where the model's.
 
-        :param data_iter: Data iterator from which get a batch of data
-        :type data_iter: DataIter
-        :param to_gpu: Whether the data should be moved to GPU
-        :type to_gpu: bool, optional
+        Args:
+            data_iter (Iterable): Data iterator from which get a batch of data, obtained by calling iter(dataloader).
+            to_gpu (bool, optional): Whether the data should be moved to GPU
 
-        :return: (data, label)
-        :rtype: (:class:`Tensor`, :class:`torch.Tensor`)
+        Returns:
+            Tuple (:class:`Tensor`, :class:`torch.Tensor`): A tuple of (data, label).
         """
         if data_iter is None:
             raise RuntimeError('Dataloader is not defined.')
@@ -87,16 +90,12 @@ class BaseSchedule(ABC):
                               ):
         """The process function over a batch of dataset for training or evaluation.
 
-        :param engine: Colossalai training engine
-        :type engine: colossalai.engine.Engine
-        :param data_iter: Data iterator from which get a batch of data
-        :type data_iter: DataIter
-        :param forward_only: If True, the process won't include backward
-        :type forward_only: bool
-        :param return_loss: If False, the loss won't be returned
-        :type return_loss: bool, optional
-        :param return_output_label: If False, the output and label won't be returned
-        :type return_output_label: bool, optional
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            data_iter (Iterable): Data iterator from which get a batch of data, obtained by calling iter(dataloader).
+            forward_only (bool): If True, the process won't include backward.
+            return_loss (bool, optional): If False, the loss won't be returned.
+            return_output_label (bool, optional): If False, the output and label won't be returned.
         """
         pass
 

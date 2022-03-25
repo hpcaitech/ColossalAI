@@ -22,12 +22,16 @@ def _check_summa_env_var(summa_dim):
 
 class Initializer_2D_Row(ProcessGroupInitializer):
     """2d tensor parallel initialization among rows.
-    :param num_group: The number of all tensor groups
-    :param summa_dim: The dimension of SUMMA
-    :param args: Args used to initialize base class
-    :param kwargs: Kwargs used to initialize base class
-    :type num_group: int
-    :type summa_dim: int
+
+    Args:
+        num_group (int): The number of all tensor groups.
+        summa_dim (int): The dimension of SUMMA.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, num_group, summa_dim, *args, **kwargs):
@@ -37,9 +41,9 @@ class Initializer_2D_Row(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
-
-        :return: 2D tensor row parallelism's information
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2D tensor row parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -64,13 +68,15 @@ class Initializer_2D_Row(ProcessGroupInitializer):
 class Initializer_2D_Col(ProcessGroupInitializer):
     """2d tensor parallel initialization among cols.
 
-    :param num_group: The number of all tensor groups
-    :param summa_dim: The dimension of SUMMA
-    :param args: Args used to initialize base class
-    :param kwargs: Kwargs used to initialize base class
-
-    :type num_group: int
-    :type summa_dim: int
+    Args:
+        num_group (int): The number of all tensor groups.
+        summa_dim (int): The dimension of SUMMA.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, num_group, summa_dim, *args, **kwargs):
@@ -81,8 +87,9 @@ class Initializer_2D_Col(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize 2D tensor row parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2D tensor col parallelism's information
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2D tensor col parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
@@ -109,8 +116,13 @@ class Initializer_2D(ProcessGroupInitializer):
     """
     Serve as the single entry point to 2D parallel initialization.
 
-    :param args: Args used to initialize ProcessGroupInitializer
-    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, *args, **kwargs):
@@ -127,8 +139,10 @@ class Initializer_2D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 2D tensor row and col parallel groups, and assign local_ranks and groups to each gpu.
-        :return: 2D tensor parallelism's information
-        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+
+        Returns:
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                2D tensor parallelism's information in a list of tuples.
         """
         parallel_setting = [self.row_initializer.init_dist_group(), self.col_initializer.init_dist_group()]
         return parallel_setting
