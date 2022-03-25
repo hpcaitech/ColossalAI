@@ -8,4 +8,4 @@ colossalai.logging
 .. toctree::
    :maxdepth: 2
 
-   colossalai.logging.logging
+   colossalai.logging.logger
