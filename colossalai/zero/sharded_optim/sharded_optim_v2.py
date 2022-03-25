@@ -10,7 +10,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp32
+from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
@@ -161,6 +161,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Since p.data is fp32 and p.col_attr.sharded_data_tensor is fp16
 
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
+
                 colo_model_data_tensor_move(p, p.col_attr.sharded_data_tensor)
 
                 if not is_param_sharded:

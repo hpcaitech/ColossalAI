@@ -17,6 +17,7 @@ from torch.optim import Adam
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
+from colossalai.testing import rerun_on_exception
 
 BATCH_SIZE = 4
 IMG_SIZE = 32
@@ -85,6 +86,7 @@ def run_trainer_with_pipeline(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_trainer_with_pipeline():
     world_size = 4
     run_func = partial(run_trainer_with_pipeline, world_size=world_size, port=free_port())

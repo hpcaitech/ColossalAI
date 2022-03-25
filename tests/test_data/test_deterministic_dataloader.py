@@ -16,45 +16,33 @@ import colossalai
 from colossalai.builder import build_dataset, build_transform
 from colossalai.context import ParallelMode, Config
 from colossalai.core import global_context as gpc
+from colossalai.utils import free_port
+from colossalai.testing import rerun_on_exception
 
 CONFIG = Config(
     dict(
-        train_data=dict(
-            dataset=dict(
-                type='CIFAR10',
-                root=Path(os.environ['DATA']),
-                train=True,
-                download=True,
-            ),
-            dataloader=dict(
-                num_workers=2,
-                batch_size=2,
-                shuffle=True
-            ),
-            transform_pipeline=[
-                dict(type='ToTensor'),
-                dict(type='RandomCrop', size=32),
-                dict(type='Normalize', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-            ]
+        train_data=dict(dataset=dict(
+            type='CIFAR10',
+            root=Path(os.environ['DATA']),
+            train=True,
+            download=True,
         ),
+                        dataloader=dict(num_workers=2, batch_size=2, shuffle=True),
+                        transform_pipeline=[
+                            dict(type='ToTensor'),
+                            dict(type='RandomCrop', size=32),
+                            dict(type='Normalize', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+                        ]),
         parallel=dict(
             pipeline=dict(size=1),
             tensor=dict(size=1, mode=None),
         ),
         seed=1024,
-    )
-)
+    ))
 
 
-def run_data_sampler(rank, world_size):
-    dist_args = dict(
-        config=CONFIG,
-        rank=rank,
-        world_size=world_size,
-        backend='gloo',
-        port='29904',
-        host='localhost'
-    )
+def run_data_sampler(rank, world_size, port):
+    dist_args = dict(config=CONFIG, rank=rank, world_size=world_size, backend='gloo', port=port, host='localhost')
     colossalai.launch(**dist_args)
 
     dataset_cfg = gpc.config.train_data.dataset
@@ -91,9 +79,10 @@ def run_data_sampler(rank, world_size):
 
 
 @pytest.mark.cpu
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_data_sampler():
     world_size = 4
-    test_func = partial(run_data_sampler, world_size=world_size)
+    test_func = partial(run_data_sampler, world_size=world_size, port=free_port())
     mp.spawn(test_func, nprocs=world_size)
 
 

@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 from colossalai.utils import get_current_device
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.zero.sharded_model._zero3_utils import get_shard
+from colossalai.zero.shard_utils.commons import get_shard
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 
 

@@ -9,19 +9,13 @@ from colossalai.context import Config
 class ProcessGroupInitializer(ABC):
     """An object, knowing the parallelism configuration, that initializes parallel groups.
 
-    :param rank: The rank of current process
-    :param world_size: Size of whole communication world
-    :param config: Running configuration
-    :param data_parallel_size: Size of data parallel
-    :param pipeline_parallel_size: Size of pipeline parallel
-    :param tensor_parallel_size: Size of tensor parallel
-
-    :type rank: int
-    :type world_size: int
-    :type config: Config
-    :type data_parallel_size: int
-    :type pipeline_parallel_size: int
-    :type tensor_parallel_size: int
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
     def __init__(self,
                  rank: int,

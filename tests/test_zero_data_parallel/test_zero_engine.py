@@ -13,6 +13,7 @@ from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
+from colossalai.testing import rerun_on_exception
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -96,6 +97,7 @@ def run_dist(rank, world_size, port, parallel_config):
 @pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [2, 4])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_mp_engine(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port(), parallel_config=MP_PARALLEL_CONFIG)
     mp.spawn(run_func, nprocs=world_size)
@@ -103,6 +105,7 @@ def test_mp_engine(world_size):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_zero_engine(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port(), parallel_config=ZERO_PARALLEL_CONFIG)
     mp.spawn(run_func, nprocs=world_size)
