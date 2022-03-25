@@ -39,6 +39,3 @@ def test_adam(adamw, device, p_dtype, g_dtype):
             continue
         assert torch.allclose(p.data, p_copy.data, 1e-4, 1e-2), \
                               f"adaw mode {adamw}, device {device}, p_dtype {p_dtype}, g_dtype {g_dtype}"
-
-test_adam()
-                                
