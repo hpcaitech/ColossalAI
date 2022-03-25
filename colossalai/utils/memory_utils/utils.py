@@ -63,7 +63,9 @@ def colo_model_data_tensor_move(src_t: Union[ShardedTensor, torch.Tensor], tgt_t
         src_t.data = torch.tensor([], device=src_dev, dtype=src_t_payload.dtype)
 
 
-def colo_model_data_tensor_move_inline(t: Union[ShardedTensor, torch.Tensor], target_device: torch.device) -> None:
+def colo_model_data_tensor_move_inline(t: Union[ShardedTensor, torch.Tensor],
+                                       target_device: torch.device,
+                                       use_tracer: bool = True) -> None:
     """ 
     move a tensor to the target_device
     Args:
@@ -82,10 +84,11 @@ def colo_model_data_tensor_move_inline(t: Union[ShardedTensor, torch.Tensor], ta
     # deal with torch.device('cpu') and torch.device('cpu:0)
     if t_payload.device.type == target_device.type:
         return
-
-    GLOBAL_MODEL_DATA_TRACER.delete_tensor(t_payload)
+    if use_tracer:
+        GLOBAL_MODEL_DATA_TRACER.delete_tensor(t_payload)
     t_payload.data = t_payload.data.to(target_device)
-    GLOBAL_MODEL_DATA_TRACER.add_tensor(t_payload)
+    if use_tracer:
+        GLOBAL_MODEL_DATA_TRACER.add_tensor(t_payload)
 
 
 def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]) -> None:
