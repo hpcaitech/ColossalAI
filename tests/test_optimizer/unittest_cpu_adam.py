@@ -15,11 +15,8 @@ def torch_adam_update(
     grad,
     exp_avg,
     exp_avg_sq,
-    loss_scale,
     use_adamw,
 ):
-    if loss_scale > 0:
-        grad.div_(loss_scale)
     bias_correction1 = 1 - beta1**step
     bias_correction2 = 1 - beta2**step
 
@@ -50,10 +47,9 @@ def assertTrue(condition, msg):
 
 @parameterize('adamw', [True, False])
 @parameterize('step', [1, 2])
-@parameterize('loss_scale', [-1, 2 ** 5])
 @parameterize('p_dtype', [torch.float, torch.half])
 @parameterize('g_dtype', [torch.float, torch.half])
-def test_cpu_adam(adamw, step, loss_scale, p_dtype, g_dtype):
+def test_cpu_adam(adamw, step, p_dtype, g_dtype):
     lr = 1e-3
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
@@ -63,8 +59,6 @@ def test_cpu_adam(adamw, step, loss_scale, p_dtype, g_dtype):
         p_data = torch.rand(64, dtype=p_dtype)
         p_data_copy = p_data.clone().float()
         p_grad = torch.rand(64, dtype=g_dtype)
-        if loss_scale > 0:
-            p_grad.mul_(loss_scale)
         p_grad_copy = p_grad.clone().float()
         exp_avg = torch.rand(p_data.shape)
         exp_avg_copy = exp_avg.clone()
@@ -75,7 +69,7 @@ def test_cpu_adam(adamw, step, loss_scale, p_dtype, g_dtype):
             import cpu_adam
             cpu_adam_op = cpu_adam
         except:
-            raise ImportError("...")
+            raise ImportError("Import cpu adam error, please install colossal from source code")
 
         cpu_adam_op.create_adam(0, lr, beta1, beta2, eps, weight_decay, adamw, False)
         cpu_adam_op.adam_update(
@@ -91,7 +85,7 @@ def test_cpu_adam(adamw, step, loss_scale, p_dtype, g_dtype):
             p_grad.view(-1),    # fp32 grad
             exp_avg.view(-1),
             exp_avg_sq.view(-1),
-            loss_scale,
+            -1,
         )
 
         torch_adam_update(
@@ -105,20 +99,15 @@ def test_cpu_adam(adamw, step, loss_scale, p_dtype, g_dtype):
             p_grad_copy,    # fp32 grad
             exp_avg_copy,
             exp_avg_sq_copy,
-            loss_scale,
             adamw,
         )
-        if loss_scale > 0:
-            p_grad.div_(loss_scale)
         var = p_data_copy - p_data
         data_diff = torch.max(torch.abs(var))
         threshold = 1e-3
-        print(f"p_data diff {data_diff}. failed check, step {step}, lr {lr} eps "
-            f"{eps} beta1 {beta1} beta2 {beta2} weight_decay {weight_decay} p_dtype {p_dtype}, g_dtype {g_dtype}")
         assertLess(
             data_diff,
             threshold,
-            f"p_data diff {data_diff}. failed check, step {step}, lr {lr}, loss_scale {loss_scale}, eps "
+            f"p_data diff {data_diff}. failed check, step {step}, lr {lr}, eps "
             f"{eps} beta1 {beta1} beta2 {beta2} weight_decay {weight_decay} p_dtype {p_dtype}, g_dtype {g_dtype}",
         )
         max_grad_diff = torch.max(torch.abs(p_grad_copy - p_grad))
