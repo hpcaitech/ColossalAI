@@ -3,7 +3,7 @@ from colossalai.utils import get_current_device
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
-from typing import Union
+from typing import Union, Optional
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
@@ -63,6 +63,34 @@ def colo_model_data_tensor_move(src_t: Union[ShardedTensor, torch.Tensor], tgt_t
         src_t.reset_payload(torch.tensor([], device=src_dev, dtype=src_t_payload.dtype))
     else:
         src_t.data = torch.tensor([], device=src_dev, dtype=src_t_payload.dtype)
+
+
+def colo_model_data_tensor_move_inline(t: Union[ShardedTensor, torch.Tensor], target_device: torch.device) -> None:
+    """ 
+    move a tensor to the target_device
+    Args:
+        t (Union[ShardedTensor, torch.Tensor]): the tensor be moved
+    """
+
+    if isinstance(t, ShardedTensor):
+        t_payload = t.payload
+    elif isinstance(t, torch.Tensor):
+        t_payload = t
+    else:
+        raise TypeError('colo_model_data_move_to_cpu dose not accept type {type(t)}')
+
+    assert isinstance(target_device, torch.device)
+
+    # deal with torch.device('cpu') and torch.device('cpu:0)
+    if t_payload.device.type == target_device.type:
+        return
+
+    if target_device.type == 'cuda':
+        GLOBAL_MODEL_DATA_TRACER.add_tensor(t_payload)
+    elif target_device.type == 'cpu':
+        GLOBAL_MODEL_DATA_TRACER.delete_tensor(t_payload)
+
+    t_payload.data = t_payload.data.to(target_device)
 
 
 def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]) -> None:

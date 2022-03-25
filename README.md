@@ -57,7 +57,7 @@
 ## Features
 
 Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
-distributed deep learning models just like how you write your single-GPU model. We provide friendly tools to kickstart
+distributed deep learning models just like how you write your model on your laptop. We provide user-friendly tools to kickstart
 distributed training in a few lines.
 
 - Data Parallelism
@@ -75,21 +75,21 @@ distributed training in a few lines.
 ### ViT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
 
-- 14x larger batch size, and 5x faster training for Tensor Parallel = 64
+- 14x larger batch size, and 5x faster training for Tensor Parallelism = 64
 
 ### GPT-3
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
 
-- Free 50% GPU resources, or 10.7% acceleration
+- Save 50% GPU resources, and 10.7% acceleration
 
 ### GPT-2
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2.png" width=800/>
 
-- 11x lower GPU RAM, or superlinear scaling with Tensor Parallel
+- 11x lower GPU memory consumption, and superlinear scaling efficiency with Tensor Parallelism
 
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI%20with%20ZeRO.jpg" width=393>
 
-- 10.7x larger model size with ZeRO
+- 10.7x larger model size on the same hardware
 ### BERT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
 
@@ -120,7 +120,7 @@ pip install colossalai[zero]
 
 ### Install From Source
 
-> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
+> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to create an issue if you encounter any problems. :-)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -161,7 +161,7 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 Join the Colossal-AI community on [Forum](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-and [WeChat](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, advice, and questions with our engineering team.
+and [WeChat](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode") to share your suggestions, feedback, and questions with our engineering team.
 
 ## Contributing
 

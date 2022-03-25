@@ -173,6 +173,36 @@
         AT_ERROR(#NAME, " not implemented for '", toString(TYPE), "'"); \
     }
 
+#define DISPATCH_FLOAT_AND_HALF_FOR_G_P(GTYPE, PTYPE, LEVEL, NAME, ...)                          \
+    if (GTYPE == at::ScalarType::Float && PTYPE == at::ScalarType::Float)                        \
+    {                                                                                            \
+        using g_scalar_t_##LEVEL = float;                                                        \
+        using p_scalar_t_##LEVEL = float;                                                        \
+        __VA_ARGS__;                                                                             \
+    }                                                                                            \
+    else if (GTYPE == at::ScalarType::Float && PTYPE == at::ScalarType::Half)                    \
+    {                                                                                            \
+        using g_scalar_t_##LEVEL = float;                                                        \
+        using p_scalar_t_##LEVEL = at::Half;                                                     \
+        __VA_ARGS__;                                                                             \
+    }                                                                                            \
+    else if (GTYPE == at::ScalarType::Half && PTYPE == at::ScalarType::Float)                    \
+    {                                                                                            \
+        using g_scalar_t_##LEVEL = at::Half;                                                     \
+        using p_scalar_t_##LEVEL = float;                                                        \
+        __VA_ARGS__;                                                                             \
+    }                                                                                            \
+    else if (GTYPE == at::ScalarType::Half && PTYPE == at::ScalarType::Half)                     \
+    {                                                                                            \
+        using g_scalar_t_##LEVEL = at::Half;                                                     \
+        using p_scalar_t_##LEVEL = at::Half;                                                     \
+        __VA_ARGS__;                                                                             \
+    }                                                                                            \
+    else                                                                                         \
+    {                                                                                            \
+       AT_ERROR(#NAME, "not implemented for '", toString(GTYPE), toString(PTYPE), "'");          \
+    }                                                                                            \
+
 template <typename T>
 __device__ __forceinline__ T reduce_block_into_lanes(T *x,
                                                      T val,

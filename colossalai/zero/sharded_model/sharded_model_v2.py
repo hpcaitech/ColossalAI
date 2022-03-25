@@ -18,14 +18,16 @@ from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
-from ._zero3_utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
-                           get_gradient_predivide_factor)
+from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
+                     get_gradient_predivide_factor)
 
 
 class ShardedModelV2(nn.Module):
-    """A wrapper for a sharded module, which implements Zero Redundancy Optimizer (ZeRO) stage 3.
-    Parameter, gradient and optimizer states are sharded, so memory efficiency is boosted drastically 
-    compared to classic data parallelism while the computational granularity and communication efficiency are retained.
+    """
+    A wrapper for the PyTorch module shards the model parameters among multiple GPU memory.
+    Only 1/#nproc of parameters, gradients are stored in local CUDA memory, so forward and backward
+    passes can be executed with limited CUDA memory budget.
+    
     Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
 
     Args:
