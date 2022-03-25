@@ -3,7 +3,7 @@ from colossalai.utils import get_current_device
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
-from typing import Union
+from typing import Union, Optional
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
