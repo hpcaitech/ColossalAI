@@ -11,7 +11,7 @@ from colossalai.engine.ophooks import register_ophooks_recursively
 from colossalai.engine.ophooks.zero_hook import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
-from colossalai.utils.memory_utils.utils import colo_model_data_move_to_cpu, colo_cuda_memory_capacity
+from colossalai.utils.memory_utils.utils import colo_model_data_move_to_cpu, colo_cuda_memory_capacity, colo_model_tensor_clone
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
@@ -198,16 +198,16 @@ class ShardedModelV2(nn.Module):
             # the shape `grad` is the same as unsharded param
             # So we can just use `view(-1)` to ensure grad is a flat tensor shard
             if self.reuse_fp16_shard:
-                grad = p.col_attr.sharded_data_tensor.payload
+                grad_payload = p.col_attr.sharded_data_tensor.payload
             else:
-                grad = cast_tensor_to_fp32(p.col_attr.fp16_grad)
+                grad_payload = cast_tensor_to_fp32(p.col_attr.fp16_grad)
             if p.col_attr.offload_grad:
-                colo_model_data_move_to_cpu(grad)
+                grad_payload = colo_model_tensor_clone(grad_payload, torch.device('cpu'))
             if p.col_attr.fp32_grad is not None:
                 assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
-                p.col_attr.fp32_grad.add_(grad.view_as(p.col_attr.fp32_grad))
-                grad = p.col_attr.fp32_grad
-            p.grad.data = grad
+                p.col_attr.fp32_grad.add_(grad_payload.view_as(p.col_attr.fp32_grad))
+                grad_payload = p.col_attr.fp32_grad
+            p.grad.data = grad_payload
             p.col_attr.fp16_grad = None
             p.col_attr.fp32_grad = None
 
