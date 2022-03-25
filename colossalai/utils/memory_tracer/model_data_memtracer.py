@@ -22,13 +22,24 @@ class ModelDataTracer(metaclass=SingletonMeta):
 
     def __init__(self) -> None:
         self._cuda_usage = 0
+        self._start_flag = False
 
-    def add_tensor(self, t: torch.Tensor):
+    def start(self) -> None:
+        self._start_flag = True
+
+    def close(self) -> None:
+        self._start_flag = False
+
+    def add_tensor(self, t: torch.Tensor) -> None:
+        if not self._start_flag:
+            return
         assert isinstance(t, torch.Tensor), f"ModelDataTracer add_tensor() should accept a torch.Tensor"
         mem_use = _col_tensor_mem_usage(t)
         self._cuda_usage += mem_use
 
-    def delete_tensor(self, t: torch.Tensor):
+    def delete_tensor(self, t: torch.Tensor) -> None:
+        if not self._start_flag:
+            return
         assert isinstance(t, torch.Tensor), f"ModelDataTracer delete_tensor() should accept a torch.Tensor"
         mem_use = _col_tensor_mem_usage(t)
         self._cuda_usage -= mem_use
