@@ -10,6 +10,7 @@ from colossalai.utils.memory_tracer.model_data_memtracer import \
 from colossalai.zero.shard_utils import BaseShardStrategy
 
 from ._base_ophook import BaseOpHook
+from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move_inline
 
 
 @OPHOOKS.register_module
@@ -37,9 +38,7 @@ class ZeroHook(BaseOpHook):
             tensor_list.append(param.col_attr.sharded_data_tensor)
         self.shard_strategy.gather(tensor_list, self.process_group)
         for param in module.parameters():
-            if param.col_attr.sharded_data_tensor.device != self.computing_device:
-                param.col_attr.sharded_data_tensor.to(self.computing_device)
-                GLOBAL_MODEL_DATA_TRACER.add_tensor(param.col_attr.sharded_data_tensor.payload)
+            colo_model_data_tensor_move_inline(param.col_attr.sharded_data_tensor, self.computing_device)
             param.data = param.col_attr.sharded_data_tensor.payload
 
         if self._memstarts_collector:
@@ -61,9 +60,7 @@ class ZeroHook(BaseOpHook):
             tensor_list.append(param.col_attr.sharded_data_tensor)
         self.shard_strategy.gather(tensor_list, self.process_group)
         for param in module.parameters():
-            if param.col_attr.sharded_data_tensor.device != self.computing_device:
-                param.col_attr.sharded_data_tensor.to(self.computing_device)
-                GLOBAL_MODEL_DATA_TRACER.add_tensor(param.col_attr.sharded_data_tensor.payload)
+            colo_model_data_tensor_move_inline(param.col_attr.sharded_data_tensor, self.computing_device)
             param.data = param.col_attr.sharded_data_tensor.payload
             # Store local accumulated grad shard
             if param.grad is not None:

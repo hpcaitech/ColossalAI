@@ -143,7 +143,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             del self.initialized_param_list
         GLOBAL_MODEL_DATA_TRACER.close()
         model_data_cuda_mem_MB = GLOBAL_MODEL_DATA_TRACER.cuda_usage / 1e6
-        self.logger.info(f"Existing ZeRO Context: Model Data CUDA Memory {model_data_cuda_mem_MB} MB", ranks=[0])
+        self.logger.info(f"Existing ZeRO Context.\nModel Data CUDA Memory {model_data_cuda_mem_MB} MB", ranks=[0])
         sys_cuda_mem_MB = colo_cuda_memory_used() / 1e6
         self.logger.info(f"System CUDA Memory Usage {sys_cuda_mem_MB} MB", ranks=[0])
         self.logger.info(f"Model Number Parameter {self.model_numel_tensor.numpy()[0]/1e6} M", ranks=[0])
