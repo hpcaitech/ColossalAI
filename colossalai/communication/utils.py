@@ -36,7 +36,7 @@ def send_tensor_meta(tensor, need_meta=True, next_rank=None):
 
 
 def recv_tensor_meta(tensor_shape, prev_rank=None):
-    """Recieves tensor meta information before recieving a specific tensor.
+    """Receives tensor meta information before recieving a specific tensor.
     Since the recipient must know the shape of the tensor in p2p communications,
     meta information of the tensor should be recieved before communications. This function
     synchronizes with :func:`send_tensor_meta`.

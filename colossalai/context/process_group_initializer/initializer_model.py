@@ -12,8 +12,13 @@ class Initializer_Model(ProcessGroupInitializer):
     """A ProcessGroupInitializer for model parallelism (model parallel group contains pipeline and tensor parallel
     groups).
 
-    :param args: Args used to initialize ProcessGroupInitializer
-    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, *args, **kwargs):
@@ -24,8 +29,9 @@ class Initializer_Model(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize model parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        :rtype: Tuple
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                A Model parallelism's information tuple.
         """
         local_rank = None
         ranks_in_group = None

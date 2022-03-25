@@ -161,6 +161,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Since p.data is fp32 and p.col_attr.sharded_data_tensor is fp16
 
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
+
                 colo_model_data_tensor_move(p, p.col_attr.sharded_data_tensor)
 
                 if not is_param_sharded:
