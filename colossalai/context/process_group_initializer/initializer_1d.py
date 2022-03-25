@@ -30,8 +30,8 @@ class Initializer_1D(ProcessGroupInitializer):
         """Initialize 1D tensor parallel groups, and assign local_ranks and groups to each gpu.
 
         Returns:
-            Tuple: 1D tensor parallelism's information in a
-            tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                1D tensor parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
