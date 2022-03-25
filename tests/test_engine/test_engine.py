@@ -4,11 +4,10 @@ import colossalai
 import pytest
 import torch.multiprocessing as mp
 from colossalai.amp import AMP_TYPE
-from colossalai.context import Config
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.testing import parameterize
+from colossalai.testing import parameterize, rerun_on_exception
 
 CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=1, mode=None)),
               fp16=dict(mode=None),
@@ -57,6 +56,7 @@ def run_engine(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_engine():
     world_size = 2
     run_func = partial(run_engine, world_size=world_size, port=free_port())
