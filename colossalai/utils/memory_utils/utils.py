@@ -114,3 +114,20 @@ def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]) -> None:
     GLOBAL_MODEL_DATA_TRACER.delete_tensor(t_payload)
     t_payload.data = t_payload.data.cpu()
     GLOBAL_MODEL_DATA_TRACER.add_tensor(t_payload)
+
+
+def colo_model_tensor_clone(t: Union[ShardedTensor, torch.Tensor], target_device: torch.device) -> torch.Tensor:
+    """
+    Clone a model data tensor
+
+    Args:
+        t (Union[ShardedTensor, torch.Tensor]): a model data tensor
+        target_device (torch.device): the target device
+    Returns:
+        torch.Tensor: a cloned torch tensor
+    """
+    t_payload = t.payload if isinstance(t, ShardedTensor) else t
+
+    ret = t_payload.to(target_device)
+    GLOBAL_MODEL_DATA_TRACER.add_tensor(ret)
+    return ret
