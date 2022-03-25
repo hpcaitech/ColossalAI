@@ -129,6 +129,6 @@ def colo_model_tensor_clone(t: Union[ShardedTensor, torch.Tensor], target_device
     """
     t_payload = t.payload if isinstance(t, ShardedTensor) else t
 
-    ret = t_payload.detach().clone().to(target_device)
+    ret = t_payload.to(target_device)
     GLOBAL_MODEL_DATA_TRACER.add_tensor(ret)
     return ret
