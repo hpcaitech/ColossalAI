@@ -7,7 +7,7 @@ from colossalai.core import global_context as gpc
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp16
+from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 

@@ -7,9 +7,7 @@ import colossalai
 
 import torch
 
-from functools import partial
 import torch.multiprocessing as mp
-import pytest
 
 
 def run_tensor_move(rank):
