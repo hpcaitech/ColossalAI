@@ -13,8 +13,11 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     Args:
         model (:class:`torch.nn.Module`): your model object
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object
-        **amp_config (:class:`colossalai.context.Config` or dict): configuration for naive mode amp.
-            The ``amp_config`` should contain ``verbose``, ``clip_grad_norm`` and ``dynamic_grad_scale``.
+        amp_config (:class:`colossalai.context.Config` or dict): configuration for naive mode amp.
+
+
+    The ``amp_config`` should contain parameters below:
+    :
 
         verbose (bool, optional): if set to `True`, will print debug info (Default: False).
         clip_grad_norm (float, optional): clip gradients with this global L2 norm (Default 0).
@@ -22,7 +25,7 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         dynamic_grad_scale (bool): whether to use dynamic grad scaler.
 
     Returns:
-        A tuple (model, optimizer)
+        Tuples: A tuple (model, optimizer)
     """
     if isinstance(model, nn.ModuleList):
         # interleaved pipeline
