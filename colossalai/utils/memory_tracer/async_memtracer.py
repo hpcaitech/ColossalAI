@@ -2,26 +2,10 @@ from concurrent.futures import ThreadPoolExecutor
 from time import sleep, time
 import pickle
 
-from colossalai.utils import get_current_device
 import torch
 
-
-def get_cuda_memory_used(device: torch.device) -> int:
-    """
-    Get the free memory info of device.
-    :param device: device id
-    :type device: torch.device
-    :return: current memory usage, sized by MB
-    :rtype: int
-    """
-
-    assert device.type == 'cuda'
-
-    ret: int = torch.cuda.memory_allocated(device)
-    # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
-        torch.cuda.reset_peak_memory_stats(device)
-    return ret
+from colossalai.utils import get_current_device
+from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
 
 
 class AsyncMemoryMonitor:
@@ -97,7 +81,7 @@ class AsyncMemoryMonitor:
         while self.keep_measuring:
             max_usage = max(
                 max_usage,
-                get_cuda_memory_used(torch.device(f'cuda:{get_current_device()}')),
+                colo_cuda_memory_used(),
             )
             sleep(self.interval)
         return max_usage

@@ -44,6 +44,9 @@ class ModelDataTracer(metaclass=SingletonMeta):
         mem_use = _col_tensor_mem_usage(t)
         self._cuda_usage -= mem_use
 
+    def clear(self) -> None:
+        self._cuda_usage = 0
+
     @property
     def cpu_usage(self):
         return self._cpu_usage
