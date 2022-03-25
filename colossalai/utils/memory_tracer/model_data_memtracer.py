@@ -22,6 +22,7 @@ class ModelDataTracer(metaclass=SingletonMeta):
 
     def __init__(self) -> None:
         self._cuda_usage = 0
+        self._cpu_usage = 0
         self._start_flag = False
 
     def start(self) -> None:
@@ -30,22 +31,33 @@ class ModelDataTracer(metaclass=SingletonMeta):
     def close(self) -> None:
         self._start_flag = False
 
-    def add_tensor(self, t: torch.Tensor) -> None:
+    def add_tensor(self, t: Union[torch.Tensor, ShardedTensor]) -> None:
         if not self._start_flag:
             return
-        assert isinstance(t, torch.Tensor), f"ModelDataTracer add_tensor() should accept a torch.Tensor"
-        mem_use = _col_tensor_mem_usage(t)
-        self._cuda_usage += mem_use
+        t_payload = t.payload if isinstance(t, ShardedTensor) else t
+        mem_use = _col_tensor_mem_usage(t_payload)
+        if t_payload.device.type == 'cuda':
+            self._cuda_usage += mem_use
+        elif t_payload.device.type == 'cpu':
+            self._cpu_usage += mem_use
+        else:
+            raise TypeError
 
-    def delete_tensor(self, t: torch.Tensor) -> None:
+    def delete_tensor(self, t: Union[torch.Tensor, ShardedTensor]) -> None:
         if not self._start_flag:
             return
-        assert isinstance(t, torch.Tensor), f"ModelDataTracer delete_tensor() should accept a torch.Tensor"
-        mem_use = _col_tensor_mem_usage(t)
-        self._cuda_usage -= mem_use
+        t_payload = t.payload if isinstance(t, ShardedTensor) else t
+        mem_use = _col_tensor_mem_usage(t_payload)
+        if t_payload.device.type == 'cuda':
+            self._cuda_usage -= mem_use
+        elif t_payload.device.type == 'cpu':
+            self._cpu_usage -= mem_use
+        else:
+            raise TypeError
 
     def clear(self) -> None:
         self._cuda_usage = 0
+        self._cpu_usage = 0
 
     @property
     def cpu_usage(self):

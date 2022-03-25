@@ -18,11 +18,8 @@ def torch_adam_update(
     grad,
     exp_avg,
     exp_avg_sq,
-    loss_scale,
     use_adamw,
 ):
-    if loss_scale > 0:
-        grad.div_(loss_scale)
     bias_correction1 = 1 - beta1**step
     bias_correction2 = 1 - beta2**step
 
@@ -87,7 +84,6 @@ def test_adam(adamw, step, p_dtype, g_dtype):
                 g_copy,    # fp32 grad
                 m_copy,
                 v_copy,
-                -1,
                 adamw,
             )
         

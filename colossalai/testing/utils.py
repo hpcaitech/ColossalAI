@@ -1,6 +1,7 @@
 import re
 from typing import Callable, List, Any
 from functools import partial
+from inspect import signature
 
 
 def parameterize(argument: str, values: List[Any]) -> Callable:
@@ -105,6 +106,12 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
             If max_try is None, it will rerun foreven if exception keeps occurings
     """
 
+    def _match_lines(lines, pattern):
+        for line in lines:
+            if re.match(pattern, line):
+                return True
+        return False
+
     def _wrapper(func):
 
         def _run_until_success(*args, **kwargs):
@@ -115,14 +122,24 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
             while max_try is None or try_count < max_try:
                 try:
                     try_count += 1
-                    func(*args, **kwargs)
+                    ret = func(*args, **kwargs)
+                    return ret
                 except exception_type as e:
-                    if pattern is None or re.match(pattern, str(e)):
+                    error_lines = str(e).split('\n')
+                    if try_count < max_try and (pattern is None or _match_lines(error_lines, pattern)):
+                        print('Exception is caught, retrying...')
                         # when pattern is not specified, we always skip the exception
                         # when pattern is specified, we only skip when pattern is matched
                         continue
                     else:
+                        print('Maximum number of attempts is reached or pattern is not matched, no more retrying...')
                         raise e
+
+        # Override signature
+        # otherwise pytest.mark.parameterize will raise the following error:
+        # function does not use argumetn xxx
+        sig = signature(func)
+        _run_until_success.__signature__ = sig
 
         return _run_until_success
 

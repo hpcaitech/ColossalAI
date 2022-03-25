@@ -1,7 +1,7 @@
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
 from colossalai.utils import free_port
-
+from colossalai.testing import rerun_on_exception
 from colossalai.zero.sharded_param import ShardedTensor
 import colossalai
 
@@ -47,6 +47,7 @@ def run_tensor_move(rank):
     GLOBAL_MODEL_DATA_TRACER.close()
 
 
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_tensor_move():
     mp.spawn(run_tensor_move, nprocs=1)
 
