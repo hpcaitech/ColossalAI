@@ -147,7 +147,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         sys_cuda_mem_MB = colo_cuda_memory_used() / 1e6
         self.logger.info(f"System CUDA Memory Usage {sys_cuda_mem_MB} MB", ranks=[0])
         self.logger.info(f"Model Number Parameter {self.model_numel_tensor.numpy()[0]/1e6} M", ranks=[0])
-        self.logger = disable_existing_loggers("ZeroInitContext")
 
     def _post_init_method(self, module: torch.nn.Module):
         """
