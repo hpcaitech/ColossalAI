@@ -21,27 +21,26 @@ def matmul_2d(
     row_parallel_mode=ParallelMode.PARALLEL_2D_ROW,
     col_parallel_mode=ParallelMode.PARALLEL_2D_COL,
 ):
-    """
-    Matrix multiplication for 2D parallelism
+    r"""Matrix multiplication for 2D parallelism.
 
-    :param a: matrix :math:`A`
-    :type a: torch.tensor
-    :param b: matrix :math:`B`
-    :type b: torch.tensor
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
-    :param out_shape: shape of output tensor
-    :type out_shape: tuple
-    :param row_rank: the rank of row, defaults to None
-    :type row_rank: int, optional
-    :param col_rank: the rank of column, defaults to None
-    :type col_rank: int, optional
-    :param row_parallel_mode: row parallel mode, defaults to ParallelMode.PARALLEL_2D_ROW
-    :type row_parallel_mode: str, optional
-    :param col_parallel_mode: column parallel mode, defaults to ParallelMode.PARALLEL_2D_COL
-    :type col_parallel_mode: str, optional
-    :return: :math:`C = AB`
-    :rtype: torch.tensor
+    Args:
+        a (:class:`torch.tensor`): matrix :math:`A`.
+        b (:class:`torch.tensor`): matrix :math:`B`.
+        summa_dim (int): dimension of SUMMA fo 2D parallelism.
+        out_shape (:class:`torch.size`): shape of output tensor.
+        row_rank (int, optional): the rank of row, defaults to None.
+        col_rank (int, optional): the rank of column, defaults to None.
+        row_parallel_mode (:class:`colossalai.context.ParallelMode`, optional):
+            row parallel mode, defaults to ParallelMode.PARALLEL_2D_ROW.
+        col_parallel_mode (:class:`colossalai.context.ParallelMode`, optional):
+            column parallel mode, defaults to ParallelMode.PARALLEL_2D_COL.
+
+    Returns:
+        :class:`torch.tensor`: :math:`C = AB`.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     if row_rank is None:
         row_rank = gpc.get_local_rank(col_parallel_mode)
@@ -135,35 +134,26 @@ def classifier_2d(A: Tensor, B: Tensor, bias: Optional[Tensor], summa_dim: int, 
                   row_rank: int, col_rank: int, row_parallel_mode: ParallelMode, col_parallel_mode: ParallelMode,
                   data_parallel_rank: int, pipeline_parallel_rank: int, pipeline_parallel_size: int,
                   tensor_parallel_size: int) -> Tensor:
-    """
-    2D parallel classifier
+    r"""2D parallel classifier.
 
-    :param a: matrix :math:`A`
-    :type a: torch.tensor
-    :param b: matrix :math:`B`
-    :type b: torch.tensor
-    :param bias: matrix of bias
-    :type bias: torch.tensor, optional
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
-    :param out_shape: shape of output tensor
-    :type out_shape: tuple
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
+    Args:
+        A (:class:`torch.tensor`): matrix :math:`A`.
+        B (:class:`torch.tensor`): matrix :math:`B`.
+        bias (:class:`torch.tensor`, optional): matrix of bias.
+        summa_dim (int): dimension of SUMMA fo 2D parallelism.
+        out_shape (:class:`torch.size`): shape of output tensor.
+        row_rank (int, optional): the rank of row, defaults to None.
+        col_rank (int, optional): the rank of column, defaults to None.
+        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        data_parallel_rank (int): data parallel rank.
+        pipeline_parallel_rank (int): pipeline parallel rank
+        pipeline_parallel_size (int): pipeline parallel size.
+        tensor_parallel_size (int): tensor parallel size.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _Classifier2D.apply(A, B, bias, summa_dim, out_shape, row_rank, col_rank, row_parallel_mode,
                                col_parallel_mode, data_parallel_rank, pipeline_parallel_rank, pipeline_parallel_size,
@@ -171,33 +161,25 @@ def classifier_2d(A: Tensor, B: Tensor, bias: Optional[Tensor], summa_dim: int, 
 
 
 class Matmul_AB_2D(torch.autograd.Function):
-    """
-    Matrix multiplication for :math:`C = AB`
+    r"""Matrix multiplication for :math:`C = AB`.
 
-    :param a: matrix :math:`A`
-    :type a: torch.tensor
-    :param b: matrix :math:`B`
-    :type b: torch.tensor
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
-    :param out_shape: shape of output tensor
-    :type out_shape: tuple
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
+    Args:
+        A (:class:`torch.tensor`): matrix :math:`A`.
+        B (:class:`torch.tensor`): matrix :math:`B`.
+        summa_dim (int): dimension of SUMMA fo 2D parallelism.
+        out_shape (:class:`torch.size`): shape of output tensor.
+        row_rank (int, optional): the rank of row, defaults to None.
+        col_rank (int, optional): the rank of column, defaults to None.
+        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        data_parallel_rank (int): data parallel rank.
+        pipeline_parallel_rank (int): pipeline parallel rank
+        pipeline_parallel_size (int): pipeline parallel size.
+        tensor_parallel_size (int): tensor parallel size.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -305,33 +287,26 @@ class Matmul_AB_2D(torch.autograd.Function):
 
 
 class Matmul_ABT_2D(torch.autograd.Function):
-    """
-    Matrix multiplication for :math:`C = AB^T`
-    
-    :param a: matrix :math:`A`
-    :type a: torch.tensor
-    :param b: matrix :math:`B`
-    :type b: torch.tensor
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
-    :param out_shape: shape of output tensor
-    :type out_shape: tuple
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
+    r"""Matrix multiplication for :math:`C = AB^T`
+
+    Args:
+        A (:class:`torch.tensor`): matrix :math:`A`.
+        B (:class:`torch.tensor`): matrix :math:`B`.
+        summa_dim (int): dimension of SUMMA fo 2D parallelism.
+        out_shape (:class:`torch.size`): shape of output tensor.
+        row_rank (int, optional): the rank of row, defaults to None.
+        col_rank (int, optional): the rank of column, defaults to None.
+        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+            column parallel mode, defaults to ParallelMode.PARALLEL_2D_COL.
+        data_parallel_rank (int): data parallel rank.
+        pipeline_parallel_rank (int): pipeline parallel rank
+        pipeline_parallel_size (int): pipeline parallel size.
+        tensor_parallel_size (int): tensor parallel size.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -445,33 +420,25 @@ class Matmul_ABT_2D(torch.autograd.Function):
 
 
 class Matmul_ATB_2D(torch.autograd.Function):
-    """
-    Matrix multiplication for :math:`C = A^TB`
+    r"""Matrix multiplication for :math:`C = A^TB`.
 
-    :param a: matrix :math:`A`
-    :type a: torch.tensor
-    :param b: matrix :math:`B`
-    :type b: torch.tensor
-    :param summa_dim: dimension of SUMMA fo 2D parallelism
-    :type summa_dim: int
-    :param out_shape: shape of output tensor
-    :type out_shape: tuple
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
+    Args:
+        A (:class:`torch.tensor`): matrix :math:`A`.
+        B (:class:`torch.tensor`): matrix :math:`B`.
+        summa_dim (int): dimension of SUMMA fo 2D parallelism.
+        out_shape (:class:`torch.size`): shape of output tensor.
+        row_rank (int, optional): the rank of row, defaults to None.
+        col_rank (int, optional): the rank of column, defaults to None.
+        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        data_parallel_rank (int): data parallel rank.
+        pipeline_parallel_rank (int): pipeline parallel rank
+        pipeline_parallel_size (int): pipeline parallel size.
+        tensor_parallel_size (int): tensor parallel size.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
@@ -639,33 +606,26 @@ def add_bias_2d(input_: Tensor, bias: Tensor, output_size_per_partition: int, ro
                 row_parallel_mode: ParallelMode, col_parallel_mode: ParallelMode, skip_bias_add: bool,
                 data_parallel_rank: int, pipeline_parallel_rank: int, pipeline_parallel_size: int,
                 tensor_parallel_size: int) -> Tensor:
-    """
-    Matrix add bias: :math:`C = A + b`
+    r"""Matrix add bias: :math:`C = A + b`.
 
-    :param input_: matrix :math:`A`
-    :type input_: torch.tensor
-    :param bias: matrix :math:`b`
-    :type bias: torch.tensor
-    :param output_size_per_partition: size of ouput per partition
-    :type output_size_per_partition: int
-    :param row_rank: the rank of row
-    :type row_rank: int
-    :param col_rank: the rank of column
-    :type col_rank: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion
-    :type skip_bias_add: bool
-    :param data_parallel_rank: data parallel rank
-    :type data_parallel_rank: int
-    :param pipeline_parallel_rank: pipeline parallel rank
-    :type pipeline_parallel_rank: int
-    :param pipeline_parallel_size: pipeline parallel size
-    :type pipeline_parallel_size: int
-    :param tensor_parallel_size: tensor parallel size
-    :type tensor_parallel_size: int
+    Args:
+        input_ (:class:`torch.tensor`): matrix :math:`A`.
+        bias (:class:`torch.tensor`): matrix :math:`B`.
+        output_size_per_partition (int): size of output per partition.
+        row_rank (int, optional): the rank of row, defaults to None.
+        col_rank (int, optional): the rank of column, defaults to None.
+        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+        skip_bias_add (bool):
+            If set to ``True``, it will skip bias add for linear layer, which is preserved for kernel fusion.
+        data_parallel_rank (int): data parallel rank.
+        pipeline_parallel_rank (int): pipeline parallel rank
+        pipeline_parallel_size (int): pipeline parallel size.
+        tensor_parallel_size (int): tensor parallel size.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _Add_Bias_2D.apply(input_, bias, output_size_per_partition, row_rank, col_rank, row_parallel_mode,
                               col_parallel_mode, skip_bias_add, data_parallel_rank, pipeline_parallel_rank,
@@ -711,21 +671,19 @@ class _Layernorm_2D(torch.autograd.Function):
 
 def layernorm_2d(input_: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int, row_parallel_mode: ParallelMode,
                  col_parallel_mode: ParallelMode) -> Tensor:
-    """
-    Layernorm
+    r"""Layernorm.
 
-    :param input_: input maxtrix
-    :type input_: torch.tensor
-    :param E_x: mean
-    :type E_x: torch.tensor
-    :param Var_x: variance
-    :type Var_x: torch.tensor
-    :param hidden_size: hidden size
-    :type hidden_size: int
-    :param row_parallel_mode: row parallel mode
-    :type row_parallel_mode: colossalai.context.parallel_mode.ParallelMode
-    :param col_parallel_mode: column parallel mode
-    :type col_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    Args:
+        input_ (:class:`torch.tensor`): input matrix.
+        E_x (:class:`torch.tensor`): mean.
+        Var_x (:class:`torch.tensor`): variance.
+        hidden_size (int): hidden size.
+        row_parallel_mode (:class:`colossalai.context.ParallelMode`): row parallel mode.
+        col_parallel_mode (:class:`colossalai.context.ParallelMode`): column parallel mode.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _Layernorm_2D.apply(input_, E_x, Var_x, hidden_size, row_parallel_mode, col_parallel_mode)
 
@@ -748,27 +706,29 @@ class _AllGatherTensor2D(torch.autograd.Function):
 
 
 def all_gather_tensor_2d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
-    """
-    All gather the tensor of 2D parallelism
+    r"""All gather the tensor of 2D parallelism.
 
-    :param inputs: input maxtrix
-    :type inputs: torch.tensor
-    :param dim: dimension to gather
-    :type dim: int
-    :param parallel_mode: parallel mode
-    :type parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    Args:
+        tensor (:class:`torch.tensor`): Input tensor.
+        dim (int): Dimension to gather.
+        parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode tensor used.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _AllGatherTensor2D.apply(tensor, dim, parallel_mode)
 
 
 def split_tensor_2d(input_: Tensor, dim: int = 0) -> Tensor:
-    """Splits 2D tensor in specified dimension across cols
-    :param input_: Input tensor
-    :param dim: Specified dimension in which to split
-    :type input_: torch.Tensor
-    :type dim: int, optional
-    :return output: Splitted tensor
-    :rtype output: torch.Tensor
+    """Splits 2D tensor in specified dimension across cols.
+
+    Args:
+        input_ (:class:`torch.tensor`): Input tensor.
+        dim (int): Specified dimension in which to split.
+
+    Returns:
+        :class:`torch.tensor`: The tensor has been split.
     """
     if input_.size(dim) <= 1:
         return input_
@@ -787,11 +747,15 @@ class _ReduceTensor2D(torch.autograd.Function):
 
 
 def reduce_tensor_2d(input_: Tensor, parallel_mode: ParallelMode) -> Tensor:
-    """
-    All-reduce the input.
-    
-    :param input_: input tensor
-    :param parallel_mode: parallel mode
+    r"""All-reduce the input.
+
+    Args:
+        input_ (:class:`torch.tensor`): Input tensor.
+        parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode tensor used.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _ReduceTensor2D.apply(input_, parallel_mode)
 
@@ -809,12 +773,16 @@ class _ReduceScatterTensor2D(torch.autograd.Function):
 
 
 def reduce_scatter_tensor_2d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
-    """
-    Reduce-scatter the input.
-    
-    :param tensor: Input tensor
-    :param dim: Dimension to scatter
-    :param parallel_mode: Parallel mode
+    r"""Reduce-scatter the input.
+
+    Args:
+        tensor (:class:`torch.tensor`): Input tensor.
+        dim (int): Dimension to reduce.
+        parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode tensor used.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _ReduceScatterTensor2D.apply(tensor, dim, parallel_mode)
 
@@ -849,11 +817,11 @@ class _ReduceByBatch2D(torch.autograd.Function):
 
 
 def reduce_by_batch_2d(input_, reduce_mean: bool = False) -> Tensor:
-    """All-reduce the input from the model parallel region.
+    r"""All-reduce the input from the model parallel region.
 
-    :param input_: input maxtrix
-    :type input_: torch.tensor
-    :param reduce_mean:  If set to ``True``, it will divide the output by column parallel size, default to False
-    :type reduce_mean: bool, optional
+    Args:
+        input_ (:class:`torch.tensor`): input matrix.
+        reduce_mean (bool, optional):
+            If set to ``True``, it will divide the output by column parallel size, default to False.
     """
     return _ReduceByBatch2D.apply(input_, reduce_mean)

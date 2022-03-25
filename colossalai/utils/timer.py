@@ -25,7 +25,7 @@ class Timer:
         return time.time()
 
     def start(self):
-        """Fisrtly synchronize cuda, reset the clock and then start the timer.
+        """Firstly synchronize cuda, reset the clock and then start the timer.
         """
         self._elapsed = 0
         synchronize()
@@ -40,10 +40,11 @@ class Timer:
     def stop(self, keep_in_history: bool = False):
         """Stop the timer and record the start-stop time interval.
 
-        :param keep_in_history: Whether does it record into history each start-stop interval, defaults to False
-        :type keep_in_history: bool, optional
-        :return: Start-stop interval
-        :rtype: int
+        Args:
+            keep_in_history (bool, optional): Whether does it record into history
+                each start-stop interval, defaults to False.
+        Returns:
+            int: Start-stop interval.
         """
         synchronize()
         end_time = time.time()
@@ -57,26 +58,27 @@ class Timer:
     def get_history_mean(self):
         """Mean of all history start-stop time intervals.
 
-        :return: Mean of time intervals
-        :rtype: int
+        Returns:
+            int: Mean of time intervals
         """
         return sum(self._history) / len(self._history)
 
     def get_history_sum(self):
         """Add up all the start-stop time intervals.
 
-        :return: Sum of time intervals
-        :rtype: int
+        Returns:
+            int: Sum of time intervals.
         """
         return sum(self._history)
 
     def get_elapsed_time(self):
         """Return the last start-stop time interval.
 
-        .. note:: Use it only when timer is not in progress
+        Returns:
+            int: The last time interval.
 
-        :return: The last time interval
-        :rtype: int
+        Note:
+            Use it only when timer is not in progress
         """
         assert not self._started, 'Timer is still in progress'
         return self._elapsed
@@ -90,10 +92,10 @@ class Timer:
 
 
 class MultiTimer:
-    """An object contains multiple timers
+    """An object contains multiple timers.
 
-    :param on: Whether the timer is enabled. Default is True
-    :type on: bool, optional
+    Args:
+        on (bool, optional): Whether the timer is enabled. Default is True.
     """
 
     def __init__(self, on: bool = True):
@@ -101,10 +103,10 @@ class MultiTimer:
         self._timers = dict()
 
     def start(self, name: str):
-        """Start namely one of the timers
+        """Start namely one of the timers.
 
-        :param name: Timer's key
-        :type name: str
+        Args:
+            name (str): Timer's key.
         """
         if self._on:
             if name not in self._timers:
@@ -114,10 +116,9 @@ class MultiTimer:
     def stop(self, name: str, keep_in_history: bool):
         """Stop namely one of the timers.
 
-        :param name: Timer's key
-        :type name: str
-        :param keep_in_history: Whether does it record into history each start-stop interval
-        :type keep_in_history: bool
+        Args:
+            name (str): Timer's key.
+            keep_in_history (bool): Whether does it record into history each start-stop interval.
         """
         if self._on:
             return self._timers[name].stop(keep_in_history)
@@ -127,17 +128,19 @@ class MultiTimer:
     def get_timer(self, name):
         """Get timer by its name (from multitimer)
 
-        :param name: Timer's key
-        :return: Timer with the name you give correctly
-        :rtype: Timer
+        Args:
+            name (str): Timer's key.
+        Returns:
+            :class:`colossalai.utils.Timer`: Timer with the name you give correctly.
         """
         return self._timers[name]
 
     def reset(self, name=None):
         """Reset timers.
 
-        :param name: If name is designated, the named timer will be reset and others will not, defaults to None
-        :type name: optional
+        Args:
+            name (str, optional): If name is designated, the named timer will be reset
+                and others will not, defaults to None.
         """
         if self._on:
             if name is not None:

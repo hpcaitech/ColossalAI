@@ -8,10 +8,9 @@ class BaseGradientHandler(ABC):
     """A basic helper class to handle all-reduce operations of gradients across different parallel groups 
     before optimization.
 
-    :param model: Model where the gradients accumulate
-    :param optimizer: Optimizer for updating the parameters
-    :type model: Module
-    :type optimizer: Optimizer
+    Args:
+        model (Module): Model where the gradients accumulate.
+        optimizer (Optimizer): Optimizer for updating the parameters.
     """
     def __init__(self, model, optimizer):
         self._model = model

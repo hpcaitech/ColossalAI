@@ -12,21 +12,27 @@ from .naive_amp import convert_to_naive_amp
 
 
 def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mode: AMP_TYPE, amp_config: Config = None):
-    """A helper function to wrap training components with Torch AMP modules
+    """A helper function to wrap training components with Torch AMP modules.
 
-    :param model: your model object
-    :type model: :class:`torch.nn.Module`
-    :param optimizer: your optimizer object
-    :type optimizer: :class:`torch.optim.Optimizer`
-    :param criterion: your loss function object
-    :type criterion: :class:`torch.nn.modules.loss._Loss`
-    :param mode: amp mode
-    :type mode: :class:`colossalai.amp.AMP_TYPE`
-    :param amp_config: configuration for different amp modes
-    :type amp_config: :class:`colossalai.context.Config` or dict
+    Args:
+        param model (:class:`torch.nn.Module`): your model object.
+        optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
+        criterion (:class:`torch.nn.modules.loss._Loss`): your loss function object.
+        mode (:class:`colossalai.amp.AMP_TYPE`): amp mode.
+        amp_config (:class:`colossalai.context.Config` or dict): configuration for different amp modes
 
-    :return: (model, optimizer, criterion)
-    :rtype: Tuple
+    Returns:
+        A tuple (model, optimizer, criterion).
+
+    Note:
+        ``amp_config`` may vary from different mode you choose. You should check the corresponding amp mode
+        for more details about ``amp_config``.
+        For ``apex_amp``, please check
+        `apex_amp config <https://nvidia.github.io/apex/amp.html?highlight=apex%20amp>`_.
+        For ``naive_amp``, please check
+        `naive_amp config <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/amp/naive_amp/_fp16_optimizer.py#L42>`_.
+        For ``torch_amp``, please check
+        `torch_amp config <https://github.com/pytorch/pytorch/blob/master/torch/cuda/amp/grad_scaler.py#L97>`_.
     """
     assert isinstance(mode, AMP_TYPE), \
         f'expected the argument mode be AMP_TYPE, but got {type(mode)}'

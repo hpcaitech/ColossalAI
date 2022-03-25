@@ -10,18 +10,25 @@ def convert_to_torch_amp(model: nn.Module,
                          optimizer: Optimizer,
                          criterion: Optional[_Loss] = None,
                          amp_config: Optional[Config] = None):
-    """A helper function to wrap training components with Torch AMP modules
+    """A helper function to wrap training components with Pytorch AMP modules
 
-    :param model: your model object
-    :type model: :class:`torch.nn.Module`
-    :param optimizer: your optimizer object
-    :type optimizer: :class:`torch.optim.Optimizer`
-    :param criterion: your loss function object
-    :type criterion: :class:`torch.nn.modules.loss._Loss`, optional
-    :param amp_config: configuration for different amp modes
-    :type amp_config: :class:`colossalai.context.Config` or dict, optional
-    :return: (model, optimizer, criterion)
-    :rtype: Tuple
+    Args:
+        model (:class:`torch.nn.Module`): your model object.
+        optimizer (:class:`torch.optim.Optimizer`): your optimizer object
+        criterion (:class:`torch.nn.modules.loss._Loss`, optional): your loss function object
+        amp_config (:class:`colossalai.context.Config` or dict, optional): configuration for Pytorch AMP.
+
+    The ``amp_config`` should include parameters below:
+    ::
+
+        init_scale (float, optional, default=2.**16)
+        growth_factor (float, optional, default=2.0)
+        backoff_factor (float, optional, default=0.5)
+        growth_interval (int, optional, default=2000)
+        enabled (bool, optional, default=True)
+
+    Returns:
+        A tuple (model, optimizer, criterion)
     """
     model = TorchAMPModel(model)
     if amp_config is None:

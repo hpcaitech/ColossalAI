@@ -14,12 +14,13 @@ from typing import Optional
 
 
 def colo_cuda_memory_used(device: Optional[torch.device] = None) -> int:
-    """
-    Get the free memory info of device.
-    :param device: a torch device instance or None
-    :type device: Optional[torch.device]
-    :return: current memory usage, sized by Byte
-    :rtype: int
+    """Get the free memory info of device.
+
+    Args:
+       device (Optional[``torch.device``]): a torch device instance or None. Defaults None.
+
+    Returns:
+        int: current memory usage, sized by Byte.
     """
     if device:
         assert device.type == 'cuda'
@@ -34,7 +35,7 @@ def colo_cuda_memory_used(device: Optional[torch.device] = None) -> int:
 
 
 def bytes_to_GB(val, decimal=2):
-    """A byte-to-Gigabyte converter, defaultly using binary notation.
+    """A byte-to-Gigabyte converter, default using binary notation.
 
     :param val: X bytes to convert
     :return: X' GB
@@ -43,7 +44,7 @@ def bytes_to_GB(val, decimal=2):
 
 
 def bytes_to_MB(val, decimal=2):
-    """A byte-to-Megabyte converter, defaultly using binary notation.
+    """A byte-to-Megabyte converter, default using binary notation.
 
     :param val: X bytes to convert
     :return: X' MB
@@ -54,13 +55,13 @@ def bytes_to_MB(val, decimal=2):
 def report_memory_usage(message, logger=None, report_cpu=False):
     """Calculate and print RAM usage (in GB)
 
-    :param message: A prefix message to add in the log
-    :type message: str
-    :param logger: An instance of :class:`colossalai.logging.DistributedLogger`
-    :type logger: :class:`colossalai.logging.DistributedLogger`, optional
-    :param report_cpu: Whether to report CPU memory
-    :type report_cpu: bool, optional
-    :raises EnvironmentError: Raise error if no distributed environment has been initialized
+    Args:
+        message (str): A prefix message to add in the log.
+        logger (:class:`colossalai.logging.DistributedLogger`): The logger used to record memory information.
+        report_cpu (bool, optional): Whether to report CPU memory.
+
+    Raises:
+        EnvironmentError: Raise error if no distributed environment has been initialized.
     """
     if not gpc.is_initialized(ParallelMode.GLOBAL):
         raise EnvironmentError("No distributed environment is initialized")

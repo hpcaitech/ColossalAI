@@ -15,11 +15,16 @@ from ..utils import to_2tuple
 
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
+
     This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
     the original name is misleading as 'Drop Connect' is a different form of dropout in a separate paper...
     See discussion: https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956 ... I've opted for
     changing the layer and argument names to 'drop path' rather than mix DropConnect as a layer name and use
     'survival rate' as the argument.
+
+    Args:
+        drop_prob (float, optional): probability of dropping path, defaults 0.0.
+        training (bool, optional): whether in training progress, defaults False.
     """
     if drop_prob == 0. or not training:
         return x
@@ -35,6 +40,9 @@ class DropPath(nn.Module):
     """
     Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     Adapted from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers/drop.py
+
+    Args:
+        drop_prob (float, optional): probability of dropping path, defaults None.
     """
 
     def __init__(self, drop_prob=None):
@@ -46,7 +54,19 @@ class DropPath(nn.Module):
 
 
 class WrappedDropout(nn.Module):
-    """Same as torch.nn.Dropout. But it is wrapped with the context of seed manager.
+    r"""Same as torch.nn.Dropout. But it is wrapped with the context of seed manager. During training, randomly zeroes
+    some elements of the input tensor with probability p using samples from a Bernoulli distribution. Each
+    channel will be zeroed out independently on every forward call. Furthermore, the outputs are scaled by a factor of
+    1/(1-p) during training. This means that during evaluation the module simply computes an identity function.
+
+    Args:
+        p (float, optional): probability of an element to be zeroed, defaults 0.5.
+        inplace (bool, optional): whether to do dropout in-place, default to be False.
+        mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
 
     def __init__(self, p: float = 0.5, inplace: bool = False, mode=None):
@@ -74,8 +94,16 @@ class WrappedDropout(nn.Module):
 
 
 class WrappedDropPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
+    r"""Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     Here, it is wrapped with the context of seed manager.
+
+    Args:
+        p (float, optional): probability of dropping path, defaults 0.0.
+        mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
 
     def __init__(self, p: float = 0., mode=None):
@@ -101,27 +129,25 @@ class WrappedDropPath(nn.Module):
 
 @LAYERS.register_module
 class VanillaPatchEmbedding(nn.Module):
-    """
+    r"""
     2D Image to Patch Embedding
 
-    :param img_size: image size
-    :type img_size: int
-    :param patch_size: patch size
-    :type patch_size: int
-    :param in_chans: number of channels of input image
-    :type in_chans: int
-    :param embed_size: size of embedding
-    :type embed_size: int
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param flatten: whether to flatten output tensor, defaults to True
-    :type flatten: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
-    :param position_embed_initializer: The intializer of position embedding, defaults to zero
-    :type position_embed_initializer: typing.Callable, optional
+    Args:
+        img_size (int): image size.
+        patch_size (int): patch size.
+        in_chans (int): number of channels of input image.
+        embed_size (int): size of embedding.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        flatten (bool, optional): whether to flatten output tensor, defaults to True.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+        position_embed_initializer (:class:`typing.Callable`, optional):
+            The initializer of position embedding, defaults to zeros initializer.
+
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -174,23 +200,21 @@ class VanillaPatchEmbedding(nn.Module):
 
 @LAYERS.register_module
 class VanillaClassifier(nn.Module):
-    """
-    Dense linear classifier
+    r"""Dense linear classifier.
 
-    :param in_features: size of each input sample
-    :type in_features: int
-    :param num_classes: number of classes
-    :type num_classes: int
-    :param weight: weight of the classifier, defaults to True
-    :type weight: torch.nn.Parameter, optional
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    Args:
+        in_features (int): size of each input sample.
+        num_classes (int): number of classes.
+        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        flatten (bool, optional): whether to flatten output tensor, defaults to True.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,

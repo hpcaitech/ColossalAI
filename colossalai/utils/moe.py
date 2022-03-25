@@ -12,8 +12,8 @@ def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]
     size of every parameter. Since the parameters in data parallelism is replicated
     in each GPU, we set their ep_size to 1.
 
-    :param model: A pyTorch nn.model from which we get dict
-    :type model: torch.nn.Module
+    Args:
+        model (:class:`torch.nn.Module`): A pyTorch `nn.Module` from which we get dict.
     """
     epsize_param_dict = dict()
     for param in model.parameters():
@@ -29,10 +29,10 @@ def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]
 
 
 def sync_moe_model_param(model: nn.Module):
-    """Make sure model parameters are consistent in MoE parallel context
+    """Make sure model parameters are consistent in MoE parallel context.
 
-    :param model: A pyTorch nn.model on whose parameters you check the consistency
-    :type model: torch.nn.Module
+    Args:
+        model (:class:`torch.nn.Module`): A pyTorch model on whose parameters you check the consistency.
     """
     if is_using_ddp():
 
