@@ -8,9 +8,7 @@ colossalai.utils.memory\_tracer
 .. toctree::
    :maxdepth: 2
 
-   colossalai.utils.memory_tracer.allocator
    colossalai.utils.memory_tracer.async_memtracer
-   colossalai.utils.memory_tracer.commons
    colossalai.utils.memory_tracer.memstats_collector
    colossalai.utils.memory_tracer.model_data_memtracer
    colossalai.utils.memory_tracer.test_async_memtracer

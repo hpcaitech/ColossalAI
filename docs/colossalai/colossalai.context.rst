@@ -18,3 +18,4 @@ colossalai.context
    colossalai.context.moe_context
    colossalai.context.parallel_context
    colossalai.context.parallel_mode
+   colossalai.context.singleton_meta
