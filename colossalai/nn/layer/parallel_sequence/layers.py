@@ -24,14 +24,13 @@ class TransformerSelfAttentionRing(nn.Module):
     Self-attention layer takes input with size [b, s, h]
     and returns output of the same size.
 
-    :param hidden_size: hidden size
-    :type hidden_size: int
-    :param kv_channels: channels of key/value tensor
-    :type kv_channels: int
-    :param num_attention_heads: number of attention heads
-    :type num_attention_heads: int
-    :param attention_dropout: dropout probability for attention layer
-    :type attention_dropout: float
+    Args:
+        hidden_size (int): hidden size.
+        num_attention_heads (int): number of attention heads.
+        attention_dropout (float): dropout probability for attention layer.
+        attention_mask_func (:class:`typing.Callable`): Mask function to be applied.
+        layer_number (int): number of layers.
+
     """
 
     def __init__(self,

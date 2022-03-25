@@ -24,24 +24,23 @@ from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_g
 
 @LAYERS.register_module
 class Linear1D(torch.nn.Module):
-    """
-    Linear layer for 1D parallelism
+    r"""Linear layer for 1D parallelism.
 
-    :param in_features: size of each input sample
-    :type in_features: int
-    :param out_features: size of each output sample
-    :type out_features: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
-        which is preserved for kernel fusion, defaults to False
-    :type skip_bias_add: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        gather_output (bool, optional): Whether to call all-gather on output, defaults to False.
+        skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to False
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -88,23 +87,21 @@ class Linear1D(torch.nn.Module):
 
 @LAYERS.register_module
 class Classifier1D(ParallelLayer):
-    """RowLinear with given weight
-    Classifier of 1D parallelism
-    
-    :param in_features: size of input features
-    :type in_features: int
-    :param num_classes: number of classes in the dataset
-    :type num_classes: int
-    :param weight: weight of the classifier, defaults to True
-    :type weight: torch.nn.Parameter, optional
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    r"""RowLinear with given weight. Classifier of 1D parallelism.
+
+    Args:
+        in_features (int): size of each input sample.
+        num_classes (int): number of classes.
+        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -171,23 +168,21 @@ class Classifier1D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelClassifier1D(ParallelLayer):
-    """ColLinear with given weight
-    Classifier of 1D parallelism
-    
-    :param in_features: size of input features
-    :type in_features: int
-    :param num_classes: number of classes in the dataset
-    :type num_classes: int
-    :param weight: weight of the classifier, defaults to True
-    :type weight: torch.nn.Parameter, optional
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    r"""ColLinear with given weight. Classifier of 1D parallelism.
+
+    Args:
+        in_features (int): size of each input sample.
+        num_classes (int): number of classes.
+        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -249,30 +244,28 @@ class VocabParallelClassifier1D(ParallelLayer):
 
 @LAYERS.register_module
 class Linear1D_Col(ParallelLayer):
-    """Linear layer with column parallelism.
+    r"""Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
     its second dimension as :math:`A = [A_1, ..., A_p]`.
 
-    :param in_features: first dimension of matrix A.
-    :type in_features: int
-    :param output_size: second dimension of matrix A.
-    :type output_size: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param gather_output: If true, call all-gether on output and make Y avaiable
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
-    :type gather_output: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
-        which is preserved for kernel fusion, defaults to False
-    :type skip_bias_add: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+        skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to Fals
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -343,25 +336,23 @@ class Linear1D_Col(ParallelLayer):
 
 @LAYERS.register_module
 class Linear1D_Row(ParallelLayer):
-    """ Linear layer with row parallelism 
+    r""" Linear layer with row parallelism
 
-    :param in_features: size of each input sample
-    :type in_features: int
-    :param out_features: size of each output sample
-    :type out_features: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
-    :type parallel_input: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
-        which is preserved for kernel fusion, defaults to False
-    :type skip_bias_add: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        parallel_input (bool, optional): If set to ``True``, it's assumed that the input is split, defaults to False.
+        skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to Fals
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -432,21 +423,33 @@ class Linear1D_Row(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding1D(ParallelLayer):
-    """
-    Embedding for 1D parallelism
+    r"""Embedding for 1D parallelism.
 
-    :param num_embeddings: number of embeddings
-    :type num_embeddings: int
-    :param embedding_dim: dimension of embedding
-    :type embedding_dim: int
-    :param padding_idx: index of padding, defaults to None
-    :type padding_idx: int, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to normal initializer
-    :type weight_initializer: typing.Callable, optional
-    :param args: Args used in F.embedding
-    :param kwargs: Kwargs used in F.embedding
+    Args:
+        num_embeddings (int): number of embeddings.
+        embedding_dim (int): dimension of embedding.
+        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
+            therefore, the embedding vector at padding_idx is not updated during training,
+            i.e. it remains as a fixed “pad”, defaults to None.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            he initializer of weight, defaults to normal initializer.
+
+    The ``args`` and ``kwargs`` used in :class:`torch.nn.functional.embedding` should contain:
+    ::
+
+        max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
+                    renormalized to have norm max_norm. Note: this will modify weight in-place.
+        norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.
+        scale_grad_by_freq (bool, optional): If given, this will scale gradients by the inverse
+                    of frequency of the words in the mini-batch. Default False.
+        sparse (bool, optional): If True, gradient w.r.t. weight will be a sparse tensor. Default False.
+
+    More details about ``args`` and ``kwargs`` could be found in
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_
     """
 
     def __init__(self,
@@ -499,20 +502,33 @@ class Embedding1D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelEmbedding1D(torch.nn.Module):
-    """Embedding parallelized in the vocabulary dimension.
+    r"""Embedding parallelized in the vocabulary dimension.
 
-    :param num_embeddings: number of embeddings
-    :type num_embeddings: int
-    :param embedding_dim: dimension of embedding
-    :type embedding_dim: int
-    :param padding_idx: index of padding, defaults to None
-    :type padding_idx: int, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to normal initializer
-    :type weight_initializer: typing.Callable, optional
-    :param args: Args used in F.embedding
-    :param kwargs: Kwargs used in F.embedding
+    Args:
+        num_embeddings (int): number of embeddings.
+        embedding_dim (int): dimension of embedding.
+        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
+            therefore, the embedding vector at padding_idx is not updated during training,
+            i.e. it remains as a fixed “pad”, defaults to None.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            he initializer of weight, defaults to normal initializer.
+
+    The ``args`` and ``kwargs`` used in :class:``torch.nn.functional.embedding`` should contain:
+    ::
+
+        max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
+                    renormalized to have norm max_norm. Note: this will modify weight in-place.
+        norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.
+        scale_grad_by_freq (bool, optional): If given, this will scale gradients by the inverse
+                    of frequency of the words in the mini-batch. Default False.
+        sparse (bool, optional): If True, gradient w.r.t. weight will be a sparse tensor. Default False.
+
+    More details about ``args`` and ``kwargs`` could be found in
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
+
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -578,13 +594,11 @@ class VocabParallelEmbedding1D(torch.nn.Module):
 
 @LAYERS.register_module
 class Dropout1D(ParallelLayer):
-    """
-    Dropout layer of 1D parallelism
+    """Dropout layer of 1D parallelism.
 
-    :param p: dropout rate, defaults to 0.5
-    :type p: float, optional
-    :param inplace: If set to ``True``, will do this operation in-place, defaults tp ``False``
-    :type inplace: bool, optional
+    Args:
+        p (float, optional): probability of an element to be zeroed, defaults 0.5.
+        inplace (bool, optional): whether to do dropout in-place, default to be False.
     """
 
     def __init__(self, p: float = 0.5, inplace: bool = False):

@@ -17,18 +17,46 @@ from colossalai.trainer.hooks import BaseHook
 
 
 class Trainer:
-    """This a class tending for easy deployments of users' training and evaluation instead of
+    r"""This is a class tending for easy deployments of users' training and evaluation instead of
     writing their own scripts. It is similar with ``ignite.engine`` and ``keras.engine``, but is
     called `Trainer`.
 
-    :param engine: Engine responsible for the process function
-    :type engine: :class:`Engine`
-    :param schedule: Schedule responsible for forward and backward steps
-    :type schedule: :class:`BaseSchedule`, optional
-    :param timer: Timer used to monitor the whole training
-    :type timer: :class:`MultiTimer`, optional
-    :param logger: Logger used to record the whole training
-    :type logger: :class:`colossalai.logging.DistributedLogger`, optional
+    Args:
+        engine (:class:`Engine`): Engine responsible for the process function.
+        schedule (:class:`BaseSchedule`, optional): Schedule responsible for forward and backward steps.
+        timer (:class:`MultiTimer`, optional): Timer used to monitor the whole training.
+        logger (:class:`colossalai.logging.DistributedLogger`, optional): Logger used to record the whole training log.
+
+    Note:
+        when `schedule` is None, the ``NonPipelineSchedule`` would be used. If you would like to use pipeline,
+        you should choose ``PipelineSchedule`` or ``InterleavedPipelineSchedule`` for the `schedule`
+
+    Examples:
+        >>> # define model, criterion, optimizer, lr_scheduler, train_dataloader for your training
+        >>> model = ...
+        >>> criterion = ...
+        >>> optimizer = ...
+        >>> train_dataloader = ...
+        >>> # Initialize your engine, train_dataloader, test_dataloader, lr_scheduler
+        >>> engine, train_dataloader, _, _ = colossalai.initialize(model, optimizer, criterion)
+        >>> # Beginning training progress
+        >>> timier = ...
+        >>> logger = ...
+        >>> trainer = Trainer(engine=engine, logger=logger, schedule=schedule, timer=timier)
+        >>> # add hooks you would like to use here.
+        >>> hook_list = []
+        >>> trainer.fit(
+        >>>    train_dataloader=train_dataloader,
+        >>>    epochs=gpc.config.NUM_EPOCHS,
+        >>>    test_interval=1,
+        >>>    hooks=hook_list,
+        >>>    display_progress=True,
+        >>>    return_output_label=False
+        >>>    )
+
+    More examples and details could be found in
+    `Training with engine and trainer <https://www.colossalai.org/docs/basics/engine_trainer>`_
+    and `ColossalAI-Examples <https://github.com/hpcaitech/ColossalAI-Examples/tree/main>`_.
     """
     def __init__(
             self,
@@ -108,20 +136,19 @@ class Trainer:
     def _set_current_step(self, epoch: int):
         """Sets current step number.
 
-        :param epoch: Step number to be set
-        :type epoch: int
+        Args:
+            epoch (int): Step number to be set.
         """
         self._cur_step = epoch * self._steps_per_epoch
 
     def _call_timer(self, action: str, item: str, *args, **kwargs) -> None:
         """Call timer funciton with a given timer name.
 
-        :param action: Function to be called on timer
-        :type action: str
-        :param item: Name of the timer
-        :type item: str
-        :param args: args used for action function
-        :param kwargs: kwargs used for action function
+        Args:
+            action (str): Function to be called on timer.
+            item (str): Name of the timer.
+            args (list): args used for action function.
+            kwargs (dict): kwargs used for action function.
         """
 
         if self._timer is not None:
@@ -134,10 +161,9 @@ class Trainer:
     def _call_hooks(self, func, output=None):
         """Calls specific hooks in the current time point.
 
-        :param func: A string represents the time point
-        :param output: Output of the model after running a iteration or None in any other time points
-        :type func: str
-        :type output: optional
+        Args:
+            func (str): A string represents the time point.
+            output (Any, optional): Output of the model after running an iteration or None in any other time points.
         """
         # Only after iter hook will receive output
         for hook in self.hooks:
@@ -273,25 +299,17 @@ class Trainer:
             display_progress: bool = False,
             return_output_label: bool = True,
     ):
-        """Trains the model to fit training data.
+        r"""Trains the model to fit training data.
 
-        :param train_dataloader: DataLoader in training
-        :param epochs: Maximum number of epoches
-        :param max_steps: Maximum number of running iterations
-        :param test_dataloader: DataLoader in testing
-        :param test_interval: Interval of testing
-        :param hooks: A list of hooks used in training
-        :param display_progress: If True, the training progress will be printed
-        :param return_output_label: If True, the output of model and the label will be returned
-
-        :type train_dataloader: DataLoader
-        :type epochs: int
-        :type max_steps: int, optional
-        :type test_dataloader: DataLoader, optional
-        :type test_interval: int, optional
-        :type hooks: list, optional
-        :type display_progress: bool, optional
-        :type return_output_label: bool, optional
+        Args:
+            train_dataloader (:class:`torch.utils.data.DataLoader`): DataLoader for training.
+            epochs (int): Maximum number of epochs.
+            max_steps (int, optional): Maximum number of running iterations.
+            test_dataloader (:class:`torch.utils.data.DataLoader`, optional): DataLoader for validation.
+            test_interval (int, optional): Interval of validation
+            hooks (list[`BaseHook <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>`_],
+                optional): A list of hooks used in training.
+            display_progress (bool, optional): If True, a progress bar will be displayed.
         """
 
         # set epochs and steps, consider gradient accumulation
@@ -374,15 +392,12 @@ class Trainer:
     ):
         """Evaluates the model with testing data.
 
-        :param test_dataloader: DataLoader in testing
-        :param hooks: A list of hooks used in evaluation
-        :param display_progress: If True, the evaluation progress will be printed
-        :param return_output_label: If True, the output of model and the label will be returned
-
-        :type test_dataloader: DataLoader
-        :type hooks: list, optional
-        :type display_progress: bool, optional
-        :type return_output_label: bool
+        Args:
+            test_dataloader (:class:`torch.utils.data.DataLoader`, optional): Dataloader for testing.
+            hooks (list, optional): A list of hooks used in evaluation. Defaults to None.
+            display_progress (bool, optional): If True, the evaluation progress will be printed. Defaults to False.
+            return_output_label (bool, optional): If True, the output of model and the label
+                will be returned. Defaults to True.
         """
         # set display
         display_progress = self._should_display_progress(display_progress)
@@ -418,10 +433,11 @@ class Trainer:
     def predict(self, data: Union[Tensor, List[Tensor]]):
         """Uses trained model to make a prediction for a tensor or a tensor list.
 
-        :param data: Data as the input
-        :type data: Union[Tensor, List[Tensor]
-        :return: The output of model as the prediction
-        :rtype: Tensor
+        Args:
+            data (Union[:class:`torch.tensor`, List[:class:`torch.tensor`]]): Data as the input.
+
+        Returns:
+            :class:`torch.tensor`: The output of model as the prediction
         """
         # predict without labels
         if isinstance(data, (list, tuple)):

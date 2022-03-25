@@ -23,8 +23,13 @@ except ImportError:
 class DistributedLogger:
     """This is a distributed event logger class essentially based on :class:`logging`.
 
-    :param name: The name of the logger
-    :type name: str
+    Args:
+        name (str): The name of the logger.
+
+    Note:
+        The parallel_mode used in ``info``, ``warning``, ``debug`` and ``error``
+        should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
     __instances = dict()
@@ -33,10 +38,10 @@ class DistributedLogger:
     def get_instance(name: str):
         """Get the unique single logger instance based on name.
 
-        :param name: The name of the logger
-        :type name: str
-        :return: A DistributedLogger object
-        :rtype: DistributedLogger
+        Args:
+            name (str): The name of the logger.
+        Returns:
+            DistributedLogger: A DistributedLogger object
         """
         if name in DistributedLogger.__instances:
             return DistributedLogger.__instances[name]
@@ -73,8 +78,8 @@ class DistributedLogger:
     def set_level(self, level: str):
         """Set the logging level
 
-        :param level: Can only be INFO, DEBUG, WARNING and ERROR
-        :type level: str
+        Args:
+            level (str): Can only be INFO, DEBUG, WARNING and ERROR.
         """
         self._check_valid_logging_level(level)
         self._logger.setLevel(getattr(logging, level))
@@ -82,14 +87,11 @@ class DistributedLogger:
     def log_to_file(self, path: Union[str, Path], mode: str = 'a', level: str = 'INFO', suffix: str = None):
         """Save the logs to file
 
-        :param path: The file to save the log
-        :type path: A string or pathlib.Path object
-        :param mode: The mode to write log into the file
-        :type mode: str
-        :param level: Can only be INFO, DEBUG, WARNING and ERROR
-        :type level: str
-        :param suffix: The suffix string of log's name
-        :type suffix: str
+        Args:
+            path (A string or pathlib.Path object): The file to save the log.
+            mode (str): The mode to write log into the file.
+            level (str): Can only be INFO, DEBUG, WARNING and ERROR.
+            suffix (str): The suffix string of log's name.
         """
         assert isinstance(path, (str, Path)), \
             f'expected argument path to be type str or Path, but got {type(path)}'
@@ -131,12 +133,11 @@ class DistributedLogger:
     def info(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
         """Log an info message.
 
-        :param message: The message to be logged
-        :type message: str
-        :param parallel_mode: The parallel mode used for logging. Defaults to ParallelMode.GLOBAL
-        :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
-        :param ranks: List of parallel ranks
-        :type ranks: list
+        Args:
+            message (str): The message to be logged.
+            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
+            ranks (List): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())
         self._log('info', message_prefix, parallel_mode, ranks)
@@ -145,12 +146,11 @@ class DistributedLogger:
     def warning(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
         """Log a warning message.
 
-        :param message: The message to be logged
-        :type message: str
-        :param parallel_mode: The parallel mode used for logging. Defaults to ParallelMode.GLOBAL
-        :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
-        :param ranks: List of parallel ranks
-        :type ranks: list
+        Args:
+            message (str): The message to be logged.
+            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
+            ranks (List): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())
         self._log('warning', message_prefix, parallel_mode, ranks)
@@ -159,12 +159,11 @@ class DistributedLogger:
     def debug(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
         """Log a debug message.
 
-        :param message: The message to be logged
-        :type message: str
-        :param parallel_mode: The parallel mode used for logging. Defaults to ParallelMode.GLOBAL
-        :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
-        :param ranks: List of parallel ranks
-        :type ranks: list
+        Args:
+            message (str): The message to be logged.
+            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
+            ranks (List): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())
         self._log('debug', message_prefix, parallel_mode, ranks)
@@ -173,12 +172,11 @@ class DistributedLogger:
     def error(self, message: str, parallel_mode: ParallelMode = ParallelMode.GLOBAL, ranks: list = None):
         """Log an error message.
 
-        :param message: The message to be logged
-        :type message: str
-        :param parallel_mode: The parallel mode used for logging. Defaults to ParallelMode.GLOBAL
-        :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`
-        :param ranks: List of parallel ranks
-        :type ranks: list
+        Args:
+            message (str): The message to be logged.
+            parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`):
+                The parallel mode used for logging. Defaults to ParallelMode.GLOBAL.
+            ranks (List): List of parallel ranks.
         """
         message_prefix = "{}:{} {}".format(*self.__get_call_info())
         self._log('error', message_prefix, parallel_mode, ranks)

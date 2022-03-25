@@ -17,12 +17,11 @@ import math
 class MemTracerOpHook(BaseOpHook):
     """
     Collect GPU memory usage information
-    :param warmup: This parameter indicates how many iterations to truncate before profiling, defaults to 50
-    :type warmup: int
-    :param refreshrate: This parameter decides the frequency of write file, defaults to 10
-    :type refreshrate: int
-    :param data_prefix: The prefix of the stats data file, defaults to "memstats"
-    :type data_prefix: string
+
+    Args:
+        warmup (int): This parameter indicates how many iterations to truncate before profiling, defaults to 50.
+        refreshrate (int): This parameter decides the frequency of write file, defaults to 10.
+        data_prefix (string): The prefix of the stats data file, defaults to "memstats".
     """
 
     def __init__(self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"):
