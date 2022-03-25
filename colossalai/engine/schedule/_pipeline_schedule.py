@@ -12,7 +12,6 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import switch_virtual_pipeline_parallel_rank
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero import ShardedModel, ShardedOptimizer
 from colossalai.zero.sharded_model import ShardedModelV2
 
 from ._base_schedule import BaseSchedule
@@ -92,8 +91,6 @@ class PipelineSchedule(BaseSchedule):
 
     def pre_processing(self, engine):
         # TODO: remove this after testing new zero with pipeline parallelism
-        if isinstance(engine.optimizer, ShardedOptimizer) or isinstance(engine.model, ShardedModel):
-            raise TypeError("Pipeline schedule is currently not compatible with ZeRO")
         model = engine.model
         if isinstance(model, (NaiveAMPModel, ShardedModelV2)):
             self.dtype = torch.half
