@@ -10,7 +10,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_model._zero3_utils import cast_tensor_to_fp32
+from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
