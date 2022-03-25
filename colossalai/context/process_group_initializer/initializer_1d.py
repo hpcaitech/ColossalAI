@@ -31,7 +31,7 @@ class Initializer_1D(ProcessGroupInitializer):
 
         Returns:
             Tuple: 1D tensor parallelism's information in a
-                tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
+            tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
         """
         local_rank = None
         ranks_in_group = None
