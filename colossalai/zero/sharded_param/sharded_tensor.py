@@ -56,7 +56,10 @@ class ShardedTensor(object):
         return self._origin_dtype
 
     def to(self, device: torch.device):
-        self._payload = self._payload.to(device)
+        raise RuntimeError("Use colo_model_tensor_move install of call .to() on ShardedTensor")
+
+    def to_(self, device: torch.device):
+        raise RuntimeError("Use colo_model_tensor_move install of call .to_() on ShardedTensor")
 
     @property
     def shape(self):
