@@ -9,6 +9,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.utils.memory_utils.utils import colo_model_tensor_clone
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
@@ -160,7 +161,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Since p.data is fp32 and p.col_attr.sharded_data_tensor is fp16
 
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-                p.col_attr.sharded_data_tensor.reset_payload(p.half().to(torch.cuda.current_device()))
+                p.col_attr.sharded_data_tensor.reset_payload(
+                    colo_model_tensor_clone(p.half(), torch.cuda.current_device()))
 
                 if not is_param_sharded:
                     # We gather full fp16 param here
