@@ -64,18 +64,13 @@ class PostBackwardFunction(torch.autograd.Function):
 def register_ophooks_recursively(module: torch.nn.Module, ophook_list: List[BaseOpHook] = None, name: str = ""):
     r"""Recursilvely register pre/post hooks for all submodules in the module in FWD and BWD."""
     assert isinstance(module, torch.nn.Module)
-    has_children = False
+
+    # Add hooks for submodules
     for child_name, child in module.named_children():
         register_ophooks_recursively(child, ophook_list, name + child_name)
-        has_children = True
 
-    # Early return on modules with no parameters or buffers that
-    # are not in their children.
-    if (len(list(module.named_parameters(recurse=False))) == 0 and len(list(module.named_buffers(recurse=False))) == 0):
-        return
-
-    # return if the module has not childern.
-    if has_children:
+    # Early return on modules with no parameters.
+    if len(list(module.parameters(recurse=False))) == 0:
         return
 
     if ophook_list is not None:
