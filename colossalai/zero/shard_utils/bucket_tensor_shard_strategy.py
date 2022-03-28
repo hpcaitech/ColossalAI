@@ -7,7 +7,6 @@ from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 from torch._utils import _flatten_dense_tensors as flatten
 
 from .tensor_shard_strategy import TensorShardStrategy
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
 
 class BucketTensorShardStrategy(TensorShardStrategy):
@@ -18,8 +17,6 @@ class BucketTensorShardStrategy(TensorShardStrategy):
     """
 
     def gather(self, tensor_list: List[ShardedTensor], process_group: Optional[dist.ProcessGroup] = None):
-        for t in tensor_list:
-            GLOBAL_MODEL_DATA_TRACER.delete_tensor(t)
 
         tensor_list: List[ShardedTensor] = [t for t in tensor_list if t.is_sharded]
         if len(tensor_list) == 0:
@@ -50,6 +47,3 @@ class BucketTensorShardStrategy(TensorShardStrategy):
             t.reset_payload(gathered_payload)
             t.is_sharded = False
             offset += tensor_numels[i]
-
-        for t in tensor_list:
-            GLOBAL_MODEL_DATA_TRACER.add_tensor(t)
