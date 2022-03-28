@@ -14,16 +14,13 @@ from colossalai.logging import get_dist_logger
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import (colo_cuda_memory_capacity,
-                                                 colo_model_data_move_to_cpu,
-                                                 colo_model_tensor_clone)
+from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
-from ._utils import (cast_float_arguments, cast_tensor_to_fp16,
-                     cast_tensor_to_fp32, chunk_and_pad, free_storage,
+from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
 
 
