@@ -4,8 +4,6 @@ from typing import Optional
 import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.utils.memory_tracer.model_data_memtracer import \
-    GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
@@ -130,7 +128,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         The Callback function when entering the context
         """
         self.logger = get_dist_logger("ZeroInitContext")
-        GLOBAL_MODEL_DATA_TRACER.start()
 
     def _post_context_exec(self):
         """The callback function when exiting context.
@@ -141,12 +138,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                 param.col_attr.remove_torch_payload()
 
             del self.initialized_param_list
-        GLOBAL_MODEL_DATA_TRACER.close()
-        model_data_cuda_mem_MB = GLOBAL_MODEL_DATA_TRACER.cuda_usage / 1e6
-        self.logger.info(f"Existing ZeRO Context.\nModel Data CUDA Memory {model_data_cuda_mem_MB} MB", ranks=[0])
-        sys_cuda_mem_MB = colo_cuda_memory_used() / 1e6
-        self.logger.info(f"System CUDA Memory Usage {sys_cuda_mem_MB} MB", ranks=[0])
-        self.logger.info(f"Model Number Parameter {self.model_numel_tensor.numpy()[0]/1e6} M", ranks=[0])
 
     def _post_init_method(self, module: torch.nn.Module):
         """
@@ -176,9 +167,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             param.col_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
 
             self.initialized_param_list.append(param)
-
-            GLOBAL_MODEL_DATA_TRACER.add_tensor(param.col_attr.sharded_data_tensor)
-
             if self.shard_param:
                 self.shard_strategy.shard([param.col_attr.sharded_data_tensor], self.dp_process_group)
 

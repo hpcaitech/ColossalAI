@@ -70,7 +70,6 @@ def _run_shard_param_v2(rank, world_size, port):
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2
     assert cuda_mem_use == 0
-    print(f'cuda_mem_use {cuda_mem_use} cpu_mem_use {cpu_mem_use}')
 
 
 @pytest.mark.dist
