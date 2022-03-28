@@ -41,10 +41,10 @@ def _run_step(model, optimizer, data, label, criterion, enable_autocast=False):
     optimizer.step()
 
 
-@parameterize("cpu_offload", [False])
-@parameterize("use_cpuadam", [False])
-@parameterize("shard_strategy_class", [TensorShardStrategy])
-@parameterize("gpu_margin_mem_ratio", [0.0])
+@parameterize("cpu_offload", [True, False])
+@parameterize("use_cpuadam", [True, False])
+@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
+@parameterize("gpu_margin_mem_ratio", [0.0, 0.7])
 def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, gpu_margin_mem_ratio):
     test_models = ['repeated_computed_layers', 'resnet18', 'bert']
     shard_strategy = shard_strategy_class()
