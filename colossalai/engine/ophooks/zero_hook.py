@@ -5,8 +5,6 @@ import torch.distributed as dist
 from colossalai.registry import OPHOOKS
 from colossalai.utils import get_current_device
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
-from colossalai.utils.memory_tracer.model_data_memtracer import \
-    GLOBAL_MODEL_DATA_TRACER
 from colossalai.zero.shard_utils import BaseShardStrategy
 
 from ._base_ophook import BaseOpHook

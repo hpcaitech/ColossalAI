@@ -11,6 +11,7 @@ from colossalai.engine.ophooks import register_ophooks_recursively
 from colossalai.engine.ophooks.zero_hook import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
+from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory_utils.utils import colo_model_data_move_to_cpu, colo_cuda_memory_capacity, colo_model_tensor_clone
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.zero.shard_utils import BaseShardStrategy
@@ -83,6 +84,7 @@ class ShardedModelV2(nn.Module):
         # Init Memory Statistics Collector
         self._use_memory_tracer = use_memory_tracer
         if self._use_memory_tracer:
+            GLOBAL_MODEL_DATA_TRACER.register_model(self)
             self._memstats_collector = MemStatsCollector()
         else:
             self._memstats_collector = None
@@ -147,14 +149,16 @@ class ShardedModelV2(nn.Module):
     def _update_memstats(self):
         if self._iter_cnter == 0 and self._memstats_collector:
             self._memstats_collector.finish_collection()
+            self.logger.info(f'model data cuda, {self._memstats_collector.model_data_cuda}')
+            self.logger.info(f'non-model data cuda, {self._memstats_collector.non_model_data_cuda}')
+
         if self._memstats_collector:
             self._memstats_collector.reset_sampling_cnter()
             # cuda margin space = cuda mem capacity - max fwd/bwd cuda mem used.
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
-            self._cuda_margin_space = colo_cuda_memory_capacity() - max(self._memstats_collector._overall_cuda)
-
+            self._cuda_margin_space = colo_cuda_memory_capacity() - max(self._memstats_collector.overall_cuda)
         self._iter_cnter += 1
 
     @torch.no_grad()
