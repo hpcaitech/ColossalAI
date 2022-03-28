@@ -1,19 +1,28 @@
+from psutil import cpu_count
 import torch
 from colossalai.utils import get_current_device
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
-from typing import Union
+from typing import Tuple, Union
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
 
-def col_tensor_mem_usage(t: Union[torch.Tensor, ShardedTensor]) -> int:
-    if isinstance(t, ShardedTensor):
-        target = t.payload
+def col_tensor_mem_usage(tensor: Union[torch.Tensor, ShardedTensor]) -> Tuple[int, int]:
+    if isinstance(tensor, ShardedTensor):
+        t = tensor.payload
     else:
-        target = t
-    return target.numel() * target.element_size()
+        t = tensor
+
+    cuda_use, cpu_use = 0, 0
+
+    mem_use = t.numel() * t.element_size()
+    if t.device.type == 'cuda':
+        cuda_use += mem_use
+    elif t.device.type == 'cpu':
+        cpu_use += mem_use
+
+    return cuda_use, cpu_use
 
 
 def colo_set_process_memory_fraction(ratio: float) -> None:
@@ -60,9 +69,7 @@ def colo_model_data_tensor_move(src_t: Union[ShardedTensor, torch.Tensor], tgt_t
         tgt_t_payload = tgt_t.data
     tgt_dev = tgt_t_payload.device
 
-    GLOBAL_MODEL_DATA_TRACER.delete_tensor(src_t_payload)
     tgt_t_payload.copy_(src_t_payload)
-    GLOBAL_MODEL_DATA_TRACER.add_tensor(tgt_t_payload)
 
     # remove payload of src_t
     if isinstance(src_t, ShardedTensor):
@@ -92,11 +99,7 @@ def colo_model_data_tensor_move_inline(t: Union[ShardedTensor, torch.Tensor],
     # deal with torch.device('cpu') and torch.device('cpu:0)
     if t_payload.device.type == target_device.type:
         return
-    if use_tracer:
-        GLOBAL_MODEL_DATA_TRACER.delete_tensor(t_payload)
     t_payload.data = t_payload.data.to(target_device)
-    if use_tracer:
-        GLOBAL_MODEL_DATA_TRACER.add_tensor(t_payload)
 
 
 def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]) -> None:
@@ -119,9 +122,7 @@ def colo_model_data_move_to_cpu(t: Union[ShardedTensor, torch.Tensor]) -> None:
         return
 
     # TODO() optimize the tensor moving with non-blocking
-    GLOBAL_MODEL_DATA_TRACER.delete_tensor(t_payload)
     t_payload.data = t_payload.data.cpu()
-    GLOBAL_MODEL_DATA_TRACER.add_tensor(t_payload)
 
 
 def colo_model_tensor_clone(t: Union[ShardedTensor, torch.Tensor], target_device: torch.device) -> torch.Tensor:
@@ -137,5 +138,4 @@ def colo_model_tensor_clone(t: Union[ShardedTensor, torch.Tensor], target_device
     t_payload = t.payload if isinstance(t, ShardedTensor) else t
 
     ret = t_payload.to(target_device)
-    GLOBAL_MODEL_DATA_TRACER.add_tensor(ret)
     return ret

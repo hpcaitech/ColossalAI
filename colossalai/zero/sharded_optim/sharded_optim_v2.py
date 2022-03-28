@@ -10,7 +10,6 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from torch import Tensor
@@ -141,11 +140,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         def update_mem_use(t):
             nonlocal cuda_use
             nonlocal cpu_use
-            mem_use = col_tensor_mem_usage(t)
-            if t.device.type == 'cuda':
-                cuda_use += mem_use
-            elif t.device.type == 'cpu':
-                cpu_use += mem_use
+            t_cuda_use, t_cpu_use = col_tensor_mem_usage(t)
+            cuda_use += t_cuda_use
+            cpu_use += t_cpu_use
 
         for _, p_fp32 in self.master_params:
             update_mem_use(p_fp32)
@@ -257,9 +254,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         # We must set grad to None
         # Because we will judge whether local grad accumulation
         # is enabled by wheter grad is None
-        for group in self.param_groups:
-            for p in group['params']:
-                GLOBAL_MODEL_DATA_TRACER.delete_tensor(p.grad)
         self.optim.zero_grad(set_to_none=True)
 
     def sync_grad(self):
