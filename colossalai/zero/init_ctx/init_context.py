@@ -4,8 +4,7 @@ from typing import Optional
 import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
+from colossalai.logging import get_dist_logger
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
