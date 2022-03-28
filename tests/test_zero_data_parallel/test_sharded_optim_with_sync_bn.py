@@ -10,11 +10,11 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.testing import rerun_on_exception
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import TensorShardStrategy
 from torchvision.models import resnet50
-from colossalai.testing import rerun_on_exception
 
 
 def run_dist(rank, world_size, port):
@@ -30,8 +30,7 @@ def run_dist(rank, world_size, port):
                       port=port,
                       backend='nccl')
 
-    with ZeroInitContext(convert_fp16=True,
-                         target_device=torch.cuda.current_device(),
+    with ZeroInitContext(target_device=torch.cuda.current_device(),
                          shard_strategy=gpc.config.zero.model_config.shard_strategy,
                          shard_param=True):
         model = resnet50()
