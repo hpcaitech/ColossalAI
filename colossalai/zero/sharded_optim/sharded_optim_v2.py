@@ -106,7 +106,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                                              hysteresis=hysteresis,
                                              max_scale=max_scale)
         self._found_overflow: Tensor = torch.FloatTensor([0]).to(torch.cuda.current_device())
-        self._logger = get_dist_logger()
+        self._logger = get_dist_logger("ShardedOptimizerV2")
 
         # Store fp32 param shards
         self.master_params: Dict[Parameter, Tensor] = {}
@@ -126,6 +126,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # So we gather here
                     self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
 
+        self._logger.info(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
+                          ranks=[0])
+
     def get_memory_usage(self) -> Tuple[int, int]:
         """
         Get the memory usage of the optimizer. Including master_params (param fp32),
@@ -144,11 +147,11 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             cuda_use += t_cuda_use
             cpu_use += t_cpu_use
 
-        for _, p_fp32 in self.master_params:
+        for _, p_fp32 in self.master_params.items():
             update_mem_use(p_fp32)
         for group in self.optim.param_groups:
             for p in group['params']:
-                state = self.state[p]
+                state = self.optim.state[p]
                 if 'exp_avg' in state:
                     update_mem_use(state['exp_avg'])
                 if 'exp_avg_sq' in state:
@@ -179,8 +182,13 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
 
+        self._logger.info(f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
+                          ranks=[0])
+
         ret = self.optim.step(*args, **kwargs)
 
+        self._logger.info(f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
+                          ranks=[0])
         # Copy master param data (fp32) to payload of col_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
