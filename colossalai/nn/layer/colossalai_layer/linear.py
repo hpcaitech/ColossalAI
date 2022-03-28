@@ -1,4 +1,5 @@
 import math
+import inspect
 from typing import Callable
 
 from colossalai.utils import get_current_device
@@ -66,27 +67,16 @@ class Linear(nn.Module):
             if self.layer.bias is not None:
                 bias_initializer(self.layer.bias, fan_in=in_features)
         else:
+            kwargs['in_features'] = in_features
+            kwargs['out_features'] = out_features
+            kwargs['bias'] = bias
+            kwargs['dtype'] = dtype
+            kwargs['weight_initializer'] = weight_initializer
+            kwargs['bias_initializer'] = bias_initializer
             if tensor_parallel == '1d': # gather_out arg is available
-                self.layer = _parallel_linear[tensor_parallel](
-                    in_features,
-                    out_features,
-                    bias=bias,
-                    dtype=dtype,
-                    gather_output = gather_out,
-                    weight_initializer=weight_initializer,
-                    bias_initializer=bias_initializer,
-                    **kwargs,
-                )
-            else:
-                self.layer = _parallel_linear[tensor_parallel](
-                    in_features,
-                    out_features,
-                    bias=bias,
-                    dtype=dtype,
-                    weight_initializer=weight_initializer,
-                    bias_initializer=bias_initializer,
-                    **kwargs,
-                )
+                kwargs['gather_output'] = gather_output
+            
+            self.layer = _parallel_linear[tensor_parallel](**kwargs)
 
     @property
     def weight(self):
