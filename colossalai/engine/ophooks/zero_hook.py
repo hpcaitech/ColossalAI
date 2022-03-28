@@ -31,11 +31,11 @@ class ZeroHook(BaseOpHook):
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
         tensor_list = []
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.sharded_data_tensor)
         self.shard_strategy.gather(tensor_list, self.process_group)
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             colo_model_data_tensor_move_inline(param.col_attr.sharded_data_tensor, self.computing_device)
             param.data = param.col_attr.sharded_data_tensor.payload
 
@@ -44,20 +44,20 @@ class ZeroHook(BaseOpHook):
 
     def post_fwd_exec(self, module: torch.nn.Module, *args):
         tensor_list = []
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.sharded_data_tensor)
         self.shard_strategy.shard(tensor_list, self.process_group)
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             param.col_attr.remove_torch_payload()
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
         tensor_list = []
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.sharded_data_tensor)
         self.shard_strategy.gather(tensor_list, self.process_group)
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             colo_model_data_tensor_move_inline(param.col_attr.sharded_data_tensor, self.computing_device)
             param.data = param.col_attr.sharded_data_tensor.payload
             # Store local accumulated grad shard
@@ -77,11 +77,11 @@ class ZeroHook(BaseOpHook):
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
         tensor_list = []
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.sharded_data_tensor)
         self.shard_strategy.shard(tensor_list, self.process_group)
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             param.col_attr.remove_torch_payload()
 
     def pre_iter(self):

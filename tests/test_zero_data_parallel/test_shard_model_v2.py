@@ -24,7 +24,7 @@ from common import CONFIG, check_grads_padding, run_fwd_bwd
 @parameterize("enable_autocast", [True])
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
 def run_model_test(enable_autocast, shard_strategy_class):
-    test_models = ['repeated_computed_layers', 'resnet18', 'bert']
+    test_models = ['repeated_computed_layers', 'resnet18', 'bert', 'no_leaf_module']
     shard_strategy = shard_strategy_class()
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
