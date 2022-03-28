@@ -1,15 +1,8 @@
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
+from colossalai.utils.memory_utils.utils import col_tensor_mem_usage
 import torch
 from typing import Union
-
-
-def _col_tensor_mem_usage(t: Union[torch.Tensor, ShardedTensor]) -> int:
-    if isinstance(t, ShardedTensor):
-        target = t.payload
-    else:
-        target = t
-    return target.numel() * target.element_size()
 
 
 class ModelDataTracer(metaclass=SingletonMeta):
@@ -35,7 +28,7 @@ class ModelDataTracer(metaclass=SingletonMeta):
         if not self._start_flag:
             return
         t_payload = t.payload if isinstance(t, ShardedTensor) else t
-        mem_use = _col_tensor_mem_usage(t_payload)
+        mem_use = col_tensor_mem_usage(t_payload)
         if t_payload.device.type == 'cuda':
             self._cuda_usage += mem_use
         elif t_payload.device.type == 'cpu':
@@ -47,7 +40,7 @@ class ModelDataTracer(metaclass=SingletonMeta):
         if not self._start_flag:
             return
         t_payload = t.payload if isinstance(t, ShardedTensor) else t
-        mem_use = _col_tensor_mem_usage(t_payload)
+        mem_use = col_tensor_mem_usage(t_payload)
         if t_payload.device.type == 'cuda':
             self._cuda_usage -= mem_use
         elif t_payload.device.type == 'cpu':

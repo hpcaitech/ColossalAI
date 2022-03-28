@@ -8,6 +8,14 @@ from typing import Union
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
 
+def col_tensor_mem_usage(t: Union[torch.Tensor, ShardedTensor]) -> int:
+    if isinstance(t, ShardedTensor):
+        target = t.payload
+    else:
+        target = t
+    return target.numel() * target.element_size()
+
+
 def colo_set_process_memory_fraction(ratio: float) -> None:
     """colo_set_process_memory_fraction 
 

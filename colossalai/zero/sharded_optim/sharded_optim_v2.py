@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import Dict, Optional
+from os import stat
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -17,7 +18,7 @@ from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move
+from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, col_tensor_mem_usage
 
 
 class OptimState(Enum):
@@ -27,14 +28,20 @@ class OptimState(Enum):
 
 class ShardedOptimizerV2(ColossalaiOptimizer):
     """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO).
+
     By default the ZeRO optimizer stage 3 offload Optimizer States on CPU.
+    
     We apply the Device-aware Operator Placement technique for OS placement from the following paper.
+
     PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
     https://arxiv.org/abs/2108.05818
+    
     GPU margin space is the remaining space after removing peak non-model data from the overall GPU memory,
     which is detected by a runtime memory tracer. 
+    
     We place as many OS chunks in the margin space as possible. 
-    The size of margin space can be controlled by `gpu_margin_mem_ratio`
+    
+    The size of margin space can be controlled by `gpu_margin_mem_ratio`。
     If it is set as 0.0, it is the same as classical ZeRO optimizer.
 
     NOTE() You must use `ShardedOptimizerV2` with `ShardedModelV2`.
@@ -119,6 +126,38 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # In this branch, there's no need to shard param
                     # So we gather here
                     self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
+
+    def get_memory_usage(self) -> Tuple[int, int]:
+        """
+        Get the memory usage of the optimizer. Including master_params (param fp32),
+        momentum (self.state[p]['exp_avg']) variance (self.state[p]['exp_avg_sq'])
+
+        Returns:
+            Tuple[int, int]: cuda/cpu memory usage in Byte.
+        """
+        cuda_use = 0
+        cpu_use = 0
+
+        def update_mem_use(t):
+            nonlocal cuda_use
+            nonlocal cpu_use
+            mem_use = col_tensor_mem_usage(t)
+            if t.device.type == 'cuda':
+                cuda_use += mem_use
+            elif t.device.type == 'cpu':
+                cpu_use += mem_use
+
+        for _, p_fp32 in self.master_params:
+            update_mem_use(p_fp32)
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                if 'exp_avg' in state:
+                    update_mem_use(state['exp_avg'])
+                if 'exp_avg_sq' in state:
+                    update_mem_use(state['exp_avg_sq'])
+
+        return cuda_use, cpu_use
 
     def step(self, *args, **kwargs):
         self._maybe_move_fp32_shards()
