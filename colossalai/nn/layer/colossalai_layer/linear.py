@@ -56,6 +56,7 @@ class Linear(nn.Module):
                  dtype: dtype = None,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 gather_out: bool = False,
                  **kwargs) -> None:
         super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
@@ -65,15 +66,27 @@ class Linear(nn.Module):
             if self.layer.bias is not None:
                 bias_initializer(self.layer.bias, fan_in=in_features)
         else:
-            self.layer = _parallel_linear[tensor_parallel](
-                in_features,
-                out_features,
-                bias=bias,
-                dtype=dtype,
-                weight_initializer=weight_initializer,
-                bias_initializer=bias_initializer,
-                **kwargs,
-            )
+            if tensor_parallel == '1d': # gather_out arg is available
+                self.layer = _parallel_linear[tensor_parallel](
+                    in_features,
+                    out_features,
+                    bias=bias,
+                    dtype=dtype,
+                    gather_output = gather_out,
+                    weight_initializer=weight_initializer,
+                    bias_initializer=bias_initializer,
+                    **kwargs,
+                )
+            else:
+                self.layer = _parallel_linear[tensor_parallel](
+                    in_features,
+                    out_features,
+                    bias=bias,
+                    dtype=dtype,
+                    weight_initializer=weight_initializer,
+                    bias_initializer=bias_initializer,
+                    **kwargs,
+                )
 
     @property
     def weight(self):
