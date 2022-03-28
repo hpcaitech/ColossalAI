@@ -8,11 +8,13 @@ from typing import Tuple, Union
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
 
-def col_tensor_mem_usage(tensor: Union[torch.Tensor, ShardedTensor]) -> Tuple[int, int]:
+def colo_tensor_mem_usage(tensor: Union[torch.Tensor, ShardedTensor]) -> Tuple[int, int]:
     if isinstance(tensor, ShardedTensor):
         t = tensor.payload
-    else:
+    elif isinstance(tensor, torch.Tensor):
         t = tensor
+    else:
+        return 0, 0
 
     cuda_use, cpu_use = 0, 0
 

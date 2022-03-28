@@ -1,6 +1,6 @@
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.utils.memory_utils.utils import col_tensor_mem_usage
+from colossalai.utils.memory_utils.utils import colo_tensor_mem_usage
 import torch
 from typing import Union, Tuple, Optional
 from colossalai.logging import DistributedLogger

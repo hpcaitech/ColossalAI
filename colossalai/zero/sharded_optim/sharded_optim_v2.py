@@ -17,7 +17,7 @@ from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, col_tensor_mem_usage
+from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, colo_tensor_mem_usage
 
 
 class OptimState(Enum):
@@ -126,8 +126,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # So we gather here
                     self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
 
-        self._logger.info(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                          ranks=[0])
+        self._logger.debug(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
+                           ranks=[0])
 
     def get_memory_usage(self) -> Tuple[int, int]:
         """
@@ -143,7 +143,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         def update_mem_use(t):
             nonlocal cuda_use
             nonlocal cpu_use
-            t_cuda_use, t_cpu_use = col_tensor_mem_usage(t)
+            t_cuda_use, t_cpu_use = colo_tensor_mem_usage(t)
             cuda_use += t_cuda_use
             cpu_use += t_cpu_use
 
@@ -152,10 +152,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         for group in self.optim.param_groups:
             for p in group['params']:
                 state = self.optim.state[p]
-                if 'exp_avg' in state:
-                    update_mem_use(state['exp_avg'])
-                if 'exp_avg_sq' in state:
-                    update_mem_use(state['exp_avg_sq'])
+                for k, v in state.items():
+                    update_mem_use(v)
 
         return cuda_use, cpu_use
 
@@ -170,7 +168,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self.grad_scaler.update(found_inf)
 
         if found_inf:
-            self._logger.info('found inf during ShardedOptimV2 step')
+            self._logger.warning('found inf during ShardedOptimV2 step')
             self.zero_grad()
             return
 
@@ -182,13 +180,13 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
 
-        self._logger.info(f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                          ranks=[0])
+        self._logger.debug(f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
+                           ranks=[0])
 
         ret = self.optim.step(*args, **kwargs)
 
-        self._logger.info(f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                          ranks=[0])
+        self._logger.debug(f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
+                           ranks=[0])
         # Copy master param data (fp32) to payload of col_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
