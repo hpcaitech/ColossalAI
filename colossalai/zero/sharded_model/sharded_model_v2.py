@@ -11,9 +11,10 @@ from colossalai.engine.ophooks import register_ophooks_recursively
 from colossalai.engine.ophooks.zero_hook import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import colo_model_data_move_to_cpu, colo_cuda_memory_capacity, colo_model_tensor_clone
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
+from colossalai.utils.memory_tracer.model_data_memtracer import \
+    GLOBAL_MODEL_DATA_TRACER
+from colossalai.utils.memory_utils.utils import (colo_cuda_memory_capacity, colo_model_data_move_to_cpu)
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from torch.distributed import ProcessGroup
@@ -28,7 +29,7 @@ class ShardedModelV2(nn.Module):
     A wrapper for the PyTorch module shards the model parameters among multiple GPU memory.
     Only 1/#nproc of parameters, gradients are stored in local CUDA memory, so forward and backward
     passes can be executed with limited CUDA memory budget.
-    
+
     Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
 
     Args:
@@ -119,6 +120,10 @@ class ShardedModelV2(nn.Module):
         self.reuse_fp16_shard = reuse_fp16_shard
 
     @property
+    def use_memory_tracer(self):
+        return self._use_memory_tracer
+
+    @property
     def cuda_margin_space(self):
         return self._cuda_margin_space
 
@@ -149,8 +154,8 @@ class ShardedModelV2(nn.Module):
     def _update_memstats(self):
         if self._iter_cnter == 0 and self._memstats_collector:
             self._memstats_collector.finish_collection()
-            self.logger.info(f'model data cuda, {self._memstats_collector.model_data_cuda}')
-            self.logger.info(f'non-model data cuda, {self._memstats_collector.non_model_data_cuda}')
+            self.logger.debug(f'model data cuda, {self._memstats_collector.model_data_cuda}')
+            self.logger.debug(f'non-model data cuda, {self._memstats_collector.non_model_data_cuda}')
 
         if self._memstats_collector:
             self._memstats_collector.reset_sampling_cnter()
@@ -206,7 +211,7 @@ class ShardedModelV2(nn.Module):
             else:
                 grad_payload = cast_tensor_to_fp32(p.col_attr.fp16_grad)
             if p.col_attr.offload_grad:
-                grad_payload = colo_model_tensor_clone(grad_payload, torch.device('cpu'))
+                colo_model_data_move_to_cpu(grad_payload)
             if p.col_attr.fp32_grad is not None:
                 assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
                 p.col_attr.fp32_grad.add_(grad_payload.view_as(p.col_attr.fp32_grad))

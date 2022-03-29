@@ -1,13 +1,14 @@
 from functools import partial
 
 import colossalai
+from colossalai.utils.cuda import get_current_device
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import CPUAdam
-from colossalai.testing import parameterize
+from colossalai.testing import parameterize, rerun_on_exception
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
@@ -15,7 +16,6 @@ from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from colossalai.testing import rerun_on_exception
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -57,17 +57,19 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
 
-        with ZeroInitContext(convert_fp16=True,
-                             target_device=torch.device(f'cpu:0'),
-                             shard_strategy=shard_strategy,
-                             shard_param=True,
-                             rm_torch_payload_on_the_fly=False):
+        with ZeroInitContext(
+                target_device=torch.device(f'cpu:0') if cpu_offload else torch.device(f'cuda:{get_current_device()}'),
+                shard_strategy=shard_strategy,
+                shard_param=True,
+                rm_torch_payload_on_the_fly=False):
             zero_model = model_builder(checkpoint=True)
-        zero_model = ShardedModelV2(zero_model,
-                                    shard_strategy,
-                                    offload_config=dict(device='cpu') if cpu_offload else None,
-                                    use_memory_tracer=gpu_margin_mem_ratio > 0.0,
-                                    reuse_fp16_shard=use_cpuadam)
+        zero_model = ShardedModelV2(
+            zero_model,
+            shard_strategy,
+            offload_config=dict(device='cpu') if cpu_offload else None,
+            use_memory_tracer=gpu_margin_mem_ratio > 0.0,
+            reuse_fp16_shard=use_cpuadam,
+        )
 
         model = model_builder(checkpoint=True).half()
         col_model_deepcopy(zero_model, model)

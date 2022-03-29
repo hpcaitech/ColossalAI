@@ -4,12 +4,11 @@ from typing import Optional
 import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
+from colossalai.logging import get_dist_logger
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
-from colossalai.logging import get_dist_logger, disable_existing_loggers
 
 
 def _substitute_init_recursively(cls, func):
@@ -107,20 +106,16 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     """
 
     def __init__(self,
-                 convert_fp16: bool,
                  target_device: torch.device,
                  shard_strategy: BaseShardStrategy,
                  shard_param: bool = False,
-                 shard_grad: bool = False,
                  rm_torch_payload_on_the_fly: bool = False,
-                 model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.int),
+                 model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.long),
                  dp_process_group: Optional[ProcessGroup] = None):
 
         super().__init__()
-        self.convert_fp16 = convert_fp16
         self.target_device = target_device
         self.shard_param = shard_param
-        self.shard_grad = shard_grad
         self.shard_strategy = shard_strategy
         self.rm_torch_payload_on_the_fly = rm_torch_payload_on_the_fly
         self.initialized_param_list = []
@@ -157,11 +152,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
             target_device = self.target_device
 
-            # convert to fp16 if necessary
-            if self.convert_fp16:
-                param.data = param.data.to(torch.half)
-                if param.grad is not None:
-                    param.grad = param.grad.to(torch.half)
+            # convert to fp16
+            param.data = param.data.to(torch.half)
+            if param.grad is not None:
+                param.grad = param.grad.to(torch.half)
 
             # move torch parameters to the target device
             param.data = param.data.to(target_device)
@@ -179,5 +173,4 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         # We must cast them
         for buffer in module.buffers(recurse=False):
             buffer.data = buffer.data.to(device=torch.cuda.current_device())
-            if self.convert_fp16:
-                buffer.data = cast_tensor_to_fp16(buffer.data)
+            buffer.data = cast_tensor_to_fp16(buffer.data)
