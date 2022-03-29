@@ -3,7 +3,7 @@ from typing import List, Optional
 import torch
 import torch.distributed as dist
 from colossalai.utils import get_current_device
-from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
+from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move_inline
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.shard_utils.commons import get_shard
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
@@ -56,5 +56,5 @@ class TensorShardStrategy(BaseShardStrategy):
         dist.all_gather(buffer_list, buffer_list[rank], group=process_group, async_op=False)
         gathered_payload = torch.narrow(torch.cat(buffer_list), 0, 0, t.origin_numel).reshape(t.origin_shape)
         t.reset_payload(gathered_payload)
-        colo_model_data_tensor_move_inline(t, target_device, use_tracer=False)
+        colo_model_data_tensor_move_inline(t, target_device)
         t.is_sharded = False

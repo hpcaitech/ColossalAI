@@ -1,12 +1,25 @@
 from colossalai.context.singleton_meta import SingletonMeta
-from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.utils.memory_utils.utils import colo_tensor_mem_usage
 import torch
-from typing import Union, Tuple, Optional
+from typing import Tuple, Optional
 from colossalai.logging import DistributedLogger
 
 
-def col_model_data_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
+def colo_model_optimizer_usage(optim) -> Tuple[int, int]:
+    """Trace the optimizer memory usage
+
+    Args:
+        optim (ShardedOptimV2): an instance of ShardedOptimver
+
+    Returns:
+        Tuple[int, int]: cuda/cpu memory usage in Byte
+    """
+    if optim is None:
+        return 0, 0
+    assert hasattr(optim, 'get_memory_usage'), f"{type(optim)} has no attr get_memory_usage()"
+    return optim.get_memory_usage()
+
+
+def colo_model_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
     """ 
     Trace the model memory usage.
     Args:
@@ -15,6 +28,8 @@ def col_model_data_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
     Returns:
         Tuple[int, int]: cuda memory usage in Byte, cpu memory usage in Byte
     """
+    if model is None:
+        return 0, 0
 
     def _get_tensor_mem_use(t: Optional[torch.Tensor]):
         if t is None:
@@ -31,9 +46,9 @@ def col_model_data_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
     cpu_mem_usage = 0
     for param in model.parameters():
         if hasattr(param, 'col_attr'):
-            para_cuda, param_cpu = param.col_attr.get_memory_usage()
-            cuda_mem_usage += para_cuda
-            cpu_mem_usage += param_cpu
+            t_cuda, t_cpu = param.col_attr.get_memory_usage()
+            cuda_mem_usage += t_cuda
+            cpu_mem_usage += t_cpu
         else:
             t_cuda, t_cpu = _get_tensor_mem_use(param.data)
             cuda_mem_usage += t_cuda
@@ -54,6 +69,7 @@ class ModelDataTracer(metaclass=SingletonMeta):
     def __init__(self) -> None:
         self._logger = DistributedLogger("ModelDataTracer")
         self._model = None
+        self._opitimizer = None
 
     def _get_mem_usage(self) -> Tuple[int, int]:
         """
@@ -61,13 +77,19 @@ class ModelDataTracer(metaclass=SingletonMeta):
         Returns:
             Tuple[int, int]: cuda, cpu mem usage
         """
-        if self._model is None:
-            self._logger.warning("The Global ModelDataTracer is using, but no model is registered on it.")
-            return 0, 0
-        return col_model_data_mem_usage(self._model)
+        cuda_use_opt, cpu_use_opt = colo_model_optimizer_usage(self._opitimizer)
+        cuda_use_model, cpu_use_model = colo_model_mem_usage(self._model)
+        return cuda_use_opt + cuda_use_model, cpu_use_opt + cpu_use_model
 
     def register_model(self, model) -> None:
+        if self._model is not None:
+            self._logger.warning("ModelDataTracer has already registered a model")
         self._model = model
+
+    def register_optimizer(self, optimizer) -> None:
+        if self._opitimizer is not None:
+            self._logger.warning("ModelDataTracer has already registered an optimizer")
+        self._opitimizer = optimizer
 
     @property
     def cpu_usage(self):

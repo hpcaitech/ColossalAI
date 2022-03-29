@@ -120,6 +120,10 @@ class ShardedModelV2(nn.Module):
         self.reuse_fp16_shard = reuse_fp16_shard
 
     @property
+    def use_memory_tracer(self):
+        return self._use_memory_tracer
+
+    @property
     def cuda_margin_space(self):
         return self._cuda_margin_space
 
@@ -150,8 +154,8 @@ class ShardedModelV2(nn.Module):
     def _update_memstats(self):
         if self._iter_cnter == 0 and self._memstats_collector:
             self._memstats_collector.finish_collection()
-            self.logger.info(f'model data cuda, {self._memstats_collector.model_data_cuda}')
-            self.logger.info(f'non-model data cuda, {self._memstats_collector.non_model_data_cuda}')
+            self.logger.debug(f'model data cuda, {self._memstats_collector.model_data_cuda}')
+            self.logger.debug(f'non-model data cuda, {self._memstats_collector.non_model_data_cuda}')
 
         if self._memstats_collector:
             self._memstats_collector.reset_sampling_cnter()

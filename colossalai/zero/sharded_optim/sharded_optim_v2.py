@@ -5,6 +5,11 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch import Tensor
+from torch.distributed import ProcessGroup
+from torch.nn.parameter import Parameter
+from torch.optim import Optimizer
+
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
@@ -14,10 +19,10 @@ from colossalai.utils.memory_utils.utils import (colo_model_tensor_clone, colo_t
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from torch import Tensor
-from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
-from torch.optim import Optimizer
+from colossalai.zero.sharded_optim._utils import has_inf_or_nan
+from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, colo_tensor_mem_usage
+from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
+
 
 
 class OptimState(Enum):
@@ -75,6 +80,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  growth_interval: float = 1000,
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
+                 use_memory_tracer=False,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
@@ -128,6 +134,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         self._logger.debug(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
                            ranks=[0])
+
+        self._use_memory_tracer = self.model.use_memory_tracer
+        if self._use_memory_tracer:
+            GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
     def get_memory_usage(self) -> Tuple[int, int]:
         """

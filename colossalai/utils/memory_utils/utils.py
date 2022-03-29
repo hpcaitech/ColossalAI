@@ -1,4 +1,3 @@
-from psutil import cpu_count
 import torch
 from colossalai.utils import get_current_device
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor

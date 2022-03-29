@@ -63,11 +63,13 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
                 shard_param=True,
                 rm_torch_payload_on_the_fly=False):
             zero_model = model_builder(checkpoint=True)
-        zero_model = ShardedModelV2(zero_model,
-                                    shard_strategy,
-                                    offload_config=dict(device='cpu') if cpu_offload else None,
-                                    use_memory_tracer=gpu_margin_mem_ratio > 0.0,
-                                    reuse_fp16_shard=use_cpuadam)
+        zero_model = ShardedModelV2(
+            zero_model,
+            shard_strategy,
+            offload_config=dict(device='cpu') if cpu_offload else None,
+            use_memory_tracer=gpu_margin_mem_ratio > 0.0,
+            reuse_fp16_shard=use_cpuadam,
+        )
 
         model = model_builder(checkpoint=True).half()
         col_model_deepcopy(zero_model, model)
