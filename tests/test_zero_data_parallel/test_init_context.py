@@ -7,16 +7,17 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import parameterize
+from colossalai.logging import get_dist_logger
+from colossalai.testing import parameterize, rerun_on_exception
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory_tracer.model_data_memtracer import col_model_data_mem_usage
-from colossalai.zero.init_ctx import ZeroInitContext
+from colossalai.utils.memory_tracer.model_data_memtracer import \
+    col_model_data_mem_usage
 from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
+from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
-from colossalai.testing import rerun_on_exception
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.logging import get_dist_logger
+
 from common import CONFIG
 
 
@@ -36,8 +37,7 @@ def run_model_test(init_device_type, shard_strategy_class):
             continue
 
         model_numel_tensor = torch.zeros(1, dtype=torch.int)
-        with ZeroInitContext(convert_fp16=True,
-                             target_device=init_device,
+        with ZeroInitContext(target_device=init_device,
                              shard_strategy=shard_strategy_class(),
                              shard_param=True,
                              model_numel_tensor=model_numel_tensor,

@@ -4,12 +4,17 @@ from typing import Optional
 import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
+from colossalai.logging import get_dist_logger
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
-from colossalai.logging import get_dist_logger, disable_existing_loggers
+
+
+def _substitute_init_recursively(cls, func):
+    for subcls in cls.__subclasses__():
+        _substitute_init_recursively(subcls, func)
+        func(subcls)
 
 
 class InsertPostInitMethodToModuleSubClasses(object):
@@ -41,8 +46,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
         # Excution self._post_init_method after the default init function.
-        for subclass in torch.nn.modules.module.Module.__subclasses__():
-            _enable_class(subclass)
+        _substitute_init_recursively(torch.nn.modules.module.Module, _enable_class)
 
         # holding on to the current __init__subclass__ for exit
         torch.nn.modules.module.Module._old_init_subclass = (torch.nn.modules.module.Module.__init_subclass__)
@@ -57,8 +61,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = cls._old_init
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
-        for subclass in torch.nn.modules.module.Module.__subclasses__():
-            _disable_class(subclass)
+        _substitute_init_recursively(torch.nn.modules.module.Module, _disable_class)
 
         # Replace .__init__() for future subclasses of torch.nn.Module
         torch.nn.modules.module.Module.__init_subclass__ = (torch.nn.modules.module.Module._old_init_subclass)
@@ -103,20 +106,16 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     """
 
     def __init__(self,
-                 convert_fp16: bool,
                  target_device: torch.device,
                  shard_strategy: BaseShardStrategy,
                  shard_param: bool = False,
-                 shard_grad: bool = False,
                  rm_torch_payload_on_the_fly: bool = False,
-                 model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.int),
+                 model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.long),
                  dp_process_group: Optional[ProcessGroup] = None):
 
         super().__init__()
-        self.convert_fp16 = convert_fp16
         self.target_device = target_device
         self.shard_param = shard_param
-        self.shard_grad = shard_grad
         self.shard_strategy = shard_strategy
         self.rm_torch_payload_on_the_fly = rm_torch_payload_on_the_fly
         self.initialized_param_list = []
@@ -144,7 +143,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         The function to call at the end of the constructor of each module.
         NOTE() The module may be passed to this function multiple times.
         """
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             # avoid adapting a param to ShardedParam twice
             if hasattr(param, 'col_attr'):
                 continue
@@ -153,11 +152,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
             target_device = self.target_device
 
-            # convert to fp16 if necessary
-            if self.convert_fp16:
-                param.data = param.data.to(torch.half)
-                if param.grad is not None:
-                    param.grad = param.grad.to(torch.half)
+            # convert to fp16
+            param.data = param.data.to(torch.half)
+            if param.grad is not None:
+                param.grad = param.grad.to(torch.half)
 
             # move torch parameters to the target device
             param.data = param.data.to(target_device)
@@ -173,7 +171,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         # We must cast buffers
         # If we use BN, buffers may be on CPU and Float
         # We must cast them
-        for buffer in module.buffers():
+        for buffer in module.buffers(recurse=False):
             buffer.data = buffer.data.to(device=torch.cuda.current_device())
-            if self.convert_fp16:
-                buffer.data = cast_tensor_to_fp16(buffer.data)
+            buffer.data = cast_tensor_to_fp16(buffer.data)
