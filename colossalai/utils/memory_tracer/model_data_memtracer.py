@@ -5,6 +5,14 @@ from colossalai.logging import DistributedLogger
 
 
 def colo_model_optimizer_usage(optim) -> Tuple[int, int]:
+    """Trace the optimizer memory usage
+
+    Args:
+        optim (ShardedOptimV2): an instance of ShardedOptimver
+
+    Returns:
+        Tuple[int, int]: cuda/cpu memory usage in Byte
+    """
     if optim is None:
         return 0, 0
     assert hasattr(optim, 'get_memory_usage'), f"{type(optim)} has no attr get_memory_usage()"
@@ -75,12 +83,12 @@ class ModelDataTracer(metaclass=SingletonMeta):
 
     def register_model(self, model) -> None:
         if self._model is not None:
-            logger.warning("ModelDataTracer has already registered a model")
+            self._logger.warning("ModelDataTracer has already registered a model")
         self._model = model
 
     def register_optimizer(self, optimizer) -> None:
         if self._opitimizer is not None:
-            logger.warning("ModelDataTracer has already registered an optimizer")
+            self._logger.warning("ModelDataTracer has already registered an optimizer")
         self._opitimizer = optimizer
 
     @property
