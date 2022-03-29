@@ -144,8 +144,10 @@ class ShardedModelV2(nn.Module):
                 with open('dump_mem_stats.log', 'w+') as f:
                     f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device())/1e9} GB\n')
                     f.write(f'cuda max allocated {torch.cuda.max_memory_allocated(get_current_device())/1e9} GB\n')
+                    f.write('model data\n')
                     f.write(str(self._memstats_collector.model_data_cuda_GB))
                     f.write('\n')
+                    f.write('non model data\n')
                     f.write(str(self._memstats_collector.non_model_data_cuda_GB))
                     f.write('\n')
 
