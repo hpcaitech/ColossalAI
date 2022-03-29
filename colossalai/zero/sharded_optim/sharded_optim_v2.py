@@ -76,7 +76,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  growth_interval: float = 1000,
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
-                 use_memory_tracer=False,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
@@ -128,8 +127,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     # So we gather here
                     self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
 
-        self._logger.debug(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                           ranks=[0])
+        self._logger.info(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
+                          ranks=[0])
 
         self._use_memory_tracer = self.model.use_memory_tracer
         if self._use_memory_tracer:
@@ -186,13 +185,15 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
 
-        self._logger.debug(f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                           ranks=[0])
+        self._logger.info(
+            f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
+            ranks=[0])
 
         ret = self.optim.step(*args, **kwargs)
 
-        self._logger.debug(f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                           ranks=[0])
+        self._logger.debug(
+            f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
+            ranks=[0])
         # Copy master param data (fp32) to payload of col_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
