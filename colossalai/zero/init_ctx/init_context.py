@@ -11,6 +11,12 @@ from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
 
 
+def _substitute_init_recursively(cls, func):
+    for subcls in cls.__subclasses__():
+        _substitute_init_recursively(subcls, func)
+        func(subcls)
+
+
 class InsertPostInitMethodToModuleSubClasses(object):
 
     def __init__(self):
@@ -40,8 +46,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
         # Excution self._post_init_method after the default init function.
-        for subclass in torch.nn.modules.module.Module.__subclasses__():
-            _enable_class(subclass)
+        _substitute_init_recursively(torch.nn.modules.module.Module, _enable_class)
 
         # holding on to the current __init__subclass__ for exit
         torch.nn.modules.module.Module._old_init_subclass = (torch.nn.modules.module.Module.__init_subclass__)
@@ -56,8 +61,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             cls.__init__ = cls._old_init
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
-        for subclass in torch.nn.modules.module.Module.__subclasses__():
-            _disable_class(subclass)
+        _substitute_init_recursively(torch.nn.modules.module.Module, _disable_class)
 
         # Replace .__init__() for future subclasses of torch.nn.Module
         torch.nn.modules.module.Module.__init_subclass__ = (torch.nn.modules.module.Module._old_init_subclass)
@@ -139,7 +143,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         The function to call at the end of the constructor of each module.
         NOTE() The module may be passed to this function multiple times.
         """
-        for param in module.parameters():
+        for param in module.parameters(recurse=False):
             # avoid adapting a param to ShardedParam twice
             if hasattr(param, 'col_attr'):
                 continue
@@ -167,6 +171,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         # We must cast buffers
         # If we use BN, buffers may be on CPU and Float
         # We must cast them
-        for buffer in module.buffers():
+        for buffer in module.buffers(recurse=False):
             buffer.data = buffer.data.to(device=torch.cuda.current_device())
             buffer.data = cast_tensor_to_fp16(buffer.data)

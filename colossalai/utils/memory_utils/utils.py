@@ -1,10 +1,30 @@
+from psutil import cpu_count
 import torch
 from colossalai.utils import get_current_device
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 
-from typing import Union
+from typing import Tuple, Union
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
+
+
+def colo_tensor_mem_usage(tensor: Union[torch.Tensor, ShardedTensor]) -> Tuple[int, int]:
+    if isinstance(tensor, ShardedTensor):
+        t = tensor.payload
+    elif isinstance(tensor, torch.Tensor):
+        t = tensor
+    else:
+        return 0, 0
+
+    cuda_use, cpu_use = 0, 0
+
+    mem_use = t.numel() * t.element_size()
+    if t.device.type == 'cuda':
+        cuda_use += mem_use
+    elif t.device.type == 'cpu':
+        cpu_use += mem_use
+
+    return cuda_use, cpu_use
 
 
 def colo_set_process_memory_fraction(ratio: float) -> None:
