@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from asyncio.log import logger
 from typing import List
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
@@ -9,9 +10,9 @@ from torch.optim import Optimizer
 from colossalai.logging import get_dist_logger
 from torch import Tensor
 from colossalai.engine.ophooks import register_ophooks_recursively, BaseOpHook
-from typing import Optional
+from typing import Optional, Type
 from colossalai.engine.gradient_handler import BaseGradientHandler
-
+from colossalai.logging import get_dist_logger
 
 class Engine:
     """Basic engine class for training and evaluation. It runs a specific process method
@@ -65,6 +66,11 @@ class Engine:
         register_ophooks_recursively(self._model, self._ophook_list)
 
     @property
+    def ophooks(self):
+        """show current activated ophooks"""
+        return self._ophook_list
+
+    @property
     def model(self):
         """Model attached to the engine"""
         return self._model
@@ -78,6 +84,21 @@ class Engine:
     def criterion(self):
         """Criterion attached to the engine"""
         return self._criterion
+
+    def add_hook(self, ophook: Type[BaseOpHook]) -> None:
+        """add necessary hook"""
+        # whether this hook exist
+        for h in self._ophook_list:
+            if type(h) == type(ophook):
+                logger = get_dist_logger()
+                logger.warning(f"duplicate hooks, at least two instance of {type(ophook)}")
+        self._ophook_list.append(ophook)
+        register_ophooks_recursively(self._model, self._ophook_list)
+
+    def remove_hook(self, ophook: Type[BaseOpHook]) -> None:
+        """remove hook"""
+        logger = get_dist_logger()
+        logger.warning(f"removing hooks is currently not supported")
 
     def zero_grad(self):
         """Set the gradient of parameters to zero
