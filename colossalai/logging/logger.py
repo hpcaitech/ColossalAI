@@ -15,8 +15,6 @@ try:
     logging.basicConfig(level=logging.INFO,
                         format=_FORMAT,
                         handlers=[RichHandler(show_path=False, markup=True, rich_tracebacks=True)])
-    from rich.console import Console
-    from rich.text import Text
 except ImportError:
     _FORMAT = 'colossalai - %(name)s - %(levelname)s: %(message)s'
     logging.basicConfig(level=logging.INFO, format=_FORMAT)
