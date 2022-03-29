@@ -10,14 +10,14 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.utils.memory_utils.utils import (colo_model_tensor_clone, colo_tensor_mem_usage)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
+from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
-from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, colo_tensor_mem_usage
 
 
 class OptimState(Enum):
@@ -29,17 +29,17 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
     """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO).
 
     By default the ZeRO optimizer stage 3 offload Optimizer States on CPU.
-    
+
     We apply the Device-aware Operator Placement technique for OS placement from the following paper.
 
     PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
     https://arxiv.org/abs/2108.05818
-    
+
     GPU margin space is the remaining space after removing peak non-model data from the overall GPU memory,
     which is detected by a runtime memory tracer. 
-    
+
     We place as many OS chunks in the margin space as possible. 
-    
+
     The size of margin space can be controlled by `gpu_margin_mem_ratio`。
     If it is set as 0.0, it is the same as classical ZeRO optimizer.
 
@@ -204,7 +204,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Since p.data is fp32 and p.col_attr.sharded_data_tensor is fp16
 
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-                colo_model_data_tensor_move(p, p.col_attr.sharded_data_tensor)
+                p.col_attr.sharded_data_tensor.reset_payload(
+                    colo_model_tensor_clone(p.half(), torch.cuda.current_device()))
 
                 if not is_param_sharded:
                     # We gather full fp16 param here
