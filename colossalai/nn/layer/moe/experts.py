@@ -5,6 +5,7 @@ import torch.nn as nn
 from colossalai.context import ParallelMode, seed
 from colossalai.utils import get_current_device
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.zero.init_ctx import no_shard_zero_decrator
 from typing import Type
 
 
@@ -34,6 +35,7 @@ class Experts(MoeExperts):
         expert_args: Args used to initialize experts, the args could be found in corresponding expert class
     """
 
+    @no_shard_zero_decrator
     def __init__(self, expert_cls: Type[nn.Module], num_experts: int, **expert_args):
         super().__init__("all_to_all", num_experts)
 
