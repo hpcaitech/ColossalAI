@@ -41,14 +41,13 @@ class PipelineSchedule(BaseSchedule):
     It uses non-interleaved 1F1B strategy. Other properties are similar as
     :class:`NonPipelineSchedule`.
 
-    :param num_microbatches: The number of microbatches
-    :type num_microbatches: int
-    :param batch_data_process_func: The preprocessing function which receives a batch of data, and it will be executed in `load_batch`
-    :type batch_data_process_func: Callable, optional
-    :param tensor_shape: Specified shape in pipeline communication
-    :type tensor_shape: torch.Size, optional
-    :param scatter_gather_tensors: If set to `True`, communication will be reduced over pipeline when using 1D tensor parallelization
-    :type scatter_gather_tensors: bool, optional
+    Args:
+        num_microbatches (int): The number of microbatches.
+        batch_data_process_func (Callable, optional):
+            The preprocessing function which receives a batch of data, and it will be executed in `load_batch`.
+        tensor_shape (torch.Size, optional): Specified shape in pipeline communication.
+        scatter_gather_tensors (bool, optional):
+            If set to `True`, communication will be reduced over pipeline when using 1D tensor parallelization.
     """
 
     def __init__(self,
@@ -131,19 +130,14 @@ class PipelineSchedule(BaseSchedule):
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
 
-        :param engine: Your engine object
-        :type engine: colossalai.engine.Engine
-        :param input_tensor: Input tensor for this pipeline stage
-        :type input_tensor: :class:`torch.Tensor`
-        :param return_tensors: A list of tensors to return
-        :type return_tensors: List[:class:`torch.Tensor`]
-        :param return_output_label: Whether returns output labels
-        :type return_output_label: bool, optional
-        :param accum_loss: Where accumulated loss stores
-        :type  accum_loss: optional
-
-        :return: output or the loss value of the current pipeline stage
-        :rtype: :class:`torch.Tensor`
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            input_tensor (:class:`torch.Tensor`): Input tensor for this pipeline stage.
+            return_tensors (List[:class:`torch.Tensor`]): A list of tensors to return.
+            return_output_label (bool, optional): Whether returns output labels.
+            accum_loss (optional): Where accumulated loss stores.
+        Returns:
+            :class:`torch.Tensor`: output or the loss value of the current pipeline stage.
         """
         data, label = self.load_micro_batch()
         output_tensor = self._call_engine(engine.model, input_tensor, data)
@@ -173,17 +167,14 @@ class PipelineSchedule(BaseSchedule):
         Returns the gradients with respect to the input tensor (None if first stage).
         This is a helper function and can be ignored by users.
 
-        :param engine: your engine object
-        :type engine: colossalai.engine.Engine
-        :param input_tensor: input tensor for this pipeline stage
-        :type input_tensor: :class:`torch.Tensor`
-        :param output_tensor: output tensor for this pipeline stage
-        :type output_tensor: :class:`torch.Tensor`
-        :param output_tensor_grad: gradient of output tensor for this pipeline stage
-        :type output_tensor_grad: :class:`torch.Tensor`
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            input_tensor (:class:`torch.Tensor`): input tensor for this pipeline stage.
+            output_tensor (:class:`torch.Tensor`): output tensor for this pipeline stage.
+            output_tensor_grad (:class:`torch.Tensor`): gradient of output tensor for this pipeline stage.
 
-        :return: gradient of input tensor
-        :rtype: :class:`torch.Tensor`
+        Returns:
+            :class:`torch.Tensor`: gradient of input tensor.
         """
 
         # Retain the grad on the input_tensor.
@@ -207,19 +198,16 @@ class PipelineSchedule(BaseSchedule):
         """Runs non-interleaved 1F1B schedule, with communication between pipeline stages.
         Returns a tuple with losses if the last stage, an empty tuple otherwise.
 
-        :param engine: Your engine object
-        :type engine: colossalai.engine.Engine
-        :param data_iter: Dataloader as the form of an iterator, obtained by calling iter(dataloader)
-        :type data_iter: Iterable
-        :param forward_only: Whether run forward step only. Default is false. If true, no backward will be run.
-        :type forward_only: bool
-        :param return_loss: Whether returns the loss value. Default is true.
-        :type return_loss: bool
-        :param return_output_label: If False, the output and label won't be returned
-        :type return_output_label: bool
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            data_iter (Iterable): Dataloader as the form of an iterator, obtained by calling iter(dataloader).
+            forward_only (bool, optional):
+                Whether run forward step only. Default is false. If true, no backward will be run.
+            return_loss (bool, optional): Whether returns the loss value. Default is true.
+            return_output_label (bool, optional): If False, the output and label won't be returned.
 
-        :return: (output, label, loss)
-        :rtype: Tuple[:class:`torch.Tensor`]
+        Returns:
+            Tuple[:class:`torch.Tensor`]: A tuple of (output, label, loss), loss and label could be None.
         """
 
         assert forward_only or return_loss, \
@@ -354,16 +342,14 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         It uses interleaved 1F1B strategy. Other properties are similar as
         :class:`NonPipelineSchedule`.
 
-        :param num_microbatches: The number of microbatches
-        :type num_microbatches: int
-        :param num_model_chunks: The number of model chunks
-        :type num_model_chunks: int
-        :param batch_data_process_func: The preprocessing function which receives a batch of data, and it will be executed in `load_batch`
-        :type batch_data_process_func: Callable, optional
-        :param tensor_shape: Specified shape in pipeline communication
-        :type tensor_shape: torch.Size, optional
-        :param scatter_gather_tensors: If set to `True`, communication will be reduced over pipeline when using 1D tensor parallelization
-        :type scatter_gather_tensors: bool, optional
+        Args:
+            num_microbatches (int): The number of microbatches.
+            num_model_chunks (int): The number of model chunks.
+            batch_data_process_func (Callable, optional):
+                The preprocessing function which receives a batch of data, and it will be executed in `load_batch`.
+            tensor_shape (torch.Size, optional): Specified shape in pipeline communication.
+            scatter_gather_tensors (bool, optional):
+                If set to `True`, communication will be reduced over pipeline when using 1D tensor parallelization.
         """
         assert num_microbatches % gpc.get_world_size(ParallelMode.PIPELINE) == 0, \
             'num_microbatches must be an integer multiple of pipeline parallel world size'
@@ -408,6 +394,16 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
         is obtained from data_iterator, otherwise the passed-in input_tensor is used.
         Returns output tensor. This is a helper function and can be ignored by users.
+
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            model_chunk_id (int): The id of model chunks.
+            input_tensor (:class:`torch.Tensor`): Input tensor for this pipeline stage.
+            return_tensors (List[:class:`torch.Tensor`]): A list of tensors to return.
+            return_output_label (bool, optional): Whether returns output labels.
+            accum_loss (optional): Where accumulated loss stores.
+        Returns:
+            :class:`torch.Tensor`: output or the loss value of the current pipeline stage.
         """
         data, label = self.load_micro_batch(model_chunk_id)
         output_tensor = self._call_engine(engine.model[model_chunk_id], input_tensor, data)
@@ -435,18 +431,17 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         """Run interleaved 1F1B schedule (model split into model chunks), with
         communication between pipeline stages as needed.
 
-        Returns dictionary with losses if the last stage, empty dict otherwise.
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            data_iter (Iterable): Dataloader as the form of an iterator, obtained by calling iter(dataloader).
+            forward_only (bool, optional):
+                Whether run forward step only. Default is false. If true, no backward will be run.
+            return_loss (bool, optional): Whether returns the loss value. Default is true.
+            return_output_label (bool, optional): If False, the output and label won't be returned.
 
-        :param engine: Your engine object
-        :type engine: colossalai.engine.Engine
-        :param data_iter: Dataloader as the form of an iterator, obtained by calling iter(dataloader)
-        :type data_iter: Iterable
-        :param forward_only: Whether run forward step only. Default is false. If true, no backward will be run.
-        :type forward_only: bool
-        :param return_loss: Whether returns the loss value. Default is true.
-        :type return_loss: bool
-        :param return_output_label: If False, the output and label won't be returned
-        :type return_output_label: bool
+        Returns:
+            Tuple[:class:`torch.Tensor`]: A tuple of (output, label, loss), loss and label could be None.
+                The loss would be returned only in the last stage.
         """
         assert forward_only or return_loss, \
             'The argument \'return_loss\' has to be True when \'forward_only\' is False, but got False.'

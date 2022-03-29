@@ -11,8 +11,16 @@ from .process_group_initializer import ProcessGroupInitializer
 
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_1D(ProcessGroupInitializer):
-    '''A ProcessGroupInitializer for 1d tensor parallelism.
-    '''
+    """A ProcessGroupInitializer for 1d tensor parallelism.
+
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -20,8 +28,10 @@ class Initializer_1D(ProcessGroupInitializer):
 
     def init_dist_group(self):
         """Initialize 1D tensor parallel groups, and assign local_ranks and groups to each gpu.
-        :return: (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        :rtype: Tuple
+
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                1D tensor parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None

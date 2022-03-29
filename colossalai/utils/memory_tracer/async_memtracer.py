@@ -86,6 +86,7 @@ class AsyncMemoryMonitor:
             sleep(self.interval)
         return max_usage
 
+    @property
     def state_dict(self):
         return {
             "time_stamps": self.time_stamps,
@@ -94,7 +95,6 @@ class AsyncMemoryMonitor:
 
     def save(self, filename):
         with open(filename, "wb") as f:
-            print(self.state_dict())
             pickle.dump(self.state_dict(), f)
 
     def clear(self):

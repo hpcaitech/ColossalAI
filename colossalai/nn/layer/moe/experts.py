@@ -28,11 +28,10 @@ class Experts(MoeExperts):
     moe model parallel group, where E is the number of experts. Every expert
     is a instence of the class, 'expert' in initialization parameters.
 
-    :param expert: The class of all experts
-    :param num_experts: The number of experts
-    :param expert_args: Args used to initialize experts
-
-    :type num_experts: int
+    Args:
+        expert_cls (:class:`torch.nn.Module`): The class of all experts
+        num_experts (int): The number of experts
+        expert_args: Args used to initialize experts, the args could be found in corresponding expert class
     """
 
     def __init__(self, expert_cls: Type[nn.Module], num_experts: int, **expert_args):

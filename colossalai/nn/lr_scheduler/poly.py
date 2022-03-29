@@ -8,16 +8,13 @@ from .delayed import WarmupScheduler
 class PolynomialLR(_LRScheduler):
     """Polynomial learning rate scheduler.
 
-    :param optimizer: Wrapped optimizer
-    :type optimizer: torch.optim.Optimizer
-    :param total_steps: Number of total training steps
-    :type total_steps: int
-    :param end_lr: Minimum learning rate, defaults to 0.0001
-    :type end_lr: float, optional
-    :param power: The power of polynomial, defaults to 1.0
-    :type power: float, optional
-    :param last_epoch: The index of last epoch, defaults to -1
-    :type last_epoch: int, optional
+    Args:
+        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
+        total_steps (int): Number of total training steps.
+        end_lr (float, optional): Minimum learning rate, defaults to 0.0001.
+        power (float, optional): The power of polynomial, defaults to 1.0.
+        last_epoch (int, optional): The index of last epoch, defaults to -1. When last_epoch=-1,
+            the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
     def __init__(self, optimizer, total_steps: int, end_lr: float = 0.0001, power: float = 1.0, last_epoch: int = -1,
@@ -44,18 +41,14 @@ class PolynomialLR(_LRScheduler):
 class PolynomialWarmupLR(WarmupScheduler):
     """Polynomial learning rate scheduler with warmup.
 
-    :param optimizer: Wrapped optimizer
-    :type optimizer: torch.optim.Optimizer
-    :param total_steps: Number of total training steps
-    :type total_steps: int
-    :param warmup_steps: Number of warmup steps, defaults to 0
-    :type warmup_steps: int, optional
-    :param end_lr: Minimum learning rate, defaults to 0.0001
-    :type end_lr: float, optional
-    :param power: The power of polynomial, defaults to 1.0
-    :type power: float, optional
-    :param last_epoch: The index of last epoch, defaults to -1
-    :type last_epoch: int, optional
+    Args:
+        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
+        total_steps (int): Number of total training steps.
+        warmup_steps (int, optional): Number of warmup steps, defaults to 0.
+        end_lr (float, optional): Minimum learning rate, defaults to 0.0001.
+        power (float, optional): The power of polynomial, defaults to 1.0.
+        last_epoch (int, optional): The index of last epoch, defaults to -1. When last_epoch=-1,
+            the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
     def __init__(self, optimizer, total_steps: int, warmup_steps: int = 0, end_lr: float = 0.0001, power: float = 1.0,

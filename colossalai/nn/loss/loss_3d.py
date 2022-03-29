@@ -13,14 +13,22 @@ from torch.nn.modules.loss import _Loss
 
 @LOSSES.register_module
 class CrossEntropyLoss3D(_Loss):
-    """
-    Cross entropy loss for 3D parallelism
+    r"""Cross entropy loss for 3D parallelism.
 
-    :param reduction: whether to average the loss, defaults to True
-    :param args: Args for loss function
-    :param kwargs: Kwargs for loss function
+    Args:
+        reduction (bool, optional): whether to average the loss, defaults to True.
 
-    :type reduction: bool, optional
+    The ``args`` and ``kwargs`` should include parameters below:
+    ::
+
+        weight (Tensor, optional)
+        size_average (bool, optional)
+        ignore_index (int, optional)
+        reduce (bool, optional)
+        label_smoothing (float, optional)
+
+    More details about args, kwargs and torch.nn.functional.cross_entropy could be found in
+    `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
     """
 
     def __init__(self, reduction=True, *args, **kwargs):
@@ -32,10 +40,11 @@ class CrossEntropyLoss3D(_Loss):
         self.loss_kwargs = kwargs
 
     def forward(self, logits, targets):
-        """Calculate loss between logits and targets
+        """Calculate loss between logits and targets.
 
-        :param logits: Output logits of model
-        :param targets: True targets from data
+        Args:
+            logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
+            targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
         """
         targets = split_tensor_3d(targets, 0, self.weight_parallel_mode)
         targets = split_tensor_3d(targets, 0, self.input_parallel_mode)
@@ -109,12 +118,10 @@ class _VocabParallelCrossEntropy3D(torch.autograd.Function):
 
 @LOSSES.register_module
 class VocabParallelCrossEntropyLoss3D(_Loss):
-    """
-    Vocab parallel cross entropy loss for 2D parallelism
+    """Vocab parallel cross entropy loss for 2D parallelism.
 
-    :param reduction: whether to average the loss, defaults to True
-
-    :type reduction: bool, optional
+    Args:
+        reduction (bool, optional): whether to average the loss, defaults to True.
     """
 
     def __init__(self, reduction=True):
@@ -125,10 +132,11 @@ class VocabParallelCrossEntropyLoss3D(_Loss):
         self.reduction_mean = reduction
 
     def forward(self, logits, targets):
-        """Calculate loss between logits and targets
+        """Calculate loss between logits and targets.
 
-        :param logits: Output logits of model
-        :param targets: True targets from data
+        Args:
+            logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
+            targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
         """
         targets = split_tensor_3d(targets, 0, self.weight_parallel_mode)
         targets = split_tensor_3d(targets, 0, self.input_parallel_mode)

@@ -13,14 +13,22 @@ from torch.nn.modules.loss import _Loss
 
 @LOSSES.register_module
 class CrossEntropyLoss2p5D(_Loss):
-    """
-    Cross entropy loss for 2.5D parallelism
+    r"""Cross entropy loss for 2.5D parallelism
 
-    :param reduction: whether to average the loss, defaults to True
-    :param args: Args for loss function
-    :param kwargs: Kwargs for loss function
+    Args:
+        reduction (bool, optional): whether to average the loss, defaults to True.
 
-    :type reduction: bool, optional
+    The ``args`` and ``kwargs`` should include parameters below:
+    ::
+
+        weight (Tensor, optional)
+        size_average (bool, optional)
+        ignore_index (int, optional)
+        reduce (bool, optional)
+        label_smoothing (float, optional)
+
+    More details about args, kwargs and torch.nn.functional.cross_entropy could be found in
+    `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
     """
     def __init__(self, reduction=True, *args, **kwargs):
         super().__init__()
@@ -30,10 +38,11 @@ class CrossEntropyLoss2p5D(_Loss):
         self.loss_kwargs = kwargs
 
     def forward(self, logits, targets):
-        """Calculate loss between logits and targets
+        """Calculate loss between logits and targets.
 
-        :param logits: Output logits of model
-        :param targets: True targets from data
+        Args:
+            logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
+            targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
         """
         targets = split_tensor_2p5d(targets)
         loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
@@ -115,19 +124,19 @@ class VocabParallelCrossEntropyLoss2p5D(_Loss):
     """
     Vocab parallel cross entropy loss for 2.5D parallelism
 
-    :param reduction: whether to average the loss, defaults to True
-
-    :type reduction: bool, optional
+    Args:
+        reduction (bool, optional): whether to average the loss, defaults to True.
     """
     def __init__(self, reduction=True):
         super().__init__()
         self.reduction_mean = reduction
 
     def forward(self, logits, targets):
-        """Calculate loss between logits and targets
+        """Calculate loss between logits and targets.
 
-        :param logits: Output logits of model
-        :param targets: True targets from data
+        Args:
+            logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
+            targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
         """
         targets = split_tensor_2p5d(targets)
         loss = _VocabParallelCrossEntropy2p5D.apply(logits, targets)

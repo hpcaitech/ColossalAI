@@ -19,18 +19,15 @@ _parallel_layernorm = {
 
 
 class LayerNorm(nn.Module):
-    r"""
-    Layer Normalization for colossalai
+    r"""Layer Normalization for colossalai.
 
-    :param normalized_shape: input shape from an expected input
-        of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
-        If a single integer is used, it is treated as a singleton list, and this module will
-        normalize over the last dimension which is expected to be of that specific size.
-    :type normalized_shape: int
-    :param eps: a value added to the denominator for numerical stability, defaults to 1e-05
-    :type eps: float, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
+    Args:
+        normalized_shape (int): input shape from an expected input of size.
+            :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1] \times \ldots \times \text{normalized_shape}[-1]]`
+            If a single integer is used, it is treated as a singleton list, and this module will
+            normalize over the last dimension which is expected to be of that specific size.
+        eps (float, optional): a value added to the denominator for numerical stability, defaults to 1e-05
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
     """
 
     def __init__(self, normalized_shape: int, eps=1e-05, dtype=None) -> None:

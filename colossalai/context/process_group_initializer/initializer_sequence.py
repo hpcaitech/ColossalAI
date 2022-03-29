@@ -15,8 +15,13 @@ class Initializer_Sequence_DP(ProcessGroupInitializer):
     In Sequence Parallelism, each GPU holds the full copy of model weights,
     thus, gradient all-reduce occurs across all processes in the same pipeline stage
 
-    :param args: Args used to initialize ProcessGroupInitializer
-    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    Args:
+        rank (int): The rank of current process
+        world_size (int): Size of whole communication world
+        config (Config): Running configuration
+        data_parallel_size (int): Size of data parallel
+        pipeline_parallel_size (int): Size of pipeline parallel
+        tensor_parallel_size (int): Size of tensor parallel
     """
 
     def __init__(self, *args, **kwargs):
@@ -27,8 +32,8 @@ class Initializer_Sequence_DP(ProcessGroupInitializer):
     def init_dist_group(self):
         """Initialize Sequence Parallel process groups used for gradient all-reduce.
 
-        :return: (local_rank, group_world_size, process_group, ranks_in_group, mode)
-        :rtype: Tuple
+        Returns:
+            Tuple: A tuple (local_rank, group_world_size, process_group, ranks_in_group, mode).
         """
         local_rank = None
         ranks_in_group = None
@@ -52,8 +57,13 @@ class Initializer_Sequence_DP(ProcessGroupInitializer):
 class Initializer_Sequence(ProcessGroupInitializer):
     """A ProcessGroupInitializer for sequence parallelism.
 
-    :param args: Args used to initialize ProcessGroupInitializer
-    :param kwargs: Kwargs used to initialize ProcessGroupInitializer
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
     def __init__(self,
                  *args, **kwargs):
@@ -66,11 +76,12 @@ class Initializer_Sequence(ProcessGroupInitializer):
         """Initialize Sequence parallel process groups and assign local_ranks and groups to each gpu.
 
         Sequence parallelism requires 2 process groups. The first is for model forward where several processes
-        exchange paritial query, key and value embedding to compute self attention values. The second is for
+        exchange partial query, key and value embedding to compute self attention values. The second is for
         all-reduce to synchronize the model parameters.
 
-        :return: Sequence parallelism's information
-        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                A Sequence parallelism's information in list of tuples.
         """
 
         parallel_setting = []

@@ -27,10 +27,10 @@ from .multi_tensor_apply import multi_tensor_applier
 def print_rank_0(msg: str, logger=None):
     """Print messages and save logs(optional). This is executed only if you are the rank-0 gpu.
 
-    :param msg: A string message to output
-    :type msg: str
-    :param logger: Python logger object, defaults to None
-    :type logger: optional
+    Args:
+        msg (str): A string message to output.
+        logger (:class:`colossalai.logging.DistributedLogger`, optional):
+            The logger to record the message, defaults to None.
     """
     if gpc.get_global_rank() == 0:
         if logger is None:
@@ -53,12 +53,15 @@ def free_port():
 
 
 def sync_model_param(model, parallel_mode):
-    """Make sure data parameters are consistent during Data Parallel Mode
+    r"""Make sure data parameters are consistent during Data Parallel Mode.
 
-    :param model: A pyTorch nn.model on whose parameters you check the consistency
-    :param parallel_mode: Parallel mode to be checked
-    :type model: torch.nn.Module
-    :type parallel_mode:  colossalai.context.ParallelMode
+    Args:
+        model (:class:`torch.nn.Module`): A pyTorch model on whose parameters you check the consistency.
+        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel mode to be checked.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
         for param in model.parameters():
@@ -146,18 +149,19 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     """Clips gradient norm of an iterable of parameters whose gradients are in fp32.
 
     This is adapted from :func:`torch.nn.utils.clip_grad.clip_grad_norm_` and
-    added functionality to handle model parallel parameters. Note that
-    the gradients are modified in place.
+    added functionality to handle model parallel parameters.
 
-    :param parameters: An iterable of Tensors or a single Tensor that will have gradients normalized
-    :type parameters: (Iterable[Tensor] or Tensor)
-    :param max_norm: Max norm of the gradients
-    :type max_norm: float or int
-    :param norm_type: Type of the used p-norm. Can be ``'inf'`` for infinity norm.
-    :type norm_type: float or int 
+    Note:
+        the gradients are modified in place.
 
-    :return: Total norm of the parameters (viewed as a single vector).
-    :rtype: float
+    Args:
+        parameters (Iterable[:class:`torch.tensor`] or :class:`torch.tensor`):
+            An iterable of Tensors or a single Tensor that will have gradients normalized.
+        max_norm (Union[float, int]): Max norm of the gradients.
+        norm_type (Union[float, int, 'inf']): Type of the used p-norm. Can be ``'inf'`` for infinity norm.
+
+    Returns:
+        float: Total norm of the parameters.
     """
 
     if isinstance(parameters, torch.Tensor):
