@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 from colossalai.zero.sharded_param import ShardedTensor
 from typing import Optional, Tuple
+from colossalai.utils.memory_utils.utils import colo_tensor_mem_usage
 
 
 class ShardedParamV2(object):
@@ -55,10 +56,9 @@ class ShardedParamV2(object):
             assert isinstance(t, torch.Tensor)
             nonlocal cuda_mem_use
             nonlocal cpu_mem_use
-            if t.device.type == 'cpu':
-                cpu_mem_use += t.numel() * t.element_size()
-            elif t.device.type == 'cuda':
-                cuda_mem_use += t.numel() * t.element_size()
+            t_cuda, t_cpu = colo_tensor_mem_usage(t)
+            cuda_mem_use += t_cuda
+            cpu_mem_use += t_cpu
 
         address_set = set()
         _update_mem_use(self.sharded_data_tensor.payload)
