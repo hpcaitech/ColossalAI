@@ -13,13 +13,18 @@ class MultiStepLR(_MultiStepLR):
     happen simultaneously with other changes to the learning rate from outside
     this scheduler. When last_epoch=-1, sets initial lr as lr.
 
-    Args:
-        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
-        total_steps (int): Number of total training steps.
-        milestones (List[int], optional): List of epoch indices. Must be increasing, defaults to None.
-        gamma (float, optional): Multiplicative factor of learning rate decay, defaults to 0.1.
-        last_epoch (int, optional): The index of last epoch, defaults to -1. When last_epoch=-1,
-            the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
+    :param optimizer: Wrapped optimizer
+    :type optimizer: torch.optim.Optimizer
+    :param total_steps: Number of total training steps
+    :type total_steps: int
+    :param milestones: List of epoch indices. Must be increasing, defaults to None
+    :type milestones: List[int], optional
+    :param gamma: Multiplicative factor of learning rate decay, defaults to 0.1
+    :type gamma: float, optional
+    :param num_steps_per_epoch: Number of steps per epoch, defaults to -1
+    :type num_steps_per_epoch: int, optional
+    :param last_epoch: The index of last epoch, defaults to -1
+    :type last_epoch: int, optional
     """
 
     def __init__(self, optimizer, total_steps: int, milestones: List[int] = None, gamma: float = 0.1, last_epoch: int = -1, **kwargs):
@@ -28,17 +33,22 @@ class MultiStepLR(_MultiStepLR):
 
 @LR_SCHEDULERS.register_module
 class MultiStepWarmupLR(WarmupScheduler):
-    """Multistep learning rate scheduler with warmup.
+    """Multi-step laerning rate scheduler with warmup.
 
-    Args:
-        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
-        total_steps (int): Number of total training steps.
-        warmup_steps (int, optional): Number of warmup steps, defaults to 0.
-        milestones (List[int], optional): List of epoch indices. Must be increasing, defaults to None.
-        gamma (float, optional): Multiplicative factor of learning rate decay, defaults to 0.1.
-        num_steps_per_epoch (int, optional): Number of steps per epoch, defaults to -1.
-        last_epoch (int, optional): The index of last epoch, defaults to -1. When last_epoch=-1,
-            the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
+    :param optimizer: Wrapped optimizer
+    :type optimizer: torch.optim.Optimizer
+    :param total_steps: Number of total training steps
+    :type total_steps: int
+    :param warmup_steps: Number of warmup steps, defaults to 0
+    :type warmup_steps: int, optional
+    :param milestones: List of epoch indices. Must be increasing, defaults to None
+    :type milestones: List[int], optional
+    :param gamma: Multiplicative factor of learning rate decay, defaults to 0.1
+    :type gamma: float, optional
+    :param num_steps_per_epoch: Number of steps per epoch, defaults to -1
+    :type num_steps_per_epoch: int, optional
+    :param last_epoch: The index of last epoch, defaults to -1
+    :type last_epoch: int, optional
     """
 
     def __init__(self, optimizer, total_steps: int, warmup_steps: int = 0, milestones: List[int] = None,

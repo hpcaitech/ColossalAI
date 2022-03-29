@@ -78,9 +78,8 @@ class _ReduceGrad(torch.autograd.Function):
     """
     Pass the input to the model parallel region.
 
-    Args:
-        input_: input matrix.
-        parallel_mode: parallel mode.
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
     """
 
     @staticmethod
@@ -100,10 +99,9 @@ class _ReduceGrad(torch.autograd.Function):
 class _ReduceInput(torch.autograd.Function):
     """
     All-reduce the input from the model parallel region.
-
-    Args:
-        input_: input matrix.
-        parallel_mode: parallel mode.
+    
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
     """
 
     @staticmethod
@@ -123,10 +121,9 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     """
     Split the input and keep only the corresponding chuck to the rank.
     
-    Args:
-        input_: input matrix.
-        parallel_mode: parallel mode.
-        dim: dimension
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
+    :param dim: dimension
     """
 
     @staticmethod
@@ -145,12 +142,12 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
 
 
 class _GatherForwardSplitBackward(torch.autograd.Function):
-    """Gather the input from model parallel region and concatenate.
-
-    Args:
-        input_: input matrix.
-        parallel_mode: parallel mode.
-        dim: dimension
+    """
+    Gather the input from model parallel region and concatinate.
+    
+    :param input_: input matrix
+    :param parallel_mode: parallel mode
+    :param dim: dimension
     """
 
     @staticmethod

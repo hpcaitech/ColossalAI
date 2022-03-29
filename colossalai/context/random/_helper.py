@@ -16,8 +16,8 @@ _SEED_MANAGER = SeedManager()
 def get_seeds():
     """Returns the seeds of the seed manager.
 
-    Returns:
-        dict: The seeds of the seed manager.
+    :return: The seeds of the seed manager
+    :rtype: dict
     """
     return _SEED_MANAGER.seeds
 
@@ -25,8 +25,8 @@ def get_seeds():
 def get_states(copy=False):
     """Returns the seed states of the seed manager.
 
-    Returns:
-        dict: The seed states of the seed manager.
+    :return: The seed states of the seed manager
+    :rtype: dict
     """
     states = _SEED_MANAGER.seed_states
 
@@ -43,8 +43,8 @@ def get_states(copy=False):
 def get_current_mode():
     """Returns the current mode of the seed manager.
 
-    Returns:
-        :class:`torch.ByteTensor`: The current mode of the seed manager.
+    :return: The current mode of the seed manager.
+    :rtype: :class:`torch.ByteTensor`
     """
     return _SEED_MANAGER.current_mode
 
@@ -52,16 +52,12 @@ def get_current_mode():
 def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
     """Adds a seed to the seed manager for `parallel_mode`.
 
-    Args:
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
-        seed (int): The seed to be added
-    Raises:
-        AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
-            :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
+    :param parallel_mode: The chosen parallel mode
+    :type parallel_mode: :class:`colossalai.context.ParallelMode`
+    :param seed: The seed to be added
+    :type seed: int
+    :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
+        :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added
     """
     _SEED_MANAGER.add_seed(parallel_mode, seed, overwrite)
 
@@ -69,12 +65,8 @@ def add_seed(parallel_mode: ParallelMode, seed: int, overwrite: bool = False):
 def set_mode(parallel_mode: ParallelMode):
     """Sets the current mode of the seed manager.
 
-    Args:
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
+    :param parallel_mode: The chosen parallel mode
+    :type parallel_mode: :class:`colossalai.context.ParallelMode`
     """
     _SEED_MANAGER.set_mode(parallel_mode)
 
@@ -82,12 +74,11 @@ def set_mode(parallel_mode: ParallelMode):
 def set_seed_states(parallel_mode: ParallelMode, state: Tensor):
     """Sets the state of the seed manager for `parallel_mode`.
 
-    Args:
-        parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
-        state (:class:`torch.Tensor`): the state to be set.
-
-    Raises:
-        AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager.
+    :param parallel_mode: The chosen parallel mode
+    :type parallel_mode: :class:`colossalai.context.ParallelMode`
+    :param state: the state to be set
+    :type state: :class:`torch.Tensor`
+    :raises AssertionError: Raises an AssertionError if `parallel_mode` is not found in the seed manager
     """
     _SEED_MANAGER.set_state(parallel_mode, state)
 
@@ -107,9 +98,6 @@ def seed(parallel_mode: ParallelMode):
         with seed(ParallelMode.DATA):
             output = F.dropout(input)
 
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
     try:
         # set to new mode
@@ -137,9 +125,6 @@ def with_seed(func, parallel_mode: ParallelMode):
         wrapper_forward = with_seed(forward, ParallelMode.DATA)
         out = wrapped_forward(input)
 
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
     @functools.wraps(func)

@@ -18,15 +18,11 @@ from ._fp16_optimizer import FP16Optimizer
 class NaiveAMPOptimizer(ColossalaiOptimizer):
     """A wrapper class for optimizer to cast all parameters to fp16
 
-    Args:
-        optim (torch.optim.Optimizer): A normal optimizer like Adam or SGD.
-        grad_scaler (BaseGradScaler): grad scaler for gradient chose in
-                                      ``constant_grad_scaler`` or ``dynamic_grad_scaler``.
-        clip_grad_norm (float, optional): clip gradients with this global L2 norm. Default 0.
-        verbose (bool, optional): if set to `True`, will print debug info. Default False.
+    :param optim: A normal optimizer like Adam or SGD
+    :param args: Args used to initialize FP16 optimizer
+    :param kwargs: Kwargs used to initialize FP16 optimizer
 
-    Note:
-        clipping is ignored if ``clip_grad_norm`` equals 0.
+    :type optim: torch.optim.Optimizer
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):
@@ -44,19 +40,8 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
 
 
 class NaiveAMPModel(nn.Module):
-    r"""A wrapper class for model to cast the model into fp16 and
+    """A wrapper class for model to cast the model into fp16 and
     automatically cast the input and output
-
-    Args:
-        model (torch.nn.Module): torch.nn.Module to be wrapped.
-        output_to_fp32 (bool, optional): Whether cast output of this module into fp32. (Default: True)
-        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this module.
-                                                                  (Default: ``ParallelMode.DATA``)
-        sync_buffer (bool, optional): whether to synchronize buffer. (Default: True)
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
     def __init__(self,

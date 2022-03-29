@@ -16,8 +16,8 @@ class NormalNoiseGenerator:
     All noise is generated from a normal distribution (0, 1 / E^2), where
     E = the number of experts.
 
-    Args:
-        num_experts (int): The number of experts.
+    :param num_experts: The number of experts
+    :type num_experts: int
     """
 
     def __init__(self, num_experts: int):
@@ -37,8 +37,8 @@ class UniformNoiseGenerator:
     Makes models more resilient to rounding errors introduced by bfloat16.
     This seems particularly important for logits.
 
-    Args:
-        eps (float, optional): Epsilon in generator, defaults 1e-2.
+    :param eps: Epsilon in generator
+    :type eps: float
     """
 
     def __init__(self, eps: float = 1e-2):

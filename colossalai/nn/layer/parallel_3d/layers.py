@@ -24,16 +24,19 @@ from ._utils import get_depth_from_env, get_last_group, get_parallel_mode_from_e
 
 @LAYERS.register_module
 class LayerNorm3D(ParallelLayer):
-    r"""Layer Normalization for 3D parallelism.
+    r"""
+    Layer Normalization for 3D parallelism
 
-    Args:
-        normalized_shape (int): input shape from an expected input of size.
-            :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
-            \times \ldots \times \text{normalized_shape}[-1]]`
-            If a single integer is used, it is treated as a singleton list, and this module will
-            normalize over the last dimension which is expected to be of that specific size.
-        eps (float, optional): a value added to the denominator for numerical stability, defaults to 1e-12.
-        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+    :param normalized_shape: input shape from an expected input of size.
+    :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+    \times \ldots \times \text{normalized_shape}[-1]]`
+        If a single integer is used, it is treated as a singleton list, and this module will
+        normalize over the last dimension which is expected to be of that specific size.
+    :type normalized_shape: int
+    :param eps: a value added to the denominator for numerical stability, defaults to 1e-12
+    :type eps: float, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
     """
 
     def __init__(self, normalized_shape: int, eps: float = 1e-12, dtype=None):
@@ -68,20 +71,21 @@ class LayerNorm3D(ParallelLayer):
 
 @LAYERS.register_module
 class Linear3D(ParallelLayer):
-    r"""Linear layer for 3D parallelism.
+    """
+    Linear layer for 3D parallelism
 
-    Args:
-        in_features (int): size of each input sample.
-        out_features (int): size of each output sample.
-        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
-        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
-        weight_initializer (:class:`typing.Callable`, optional):
-            The initializer of weight, defaults to kaiming uniform initializer.
-        bias_initializer (:class:`typing.Callable`, optional):
-            The initializer of bias, defaults to xavier uniform initializer.
-
-    More details about ``initializer`` please refer to
-    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param out_features: size of each output sample
+    :type out_features: int
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
     """
 
     def __init__(self,
@@ -142,21 +146,23 @@ class Linear3D(ParallelLayer):
 
 @LAYERS.register_module
 class Classifier3D(ParallelLayer):
-    r"""Classifier for 3D parallelism.
+    """
+    Classifier for 3D parallelism
 
-    Args:
-        in_features (int): size of each input sample.
-        num_classes (int): number of classes.
-        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
-        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
-        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
-        weight_initializer (:class:`typing.Callable`, optional):
-            The initializer of weight, defaults to kaiming uniform initializer.
-        bias_initializer (:class:`typing.Callable`, optional):
-            The initializer of bias, defaults to xavier uniform initializer.
-
-    More details about ``initializer`` please refer to
-    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param num_classes: number of classes
+    :type num_classes: int
+    :param weight: weight of the classifier, defaults to True
+    :type weight: torch.nn.Parameter, optional
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
     """
 
     def __init__(self,
@@ -219,21 +225,23 @@ class Classifier3D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelClassifier3D(ParallelLayer):
-    r"""Vocab parallel classifier layer for 3D parallelism.
+    """
+    Vocab parallel classifier layer for 2D parallelism
 
-    Args:
-        in_features (int): size of each input sample.
-        num_classes (int): number of classes.
-        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
-        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
-        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
-        weight_initializer (:class:`typing.Callable`, optional):
-            The initializer of weight, defaults to kaiming uniform initializer.
-        bias_initializer (:class:`typing.Callable`, optional):
-            The initializer of bias, defaults to xavier uniform initializer.
-
-    More details about ``initializer`` please refer to
-    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    :param in_features: size of each input sample
+    :type in_features: int
+    :param num_classes: number of classes
+    :type num_classes: int
+    :param weight: weight of the classifier, defaults to True
+    :type weight: torch.nn.Parameter, optional
+    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
+    :type bias: bool, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
     """
 
     def __init__(self,
@@ -303,24 +311,27 @@ class VocabParallelClassifier3D(ParallelLayer):
 
 @LAYERS.register_module
 class PatchEmbedding3D(ParallelLayer):
-    r"""2D Image to Patch Embedding.
+    """
+    2D Image to Patch Embedding
 
-    Args:
-        img_size (int): image size.
-        patch_size (int): patch size.
-        in_chans (int): number of channels of input image.
-        embed_size (int): size of embedding.
-        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
-        flatten (bool, optional): whether to flatten output tensor, defaults to True.
-        weight_initializer (:class:`typing.Callable`, optional):
-            The initializer of weight, defaults to kaiming uniform initializer.
-        bias_initializer (:class:`typing.Callable`, optional):
-            The initializer of bias, defaults to xavier uniform initializer.
-        position_embed_initializer (:class:`typing.Callable`, optional):
-            The initializer of position embedding, defaults to zeros initializer.
-
-    More details about ``initializer`` please refer to
-    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    :param img_size: image size
+    :type img_size: int
+    :param patch_size: patch size
+    :type patch_size: int
+    :param in_chans: number of channels of input image
+    :type in_chans: int
+    :param embed_size: size of embedding
+    :type embed_size: int
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param flatten: whether to flatten output tensor, defaults to True
+    :type flatten: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    :param position_embed_initializer: The intializer of position embedding, defaults to zero
+    :type position_embed_initializer: typing.Callable, optional
     """
 
     def __init__(self,
@@ -408,33 +419,21 @@ class PatchEmbedding3D(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding3D(ParallelLayer):
-    r"""Embedding for 3D parallelism.
+    """
+    Embedding for 3D parallelism
 
-    Args:
-        num_embeddings (int): number of embeddings.
-        embedding_dim (int): dimension of embedding.
-        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
-            therefore, the embedding vector at padding_idx is not updated during training,
-            i.e. it remains as a fixed “pad”, defaults to None.
-        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
-        weight_initializer (:class:`typing.Callable`, optional):
-            he initializer of weight, defaults to normal initializer.
-
-    The ``args`` and ``kwargs`` used in :class:``torch.nn.functional.embedding`` should contain:
-    ::
-
-        max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
-                    renormalized to have norm max_norm. Note: this will modify weight in-place.
-        norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.
-        scale_grad_by_freq (bool, optional): If given, this will scale gradients by the inverse
-                    of frequency of the words in the mini-batch. Default False.
-        sparse (bool, optional): If True, gradient w.r.t. weight will be a sparse tensor. Default False.
-
-    More details about ``args`` and ``kwargs`` could be found in
-    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
-
-    More details about initializer please refer to
-    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_
+    :param num_embeddings: number of embeddings
+    :type num_embeddings: int
+    :param embedding_dim: dimension of embedding
+    :type embedding_dim: int
+    :param padding_idx: index of padding, defaults to None
+    :type padding_idx: int, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to normal initializer
+    :type weight_initializer: typing.Callable, optional
+    :param args: Args used in F.embedding
+    :param kwargs: Kwargs used in F.embedding
     """
 
     def __init__(self,
@@ -492,33 +491,20 @@ class Embedding3D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelEmbedding3D(torch.nn.Module):
-    r"""Embedding parallelized in the vocabulary dimension.
+    """Embedding parallelized in the vocabulary dimension.
 
-    Args:
-        num_embeddings (int): number of embeddings.
-        embedding_dim (int): dimension of embedding.
-        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
-            therefore, the embedding vector at padding_idx is not updated during training,
-            i.e. it remains as a fixed “pad”, defaults to None.
-        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
-        weight_initializer (:class:`typing.Callable`, optional):
-            he initializer of weight, defaults to normal initializer.
-
-    The ``args`` and ``kwargs`` used in :class:``torch.nn.functional.embedding`` should contain:
-    ::
-
-        max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
-                    renormalized to have norm max_norm. Note: this will modify weight in-place.
-        norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.
-        scale_grad_by_freq (bool, optional): If given, this will scale gradients by the inverse
-                    of frequency of the words in the mini-batch. Default False.
-        sparse (bool, optional): If True, gradient w.r.t. weight will be a sparse tensor. Default False.
-
-    More details about ``args`` and ``kwargs`` could be found in
-    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
-
-    More details about initializer please refer to
-    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    :param num_embeddings: number of embeddings
+    :type num_embeddings: int
+    :param embedding_dim: dimension of embedding
+    :type embedding_dim: int
+    :param padding_idx: index of padding, defaults to None
+    :type padding_idx: int, optional
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param weight_initializer: The intializer of weight, defaults to normal initializer
+    :type weight_initializer: typing.Callable, optional
+    :param args: Args used in F.embedding
+    :param kwargs: Kwargs used in F.embedding
     """
 
     def __init__(self,

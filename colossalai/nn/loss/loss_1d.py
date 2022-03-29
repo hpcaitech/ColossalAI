@@ -86,10 +86,12 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
 
 @LOSSES.register_module
 class VocabParallelCrossEntropyLoss1D(_Loss):
-    """Vocab parallel cross entropy loss for 1D parallelism.
+    """
+    Vocab parallel cross entropy loss for 1D parallelism
 
-    Args:
-        reduction (bool, optional): whether to average the loss, defaults to True.
+    :param reduction: whether to average the loss, defaults to True
+
+    :type reduction: bool, optional
     """
 
     def __init__(self, reduction=True):
@@ -97,11 +99,10 @@ class VocabParallelCrossEntropyLoss1D(_Loss):
         self.reduction_mean = reduction
 
     def forward(self, logits, targets):
-        """Calculate loss between logits and targets.
+        """Calculate loss between logits and targets
 
-        Args:
-            logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
-            targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
+        :param logits: Output logits of model
+        :param targets: True targets from data
         """
         loss = _VocabParallelCrossEntropy1D.apply(logits, targets)
         if self.reduction_mean:

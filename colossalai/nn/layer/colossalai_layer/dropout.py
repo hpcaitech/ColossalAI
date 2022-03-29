@@ -6,11 +6,13 @@ from ..utils import get_tensor_parallel_mode
 
 
 class Dropout(nn.Module):
-    """Dropout layer of colossalai.
+    """
+    Dropout layer of colossalai
 
-    Args:
-        p (float, optional): probability of an element to be zeroed, defaults 0.5.
-        inplace (bool, optional): whether to do dropout in-place, default to be False.
+    :param p: dropout rate, defaults to 0.5
+    :type p: float, optional
+    :param inplace: If set to ``True``, will do this operation in-place, defaults tp ``False``
+    :type inplace: bool, optional
     """
     def __init__(self, p: float = 0.5, inplace: bool = False) -> None:
         super().__init__()

@@ -12,8 +12,8 @@ class Config(dict):
     """This is a wrapper class for dict objects so that values of which can be
     accessed as attributes.
 
-    Args:
-        config (dict): The dict object to be wrapped.
+    :param config: The dict object to be wrapped
+    :type config: dict
     """
 
     def __init__(self, config: dict = None):
@@ -50,14 +50,12 @@ class Config(dict):
     def from_file(filename: str):
         """Reads a python file and constructs a corresponding :class:`Config` object.
 
-        Args:
-            filename (str): Name of the file to construct the return object.
-
-        Returns:
-            :class:`Config`: A :class:`Config` object constructed with information in the file.
-
-        Raises:
-            AssertionError: Raises an AssertionError if the file does not exist, or the file is not .py file
+        :param filename: Name of the file to construct the return object
+        :type filename: str
+        :raises AssertionError: Raises an AssertionError if the file does not exist, or the file
+            is not .py file
+        :return: A :class:`Config` object constructed with information in the file
+        :rtype: :class:`Config`
         """
 
         # check config path

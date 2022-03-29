@@ -14,19 +14,13 @@ from colossalai.utils import clip_grad_norm_fp32
 
 
 class TorchAMPOptimizer(ColossalaiOptimizer):
-    """A wrapper class which integrate Pytorch AMP with an optimizer
+    """A wrapper class which integrate pytorch amp with an optimizer
 
-    Args:
-        optim (torch.optim.Optimizer): A normal optimizer like Adam or SGD.
-        init_scale (float, optional, default=2.**16):  Initial scale factor.
-        growth_factor (float, optional, default=2.0):  Factor by which the scale is multiplied during
-            :meth:`update` if no inf/NaN gradients occur for ``growth_interval`` consecutive iterations.
-        backoff_factor (float, optional, default=0.5):  Factor by which the scale is multiplied during
-            :meth:`update` if inf/NaN gradients occur in an iteration.
-        growth_interval (int, optional, default=2000):  Number of consecutive iterations without inf/NaN gradients
-            that must occur for the scale to be multiplied by ``growth_factor``.
-        enabled (bool, optional, default=True):  If ``False``, disables gradient scaling. :meth:`step` simply
-            invokes the underlying ``optimizer.step()``, and other methods become no-ops.
+    :param optim: A normal optimizer like Adam or SGD
+    :param args: Args used to initialize gradient scaler
+    :param kwargs: Kwargs used to initialize gradient scaler
+
+    :type optim: torch.optim.Optimizer
     """
 
     def __init__(self, optim: Optimizer, *args, **kwargs):
@@ -36,8 +30,8 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
     def backward(self, loss: Tensor):
         """Backward with torch amp gradient scaler
 
-        Args:
-            loss (torch.Tensor): Loss computed by a loss function
+        :param loss: Loss computed by a loss function
+        :type loss: torch.Tensor
         """
         self.scaler.scale(loss).backward()
 
@@ -50,9 +44,10 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
         """Apply gradient clipping to the model parameters
 
-        Args:
-            model (torch.nn.Module): Your model object
-            max_norm (float): Max norm value for gradient clipping
+        :param model: Your model object
+        :type model: torch.nn.Module
+        :param max_norm: Max norm value for gradient clipping
+        :type max_norm: float
         """
         if max_norm > 0.0:
             self.scaler.unscale_(self.optim)
@@ -76,8 +71,8 @@ class TorchAMPModel(nn.Module):
 class TorchAMPLoss(nn.Module):
     """A wrapper class for a criterion object which computes the loss in mixed-precision context
 
-    Args:
-        loss (torch.nn.modules.loss._Loss): A loss function object
+    :param loss: A loss function object
+    :type loss: torch.nn.modules.loss._Loss
     """
 
     def __init__(self, loss: _Loss):

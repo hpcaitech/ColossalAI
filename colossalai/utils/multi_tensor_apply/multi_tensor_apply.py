@@ -3,10 +3,10 @@
 
 class MultiTensorApply(object):
     """
-    Apply an operation to a list of tensors efficiently.
+    Apply an operation to a list of tensors efficiently
 
-    Args:
-        chunk_size (int): Size of a chunk.
+    :param chunk_size: Size of a chunk
+    :type chunk_size: int
     """
 
     available = False

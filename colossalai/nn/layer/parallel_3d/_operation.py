@@ -88,22 +88,27 @@ def linear_3d(input_: Tensor,
               input_dim: int = 0,
               weight_dim: int = -1,
               output_dim: int = 0) -> Tensor:
-    r"""Linear layer for 3D parallelism.
+    """
+    Linear layer for 3D parallelism
 
-    Args:
-        input_ (:class:`torch.tensor`): input matrix.
-        weight (:class:`torch.tensor`): matrix of weight.
-        bias (:class:`torch.tensor`): matrix of bias.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
-        input_dim (int, optional): dimension of input, defaults to 0.
-        weight_dim (int, optional): dimension of weight, defaults to -1.
-        output_dim (int, optional): dimension of output, defaults to 0.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
+    :param input_: matrix of input
+    :type input_: torch.tensor
+    :param weight: matrix of weight
+    :type weight: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param output_parallel_mode: output parallel mode
+    :type output_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param input_dim: dimension of input, defaults to 0
+    :type input_dim: int, optional
+    :param weight_dim: dimension of weight, defaults to -1
+    :type weight_dim: int, optional
+    :param output_dim: dimension of output, defaults to 0
+    :type output_dim: int, optional
     """
     return _Linear3D.apply(input_, weight, bias, input_parallel_mode, weight_parallel_mode, output_parallel_mode,
                            input_dim, weight_dim, output_dim)
@@ -169,19 +174,21 @@ class _Classifier3D(torch.autograd.Function):
 
 def classifier_3d(input_: Tensor, weight: Tensor, bias: Optional[Tensor], input_parallel_mode: ParallelMode,
                   weight_parallel_mode: ParallelMode, output_parallel_mode: ParallelMode) -> Tensor:
-    r"""3D parallel classifier.
+    """
+    3D parallel classifier
 
-    Args:
-        input_ (:class:`torch.tensor`): input matrix.
-        weight (:class:`torch.tensor`): matrix of weight.
-        bias (:class:`torch.tensor`): matrix of bias.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
+    :param input_: matrix of input
+    :type input_: torch.tensor
+    :param weight: matrix of weight
+    :type weight: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor, optional
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param output_parallel_mode: output parallel mode
+    :type output_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
     return _Classifier3D.apply(input_, weight, bias, input_parallel_mode, weight_parallel_mode, output_parallel_mode)
 
@@ -237,44 +244,48 @@ class _Layernorm3D(torch.autograd.Function):
 def layernorm_3d(input_: Tensor, weight: Tensor, bias: Tensor, normalized_shape: int, eps: float,
                  input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,
                  output_parallel_mode: ParallelMode) -> Tensor:
-    r"""3D parallel Layernorm.
+    r"""
+    3D parallel Layernorm
 
-    Args:
-        input_ (:class:`torch.tensor`): input matrix.
-        weight (:class:`torch.tensor`): matrix of weight.
-        bias (:class:`torch.tensor`): matrix of bias.
-        normalized_shape (int): input shape from an expected input of size.
-            :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
-            \times \ldots \times \text{normalized_shape}[-1]]`
-            If a single integer is used, it is treated as a singleton list, and this module will
-            normalize over the last dimension which is expected to be of that specific size.
-        eps (float): a value added to the denominator for numerical stability
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param weight: matrix of weight
+    :type weight: torch.tensor
+    :param bias: matrix of bias
+    :type bias: torch.tensor
+    :param normalized_shape: input shape from an expected input of size.
+    :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+    \times \ldots \times \text{normalized_shape}[-1]]`
+        If a single integer is used, it is treated as a singleton list, and this module will
+        normalize over the last dimension which is expected to be of that specific size.
+    :type normalized_shape: int
+    :param eps: a value added to the denominator for numerical stability
+    :type eps: float
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param output_parallel_mode: output parallel mode
+    :type output_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
     return _Layernorm3D.apply(input_, weight, bias, normalized_shape, eps, input_parallel_mode, weight_parallel_mode,
                               output_parallel_mode)
 
 
 def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
-    r"""Splits 3D parallel tensor in specified dimension.
+    """Splits 3D parallel tensor in specified dimension
 
-     Args:
-        tensor (:class:`torch.tensor`): Input tensor.
-        dim (int): Specified dimension in which to split.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): Parallel mode.
+    :param tensor: Input tensor
+    :param dim: Specified dimension in which to split
+    :param parallel_mode: Parallel mode
+    :param weight_parallel_mode: Weight parallel mode
 
-    Returns:
-        :class:`torch.tensor`: The tensor has been split.
+    :type tensor: torch.Tensor
+    :type dim: int
+    :type parallel_mode: colossalai.context.parallel_mode.ParallelMode
 
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
+    :return output: Splitted tensor
+    :rtype output: torch.Tensor
     """
     if tensor.size(dim) <= 1:
         return tensor
@@ -287,20 +298,17 @@ def split_batch_3d(input_: Tensor,
                    dim: int = 0,
                    input_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_INPUT,
                    weight_parallel_mode: ParallelMode = ParallelMode.PARALLEL_3D_WEIGHT) -> Tensor:
-    r"""Splits 3D tensor in batch.
-
-    Args:
-        input_ (:class:`torch.tensor`): Input tensor.
-        dim (int): Specified dimension in which to split.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): weight parallel mode.
-
-    Returns:
-        :class:`torch.tensor`: The tensor has been split.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
+    """Splits 3D tensor in batch
+    :param input_: Input tensor
+    :param dim: Specified dimension in which to split
+    :param input_parallel_mode: Input parallel mode
+    :param weight_parallel_mode: Weight parallel mode
+    :type input_: torch.Tensor
+    :type dim: int, optional
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode, optional
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode, optional
+    :return output: Splitted tensor
+    :rtype output: torch.Tensor
     """
     if input_.size(dim) <= 1:
         return input_
@@ -325,15 +333,11 @@ class _ReduceTensor3D(torch.autograd.Function):
 
 
 def reduce_tensor_3d(tensor: Tensor, parallel_mode: ParallelMode) -> Tensor:
-    r"""All-reduce the input
+    """
+    All-reduce the input
 
-    Args:
-        tensor (:class:`torch.tensor`): Input tensor.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): Parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
+    :param tensor: Input tensor
+    :param parallel_mode: Parallel mode
     """
     return _ReduceTensor3D.apply(tensor, parallel_mode)
 
@@ -354,16 +358,11 @@ class _AllGatherTensor3D(torch.autograd.Function):
 
 
 def all_gather_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
-    r"""All-reduce the gradient in backward pass.
+    """
+    All-reduce the gradient in backward pass.
 
-    Args:
-        tensor (:class:`torch.tensor`): Input tensor.
-        dim (int): Dimension to gather.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): Parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
+    :param tensor: Input tensor
+    :param parallel_mode: Parallel mode
     """
     return _AllGatherTensor3D.apply(tensor, dim, parallel_mode)
 
@@ -383,16 +382,12 @@ class _ReduceScatterTensor3D(torch.autograd.Function):
 
 
 def reduce_scatter_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
-    r"""Reduce-scatter the input.
+    """
+    Reduce-scatter the input.
 
-    Args:
-        tensor (:class:`torch.tensor`): Input tensor.
-        dim (int): Dimension to scatter.
-        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): Parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
+    :param tensor: Input tensor
+    :param dim: Dimension to scatter
+    :param parallel_mode: Parallel mode
     """
     return _ReduceScatterTensor3D.apply(tensor, dim, parallel_mode)
 
@@ -428,33 +423,34 @@ def reduce_by_batch_3d(tensor: Tensor,
                        input_parallel_mode: ParallelMode,
                        weight_parallel_mode: ParallelMode,
                        reduce_mean: bool = False) -> Tensor:
-    r"""All-reduce the input from the model parallel region.
+    """
+    All-reduce the input from the model parallel region.
 
-    Args:
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        reduce_mean (bool, optional): If set to ``True``, it will divide the output by
-            (input parallel size * weight parallel size), default to False.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param reduce_mean:  If set to ``True``, it will divide the output by (input parallel size * weight parallel size),
+    default to False
+    :type reduce_mean: int, optional
     """
     return _ReduceByBatch3D.apply(tensor, input_parallel_mode, weight_parallel_mode, reduce_mean)
 
 
 class _BroadcastWeight3D_FromDiagonal(torch.autograd.Function):
-    r"""broadcast weight from diagonal.
+    """
+    broadcast weight from diagonal
 
-    Args:
-        input_ (:class:`torch.tensor`): input matrix.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
+    :param input_: input maxtrix
+    :type input_: torch.tensor
+    :param input_parallel_mode: input parallel mode
+    :type input_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: weight parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
+    :param weight_parallel_mode: output parallel mode
+    :type weight_parallel_mode: colossalai.context.parallel_mode.ParallelMode
     """
 
     @staticmethod

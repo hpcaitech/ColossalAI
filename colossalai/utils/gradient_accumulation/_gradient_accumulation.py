@@ -15,13 +15,15 @@ from colossalai.engine import BaseGradientHandler
 
 class GradAccumOptimizer(ColossalaiOptimizer):
     """A wrapper for the optimizer to enable gradient accumulation by skipping the steps 
-    before accumulation size is reached.
+    before accumulation size is reached
 
-    Args:
-        optim (:class:`torch.optim.Optimizer`): Your optimizer object for gradient accumulation.
-        accumulate_size (int): The number of steps to accumulate gradients.
-        model (:class:`torch.nn.Module`):
-            Your model object to check if it is DistributedDataParallel for special handling of no_sync() context.
+    :param optim: Your optimizer object
+    :type optim: :class:`torch.optim.Optimizer`
+    :param accumulate_size: The number of steps to accumulate gradients
+    :type accumulate_size: int
+    :param model: Your model object to check if it is DDP for special handling of no_sync() context
+    :type model: :class:`torch.nn.Module`
+
     """
 
     def __init__(self, optim: Optimizer, accumulate_size: int, model: nn.Module = None):
@@ -74,18 +76,18 @@ class GradAccumOptimizer(ColossalaiOptimizer):
 
 
 class GradAccumDataloader:
-    """A wrapper for dataloader to enable gradient accumulation by dropping the last incomplete steps.
+    """A wrapper for dataloder to enable gradient accumulation by dropping the last incomplete steps.
 
-    Note:
-        The dataloader would drop the last incomplete steps for gradient accumulation.
-        For example, if a dataloader has 10 batches of data and accumulate size is 4. The model parameters will
-        be updated only twice at step 4 and step 8. The last two batches of data do not form a complete 4-step cycle.
-        Thus, they will be automatically skipped by this class. If the dataloader is not standard PyTorch dataloader,
-        (e.g. Dali dataloader), this class will automatically consume (load data for nothing) the remaining 2 batches.
+    For example, if a dataloader has 10 batches of data and accumulate size is 4. The model paramters will 
+    be update only twice at step 4 and step 8. The last two batches of data do not form a complete 4-step cycle.
+    Thus, they will be automatically skipped by this class. If the dataloader is not standard PyTorch dataloader, 
+    (e.g. Dali dataloader), this class will automatically consume (load data for nothing) the remaining 2 batches.
 
-    Args:
-        optim (``Iterable``): Your dataloader object for gradient accumulation.
-        accumulate_size (int): The number of steps to accumulate gradients.
+    :param dataloader: Your dataloader object
+    :type dataloader: Iterable
+    :param accumulate_size: The number of steps to accumulate gradients
+    :type accumulate_size: int
+
     """
 
     def __init__(self, dataloader: Iterable, accumulate_size: int) -> None:
@@ -123,12 +125,13 @@ class GradAccumDataloader:
 
 class GradAccumLrSchedulerByStep(_LRScheduler):
     """A wrapper for the LR scheduler to enable gradient accumulation by skipping the steps 
-    before accumulation size is reached.
+    before accumulation size is reached
 
-    Args:
-        lr_scheduler (:class:`torch.optim.lr_scheduler._LRScheduler`):
-            Your ``lr_scheduler`` object for gradient accumulation.
-        accumulate_size (int): The number of steps to accumulate gradients.
+    :param lr_scheduler: Your lr scheduler object
+    :type lr_scheduler: :class:`torch.optim.lr_scheduler._LRScheduler`    
+    :param accumulate_size: The number of steps to accumulate gradients
+    :type accumulate_size: int
+
     """
 
     def __init__(self, lr_scheduler: _LRScheduler, accumulate_size: int) -> None:
@@ -168,16 +171,13 @@ class GradAccumLrSchedulerByStep(_LRScheduler):
 
 
 class GradAccumGradientHandler:
-    r"""A wrapper for the gradient handler to enable gradient accumulation by skipping the steps
-    before accumulation size is reached.
+    """A wrapper for the gradient handler to enable gradient accumulation by skipping the steps 
+    before accumulation size is reached
 
-    Args:
-        grad_handler (:class:`colossalai.engine.BaseGradientHandler`):
-            Your ``gradient_handler`` object for gradient accumulation, would be called when achieving `accumulate_size`.
-        accumulate_size (int): The number of steps to accumulate gradients.
-
-    More details about ``gradient_handlers`` could be found in
-    `Gradient_handler <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/engine/gradient_handler>`_.
+    :param grad_handler: Your gradient handler object
+    :type grad_handler: :class:`colossalai.engine.BaseGradientHandler`    
+    :param accumulate_size: The number of steps to accumulate gradients
+    :type accumulate_size: int
 
     """
 
