@@ -3,6 +3,7 @@ from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
 from colossalai.utils import get_current_device
 
 import torch
+from typing import Tuple
 
 
 class SamplingCounter:
@@ -40,6 +41,20 @@ class MemStatsCollector:
 
         self._start_flag = False
 
+    @property
+    def overall_cuda(self):
+        return self._overall_cuda
+
+    @property
+    def model_data_cuda(self):
+        return self._model_data_cuda
+
+    @property
+    def non_model_data_cuda(self):
+        """Non model data stats
+        """
+        return [(v1 - v2) for v1, v2 in zip(self._overall_cuda, self._model_data_cuda)]
+
     def start_collection(self):
         self._start_flag = True
 
@@ -58,7 +73,7 @@ class MemStatsCollector:
             self._overall_cuda.append(colo_cuda_memory_used(torch.device(f'cuda:{get_current_device()}')))
         self._sampling_cnter.advance()
 
-    def fetch_memstats(self) -> (int, int):
+    def fetch_memstats(self) -> Tuple[int, int]:
         """
         returns cuda usage of model data and overall cuda usage.
         """

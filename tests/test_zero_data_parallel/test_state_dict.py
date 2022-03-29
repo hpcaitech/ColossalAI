@@ -8,13 +8,12 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import parameterize
+from colossalai.testing import parameterize, rerun_on_exception
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
-from colossalai.testing import rerun_on_exception
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 from common import CONFIG
@@ -28,8 +27,7 @@ def run_zero_state_dict(shard_strategy_class):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
 
-        with ZeroInitContext(convert_fp16=True,
-                             target_device=torch.cuda.current_device(),
+        with ZeroInitContext(target_device=torch.cuda.current_device(),
                              shard_strategy=shard_strategy,
                              shard_param=True,
                              rm_torch_payload_on_the_fly=False):
