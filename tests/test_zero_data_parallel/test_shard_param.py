@@ -12,6 +12,7 @@ from colossalai.zero.sharded_param import ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from colossalai.testing import rerun_on_exception
 from tests.test_zero_data_parallel.common import CONFIG, allclose
+from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
 
 
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
@@ -52,7 +53,7 @@ def _run_shard_param_v2(rank, world_size, port):
     allclose(sparam.sharded_data_tensor.payload, param_ref.data)
 
     # Test get memory usage
-    sparam.fp32_grad = torch.randn(2, 3)
+    sparam.fp32_grad = StatefulTensor(torch.randn(2, 3))
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2, f"cpu_mem_use: {cpu_mem_use}"
 
@@ -62,13 +63,13 @@ def _run_shard_param_v2(rank, world_size, port):
     # 4 is size of dummy tensor of param.data
     assert cpu_mem_use == 2 * 3 * 4 * 2 + 4
 
-    sparam.fp16_grad = torch.randn(2, 3).cuda().half()
+    sparam.fp16_grad = StatefulTensor(torch.randn(2, 3).cuda().half())
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2 + 4
     assert cuda_mem_use == 2 * 3 * 2
 
-    sparam.fp16_grad = None
-    sparam.fp32_grad = torch.randn(2, 3)
+    sparam.fp16_grad = StatefulTensor(None)
+    sparam.fp32_grad = StatefulTensor(torch.randn(2, 3))
     sparam.remove_torch_payload()
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2 + 4
@@ -82,7 +83,7 @@ def _run_shard_param_v2(rank, world_size, port):
     assert cuda_mem_use == 0
 
     # reuse torch grad for sparam
-    sparam.fp32_grad = param.grad
+    sparam.fp32_grad = StatefulTensor(param.grad)
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2
     assert cuda_mem_use == 0
