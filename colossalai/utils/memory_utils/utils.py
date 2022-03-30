@@ -85,7 +85,6 @@ def colo_model_data_tensor_move_inline(t: Union[StatefulTensor, torch.Tensor], t
     Args:
         t (Union[StatefulTensor, torch.Tensor]): the tensor be moved
     """
-    print(type(t))
     if isinstance(t, torch.Tensor):
         t_payload = t
     elif issubclass(type(t), StatefulTensor):
