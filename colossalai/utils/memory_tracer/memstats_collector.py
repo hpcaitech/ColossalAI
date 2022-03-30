@@ -46,8 +46,16 @@ class MemStatsCollector:
         return self._overall_cuda
 
     @property
+    def model_data_cuda_GB(self):
+        return [elem / 1e9 for elem in self._model_data_cuda]
+
+    @property
     def model_data_cuda(self):
         return self._model_data_cuda
+
+    @property
+    def non_model_data_cuda_GB(self):
+        return [elem / 1e9 for elem in self.non_model_data_cuda]
 
     @property
     def non_model_data_cuda(self):

@@ -24,7 +24,6 @@ from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, col
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 
 
-
 class OptimState(Enum):
     SCALED = 1
     UNSCALED = 2
@@ -139,6 +138,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
+        self._use_memory_tracer = self.model.use_memory_tracer
+        if self._use_memory_tracer:
+            GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
+
     def get_memory_usage(self) -> Tuple[int, int]:
         """
         Get the memory usage of the optimizer. Including master_params (param fp32),
@@ -190,13 +193,15 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
 
-        self._logger.debug(f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                           ranks=[0])
+        self._logger.debug(
+            f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
+            ranks=[0])
 
         ret = self.optim.step(*args, **kwargs)
 
-        self._logger.debug(f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
-                           ranks=[0])
+        self._logger.debug(
+            f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
+            ranks=[0])
         # Copy master param data (fp32) to payload of col_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
