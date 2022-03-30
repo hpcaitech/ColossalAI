@@ -79,7 +79,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  growth_interval: float = 1000,
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
-                 use_memory_tracer=False,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
