@@ -25,6 +25,7 @@ from torch.nn.parameter import Parameter
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
+from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
 
 
 class ShardedModelV2(nn.Module):
@@ -233,16 +234,17 @@ class ShardedModelV2(nn.Module):
             if self.reuse_fp16_shard:
                 grad_payload = p.col_attr.sharded_data_tensor.payload
             else:
-                grad_payload = cast_tensor_to_fp32(p.col_attr.fp16_grad)
+                grad_payload = cast_tensor_to_fp32(p.col_attr.fp16_grad.payload)
+            assert isinstance(grad_payload, torch.Tensor)
             if p.col_attr.offload_grad:
                 colo_model_data_move_to_cpu(grad_payload)
-            if p.col_attr.fp32_grad is not None:
+            if not p.col_attr.fp32_grad.is_null():
                 assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
-                p.col_attr.fp32_grad.add_(grad_payload.view_as(p.col_attr.fp32_grad))
-                grad_payload = p.col_attr.fp32_grad
+                p.col_attr.fp32_grad.payload.add_(grad_payload.view_as(p.col_attr.fp32_grad.payload))
+                grad_payload = p.col_attr.fp32_grad.payload
             p.grad.data = grad_payload
-            p.col_attr.fp16_grad = None
-            p.col_attr.fp32_grad = None
+            p.col_attr.fp16_grad.set_null()
+            p.col_attr.fp32_grad.set_null()
 
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
@@ -293,6 +295,8 @@ class ShardedModelV2(nn.Module):
         return empty_grad
 
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
+        assert isinstance(reduced_grad,
+                          torch.Tensor), f"_reduce_scatter_callback accept reduced_grad as {type(reduced_grad)}"
         reduced_grad = reduced_grad.view(-1)
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
@@ -301,7 +305,7 @@ class ShardedModelV2(nn.Module):
             param.col_attr.sharded_data_tensor.reset_payload(reduced_grad.data)
             param.col_attr.sharded_data_tensor.is_sharded = True
         else:
-            param.col_attr.fp16_grad = reduced_grad.data
+            param.col_attr.fp16_grad = StatefulTensor(reduced_grad.data)
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.col_attr.sharded_data_tensor for p in self.module.parameters()],
