@@ -75,7 +75,7 @@ class ZeroHook(BaseOpHook):
 
                     # Allocate grad fp32 memory space here
                     param.col_attr.fp32_grad.reset_payload(param.grad.data)
-                    param.col_attr.fp32_grad.trans_state(TensorState.HOLD)
+                    # TODO(jiaruifang) we should set grad fp16 state to HOLD here.
                     param.grad = None
                 else:
                     # We have stored local accumulated grad
