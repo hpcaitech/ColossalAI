@@ -158,12 +158,25 @@ class ShardedModelV2(nn.Module):
                     f.write(str(self._memstats_collector.non_model_data_cuda_GB))
                     f.write('\n')
 
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def _pre_forward_operations(self):
         if self._iter_cnter == 0 and self._memstats_collector:
             # the operation will affect the memory tracer behavior in ZeroHook
             self._memstats_collector.start_collection()
+
+        for p in self.module.parameters():
+            if hasattr(p, 'col_attr'):
+                p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+
+    def _post_forward_operations(self):
+        for p in self.module.parameters():
+            if hasattr(p, 'col_attr'):
+                p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        self._pre_forward_operations()
         args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
+        self._post_forward_operations()
         return outputs
 
     def backward(self, loss):
