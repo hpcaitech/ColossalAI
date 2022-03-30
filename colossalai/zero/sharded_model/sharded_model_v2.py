@@ -134,14 +134,20 @@ class ShardedModelV2(nn.Module):
     def cpu_offload(self):
         return self._cpu_offload
 
-    def _dump_memory_stats(self) -> None:
+    def dump_memory_stats(self, filename: Optional[str] = 'dump_mem_stats.log') -> None:
         """
         dummy memory tracer collected infomation to a file.
+        try:
+            # forward: model(inputs)
+            # backward: optimizer.backward()
+        except Exception as e:
+            model.dump_memory_stats()
+            exit(0)
         """
         if self._use_memory_tracer:
-            self.logger.error('dump memort tracer collected infomation to a dump_mem_stats.log', ranks=[0])
+            self.logger.error(f'dump memort tracer collected infomation to a {filename}', ranks=[0])
             if gpc.get_global_rank() == 0:
-                with open('dump_mem_stats.log', 'w+') as f:
+                with open(filename, 'w+') as f:
                     f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device())/1e9} GB\n')
                     f.write(f'cuda max allocated {torch.cuda.max_memory_allocated(get_current_device())/1e9} GB\n')
                     f.write('model data\n')
@@ -156,29 +162,18 @@ class ShardedModelV2(nn.Module):
             # the opeartion will affect the flag in ZeroHook
             self._memstats_collector.start_collection()
         args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
-        try:
-            outputs = self.module(*args, **kwargs)
-        except Exception as e:
-            self._dump_memory_stats()
-            exit(0)
+        outputs = self.module(*args, **kwargs)
         return outputs
 
     def backward(self, loss):
-        try:
-            loss.backward()
-        except Exception as e:
-            self._dump_memory_stats()
-            exit(0)
+        loss.backward()
         self._post_backward_operations()
         for ophook in self._ophook_list:
             ophook.post_iter()
 
     def backward_by_grad(self, tensor, grad):
-        try:
-            torch.autograd.backward(tensors=tensor, grad_tensors=grad)
-        except Exception as e:
-            self._dump_memory_stats()
-            exit(0)
+        torch.autograd.backward(tensors=tensor, grad_tensors=grad)
+
         self._post_backward_operations()
         for ophook in self._ophook_list:
             ophook.post_iter()
