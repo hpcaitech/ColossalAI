@@ -32,6 +32,8 @@ def alloc_storage(data: torch.Tensor, size: torch.Size) -> None:
 
 
 def cast_tensor_to_fp16(tensor: torch.Tensor) -> torch.Tensor:
+    if isinstance(tensor, StatefulTensor):
+        tensor = tensor.payload
     if torch.is_floating_point(tensor) and tensor.dtype is torch.float32:
         return tensor.half()
     return tensor

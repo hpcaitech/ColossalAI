@@ -17,9 +17,6 @@ class ShardedTensor(StatefulTensor):
         self._origin_numel = tensor.numel()
         self._origin_dtype = tensor.dtype
 
-        self.process_group = process_group
-        self.world_size = dist.get_world_size(self.process_group)
-        self.local_rank = dist.get_rank(self.process_group)
         self._is_sharded = False
 
     @property
