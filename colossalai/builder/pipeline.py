@@ -163,17 +163,19 @@ def count_layer_params(layers):
 
 
 def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method: str = 'parameter', verbose: bool = False):
-    """An intializer to split the model into different stages for pipeline parallelism.
+    """An initializer to split the model into different stages for pipeline parallelism.
 
     An example for the model config is shown below. The class VisionTransformerFromConfig should
     inherit colossalai.nn.model.ModelFromConfig to allow this initializer to build model from a sequence
     of layer configurations.
 
-    model_config = dict(
-        type='VisionTransformerFromConfig',
-        embedding_cfg=dict(...),
-        ...
-    )
+    ::
+
+        model_config = dict(
+            type='VisionTransformerFromConfig',
+            embedding_cfg=dict(...),
+            ...
+        )
 
     Args:
         config (dict): Configuration of the model.

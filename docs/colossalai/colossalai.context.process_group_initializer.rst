@@ -14,6 +14,7 @@ colossalai.context.process\_group\_initializer
    colossalai.context.process_group_initializer.initializer_3d
    colossalai.context.process_group_initializer.initializer_data
    colossalai.context.process_group_initializer.initializer_model
+   colossalai.context.process_group_initializer.initializer_moe
    colossalai.context.process_group_initializer.initializer_pipeline
    colossalai.context.process_group_initializer.initializer_sequence
    colossalai.context.process_group_initializer.initializer_tensor

@@ -29,21 +29,22 @@ def build_from_registry(config, registry: Registry):
     is specified by `registry`.
 
     Note:
-        the `config` is used to construct the return object such as `LAYERS`,
-         `OPTIMIZERS` and other support types in `registry`. The `config` should contain
-         all required parameters of corresponding object. The details of support
-         types in `registry` and the `mod_type` in `config` could be found in
-         `registry <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/registry/__init__.py>`_.
+        the `config` is used to construct the return object such as `LAYERS`, `OPTIMIZERS`
+        and other support types in `registry`. The `config` should contain
+        all required parameters of corresponding object. The details of support
+        types in `registry` and the `mod_type` in `config` could be found in
+        `registry <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/registry/__init__.py>`_.
 
     Args:
         config (dict or :class:`colossalai.context.colossalai.context.Config`): information
             used in the construction of the return object.
         registry (:class:`Registry`): A registry specifying the type of the return object
 
-    Returns: A Python object specified by `registry`
+    Returns:
+        A Python object specified by `registry`.
 
     Raises:
-        Exception: Raises an Exception if an error occurred when building from registry
+        Exception: Raises an Exception if an error occurred when building from registry.
     """
     config_ = config.copy()  # keep the original config untouched
     assert isinstance(

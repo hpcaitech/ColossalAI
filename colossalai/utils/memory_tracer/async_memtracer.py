@@ -21,21 +21,22 @@ class AsyncMemoryMonitor:
     :type power: int
 
     Usage:
+    ::
 
-    ```python
-        async_mem_monitor = AsyncMemoryMonitor()
-        input = torch.randn(2, 20).cuda()
-        OP1 = torch.nn.Linear(20, 30).cuda()
-        OP2 = torch.nn.Linear(30, 40).cuda()
+        ```python
+            async_mem_monitor = AsyncMemoryMonitor()
+            input = torch.randn(2, 20).cuda()
+            OP1 = torch.nn.Linear(20, 30).cuda()
+            OP2 = torch.nn.Linear(30, 40).cuda()
 
-        async_mem_monitor.start()
-        output = OP1(input)
-        async_mem_monitor.finish()
-        async_mem_monitor.start()
-        output = OP2(output)
-        async_mem_monitor.finish()
-        async_mem_monitor.save('log.pkl')
-    ```
+            async_mem_monitor.start()
+            output = OP1(input)
+            async_mem_monitor.finish()
+            async_mem_monitor.start()
+            output = OP2(output)
+            async_mem_monitor.finish()
+            async_mem_monitor.save('log.pkl')
+        ```
     """
 
     def __init__(self, power: int = 10):

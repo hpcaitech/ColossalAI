@@ -307,8 +307,7 @@ class Trainer:
             max_steps (int, optional): Maximum number of running iterations.
             test_dataloader (:class:`torch.utils.data.DataLoader`, optional): DataLoader for validation.
             test_interval (int, optional): Interval of validation
-            hooks (list[`BaseHook <https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/trainer/hooks>`_],
-                optional): A list of hooks used in training.
+            hooks (list[BaseHook], optional): A list of hooks used in training.
             display_progress (bool, optional): If True, a progress bar will be displayed.
         """
 

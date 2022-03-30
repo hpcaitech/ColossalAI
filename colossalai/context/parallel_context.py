@@ -193,7 +193,7 @@ class ParallelContext(metaclass=SingletonMeta):
 
         Returns:
             bool: a boolean value indicating whether the current device is the first one
-                among its group for `parallel_mode`.
+            among its group for `parallel_mode`.
         """
         rank = self.get_local_rank(parallel_mode)
         return rank == 0
@@ -211,7 +211,7 @@ class ParallelContext(metaclass=SingletonMeta):
 
         Returns:
             bool: a boolean value indicating whether the current device is the first one
-                among its group for `parallel_mode`.
+            among its group for `parallel_mode`.
         """
         rank = self.get_local_rank(parallel_mode)
         world_size = self.get_world_size(parallel_mode)

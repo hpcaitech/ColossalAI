@@ -1,10 +1,6 @@
 colossalai.nn.lr\_scheduler
 ===========================
 
-.. automodule:: colossalai.nn.lr_scheduler
-   :members:
-
-
 .. toctree::
    :maxdepth: 2
 

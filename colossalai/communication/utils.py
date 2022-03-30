@@ -45,7 +45,7 @@ def recv_tensor_meta(tensor_shape, prev_rank=None):
         prev_rank (int): The rank of the source of the tensor.
 
     Returns:
-        torch.Size: The shape of the tensor to be received.
+        :class:`torch.Size`: The shape of the tensor to be received.
     """
     if tensor_shape is None:
         if prev_rank is None:
@@ -71,7 +71,7 @@ def split_tensor_into_1d_equal_chunks(tensor, new_buffer=False):
         new_buffer (bool, optional): Whether to use a new buffer to store sliced tensor.
 
     Returns:
-        torch.Tensor: The split tensor
+        :class:`torch.Size`: The split tensor
     """
     partition_size = torch.numel(tensor) // gpc.get_world_size(ParallelMode.PARALLEL_1D)
     start_index = partition_size * gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -92,7 +92,7 @@ def gather_split_1d_tensor(tensor):
     Args:
         tensor (torch.Tensor): Tensor to be gathered after communication.
     Returns:
-        gathered (torch.Tensor): The gathered tensor
+        :class:`torch.Size`: The gathered tensor.
     """
     world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
     numel = torch.numel(tensor)

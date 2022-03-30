@@ -34,6 +34,7 @@ class SeedManager:
 
     def set_state(self, parallel_mode: ParallelMode, state: Tensor):
         """Sets the state of the seed manager for `parallel_mode`.
+
         Args:
             parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
             state (:class:`torch.Tensor`): the state to be set.
@@ -66,9 +67,9 @@ class SeedManager:
             seed (int): The seed to be added.
             overwrtie (bool, optional): Whether allows to overwrite the seed that has been set already
 
-        Raises
-            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of
-                :class:`colossalai.context.ParallelMode` or the seed for `parallel_mode` has been added.
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance of :class:`colossalai.context.ParallelMode`
+                or the seed for `parallel_mode` has been added.
         """
         assert isinstance(parallel_mode, ParallelMode), 'A valid ParallelMode must be provided'
         if overwrtie is False:
