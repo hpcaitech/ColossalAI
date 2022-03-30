@@ -5,7 +5,7 @@ from typing import Optional
 
 class ShardedTensor(StatefulTensor):
 
-    def __init__(self, tensor: torch.Tensor, state: Optional[TensorState] = TensorState.HOLD) -> None:
+    def __init__(self, tensor: torch.Tensor, state: TensorState = TensorState.HOLD) -> None:
         r"""
         A tensor sharded in multiple processes. Constructed from an existing torch.Tensor instance.
         """
