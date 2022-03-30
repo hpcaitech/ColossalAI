@@ -1,0 +1,29 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml 
+
+clients:
+  - url: ${LOKIURL}
+
+scrape_configs:
+- job_name: colossalai
+  pipeline_stages:
+
+  # This stage is only going to run if the scraped target has a label
+  # of "name" with value "promtail".
+  - regex:
+      expression: '(?P<app>colossalai) - (?P<name>.*) - (?P<asctime>.*) (?P<level>.*): (?<content>.*)'
+    labels:
+      app:
+      name:
+      level:
+
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: colossalai
+      __path__: /logs/promtail/*.*
