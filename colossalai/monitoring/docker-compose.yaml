@@ -1,0 +1,34 @@
+version: "3"
+
+networks:
+  loki:
+
+services:
+  loki:
+    image: docker.repos.balad.ir/grafana/loki:2.4.0
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - loki
+
+  promtail:
+    image: grafana/promtail:2.4.0
+    env_file:
+      - .env
+    volumes:
+      - ${LOGPATH}:/logs/promtail/
+      - ./config_files/promtail.yaml:/etc/promtail/promtail.yaml
+    # command: -config.file=/etc/promtail/promtail.yaml
+    command: >
+      sh -c "-config.expand-env=true &&
+             -config.file=/etc/promtail/promtail.yaml"
+    networks:
+      - loki
+
+  grafana:
+    image: grafana/grafana:8.3.7
+    ports:
+      - "3000:3000"
+    networks:
+      - loki
