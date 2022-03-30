@@ -2,6 +2,8 @@ from typing import Any, Callable, List, Tuple
 
 import torch
 import torch.nn.functional as F
+from typing import Union
+from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
 
 
 def get_gradient_predivide_factor(world_size: int) -> float:
@@ -30,12 +32,17 @@ def alloc_storage(data: torch.Tensor, size: torch.Size) -> None:
 
 
 def cast_tensor_to_fp16(tensor: torch.Tensor) -> torch.Tensor:
+    if isinstance(tensor, StatefulTensor):
+        tensor = tensor.payload
     if torch.is_floating_point(tensor) and tensor.dtype is torch.float32:
         return tensor.half()
     return tensor
 
 
-def cast_tensor_to_fp32(tensor: torch.Tensor) -> torch.Tensor:
+def cast_tensor_to_fp32(tensor: Union[torch.Tensor, StatefulTensor]) -> torch.Tensor:
+    if isinstance(tensor, StatefulTensor):
+        tensor = tensor.payload
+
     if torch.is_floating_point(tensor) and tensor.dtype is torch.float16:
         return tensor.float()
     return tensor

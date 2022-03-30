@@ -64,8 +64,8 @@ class ZeroHook(BaseOpHook):
             if param.grad is not None:
                 if param.col_attr.bwd_count == 0:
                     # We haven't stored local accumulated grad yet
-                    assert param.col_attr.fp32_grad is None
-                    param.col_attr.fp32_grad = param.grad.data
+                    assert param.col_attr.fp32_grad.is_null()
+                    param.col_attr.fp32_grad.reset_payload(param.grad.data)
                     param.grad = None
                 else:
                     # We have stored local accumulated grad
