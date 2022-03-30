@@ -4,9 +4,9 @@ import torch
 
 
 class TensorState(Enum):
-    FREE = 0,
-    HOLD = 1,
-    HOLD_AFTER_FWD = 2,
+    FREE = 0
+    HOLD = 1
+    HOLD_AFTER_FWD = 2
     HOLD_AFTER_BWD = 3
 
 
