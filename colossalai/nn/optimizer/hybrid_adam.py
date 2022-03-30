@@ -1,7 +1,50 @@
 import torch
-from colossalai.utils import multi_tensor_applier
 
+
+from colossalai.utils import multi_tensor_applier
+from colossalai.registry import OPTIMIZERS
+
+
+@OPTIMIZERS.register_module
 class HybridAdam(torch.optim.Optimizer):
+    """Implements Adam algorithm.
+
+    Support both GPU and CPU. Requires ColossalAI to be installed via
+    ``pip install .``
+
+    This version of Hybrid Adam is an hybrid of CPUAdam and FusedAdam.
+      * For updates on CPU, it uses CPUAdam.
+      * For updates on GPU, it uses FusedAdam.
+      * Hybird calculation of fp16 and fp32 is supported.
+
+    :class:`colossalai.nn.optimizer.HybridAdam` may be used as a drop-in replacement for ``torch.optim.AdamW``,
+    or ``torch.optim.Adam`` with ``adamw_mode=False``
+
+    Adam was been proposed in `Adam: A Method for Stochastic Optimization`_.
+
+    Arguments:
+        model_params (iterable): iterable of parameters of dicts defining
+            parameter groups.
+        lr (float, optional): learning rate. (default: 1e-3)
+        betas (Tuple[float, float], optional): coefficients used for computing
+            running averages of gradient and its square. (default: (0.9, 0.999))
+        eps (float, optional): term added to the denominator to improve
+            numerical stability. (default: 1e-8)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
+        amsgrad (boolean, optional): whether to use the AMSGrad variant of this
+            algorithm from the paper `On the Convergence of Adam and Beyond`_
+            (default: False) NOT SUPPORTED yet in CPUAdam!
+        adamw_mode (boolean, optional): Apply L2 regularization or weight decay
+            True for decoupled weight decay(also known as AdamW) (default: True)
+        simd_log (boolean, optional): whether to show if you are using SIMD to 
+            accelerate. (default: False)
+    
+    .. _Adam: A Method for Stochastic Optimization:
+        https://arxiv.org/abs/1412.6980
+    .. _On the Convergence of Adam and Beyond:
+        https://openreview.net/forum?id=ryQu7f-RZ
+    """
+
     optimizer_id = 0
     # Number of fp32 shards for per parameter
     # Param weight, grad, momentum and variance
@@ -16,11 +59,6 @@ class HybridAdam(torch.optim.Optimizer):
                  weight_decay=0,
                  adamw_mode=True,
                  simd_log=False):
-        """
-        An implementation equivalent to `torch.optim.Adam`.
-        The difference is that model_params are sharded parameters belonging to a ShardedModelV2 instance.
-        The sharded param of model_params can resident on both CPU and CUDA(fused adam).
-        """
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(HybridAdam, self).__init__(model_params, default_args)
