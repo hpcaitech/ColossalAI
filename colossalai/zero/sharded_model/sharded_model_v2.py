@@ -307,6 +307,8 @@ class ShardedModelV2(nn.Module):
         return empty_grad
 
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
+        assert isinstance(reduced_grad,
+                          torch.Tensor), f"_reduce_scatter_callback accept reduced_grad as {type(reduced_grad)}"
         reduced_grad = reduced_grad.view(-1)
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
@@ -315,7 +317,7 @@ class ShardedModelV2(nn.Module):
             param.col_attr.sharded_data_tensor.reset_payload(reduced_grad.data)
             param.col_attr.sharded_data_tensor.is_sharded = True
         else:
-            param.col_attr.fp16_grad = reduced_grad.data
+            param.col_attr.fp16_grad = StatefulTensor(reduced_grad.data)
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.col_attr.sharded_data_tensor for p in self.module.parameters()],

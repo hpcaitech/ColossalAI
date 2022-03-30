@@ -3,6 +3,7 @@ import torch.distributed as dist
 from colossalai.zero.sharded_param import ShardedTensor
 from typing import Optional, Tuple
 from colossalai.utils.memory_utils.utils import colo_tensor_mem_usage
+from .tensorful_state import StatefulTensor, TensorState
 
 
 class ShardedParamV2(object):
@@ -12,8 +13,8 @@ class ShardedParamV2(object):
                  process_group: Optional[dist.ProcessGroup] = None,
                  rm_torch_payload=False) -> None:
         self._sharded_data_tensor: ShardedTensor = ShardedTensor(param.data, process_group)
-        self.fp16_grad: Optional[torch.Tensor] = None
-        self.fp32_grad: Optional[torch.Tensor] = None
+        self.fp16_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
+        self.fp32_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
         # This attribute must be initialized in ShardedModel
         self.offload_grad: bool = False
 
@@ -64,12 +65,12 @@ class ShardedParamV2(object):
         _update_mem_use(self.sharded_data_tensor.payload)
         address_set.add(self.sharded_data_tensor.payload.data_ptr())
 
-        if self.fp16_grad is not None and self.fp16_grad.data_ptr() not in address_set:
-            _update_mem_use(self.fp16_grad)
+        if not self.fp16_grad.is_null() and self.fp16_grad.data_ptr() not in address_set:
+            _update_mem_use(self.fp16_grad.payload)
             address_set.add(self.fp16_grad.data_ptr())
 
-        if self.fp32_grad is not None and self.fp32_grad.data_ptr() not in address_set:
-            _update_mem_use(self.fp32_grad)
+        if not self.fp32_grad.is_null() and self.fp32_grad.data_ptr() not in address_set:
+            _update_mem_use(self.fp32_grad.payload)
             address_set.add(self.fp32_grad.data_ptr())
 
         if self.param.data is not None and self.param.data.data_ptr() not in address_set:
