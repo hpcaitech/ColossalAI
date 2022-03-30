@@ -9,13 +9,18 @@ from colossalai.registry import OPTIMIZERS
 class HybridAdam(torch.optim.Optimizer):
     """Implements Adam algorithm.
 
-    Support both GPU and CPU. Requires ColossalAI to be installed via
-    ``pip install .``
+    Supports parameters updating on both GPU and CPU, depanding on the device of paramters.
+    But the parameters and gradients should on the same device: 
+      * Parameters on CPU and gradients on CPU is allowed.
+      * Parameters on GPU and gradients on GPU is allowed.
+      * Parameters on GPU and gradients on CPU is **not** allowed.
+    
+    Requires ColossalAI to be installed via ``pip install .``
 
     This version of Hybrid Adam is an hybrid of CPUAdam and FusedAdam.
-      * For updates on CPU, it uses CPUAdam.
-      * For updates on GPU, it uses FusedAdam.
-      * Hybird calculation of fp16 and fp32 is supported.
+      * For parameters updating on CPU, it uses CPUAdam.
+      * For parameters updating on GPU, it uses FusedAdam.
+      * Hybird precision calculation of fp16 and fp32 is supported, eg fp32 parameters and fp16 gradients.
 
     :class:`colossalai.nn.optimizer.HybridAdam` may be used as a drop-in replacement for ``torch.optim.AdamW``,
     or ``torch.optim.Adam`` with ``adamw_mode=False``
