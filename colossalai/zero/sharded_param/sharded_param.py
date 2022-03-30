@@ -11,7 +11,7 @@ class ShardedParamV2(object):
     def __init__(self, param: torch.nn.Parameter, rm_torch_payload=False) -> None:
         self._sharded_data_tensor: ShardedTensor = ShardedTensor(param.data)
         self.fp16_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
-        self.fp32_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
+        self.saved_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
         # This attribute must be initialized in ShardedModel
         self.offload_grad: bool = False
 
@@ -23,11 +23,6 @@ class ShardedParamV2(object):
         self.param = param
         if rm_torch_payload:
             self.remove_torch_payload()
-
-        # Backward count for handle local grad accumulation
-        # This value will increment by 1 in every pre-bwd hook
-        # And will be reset to 0 in every final-bwd hook
-        self.bwd_count = 0
 
     def remove_torch_payload(self):
         self.param.data = torch.empty([], dtype=self.param.dtype, device=self.param.device)
@@ -66,9 +61,9 @@ class ShardedParamV2(object):
             _update_mem_use(self.fp16_grad.payload)
             address_set.add(self.fp16_grad.data_ptr())
 
-        if not self.fp32_grad.is_null() and self.fp32_grad.data_ptr() not in address_set:
-            _update_mem_use(self.fp32_grad.payload)
-            address_set.add(self.fp32_grad.data_ptr())
+        if not self.saved_grad.is_null() and self.saved_grad.data_ptr() not in address_set:
+            _update_mem_use(self.saved_grad.payload)
+            address_set.add(self.saved_grad.data_ptr())
 
         if self.param.data is not None and self.param.data.data_ptr() not in address_set:
             _update_mem_use(self.param.data)
