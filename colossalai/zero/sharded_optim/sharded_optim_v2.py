@@ -301,7 +301,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad
-                # We set just set p.data = p.col_attr.saved_grad.payload here
+                # We just set p.data = p.col_attr.saved_grad.payload here
                 p.data = p.col_attr.saved_grad.payload
                 p.grad = p.col_attr.saved_grad.payload
                 p.col_attr.saved_grad.set_null()
