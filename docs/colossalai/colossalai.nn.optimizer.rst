@@ -13,5 +13,6 @@ colossalai.nn.optimizer
    colossalai.nn.optimizer.fused_adam
    colossalai.nn.optimizer.fused_lamb
    colossalai.nn.optimizer.fused_sgd
+   colossalai.nn.optimizer.hybrid_adam
    colossalai.nn.optimizer.lamb
    colossalai.nn.optimizer.lars
