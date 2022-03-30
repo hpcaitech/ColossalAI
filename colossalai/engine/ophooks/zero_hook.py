@@ -6,6 +6,7 @@ from colossalai.registry import OPHOOKS
 from colossalai.utils import get_current_device
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.zero.shard_utils import BaseShardStrategy
+from colossalai.zero.sharded_param.tensorful_state import TensorState
 
 from ._base_ophook import BaseOpHook
 from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move_inline
@@ -42,7 +43,13 @@ class ZeroHook(BaseOpHook):
         if self._memstarts_collector:
             self._memstarts_collector.sample_memstats()
 
+        for param in module.parameters(recurse=False):
+            param.col_attr.sharded_data_tensor.trans_state(TensorState.COMPUTE)
+
     def post_fwd_exec(self, module: torch.nn.Module, *args):
+        for param in module.parameters(recurse=False):
+            param.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD_AFTER_FWD)
+
         tensor_list = []
         for param in module.parameters(recurse=False):
             assert hasattr(param, 'col_attr')
@@ -65,7 +72,10 @@ class ZeroHook(BaseOpHook):
                 if param.col_attr.bwd_count == 0:
                     # We haven't stored local accumulated grad yet
                     assert param.col_attr.fp32_grad.is_null()
+
+                    # Allocate grad fp32 memory space here
                     param.col_attr.fp32_grad.reset_payload(param.grad.data)
+                    # TODO(jiaruifang) we should set grad fp16 state to HOLD here.
                     param.grad = None
                 else:
                     # We have stored local accumulated grad
@@ -75,12 +85,19 @@ class ZeroHook(BaseOpHook):
         if self._memstarts_collector:
             self._memstarts_collector.sample_memstats()
 
+        for param in module.parameters(recurse=False):
+            param.col_attr.sharded_data_tensor.trans_state(TensorState.COMPUTE)
+
     def post_bwd_exec(self, module: torch.nn.Module, input):
+        for param in module.parameters(recurse=False):
+            param.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD_AFTER_BWD)
+
         tensor_list = []
         for param in module.parameters(recurse=False):
             assert hasattr(param, 'col_attr')
             tensor_list.append(param.col_attr.sharded_data_tensor)
         self.shard_strategy.shard(tensor_list, self.process_group)
+
         for param in module.parameters(recurse=False):
             param.col_attr.remove_torch_payload()
 

@@ -1,22 +1,20 @@
 import torch
-import torch.distributed as dist
-from typing import Optional
 from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
+from typing import Optional
 
 
 class ShardedTensor(StatefulTensor):
 
-    def __init__(self, tensor: torch.Tensor, process_group: Optional[dist.ProcessGroup] = None) -> None:
+    def __init__(self, tensor: torch.Tensor, state: TensorState = TensorState.HOLD) -> None:
         r"""
         A tensor sharded in multiple processes. Constructed from an existing torch.Tensor instance.
         """
-        super().__init__(tensor)
-        self.trans_state(TensorState.HOLD)
+        super().__init__(tensor, state)
 
+        # kept the shape, numel and dtype of the init tensor.
         self._origin_shape = tensor.shape
         self._origin_numel = tensor.numel()
         self._origin_dtype = tensor.dtype
-
         self._is_sharded = False
 
     @property

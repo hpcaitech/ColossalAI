@@ -25,7 +25,7 @@ from torch.nn.parameter import Parameter
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
-from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
+from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
 
 
 class ShardedModelV2(nn.Module):
@@ -158,12 +158,25 @@ class ShardedModelV2(nn.Module):
                     f.write(str(self._memstats_collector.non_model_data_cuda_GB))
                     f.write('\n')
 
-    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+    def _pre_forward_operations(self):
         if self._iter_cnter == 0 and self._memstats_collector:
-            # the opeartion will affect the flag in ZeroHook
+            # the operation will affect the memory tracer behavior in ZeroHook
             self._memstats_collector.start_collection()
+
+        for p in self.module.parameters():
+            if hasattr(p, 'col_attr'):
+                p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+
+    def _post_forward_operations(self):
+        for p in self.module.parameters():
+            if hasattr(p, 'col_attr'):
+                p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        self._pre_forward_operations()
         args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
+        self._post_forward_operations()
         return outputs
 
     def backward(self, loss):
@@ -195,9 +208,15 @@ class ShardedModelV2(nn.Module):
     def _post_backward_operations(self) -> None:
         """
         The method includes operations required to be processed after backward
+        1. update memory tracer.
+        2. flush the gradient in buckets. Reducing partial gradients in each process.
+        3. shard tensors not dealed in the zero hook
+        4. move sharded param grad payload to param.grad
         """
+        # 1. update memory tracer.
         self._update_memstats()
 
+        # 2. flush the gradient in buckets. Reducing partial gradients in each process.
         if self._require_backward_grad_sync:
             # Flush any unreduced buckets in the post_backward stream.
             with torch.cuda.stream(self.comm_stream):
@@ -207,44 +226,50 @@ class ShardedModelV2(nn.Module):
                 # Wait for the non-blocking GPU -> CPU grad transfers to finish.
                 torch.cuda.current_stream().synchronize()
         self.reducer.free()
-        # In case some post bwd hook is not fired
+        # 3. shard tensors not dealed in the zero hook
         if self.shard_param:
             tensor_list = []
             for p in self.module.parameters():
                 if not p.col_attr.param_is_sharded:
                     tensor_list.append(p.col_attr.sharded_data_tensor)
+                    p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD_AFTER_BWD)
             self.shard_strategy.shard(tensor_list, self.process_group)
+
+        # 4. move sharded param grad payload to param.grad
         for p in self.module.parameters():
             p.col_attr.bwd_count = 0
             if not p.requires_grad:
                 continue
-            # Leave the gradient accumulation state as-is if not synchronizing this pass. This ensures p.grad
-            # remains the unsharded gradient accumulated from prior no-sync passes, and _saved_grad_shard
-            # remains the sharded gradient from the last synchronized pass. This also allows interleaved no-sync and
-            # sync passes, if desired.
+            # Leave the gradient accumulation state (_require_backward_grad_sync) as-is if not synchronizing this pass.
+            # NOTE() (no-sync)/sync pass: (not conduct)/conduct gradient allreducing between process group.
+            # If _require_backward_grad_sync is True,
+            # p.grad remains the accumulated unsharded gradient from prior no-sync passes.
+            # We also allows to interleave no-sync pass with sync passes, if desired.
             if not self._require_backward_grad_sync:
                 continue
-            # Write grad back to p.grad and set p.col_attr.grad to None
+            # Write grad payload kept by sharded param back to p.grad,
+            # and set p.col_attr.grad to None
             # As sharded optimizer only update a shard of param,
             # no matter whether we shard param in sharded model
             # We have to make sure the grad is a flat tensor shard
-            # If world size == 1 and sharded param,
+            # If world size == 1 and param is sharded,
             # the shape `grad` is the same as unsharded param
             # So we can just use `view(-1)` to ensure grad is a flat tensor shard
             if self.reuse_fp16_shard:
-                grad_payload = p.col_attr.sharded_data_tensor.payload
+                grad_fp16_payload = p.col_attr.sharded_data_tensor.payload
             else:
-                grad_payload = cast_tensor_to_fp32(p.col_attr.fp16_grad.payload)
-            assert isinstance(grad_payload, torch.Tensor)
+                grad_fp16_payload = cast_tensor_to_fp32(p.col_attr.fp16_grad.payload)
+            assert isinstance(grad_fp16_payload, torch.Tensor)
             if p.col_attr.offload_grad:
-                colo_model_data_move_to_cpu(grad_payload)
+                colo_model_data_move_to_cpu(grad_fp16_payload)
             if not p.col_attr.fp32_grad.is_null():
                 assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
-                p.col_attr.fp32_grad.payload.add_(grad_payload.view_as(p.col_attr.fp32_grad.payload))
-                grad_payload = p.col_attr.fp32_grad.payload
-            p.grad.data = grad_payload
+                p.col_attr.fp32_grad.payload.add_(grad_fp16_payload.view_as(p.col_attr.fp32_grad.payload))
+                grad_fp16_payload = p.col_attr.fp32_grad.payload
+                p.col_attr.fp32_grad.set_null()
+
+            p.grad.data = grad_fp16_payload
             p.col_attr.fp16_grad.set_null()
-            p.col_attr.fp32_grad.set_null()
 
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
