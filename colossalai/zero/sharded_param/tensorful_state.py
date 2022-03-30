@@ -59,6 +59,7 @@ class StatefulTensor(object):
     def reset_payload(self, tensor) -> int:
         del self._payload
         self._payload = tensor
+        self.trans_state(TensorState.HOLD)
 
     @property
     def device(self) -> torch.device:
