@@ -8,11 +8,8 @@ from .tensorful_state import StatefulTensor, TensorState
 
 class ShardedParamV2(object):
 
-    def __init__(self,
-                 param: torch.nn.Parameter,
-                 process_group: Optional[dist.ProcessGroup] = None,
-                 rm_torch_payload=False) -> None:
-        self._sharded_data_tensor: ShardedTensor = ShardedTensor(param.data, process_group)
+    def __init__(self, param: torch.nn.Parameter, rm_torch_payload=False) -> None:
+        self._sharded_data_tensor: ShardedTensor = ShardedTensor(param.data)
         self.fp16_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
         self.fp32_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
         # This attribute must be initialized in ShardedModel

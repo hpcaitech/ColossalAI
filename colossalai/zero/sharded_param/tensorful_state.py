@@ -1,5 +1,5 @@
 from enum import Enum
-from logging import NullHandler
+from typing import Optional
 import torch
 
 
@@ -8,22 +8,22 @@ class TensorState(Enum):
     HOLD = 1
     HOLD_AFTER_FWD = 2
     HOLD_AFTER_BWD = 3
+    COMPUTE = 4
 
 
 class StatefulTensor(object):
-    """A Structure stores a Torch Tensor and labeled states.
-
+    """A Structure stores a Torch Tensor and labeled states. 
+    Inspired from the paper:
     PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
 
     https://arxiv.org/abs/2108.05818
     """
 
-    def __init__(self, tensor: torch.Tensor, state: TensorState = TensorState.HOLD) -> None:
+    def __init__(self, tensor: torch.Tensor, state: Optional[TensorState] = TensorState.HOLD) -> None:
         self._state = state
-        if state is not TensorState.FREE:
-            self._payload = tensor
-        else:
-            self._payload = None
+        self._payload = tensor
+        if self._state == TensorState.FREE:
+            assert self._payload is None, f"payload has to None if {self._state}"
 
     def data_ptr(self):
         if self._payload is None:

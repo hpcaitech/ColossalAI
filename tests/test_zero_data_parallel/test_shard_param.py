@@ -48,7 +48,7 @@ def _run_shard_param_v2(rank, world_size, port):
 
     param = torch.nn.Parameter(torch.randn(2, 3))
     param_ref = deepcopy(param)
-    sparam = ShardedParamV2(param=param, process_group=None)
+    sparam = ShardedParamV2(param=param)
 
     allclose(sparam.sharded_data_tensor.payload, param_ref.data)
 
