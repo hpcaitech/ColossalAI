@@ -5,23 +5,22 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch import Tensor
-from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
-from torch.optim import Optimizer
-
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.utils.memory_utils.utils import (colo_model_tensor_clone, colo_tensor_mem_usage)
+from colossalai.utils.memory_tracer.model_data_memtracer import \
+    GLOBAL_MODEL_DATA_TRACER
+from colossalai.utils.memory_utils.utils import (colo_model_data_tensor_move, colo_model_tensor_clone,
+                                                 colo_tensor_mem_usage)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, colo_tensor_mem_usage
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
+from torch import Tensor
+from torch.distributed import ProcessGroup
+from torch.nn.parameter import Parameter
+from torch.optim import Optimizer
 
 
 class OptimState(Enum):
@@ -170,6 +169,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         return cuda_use, cpu_use
 
     def step(self, *args, **kwargs):
+        self._prepare_grads()
         self._maybe_move_fp32_shards()
 
         # unscale grads if scaled
@@ -294,3 +294,14 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                         p.grad.data = p.grad.data.to(torch.cuda.current_device())
                         p.col_attr.offload_grad = False
                         fp32_shards_used_cuda_margin_mem += shard_mem
+
+    def _prepare_grads(self):
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
+                # If we change p.grad directly
+                # it may raise error because of different shape/dtype/device of p.data and p.grad
+                # We just set p.data = p.col_attr.saved_grad.payload here
+                p.data = p.col_attr.saved_grad.payload
+                p.grad = p.col_attr.saved_grad.payload
+                p.col_attr.saved_grad.set_null()
