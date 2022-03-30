@@ -245,14 +245,10 @@ class ShardedModelV2(nn.Module):
             # We also allows to interleave no-sync pass with sync passes, if desired.
             if not self._require_backward_grad_sync:
                 continue
-            # Write grad payload kept by sharded param back to p.grad,
-            # and set p.col_attr.grad to None
-            # As sharded optimizer only update a shard of param,
-            # no matter whether we shard param in sharded model
-            # We have to make sure the grad is a flat tensor shard
-            # If world size == 1 and param is sharded,
-            # the shape `grad` is the same as unsharded param
-            # So we can just use `view(-1)` to ensure grad is a flat tensor shard
+            # Reduced grad is saved in `p.col_attr.saved_grad`
+            # It can be on CPU or CUDA
+            # It can be fp16 or fp32
+            # We set `p.grad` to None here and ShardedOptimizer will prepare `p.grad` before `step()`.
             if self.reuse_fp16_shard:
                 grad_fp16_payload = p.col_attr.sharded_data_tensor.payload
             else:
