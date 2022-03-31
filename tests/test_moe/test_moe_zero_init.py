@@ -61,22 +61,22 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
         model = MoeModel()
 
         for name, param in model.named_parameters():
-            assert hasattr(param, 'col_attr')
+            assert hasattr(param, 'colo_attr')
 
             # the weights in the gate should be fp32
             if 'gate' in name:
-                assert param.col_attr.sharded_data_tensor.dtype == torch.float32
+                assert param.colo_attr.sharded_data_tensor.dtype == torch.float32
             else:
-                assert param.col_attr.sharded_data_tensor.dtype == torch.half
+                assert param.colo_attr.sharded_data_tensor.dtype == torch.half
 
             # the parameters in moe experts and its gate should not be sharded
             if ('experts' in name) or ('gate' in name) or ('residual_combine' in name):
-                assert not param.col_attr.sharded_data_tensor.is_sharded
+                assert not param.colo_attr.sharded_data_tensor.is_sharded
             else:
-                assert param.col_attr.sharded_data_tensor.is_sharded
+                assert param.colo_attr.sharded_data_tensor.is_sharded
 
-            assert param.col_attr.sharded_data_tensor.payload.device.type == init_device.type, \
-                f'{param.col_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+            assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
+                f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
 
 
 def _run_dist(rank, world_size, port):
