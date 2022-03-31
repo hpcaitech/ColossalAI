@@ -12,6 +12,7 @@ class BaseGradientHandler(ABC):
         model (Module): Model where the gradients accumulate.
         optimizer (Optimizer): Optimizer for updating the parameters.
     """
+
     def __init__(self, model, optimizer):
         self._model = model
         self._optimizer = optimizer
