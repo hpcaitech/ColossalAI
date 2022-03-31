@@ -2,7 +2,6 @@ import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.utils import get_current_device
 
-from typing import Optional
 from collections import namedtuple
 import psutil
 from colossalai.core import global_context as gpc
@@ -44,7 +43,9 @@ def _get_cpu_memory_info():
     return mem_info
 
 
-def colo_device_memory_used(device: torch.device):
+def colo_device_memory_used(device) -> int:
+    if not isinstance(device, torch.device):
+        device = torch.device(f"cuda:{device}")
     if device.type == 'cpu':
         mem_info = _get_cpu_memory_info()
         # FIXME(jiaruifang) only work for 1-CPU multi-GPU
