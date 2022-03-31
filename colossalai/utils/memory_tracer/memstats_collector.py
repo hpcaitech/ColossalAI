@@ -44,16 +44,16 @@ class MemStatsCollector:
 
         self._start_flag = False
 
-    def overall_mem_stats(self, type: str):
-        if type == 'cuda':
+    def overall_mem_stats(self, device_type: str):
+        if device_type == 'cuda':
             return self._overall_cuda_list
-        elif type == 'cpu':
+        elif device_type == 'cpu':
             return self._overall_cpu_list
         else:
             raise TypeError
 
     @property
-    def model_data_cuda_list(self, type: str, unit: str = 'B') -> List[int]:
+    def model_data_cuda_list(self, device_type: str, unit: str = 'B') -> List[int]:
         scale = 1
         if unit == 'GB':
             scale = 1e9
@@ -64,14 +64,14 @@ class MemStatsCollector:
         else:
             raise TypeError
 
-        if type == 'cuda':
+        if device_type == 'cuda':
             return [elem / scale for elem in self._model_data_cuda_list]
-        elif type == 'cpu':
+        elif device_type == 'cpu':
             return [elem / scale for elem in self._model_data_cpu_list]
         else:
             raise TypeError
 
-    def non_model_data_cuda_list(self, type: str, unit: str = 'B') -> List[int]:
+    def non_model_data_cuda_list(self, device_type: str, unit: str = 'B') -> List[int]:
         """Non model data stats
         """
         scale = 1
@@ -82,9 +82,9 @@ class MemStatsCollector:
         elif unit == 'KB':
             scale = 1e3
 
-        if type == 'cuda':
+        if device_type == 'cuda':
             return [(v1 - v2) / scale for v1, v2 in zip(self._overall_cuda_list, self._model_data_cuda_list)]
-        elif type == 'cpu':
+        elif device_type == 'cpu':
             return [(v1 - v2) / scale for v1, v2 in zip(self._overall_cpu_list, self._model_data_cpu_list)]
         else:
             raise TypeError
