@@ -1,11 +1,8 @@
 colossalai.zero.init\_ctx
 =========================
 
-.. automodule:: colossalai.zero.init_ctx
+colossalai.zero.init\_ctx.init\_context
+-----------------------------------------
+
+.. automodule:: colossalai.zero.init_ctx.init_context
    :members:
-
-
-.. toctree::
-   :maxdepth: 2
-
-   colossalai.zero.init_ctx.init_context

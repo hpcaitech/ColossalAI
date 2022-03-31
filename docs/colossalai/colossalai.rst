@@ -1,8 +1,5 @@
-colossalai
+Colossal-AI
 ==========
-
-.. automodule:: colossalai
-   :members:
 
 .. toctree::
    :maxdepth: 2
@@ -25,5 +22,7 @@ colossalai
 .. toctree::
    :maxdepth: 2
 
-   colossalai.global_variables
    colossalai.initialize
+
+.. automodule:: colossalai
+   :members:

@@ -1,8 +1,8 @@
 colossalai.context
 ==================
 
-.. automodule:: colossalai.context
-   :members:
+*This module is serving for receiving and passing user's configuration to all devices to
+initialize and construct parallel training.*
 
 .. toctree::
    :maxdepth: 2
@@ -15,7 +15,9 @@ colossalai.context
    :maxdepth: 2
 
    colossalai.context.config
-   colossalai.context.moe_context
    colossalai.context.parallel_context
+   colossalai.context.moe_context
    colossalai.context.parallel_mode
-   colossalai.context.singleton_meta
+
+.. automodule:: colossalai.context
+   :members:

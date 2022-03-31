@@ -1,9 +1,7 @@
 colossalai.communication
 ========================
 
-.. automodule:: colossalai.communication
-   :members:
-
+*This module contains different methods for communication in parallel training.*
 
 .. toctree::
    :maxdepth: 2

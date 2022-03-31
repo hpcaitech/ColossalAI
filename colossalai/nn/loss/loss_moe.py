@@ -23,7 +23,7 @@ class MoeCrossEntropyLoss(_Loss):
         reduction (str, optional)
         label_smoothing (float, optional)
 
-    More details about args, kwargs and torch.nn.functional.cross_entropy could be found in
+    More details about ``args``, ``kwargs`` and ``torch.nn.functional.cross_entropy`` could be found in
     `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
     """
 
@@ -40,7 +40,7 @@ class MoeCrossEntropyLoss(_Loss):
             input (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
             target (:class:`torch.tensor`): Ground truth class indices or class probabilities.
 
-        More details about args, kwargs and torch.nn.functional.cross_entropy could be found in
+        More details about ``args``, ``kwargs`` and ``torch.nn.functional.cross_entropy`` could be found in
         `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
         """
         main_loss = self.loss(*args)

@@ -27,7 +27,7 @@ class CrossEntropyLoss2D(_Loss):
         reduce (bool, optional)
         label_smoothing (float, optional)
 
-    More details about args, kwargs and torch.nn.functional.cross_entropy could be found in
+    More details about ``args``, ``kwargs`` and ``torch.nn.functional.cross_entropy`` could be found in
     `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
     """
 

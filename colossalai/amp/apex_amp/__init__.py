@@ -9,7 +9,7 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     Args:
         model (:class:`torch.nn.Module`): your model object.
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
-        amp_config (:class: colossalai.context.Config or dict): configuration for initializing apex_amp.
+        amp_config (Union[:class:`colossalai.context.Config`, dict]): configuration for initializing apex_amp.
 
     The ``amp_config`` should include parameters below:
     ::

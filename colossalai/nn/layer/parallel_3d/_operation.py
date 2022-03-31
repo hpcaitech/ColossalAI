@@ -264,7 +264,7 @@ def layernorm_3d(input_: Tensor, weight: Tensor, bias: Tensor, normalized_shape:
 def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
     r"""Splits 3D parallel tensor in specified dimension.
 
-     Args:
+    Args:
         tensor (:class:`torch.tensor`): Input tensor.
         dim (int): Specified dimension in which to split.
         parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): Parallel mode.
