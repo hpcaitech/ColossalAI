@@ -13,7 +13,7 @@ from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     colo_model_mem_usage
-from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
+from colossalai.utils.memory_utils.utils import colo_cuda_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from tests.components_to_test.registry import non_distributed_component_funcs

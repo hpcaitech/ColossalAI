@@ -4,8 +4,8 @@ import pickle
 
 import torch
 
+from colossalai.utils.memory_utils.utils import colo_cuda_memory_used
 from colossalai.utils import get_current_device
-from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
 
 
 class AsyncMemoryMonitor:

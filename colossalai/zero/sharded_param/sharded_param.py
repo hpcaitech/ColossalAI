@@ -1,8 +1,7 @@
 import torch
-import torch.distributed as dist
 from colossalai.zero.sharded_param import ShardedTensor
 from typing import Optional, Tuple
-from colossalai.utils.memory_utils.utils import colo_tensor_mem_usage
+from colossalai.zero.shard_utils.tensor_utils import colo_tensor_mem_usage
 from .tensorful_state import StatefulTensor, TensorState
 
 
