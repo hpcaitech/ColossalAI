@@ -18,7 +18,7 @@ from colossalai.utils.memory_tracer.model_data_memtracer import \
 from colossalai.utils.memory_utils.utils import (colo_cuda_memory_capacity, colo_model_data_move_to_cpu)
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_param.tensorful_state import (StatefulTensor, TensorState)
+from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 
@@ -245,27 +245,7 @@ class ShardedModelV2(nn.Module):
             # We also allows to interleave no-sync pass with sync passes, if desired.
             if not self._require_backward_grad_sync:
                 continue
-            # Reduced grad is saved in `p.colo_attr.saved_grad`
-            # It can be on CPU or CUDA
-            # It can be fp16 or fp32
-            # We set `p.grad` to None here and ShardedOptimizer will prepare `p.grad` before `step()`.
-            if self.reuse_fp16_shard:
-                grad_fp16_payload = p.colo_attr.sharded_data_tensor.payload
-            else:
-                grad_fp16_payload = cast_tensor_to_fp32(p.colo_attr.fp16_grad.payload)
-            assert isinstance(grad_fp16_payload, torch.Tensor)
-            if p.colo_attr.offload_grad:
-                colo_model_data_move_to_cpu(grad_fp16_payload)
-            if not p.colo_attr.saved_grad.is_null():
-                assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
-                # Accumulate grad, saved grad must be fp32
-                p.colo_attr.saved_grad.reset_payload(cast_tensor_to_fp32(p.colo_attr.saved_grad.payload))
-                p.colo_attr.saved_grad.payload.add_(grad_fp16_payload.view_as(p.colo_attr.saved_grad.payload))
-            else:
-                p.colo_attr.saved_grad.reset_payload(grad_fp16_payload)
-
             p.grad = None
-            p.colo_attr.fp16_grad.set_null()
 
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
@@ -322,11 +302,22 @@ class ShardedModelV2(nn.Module):
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
+        # FIXME(ver217): remove the below line when impl eviction policy
+        if param.colo_attr.offload_grad:
+            colo_model_data_move_to_cpu(reduced_grad)
         if self.reuse_fp16_shard:
-            param.colo_attr.sharded_data_tensor.reset_payload(reduced_grad.data)
+            assert param.colo_attr.saved_grad.is_null(
+            ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
+            param.colo_attr.sharded_data_tensor.reset_payload(reduced_grad)
             param.colo_attr.sharded_data_tensor.is_sharded = True
+            param.colo_attr.saved_grad.reset_payload(param.colo_attr.sharded_data_tensor.payload)
         else:
-            param.colo_attr.fp16_grad = StatefulTensor(reduced_grad.data)
+            reduced_grad = cast_tensor_to_fp32(reduced_grad)
+            if param.colo_attr.saved_grad.is_null():
+                param.colo_attr.saved_grad.reset_payload(reduced_grad)
+            else:
+                param.colo_attr.saved_grad.payload.add_(reduced_grad.view_as(param.colo_attr.saved_grad.payload))
+        param.colo_attr.saved_grad.trans_state(TensorState.HOLD)
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.colo_attr.sharded_data_tensor for p in self.module.parameters()],

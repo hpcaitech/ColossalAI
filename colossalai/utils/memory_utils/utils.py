@@ -51,9 +51,9 @@ def colo_model_data_tensor_move(src_t: Union[StatefulTensor, torch.Tensor], tgt_
     """ 
     A colossal API for model data tensor move. 
     The src and target tensors could be resident on both CPU and GPU.
-    
+
     NOTE() The source tensor payload will be removed after this function.
-    
+
     The function will record the communication volume between CPU and GPU.
     Args:
         t_src (Union[StatefulTensor, torch.Tensor]): source tensor
@@ -93,7 +93,7 @@ def colo_model_data_tensor_move_inline(t: Union[StatefulTensor, torch.Tensor], t
         raise TypeError('colo_model_data_move_to_cpu dose not accept type {type(t)}')
 
     if isinstance(target_device, int):
-        target_device = torch.cuda(f'device"{target_device}')
+        target_device = torch.device(f'cuda:{target_device}')
 
     # deal with torch.device('cpu') and torch.device('cpu:0)
     if t_payload.device.type == target_device.type:
