@@ -66,7 +66,7 @@ def _run_colo_model_tensor_clone():
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    _run_colo_set_process_memory_fraction_and_colo_cuda_memory_capacity
+    _run_colo_set_process_memory_fraction_and_colo_cuda_memory_capacity()
     _run_colo_model_data_tensor_move_inline()
     _run_colo_model_data_tensor_move()
     _run_colo_tensor_mem_usage()
