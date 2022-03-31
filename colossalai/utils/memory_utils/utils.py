@@ -2,9 +2,9 @@ import torch
 from colossalai.utils import get_current_device
 
 from typing import Tuple, Union, Optional
-
 from collections import namedtuple
 import psutil
+from colossalai.core import global_context as gpc
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
@@ -62,7 +62,7 @@ def colo_cpu_memory_used(device: Optional[torch.device] = None) -> int:
     # CPU memory is sharded with all processes
     # Not support multi-GPU multi-CPU
     # We need a local_world_size here
-    ret = mem_info.used
+    ret = mem_info.used / gpc.get_world_size()
     return ret
 
 
