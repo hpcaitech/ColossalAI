@@ -60,6 +60,7 @@ def colo_model_data_tensor_move_inline(t: Union[StatefulTensor, torch.Tensor], t
     move a tensor to the target_device
     Args:
         t (Union[StatefulTensor, torch.Tensor]): the tensor be moved
+        target_device: a traget device, if type is int, it the index of cuda card.
     """
     if isinstance(t, torch.Tensor):
         t_payload = t
@@ -68,8 +69,8 @@ def colo_model_data_tensor_move_inline(t: Union[StatefulTensor, torch.Tensor], t
     else:
         raise TypeError('colo_model_data_move_to_cpu dose not accept type {type(t)}')
 
-    if isinstance(target_device, int):
-        target_device = torch.cuda(f'device"{target_device}')
+    if not isinstance(target_device, torch.device):
+        target_device = torch.device(f'cuda:{target_device}')
 
     # deal with torch.device('cpu') and torch.device('cpu:0)
     if t_payload.device.type == target_device.type:
