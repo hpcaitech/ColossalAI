@@ -45,8 +45,8 @@ def colo_model_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
     cuda_mem_usage = 0
     cpu_mem_usage = 0
     for param in model.parameters():
-        if hasattr(param, 'col_attr'):
-            t_cuda, t_cpu = param.col_attr.get_memory_usage()
+        if hasattr(param, 'colo_attr'):
+            t_cuda, t_cpu = param.colo_attr.get_memory_usage()
             cuda_mem_usage += t_cuda
             cpu_mem_usage += t_cpu
         else:

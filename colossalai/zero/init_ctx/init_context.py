@@ -162,8 +162,8 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         """
         if not self.rm_torch_payload_on_the_fly:
             for param in self.initialized_param_list:
-                assert hasattr(param, 'col_attr')
-                param.col_attr.remove_torch_payload()
+                assert hasattr(param, 'colo_attr')
+                param.colo_attr.remove_torch_payload()
 
             del self.initialized_param_list
 
@@ -178,7 +178,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
         for param in module.parameters(recurse=False):
             # avoid adapting a param to ShardedParam twice
-            if hasattr(param, 'col_attr'):
+            if hasattr(param, 'colo_attr'):
                 continue
 
             self.model_numel_tensor += param.numel()
@@ -196,10 +196,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if param.grad is not None:
                 param.grad = param.grad.to(target_device)
 
-            param.col_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
+            param.colo_attr = ShardedParamV2(param, rm_torch_payload=self.rm_torch_payload_on_the_fly)
 
             if self.shard_param:
-                self.shard_strategy.shard([param.col_attr.sharded_data_tensor], self.dp_process_group)
+                self.shard_strategy.shard([param.colo_attr.sharded_data_tensor], self.dp_process_group)
                 self.initialized_param_list.append(param)
 
         # We must cast buffers

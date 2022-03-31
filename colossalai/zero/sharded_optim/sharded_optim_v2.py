@@ -116,18 +116,18 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         for group in self.optim.param_groups:
             for p in group['params']:
-                assert hasattr(p, 'col_attr'), 'The parameter must be wrapped with ShardedParam'
-                is_param_sharded = p.col_attr.sharded_data_tensor.is_sharded
+                assert hasattr(p, 'colo_attr'), 'The parameter must be wrapped with ShardedParam'
+                is_param_sharded = p.colo_attr.sharded_data_tensor.is_sharded
                 if not is_param_sharded:
                     # TODO (ver217): we may not use shard / gather here
                     # Param is no sharded, which means we use ZeRO-2 here
                     # As we only store param shard, we shard it here
-                    self.shard_strategy.shard([p.col_attr.sharded_data_tensor], self.dp_process_group)
-                self.master_params[p] = cast_tensor_to_fp32(p.col_attr.sharded_data_tensor.payload).to(self.device)
+                    self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
+                self.master_params[p] = cast_tensor_to_fp32(p.colo_attr.sharded_data_tensor.payload).to(self.device)
                 if not is_param_sharded:
                     # In this branch, there's no need to shard param
                     # So we gather here
-                    self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
+                    self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
 
         self._logger.debug(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
                            ranks=[0])
@@ -201,30 +201,30 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._logger.debug(
             f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
             ranks=[0])
-        # Copy master param data (fp32) to payload of col_attr (fp16)
+        # Copy master param data (fp32) to payload of colo_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
         for group in self.optim.param_groups:
             for p in group['params']:
-                is_param_sharded = p.col_attr.sharded_data_tensor.is_sharded
+                is_param_sharded = p.colo_attr.sharded_data_tensor.is_sharded
                 if not is_param_sharded:
                     # We use ZeRO-2 here
-                    # The `p.col_attr.sharded_data_tensor` saves full fp16 param
+                    # The `p.colo_attr.sharded_data_tensor` saves full fp16 param
                     # But we only have updated fp32 param shard here
                     # So we first shard full fp16 param and copy fp32 param shard to it
                     # Then we will gather them
-                    self.shard_strategy.shard([p.col_attr.sharded_data_tensor], self.dp_process_group)
+                    self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
                 # We have to use `copy_payload` instead of `reset_payload`
-                # Since p.data is fp32 and p.col_attr.sharded_data_tensor is fp16
+                # Since p.data is fp32 and p.colo_attr.sharded_data_tensor is fp16
 
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-                p.col_attr.sharded_data_tensor.reset_payload(
+                p.colo_attr.sharded_data_tensor.reset_payload(
                     colo_model_tensor_clone(p.half(), torch.cuda.current_device()))
 
                 if not is_param_sharded:
                     # We gather full fp16 param here
-                    self.shard_strategy.gather([p.col_attr.sharded_data_tensor], self.dp_process_group)
-                p.data = p.col_attr.sharded_data_tensor.payload
+                    self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
+                p.data = p.colo_attr.sharded_data_tensor.payload
         return ret
 
     def backward(self, loss: Tensor) -> None:
@@ -292,7 +292,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     if fp32_shards_used_cuda_margin_mem + shard_mem < fp32_shards_available_cuda_margin_mem:
                         self.master_params[p] = self.master_params[p].to(torch.cuda.current_device())
                         p.grad.data = p.grad.data.to(torch.cuda.current_device())
-                        p.col_attr.offload_grad = False
+                        p.colo_attr.offload_grad = False
                         fp32_shards_used_cuda_margin_mem += shard_mem
 
     def _prepare_grads(self):
@@ -301,7 +301,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad
-                # We just set p.data = p.col_attr.saved_grad.payload here
-                p.data = p.col_attr.saved_grad.payload
-                p.grad = p.col_attr.saved_grad.payload
-                p.col_attr.saved_grad.set_null()
+                # We just set p.data = p.colo_attr.saved_grad.payload here
+                p.data = p.colo_attr.saved_grad.payload
+                p.grad = p.colo_attr.saved_grad.payload
+                p.colo_attr.saved_grad.set_null()

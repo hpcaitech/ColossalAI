@@ -70,9 +70,9 @@ class ShardedModelV2(nn.Module):
         sharded = []
         unsharded = []
         for param in module.parameters():
-            assert hasattr(param, 'col_attr'), 'You must use ZeroInitContext to init your module first.'
-            sharded.append(param.col_attr.param_is_sharded)
-            unsharded.append(not param.col_attr.param_is_sharded)
+            assert hasattr(param, 'colo_attr'), 'You must use ZeroInitContext to init your module first.'
+            sharded.append(param.colo_attr.param_is_sharded)
+            unsharded.append(not param.colo_attr.param_is_sharded)
         assert all(sharded) or all(
             unsharded), 'Parameters must be all sharded or all unsharded! Parameters are partially sharded now.'
         self.shard_param = all(sharded)
@@ -103,7 +103,7 @@ class ShardedModelV2(nn.Module):
         self._cpu_offload: bool = offload_config.get('device', None) == 'cpu' if offload_config else False
         for param in module.parameters():
             # Init `offload_grad`
-            param.col_attr.offload_grad = self._cpu_offload
+            param.colo_attr.offload_grad = self._cpu_offload
 
         # We find if gradient_predivide_factor != 1.0, there may be wrong precision problem
         # So we use 1.0 as the default gradient_predivide_factor
@@ -162,13 +162,13 @@ class ShardedModelV2(nn.Module):
             self._memstats_collector.start_collection()
 
         for p in self.module.parameters():
-            if hasattr(p, 'col_attr'):
-                p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+            if hasattr(p, 'colo_attr'):
+                p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
 
     def _post_forward_operations(self):
         for p in self.module.parameters():
-            if hasattr(p, 'col_attr'):
-                p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+            if hasattr(p, 'colo_attr'):
+                p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._pre_forward_operations()
@@ -228,10 +228,10 @@ class ShardedModelV2(nn.Module):
         if self.shard_param:
             tensor_list = []
             for p in self.module.parameters():
-                if not p.col_attr.param_is_sharded:
-                    tensor_list.append(p.col_attr.sharded_data_tensor)
-                    p.col_attr.sharded_data_tensor.trans_state(TensorState.HOLD_AFTER_BWD)
-                    p.col_attr.remove_torch_payload()
+                if not p.colo_attr.param_is_sharded:
+                    tensor_list.append(p.colo_attr.sharded_data_tensor)
+                    p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD_AFTER_BWD)
+                    p.colo_attr.remove_torch_payload()
             self.shard_strategy.shard(tensor_list, self.process_group)
 
         # 4. move sharded param grad payload to param.grad
@@ -245,27 +245,27 @@ class ShardedModelV2(nn.Module):
             # We also allows to interleave no-sync pass with sync passes, if desired.
             if not self._require_backward_grad_sync:
                 continue
-            # Reduced grad is saved in `p.col_attr.saved_grad`
+            # Reduced grad is saved in `p.colo_attr.saved_grad`
             # It can be on CPU or CUDA
             # It can be fp16 or fp32
             # We set `p.grad` to None here and ShardedOptimizer will prepare `p.grad` before `step()`.
             if self.reuse_fp16_shard:
-                grad_fp16_payload = p.col_attr.sharded_data_tensor.payload
+                grad_fp16_payload = p.colo_attr.sharded_data_tensor.payload
             else:
-                grad_fp16_payload = cast_tensor_to_fp32(p.col_attr.fp16_grad.payload)
+                grad_fp16_payload = cast_tensor_to_fp32(p.colo_attr.fp16_grad.payload)
             assert isinstance(grad_fp16_payload, torch.Tensor)
-            if p.col_attr.offload_grad:
+            if p.colo_attr.offload_grad:
                 colo_model_data_move_to_cpu(grad_fp16_payload)
-            if not p.col_attr.saved_grad.is_null():
+            if not p.colo_attr.saved_grad.is_null():
                 assert not self.reuse_fp16_shard, 'Gradien accumulation is not supported when reuse_fp16_shard=True'
                 # Accumulate grad, saved grad must be fp32
-                p.col_attr.saved_grad.reset_payload(cast_tensor_to_fp32(p.col_attr.saved_grad.payload))
-                p.col_attr.saved_grad.payload.add_(grad_fp16_payload.view_as(p.col_attr.saved_grad.payload))
+                p.colo_attr.saved_grad.reset_payload(cast_tensor_to_fp32(p.colo_attr.saved_grad.payload))
+                p.colo_attr.saved_grad.payload.add_(grad_fp16_payload.view_as(p.colo_attr.saved_grad.payload))
             else:
-                p.col_attr.saved_grad.reset_payload(grad_fp16_payload)
+                p.colo_attr.saved_grad.reset_payload(grad_fp16_payload)
 
             p.grad = None
-            p.col_attr.fp16_grad.set_null()
+            p.colo_attr.fp16_grad.set_null()
 
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
@@ -273,7 +273,7 @@ class ShardedModelV2(nn.Module):
         At the start of :func:`_grad_post_backward_hook`, ``param.grad`` contains the
         full gradient for the local batch. The reduce-scatter op will save
         a single shard of the summed gradient across all
-        GPUs to param.col_attr.grad. This shard will align with the current GPU rank. For example::
+        GPUs to param.colo_attr.grad. This shard will align with the current GPU rank. For example::
 
             before reduce_scatter:
                 param.grad (GPU #0): [1, 2, 3, 4]
@@ -285,7 +285,7 @@ class ShardedModelV2(nn.Module):
 
         The local GPU's ``optim.step`` is responsible for updating a single
         shard of params, also corresponding to the current GPU's rank. This
-        alignment is created by `param.col_attr.grad`, which ensures that
+        alignment is created by `param.colo_attr.grad`, which ensures that
         the local optimizer only sees the relevant parameter shard.
         """
         if grad is None:
@@ -323,20 +323,20 @@ class ShardedModelV2(nn.Module):
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
         if self.reuse_fp16_shard:
-            param.col_attr.sharded_data_tensor.reset_payload(reduced_grad.data)
-            param.col_attr.sharded_data_tensor.is_sharded = True
+            param.colo_attr.sharded_data_tensor.reset_payload(reduced_grad.data)
+            param.colo_attr.sharded_data_tensor.is_sharded = True
         else:
-            param.col_attr.fp16_grad = StatefulTensor(reduced_grad.data)
+            param.colo_attr.fp16_grad = StatefulTensor(reduced_grad.data)
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
-        self.shard_strategy.gather([p.col_attr.sharded_data_tensor for p in self.module.parameters()],
+        self.shard_strategy.gather([p.colo_attr.sharded_data_tensor for p in self.module.parameters()],
                                    self.process_group)
         prev_params = {}
         for p in self.module.parameters():
             prev_params[p] = p.data
-            p.data = p.col_attr.sharded_data_tensor.payload
+            p.data = p.colo_attr.sharded_data_tensor.payload
         gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
-        self.shard_strategy.shard([p.col_attr.sharded_data_tensor for p in self.module.parameters()],
+        self.shard_strategy.shard([p.colo_attr.sharded_data_tensor for p in self.module.parameters()],
                                   self.process_group)
         for p in self.module.parameters():
             p.data = prev_params[p]
