@@ -36,8 +36,8 @@ def _run_colo_set_process_memory_fraction_and_colo_cuda_memory_capacity():
 
 def _run_colo_model_data_tensor_move_inline():
     for t in [StatefulTensor(torch.randn(2,3)), torch.randn(2,3)]:
-        colo_model_data_tensor_move_inline(t, torch.device("cuda:3"))
-        assert t.device == torch.device("cuda:3")
+        colo_model_data_tensor_move_inline(t, torch.device(f"cuda:{get_current_device()}"))
+        assert t.device == torch.device(f"cuda:{get_current_device()}")
 
 def _run_colo_model_data_tensor_move():
     for t in [(StatefulTensor(torch.ones(2, 3)), StatefulTensor(torch.zeros(2, 3).cuda(get_current_device()))),
@@ -53,8 +53,8 @@ def _run_colo_model_data_move_to_cpu():
 
 def _run_colo_model_tensor_clone():
     for t in [StatefulTensor(torch.randn(2,2)), torch.randn(4,4)]:
-        p = colo_model_tensor_clone(t, torch.device("cuda:1"))
-        assert p.device == torch.device("cuda:1")
+        p = colo_model_tensor_clone(t, torch.device(f"cuda:{get_current_device()}"))
+        assert p.device == torch.device(f"cuda:{get_current_device()}")
         for i in range(2):
             for j in range(2):
                 if issubclass(type(t), StatefulTensor):
