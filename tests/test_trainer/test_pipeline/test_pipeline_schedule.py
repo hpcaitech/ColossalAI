@@ -14,6 +14,7 @@ from colossalai.core import global_context as gpc
 from colossalai.engine.schedule import PipelineSchedule
 from colossalai.initialize import launch
 from colossalai.utils import free_port, get_dataloader, print_rank_0
+from colossalai.testing import rerun_on_exception
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
 
@@ -67,6 +68,7 @@ def run_schedule(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_pipeline_schedule():
     world_size = 4
     run_func = partial(run_schedule, world_size=world_size, port=free_port())

@@ -9,12 +9,11 @@ from colossalai.registry import LAYERS
 
 @LAYERS.register_module
 class LambdaWrapper(nn.Module):
-    """Wrap a function to nn.Module, which takes a config of layers and can fully access them
+    """Wrap a function to nn.Module, which takes a config of layers and can fully access them.
 
-    :param func: User customed function
-    :type func: Callable
-    :param layers_cfg: Config of layers, defaults to None
-    :type layers_cfg: dict, optional
+    Args:
+        func (``Callable``): User customed function.
+        layers_cfg (dict, optional): Config of layers, defaults to None.
     """
 
     def __init__(self, func, layers_cfg: dict = None):

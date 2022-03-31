@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch.distributed as dist
-from colossalai.core import global_context as gpc, MOE_CONTEXT
+from colossalai.core import global_context as gpc
+from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.context import ParallelMode
 from .common import is_using_ddp
 from typing import Dict, List
@@ -11,8 +12,8 @@ def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]
     size of every parameter. Since the parameters in data parallelism is replicated
     in each GPU, we set their ep_size to 1.
 
-    :param model: A pyTorch nn.model from which we get dict
-    :type model: torch.nn.Module
+    Args:
+        model (:class:`torch.nn.Module`): A pyTorch `nn.Module` from which we get dict.
     """
     epsize_param_dict = dict()
     for param in model.parameters():
@@ -28,10 +29,10 @@ def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]
 
 
 def sync_moe_model_param(model: nn.Module):
-    """Make sure model parameters are consistent in MoE parallel context
+    """Make sure model parameters are consistent in MoE parallel context.
 
-    :param model: A pyTorch nn.model on whose parameters you check the consistency
-    :type model: torch.nn.Module
+    Args:
+        model (:class:`torch.nn.Module`): A pyTorch model on whose parameters you check the consistency.
     """
     if is_using_ddp():
 
@@ -46,6 +47,6 @@ def sync_moe_model_param(model: nn.Module):
         for ep_size in param_dict:
             # When ep_size = world_size, communication is not needed
             if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
-                src_rank = dist.get_rank(MOE_CONTEXT.information[ep_size].ep_group)
+                src_rank = dist.get_rank(MOE_CONTEXT.parallel_info_dict[ep_size].ep_group)
                 for param in param_dict[ep_size]:
                     dist.broadcast(param, src=src_rank, group=param.moe_info.dp_group)

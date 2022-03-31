@@ -16,7 +16,8 @@ _ZERO_MODEL_CONFIG = dict(reduce_scatter_bucket_size_mb=25,
                           offload_config=None,
                           gradient_predivide_factor=1.0,
                           use_memory_tracer=False,
-                          shard_strategy=TensorShardStrategy())
+                          shard_strategy=TensorShardStrategy(),
+                          reuse_fp16_shard=False)
 
 _ZERO_OPTIMIZER_CONFIG = dict(cpu_offload=False,
                               initial_scale=2**5,
@@ -90,14 +91,19 @@ def check_params(model, zero_model, loose=False):
 
 def check_grads_padding(model, zero_model, loose=False):
     rank = dist.get_rank()
-    for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_grad = zero_p.grad.clone().to(p.device)
-        chunks = torch.flatten(p.grad).chunk(dist.get_world_size())
-        if rank >= len(chunks):
-            continue
-        grad = chunks[rank].float()
-        if zero_grad.size(0) > grad.size(0):
-            zero_grad = zero_grad[:grad.size(0)]
+    for (name, p), (zero_name, zero_p) in zip(model.named_parameters(), zero_model.named_parameters()):
+        # zero_grad = zero_p.grad.clone().to(p.device)
+        if zero_p.colo_attr.param_is_sharded:
+            zero_grad = zero_p.colo_attr.saved_grad.payload.clone().to(p.device)
+            chunks = torch.flatten(p.grad).chunk(dist.get_world_size())
+            if rank >= len(chunks):
+                continue
+            grad = chunks[rank].float()
+            if zero_grad.size(0) > grad.size(0):
+                zero_grad = zero_grad[:grad.size(0)]
+        else:
+            grad = p.grad
+            zero_grad = zero_p.colo_attr.saved_grad.payload
         assert grad.dtype == zero_grad.dtype
         assert allclose(grad, zero_grad, loose=loose), f'diff: {grad - zero_grad}'
 
@@ -116,10 +122,13 @@ def check_params_padding(model, zero_model, loose=False):
         assert allclose(p, zero_p, loose=loose)
 
 
-def check_sharded_params_padding(model, zero_model, loose=False):
+def check_sharded_model_params(model, zero_model, loose=False, reuse_fp16_shard=False):
     rank = dist.get_rank()
     for p, zero_p in zip(model.parameters(), zero_model.parameters()):
-        zero_p = zero_p.col_attr.data.payload.to(p.device).float()
+        if reuse_fp16_shard:
+            zero_p = zero_p.data.to(p.device).float()
+        else:
+            zero_p = zero_p.colo_attr.sharded_data_tensor.payload.to(p.device).float()
         chunks = torch.flatten(p).chunk(dist.get_world_size())
         if rank >= len(chunks):
             continue

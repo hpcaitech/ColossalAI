@@ -1,4 +1,5 @@
 import math
+import inspect
 from typing import Callable
 
 from colossalai.utils import get_current_device
@@ -31,22 +32,35 @@ _vocab_parallel_classifier = {
 
 
 class Linear(nn.Module):
-    """
-    Linear layer of colossalai
+    """Linear layer of colossalai.
 
-    :param in_features: size of each input sample
-    :type in_features: int
-    :param out_features: size of each output sample
-    :type out_features: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
-    :param kwargs: Kwargs used for particular parallelisms
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    Note: ``kwargs`` would contain different parameters when you use different parallelisms.
+
+    The ``kwargs`` should contain parameters below:
+    ::
+
+        Linear1D:
+            gather_output: bool (optional, default to be false)
+            skip_bias_add: bool (optional, default to be false)
+        Linear2D:
+            skip_bias_add: bool (optional, default to be false)
+        Linear2p5D:
+            skip_bias_add: bool (optional, default to be false)
+        Linear3D:
+            None
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -65,15 +79,19 @@ class Linear(nn.Module):
             if self.layer.bias is not None:
                 bias_initializer(self.layer.bias, fan_in=in_features)
         else:
-            self.layer = _parallel_linear[tensor_parallel](
-                in_features,
-                out_features,
-                bias=bias,
-                dtype=dtype,
-                weight_initializer=weight_initializer,
-                bias_initializer=bias_initializer,
-                **kwargs,
-            )
+            linear_cls = _parallel_linear[tensor_parallel]
+            gather_output = kwargs.pop('gather_output', None)
+            if 'gather_output' in inspect.signature(linear_cls.__init__).parameters.keys(): # gather_out arg is available
+                kwargs['gather_output'] = gather_output
+            self.layer = linear_cls(
+                        in_features,
+                        out_features,
+                        bias=bias,
+                        dtype=dtype,
+                        weight_initializer=weight_initializer,
+                        bias_initializer=bias_initializer,
+                        **kwargs,
+                    )
 
     @property
     def weight(self):
@@ -88,21 +106,21 @@ class Linear(nn.Module):
 
 
 class Classifier(nn.Module):
-    """
-    Classifier layer of colossalai
+    """Classifier layer of colossalai.
 
-    :param in_features: size of each input sample
-    :type in_features: int
-    :param num_classes: number of total classes for the dataset
-    :type num_classes: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    Args:
+        in_features (int): size of each input sample.
+        num_classes (int): number of classes.
+        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,

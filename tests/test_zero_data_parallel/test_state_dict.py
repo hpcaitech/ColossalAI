@@ -8,7 +8,7 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import parameterize
+from colossalai.testing import parameterize, rerun_on_exception
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
@@ -27,8 +27,7 @@ def run_zero_state_dict(shard_strategy_class):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, test_dataloader, optimizer, criterion = get_components_func()
 
-        with ZeroInitContext(convert_fp16=True,
-                             target_device=torch.cuda.current_device(),
+        with ZeroInitContext(target_device=torch.cuda.current_device(),
                              shard_strategy=shard_strategy,
                              shard_param=True,
                              rm_torch_payload_on_the_fly=False):
@@ -51,6 +50,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_zero_state_dict(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

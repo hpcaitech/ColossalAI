@@ -8,7 +8,6 @@ import torch
 from torch._six import inf
 from torch.nn.parameter import Parameter
 
-
 try:
     import colossal_C
 except:
@@ -17,11 +16,9 @@ except:
 from contextlib import contextmanager
 
 import torch.distributed as dist
-from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS,
-                                  TENSOR_PARALLEL_ATTRIBUTES)
+from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES)
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.global_variables import moe_env
 from colossalai.global_variables import tensor_parallel_env as env
 
 from .multi_tensor_apply import multi_tensor_applier
@@ -30,10 +27,10 @@ from .multi_tensor_apply import multi_tensor_applier
 def print_rank_0(msg: str, logger=None):
     """Print messages and save logs(optional). This is executed only if you are the rank-0 gpu.
 
-    :param msg: A string message to output
-    :type msg: str
-    :param logger: Python logger object, defaults to None
-    :type logger: optional
+    Args:
+        msg (str): A string message to output.
+        logger (:class:`colossalai.logging.DistributedLogger`, optional):
+            The logger to record the message, defaults to None.
     """
     if gpc.get_global_rank() == 0:
         if logger is None:
@@ -56,12 +53,15 @@ def free_port():
 
 
 def sync_model_param(model, parallel_mode):
-    """Make sure data parameters are consistent during Data Parallel Mode
+    r"""Make sure data parameters are consistent during Data Parallel Mode.
 
-    :param model: A pyTorch nn.model on whose parameters you check the consistency
-    :param parallel_mode: Parallel mode to be checked
-    :type model: torch.nn.Module
-    :type parallel_mode:  colossalai.context.ParallelMode
+    Args:
+        model (:class:`torch.nn.Module`): A pyTorch model on whose parameters you check the consistency.
+        parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel mode to be checked.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
         for param in model.parameters():
@@ -115,10 +115,6 @@ def is_model_parallel_parameter(p):
     return hasattr(p, IS_TENSOR_PARALLEL) and getattr(p, IS_TENSOR_PARALLEL)
 
 
-def is_moe_parallel_parameter(p):
-    return hasattr(p, 'moe_param') and moe_env.data_parallel_size > 1
-
-
 def _calc_l2_norm(grads):
     norm = 0.0
     if len(grads) > 0:
@@ -127,7 +123,7 @@ def _calc_l2_norm(grads):
             colossal_C.multi_tensor_l2norm,
             dummy_overflow_buf,
             [grads],
-            False  # no per-parameter norm
+            False    # no per-parameter norm
         )
     return norm
 
@@ -139,10 +135,12 @@ def _calc_lp(grads, norm_type):
         norm += grad_norm**norm_type
     return norm
 
+
 def _move_norm_to_cuda(norm: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
     if torch.is_tensor(norm) and norm.device.type != 'cuda':
         norm = norm.to(torch.cuda.current_device())
     return norm
+
 
 # ======== Gradient Clipping =========
 
@@ -151,18 +149,19 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     """Clips gradient norm of an iterable of parameters whose gradients are in fp32.
 
     This is adapted from :func:`torch.nn.utils.clip_grad.clip_grad_norm_` and
-    added functionality to handle model parallel parameters. Note that
-    the gradients are modified in place.
+    added functionality to handle model parallel parameters.
 
-    :param parameters: An iterable of Tensors or a single Tensor that will have gradients normalized
-    :type parameters: (Iterable[Tensor] or Tensor)
-    :param max_norm: Max norm of the gradients
-    :type max_norm: float or int
-    :param norm_type: Type of the used p-norm. Can be ``'inf'`` for infinity norm.
-    :type norm_type: float or int 
+    Note:
+        the gradients are modified in place.
 
-    :return: Total norm of the parameters (viewed as a single vector).
-    :rtype: float
+    Args:
+        parameters (Iterable[:class:`torch.tensor`] or :class:`torch.tensor`):
+            An iterable of Tensors or a single Tensor that will have gradients normalized.
+        max_norm (Union[float, int]): Max norm of the gradients.
+        norm_type (Union[float, int, 'inf']): Type of the used p-norm. Can be ``'inf'`` for infinity norm.
+
+    Returns:
+        float: Total norm of the parameters.
     """
 
     if isinstance(parameters, torch.Tensor):
@@ -212,57 +211,42 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     else:
         tensor_parallel_grads = []
         no_tensor_parallel_grads = []
-        moe_parallel_grads = []  # used to collect moe tensor parallel gradients
         zero_sharded_grads = []
         for p in params:
             if is_model_parallel_parameter(p):
                 reductor = (gpc.get_world_size(ParallelMode.TENSOR) / getattr(p, NUM_PARTITIONS))**(1 / norm_type)
                 tensor_parallel_grads.append(p.grad.data / reductor)
-            elif is_moe_parallel_parameter(p):
-                moe_parallel_grads.append(p.grad.data)
             elif hasattr(p, 'zero_is_sharded'):
                 zero_sharded_grads.append(p.grad.data)
             else:
                 no_tensor_parallel_grads.append(p.grad.data)
 
         if norm_type == 2.0 and enable_cuda_kernels:
-            tensor_parallel_norm = _calc_l2_norm(
-                tensor_parallel_grads) ** norm_type
-            no_tensor_parallel_norm = _calc_l2_norm(
-                no_tensor_parallel_grads) ** norm_type
-            moe_parallel_norm = _calc_l2_norm(
-                moe_parallel_grads) ** norm_type
-            zero_sharded_norm = _calc_l2_norm(zero_sharded_grads) ** norm_type
+            tensor_parallel_norm = _calc_l2_norm(tensor_parallel_grads)**norm_type
+            no_tensor_parallel_norm = _calc_l2_norm(no_tensor_parallel_grads)**norm_type
+            zero_sharded_norm = _calc_l2_norm(zero_sharded_grads)**norm_type
         else:
             tensor_parallel_norm = _calc_lp(tensor_parallel_grads, norm_type)
             no_tensor_parallel_norm = _calc_lp(no_tensor_parallel_grads, norm_type)
-            moe_parallel_norm = _calc_lp(moe_parallel_grads, norm_type)
             zero_sharded_norm = _calc_lp(zero_sharded_grads, norm_type)
 
         # If grads are on CPU, the norms is also on CPU. Cast them to CUDA tensors
         if not enable_cuda_kernels:
             tensor_parallel_norm = _move_norm_to_cuda(tensor_parallel_norm)
             no_tensor_parallel_norm = _move_norm_to_cuda(no_tensor_parallel_norm)
-            moe_parallel_norm = _move_norm_to_cuda(moe_parallel_norm)
             zero_sharded_norm = _move_norm_to_cuda(zero_sharded_norm)
 
         # Sum across all model-parallel GPUs.
         if gpc.is_initialized(ParallelMode.TENSOR) and len(tensor_parallel_grads) > 0:
             dist.all_reduce(tensor_parallel_norm, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
-        # Sum across all moe-tensor-parallel GPUs
-        if len(moe_parallel_grads) > 0:
-            dist.all_reduce(moe_parallel_norm, group=gpc.get_group(ParallelMode.MOE_MODEL))
-            no_tensor_parallel_norm += moe_parallel_norm
         # Sum across all zero sharded GPUs
         if len(zero_sharded_grads) > 0:
             dist.all_reduce(zero_sharded_norm, group=gpc.get_group(ParallelMode.DATA))
             no_tensor_parallel_norm += zero_sharded_norm
         total_norm = tensor_parallel_norm + no_tensor_parallel_norm
         if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
-            dist.all_reduce(total_norm,
-                            op=dist.ReduceOp.SUM,
-                            group=gpc.get_group(ParallelMode.PIPELINE))
-        total_norm = total_norm ** (1.0 / norm_type)
+            dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.PIPELINE))
+        total_norm = total_norm**(1.0 / norm_type)
         if torch.is_tensor(total_norm):
             total_norm = total_norm.item()
 
@@ -272,10 +256,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
         if enable_cuda_kernels:
             grads = [p.grad.detach() for p in params]
             dummy_overflow_buf = torch.cuda.IntTensor([0])
-            multi_tensor_applier(colossal_C.multi_tensor_scale,
-                                 dummy_overflow_buf,
-                                 [grads, grads],
-                                 clip_coeff)
+            multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coeff)
         else:
             for p in params:
                 p.grad.detach().mul_(clip_coeff)

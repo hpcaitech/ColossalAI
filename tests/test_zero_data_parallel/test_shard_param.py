@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-
 from copy import deepcopy
 from functools import partial
 
@@ -8,14 +5,14 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.testing import parameterize
 from colossalai.utils import free_port
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
-from colossalai.zero.sharded_param import ShardedParam, ShardedTensor
+from colossalai.zero.sharded_param import ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from tests.components_to_test.registry import non_distributed_component_funcs
+from colossalai.testing import rerun_on_exception
 from tests.test_zero_data_parallel.common import CONFIG, allclose
+from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
 
 
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
@@ -40,6 +37,7 @@ def _run_shard_tensor(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_shard_tensor(world_size):
     run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
@@ -50,84 +48,49 @@ def _run_shard_param_v2(rank, world_size, port):
 
     param = torch.nn.Parameter(torch.randn(2, 3))
     param_ref = deepcopy(param)
-    sparam = ShardedParamV2(param=param, process_group=None)
+    sparam = ShardedParamV2(param=param)
 
-    allclose(sparam.data.payload, param_ref.data)
+    allclose(sparam.sharded_data_tensor.payload, param_ref.data)
+
+    # Test get memory usage
+    sparam.saved_grad = StatefulTensor(torch.randn(2, 3))
+    cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
+    assert cpu_mem_use == 2 * 3 * 4 * 2, f"cpu_mem_use: {cpu_mem_use}"
 
     sparam.remove_torch_payload()
     assert (param.data.numel() == 1)
+    cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
+    # 4 is size of dummy tensor of param.data
+    assert cpu_mem_use == 2 * 3 * 4 * 2 + 4
+
+    sparam.saved_grad = StatefulTensor(torch.randn(2, 3))
+    sparam.remove_torch_payload()
+    cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
+    assert cpu_mem_use == 2 * 3 * 4 * 2 + 4
+    assert cuda_mem_use == 0
+
+    # append a grad to torch param
+    param.data = sparam.sharded_data_tensor.payload
+    param.grad = torch.randn(2, 3)
+    cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
+    assert cpu_mem_use == 2 * 3 * 4 * 2 + 2 * 3 * 4, f"cpu_mem_use {cpu_mem_use}"
+    assert cuda_mem_use == 0
+
+    # reuse torch grad for sparam
+    sparam.saved_grad = StatefulTensor(param.grad)
+    cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
+    assert cpu_mem_use == 2 * 3 * 4 * 2
+    assert cuda_mem_use == 0
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_shard_param_v2(world_size):
     run_func = partial(_run_shard_param_v2, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
-def _run_test_shard_param(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-
-    param = torch.nn.Parameter(torch.randn(2, 3))
-    param_ref = deepcopy(param)
-    sparam = ShardedParamV2(param=param, process_group=None)
-    print(sparam.data)
-    print(param_ref.data)
-
-    logger = get_dist_logger()
-    for get_components_func in non_distributed_component_funcs:
-        model_builder, *_ = get_components_func()
-        model = model_builder(checkpoint=True)
-        # add an attribute as col_attr to hijack the access to param.data
-        for _, param in model.named_parameters():
-            numel_ref = (param.numel() + world_size - 1) // world_size
-            param.col_attr = ShardedParam(param)
-            param.col_attr.shard()
-            param_data = param.col_attr.payload(torch.device('cpu'))
-            assert (numel_ref == param_data.numel())
-
-        for _, param in model.named_parameters():
-            param.col_attr.gather()
-            param_data = param.col_attr.payload(torch.device('cpu'))
-
-        disable_existing_loggers([logger])
-
-
-@pytest.mark.dist
-@pytest.mark.parametrize("world_size", [1, 2])
-def test_shard_param(world_size):
-    run_func = partial(_run_test_shard_param, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
-
-
-def _run_init_shard_param(rank, world_size, port):
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    param = torch.nn.Parameter(data=torch.rand(world_size, 3))
-    sparam = ShardedParam(param, None, True)
-    payload = sparam.payload(torch.device('cuda'))
-    assert (list(payload.shape) == [3])
-    del sparam
-
-    param_shape = (world_size, 3)
-    sparam = ShardedParam(param_shape, process_group=None, is_sharded=True, device=torch.device('cpu'))
-    payload = sparam.payload(torch.device('cuda'))
-    assert (list(payload.shape) == [3])
-
-    param_shape = (world_size, 3)
-    sparam = ShardedParam(param_shape, process_group=None, is_sharded=False, device=torch.device('cpu'))
-    payload = sparam.payload(torch.device('cuda'))
-    assert (list(payload.shape) == [world_size, 3])
-
-
-@pytest.mark.dist
-@pytest.mark.parametrize("world_size", [1, 4])
-def test_init_shard_param(world_size):
-    run_func = partial(_run_init_shard_param, world_size=world_size, port=free_port())
-    mp.spawn(run_func, nprocs=world_size)
-
-
 if __name__ == '__main__':
-    test_shard_tensor(2)
-    test_shard_param(2)
+    # test_shard_tensor(2)
     test_shard_param_v2(2)
-    test_init_shard_param(4)

@@ -40,14 +40,11 @@ class BaseHook(ABC):
     def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a training iteration.
 
-        :param trainer: Trainer which is using this hook
-        :type trainer: :class:`Trainer`
-        :param output: Output of the model
-        :type output: torch.Tensor
-        :param label: Labels of the input data
-        :type label: torch.Tensor
-        :param loss: Loss between the output and input data
-        :type loss: torch.Tensor
+        Args:
+           trainer (:class:`Trainer`): Trainer which is using this hook.
+           output (:class:`torch.Tensor`): Output of the model.
+           label (:class:`torch.Tensor`): Labels of the input data.
+           loss (:class:`torch.Tensor`): Loss between the output and input data.
         """
         pass
 
@@ -89,24 +86,21 @@ class BaseHook(ABC):
     def after_test_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a testing iteration.
 
-        :param trainer: Trainer which is using this hook
-        :type trainer: :class:`Trainer`
-        :param output: Output of the model
-        :type output: Tensor
-        :param label: Labels of the input data
-        :type label: Tensor
-        :param loss: Loss between the output and input data
-        :type loss: Tensor
+        Args:
+           trainer (:class:`Trainer`): Trainer which is using this hook
+           output (:class:`torch.Tensor`): Output of the model
+           label (:class:`torch.Tensor`): Labels of the input data
+           loss (:class:`torch.Tensor`): Loss between the output and input data
         """
         pass
 
     def init_runner_states(self, trainer, key, val):
         """Initializes trainer's state.
 
-        :param trainer: Trainer which is using this hook
-        :type trainer: :class:`Trainer`
-        :param key: Key of reseting state
-        :param val: Value of reseting state
+        Args:
+            trainer (:class:`Trainer`): Trainer which is using this hook
+            key: Key of state to be reset
+            val: Value of state to be reset
         """
         if key not in trainer.states:
             trainer.states[key] = val

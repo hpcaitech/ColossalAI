@@ -13,8 +13,9 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn import LinearWarmupLR
 from colossalai.nn.loss import CrossEntropyLoss
 from colossalai.trainer import Trainer, hooks
-from colossalai.utils import MultiTimer, free_port, get_dataloader
+from colossalai.utils import free_port, get_dataloader
 from colossalai.utils.gradient_accumulation import GradAccumLrSchedulerByStep
+from colossalai.testing import rerun_on_exception
 from model_zoo.vit import vit_tiny_patch4_32
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
@@ -79,6 +80,7 @@ def run_trainer(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_hybrid_parallel():
     world_size = 8
     run_func = partial(run_trainer, world_size=world_size, port=free_port())

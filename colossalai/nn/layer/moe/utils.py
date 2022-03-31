@@ -1,8 +1,14 @@
 import torch
 import torch.nn.functional as F
 from colossalai.utils import get_current_device
-from colossalai.core import MOE_CONTEXT
+from colossalai.context.moe_context import MOE_CONTEXT
 from .experts import FFNExperts, TPExperts
+
+
+class ForceFP32Parameter(torch.nn.Parameter):
+
+    def half(self, memory_format=None):
+        return self
 
 
 class NormalNoiseGenerator:
@@ -11,8 +17,8 @@ class NormalNoiseGenerator:
     All noise is generated from a normal distribution (0, 1 / E^2), where
     E = the number of experts.
 
-    :param num_experts: The number of experts
-    :type num_experts: int
+    Args:
+        num_experts (int): The number of experts.
     """
 
     def __init__(self, num_experts: int):
@@ -32,8 +38,8 @@ class UniformNoiseGenerator:
     Makes models more resilient to rounding errors introduced by bfloat16.
     This seems particularly important for logits.
 
-    :param eps: Epsilon in generator
-    :type eps: float
+    Args:
+        eps (float, optional): Epsilon in generator, defaults 1e-2.
     """
 
     def __init__(self, eps: float = 1e-2):
@@ -46,12 +52,10 @@ class UniformNoiseGenerator:
         return inputs * noisy
 
 
-def autocast_softmax(inputs: torch.Tensor, dim: int):
-    assert inputs.dtype in {torch.float16, torch.float32}
-    fp16_flag = (inputs.dtype == torch.float16)
-    sm_input = inputs.to(torch.float32) if fp16_flag else inputs
-    sm_output = F.softmax(sm_input, dim)
-    return sm_output
+def autocast_softmax(logit: torch.Tensor, dim: int):
+    if logit.dtype != torch.float32:
+        logit = logit.float()
+    return F.softmax(logit, dim=dim)
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):

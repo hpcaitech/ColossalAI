@@ -9,6 +9,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.core import global_context as gpc
+from colossalai.testing import rerun_on_exception
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
@@ -16,7 +17,7 @@ from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from common import (MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_params_padding)
+from common import (MP_PARALLEL_CONFIG, ZERO_PARALLEL_CONFIG, check_params, check_sharded_model_params)
 
 
 def run_dist(rank, world_size, port, parallel_config):
@@ -31,8 +32,7 @@ def run_dist(rank, world_size, port, parallel_config):
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
-        with ZeroInitContext(convert_fp16=hasattr(gpc.config, 'fp16'),
-                             target_device=torch.cuda.current_device(),
+        with ZeroInitContext(target_device=torch.cuda.current_device(),
                              shard_strategy=gpc.config.zero.model_config.shard_strategy,
                              shard_param=True):
             colo_model = model_builder(checkpoint=True)
@@ -87,7 +87,7 @@ def run_dist(rank, world_size, port, parallel_config):
         if parallel_config == MP_PARALLEL_CONFIG:
             check_params(torch_model, colo_model, loose=True)
         elif parallel_config == ZERO_PARALLEL_CONFIG:
-            check_sharded_params_padding(torch_model, colo_model, loose=True)
+            check_sharded_model_params(torch_model, colo_model, loose=True)
 
 
 # FIXME: enable this test in next PR
@@ -96,6 +96,7 @@ def run_dist(rank, world_size, port, parallel_config):
 @pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [2, 4])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_mp_engine(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port(), parallel_config=MP_PARALLEL_CONFIG)
     mp.spawn(run_func, nprocs=world_size)
@@ -103,6 +104,7 @@ def test_mp_engine(world_size):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_zero_engine(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port(), parallel_config=ZERO_PARALLEL_CONFIG)
     mp.spawn(run_func, nprocs=world_size)

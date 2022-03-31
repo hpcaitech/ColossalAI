@@ -10,6 +10,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.testing import rerun_on_exception
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import TensorShardStrategy
@@ -29,8 +30,7 @@ def run_dist(rank, world_size, port):
                       port=port,
                       backend='nccl')
 
-    with ZeroInitContext(convert_fp16=True,
-                         target_device=torch.cuda.current_device(),
+    with ZeroInitContext(target_device=torch.cuda.current_device(),
                          shard_strategy=gpc.config.zero.model_config.shard_strategy,
                          shard_param=True):
         model = resnet50()
@@ -71,6 +71,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_sharded_optim_with_sync_bn():
     """
     This test is to make sure that buffers are synchronized between ranks

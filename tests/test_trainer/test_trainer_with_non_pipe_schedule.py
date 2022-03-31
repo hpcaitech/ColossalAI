@@ -9,7 +9,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.trainer import Trainer
 from colossalai.utils import MultiTimer, free_port
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.testing import parameterize
+from colossalai.testing import parameterize, rerun_on_exception
 
 BATCH_SIZE = 4
 IMG_SIZE = 32
@@ -51,6 +51,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_trainer_no_pipeline():
     world_size = 4
     run_func = partial(run_dist, world_size=world_size, port=free_port())

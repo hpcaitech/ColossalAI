@@ -1,12 +1,15 @@
+import json
+import pickle
+from pathlib import Path
 from colossalai.context.parallel_mode import ParallelMode
 import torch
 from colossalai.engine.ophooks import BaseOpHook
 from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc
-
+from typing import Union
 from colossalai.utils.memory_tracer import AsyncMemoryMonitor
-
+import os
 import math
 
 
@@ -14,12 +17,11 @@ import math
 class MemTracerOpHook(BaseOpHook):
     """
     Collect GPU memory usage information
-    :param warmup: This parameter indicates how many iterations to truncate before profiling, defaults to 50
-    :type warmup: int
-    :param refreshrate: This parameter decides the frequency of write file, defaults to 10
-    :type refreshrate: int
-    :param data_prefix: The prefix of the stats data file, defaults to "memstats"
-    :type data_prefix: string
+
+    Args:
+        warmup (int): This parameter indicates how many iterations to truncate before profiling, defaults to 50.
+        refreshrate (int): This parameter decides the frequency of write file, defaults to 10.
+        data_prefix (string): The prefix of the stats data file, defaults to "memstats".
     """
 
     def __init__(self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"):
@@ -103,12 +105,14 @@ class MemTracerOpHook(BaseOpHook):
             if self.valid_iter != 0 and self.valid_iter % self.refreshrate == 0:
                 # output file info
                 self._logger.info(f"dump a memory statistics as pickle to {self._data_prefix}-{self._rank}.pkl")
-                self.save_results()
+                home_dir = Path.home()
+                with open (home_dir.joinpath(f".cache/colossal/mem-{self._rank}.pkl"), "wb") as f:
+                    pickle.dump(self.async_mem_monitor.state_dict, f)
                 self._count += 1
                 self._logger.debug(f"data file has been refreshed {self._count} times")
         # finish a iteration
         self._curiter += 1
 
-    def save_results(self):
-        datafile = f"{self._data_prefix}-{self._rank}.pkl"
-        self.async_mem_monitor.save(datafile)
+    def save_results(self, data_file: Union[str, Path]):
+        with open(data_file, "w") as f:
+            f.write(json.dumps(self.async_mem_monitor.state_dict))

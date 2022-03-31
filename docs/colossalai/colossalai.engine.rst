@@ -9,3 +9,5 @@ colossalai.engine
 
    colossalai.engine.gradient_handler
    colossalai.engine.schedule
+   colossalai.engine.ophooks
+   colossalai.engine.paramhooks

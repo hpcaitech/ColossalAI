@@ -1,9 +1,60 @@
-import torch
 import math
+import torch
+
+from colossalai.registry import OPTIMIZERS
 
 
+@OPTIMIZERS.register_module
 class CPUAdam(torch.optim.Optimizer):
+    """Implements Adam algorithm.
+
+    Supports parameters updating on both GPU and CPU, depanding on the device of paramters.
+    But the parameters and gradients should on the same device: 
+      * Parameters on CPU and gradients on CPU is allowed.
+      * Parameters on GPU and gradients on GPU is allowed.
+      * Parameters on GPU and gradients on CPU is **not** allowed.
+
+    Requires ColossalAI to be installed via ``pip install .``.
+
+    This version of CPU Adam accelates parameters updating on CPU with SIMD.
+    Support of AVX2 or AVX512 is required.
+
+    The GPU part is implemented in an naive way.
+
+    CPU Adam also supports the hybrid precision calculation, eg. fp32 parameters and fp16 gradients.
+
+    :class:`colossalai.nn.optimizer.CPUAdam` may be used as a drop-in replacement for ``torch.optim.AdamW``,
+    or ``torch.optim.Adam`` with ``adamw_mode=False``
+
+    Adam was been proposed in `Adam: A Method for Stochastic Optimization`_.
+
+    Arguments:
+        model_params (iterable): iterable of parameters of dicts defining
+            parameter groups.
+        lr (float, optional): learning rate. (default: 1e-3)
+        betas (Tuple[float, float], optional): coefficients used for computing
+            running averages of gradient and its square. (default: (0.9, 0.999))
+        eps (float, optional): term added to the denominator to improve
+            numerical stability. (default: 1e-8)
+        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
+        amsgrad (boolean, optional): whether to use the AMSGrad variant of this
+            algorithm from the paper `On the Convergence of Adam and Beyond`_
+            (default: False) NOT SUPPORTED yet in CPUAdam!
+        adamw_mode (boolean, optional): Apply L2 regularization or weight decay
+            True for decoupled weight decay(also known as AdamW) (default: True)
+        simd_log (boolean, optional): whether to show if you are using SIMD to 
+            accelerate. (default: False)
+    
+    .. _Adam: A Method for Stochastic Optimization:
+        https://arxiv.org/abs/1412.6980
+    .. _On the Convergence of Adam and Beyond:
+        https://openreview.net/forum?id=ryQu7f-RZ
+    """
+
     optimizer_id = 0
+    # Number of fp32 shards for per parameter
+    # Param weight, grad, momentum and variance
+    num_fp32_shards_per_param = 4
 
     def __init__(self,
                  model_params,
@@ -13,20 +64,13 @@ class CPUAdam(torch.optim.Optimizer):
                  eps=1e-8,
                  weight_decay=0,
                  adamw_mode=True,
-                 loss_scale=-1,
                  simd_log=False):
-        """
-        An implementation equivalent to `torch.optim.Adam`.
-        The difference is that model_params are sharded parameters belonging to a ShardedModelV2 instance.
-        The sharded param of model_params can resident on both CPU and CUDA.
-        """
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(CPUAdam, self).__init__(model_params, default_args)
         self.opt_id = CPUAdam.optimizer_id
         CPUAdam.optimizer_id = CPUAdam.optimizer_id + 1
-        self.adam_w_mode = adamw_mode
-        self.loss_scale = loss_scale
+        self.adamw_mode = adamw_mode
         try:
             import cpu_adam
         except ImportError:
@@ -50,10 +94,9 @@ class CPUAdam(torch.optim.Optimizer):
                           weight_decay,
                           bias_correction1,
                           bias_correction2,
-                          loss_scale,
                           use_adamw=False):
-        if loss_scale is not None:
-            grad.div_(loss_scale)
+        # FIXME(ver217): remove the below line when replace torch adam with fused adam
+        grad = grad.float()
 
         if weight_decay != 0:
             if use_adamw:
@@ -104,12 +147,8 @@ class CPUAdam(torch.optim.Optimizer):
                     assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
                     self.cpu_adam_op.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
                                                  group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
-                                                 state['exp_avg'], state['exp_avg_sq'], self.loss_scale)
+                                                 state['exp_avg'], state['exp_avg_sq'], -1)
                 elif target_device.type == 'cuda':
-                    # FIXME() prepare grad on cuda
-                    if p.grad.device.type == 'cpu':
-                        p.grad = p.grad.to(target_device)
-
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
                     assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"
 
@@ -119,7 +158,7 @@ class CPUAdam(torch.optim.Optimizer):
                     # adam on cuda
                     self.torch_adam_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],
                                            beta1, beta2, group['eps'], group['weight_decay'], bias_correction1,
-                                           bias_correction2, self.loss_scale)
+                                           bias_correction2, self.adamw_mode)
                 else:
                     raise RuntimeError
         return loss

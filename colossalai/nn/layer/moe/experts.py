@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 from colossalai.context import ParallelMode, seed
 from colossalai.utils import get_current_device
-from colossalai.core import MOE_CONTEXT
+from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.zero.init_ctx import no_shard_zero_decrator
+from typing import Type
 
 
 class MoeExperts(nn.Module):
@@ -27,19 +29,19 @@ class Experts(MoeExperts):
     moe model parallel group, where E is the number of experts. Every expert
     is a instence of the class, 'expert' in initialization parameters.
 
-    :param expert: The class of all experts
-    :param num_experts: The number of experts
-    :param expert_args: Args used to initialize experts
-
-    :type num_experts: int
+    Args:
+        expert_cls (:class:`torch.nn.Module`): The class of all experts
+        num_experts (int): The number of experts
+        expert_args: Args used to initialize experts, the args could be found in corresponding expert class
     """
 
-    def __init__(self, expert, num_experts, **expert_args):
+    @no_shard_zero_decrator(is_replicated=False)
+    def __init__(self, expert_cls: Type[nn.Module], num_experts: int, **expert_args):
         super().__init__("all_to_all", num_experts)
 
         # Use seed to make every expert different from others
         with seed(ParallelMode.TENSOR):
-            self.experts = nn.ModuleList([expert(**expert_args) for _ in range(self.num_local_experts)])
+            self.experts = nn.ModuleList([expert_cls(**expert_args) for _ in range(self.num_local_experts)])
 
         # Attach parallel information for all parameters in Experts
         for exp in self.experts:

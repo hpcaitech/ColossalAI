@@ -17,13 +17,13 @@ from ._base_hook import BaseHook
 
 class Metric(ABC):
     """A basic class of metric collectors. It collects a specific
-    metric during training or evaluation and it's always used with 
+    metric during training or evaluation and would always be used with
     :class:`MetricHook` to help it update its states and show the 
     metric. So please use corresponding hook class to make the metric 
     collector works.
 
-    :param epoch_only: Whether the metric only read for the full epoch
-    :type epoch_only: bool
+    Args:
+        epoch_only (bool): Whether the metric only read for the full epoch.
     """
 
     def __init__(self, epoch_only: bool):
@@ -80,8 +80,8 @@ class Metric(ABC):
 class LossMetric(Metric):
     """A metric collector for loss.
 
-    :param epoch_only: Whether the metric only read for the full epoch
-    :type epoch_only: bool
+    Args:
+        epoch_only (bool): Whether the metric only read for the full epoch.
     """
 
     def __init__(self, epoch_only):
@@ -101,7 +101,8 @@ class LossMetric(Metric):
         """Updates :attr:`last_step_loss` and :attr:`accum_loss` with current loss.
         It expects the output has loss.
 
-        :param loss: Current loss of the output
+        Args:
+            loss (:class:`torch.tensor`): Current loss of the output.
         """
         # expect output to be logits, label and loss
         loss_ = loss.detach()
@@ -132,10 +133,9 @@ class LossMetric(Metric):
 class LearningRateMetric(Metric):
     """A metric collector for learning rate.
 
-    :param epoch_only: Whether the metric only read for the full epoch
-    :type epoch_only: bool
-    :param initial_lr: Initial learning rate, defaults to 0.0
-    :type initial_lr: float, optional
+    Args:
+        epoch_only (bool): Whether the metric only read for the full epoch.
+        initial_lr (float, optional): Initial learning rate, defaults to 0.0.
     """
 
     def __init__(self, epoch_only: bool, initial_lr: float = 0.):
@@ -163,10 +163,9 @@ class AccuracyMetric(Metric):
     """A metric collector for accuracy. It only works for classification
     tasks.
 
-    :param epoch_only: Whether the metric only read for the full epoch
-    :type epoch_only: bool
-    :param accuracy_func: Accuracy function for the classification task
-    :type accuracy_func: :class:`typing.Callable`
+    Args:
+        epoch_only (bool): Whether the metric only read for the full epoch.
+        accuracy_func (:class:`typing.Callable`): Accuracy function for the classification task.
     """
 
     def __init__(self, epoch_only: bool, accuracy_func: Callable):
@@ -187,9 +186,10 @@ class AccuracyMetric(Metric):
         """Updates last step accuracy and accumulated accuracy with current logits
         and labels. It expects the output has logits and labels.
 
-        :param logits: The logits output of the model
-        :param targets: Real labels of the dataset
-        :param batch_size: Batch size of the task
+        Args:
+            logits (:class:`torch.tensor`): The logits output of the model.
+            targets (:class:`torch.tensor`): Real labels of the dataset.
+            batch_size (int): Batch size of the task.
         """
         if isinstance(logits, (list, tuple)):
             logits = logits[0]
@@ -224,8 +224,10 @@ class MetricHook(BaseHook):
     update their states. Others are used to display and 
     record the metric.
 
-    :param priority: Priority in the printing, hooks with small priority will be printed in front
-    :type priority: int
+    Args:
+        priority (int): Priority in the printing, hooks with small priority will be printed in front
+            defaults to 1. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(
@@ -244,8 +246,10 @@ class MetricHook(BaseHook):
 class LossHook(MetricHook):
     """Specialized hook class for :class:`Loss`.
 
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 0
-    :type priority: int, optional
+    Args:
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front
+            defaults to 0. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(self, priority: int = 0):
@@ -283,10 +287,11 @@ class LossHook(MetricHook):
 class AccuracyHook(MetricHook):
     """Specialized hook class for :class:`Accuracy`.
 
-    :param accuracy_func: Priority in the printing, hooks with small priority will be printed in front
-    :type accuracy_func: typing.Callable
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 0
-    :type priority: int, optional
+    Args:
+        accuracy_func (:class:`typing.Callable`): Accuracy function for the classification task.
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front
+            defaults to 0. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(self, accuracy_func: Callable, priority: int = 0):
@@ -314,8 +319,8 @@ class AccuracyHook(MetricHook):
 class ThroughputMetric(Metric):
     """Metric for :class:`Throughput`.
 
-    :param epoch_only: epoch only
-    :type epoch_only: bool
+    Args:
+        epoch_only (bool): Whether the metric only read for the full epoch.
     """
     def __init__(self, epoch_only: bool, ignored_steps: int = 0):
         super().__init__(epoch_only=epoch_only)
@@ -360,10 +365,13 @@ class ThroughputMetric(Metric):
 
 @HOOKS.register_module
 class ThroughputHook(MetricHook):
-    """Specialized hook class for :class:`Throughput`.
+    """Specialized hook class for :class:`Throughput`. Hook to measure execution throughput (samples/sec).
 
-    :param priority: priority of throughput hook, defaults to 10
-    :type priority: int, optional
+    Args:
+        ignored_steps (int, optional): the number of initial training steps to ignore.
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front
+            defaults to 10. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
     def __init__(self, ignored_steps: int = 0, priority: int = 10):
         super().__init__(priority)

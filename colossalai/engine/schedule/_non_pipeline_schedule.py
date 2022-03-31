@@ -15,6 +15,10 @@ class NonPipelineSchedule(BaseSchedule):
     During one process, it loads a batch of dataset and feeds it to the model.
     After getting the output and calculating the loss, it will use :meth:`step`
     to update the parameters if it is in training mode.
+
+    Args:
+        batch_data_process_func (Callable, optional): The preprocessing function which receives a batch of data,
+        and it will be executed in load_batch.
     """
 
     def forward_backward_step(self,
@@ -23,22 +27,19 @@ class NonPipelineSchedule(BaseSchedule):
                               forward_only: bool = False,
                               return_loss: bool = True,
                               return_output_label: bool = True):
-        """The process function that loads loads a batch of dataset and feeds it to the model.
+        """The process function that loads a batch of dataset and feeds it to the model.
         The returned labels and loss will None if :attr:`return_loss` is False.
 
-        :param engine: Model for training and inference
-        :param data_iter: Data iterator of the dataloader, e.g. iter(dataloader)
-        :param forward_only: If True, the model is run for the forward pass, else back propagation will be executed
-        :param return_loss: Loss will be returned if True
-        :param return_output_label: Output and label will be returned if True
-        :type engine: Iterator
-        :type data_iter: Iterator
-        :type forward_only: bool, optional
-        :type return_loss: bool, optional
-        :type return_output_label: bool, optional
+        Args:
+            engine (colossalai.engine.Engine): Colossalai engine for training and inference.
+            data_iter (Iterable): Dataloader as the form of an iterator, obtained by calling iter(dataloader).
+            forward_only (bool, optional):
+                If True, the model is run for the forward pass, else back propagation will be executed.
+            return_loss (bool, optional): Loss will be returned if True.
+            return_output_label (bool, optional): Output and label will be returned if True.
 
-        :return: (output, label, loss)
-        :rtype: Tuple[:class:`torch.Tensor`]
+        Returns:
+            Tuple[:class:`torch.Tensor`]: A tuple of (output, label, loss), loss and label could be None.
         """
         assert forward_only or return_loss, \
             "The argument 'return_loss' has to be True when 'forward_only' is False, but got False."

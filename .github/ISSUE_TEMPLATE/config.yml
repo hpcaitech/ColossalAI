@@ -8,3 +8,4 @@ contact_links:
     about: This issue tracker is not for technical support. Please use WeChat, and ask the community for help.
   - name: 😊 Advanced question - GitHub Discussions
     url: https://github.com/hpcaitech/ColossalAI/discussions
+    about: Use GitHub Discussions for advanced and unanswered technical questions, requiring a maintainer's answer.
