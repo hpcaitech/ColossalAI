@@ -5,14 +5,16 @@ from colossalai.utils import get_current_device
 from torch import dtype, nn
 
 from ... import init as init
-from ..parallel_1d import *
-from ..parallel_2d import *
-from ..parallel_2p5d import *
-from ..parallel_3d import *
+from ..parallel_1d import Embedding1D, PatchEmbedding1D, VocabParallelEmbedding1D
+from ..parallel_2d import Embedding2D, PatchEmbedding2D, VocabParallelEmbedding2D
+from ..parallel_2p5d import Embedding2p5D, PatchEmbedding2p5D, VocabParallelEmbedding2p5D
+from ..parallel_3d import Embedding3D, PatchEmbedding3D, VocabParallelEmbedding3D
 from ..utils import get_tensor_parallel_mode
-from ..vanilla import *
+from ..vanilla import VanillaPatchEmbedding
+from ._utils import ColossalaiModule
 
 _parallel_embedding = {
+    '1d': Embedding1D,
     '2d': Embedding2D,
     '2.5d': Embedding2p5D,
     '3d': Embedding3D,
@@ -27,14 +29,14 @@ _vocab_parallel_embedding = {
 
 _parallel_patchembedding = {
     None: VanillaPatchEmbedding,
-    '1d': VanillaPatchEmbedding,
+    '1d': PatchEmbedding1D,
     '2d': PatchEmbedding2D,
     '2.5d': PatchEmbedding2p5D,
     '3d': PatchEmbedding3D
 }
 
 
-class Embedding(nn.Module):
+class Embedding(ColossalaiModule):
     r"""Embedding for colossalai.
 
     Args:
@@ -73,14 +75,13 @@ class Embedding(nn.Module):
                  vocab_parallel_limit: int = 2048,
                  *args,
                  **kwargs) -> None:
-        super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
-        if tensor_parallel is None or (tensor_parallel == '1d' and num_embeddings <= vocab_parallel_limit):
-            self.embed = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, *args,
-                                      **kwargs).to(dtype).to(get_current_device())
-            weight_initializer(self.embed.weight, fan_in=num_embeddings, fan_out=embedding_dim)
+        if tensor_parallel is None:
+            embed = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, *args,
+                                 **kwargs).to(dtype).to(get_current_device())
+            weight_initializer(embed.weight, fan_in=num_embeddings, fan_out=embedding_dim)
         elif num_embeddings <= vocab_parallel_limit:
-            self.embed = _parallel_embedding[tensor_parallel](
+            embed = _parallel_embedding[tensor_parallel](
                 num_embeddings,
                 embedding_dim,
                 padding_idx=padding_idx,
@@ -90,7 +91,7 @@ class Embedding(nn.Module):
                 **kwargs,
             )
         else:
-            self.embed = _vocab_parallel_embedding[tensor_parallel](
+            embed = _vocab_parallel_embedding[tensor_parallel](
                 num_embeddings,
                 embedding_dim,
                 padding_idx=padding_idx,
@@ -99,16 +100,10 @@ class Embedding(nn.Module):
                 *args,
                 **kwargs,
             )
-
-    @property
-    def weight(self):
-        return self.embed.weight
-
-    def forward(self, *args):
-        return self.embed(*args)
+        super().__init__(embed)
 
 
-class PatchEmbedding(nn.Module):
+class PatchEmbedding(ColossalaiModule):
     """2D Image to Patch Embedding.
 
     Args:
@@ -141,9 +136,8 @@ class PatchEmbedding(nn.Module):
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
         position_embed_initializer: Callable = init.zeros_()
     ) -> None:
-        super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
-        self.embed = _parallel_patchembedding[tensor_parallel](
+        embed = _parallel_patchembedding[tensor_parallel](
             img_size,
             patch_size,
             in_chans,
@@ -154,22 +148,4 @@ class PatchEmbedding(nn.Module):
             bias_initializer=bias_initializer,
             position_embed_initializer=position_embed_initializer,
         )
-
-    @property
-    def weight(self):
-        return self.embed.weight
-
-    @property
-    def bias(self):
-        return self.embed.bias
-
-    @property
-    def pos_embed(self):
-        return self.embed.pos_embed
-
-    @property
-    def cls_token(self):
-        return self.embed.cls_token
-
-    def forward(self, *args):
-        return self.embed(*args)
+        super().__init__(embed)
