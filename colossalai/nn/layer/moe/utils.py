@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from colossalai.utils import get_current_device
 from colossalai.context.moe_context import MOE_CONTEXT
 from .experts import FFNExperts, TPExperts
@@ -49,6 +50,12 @@ class UniformNoiseGenerator:
     def __call__(self, inputs: torch.Tensor):
         noisy = self.uniform(inputs.shape)
         return inputs * noisy
+
+
+def autocast_softmax(logit: torch.Tensor, dim: int):
+    if logit.dtype != torch.float32:
+        logit = logit.float()
+    return F.softmax(logit, dim=dim)
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):

@@ -39,7 +39,7 @@ def colo_model_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
         if t.device.type == 'cpu':
             _cpu_mem_usage += t.numel() * t.element_size()
         elif t.device.type == 'cuda':
-            _cuda_mem_usages += t.numel() * t.element_size()
+            _cuda_mem_usage += t.numel() * t.element_size()
         return _cuda_mem_usage, _cpu_mem_usage
 
     cuda_mem_usage = 0

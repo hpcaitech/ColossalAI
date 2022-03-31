@@ -16,6 +16,9 @@ class MoeGradientHandler(BaseGradientHandler):
     the same type to improve the efficiency of communication.
     """
 
+    def __init__(self, model, optimizer=None):
+        super().__init__(model, optimizer)
+
     def handle_gradient(self):
         """A method running an all-reduce operation in a data parallel group.
         Then running an all-reduce operation for all parameters in experts
@@ -24,13 +27,15 @@ class MoeGradientHandler(BaseGradientHandler):
         global_data = gpc.data_parallel_size
 
         if global_data > 1:
-            param_dict = get_moe_epsize_param_dict(self._model)
+            epsize_param_dict = get_moe_epsize_param_dict(self._model)
 
+            # epsize is 1, indicating the params are replicated among processes in data parallelism
+            # use the ParallelMode.DATA to get data parallel group
             # reduce gradients for all parameters in data parallelism
-            if 1 in param_dict:
-                bucket_allreduce(param_list=param_dict[1], group=gpc.get_group(ParallelMode.DATA))
+            if 1 in epsize_param_dict:
+                bucket_allreduce(param_list=epsize_param_dict[1], group=gpc.get_group(ParallelMode.DATA))
 
-            for ep_size in param_dict:
+            for ep_size in epsize_param_dict:
                 if ep_size != 1 and ep_size != MOE_CONTEXT.world_size:
-                    bucket_allreduce(param_list=param_dict[ep_size],
+                    bucket_allreduce(param_list=epsize_param_dict[ep_size],
                                      group=MOE_CONTEXT.parallel_info_dict[ep_size].dp_group)
