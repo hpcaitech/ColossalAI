@@ -1,7 +1,8 @@
 import torch
+from colossalai.context.parallel_mode import ParallelMode
 from colossalai.utils import get_current_device
 
-from typing import Tuple, Union, Optional
+from typing import Optional
 from collections import namedtuple
 import psutil
 from colossalai.core import global_context as gpc
@@ -43,48 +44,21 @@ def _get_cpu_memory_info():
     return mem_info
 
 
-def colo_cpu_memory_used(device: Optional[torch.device] = None) -> int:
-    """Get the free memory info of a cpu device.
-
-    Args:
-       device (Optional[``torch.device``]): a torch device instance or None. Defaults None.
-
-    Returns:
-        int: current memory usage, sized by Byte.
-    """
-    if device:
-        assert device.type == 'cpu'
-    else:
-        device = torch.device('cpu')
-
-    mem_info = _get_cpu_memory_info()
-    # FIXME(jiaruifang) only work for 1-CPU multi-GPU
-    # CPU memory is sharded with all processes
-    # Not support multi-GPU multi-CPU
-    # We need a local_world_size here
-    ret = mem_info.used / gpc.get_world_size()
-    return ret
-
-
-def colo_cuda_memory_used(device: Optional[torch.device] = None) -> int:
-    """Get the free memory info of device.
-
-    Args:
-       device (Optional[``torch.device``]): a torch device instance or None. Defaults None.
-
-    Returns:
-        int: current memory usage, sized by Byte.
-    """
-    if device:
-        assert device.type == 'cuda'
-    else:
-        device = torch.device(f'cuda:{get_current_device()}')
-
-    ret: int = torch.cuda.memory_allocated(device)
-    # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
-        torch.cuda.reset_peak_memory_stats(device)
-    return ret
+def colo_device_memory_used(device: torch.device):
+    if device.type == 'cpu':
+        mem_info = _get_cpu_memory_info()
+        # FIXME(jiaruifang) only work for 1-CPU multi-GPU
+        # CPU memory is sharded with all processes
+        # Not support multi-GPU multi-CPU
+        # We need a local_world_size here
+        ret = mem_info.used / gpc.get_world_size(ParallelMode.DATA)
+        return ret
+    elif device.type == 'cuda':
+        ret: int = torch.cuda.memory_allocated(device)
+        # get the peak memory to report correct data, so reset the counter for the next call
+        if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
+            torch.cuda.reset_peak_memory_stats(device)
+        return ret
 
 
 def colo_set_process_memory_fraction(ratio: float) -> None:

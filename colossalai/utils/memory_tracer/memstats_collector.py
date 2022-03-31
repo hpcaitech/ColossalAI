@@ -1,5 +1,5 @@
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import colo_cuda_memory_used, colo_cpu_memory_used
+from colossalai.utils.memory_utils.utils import colo_device_memory_used
 from colossalai.utils import get_current_device
 
 import torch
@@ -105,10 +105,10 @@ class MemStatsCollector:
             sampling_cnt = self._sampling_cnter.sampling_cnt
             assert sampling_cnt == len(self._overall_cuda_list)
             self._model_data_cuda_list.append(GLOBAL_MODEL_DATA_TRACER.cuda_usage)
-            self._overall_cuda_list.append(colo_cuda_memory_used(torch.device(f'cuda:{get_current_device()}')))
+            self._overall_cuda_list.append(colo_device_memory_used(get_current_device()))
 
             self._model_data_cpu_list.append(GLOBAL_MODEL_DATA_TRACER.cpu_usage)
-            self._overall_cpu_list.append(colo_cpu_memory_used(torch.device(f'cpu')))
+            self._overall_cpu_list.append(colo_device_memory_used(torch.device(f'cpu')))
 
         self._sampling_cnter.advance()
 
