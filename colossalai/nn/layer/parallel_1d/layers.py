@@ -302,7 +302,10 @@ class Linear1D_Col(ParallelLayer):
         with seed(ParallelMode.TENSOR):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
-        set_parallel_input(True)
+        if self.gather_output:
+            set_parallel_input(False)
+        else:
+            set_parallel_input(True)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
