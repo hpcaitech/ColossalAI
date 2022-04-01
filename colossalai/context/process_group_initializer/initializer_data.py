@@ -20,6 +20,7 @@ class Initializer_Data(ProcessGroupInitializer):
         pipeline_parallel_size (int): Size of pipeline parallel.
         tensor_parallel_size (int): Size of tensor parallel.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_data_parallel_group = self.world_size // self.data_parallel_size
