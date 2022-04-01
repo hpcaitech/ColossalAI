@@ -175,7 +175,7 @@ def load_checkpoint(checkpoint_path: str,
     If strict is True, then the keys of state_dict must exactly match the keys returned
     by this module’s state_dict() function.
 
-     Args:
+    Args:
         checkpoint_path (str): The exact and matched checkpoint_path directory to retrieve appropriate state_dict.
         model (:class:`torch.nn.Module`): Model to reload parameters and buffers.
         optimizer (Union[:class:`torch.optim.Optimizer`, :class:`colossalai.nn.optimizer`]): Optimizer to recuperate.

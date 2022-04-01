@@ -18,8 +18,7 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         amp_config (:class:`colossalai.context.Config` or dict): configuration for naive mode amp.
 
 
-    The ``amp_config`` should contain parameters below:
-    :
+    The ``amp_config`` should contain parameters below::
 
         verbose (bool, optional): if set to `True`, will print debug info (Default: False).
         clip_grad_norm (float, optional): clip gradients with this global L2 norm (Default 0).
