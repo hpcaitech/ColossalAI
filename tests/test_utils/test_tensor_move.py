@@ -1,7 +1,7 @@
 import pytest
 
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory_utils.utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
+from colossalai.zero.shard_utils.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
 from colossalai.utils import free_port
 from colossalai.zero.sharded_param import ShardedTensor
 import colossalai

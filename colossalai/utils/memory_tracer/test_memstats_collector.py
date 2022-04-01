@@ -30,10 +30,7 @@ def test_mem_collector():
     collector.sample_memstats()
     collector.sample_memstats()
 
-    cuda_use, overall_use = collector.fetch_memstats()
-    print(cuda_use, overall_use)
-
-    print(collector.overall_cuda)
+    print(collector.overall_mem_stats('cuda'))
 
 
 if __name__ == '__main__':

@@ -4,8 +4,8 @@ import pickle
 
 import torch
 
+from colossalai.utils.memory_utils.utils import colo_device_memory_used
 from colossalai.utils import get_current_device
-from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
 
 
 class AsyncMemoryMonitor:
@@ -82,7 +82,7 @@ class AsyncMemoryMonitor:
         while self.keep_measuring:
             max_usage = max(
                 max_usage,
-                colo_cuda_memory_used(),
+                colo_device_memory_used(get_current_device()),
             )
             sleep(self.interval)
         return max_usage

@@ -16,8 +16,9 @@ from colossalai.utils import get_current_device
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import (colo_cuda_memory_capacity, colo_model_data_move_to_cpu)
+from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
+from colossalai.zero.shard_utils.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
@@ -160,11 +161,13 @@ class ShardedModelV2(nn.Module):
                 with open(filename, 'w+') as f:
                     f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device())/1e9} GB\n')
                     f.write(f'cuda max allocated {torch.cuda.max_memory_allocated(get_current_device())/1e9} GB\n')
-                    f.write('model data\n')
-                    f.write(str(self._memstats_collector.model_data_cuda_GB))
+                    f.write('CUDA model data (GB)\n')
+                    f.write(str(self._memstats_collector.model_data_cuda_list('cuda', 'GB')))
                     f.write('\n')
-                    f.write('non model data\n')
-                    f.write(str(self._memstats_collector.non_model_data_cuda_GB))
+                    f.write('CUDA non model data (GB)\n')
+                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cuda', 'GB')))
+                    f.write('CPU non model data (GB)\n')
+                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cpu', 'GB')))
                     f.write('\n')
 
     def _pre_forward_operations(self):
@@ -209,7 +212,8 @@ class ShardedModelV2(nn.Module):
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
-            self._cuda_margin_space = colo_cuda_memory_capacity() - max(self._memstats_collector.overall_cuda)
+            self._cuda_margin_space = colo_cuda_memory_capacity() - max(
+                self._memstats_collector.overall_mem_stats('cuda'))
         self._iter_cnter += 1
 
     @torch.no_grad()

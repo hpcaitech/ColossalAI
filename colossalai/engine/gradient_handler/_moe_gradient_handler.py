@@ -29,6 +29,7 @@ class MoeGradientHandler(BaseGradientHandler):
         if global_data > 1:
             epsize_param_dict = get_moe_epsize_param_dict(self._model)
 
+
             # epsize is 1, indicating the params are replicated among processes in data parallelism
             # use the ParallelMode.DATA to get data parallel group
             # reduce gradients for all parameters in data parallelism
