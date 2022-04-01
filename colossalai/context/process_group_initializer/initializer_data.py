@@ -15,6 +15,7 @@ class Initializer_Data(ProcessGroupInitializer):
     :param args: Args used to initialize ProcessGroupInitializer
     :param kwargs: Kwargs used to initialize ProcessGroupInitializer
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_data_parallel_group = self.world_size // self.data_parallel_size
