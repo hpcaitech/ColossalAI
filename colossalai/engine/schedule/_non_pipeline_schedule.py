@@ -5,7 +5,6 @@ from typing import Iterable
 
 import torch
 
-from colossalai.engine import Engine
 from ._base_schedule import BaseSchedule
 from colossalai.utils import conditional_context
 
@@ -22,7 +21,7 @@ class NonPipelineSchedule(BaseSchedule):
     """
 
     def forward_backward_step(self,
-                              engine: Engine,
+                              engine,
                               data_iter: Iterable,
                               forward_only: bool = False,
                               return_loss: bool = True,
