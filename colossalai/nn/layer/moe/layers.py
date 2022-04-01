@@ -320,15 +320,22 @@ class MoeModule(nn.Module):
         capacity_factor_eval (float, optional): Capacity factor in routing during evaluation
         min_capacity (int, optional): The minimum number of the capacity of each expert
         noisy_policy (str, optional): The policy of noisy function. Now we have 'Jitter' and 'Gaussian'.
-            'Jitter' can be found in Switch Transformer paper (https://arxiv.org/abs/2101.03961).
-            'Gaussian' can be found in ViT-MoE paper (https://arxiv.org/abs/2106.05974).
+            'Jitter' can be found in `Switch Transformer paper`_.
+            'Gaussian' can be found in `ViT-MoE paper`_.
         drop_tks (bool, optional): Whether drops tokens in evaluation
         use_residual (bool, optional): Makes this MoE layer a Residual MoE.
-            More information can be found in Microsoft paper (https://arxiv.org/abs/2201.05596).
+            More information can be found in `Microsoft paper`_.
         residual_instance (nn.Module, optional): The instance of residual module in Resiual MoE
         expert_instance (MoeExperts, optional): The instance of experts module in MoeLayer
         expert_cls (Type[nn.Module], optional): The class of each expert when no instance is given
         expert_args (optional): The args of expert when no instance is given
+
+    .. _Switch Transformer paper:
+        https://arxiv.org/abs/2101.03961
+    .. _ViT-MoE paper:
+        https://arxiv.org/abs/2106.05974
+    .. _Microsoft paper:
+        https://arxiv.org/abs/2201.05596
     """
 
     def __init__(self,
