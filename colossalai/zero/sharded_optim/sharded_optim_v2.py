@@ -12,12 +12,13 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import (colo_model_data_tensor_move_inline, colo_model_tensor_clone,
-                                                 colo_tensor_mem_usage)
+from colossalai.zero.shard_utils.tensor_utils import (colo_model_tensor_clone, colo_tensor_mem_usage)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from colossalai.zero.sharded_param.tensorful_state import (StatefulTensor, TensorState)
+from colossalai.zero.shard_utils.tensor_utils import colo_model_data_tensor_move_inline
+
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
@@ -30,24 +31,28 @@ class OptimState(Enum):
 
 
 class ShardedOptimizerV2(ColossalaiOptimizer):
-    """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO).
+    """A wrapper for optimizer. ``ShardedOptimizerV2`` and ``ShardedModelV2`` implement Zero Redundancy Optimizer (ZeRO).
 
     By default the ZeRO optimizer stage 3 offload Optimizer States on CPU.
 
     We apply the Device-aware Operator Placement technique for OS placement from the following paper.
 
-    PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
-    https://arxiv.org/abs/2108.05818
+    `PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management`_
 
     GPU margin space is the remaining space after removing peak non-model data from the overall GPU memory,
     which is detected by a runtime memory tracer. 
 
     We place as many OS chunks in the margin space as possible. 
 
-    The size of margin space can be controlled by `gpu_margin_mem_ratio`。
-    If it is set as 0.0, it is the same as classical ZeRO optimizer.
+    The size of margin space can be controlled by ``gpu_margin_mem_ratio``.
+    If it is set as ``0.0``, it is the same as classical ZeRO optimizer.
 
-    NOTE() You must use `ShardedOptimizerV2` with `ShardedModelV2`.
+    Note:
+        You must use ``ShardedOptimizerV2`` with ``ShardedModelV2``.
+
+    Note:
+        Make sure you enable ``use_memory_tracer`` in ``ShardedModelV2``,
+        if you set ``gpu_margin_mem_ratio > 0``.
 
     Args:
         sharded_model (ShardedModelV2): A sharded model initialized by class ShardedModelV2. The optimizer will use the
@@ -55,7 +60,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         optimizer (Optimizer): An Optimizer instance.
         cpu_offload (bool, optional): Is offloading the optimizer states to CPU.. Defaults to False.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
-            which will be used when using hybrid CPU optimizer. Defaults to 0.0.
+            which will be used when using hybrid CPU optimizer. 
+            Make sure `reuse_fp16_shard` is enabled in `ShardedModelV2`, if `gpu_margin_mem_ratio` > `0.0`.
+            Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
         growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
@@ -65,6 +72,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
         dp_process_group (Optional[ProcessGroup], optional): data paralle process group. Defaults to None.
         mp_process_group (Optional[ProcessGroup], optional): model paralle process group. Defaults to None.
+
+    .. _PatrickStar\: Parallel Training of Pre-trained Models via Chunk-based Memory Management:
+        https://arxiv.org/abs/2108.05818
     """
 
     def __init__(self,
@@ -143,9 +153,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
     def get_memory_usage(self) -> Tuple[int, int]:
-        """
-        Get the memory usage of the optimizer. Including master_params (param fp32),
-        momentum (self.state[p]['exp_avg']) variance (self.state[p]['exp_avg_sq'])
+        """ Get the memory usage of the optimizer. Including master_params (param fp32),
+        momentum (``self.state[p]['exp_avg']``) variance (``self.state[p]['exp_avg_sq']``)
 
         Returns:
             Tuple[int, int]: cuda/cpu memory usage in Byte.
@@ -183,7 +192,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         if found_inf:
             self._logger.warning('found inf during ShardedOptimV2 step')
-            self.zero_grad()
+            self._zero_grad(recover_data=True)
             return
 
         self._prepare_data()
@@ -245,13 +254,31 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self.optim_state = OptimState.UNSCALED
 
     def zero_grad(self, *args, **kwargs):
+        self._zero_grad()
+
+    def _zero_grad(self, recover_data: bool = False):
+        """zero grad and maybe recover fp16 params
+        When `reuse_fp16_shard` is enabled,
+        p.colo_attr.sharded_data_tensor stores grad here.
+        We have to recover them from fp32 params.
+
+        Args:
+            recover_data (bool, optional): Whether to recover fp16 param from fp32 param. Defaults to False.
+        """
         # We must set grad to None
-        # Because we will judge whether local grad accumulation
-        # is enabled by wheter grad is None
+        # Because grad here is sharded
+        # But next backward pass will create a full grad first
+        # Which leads to wrong accumulation
         self.optim.zero_grad(set_to_none=True)
         for group in self.optim.param_groups:
             for p in group['params']:
+                # p.colo_attr.sharded_data_tensor stores grad now
+                # we have to recover fp16 param
+                reuse_fp16_shard = p.colo_attr.saved_grad.data_ptr() == p.colo_attr.sharded_data_tensor.data_ptr()
                 p.colo_attr.saved_grad.set_null()
+                if recover_data and reuse_fp16_shard:
+                    p.colo_attr.sharded_data_tensor.reset_payload(
+                        colo_model_tensor_clone(self.master_params[p].payload.half(), torch.cuda.current_device()))
 
     def sync_grad(self):
         pass

@@ -41,7 +41,7 @@ class FusedAdam(torch.optim.Optimizer):
         set_grad_none (bool, optional): whether set grad to None when zero_grad()
             method is called. (default: True)
 
-    .. _Adam: A Method for Stochastic Optimization:
+    .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ
@@ -128,14 +128,14 @@ class FusedAdam(torch.optim.Optimizer):
 
                 if p.dtype not in [torch.float16, torch.float32]:
                     raise RuntimeError('FusedAdam only support fp16 and fp32.')
-                
+
                 g_l.append(p.grad.data)
                 p_l.append(p.data)
                 m_l.append(state['exp_avg'])
                 v_l.append(state['exp_avg_sq'])
 
-            multi_tensor_applier(self.multi_tensor_adam, self._dummy_overflow_buf, [g_l, p_l, m_l, v_l],
-                                    group['lr'], beta1, beta2, group['eps'], group['step'], self.adamw_mode,
-                                    bias_correction, group['weight_decay'])
+            multi_tensor_applier(self.multi_tensor_adam, self._dummy_overflow_buf, [g_l, p_l, m_l, v_l], group['lr'],
+                                 beta1, beta2, group['eps'], group['step'], self.adamw_mode, bias_correction,
+                                 group['weight_decay'])
 
         return loss

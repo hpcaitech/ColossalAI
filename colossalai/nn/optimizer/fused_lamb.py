@@ -10,7 +10,7 @@ class FusedLAMB(torch.optim.Optimizer):
     """Implements LAMB algorithm.
 
     Currently GPU-only.  Requires ColossalAI to be installed via
-    ``pip install -v --no-cache-dir --global-option="--cuda_ext" ./``.
+    ``pip install .``.
 
     This version of fused LAMB implements 2 fusions.
 

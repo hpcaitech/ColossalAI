@@ -1,7 +1,8 @@
 colossalai.amp
 ==============
 
-*This module contains different amp models and optimizers.*
+.. automodule:: colossalai.amp
+   :members:
 
 .. toctree::
    :maxdepth: 2
@@ -15,6 +16,3 @@ colossalai.amp
    :maxdepth: 2
 
    colossalai.amp.amp_type
-
-.. automodule:: colossalai.amp
-   :members: convert_to_amp
