@@ -1,6 +1,5 @@
 import torch
 
-
 from colossalai.utils import multi_tensor_applier
 from colossalai.registry import OPTIMIZERS
 
@@ -14,13 +13,14 @@ class HybridAdam(torch.optim.Optimizer):
       * Parameters on CPU and gradients on CPU is allowed.
       * Parameters on GPU and gradients on GPU is allowed.
       * Parameters on GPU and gradients on CPU is **not** allowed.
-    
+
     Requires ColossalAI to be installed via ``pip install .``
 
     This version of Hybrid Adam is an hybrid of CPUAdam and FusedAdam.
-      * For parameters updating on CPU, it uses CPUAdam.
-      * For parameters updating on GPU, it uses FusedAdam.
-      * Hybird precision calculation of fp16 and fp32 is supported, eg fp32 parameters and fp16 gradients.
+
+    * For parameters updating on CPU, it uses CPUAdam.
+    * For parameters updating on GPU, it uses FusedAdam.
+    * Hybird precision calculation of fp16 and fp32 is supported, eg fp32 parameters and fp16 gradients.
 
     :class:`colossalai.nn.optimizer.HybridAdam` may be used as a drop-in replacement for ``torch.optim.AdamW``,
     or ``torch.optim.Adam`` with ``adamw_mode=False``
@@ -43,8 +43,8 @@ class HybridAdam(torch.optim.Optimizer):
             True for decoupled weight decay(also known as AdamW) (default: True)
         simd_log (boolean, optional): whether to show if you are using SIMD to 
             accelerate. (default: False)
-    
-    .. _Adam: A Method for Stochastic Optimization:
+
+    .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ
@@ -75,7 +75,7 @@ class HybridAdam(torch.optim.Optimizer):
             import colossal_C
         except ImportError:
             raise ImportError('Please install colossalai from source code to use HybridAdam')
-        
+
         self.cpu_adam_op = cpu_adam
         self.cpu_adam_op.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay, adamw_mode, simd_log)
 
@@ -131,14 +131,14 @@ class HybridAdam(torch.optim.Optimizer):
                     g_l.append(p.grad.data)
                     p_l.append(p.data)
                     m_l.append(state['exp_avg'])
-                    v_l.append(state['exp_avg_sq']) 
+                    v_l.append(state['exp_avg_sq'])
 
                 else:
                     raise RuntimeError
             if len(g_l) > 0:
                 adamw_mode = 1 if self.adamw_mode else 0
                 bias_correction = 1 if group['bias_correction'] else 0
-                multi_tensor_applier(self.gpu_adam_op, self._dummy_overflow_buf, [g_l, p_l,m_l, v_l],
-                                     group['lr'], group['betas'][0], group['betas'][1], group['eps'], group_step,
-                                     adamw_mode, bias_correction, group['weight_decay'])
+                multi_tensor_applier(self.gpu_adam_op, self._dummy_overflow_buf, [g_l, p_l, m_l, v_l], group['lr'],
+                                     group['betas'][0], group['betas'][1], group['eps'], group_step, adamw_mode,
+                                     bias_correction, group['weight_decay'])
         return loss
