@@ -493,7 +493,7 @@ int adam_step(int optimizer_id,
                 grads_ptr,
                 exp_avg_ptr,
                 exp_avg_sq_ptr,
-                params_c.size(0),
+                params_c.numel(),
                 (params.options().dtype() == at::kHalf),
                 (grads.options().dtype() == at::kHalf),
                 loss_scale);
