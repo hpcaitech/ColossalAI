@@ -22,19 +22,14 @@ class MoeModel(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.proj1 = nn.Linear(4, 8)
+        self.proj1 = nn.Linear(4, 16)
         expert_cls = nn.Linear
-        expert_args_dict = dict(in_features=8, out_features=8)
-        self.moe = MoeModule(dim_model=8,
-                             num_experts=8,
-                             noisy_policy='Jitter',
-                             use_residual=True,
-                             expert_cls=expert_cls,
-                             **expert_args_dict)
-        self.proj2 = nn.Linear(8, 4)
+        expert_args_dict = dict(in_features=16, out_features=16)
+        self.moe = MoeModule(dim_model=16, num_experts=8, use_residual=True, expert_cls=expert_cls, **expert_args_dict)
+        self.proj2 = nn.Linear(16, 4)
 
     def forward(self, x):
-        x = self.proj(x)
+        x = self.proj1(x)
         x = self.moe(x)
         x = self.proj2(x)
         return x
@@ -74,6 +69,12 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
                 assert not param.colo_attr.sharded_data_tensor.is_sharded
             else:
                 assert param.colo_attr.sharded_data_tensor.is_sharded
+
+            # the parameters in moe experts is not replicated
+            if 'experts' in name:
+                assert not param.is_replicated
+            else:
+                assert param.is_replicated
 
             assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
                 f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
