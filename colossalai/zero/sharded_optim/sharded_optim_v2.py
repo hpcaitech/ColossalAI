@@ -248,6 +248,14 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._zero_grad()
 
     def _zero_grad(self, recover_data: bool = False):
+        """zero grad and maybe recover fp16 params
+        When `reuse_fp16_shard` is enabled,
+        p.colo_attr.sharded_data_tensor stores grad here.
+        We have to recover them from fp32 params.
+
+        Args:
+            recover_data (bool, optional): Whether to recover fp16 param from fp32 param. Defaults to False.
+        """
         # We must set grad to None
         # Because grad here is sharded
         # But next backward pass will create a full grad first
