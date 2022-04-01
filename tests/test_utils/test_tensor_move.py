@@ -53,14 +53,20 @@ def _run_colo_model_data_move_to_cpu():
         assert t.device == torch.device("cpu")
 
 def _run_colo_model_tensor_clone():
-    for t in [StatefulTensor(torch.randn(2,2)), torch.randn(4,4)]:
+    for t in [StatefulTensor(torch.randn(2,2).cuda(torch.cuda.current_device())), torch.randn(4,4).cuda(torch.cuda.current_device())]:
+        if issubclass(type(t), StatefulTensor):
+            assert t.payload.device == torch.device(f"cuda:{get_current_device()}")
+        else:
+            assert t.device == torch.device(f"cuda:{get_current_device()}")
         p = colo_model_tensor_clone(t, torch.device(f"cuda:{get_current_device()}"))
         assert p.device == torch.device(f"cuda:{get_current_device()}")
         for i in range(2):
             for j in range(2):
                 if issubclass(type(t), StatefulTensor):
+                    assert t.payload.device == p.device
                     assert t.payload[i][j] == p[i][j]
                 else:
+                    assert t.device == p.device
                     assert t[i][j] == p[i][j]
 
 
