@@ -31,10 +31,15 @@ from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_f
 class ShardedModelV2(nn.Module):
     """
     A wrapper for the PyTorch module shards the model parameters among multiple GPU memory.
-    Only 1/#nproc of parameters, gradients are stored in local CUDA memory, so forward and backward
+    Only `1/#nproc` of parameters, gradients are stored in local CUDA memory, so forward and backward
     passes can be executed with limited CUDA memory budget.
 
-    Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
+    Note:
+        You must use ``ShardedModelV2`` with ``ShardedOptimizerV2``.
+
+    Note:
+        Make sure you don't use gradient accumulation and your optimizer can work with fp16 gradient and fp32 parameter,
+        if you enable ``reuse_fp16_shard``.
 
     Args:
         module (nn.Module): A sharded module, which must be initialized by `ZeroInitContext`.
@@ -145,15 +150,20 @@ class ShardedModelV2(nn.Module):
     def cpu_offload(self):
         return self._cpu_offload
 
-    def dump_memory_stats(self, filename: Optional[str] = 'dump_mem_stats.log') -> None:
-        """
-        dummy memory tracer collected infomation to a file.
-        try:
-            # forward: model(inputs)
-            # backward: optimizer.backward()
-        except Exception as e:
-            model.dump_memory_stats()
-            exit(0)
+    def dump_memory_stats(self, filename: str = 'dump_mem_stats.log') -> None:
+        """Dummy memory tracer collected infomation to a file.
+
+        Example::
+
+            try:
+                # forward: model(inputs)
+                # backward: optimizer.backward()
+            except Exception as e:
+                model.dump_memory_stats()
+                exit(0)
+
+        Args:
+            filename (str, optional): Output file name. Defaults to 'dump_mem_stats.log'.
         """
         if self._use_memory_tracer:
             self.logger.error(f'dump memort tracer collected infomation to a {filename}', ranks=[0])
