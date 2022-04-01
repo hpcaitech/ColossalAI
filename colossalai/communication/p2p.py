@@ -12,7 +12,6 @@ from functools import reduce
 import operator
 from .utils import split_tensor_into_1d_equal_chunks, gather_split_1d_tensor
 
-
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 
 
@@ -88,13 +87,11 @@ def _communicate(tensor_send_next=None,
 
     if tensor_send_prev is not None or recv_prev:
         if prev_rank is None:
-            prev_rank = gpc.get_prev_global_rank(
-                ParallelMode.PIPELINE)
+            prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
 
     if tensor_send_next is not None or recv_next:
         if next_rank is None:
-            next_rank = gpc.get_next_global_rank(
-                ParallelMode.PIPELINE)
+            next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
 
     if tensor_send_prev is not None:
         send_prev_split = _get_tensor_shape(tensor_send_prev.shape, scatter_gather_tensors)[1]
@@ -184,9 +181,7 @@ def send_forward(output_tensor, next_rank=None, scatter_gather_tensors=False):
     :type next_rank: int, optional
     """
     if not gpc.is_pipeline_last_stage():
-        _communicate(tensor_send_next=output_tensor,
-                     next_rank=next_rank,
-                     scatter_gather_tensors=scatter_gather_tensors)
+        _communicate(tensor_send_next=output_tensor, next_rank=next_rank, scatter_gather_tensors=scatter_gather_tensors)
 
 
 def send_backward(input_tensor_grad, prev_rank=None, scatter_gather_tensors=False):
@@ -209,7 +204,7 @@ def send_forward_recv_backward(output_tensor,
                                next_rank=None,
                                dtype=torch.float,
                                scatter_gather_tensors=False):
-    """Batched communication operation. Sends the input tensor to the 
+    """Batched communication operation. Sends the input tensor to the
     next member in pipeline, while recieves the grad tensor from the
     next member in pipeline.
 
@@ -238,7 +233,7 @@ def send_backward_recv_forward(input_tensor_grad,
                                prev_rank=None,
                                dtype=torch.float,
                                scatter_gather_tensors=False):
-    """Batched communication operation. Sends the grad tensor to the 
+    """Batched communication operation. Sends the grad tensor to the
     previous member in pipeline, while recieves the input tensor from the
     previous member in pipeline.
 
@@ -268,7 +263,7 @@ def send_forward_recv_forward(output_tensor,
                               next_rank=None,
                               dtype=torch.float,
                               scatter_gather_tensors=False):
-    """Batched communication operation. Sends the input tensor to the 
+    """Batched communication operation. Sends the input tensor to the
     next member in pipeline, while recieves the input tensor from the
     previous member in pipeline.
 
@@ -296,7 +291,7 @@ def send_backward_recv_backward(input_tensor_grad,
                                 next_rank=None,
                                 dtype=torch.float,
                                 scatter_gather_tensors=False):
-    """Batched communication operation. Sends the grad tensor to the 
+    """Batched communication operation. Sends the grad tensor to the
     previous member in pipeline, while recieves the grad tensor from the
     next member in pipeline.
 
@@ -327,7 +322,7 @@ def send_forward_backward_recv_forward_backward(output_tensor,
                                                 next_rank=None,
                                                 dtype=torch.float,
                                                 scatter_gather_tensors=False):
-    """Batched communication operation. Sends the input tensor to the next and 
+    """Batched communication operation. Sends the input tensor to the next and
     the grad tensor to the previous, while recieves the grad tensor from the
     next and the input tensor from the previous.
 
@@ -342,15 +337,14 @@ def send_forward_backward_recv_forward_backward(output_tensor,
     :return: (the input tensor in forward step, the grad of output tensor in forward step)
     :rtype: (Tensor, Tensor)
     """
-    input_tensor, output_tensor_grad = _communicate(
-        tensor_send_next=output_tensor,
-        tensor_send_prev=input_tensor_grad,
-        recv_prev=recv_prev,
-        recv_next=recv_next,
-        recv_prev_shape=input_tensor_shape,
-        recv_next_shape=output_grad_shape,
-        prev_rank=prev_rank,
-        next_rank=next_rank,
-        dtype=dtype,
-        scatter_gather_tensors=scatter_gather_tensors)
+    input_tensor, output_tensor_grad = _communicate(tensor_send_next=output_tensor,
+                                                    tensor_send_prev=input_tensor_grad,
+                                                    recv_prev=recv_prev,
+                                                    recv_next=recv_next,
+                                                    recv_prev_shape=input_tensor_shape,
+                                                    recv_next_shape=output_grad_shape,
+                                                    prev_rank=prev_rank,
+                                                    next_rank=next_rank,
+                                                    dtype=dtype,
+                                                    scatter_gather_tensors=scatter_gather_tensors)
     return input_tensor, output_tensor_grad
