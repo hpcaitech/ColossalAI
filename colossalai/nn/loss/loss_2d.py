@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_tensor_2d
+from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_batch_2d
 from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization
 from colossalai.registry import LOSSES
 from colossalai.utils import get_current_device
@@ -48,7 +48,7 @@ class CrossEntropyLoss2D(_Loss):
         Returns:
             float: the loss between logits and targets.
         """
-        targets = split_tensor_2d(targets)
+        targets = split_batch_2d(targets)
         loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
         if self.reduction_mean:
             loss = loss.mean()
@@ -145,7 +145,7 @@ class VocabParallelCrossEntropyLoss2D(_Loss):
             logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
             targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
         """
-        targets = split_tensor_2d(targets)
+        targets = split_batch_2d(targets)
         loss = _VocabParallelCrossEntropy2D.apply(
             logits,
             targets,
