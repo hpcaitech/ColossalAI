@@ -15,6 +15,7 @@ from typing import Optional, Type
 from colossalai.engine.gradient_handler import BaseGradientHandler
 from colossalai.logging import get_dist_logger
 
+
 class Engine:
     """Basic engine class for training and evaluation. It runs a specific process method
     :meth:`step` which is based on the given :attr:`schedule` over each batch of a dataset.
