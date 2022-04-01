@@ -31,24 +31,28 @@ class OptimState(Enum):
 
 
 class ShardedOptimizerV2(ColossalaiOptimizer):
-    """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO).
+    """A wrapper for optimizer. ``ShardedOptimizerV2`` and ``ShardedModelV2`` implement Zero Redundancy Optimizer (ZeRO).
 
     By default the ZeRO optimizer stage 3 offload Optimizer States on CPU.
 
     We apply the Device-aware Operator Placement technique for OS placement from the following paper.
 
-    PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
-    https://arxiv.org/abs/2108.05818
+    `PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management`_
 
     GPU margin space is the remaining space after removing peak non-model data from the overall GPU memory,
     which is detected by a runtime memory tracer. 
 
     We place as many OS chunks in the margin space as possible. 
 
-    The size of margin space can be controlled by `gpu_margin_mem_ratio`。
-    If it is set as 0.0, it is the same as classical ZeRO optimizer.
+    The size of margin space can be controlled by ``gpu_margin_mem_ratio``.
+    If it is set as ``0.0``, it is the same as classical ZeRO optimizer.
 
-    NOTE() You must use `ShardedOptimizerV2` with `ShardedModelV2`.
+    Note:
+        You must use ``ShardedOptimizerV2`` with ``ShardedModelV2``.
+
+    Note:
+        Make sure you enable ``use_memory_tracer`` in ``ShardedModelV2``,
+        if you set ``gpu_margin_mem_ratio > 0``.
 
     Args:
         sharded_model (ShardedModelV2): A sharded model initialized by class ShardedModelV2. The optimizer will use the
@@ -56,7 +60,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         optimizer (Optimizer): An Optimizer instance.
         cpu_offload (bool, optional): Is offloading the optimizer states to CPU.. Defaults to False.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
-            which will be used when using hybrid CPU optimizer. Defaults to 0.0.
+            which will be used when using hybrid CPU optimizer. 
+            Make sure `reuse_fp16_shard` is enabled in `ShardedModelV2`, if `gpu_margin_mem_ratio` > `0.0`.
+            Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
         growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
@@ -66,6 +72,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
         dp_process_group (Optional[ProcessGroup], optional): data paralle process group. Defaults to None.
         mp_process_group (Optional[ProcessGroup], optional): model paralle process group. Defaults to None.
+
+    .. _PatrickStar\: Parallel Training of Pre-trained Models via Chunk-based Memory Management:
+        https://arxiv.org/abs/2108.05818
     """
 
     def __init__(self,
@@ -144,9 +153,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
     def get_memory_usage(self) -> Tuple[int, int]:
-        """
-        Get the memory usage of the optimizer. Including master_params (param fp32),
-        momentum (self.state[p]['exp_avg']) variance (self.state[p]['exp_avg_sq'])
+        """ Get the memory usage of the optimizer. Including master_params (param fp32),
+        momentum (``self.state[p]['exp_avg']``) variance (``self.state[p]['exp_avg_sq']``)
 
         Returns:
             Tuple[int, int]: cuda/cpu memory usage in Byte.
