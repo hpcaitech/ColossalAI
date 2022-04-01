@@ -6,7 +6,10 @@ import torch.distributed as dist
 from colossalai.communication.collective import scatter_object_list
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
+try:
+    from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
+except ImportError:
+    _EXTRA_STATE_KEY_SUFFIX = '_extra_state'
 
 from .common import is_using_pp
 
