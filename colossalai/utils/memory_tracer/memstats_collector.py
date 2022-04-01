@@ -63,7 +63,7 @@ class MemStatsCollector:
         elif unit == 'KB':
             scale = 1e3
         elif unit == 'B':
-            scale == 1
+            scale = 1
         else:
             raise TypeError
 
