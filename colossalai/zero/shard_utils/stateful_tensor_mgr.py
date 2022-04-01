@@ -47,10 +47,10 @@ class StatefulTensorMgr(SingletonMeta):
                     cuda_demand += colo_tensor_mem_usage(tensor.payload)[0]
 
         # max non-model-data cuda memory consumption of this sampling moment and the next sampling moment.
-        max_cuda_non_model_data_period = max(mem_stats_collector.current_non_model_data('cuda'),
-                                             mem_stats_collector.next_non_model_data('cuda'))
+        max_cuda_non_model_data_per_period = max(mem_stats_collector.current_non_model_data('cuda'),
+                                                 mem_stats_collector.next_non_model_data('cuda'))
         cuda_capacity = colo_cuda_memory_capacity()
-        cuda_model_data_period = cuda_capacity - max_cuda_non_model_data_period
+        cuda_model_data_period = cuda_capacity - max_cuda_non_model_data_per_period
         if cuda_model_data_period < used_cuda_model_data + cuda_demand:
             # move cuda_model_data_period - cuda_demand - used_cuda_model_data volume of tensor
             # Here use a naive eviction strategy.
