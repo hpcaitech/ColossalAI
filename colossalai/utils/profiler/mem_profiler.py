@@ -8,9 +8,11 @@ from colossalai.utils.profiler import BaseProfiler
 
 class MemProfiler(BaseProfiler):
     """Wraper of MemOpHook, used to show GPU memory usage through each iteration
-    
+
     To use this profiler, you need to pass an `engine` instance. And the usage is same like
     CommProfiler.
+
+    Usage::
 
         mm_prof = MemProfiler(engine)
         with ProfilerContext([mm_prof]) as prof:
@@ -36,15 +38,11 @@ class MemProfiler(BaseProfiler):
     def to_tensorboard(self, writer: SummaryWriter) -> None:
         stats = self._mem_tracer.async_mem_monitor.state_dict['mem_stats']
         for info, i in enumerate(stats):
-            writer.add_scalar(
-                "memory_usage/GPU",
-                info,
-                i
-            )
+            writer.add_scalar("memory_usage/GPU", info, i)
 
     def to_file(self, data_file: Path) -> None:
         self._mem_tracer.save_results(data_file)
 
     def show(self) -> None:
-        stats = self._mem_tracer.async_mem_monitor.state_dict['mem_stats'] 
+        stats = self._mem_tracer.async_mem_monitor.state_dict['mem_stats']
         print(stats)
