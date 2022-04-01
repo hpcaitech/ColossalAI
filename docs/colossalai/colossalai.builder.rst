@@ -1,8 +1,9 @@
 colossalai.builder
 ==================
 
-*This module contains different methods to build* ``schedule``, ``model``, ``optimizer``,
-``layers`` *and other important classes.*
+.. automodule:: colossalai.builder
+   :members:
+
 
 .. toctree::
    :maxdepth: 2
