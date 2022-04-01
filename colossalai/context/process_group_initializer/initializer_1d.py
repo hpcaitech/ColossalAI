@@ -36,6 +36,7 @@ class Initializer_1D(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_1D
         env.parallel_input_1d = False
@@ -43,11 +44,13 @@ class Initializer_1D(ProcessGroupInitializer):
         for i in range(self.num_group):
             ranks = [i * self.tensor_parallel_size + j for j in range(self.tensor_parallel_size)]
             group = dist.new_group(ranks)
+            group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
             if self.rank in ranks:
                 local_rank = ranks.index(self.rank)
                 group_world_size = len(ranks)
                 process_group = group
+                cpu_group = group_cpu
                 ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode

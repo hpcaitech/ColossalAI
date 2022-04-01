@@ -1,4 +1,4 @@
-Colossal-AI
+colossalai
 ==========
 
 .. toctree::
@@ -23,6 +23,3 @@ Colossal-AI
    :maxdepth: 2
 
    colossalai.initialize
-
-.. automodule:: colossalai
-   :members:

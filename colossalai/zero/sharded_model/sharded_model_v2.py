@@ -16,8 +16,9 @@ from colossalai.utils import get_current_device
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import (colo_cuda_memory_capacity, colo_model_data_move_to_cpu)
+from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
+from colossalai.zero.shard_utils.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
@@ -30,10 +31,15 @@ from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_f
 class ShardedModelV2(nn.Module):
     """
     A wrapper for the PyTorch module shards the model parameters among multiple GPU memory.
-    Only 1/#nproc of parameters, gradients are stored in local CUDA memory, so forward and backward
+    Only `1/#nproc` of parameters, gradients are stored in local CUDA memory, so forward and backward
     passes can be executed with limited CUDA memory budget.
 
-    Note that you must use `ShardedModelV2` with `ShardedOptimizerV2`.
+    Note:
+        You must use ``ShardedModelV2`` with ``ShardedOptimizerV2``.
+
+    Note:
+        Make sure you don't use gradient accumulation and your optimizer can work with fp16 gradient and fp32 parameter,
+        if you enable ``reuse_fp16_shard``.
 
     Args:
         module (nn.Module): A sharded module, which must be initialized by `ZeroInitContext`.
@@ -144,15 +150,20 @@ class ShardedModelV2(nn.Module):
     def cpu_offload(self):
         return self._cpu_offload
 
-    def dump_memory_stats(self, filename: Optional[str] = 'dump_mem_stats.log') -> None:
-        """
-        dummy memory tracer collected infomation to a file.
-        try:
-            # forward: model(inputs)
-            # backward: optimizer.backward()
-        except Exception as e:
-            model.dump_memory_stats()
-            exit(0)
+    def dump_memory_stats(self, filename: str = 'dump_mem_stats.log') -> None:
+        """Dummy memory tracer collected infomation to a file.
+
+        Example::
+
+            try:
+                # forward: model(inputs)
+                # backward: optimizer.backward()
+            except Exception as e:
+                model.dump_memory_stats()
+                exit(0)
+
+        Args:
+            filename (str, optional): Output file name. Defaults to 'dump_mem_stats.log'.
         """
         if self._use_memory_tracer:
             self.logger.error(f'dump memort tracer collected infomation to a {filename}', ranks=[0])
@@ -160,11 +171,13 @@ class ShardedModelV2(nn.Module):
                 with open(filename, 'w+') as f:
                     f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device())/1e9} GB\n')
                     f.write(f'cuda max allocated {torch.cuda.max_memory_allocated(get_current_device())/1e9} GB\n')
-                    f.write('model data\n')
-                    f.write(str(self._memstats_collector.model_data_cuda_GB))
+                    f.write('CUDA model data (GB)\n')
+                    f.write(str(self._memstats_collector.model_data_cuda_list('cuda', 'GB')))
                     f.write('\n')
-                    f.write('non model data\n')
-                    f.write(str(self._memstats_collector.non_model_data_cuda_GB))
+                    f.write('CUDA non model data (GB)\n')
+                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cuda', 'GB')))
+                    f.write('CPU non model data (GB)\n')
+                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cpu', 'GB')))
                     f.write('\n')
 
     def _pre_forward_operations(self):
@@ -209,7 +222,8 @@ class ShardedModelV2(nn.Module):
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
-            self._cuda_margin_space = colo_cuda_memory_capacity() - max(self._memstats_collector.overall_cuda)
+            self._cuda_margin_space = colo_cuda_memory_capacity() - max(
+                self._memstats_collector.overall_mem_stats('cuda'))
         self._iter_cnter += 1
 
     @torch.no_grad()

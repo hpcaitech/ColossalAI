@@ -10,8 +10,7 @@ from colossalai.zero.sharded_param.tensorful_state import TensorState
 
 from ._base_ophook import BaseOpHook
 
-from colossalai.utils.memory_utils.utils import \
-    colo_model_data_tensor_move_inline
+from colossalai.zero.shard_utils.tensor_utils import colo_model_data_tensor_move_inline
 
 
 @OPHOOKS.register_module

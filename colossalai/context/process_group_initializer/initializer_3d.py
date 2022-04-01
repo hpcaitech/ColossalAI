@@ -52,6 +52,7 @@ class Initializer_3D_Input(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_INPUT
         env.input_group_3d = mode
@@ -61,14 +62,16 @@ class Initializer_3D_Input(ProcessGroupInitializer):
                 for k in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for j in range(self.depth)]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 class Initializer_3D_Weight(ProcessGroupInitializer):
@@ -100,6 +103,7 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_WEIGHT
         env.weight_group_3d = mode
@@ -109,14 +113,16 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
                 for j in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for i in range(self.depth)]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 class Initializer_3D_Output(ProcessGroupInitializer):
@@ -148,6 +154,7 @@ class Initializer_3D_Output(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_3D_OUTPUT
         env.output_group_3d = mode
@@ -157,14 +164,16 @@ class Initializer_3D_Output(ProcessGroupInitializer):
                 for j in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for k in range(self.depth)]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 @DIST_GROUP_INITIALIZER.register_module

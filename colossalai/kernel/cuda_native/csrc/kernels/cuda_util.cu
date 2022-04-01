@@ -1,6 +1,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/reduce.h>
 
+
 #include "cuda_util.h"
 
 /* GPU function guard */

@@ -70,29 +70,26 @@ class BaseProfiler(ABC):
 
 
 class ProfilerContext(object):
-    """
-    Profiler context manager
-    Usage:
-    ::
+    """Profiler context manager
 
-        ```python
-            world_size = 4
-            inputs = torch.randn(10, 10, dtype=torch.float32, device=get_current_device())
-            outputs = torch.empty(world_size, 10, 10, dtype=torch.float32, device=get_current_device())
-            outputs_list = list(torch.chunk(outputs, chunks=world_size, dim=0))
+    Usage::
 
-            cc_prof = CommProfiler()
+        world_size = 4
+        inputs = torch.randn(10, 10, dtype=torch.float32, device=get_current_device())
+        outputs = torch.empty(world_size, 10, 10, dtype=torch.float32, device=get_current_device())
+        outputs_list = list(torch.chunk(outputs, chunks=world_size, dim=0))
 
-            with ProfilerContext([cc_prof]) as prof:
-                op = dist.all_reduce(inputs, async_op=True)
-                dist.all_gather(outputs_list, inputs)
-                op.wait()
-                dist.reduce_scatter(inputs, outputs_list)
-                dist.broadcast(inputs, 0)
-                dist.reduce(inputs, 0)
+        cc_prof = CommProfiler()
 
-            prof.show()
-        ```
+        with ProfilerContext([cc_prof]) as prof:
+            op = dist.all_reduce(inputs, async_op=True)
+            dist.all_gather(outputs_list, inputs)
+            op.wait()
+            dist.reduce_scatter(inputs, outputs_list)
+            dist.broadcast(inputs, 0)
+            dist.reduce(inputs, 0)
+
+        prof.show()
     """
 
     def __init__(self, profilers: List[BaseProfiler] = None, enable: bool = True):

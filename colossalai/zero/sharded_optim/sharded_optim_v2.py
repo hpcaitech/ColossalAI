@@ -12,8 +12,8 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import (colo_model_data_tensor_move_inline, colo_model_tensor_clone,
-                                                 colo_tensor_mem_usage)
+from colossalai.zero.shard_utils.tensor_utils import (colo_model_data_tensor_move_inline, colo_model_tensor_clone,
+                                                      colo_tensor_mem_usage)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
@@ -30,24 +30,28 @@ class OptimState(Enum):
 
 
 class ShardedOptimizerV2(ColossalaiOptimizer):
-    """A wrapper for optimizer. `ShardedOptimizerV2` and `ShardedModelV2` implement Zero Redundancy Optimizer (ZeRO).
+    """A wrapper for optimizer. ``ShardedOptimizerV2`` and ``ShardedModelV2`` implement Zero Redundancy Optimizer (ZeRO).
 
     By default the ZeRO optimizer stage 3 offload Optimizer States on CPU.
 
     We apply the Device-aware Operator Placement technique for OS placement from the following paper.
 
-    PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
-    https://arxiv.org/abs/2108.05818
+    `PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management`_
 
     GPU margin space is the remaining space after removing peak non-model data from the overall GPU memory,
     which is detected by a runtime memory tracer. 
 
     We place as many OS chunks in the margin space as possible. 
 
-    The size of margin space can be controlled by `gpu_margin_mem_ratio`。
-    If it is set as 0.0, it is the same as classical ZeRO optimizer.
+    The size of margin space can be controlled by ``gpu_margin_mem_ratio``.
+    If it is set as ``0.0``, it is the same as classical ZeRO optimizer.
 
-    NOTE() You must use `ShardedOptimizerV2` with `ShardedModelV2`.
+    Note:
+        You must use ``ShardedOptimizerV2`` with ``ShardedModelV2``.
+
+    Note:
+        Make sure you enable ``use_memory_tracer`` in ``ShardedModelV2``,
+        if you set ``gpu_margin_mem_ratio > 0``.
 
     Args:
         sharded_model (ShardedModelV2): A sharded model initialized by class ShardedModelV2. The optimizer will use the
@@ -55,16 +59,24 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         optimizer (Optimizer): An Optimizer instance.
         cpu_offload (bool, optional): Is offloading the optimizer states to CPU.. Defaults to False.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
-            which will be used when using hybrid CPU optimizer. Defaults to 0.0.
+            which will be used when using hybrid CPU optimizer. 
+            Make sure `reuse_fp16_shard` is enabled in `ShardedModelV2`, if `gpu_margin_mem_ratio` > `0.0`.
+            Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
         growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
         backoff_factor (float, optional): backoff_factor used by DynamicGradScaler. Defaults to 0.5.
         growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
         hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
+        keep_unsharded (bool, optional): if True, optimizer won't shard unsharded parameters.
+            In Zero-2, set keep_unsharded to False.
+            In Zero-3, set keep_unsharded to True.
         max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
         dp_process_group (Optional[ProcessGroup], optional): data paralle process group. Defaults to None.
         mp_process_group (Optional[ProcessGroup], optional): model paralle process group. Defaults to None.
+
+    .. _PatrickStar\: Parallel Training of Pre-trained Models via Chunk-based Memory Management:
+        https://arxiv.org/abs/2108.05818
     """
 
     def __init__(self,
@@ -79,6 +91,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  growth_interval: float = 1000,
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
+                 keep_unsharded: bool = False,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
@@ -112,24 +125,12 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._found_overflow: Tensor = torch.FloatTensor([0]).to(torch.cuda.current_device())
         self._logger = get_dist_logger("ShardedOptimizerV2")
 
-        # Store fp32 param shards
-        self.master_params: Dict[Parameter, StatefulTensor] = {}
+        assert not (keep_unsharded and self._should_move_fp32_shards_h2d), \
+            "Keeping unsharded parameters can't be used with hybrid OS placement right now."
+        self.keep_unshard = keep_unsharded
 
-        for group in self.optim.param_groups:
-            for p in group['params']:
-                assert hasattr(p, 'colo_attr'), 'The parameter must be wrapped with ShardedParam'
-                is_param_sharded = p.colo_attr.sharded_data_tensor.is_sharded
-                if not is_param_sharded:
-                    # TODO (ver217): we may not use shard / gather here
-                    # Param is no sharded, which means we use ZeRO-2 here
-                    # As we only store param shard, we shard it here
-                    self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
-                self.master_params[p] = StatefulTensor(
-                    cast_tensor_to_fp32(p.colo_attr.sharded_data_tensor.payload).to(self.device))
-                if not is_param_sharded:
-                    # In this branch, there's no need to shard param
-                    # So we gather here
-                    self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
+        # Store fp32 param shards
+        self._register_master_weight()
 
         self._logger.debug(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory!",
                            ranks=[0])
@@ -143,9 +144,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
     def get_memory_usage(self) -> Tuple[int, int]:
-        """
-        Get the memory usage of the optimizer. Including master_params (param fp32),
-        momentum (self.state[p]['exp_avg']) variance (self.state[p]['exp_avg_sq'])
+        """ Get the memory usage of the optimizer. Including master_params (param fp32),
+        momentum (``self.state[p]['exp_avg']``) variance (``self.state[p]['exp_avg_sq']``)
 
         Returns:
             Tuple[int, int]: cuda/cpu memory usage in Byte.
@@ -183,7 +183,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         if found_inf:
             self._logger.warning('found inf during ShardedOptimV2 step')
-            self.zero_grad()
+            self._zero_grad(recover_data=True)
             return
 
         self._prepare_data()
@@ -245,16 +245,51 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self.optim_state = OptimState.UNSCALED
 
     def zero_grad(self, *args, **kwargs):
+        self._zero_grad()
+
+    def _zero_grad(self, recover_data: bool = False):
+        """zero grad and maybe recover fp16 params
+        When `reuse_fp16_shard` is enabled,
+        p.colo_attr.sharded_data_tensor stores grad here.
+        We have to recover them from fp32 params.
+
+        Args:
+            recover_data (bool, optional): Whether to recover fp16 param from fp32 param. Defaults to False.
+        """
         # We must set grad to None
-        # Because we will judge whether local grad accumulation
-        # is enabled by wheter grad is None
+        # Because grad here is sharded
+        # But next backward pass will create a full grad first
+        # Which leads to wrong accumulation
         self.optim.zero_grad(set_to_none=True)
         for group in self.optim.param_groups:
             for p in group['params']:
+                # p.colo_attr.sharded_data_tensor stores grad now
+                # we have to recover fp16 param
+                reuse_fp16_shard = p.colo_attr.saved_grad.data_ptr() == p.colo_attr.sharded_data_tensor.data_ptr()
                 p.colo_attr.saved_grad.set_null()
+                if recover_data and reuse_fp16_shard:
+                    p.colo_attr.sharded_data_tensor.reset_payload(
+                        colo_model_tensor_clone(self.master_params[p].payload.half(), torch.cuda.current_device()))
 
     def sync_grad(self):
         pass
+
+    def _register_master_weight(self):
+        self.master_params: Dict[Parameter, StatefulTensor] = {}
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                assert hasattr(p, 'colo_attr'), 'The parameter must be wrapped with ShardedParam'
+                is_param_sharded = p.colo_attr.sharded_data_tensor.is_sharded
+                if not is_param_sharded and not self.keep_unshard:
+                    # Please use keep_unsharded to control whether shard unsharded paramters
+                    # As we only store param shard, we shard it here
+                    self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
+                self.master_params[p] = StatefulTensor(
+                    cast_tensor_to_fp32(p.colo_attr.sharded_data_tensor.payload).to(self.device))
+                if not is_param_sharded and not self.keep_unshard:
+                    # In this branch, there's no need to shard param
+                    # So we gather here
+                    self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
 
     def _maybe_move_fp32_shards(self):
         if self._should_move_fp32_shards_h2d:
@@ -301,7 +336,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         for group in self.optim.param_groups:
             for p in group['params']:
                 is_param_sharded = p.colo_attr.sharded_data_tensor.is_sharded
-                if not is_param_sharded:
+                if not is_param_sharded and not self.keep_unshard:
                     # We use ZeRO-2 here
                     # The `p.colo_attr.sharded_data_tensor` saves full fp16 param
                     # But we only have updated fp32 param shard here
@@ -315,7 +350,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 p.colo_attr.sharded_data_tensor.reset_payload(
                     colo_model_tensor_clone(p.half(), torch.cuda.current_device()))
 
-                if not is_param_sharded:
+                if not is_param_sharded and not self.keep_unshard:
                     # We gather full fp16 param here
                     self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
                 p.data = p.colo_attr.sharded_data_tensor.payload

@@ -13,7 +13,7 @@ from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     colo_model_mem_usage
-from colossalai.utils.memory_utils.memory_monitor import colo_cuda_memory_used
+from colossalai.utils.memory_utils.utils import colo_device_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -51,10 +51,10 @@ def run_model_test(init_device_type, shard_strategy_class):
             assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
                 f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
 
-        cuda_mem_use, cpu_mem_use = colo_model_mem_usage(model)
+        cuda_mem_use, _ = colo_model_mem_usage(model)
         model_data_cuda_mem_MB = cuda_mem_use / 1e6
         logger.info(f"Existing ZeRO Context.\nModel Data CUDA Memory {model_data_cuda_mem_MB} MB", ranks=[0])
-        sys_cuda_mem_MB = colo_cuda_memory_used() / 1e6
+        sys_cuda_mem_MB = colo_device_memory_used(get_current_device()) / 1e6
         logger.info(f"System CUDA Memory Usage {sys_cuda_mem_MB} MB", ranks=[0])
         logger.info(f"Model Number Parameter {model_numel_tensor.numpy()[0]/1e6} M", ranks=[0])
 
