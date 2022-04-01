@@ -2,8 +2,7 @@ import torch
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.utils.cuda import get_current_device
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.zero.sharded_param.tensorful_state import TensorState
+from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
 from colossalai.zero.shard_utils.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity
 from typing import Set
@@ -15,7 +14,7 @@ class StatefulTensorMgr(SingletonMeta):
 
     def register_param(self, param: ShardedParamV2) -> None:
         for t in param.get_payload_tensors():
-            assert isinstance(t, ShardedTensor)
+            assert isinstance(t, StatefulTensor)
             self._stateful_tensor_list.add(t)
 
     def evict_tensors(self) -> None:
