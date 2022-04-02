@@ -69,8 +69,8 @@ class Initializer_Sequence(ProcessGroupInitializer):
         pipeline_parallel_size (int): Size of pipeline parallel.
         tensor_parallel_size (int): Size of tensor parallel.
     """
-    def __init__(self,
-                 *args, **kwargs):
+
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # reuse tensor parallel initializer code
         self._sequence_initializer = Initializer_Tensor(*args, **kwargs)
