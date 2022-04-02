@@ -33,7 +33,7 @@ def colo_model_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
 
     def _get_tensor_mem_use(t: Optional[torch.Tensor]):
         if t is None:
-            return
+            return 0, 0
         assert isinstance(t, torch.Tensor)
         _cpu_mem_usage, _cuda_mem_usage = 0, 0
         if t.device.type == 'cpu':
