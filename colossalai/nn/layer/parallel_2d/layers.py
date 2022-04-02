@@ -19,7 +19,7 @@ from torch.nn import Parameter
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ._operation import (Matmul_AB_2D, Matmul_ABT_2D, add_bias_2d, all_gather_tensor_2d, classifier_2d, layernorm_2d,
-                         reduce_scatter_tensor_2d, split_tensor_2d)
+                         reduce_scatter_tensor_2d, split_batch_2d)
 from ._utils import assert_summa_initialization, get_summa_dim_from_env
 
 
@@ -547,7 +547,7 @@ class PatchEmbedding2D(ParallelLayer):
             destination.update(local_state)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_tensor_2d(input_)
+        input_ = split_batch_2d(input_)
 
         B, C, H, W = input_.shape
         assert H == self.img_size[0] and W == self.img_size[1], \
@@ -692,7 +692,7 @@ class Embedding2D(ParallelLayer):
             destination.update(local_state)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_tensor_2d(input_)
+        input_ = split_batch_2d(input_)
 
         weight = all_gather_tensor_2d(self.weight, -1, ParallelMode.PARALLEL_2D_COL)
         output = F.embedding(input_, weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)

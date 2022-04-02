@@ -755,7 +755,7 @@ class SplitFirst(torch.autograd.Function):
         return grad, None, None
 
 
-def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
+def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
     """Splits 2P5D tensor in specified dimension across cols.
 
     Args:
@@ -765,6 +765,11 @@ def split_tensor_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
     Returns:
         :class:`torch.tensor`: The tensor has been split.
     """
+    dim_size = input_.size(dim)
+    world_size = gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL)
+    assert dim_size % world_size == 0, \
+        f'The batch size ({dim_size}) is not a multiple of 2.5D size * depth ({world_size}).'
+
     if input_.size(dim) <= 1:
         return input_
     return torch.chunk(input_, gpc.get_world_size(ParallelMode.PARALLEL_2P5D_COL),
@@ -819,6 +824,11 @@ def reduce_scatter_tensor_2p5d(input_: Tensor, dim: int, parallel_mode: Parallel
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
+    dim_size = input_.size(dim)
+    world_size = gpc.get_world_size(parallel_mode)
+    assert dim_size % world_size == 0, \
+        f'The batch size ({dim_size}) is not a multiple of 2.5D size * depth ({world_size}).'
+
     return _ReduceScatterTensor2p5D.apply(input_, dim, parallel_mode)
 
 

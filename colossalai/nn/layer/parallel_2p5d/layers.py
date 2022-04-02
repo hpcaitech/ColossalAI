@@ -20,7 +20,7 @@ from torch.nn import Parameter
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
 from ._operation import (Matmul_AB_2p5D, Matmul_ABT_2p5D, add_bias_2p5d, all_gather_tensor_2p5d, classifier_2p5d,
-                         layernorm_2p5d, reduce_scatter_tensor_2p5d, split_tensor_2p5d)
+                         layernorm_2p5d, reduce_scatter_tensor_2p5d, split_batch_2p5d)
 from ._utils import assert_tesseract_initialization, get_tesseract_dim_dep_from_env
 
 
@@ -568,7 +568,7 @@ class PatchEmbedding2p5D(ParallelLayer):
             destination.update(local_state)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_tensor_2p5d(input_, 0)
+        input_ = split_batch_2p5d(input_, 0)
 
         B, C, H, W = input_.shape
         assert H == self.img_size[0] and W == self.img_size[1], \
@@ -713,7 +713,7 @@ class Embedding2p5D(ParallelLayer):
             destination.update(local_state)
 
     def forward(self, input_: Tensor) -> Tensor:
-        input_ = split_tensor_2p5d(input_, 0)
+        input_ = split_batch_2p5d(input_, 0)
 
         weight = all_gather_tensor_2p5d(self.weight, -1, ParallelMode.PARALLEL_2P5D_COL)
 
