@@ -89,6 +89,8 @@ class Engine:
             self._schedule = schedule
         else:
             self._schedule = NonPipelineSchedule()
+        if self.uses_pipeline:
+            self._schedule.pre_processing(self)
         register_ophooks_recursively(self._model, self._ophook_list)
 
     @property
