@@ -9,29 +9,6 @@ import torch
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
-from colossalai.utils.cuda import get_current_device
-from typing import Optional
-
-
-def colo_cuda_memory_used(device: Optional[torch.device] = None) -> int:
-    """Get the free memory info of device.
-
-    Args:
-       device (Optional[``torch.device``]): a torch device instance or None. Defaults None.
-
-    Returns:
-        int: current memory usage, sized by Byte.
-    """
-    if device:
-        assert device.type == 'cuda'
-    else:
-        device = torch.device(f'cuda:{get_current_device()}')
-
-    ret: int = torch.cuda.memory_allocated(device)
-    # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
-        torch.cuda.reset_peak_memory_stats(device)
-    return ret
 
 
 def bytes_to_GB(val, decimal=2):

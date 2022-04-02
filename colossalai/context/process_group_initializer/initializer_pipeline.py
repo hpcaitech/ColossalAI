@@ -40,13 +40,16 @@ class Initializer_Pipeline(ProcessGroupInitializer):
                     range(i * self.data_group_size + j, (i + 1) * self.data_group_size, self.pipeline_stage_size))
                 pipe_group_size = len(pipe_ranks)
                 pipe_group = dist.new_group(pipe_ranks)
+                group_cpu = dist.new_group(pipe_ranks, backend='gloo') if dist.get_backend() != 'gloo' else pipe_group
 
                 if self.rank in pipe_ranks:
                     local_rank = pipe_ranks.index(self.rank)
                     group_world_size = pipe_group_size
                     process_group = pipe_group
+                    cpu_group = group_cpu
                     ranks_in_group = pipe_ranks
                     dist_settings.append(
-                        tuple((local_rank, group_world_size, process_group, ranks_in_group, ParallelMode.PIPELINE)))
+                        tuple((local_rank, group_world_size, process_group, cpu_group, ranks_in_group,
+                               ParallelMode.PIPELINE)))
 
         return dist_settings

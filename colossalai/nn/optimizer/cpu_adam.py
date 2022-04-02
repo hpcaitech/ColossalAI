@@ -44,8 +44,8 @@ class CPUAdam(torch.optim.Optimizer):
             True for decoupled weight decay(also known as AdamW) (default: True)
         simd_log (boolean, optional): whether to show if you are using SIMD to 
             accelerate. (default: False)
-    
-    .. _Adam: A Method for Stochastic Optimization:
+
+    .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     .. _On the Convergence of Adam and Beyond:
         https://openreview.net/forum?id=ryQu7f-RZ

@@ -62,6 +62,7 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_ROW
 
@@ -73,14 +74,16 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
                         for i in range(self.tesseract_dim)
                     ]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 class Initializer_2p5D_Col(ProcessGroupInitializer):
@@ -115,6 +118,7 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_COL
 
@@ -126,14 +130,16 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
                         for j in range(self.tesseract_dim)
                     ]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 class Initializer_2p5D_Dep(ProcessGroupInitializer):
@@ -168,6 +174,7 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_DEP
 
@@ -179,14 +186,16 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
                         for k in range(self.tesseract_dep)
                     ]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 # i row j col k dep
@@ -222,6 +231,7 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_XZ
 
@@ -233,14 +243,16 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
                     for j in range(self.tesseract_dim)
                 ]
                 group = dist.new_group(ranks)
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
                     group_world_size = len(ranks)
                     process_group = group
+                    cpu_group = group_cpu
                     ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 @DIST_GROUP_INITIALIZER.register_module

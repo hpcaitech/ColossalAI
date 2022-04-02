@@ -42,4 +42,5 @@ def get_training_components():
     testloader = DummyDataLoader()
 
     criterion = torch.nn.CrossEntropyLoss()
-    return model_builder, trainloader, testloader, torch.optim.Adam, criterion
+    from colossalai.nn.optimizer import HybridAdam
+    return model_builder, trainloader, testloader, HybridAdam, criterion

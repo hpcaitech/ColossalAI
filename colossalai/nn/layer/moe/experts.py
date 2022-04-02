@@ -35,7 +35,7 @@ class Experts(MoeExperts):
         expert_args: Args used to initialize experts, the args could be found in corresponding expert class
     """
 
-    @no_shard_zero_decrator
+    @no_shard_zero_decrator(is_replicated=False)
     def __init__(self, expert_cls: Type[nn.Module], num_experts: int, **expert_args):
         super().__init__("all_to_all", num_experts)
 
