@@ -62,7 +62,7 @@ class Engine:
                  clip_grad_norm: float = 0.0,
                  ophook_list: Optional[List[BaseOpHook]] = None,
                  verbose: bool = True,
-                 schedule = None):
+                 schedule: Optional[BaseSchedule] = None):
         self._model = model
         self._optimizer = optimizer
         self._criterion = criterion
