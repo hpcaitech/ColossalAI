@@ -11,6 +11,7 @@ from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
 from torch.distributed import ProcessGroup
+from contextlib import AbstractContextManager
 
 
 def _substitute_init_recursively(cls, func):
@@ -88,6 +89,9 @@ class ZeroContextConfig(object):
     """The configuration used to control zero context initialization.
 
     Args:
+        target_device (torch.device): The device where param data are after exiting the context.
+        replicated (bool, optional): Whether the param is replicated across data parallel group.
+            Some parameters are not replicated, e.g. parameters in MOE experts.
         shard_param (bool, optional): Is param sharded after exiting the context. Defaults to False.
         rm_torch_payload_on_the_fly (bool, optional): If set to `True`, remove tensor payload on `param.data` after module init finished.
             This will reduce memory usage when initializing model.
@@ -97,8 +101,14 @@ class ZeroContextConfig(object):
             See torchvision resnet18. Defaults to False.
     """
 
-    def __init__(self, shard_param: bool = False, rm_torch_payload_on_the_fly: bool = False):
+    def __init__(self,
+                 target_device: torch.device,
+                 replicated: bool = True,
+                 shard_param: bool = False,
+                 rm_torch_payload_on_the_fly: bool = False):
         super().__init__()
+        self.target_device = target_device
+        self.is_replicated: bool = replicated
         self.shard_param: bool = shard_param
         self.rm_torch_payload_on_the_fly: bool = rm_torch_payload_on_the_fly
 
@@ -111,7 +121,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
     3. Shard the param and grad according to flags.
 
     Args:
-        target_device (torch.device): The device where param data after exiting the context.
+        target_device (torch.device): The device where param data are after exiting the context.
         shard_strategy (BaseShardStrategy): Shard strategy instance.
         shard_param (bool, optional): Is param sharded after exiting the context. Defaults to False.
         rm_torch_payload_on_the_fly (bool, optional): If set to `True`, remove tensor payload on `param.data` after module init finished.
@@ -133,15 +143,25 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                  dp_process_group: Optional[ProcessGroup] = None):
 
         super().__init__()
-        self.target_device = target_device
         self.shard_strategy = shard_strategy
         self.initialized_param_list = []
         self.model_numel_tensor = model_numel_tensor
         self.dp_process_group = dp_process_group or gpc.get_group(ParallelMode.DATA)
 
-        self.config = ZeroContextConfig(shard_param=shard_param,
+        self.config = ZeroContextConfig(target_device=target_device,
+                                        replicated=True,
+                                        shard_param=shard_param,
                                         rm_torch_payload_on_the_fly=rm_torch_payload_on_the_fly)
+
         ZeroContextMgr().current_context = self
+
+    @property
+    def target_device(self):
+        return self.config.target_device
+
+    @property
+    def is_replicated(self):
+        return self.config.is_replicated
 
     @property
     def shard_param(self):
@@ -182,6 +202,9 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                 continue
 
             self.model_numel_tensor += param.numel()
+
+            # mark whether the param is replicated
+            param.is_replicated = self.is_replicated
 
             # convert parameters to half
             param_half = half_fn(param)
@@ -224,14 +247,21 @@ class ZeroContextMgr(metaclass=SingletonMeta):
             self.current_context.config = old_config
 
 
-def no_shard_zero_context():
-    return ZeroContextMgr().hijack_context_config(shard_param=False, rm_torch_payload_on_the_fly=False)
+def no_shard_zero_context(is_replicated: bool = True) -> AbstractContextManager:
+    return ZeroContextMgr().hijack_context_config(target_device=torch.device('cuda', torch.cuda.current_device()),
+                                                  replicated=is_replicated,
+                                                  shard_param=False,
+                                                  rm_torch_payload_on_the_fly=False)
 
 
-def no_shard_zero_decrator(init_func):
+def no_shard_zero_decrator(is_replicated: bool = True):
 
-    def _no_shard(*args, **kwargs):
-        with no_shard_zero_context():
-            init_func(*args, **kwargs)
+    def _wrapper(init_func):
 
-    return _no_shard
+        def _no_shard(*args, **kwargs):
+            with no_shard_zero_context(is_replicated):
+                init_func(*args, **kwargs)
+
+        return _no_shard
+
+    return _wrapper

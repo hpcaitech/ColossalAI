@@ -276,6 +276,11 @@ def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Te
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
+    dim_size = tensor.size(dim)
+    world_size = gpc.get_world_size(parallel_mode)
+    assert dim_size % world_size == 0, \
+        f'The dimension {dim} to split, size ({dim_size}) is not a multiple of world size ({world_size}), ' \
+        f'cannot split tensor evenly'
     if tensor.size(dim) <= 1:
         return tensor
     output = torch.chunk(tensor, gpc.get_world_size(parallel_mode),
@@ -302,13 +307,20 @@ def split_batch_3d(input_: Tensor,
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
-    if input_.size(dim) <= 1:
-        return input_
+    dim_size = input_.size(dim)
     weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
-    output = torch.chunk(input_, gpc.get_world_size(weight_parallel_mode),
+    weight_world_size = gpc.get_world_size(weight_parallel_mode)
+    input_world_size = gpc.get_world_size(input_parallel_mode)
+
+    assert dim_size % (input_world_size*weight_world_size) == 0, \
+        f'The batch size ({dim_size}) is not a multiple of square of 3D depth ({input_world_size*weight_world_size}).'
+
+    if input_.size(dim) <= 1:
+        return input_
+    output = torch.chunk(input_, weight_world_size,
                          dim=dim)[gpc.get_local_rank(weight_parallel_mode)].contiguous()
-    output = torch.chunk(output, gpc.get_world_size(input_parallel_mode),
+    output = torch.chunk(output, input_world_size,
                          dim=dim)[gpc.get_local_rank(input_parallel_mode)].contiguous()
     return output
 
@@ -394,6 +406,11 @@ def reduce_scatter_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMo
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
+    dim_size = tensor.size(dim)
+    world_size = gpc.get_world_size(parallel_mode)
+    assert dim_size % world_size == 0, \
+        f'The batch size ({dim_size}) is not a multiple of square of 3D depth ({world_size}).'
+
     return _ReduceScatterTensor3D.apply(tensor, dim, parallel_mode)
 
 

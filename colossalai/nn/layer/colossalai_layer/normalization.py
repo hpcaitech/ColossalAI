@@ -1,24 +1,17 @@
 from colossalai.utils import get_current_device
 from torch import nn
-from colossalai import kernel
 
-from ... import init as init
-from ..parallel_1d import *
-from ..parallel_2d import *
-from ..parallel_2p5d import *
-from ..parallel_3d import *
+from ..parallel_1d import LayerNorm1D
+from ..parallel_2d import LayerNorm2D
+from ..parallel_2p5d import LayerNorm2p5D
+from ..parallel_3d import LayerNorm3D
 from ..utils import get_tensor_parallel_mode
-from ..vanilla import *
+from ._utils import ColossalaiModule
 
-_parallel_layernorm = {
-    '1d': kernel.LayerNorm,
-    '2d': LayerNorm2D,
-    '2.5d': LayerNorm2p5D,
-    '3d': LayerNorm3D
-}
+_parallel_layernorm = {'1d': LayerNorm1D, '2d': LayerNorm2D, '2.5d': LayerNorm2p5D, '3d': LayerNorm3D}
 
 
-class LayerNorm(nn.Module):
+class LayerNorm(ColossalaiModule):
     r"""Layer Normalization for colossalai.
 
     Args:
@@ -31,20 +24,9 @@ class LayerNorm(nn.Module):
     """
 
     def __init__(self, normalized_shape: int, eps=1e-05, dtype=None) -> None:
-        super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
         if tensor_parallel is None:
-            self.norm = nn.LayerNorm(normalized_shape, eps=eps).to(dtype).to(get_current_device())
+            norm = nn.LayerNorm(normalized_shape, eps=eps).to(dtype).to(get_current_device())
         else:
-            self.norm = _parallel_layernorm[tensor_parallel](normalized_shape, eps=eps, dtype=dtype)
-
-    @property
-    def weight(self):
-        return self.norm.weight
-
-    @property
-    def bias(self):
-        return self.norm.bias
-
-    def forward(self, *args):
-        return self.norm(*args)
+            norm = _parallel_layernorm[tensor_parallel](normalized_shape, eps=eps, dtype=dtype)
+        super().__init__(norm)

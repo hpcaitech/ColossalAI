@@ -1,8 +1,7 @@
 import torch
-import torch.distributed as dist
 from colossalai.zero.sharded_param import ShardedTensor
 from typing import Optional, Tuple
-from colossalai.utils.memory_utils.utils import colo_tensor_mem_usage
+from colossalai.zero.shard_utils.tensor_utils import colo_tensor_mem_usage
 from .tensorful_state import StatefulTensor, TensorState
 
 
@@ -10,7 +9,6 @@ class ShardedParamV2(object):
 
     def __init__(self, param: torch.nn.Parameter, rm_torch_payload=False) -> None:
         self._sharded_data_tensor: ShardedTensor = ShardedTensor(param.data)
-        self.fp16_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
         self.saved_grad: StatefulTensor = StatefulTensor(None, TensorState.FREE)
         # This attribute must be initialized in ShardedModel
         self.offload_grad: bool = False
@@ -56,10 +54,6 @@ class ShardedParamV2(object):
         address_set = set()
         _update_mem_use(self.sharded_data_tensor.payload)
         address_set.add(self.sharded_data_tensor.payload.data_ptr())
-
-        if not self.fp16_grad.is_null() and self.fp16_grad.data_ptr() not in address_set:
-            _update_mem_use(self.fp16_grad.payload)
-            address_set.add(self.fp16_grad.data_ptr())
 
         if not self.saved_grad.is_null() and self.saved_grad.data_ptr() not in address_set:
             _update_mem_use(self.saved_grad.payload)

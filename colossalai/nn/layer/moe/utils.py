@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from colossalai.utils import get_current_device
 from colossalai.context.moe_context import MOE_CONTEXT
 from .experts import FFNExperts, TPExperts
@@ -13,8 +14,8 @@ class ForceFP32Parameter(torch.nn.Parameter):
 class NormalNoiseGenerator:
     """Generates a random noisy mask for logtis tensor.
 
-    All noise is generated from a normal distribution (0, 1 / E^2), where
-    E = the number of experts.
+    All noise is generated from a normal distribution :math:`(0, 1 / E^2)`, where
+    `E = the number of experts`.
 
     Args:
         num_experts (int): The number of experts.
@@ -33,7 +34,7 @@ class NormalNoiseGenerator:
 class UniformNoiseGenerator:
     """Generates a random noisy mask for logtis tensor.
     copied from mesh tensorflow:
-    Multiply values by a random number between 1-epsilon and 1+epsilon.
+    Multiply values by a random number between :math:`1-epsilon` and :math:`1+epsilon`.
     Makes models more resilient to rounding errors introduced by bfloat16.
     This seems particularly important for logits.
 
@@ -49,6 +50,12 @@ class UniformNoiseGenerator:
     def __call__(self, inputs: torch.Tensor):
         noisy = self.uniform(inputs.shape)
         return inputs * noisy
+
+
+def autocast_softmax(logit: torch.Tensor, dim: int):
+    if logit.dtype != torch.float32:
+        logit = logit.float()
+    return F.softmax(logit, dim=dim)
 
 
 def build_ffn_experts(num_experts: int, d_model: int, d_ff: int, activation=None, drop_rate: float = 0):

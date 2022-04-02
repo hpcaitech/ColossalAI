@@ -138,3 +138,6 @@ dmypy.json
 #data/
 
 docs/.build
+
+# pytorch checkpoint
+*.pt
