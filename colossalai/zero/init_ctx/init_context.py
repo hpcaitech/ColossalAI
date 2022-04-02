@@ -114,7 +114,7 @@ class ZeroContextConfig(object):
         self.shard_param: bool = shard_param
 
         if self.is_replicated is False:
-            assert self.shard_param is True, f"ZeroContextConfig shard_param must be False when is_replicated is True"
+            assert self.shard_param is True, f"ZeroContextConfig shard_param must be False when is_replicated is False"
         self.rm_torch_payload_on_the_fly: bool = rm_torch_payload_on_the_fly
 
 
