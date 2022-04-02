@@ -91,6 +91,7 @@ def _run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.skip("Under development")
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_moe_zero_init(world_size):
     run_func = partial(_run_dist, world_size=world_size, port=free_port())
