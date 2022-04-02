@@ -113,8 +113,9 @@ class ZeroContextConfig(object):
         self.is_replicated: bool = replicated
         self.shard_param: bool = shard_param
 
-        if self.is_replicated is False:
-            assert self.shard_param is True, f"ZeroContextConfig shard_param must be False when is_replicated is False"
+        # FIXME(haichenhuang) clear the conflict situations of self.shard_param and self.is_replicated
+        # if self.is_replicated is False:
+        #     assert self.shard_param is True, f"ZeroContextConfig shard_param must be False when is_replicated is False"
         self.rm_torch_payload_on_the_fly: bool = rm_torch_payload_on_the_fly
 
 
