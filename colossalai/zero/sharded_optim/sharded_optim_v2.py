@@ -182,7 +182,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self._zero_grad(recover_data=True)
             return
 
-        self._point_param_fp16_to_master_params_payload()
+        self._point_param_fp16_to_master_param()
 
         self._logger.debug(
             f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
@@ -315,7 +315,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Set p.data to empty tensor, in case of memory leaking
                 p.colo_attr.remove_torch_payload()
 
-    def _point_param_fp16_to_master_params_payload(self):
+    def _point_param_fp16_to_master_param(self):
         # assign master param pointers to p.data.
         # We will not trigger data copy here.
         for group in self.optim.param_groups:
