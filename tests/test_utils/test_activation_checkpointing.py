@@ -19,8 +19,7 @@ def forward(x, weight):
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize("cpu_offload", [True, False])
-def test_activation_checkpointing(cpu_offload):
+def test_activation_checkpointing():
     add_seed(ParallelMode.GLOBAL, 1024)
     add_seed(ParallelMode.DATA, 1026)
     set_mode(ParallelMode.GLOBAL)
@@ -50,7 +49,7 @@ def test_activation_checkpointing(cpu_offload):
     set_mode(ParallelMode.DATA)
     torch.cuda.set_rng_state(data_parallel_cuda_rng_state)
     set_mode(ParallelMode.GLOBAL)
-    out = checkpoint(forward, cpu_offload, data_, weight_)
+    out = checkpoint(forward, False, data_, weight_)
     loss = out.sum()
     loss.backward()
 
