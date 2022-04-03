@@ -4,8 +4,6 @@
 import pytest
 import torch
 import torch.nn.functional as F
-from torch.utils.checkpoint import checkpoint
-
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.random import add_seed, seed, set_mode, reset_seeds
 from colossalai.utils import checkpoint
@@ -28,32 +26,22 @@ def test_activation_checkpointing():
     data_parallel_cuda_rng_state = torch.cuda.get_rng_state()
     set_mode(ParallelMode.GLOBAL)
 
-    # normal
-    data = torch.rand(2, 2, requires_grad=True).cuda()
-    data.retain_grad()
-    weight = torch.rand(2, 4, requires_grad=True).cuda()
-
-    data_ = data.clone().detach()
-    data_.requires_grad = True
-    data_.retain_grad()
-    weight_ = weight.clone().detach()
-    weight_.requires_grad = True
-
-    out = forward(data, weight)
+    out = forward(inputs, weight)
     loss = out.sum()
     loss.backward()
 
-    # checkpoint
+    # Recover cuda rng states
     set_mode(ParallelMode.GLOBAL)
     torch.cuda.set_rng_state(global_cuda_rng_state)
     set_mode(ParallelMode.DATA)
     torch.cuda.set_rng_state(data_parallel_cuda_rng_state)
     set_mode(ParallelMode.GLOBAL)
     out = checkpoint(forward, False, data_, weight_)
+
     loss = out.sum()
     loss.backward()
 
-    assert torch.all(data.grad == data_.grad), 'Gradient of the input does not match'
+    assert torch.all(inputs.grad == inputs_.grad), 'Gradient of the input does not match'
     torch.cuda.empty_cache()
 
     # as seed manager is singleton

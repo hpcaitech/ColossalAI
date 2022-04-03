@@ -19,7 +19,6 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10
 
 BATCH_SIZE = 4
-NUM_MICRO = 2
 
 DIR_PATH = osp.dirname(osp.realpath(__file__))
 CONFIG_PATH = osp.join(DIR_PATH, './resnet_config.py')
@@ -57,7 +56,7 @@ def run_schedule(rank, world_size, port):
     engine, train_dataloader, _, _ = colossalai.initialize(model, optimizer, criterion, train_dataloader)
 
     # build pipeline schedule
-    schedule = PipelineSchedule(num_microbatches=NUM_MICRO)
+    schedule = engine.schedule
 
     # run schedule
     data_iter = iter(train_dataloader)

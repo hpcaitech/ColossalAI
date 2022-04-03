@@ -7,6 +7,7 @@ IMG_SIZE = 224
 DIM = 768
 NUM_CLASSES = 10
 NUM_ATTN_HEADS = 12
+NUM_MICRO_BATCHES = 2
 
 # resnet 18
 model = dict(type='VanillaResNet',

@@ -20,6 +20,7 @@ from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.builder.builder import build_gradient_handler
 from colossalai.context import Config, ConfigException, ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.engine.schedule import NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule
 
 from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.engine import Engine
@@ -388,6 +389,20 @@ def initialize(model: nn.Module,
     if isinstance(model, DDP) and isinstance(model.module, NaiveAMPModel):
         model.module.sync_buffer = False
 
+    # initialize schedule for engine
+    if is_using_pp():
+        tensor_shape = getattr(gpc.config, 'TENSOR_SHAPE', None)
+        use_interleaved = hasattr(gpc.config, 'model') and hasattr(gpc.config.model, 'num_chunks')
+        if use_interleaved:
+            schedule = InterleavedPipelineSchedule(gpc.config.NUM_MICRO_BATCHES, 
+                                                   gpc.config.model.num_chunks, tensor_shape=tensor_shape, scatter_gather_tensors=True)
+        else:
+            schedule = PipelineSchedule(gpc.config.NUM_MICRO_BATCHES,
+                                        tensor_shape=tensor_shape, scatter_gather_tensors=True)
+    else:
+        schedule = NonPipelineSchedule()
+
+
     if gradient_handler_cfg is None:
         gradient_handlers = None
         if verbose and not isinstance(model, DDP):
@@ -418,6 +433,7 @@ def initialize(model: nn.Module,
                     criterion=criterion,
                     gradient_handlers=gradient_handlers,
                     clip_grad_norm=clip_grad_norm,
-                    ophook_list=ophooks)
+                    ophook_list=ophooks,
+                    schedule=schedule)
 
     return engine, train_dataloader, test_dataloader, lr_scheduler
