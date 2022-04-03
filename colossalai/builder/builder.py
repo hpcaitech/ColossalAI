@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from colossalai.registry import *
 
 
+
 def build_from_config(module, config: dict):
     """Returns an object of :class:`module` constructed from `config`.
 
@@ -62,6 +63,7 @@ def build_from_registry(config, registry: Registry):
         raise e
 
     return obj
+
 
 
 def build_layer(config):
@@ -242,7 +244,6 @@ def build_lr_scheduler(config, optimizer):
     config_ = config.copy()
     config_['optimizer'] = optimizer
     return build_from_registry(config_, LR_SCHEDULERS)
-
 
 def build_schedule(config):
     """Returns a schedule of :class:`colossalai.engine.schedule.BaseSchedule`.
