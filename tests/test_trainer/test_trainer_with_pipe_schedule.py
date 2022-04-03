@@ -23,7 +23,7 @@ BATCH_SIZE = 4
 IMG_SIZE = 32
 NUM_EPOCHS = 200
 
-CONFIG = dict(parallel=dict(pipeline=2),)
+CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=2),)
 
 
 def run_trainer_with_pipeline(rank, world_size, port):
@@ -69,9 +69,8 @@ def run_trainer_with_pipeline(rank, world_size, port):
 
     logger = get_dist_logger()
     logger.info("engine is built", ranks=[0])
-    pipe_schedule = PipelineSchedule(num_microbatches=2)
     timer = MultiTimer()
-    trainer = Trainer(engine=engine, schedule=pipe_schedule, logger=logger, timer=timer)
+    trainer = Trainer(engine=engine, logger=logger, timer=timer)
     logger.info("trainer is built", ranks=[0])
 
     logger.info("start training", ranks=[0])
