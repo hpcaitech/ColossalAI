@@ -139,10 +139,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
-        self._use_memory_tracer = self.model.use_memory_tracer
-        if self._use_memory_tracer:
-            GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
-
     def get_memory_usage(self) -> Tuple[int, int]:
         """ Get the memory usage of the optimizer. Including master_params (param fp32),
         momentum (``self.state[p]['exp_avg']``) variance (``self.state[p]['exp_avg_sq']``)
@@ -186,7 +182,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self._zero_grad(recover_data=True)
             return
 
-        self._prepare_data()
+        self._point_param_fp16_to_master_param()
 
         self._logger.debug(
             f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
@@ -197,7 +193,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._logger.debug(
             f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0]/1e6} MB CUDA Memory, {self.get_memory_usage()[1]/1e6} MB CUDA Memory!",
             ranks=[0])
-        self._write_back_data()
+        self._copy_master_param_to_param_fp16()
         return ret
 
     def backward(self, loss: Tensor) -> None:
@@ -319,7 +315,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Set p.data to empty tensor, in case of memory leaking
                 p.colo_attr.remove_torch_payload()
 
-    def _prepare_data(self):
+    def _point_param_fp16_to_master_param(self):
         # assign master param pointers to p.data.
         # We will not trigger data copy here.
         for group in self.optim.param_groups:
@@ -329,7 +325,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
 
-    def _write_back_data(self):
+    def _copy_master_param_to_param_fp16(self):
         # Copy master param data (fp32) to payload of colo_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.

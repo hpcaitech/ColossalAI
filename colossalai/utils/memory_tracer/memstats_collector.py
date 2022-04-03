@@ -1,7 +1,7 @@
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory_utils.utils import colo_device_memory_used
 from colossalai.utils import get_current_device
-
+from colossalai.utils.memory_tracer.async_memtracer import AsyncMemoryMonitor
 import torch
 import time
 from typing import List
@@ -37,6 +37,7 @@ class MemStatsCollector:
 
     def __init__(self) -> None:
         self._sampling_cnter = SamplingCounter()
+        self._mem_monitor = AsyncMemoryMonitor()
         self._model_data_cuda_list = []
         self._overall_cuda_list = []
 
@@ -101,6 +102,7 @@ class MemStatsCollector:
 
     def start_collection(self):
         self._start_flag = True
+        self._mem_monitor.start()
 
     def finish_collection(self):
         self._start_flag = False
@@ -115,17 +117,20 @@ class MemStatsCollector:
             sampling_cnt = self._sampling_cnter.sampling_cnt
             assert sampling_cnt == len(self._overall_cuda_list)
             self._model_data_cuda_list.append(GLOBAL_MODEL_DATA_TRACER.cuda_usage)
-            self._overall_cuda_list.append(colo_device_memory_used(get_current_device()))
+            self._overall_cuda_list.append(self._mem_monitor.finish())
 
             self._model_data_cpu_list.append(GLOBAL_MODEL_DATA_TRACER.cpu_usage)
+
+            # FIXME() cpu sys used should also return from self._mem_monitor()
             self._overall_cpu_list.append(colo_device_memory_used(torch.device(f'cpu')))
 
             self._sampling_time.append(time.time())
-
+            self._mem_monitor.start()
         self._sampling_cnter.advance()
 
     def reset_sampling_cnter(self) -> None:
         self._sampling_cnter.reset()
+        self._mem_monitor.finish()
 
     def clear(self) -> None:
         self._model_data_cuda_list = []
@@ -136,3 +141,4 @@ class MemStatsCollector:
 
         self._start_flag = False
         self._sampling_cnter.reset()
+        self._mem_monitor.finish()
