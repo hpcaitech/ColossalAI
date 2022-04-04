@@ -87,9 +87,10 @@ distributed training in a few lines.
 
 - 11x lower GPU memory consumption, and superlinear scaling efficiency with Tensor Parallelism
 
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI%20with%20ZeRO.jpg" width=393>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/(updated)GPT-2.png" width=800>
 
-- 10.7x larger model size on the same hardware
+- 24x larger model size on the same hardware
+- over 3x acceleration
 ### BERT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
 
