@@ -8,9 +8,8 @@
 
 #include "cuda_util.h"
 
-template <typename T>
-class CrossEntropyLayer {
- public:
+template <typename T> class CrossEntropyLayer {
+public:
   CrossEntropyLayer(float epsilon, int padding_idx, int max_batch_tokens);
 
   virtual ~CrossEntropyLayer();
@@ -23,7 +22,7 @@ class CrossEntropyLayer {
 
   void set_cur_batch_shape(int batch_size, int seq_len, int vocab_size);
 
- private:
+private:
   void allocate_mem_buffer() {
     // allocate local gpu memory
     _loss_buffer = cuda_malloc<float>(_max_batch_tokens * 2);

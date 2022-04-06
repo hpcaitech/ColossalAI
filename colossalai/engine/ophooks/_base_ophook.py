@@ -5,6 +5,7 @@ import torch
 class BaseOpHook(ABC):
     """This class allows users to add customized operations
     before and after the execution of a PyTorch submodule"""
+
     def __init__(self):
         pass
 
