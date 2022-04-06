@@ -11,15 +11,21 @@ class SamplingCounter:
 
     def __init__(self) -> None:
         self._samplint_cnt = 0
+        self._max_sampling_cnt = None
 
     def advance(self):
         self._samplint_cnt += 1
+
+    def next(self):
+        assert self._max_sampling_cnt is not None
+        return (self._samplint_cnt + 1) % self._max_sampling_cnt
 
     @property
     def sampling_cnt(self):
         return self._samplint_cnt
 
     def reset(self):
+        self._max_sampling_cnt = self._samplint_cnt
         self._samplint_cnt = 0
 
 
@@ -56,7 +62,7 @@ class MemStatsCollector:
         else:
             raise TypeError
 
-    def model_data_cuda_list(self, device_type: str, unit: str = 'B') -> List[int]:
+    def model_data_list(self, device_type: str, unit: str = 'B') -> List[int]:
         if unit == 'GB':
             scale = 1e9
         elif unit == 'MB':
@@ -75,7 +81,7 @@ class MemStatsCollector:
         else:
             raise TypeError
 
-    def non_model_data_cuda_list(self, device_type: str, unit: str = 'B') -> List[int]:
+    def non_model_data_list(self, device_type: str, unit: str = 'B') -> List[int]:
         """Non model data stats
         """
         if unit == 'GB':
@@ -95,6 +101,14 @@ class MemStatsCollector:
             return [(v1 - v2) / scale for v1, v2 in zip(self._overall_cpu_list, self._model_data_cpu_list)]
         else:
             raise TypeError
+
+    def current_non_model_data(self, device_type: str) -> int:
+        """get the non model data of current sampling moment
+        """
+        return self.non_model_data_list(device_type)[self._sampling_cnter.sampling_cnt]
+
+    def next_non_model_data(self, device_type: str):
+        return self.non_model_data_list(device_type)[self._sampling_cnter.next()]
 
     @property
     def sampling_time(self):

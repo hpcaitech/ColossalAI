@@ -3,6 +3,7 @@ from colossalai.zero.sharded_param import ShardedTensor
 from typing import Optional, Tuple
 from colossalai.zero.shard_utils.tensor_utils import colo_tensor_mem_usage
 from .tensorful_state import StatefulTensor, TensorState
+from typing import List
 
 
 class ShardedParamV2(object):
@@ -21,6 +22,11 @@ class ShardedParamV2(object):
         self.param = param
         if rm_torch_payload:
             self.remove_torch_payload()
+
+    def get_payload_tensors(self) -> List[StatefulTensor]:
+        """returns stateful tensors kept by this class.
+        """
+        return [self._sharded_data_tensor, self.saved_grad]
 
     def remove_torch_payload(self):
         self.param.data = torch.empty([], dtype=self.param.dtype, device=self.param.device)
