@@ -16,6 +16,29 @@ from colossalai.zero.sharded_model import ShardedModelV2
 
 from ._base_schedule import BaseSchedule
 
+def get_tensor_shape():
+    if hasattr(gpc.config, 'TENSOR_SHAPE'):
+        return gpc.config.TENSOR_SHAPE
+
+    if not gpc.is_initialized(ParallelMode.PIPELINE):
+        return None
+
+    if hasattr(gpc.config, 'SEQ_LENGTH') and hasattr(gpc.config, 'GLOBAL_BATCH_SIZE') and hasattr(gpc.config, 'GLOBAL_BATCH_SIZE') and hasattr(gpc.config, 'HIDDEN_SIZE'):
+        if gpc.is_initialized(ParallelMode.DATA):
+            dp_size = gpc.get_world_size(ParallelMode.DATA)
+        else:
+            dp_size = 1
+        if gpc.is_initialized(ParallelMode.SEQUENCE):
+            seq_size = gpc.get_world_size(ParallelMode.SEQUENCE)
+        else:
+            seq_size = 1
+
+        tensor_shape = (gpc.config.SEQ_LENGTH // seq_size,
+                        gpc.config.GLOBAL_BATCH_SIZE // dp_size // gpc.config.NUM_MICRO_BATCHES,
+                        gpc.config.HIDDEN_SIZE)
+        return tensor_shape
+    else:
+        return None
 
 def pack_return_tensors(return_tensors):
     output, label = tuple(zip(*return_tensors))
