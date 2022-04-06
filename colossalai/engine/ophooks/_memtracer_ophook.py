@@ -106,7 +106,7 @@ class MemTracerOpHook(BaseOpHook):
                 # output file info
                 self._logger.info(f"dump a memory statistics as pickle to {self._data_prefix}-{self._rank}.pkl")
                 home_dir = Path.home()
-                with open (home_dir.joinpath(f".cache/colossal/mem-{self._rank}.pkl"), "wb") as f:
+                with open(home_dir.joinpath(f".cache/colossal/mem-{self._rank}.pkl"), "wb") as f:
                     pickle.dump(self.async_mem_monitor.state_dict, f)
                 self._count += 1
                 self._logger.debug(f"data file has been refreshed {self._count} times")

@@ -13,16 +13,14 @@
 #include "cublas_wrappers.h"
 #include "kernels.h"
 
-template <typename T>
-class FeedForward {
- public:
+template <typename T> class FeedForward {
+public:
   struct Config {
     int outputSize;
     int inputSize;
     std::array<int, 3> gemm_algos;
     Config(int outputs, int inputs)
-        : outputSize(outputs),
-          inputSize(inputs),
+        : outputSize(outputs), inputSize(inputs),
           gemm_algos(std::array<int, 3>({99, 99, 99})) {}
   };
 
@@ -63,6 +61,6 @@ class FeedForward {
     config_.inputSize = inputSize;
   }
 
- private:
+private:
   Config config_;
 };
