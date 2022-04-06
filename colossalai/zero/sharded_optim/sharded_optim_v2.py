@@ -139,6 +139,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
+        self._state: Dict[Parameter, Dict[str, StatefulTensor]] = {}
+
     def get_memory_usage(self) -> Tuple[int, int]:
         """ Get the memory usage of the optimizer. Including master_params (param fp32),
         momentum (``self.state[p]['exp_avg']``) variance (``self.state[p]['exp_avg_sq']``)
@@ -183,6 +185,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             return
 
         self._point_param_fp16_to_master_param()
+        self._set_optim_states_before_step()
 
         self._logger.debug(
             f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory, {self.get_memory_usage()[1] / 1e6} MB CUDA Memory!",
@@ -194,6 +197,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory, {self.get_memory_usage()[1] / 1e6} MB CUDA Memory!",
             ranks=[0])
         self._copy_master_param_to_param_fp16()
+        self._set_optim_states_after_step()
         return ret
 
     def backward(self, loss: Tensor) -> None:
@@ -358,3 +362,28 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 p.data = p.colo_attr.sharded_data_tensor.payload
                 self.master_params[p].trans_state(TensorState.HOLD)
                 p.colo_attr.saved_grad.set_null()
+
+    def _set_optim_states_before_step(self):
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                # We don't need to set
+                # self.optim.state[p][k] = self._state[p][k].payload
+                # since payload is moved over devices inline
+                # self.optim.state[p][k]'s tensor id won't change
+                # the only change is its data pointer
+                for optim_state in self._state[p].values():
+                    optim_state.trans_state(TensorState.COMPUTE)
+
+    def _set_optim_states_after_step(self):
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                if len(self._state[p]) == 0:
+                    # states are initialized after first step
+                    self._state[p] = dict()
+                    for k, optim_state in self.optim.state[p].items():
+                        # we only manage tensor states
+                        if torch.is_tensor(optim_state):
+                            self._state[p][k] = StatefulTensor(optim_state)
+
+                for optim_state in self._state[p].values():
+                    optim_state.trans_state(TensorState.HOLD)
