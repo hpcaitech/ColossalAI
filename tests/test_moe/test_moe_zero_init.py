@@ -76,8 +76,11 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
             else:
                 assert param.is_replicated
 
-            assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
-                f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+            if param.colo_attr.param_is_sharded:
+                assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
+                    f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+            else:
+                assert param.colo_attr.sharded_data_tensor.payload.device.type == 'cuda'
 
 
 def _run_dist(rank, world_size, port):
@@ -88,6 +91,7 @@ def _run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.skip("Under development")
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_moe_zero_init(world_size):
     run_func = partial(_run_dist, world_size=world_size, port=free_port())

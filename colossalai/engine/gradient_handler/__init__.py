@@ -6,7 +6,7 @@ from ._pipeline_parallel_gradient_handler import PipelineSharedModuleGradientHan
 from ._moe_gradient_handler import MoeGradientHandler
 from ._sequence_parallel_gradient_handler import SequenceParallelGradientHandler
 
-
-__all__ = ['BaseGradientHandler', 'DataParallelGradientHandler',
-           'ZeROGradientHandler', 'PipelineSharedModuleGradientHandler',
-           'MoeGradientHandler', 'SequenceParallelGradientHandler']
+__all__ = [
+    'BaseGradientHandler', 'DataParallelGradientHandler', 'ZeROGradientHandler', 'PipelineSharedModuleGradientHandler',
+    'MoeGradientHandler', 'SequenceParallelGradientHandler'
+]

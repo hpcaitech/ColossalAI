@@ -11,32 +11,31 @@ from colossalai.utils import get_current_device
 class AsyncMemoryMonitor:
     """
     An Async Memory Monitor runing during computing. Sampling memory usage of the current GPU
-    at interval of 1/(10**power) sec.
+    at interval of `1/(10**power)` sec.
 
     The idea comes from Runtime Memory Tracer of PatrickStar
-    PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management
-    https://arxiv.org/abs/2108.05818
-    
-    :param power: the power of time interval, defaults to 10
-    :type power: int
+    `PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management`_
 
-    Usage:
-    ::
+    Usage::
 
-        ```python
-            async_mem_monitor = AsyncMemoryMonitor()
-            input = torch.randn(2, 20).cuda()
-            OP1 = torch.nn.Linear(20, 30).cuda()
-            OP2 = torch.nn.Linear(30, 40).cuda()
+        async_mem_monitor = AsyncMemoryMonitor()
+        input = torch.randn(2, 20).cuda()
+        OP1 = torch.nn.Linear(20, 30).cuda()
+        OP2 = torch.nn.Linear(30, 40).cuda()
 
-            async_mem_monitor.start()
-            output = OP1(input)
-            async_mem_monitor.finish()
-            async_mem_monitor.start()
-            output = OP2(output)
-            async_mem_monitor.finish()
-            async_mem_monitor.save('log.pkl')
-        ```
+        async_mem_monitor.start()
+        output = OP1(input)
+        async_mem_monitor.finish()
+        async_mem_monitor.start()
+        output = OP2(output)
+        async_mem_monitor.finish()
+        async_mem_monitor.save('log.pkl')
+
+    Args:
+        power (int, optional): the power of time interva. Defaults to 10.
+
+    .. _PatrickStar\: Parallel Training of Pre-trained Models via Chunk-based Memory Management:
+        https://arxiv.org/abs/2108.05818
     """
 
     def __init__(self, power: int = 10):
