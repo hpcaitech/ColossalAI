@@ -2,9 +2,11 @@ name: Compatibility Test
 
 on:
   workflow_dispatch:
-    version:
+    inputs:
+      version:
         type: choice
-        description: which version to test
+        description: version for testing
+        default: 'all'
         required: true
         options:
         - all
