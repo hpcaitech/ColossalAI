@@ -110,4 +110,5 @@ class ZeroHook(BaseOpHook):
         pass
 
     def post_iter(self):
-        pass
+        if self._stateful_tensor_mgr:
+            self._stateful_tensor_mgr.reset()

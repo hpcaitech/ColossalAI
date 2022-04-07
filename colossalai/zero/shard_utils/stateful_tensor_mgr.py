@@ -34,7 +34,6 @@ class StatefulTensorMgr(object):
         for t in param.get_payload_tensors():
             assert isinstance(t, StatefulTensor)
             self._stateful_tensor_list.append(t)
-            self._logger.warning(f'register {hash(t)}')
             old_trans_state = t.trans_state
 
             def _trans_state(stateful_tensor, state):
@@ -75,9 +74,9 @@ class StatefulTensorMgr(object):
             else:
                 raise RuntimeError
         cuda_capacity = colo_cuda_memory_capacity()
-        self._logger.info(f"get stats", ranks=[0])
+        # self._logger.info(f"get stats", ranks=[0])
 
-        self._logger.info(f"move_to_cuda_tensor_list len {len(move_to_cuda_tensor_list)}")
+        # self._logger.info(f"move_to_cuda_tensor_list len {len(move_to_cuda_tensor_list)}")
         if self._warmup:
             # We designate a part of CUDA memory for model data in warmup iterations.
             max_cuda_non_model_data_per_period = cuda_capacity * self._warmup_cuda_available_ratio
@@ -89,27 +88,24 @@ class StatefulTensorMgr(object):
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
 
-        self._logger.info(f"before eviction", ranks=[0])
+        # self._logger.info(f"before eviction", ranks=[0])
         if avail_cuda_model_data < cuda_demand:
-            self._logger.info(f"do eviction", ranks=[0])
+            # self._logger.info(f"do eviction", ranks=[0])
             # Move cuda_demand - avail_cuda_model_data volume of tensors
             # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             self.evict_tensors(hold_cuda_tensor_list, cuda_demand - avail_cuda_model_data)
-
         # move COMPUTE tensors to CUDA
-        self._logger.info(f"move tensors", ranks=[0])
+        # self._logger.info(f"move tensors", ranks=[0])
         for t in move_to_cuda_tensor_list:
             colo_model_data_tensor_move_inline(t, get_current_device())
-            self._logger.info(f"move tensor cpu -> cuda", ranks=[0])
-        self._logger.info("Adjust Tensor Layout Finished", ranks=[0])
+            # self._logger.info(f"move tensor cpu -> cuda", ranks=[0])
+        # self._logger.info("Adjust Tensor Layout Finished", ranks=[0])
 
     def reset(self):
         self._warmup = False
         self._compute_idx = -1
 
     def evict_tensors(self, hold_cuda_tensor_list, to_free_cuda_model_data):
-        self._logger.warning(
-            f'need {to_free_cuda_model_data/1024**2} MB data, {len(hold_cuda_tensor_list)} tensors can be freed')
         freed_cuda_model_data = 0
         to_free_tensor_list = hold_cuda_tensor_list
         if not self._warmup:
@@ -123,7 +119,6 @@ class StatefulTensorMgr(object):
             if freed_cuda_model_data > to_free_cuda_model_data:
                 break
             colo_model_data_tensor_move_inline(t, torch.device('cpu'))
-            self._logger.info(f'move tensor cuda -> cpu', ranks=[0])
             freed_cuda_model_data += colo_tensor_mem_usage(t)
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError("Adjust layout failed! No enough CUDA memory!")
