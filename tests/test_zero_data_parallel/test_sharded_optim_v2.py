@@ -60,8 +60,7 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         with ZeroInitContext(
                 target_device=torch.device(f'cpu:0') if cpu_offload else torch.device(f'cuda:{get_current_device()}'),
                 shard_strategy=shard_strategy,
-                shard_param=True,
-                rm_torch_payload_on_the_fly=False):
+                shard_param=True):
             zero_model = model_builder(checkpoint=True)
         zero_model = ShardedModelV2(
             zero_model,

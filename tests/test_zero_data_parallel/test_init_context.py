@@ -28,7 +28,6 @@ def run_model_test(init_device_type, shard_strategy_class):
 
     for get_components_func in non_distributed_component_funcs:
         model_builder, _, _, _, _ = get_components_func()
-        model_numel_tensor = torch.zeros(1, dtype=torch.int)
         if init_device_type == 'cuda':
             init_device = torch.device(f"cuda:{get_current_device()}")
         elif init_device_type == 'cpu':
@@ -40,8 +39,7 @@ def run_model_test(init_device_type, shard_strategy_class):
         with ZeroInitContext(target_device=init_device,
                              shard_strategy=shard_strategy_class(),
                              shard_param=True,
-                             model_numel_tensor=model_numel_tensor,
-                             rm_torch_payload_on_the_fly=False):
+                             model_numel_tensor=model_numel_tensor):
             model = model_builder(checkpoint=True)
 
         for param in model.parameters():

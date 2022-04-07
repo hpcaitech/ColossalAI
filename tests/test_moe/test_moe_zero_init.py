@@ -51,36 +51,36 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
     with ZeroInitContext(target_device=init_device,
                          shard_strategy=shard_strategy_class(),
                          shard_param=True,
-                         model_numel_tensor=model_numel_tensor,
-                         rm_torch_payload_on_the_fly=False):
+                         model_numel_tensor=model_numel_tensor):
         model = MoeModel()
 
-        for name, param in model.named_parameters():
-            assert hasattr(param, 'colo_attr')
+    for name, param in model.named_parameters():
+        assert hasattr(param, 'colo_attr')
 
-            # the weights in the gate should be fp32
-            if 'gate' in name:
-                assert param.colo_attr.sharded_data_tensor.dtype == torch.float32
-            else:
-                assert param.colo_attr.sharded_data_tensor.dtype == torch.half
+        # the weights in the gate should be fp32
+        if 'gate' in name:
+            assert param.colo_attr.sharded_data_tensor.dtype == torch.float32
+        else:
+            assert param.colo_attr.sharded_data_tensor.dtype == torch.half
 
-            # the parameters in moe experts and its gate should not be sharded
-            if ('experts' in name) or ('gate' in name) or ('residual_combine' in name):
-                assert not param.colo_attr.sharded_data_tensor.is_sharded
-            else:
-                assert param.colo_attr.sharded_data_tensor.is_sharded
+        # the parameters in moe experts and its gate should not be sharded
+        if ('experts' in name) or ('gate' in name) or ('residual_combine' in name):
+            assert not param.colo_attr.sharded_data_tensor.is_sharded
+            assert param.colo_attr.sharded_data_tensor.data_ptr() == param.data.data_ptr()
+        else:
+            assert param.colo_attr.sharded_data_tensor.is_sharded
 
-            # the parameters in moe experts is not replicated
-            if 'experts' in name:
-                assert not param.is_replicated
-            else:
-                assert param.is_replicated
+        # the parameters in moe experts is not replicated
+        if 'experts' in name:
+            assert not param.is_replicated
+        else:
+            assert param.is_replicated
 
-            if param.colo_attr.param_is_sharded:
-                assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
-                    f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
-            else:
-                assert param.colo_attr.sharded_data_tensor.payload.device.type == 'cuda'
+        if param.colo_attr.param_is_sharded:
+            assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
+                f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+        else:
+            assert param.colo_attr.sharded_data_tensor.payload.device.type == 'cuda'
 
 
 def _run_dist(rank, world_size, port):
@@ -91,7 +91,6 @@ def _run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [2, 4])
-@pytest.mark.skip("Under development")
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_moe_zero_init(world_size):
     run_func = partial(_run_dist, world_size=world_size, port=free_port())
