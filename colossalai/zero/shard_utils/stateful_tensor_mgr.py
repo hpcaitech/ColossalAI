@@ -1,3 +1,4 @@
+import functools
 import torch
 import types
 from colossalai.utils.cuda import get_current_device
@@ -5,7 +6,7 @@ from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
 from colossalai.zero.shard_utils.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity
-from typing import Dict, List, Set
+from typing import Dict, List
 from colossalai.utils.memory_tracer import MemStatsCollector
 from colossalai.logging import get_dist_logger
 
@@ -34,16 +35,7 @@ class StatefulTensorMgr(object):
         for t in param.get_payload_tensors():
             assert isinstance(t, StatefulTensor)
             self._stateful_tensor_list.append(t)
-            old_trans_state = t.trans_state
-
-            def _trans_state(stateful_tensor, state):
-                old_trans_state(state)
-                if state == TensorState.COMPUTE:
-                    self._compute_idx += 1
-                    if self._warmup:
-                        self._compute_list.append(stateful_tensor)
-
-            t.trans_state = types.MethodType(_trans_state, t)
+            t.trans_state = types.MethodType(functools.partial(self._trans_state, t.trans_state), t)
 
     def adjust_layout(self) -> None:
         """ Adjust the layout of statefuil tensor according to the information provided
@@ -102,6 +94,8 @@ class StatefulTensorMgr(object):
         # self._logger.info("Adjust Tensor Layout Finished", ranks=[0])
 
     def reset(self):
+        """This function must be called when each iteration finishes
+        """
         self._warmup = False
         self._compute_idx = -1
 
@@ -122,3 +116,10 @@ class StatefulTensorMgr(object):
             freed_cuda_model_data += colo_tensor_mem_usage(t)
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError("Adjust layout failed! No enough CUDA memory!")
+
+    def _trans_state(self, trans_state_func, stateful_tensor, state):
+        trans_state_func(state)
+        if state == TensorState.COMPUTE:
+            self._compute_idx += 1
+            if self._warmup:
+                self._compute_list.append(stateful_tensor)
