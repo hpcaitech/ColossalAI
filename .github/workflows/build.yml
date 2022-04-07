@@ -15,7 +15,7 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: frankleeeee/pytorch-cuda:1.10.1-11.3.0
-      options: --gpus all --rm --ipc=host -v /data/scratch/cifar-10:/data/scratch/cifar-10
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 40
     steps:
       - name: Install dependencies

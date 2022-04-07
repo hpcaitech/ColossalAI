@@ -41,7 +41,7 @@ jobs:
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
     container:
       image: ${{ matrix.container }}
-      options: --gpus all --rm --ipc=host -v /data/scratch/cifar-10:/data/scratch/cifar-10
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 120
     steps:
       - name: Install dependencies
