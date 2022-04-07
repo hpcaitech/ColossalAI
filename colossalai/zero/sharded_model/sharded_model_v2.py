@@ -288,6 +288,9 @@ class ShardedModelV2(nn.Module):
 
             p.grad = None
 
+        if self._stateful_tensor_mgr is not None:
+            self._stateful_tensor_mgr.reset()
+
     @torch.no_grad()
     def _grad_post_backward_hook(self, param: Parameter, grad: torch.Tensor) -> Optional[torch.Tensor]:
         """

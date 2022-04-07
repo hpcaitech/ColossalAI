@@ -36,12 +36,6 @@ class ZeroHook(BaseOpHook):
         self._stateful_tensor_mgr = stateful_tensor_mgr
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
-        tensor_list = []
-        for param in module.parameters(recurse=False):
-            assert hasattr(param, 'colo_attr')
-            tensor_list.append(param.colo_attr.sharded_data_tensor)
-        self.shard_strategy.gather(tensor_list, self.process_group)
-
         for param in module.parameters(recurse=False):
             param.colo_attr.sharded_data_tensor.trans_state(TensorState.COMPUTE)
 
@@ -50,6 +44,12 @@ class ZeroHook(BaseOpHook):
         else:
             for param in module.parameters(recurse=False):
                 colo_model_data_tensor_move_inline(param.colo_attr.sharded_data_tensor, self.computing_device)
+
+        tensor_list = []
+        for param in module.parameters(recurse=False):
+            assert hasattr(param, 'colo_attr')
+            tensor_list.append(param.colo_attr.sharded_data_tensor)
+        self.shard_strategy.gather(tensor_list, self.process_group)
 
         if self._memstarts_collector:
             self._memstarts_collector.sample_memstats()
@@ -71,12 +71,6 @@ class ZeroHook(BaseOpHook):
             param.colo_attr.remove_torch_payload()
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
-        tensor_list = []
-        for param in module.parameters(recurse=False):
-            assert hasattr(param, 'colo_attr')
-            tensor_list.append(param.colo_attr.sharded_data_tensor)
-        self.shard_strategy.gather(tensor_list, self.process_group)
-
         for param in module.parameters(recurse=False):
             param.colo_attr.sharded_data_tensor.trans_state(TensorState.COMPUTE)
 
@@ -85,6 +79,12 @@ class ZeroHook(BaseOpHook):
         else:
             for param in module.parameters(recurse=False):
                 colo_model_data_tensor_move_inline(param.colo_attr.sharded_data_tensor, self.computing_device)
+
+        tensor_list = []
+        for param in module.parameters(recurse=False):
+            assert hasattr(param, 'colo_attr')
+            tensor_list.append(param.colo_attr.sharded_data_tensor)
+        self.shard_strategy.gather(tensor_list, self.process_group)
 
         if self._memstarts_collector:
             self._memstarts_collector.sample_memstats()
