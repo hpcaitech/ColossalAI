@@ -81,7 +81,7 @@ class StatefulTensorMgr(object):
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
         print(f'cuda_capacity: {cuda_capacity/1024**2}')
         print(f'max_cuda_non_model_data_per_period: {max_cuda_non_model_data_per_period/1024**2}')
-        print(f'total_cuda_model_data： {total_cuda_model_data/1024**2}')
+        print(f'total_cuda_model_data: {total_cuda_model_data/1024**2}')
         print(f'used_cuda_model_data: {used_cuda_model_data/1024**2}')
         print(f'avail_cuda_model_data: {avail_cuda_model_data/1024**2}')
         print(f'cuda_demand: {cuda_demand/1024**2}')
