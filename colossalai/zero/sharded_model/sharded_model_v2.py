@@ -112,8 +112,8 @@ class ShardedModelV2(nn.Module):
                 for param in submodule.parameters(recurse=False):
                     if hasattr(param, 'colo_attr'):
                         self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
-            self._start_collect_memstats = disposable(lambda: self._memstats_collector.start_collection())
-            self._finish_collect_memstats = disposable(lambda: self._memstats_collector.finish_collection())
+            self._start_collect_memstats = disposable(self._memstats_collector.start_collection)
+            self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
         else:
             self._memstats_collector = None
             self._stateful_tensor_mgr = None
