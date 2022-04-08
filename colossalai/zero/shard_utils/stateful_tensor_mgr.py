@@ -62,7 +62,7 @@ class StatefulTensorMgr(object):
             elif tensor.device.type == 'cpu':
                 if tensor.state == TensorState.COMPUTE:
                     move_to_cuda_tensor_list.append(tensor)
-                    cuda_demand += colo_tensor_mem_usage(tensor.payload)[0]
+                    cuda_demand += colo_tensor_mem_usage(tensor.payload)[1]
             else:
                 raise RuntimeError
         cuda_capacity = colo_cuda_memory_capacity()
@@ -79,9 +79,15 @@ class StatefulTensorMgr(object):
 
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
-
+        print(f'cuda_capacity: {cuda_capacity/1024**2}')
+        print(f'max_cuda_non_model_data_per_period: {max_cuda_non_model_data_per_period/1024**2}')
+        print(f'total_cuda_model_data： {total_cuda_model_data/1024**2}')
+        print(f'used_cuda_model_data: {used_cuda_model_data/1024**2}')
+        print(f'avail_cuda_model_data: {avail_cuda_model_data/1024**2}')
+        print(f'cuda_demand: {cuda_demand/1024**2}')
         # self._logger.info(f"before eviction", ranks=[0])
         if avail_cuda_model_data < cuda_demand:
+
             # self._logger.info(f"do eviction", ranks=[0])
             # Move cuda_demand - avail_cuda_model_data volume of tensors
             # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
@@ -112,10 +118,12 @@ class StatefulTensorMgr(object):
         for t in to_free_tensor_list:
             if freed_cuda_model_data > to_free_cuda_model_data:
                 break
+            freed_cuda_model_data += colo_tensor_mem_usage(t)[0]
             colo_model_data_tensor_move_inline(t, torch.device('cpu'))
-            freed_cuda_model_data += colo_tensor_mem_usage(t)
-            if freed_cuda_model_data < to_free_cuda_model_data:
-                raise RuntimeError("Adjust layout failed! No enough CUDA memory!")
+        if freed_cuda_model_data < to_free_cuda_model_data:
+            raise RuntimeError(
+                f"Adjust layout failed! No enough CUDA memory! Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
+            )
 
     def _trans_state(self, trans_state_func, stateful_tensor, state):
         trans_state_func(state)
