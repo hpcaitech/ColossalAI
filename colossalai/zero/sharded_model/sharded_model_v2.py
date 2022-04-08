@@ -23,6 +23,7 @@ from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
+from colossalai.zero.shard_utils.stateful_tensor_mgr import StatefulTensorMgr
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
@@ -36,7 +37,6 @@ class ShardedModelV2(nn.Module):
 
     Note:
         You must use ``ShardedModelV2`` with ``ShardedOptimizerV2``.
-
     Note:
         Make sure you don't use gradient accumulation and your optimizer can work with fp16 gradient and fp32 parameter,
         if you enable ``reuse_fp16_shard``.
@@ -106,12 +106,21 @@ class ShardedModelV2(nn.Module):
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_model(self)
             self._memstats_collector = MemStatsCollector()
+            self._stateful_tensor_mgr = StatefulTensorMgr(self._memstats_collector)
+            # for param in module.parameters():
+            for submodule in module.modules():
+                for param in submodule.parameters(recurse=False):
+                    if hasattr(param, 'colo_attr'):
+                        self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
         else:
             self._memstats_collector = None
+            self._stateful_tensor_mgr = None
         self._iter_cnter = 0
 
         # Register hooks
-        self._ophook_list = [ZeroHook(self.shard_strategy, self._memstats_collector, self.process_group)]
+        self._ophook_list = [
+            ZeroHook(self.shard_strategy, self._memstats_collector, self._stateful_tensor_mgr, self.process_group)
+        ]
         register_ophooks_recursively(self.module, self._ophook_list, filter_fn=lambda m: not m.param_is_sharded)
         self.param_hook_mgr = BaseParamHookMgr(self.sharded_params)
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
@@ -138,6 +147,9 @@ class ShardedModelV2(nn.Module):
         self._cuda_margin_space = 0
         self.reuse_fp16_shard = reuse_fp16_shard
 
+    def adjust_stateful_tensor_layout(self) -> None:
+        self._stateful_tensor_mgr.adjust_layout()
+
     @property
     def use_memory_tracer(self):
         return self._use_memory_tracer
@@ -150,20 +162,15 @@ class ShardedModelV2(nn.Module):
     def cpu_offload(self):
         return self._cpu_offload
 
-    def dump_memory_stats(self, filename: str = 'dump_mem_stats.log') -> None:
-        """Dummy memory tracer collected infomation to a file.
-
-        Example::
-
-            try:
-                # forward: model(inputs)
-                # backward: optimizer.backward()
-            except Exception as e:
-                model.dump_memory_stats()
-                exit(0)
-
-        Args:
-            filename (str, optional): Output file name. Defaults to 'dump_mem_stats.log'.
+    def dump_memory_stats(self, filename: Optional[str] = 'dump_mem_stats.log') -> None:
+        """
+        dummy memory tracer collected infomation to a file.
+        try:
+            # forward: model(inputs)
+            # backward: optimizer.backward()
+        except Exception as e:
+            model.dump_memory_stats()
+            exit(0)
         """
         if self._use_memory_tracer:
             self.logger.error(f'dump memort tracer collected infomation to a {filename}', ranks=[0])
@@ -172,12 +179,12 @@ class ShardedModelV2(nn.Module):
                     f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device())/1e9} GB\n')
                     f.write(f'cuda max allocated {torch.cuda.max_memory_allocated(get_current_device())/1e9} GB\n')
                     f.write('CUDA model data (GB)\n')
-                    f.write(str(self._memstats_collector.model_data_cuda_list('cuda', 'GB')))
+                    f.write(str(self._memstats_collector.model_data_list('cuda', 'GB')))
                     f.write('\n')
                     f.write('CUDA non model data (GB)\n')
-                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cuda', 'GB')))
+                    f.write(str(self._memstats_collector.non_model_data_list('cuda', 'GB')))
                     f.write('CPU non model data (GB)\n')
-                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cpu', 'GB')))
+                    f.write(str(self._memstats_collector.non_model_data_list('cpu', 'GB')))
                     f.write('\n')
 
     def _pre_forward_operations(self):

@@ -26,7 +26,7 @@ class ShardedParamV2(object):
     def get_payload_tensors(self) -> List[StatefulTensor]:
         """returns stateful tensors kept by this class.
         """
-        return [self._sharded_data_tensor, self.saved_grad]
+        return [self._sharded_data_tensor]
 
     def remove_torch_payload(self):
         self.param.data = torch.empty([], dtype=self.param.dtype, device=self.param.device)
