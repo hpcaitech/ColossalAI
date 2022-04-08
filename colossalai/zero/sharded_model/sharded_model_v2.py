@@ -112,6 +112,8 @@ class ShardedModelV2(nn.Module):
                 for param in submodule.parameters(recurse=False):
                     if hasattr(param, 'colo_attr'):
                         self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
+            self._start_collect_memstats = disposable(lambda: self._memstats_collector.start_collection())
+            self._finish_collect_memstats = disposable(lambda: self._memstats_collector.finish_collection())
         else:
             self._memstats_collector = None
             self._stateful_tensor_mgr = None
@@ -161,16 +163,6 @@ class ShardedModelV2(nn.Module):
     def cpu_offload(self):
         return self._cpu_offload
 
-    @disposable
-    def _start_collect_memstats(self):
-        if self._memstats_collector:
-            self._memstats_collector.start_collection()
-
-    @disposable
-    def _finish_collect_memstats(self):
-        if self._memstats_collector:
-            self._memstats_collector.finish_collection()
-
     def dump_memory_stats(self, filename: Optional[str] = 'dump_mem_stats.log') -> None:
         """
         dummy memory tracer collected infomation to a file.
@@ -198,7 +190,8 @@ class ShardedModelV2(nn.Module):
 
     def _pre_forward_operations(self):
         # the operation will affect the memory tracer behavior in ZeroHook
-        self._start_collect_memstats()
+        if self._memstats_collector:
+            self._start_collect_memstats()
 
         for p in self.module.parameters():
             if hasattr(p, 'colo_attr'):
@@ -229,8 +222,8 @@ class ShardedModelV2(nn.Module):
             ophook.post_iter()
 
     def _update_memstats(self):
-        self._finish_collect_memstats()
         if self._memstats_collector:
+            self._finish_collect_memstats()
             # cuda margin space = cuda mem capacity - max fwd/bwd cuda mem used.
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.

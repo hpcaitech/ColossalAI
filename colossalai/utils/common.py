@@ -4,7 +4,7 @@ import os
 import random
 import socket
 from pathlib import Path
-from typing import List, Union
+from typing import Callable, List, Union
 import functools
 import torch
 from torch._six import inf
@@ -331,7 +331,7 @@ def switch_virtual_pipeline_parallel_rank(rank):
         gpc.set_virtual_pipeline_parallel_rank(prev_rank)
 
 
-def disposable(func):
+def disposable(func: Callable) -> Callable:
     executed = False
 
     @functools.wraps(func)
