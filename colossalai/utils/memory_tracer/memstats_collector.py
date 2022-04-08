@@ -29,7 +29,8 @@ class SamplingCounter:
         return self._max_sampling_cnt
 
     def reset(self):
-        self._max_sampling_cnt = self._samplint_cnt
+        if self._max_sampling_cnt is not None:
+            self._max_sampling_cnt = max(self._max_sampling_cnt, self._samplint_cnt)
         self._samplint_cnt = 0
 
 
