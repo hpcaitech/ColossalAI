@@ -5,6 +5,11 @@ from colossalai.zero.shard_utils.tensor_utils import colo_tensor_mem_usage
 from .tensorful_state import StatefulTensor, TensorState
 from typing import List
 
+# use this tensor as empty data point for parameters
+# we do not want users use param.data when its torch payload is removed
+# empty tensor is expected to raise error when get used
+FAKE_EMPTY_TENSOR = torch.BoolTensor([], device='cpu')
+
 
 class ShardedParamV2(object):
 
@@ -29,7 +34,7 @@ class ShardedParamV2(object):
         return [self._sharded_data_tensor]
 
     def remove_torch_payload(self):
-        self.param.data = torch.empty([], dtype=self.param.dtype, device=self.param.device)
+        self.param.data = FAKE_EMPTY_TENSOR.to(self._sharded_data_tensor.device, self._sharded_data_tensor.dtype)
 
     @property
     def sharded_data_tensor(self):

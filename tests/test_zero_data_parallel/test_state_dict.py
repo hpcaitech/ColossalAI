@@ -56,4 +56,4 @@ def test_zero_state_dict(world_size):
 
 
 if __name__ == '__main__':
-    test_zero_state_dict(2, TensorShardStrategy)
+    test_zero_state_dict(2)

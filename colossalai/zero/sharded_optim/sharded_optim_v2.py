@@ -268,10 +268,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     p.data = self.master_params[p].payload
                     p.colo_attr.sharded_data_tensor.reset_payload(
                         colo_model_tensor_clone(p.half(), torch.cuda.current_device()))
-
-                if not p.colo_attr.param_is_sharded:
-                    # FIXME(hhc): add hook for unsharded parameters
-                    p.data = p.colo_attr.sharded_data_tensor.payload
+                    p.colo_attr.remove_torch_payload()
 
     def sync_grad(self):
         pass
@@ -351,10 +348,11 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
                 p.colo_attr.sharded_data_tensor.reset_payload(
                     colo_model_tensor_clone(p.half(), p.colo_attr.sharded_data_tensor.device))
+                p.colo_attr.remove_torch_payload()
 
                 if not is_param_sharded and not self.keep_unshard:
                     # We gather full fp16 param here
                     self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
-                p.data = p.colo_attr.sharded_data_tensor.payload
+
                 self.master_params[p].trans_state(TensorState.HOLD)
                 p.colo_attr.saved_grad.set_null()

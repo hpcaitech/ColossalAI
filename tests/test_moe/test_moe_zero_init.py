@@ -66,7 +66,6 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
         # the parameters in moe experts and its gate should not be sharded
         if ('experts' in name) or ('gate' in name) or ('residual_combine' in name):
             assert not param.colo_attr.sharded_data_tensor.is_sharded
-            assert param.colo_attr.sharded_data_tensor.data_ptr() == param.data.data_ptr()
         else:
             assert param.colo_attr.sharded_data_tensor.is_sharded
 

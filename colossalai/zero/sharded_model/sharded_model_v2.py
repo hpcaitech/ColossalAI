@@ -121,7 +121,7 @@ class ShardedModelV2(nn.Module):
         self._ophook_list = [
             ZeroHook(self.shard_strategy, self._memstats_collector, self._stateful_tensor_mgr, self.process_group)
         ]
-        register_ophooks_recursively(self.module, self._ophook_list, filter_fn=lambda m: not m.param_is_sharded)
+        register_ophooks_recursively(self.module, self._ophook_list)
         self.param_hook_mgr = BaseParamHookMgr(self.sharded_params)
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
@@ -366,14 +366,12 @@ class ShardedModelV2(nn.Module):
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.colo_attr.sharded_data_tensor for p in self.sharded_params], self.process_group)
-        prev_params = {}
         for p in self.sharded_params:
-            prev_params[p] = p.data
             p.data = p.colo_attr.sharded_data_tensor.payload
         gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
         self.shard_strategy.shard([p.colo_attr.sharded_data_tensor for p in self.sharded_params], self.process_group)
         for p in self.sharded_params:
-            p.data = prev_params[p]
+            p.colo_attr.remove_torch_payload()
         return gathered_state_dict
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):

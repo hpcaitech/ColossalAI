@@ -74,7 +74,7 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
     # check whether parameters are identical in ddp
     for name, p in zero_model.named_parameters():
         if not p.colo_attr.param_is_sharded and p.is_replicated:
-            assert_equal_in_group(p.data.to(get_current_device()))
+            assert_equal_in_group(p.colo_attr.sharded_data_tensor.payload.to(get_current_device()))
 
     model = MoeModel().half()
     col_model_deepcopy(zero_model, model)
@@ -99,7 +99,7 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
     for (n, p), zp in zip(apex_model.named_parameters(), zero_model.parameters()):
         if 'gate' in n:
             p.data = p.float()
-            p.data.copy_(zp.data)
+            p.data.copy_(zp.colo_attr.sharded_data_tensor.payload)
 
     for i, (data, label) in enumerate(train_dataloader):
         if i > 5:
