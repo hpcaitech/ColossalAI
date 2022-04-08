@@ -1,15 +1,18 @@
 import torch
 import colossalai
 import pytest
+import torch.multiprocessing as mp
 from colossalai.utils.memory_tracer import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity, colo_set_process_memory_fraction
-from colossalai.zero.shard_utils.tensor_utils import colo_model_data_tensor_move_inline
 from colossalai.zero.shard_utils import StatefulTensorMgr
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
+from colossalai.zero.sharded_param.tensorful_state import TensorState
+from colossalai.utils import free_port
+from colossalai.testing import rerun_on_exception
 from torch.nn.parameter import Parameter
 from typing import List
+from functools import partial
 
 
 class Net(torch.nn.Module):
@@ -22,9 +25,7 @@ class Net(torch.nn.Module):
         self.p2 = Parameter(torch.empty(1024, 1024, 128))
 
 
-@pytest.mark.skip
-def test():
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=29444, local_rank=0)
+def run_stm():
     cuda_capacity = colo_cuda_memory_capacity()
     fraction = (1.4 * 1024**3) / cuda_capacity
     # limit max memory to 1.4GB
@@ -41,34 +42,38 @@ def test():
 
     mem_collector.start_collection()
     # Compute order: 0 1 2 0 1
+    # warmup
+    # use naive eviction strategy
     mem_collector.sample_memstats()
-    test_adjust(model, model.p0, [model.p0], stateful_tensor_mgr)
+    apply_adjust(model, model.p0, [model.p0], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p1, [model.p0, model.p1], stateful_tensor_mgr)
+    apply_adjust(model, model.p1, [model.p0, model.p1], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p2, [model.p1, model.p2], stateful_tensor_mgr)
+    apply_adjust(model, model.p2, [model.p1, model.p2], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p0, [model.p0, model.p2], stateful_tensor_mgr)
+    apply_adjust(model, model.p0, [model.p0, model.p2], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
+    apply_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
     mem_collector.finish_collection()
     mem_collector.reset_sampling_cnter()
-    print('warmup done')
     stateful_tensor_mgr.reset()
+
+    # warmup done
+    # use OPT-like eviction strategy
     mem_collector.sample_memstats()
-    test_adjust(model, model.p0, [model.p0, model.p1], stateful_tensor_mgr)
+    apply_adjust(model, model.p0, [model.p0, model.p1], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p1, [model.p0, model.p1], stateful_tensor_mgr)
+    apply_adjust(model, model.p1, [model.p0, model.p1], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p2, [model.p0, model.p2], stateful_tensor_mgr)
+    apply_adjust(model, model.p2, [model.p0, model.p2], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p0, [model.p0, model.p2], stateful_tensor_mgr)
+    apply_adjust(model, model.p0, [model.p0, model.p2], stateful_tensor_mgr)
     mem_collector.sample_memstats()
-    test_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
+    apply_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
 
 
-def test_adjust(model: torch.nn.Module, compute_param: Parameter, cuda_param_after_adjust: List[Parameter],
-                stateful_tensor_mgr: StatefulTensorMgr):
+def apply_adjust(model: torch.nn.Module, compute_param: Parameter, cuda_param_after_adjust: List[Parameter],
+                 stateful_tensor_mgr: StatefulTensorMgr):
     compute_param.colo_attr._sharded_data_tensor.trans_state(TensorState.COMPUTE)
     for p in model.parameters():
         if p is not compute_param and p.colo_attr._sharded_data_tensor.state != TensorState.HOLD:
@@ -91,5 +96,17 @@ def print_stats(model: torch.nn.Module):
     print(f'[ {", ".join(msgs)} ]')
 
 
+def run_dist(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_stm()
+
+
+@pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+def test_stateful_tensor_manager(world_size=1):
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
+
+
 if __name__ == '__main__':
-    test()
+    test_stateful_tensor_manager()

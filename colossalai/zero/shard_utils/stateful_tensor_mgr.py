@@ -46,7 +46,6 @@ class StatefulTensorMgr(object):
             It contains non-model footprint of a DNN model.
         """
         # find stateful tensor in state COMPUTE
-        # self._logger.info("Adjust Tensor Layout Begin", ranks=[0])
         move_to_cuda_tensor_list = []
         cuda_demand = 0
         used_cuda_model_data = 0
@@ -66,9 +65,7 @@ class StatefulTensorMgr(object):
             else:
                 raise RuntimeError
         cuda_capacity = colo_cuda_memory_capacity()
-        # self._logger.info(f"get stats", ranks=[0])
 
-        # self._logger.info(f"move_to_cuda_tensor_list len {len(move_to_cuda_tensor_list)}")
         if self._warmup:
             # We designate a part of CUDA memory for model data in warmup iterations.
             max_cuda_non_model_data_per_period = cuda_capacity * self._warmup_cuda_available_ratio
@@ -79,25 +76,14 @@ class StatefulTensorMgr(object):
 
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
-        print(f'cuda_capacity: {cuda_capacity/1024**2}')
-        print(f'max_cuda_non_model_data_per_period: {max_cuda_non_model_data_per_period/1024**2}')
-        print(f'total_cuda_model_data: {total_cuda_model_data/1024**2}')
-        print(f'used_cuda_model_data: {used_cuda_model_data/1024**2}')
-        print(f'avail_cuda_model_data: {avail_cuda_model_data/1024**2}')
-        print(f'cuda_demand: {cuda_demand/1024**2}')
-        # self._logger.info(f"before eviction", ranks=[0])
-        if avail_cuda_model_data < cuda_demand:
 
-            # self._logger.info(f"do eviction", ranks=[0])
+        if avail_cuda_model_data < cuda_demand:
             # Move cuda_demand - avail_cuda_model_data volume of tensors
             # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             self.evict_tensors(hold_cuda_tensor_list, cuda_demand - avail_cuda_model_data)
         # move COMPUTE tensors to CUDA
-        # self._logger.info(f"move tensors", ranks=[0])
         for t in move_to_cuda_tensor_list:
             colo_model_data_tensor_move_inline(t, get_current_device())
-            # self._logger.info(f"move tensor cpu -> cuda", ranks=[0])
-        # self._logger.info("Adjust Tensor Layout Finished", ranks=[0])
 
     def reset(self):
         """This function must be called when each iteration finishes
