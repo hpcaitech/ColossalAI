@@ -98,7 +98,7 @@ distributed training in a few lines.
 - 2x faster training, or 50% longer sequence length
 
 ### PaLM
-- [PaLM-colossalai](https://www.colossalai.org/): Scalable implementation of Google's Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)).
+- [PaLM-colossalai](https://github.com/hpcaitech/PaLM-colossalai): Scalable implementation of Google's Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)).
 
 Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
 

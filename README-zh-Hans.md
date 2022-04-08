@@ -98,7 +98,7 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 - 2倍训练速度，或1.5倍序列长度
 
 ### PaLM
-- [PaLM-colossalai](https://www.colossalai.org/): 可扩展的谷歌 Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)) 实现。
+- [PaLM-colossalai](https://github.com/hpcaitech/PaLM-colossalai): 可扩展的谷歌 Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)) 实现。
 
 请访问我们的[文档和教程](https://www.colossalai.org/)以了解详情。
 
