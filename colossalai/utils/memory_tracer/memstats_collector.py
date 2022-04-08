@@ -39,7 +39,7 @@ class MemStatsCollector:
     The first iteration of DNN training.
     Phase 2. Runtime Phase: use the read-only collected stats
     The rest iterations of DNN training.
-    
+
     It has a Sampling counter which is reset after DNN training iteration.
     """
 
@@ -109,12 +109,12 @@ class MemStatsCollector:
     def current_non_model_data(self, device_type: str) -> int:
         """get the non model data of the current sampling moment
         """
-        return self.non_model_data_list(device_type)[self._sampling_cnter.current() - 1]
+        return self.non_model_data_list(device_type)[self._sampling_cnter.current()]
 
     def next_non_model_data(self, device_type: str):
         """get the non model data of the next sampling moment
         """
-        return self.non_model_data_list(device_type)[self._sampling_cnter.next() - 1]
+        return self.non_model_data_list(device_type)[self._sampling_cnter.next()]
 
     @property
     def sampling_time(self):
@@ -146,6 +146,8 @@ class MemStatsCollector:
             self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
             self._sampling_time.append(time.time())
             self._mem_monitor.start()
+        # TODO(ver217): refactor sampler
+        # print(f'{self._sampling_cnter.current()} / {self._sampling_cnter.max()}, len = {len(self._sampling_time)}')
         self._sampling_cnter.advance()
 
     def reset_sampling_cnter(self) -> None:

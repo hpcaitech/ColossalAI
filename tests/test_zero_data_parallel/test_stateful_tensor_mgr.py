@@ -44,7 +44,6 @@ def run_stm():
     # Compute order: 0 1 2 0 1
     # warmup
     # use naive eviction strategy
-    mem_collector.sample_memstats()
     apply_adjust(model, model.p0, [model.p0], stateful_tensor_mgr)
     mem_collector.sample_memstats()
     apply_adjust(model, model.p1, [model.p0, model.p1], stateful_tensor_mgr)
@@ -54,13 +53,13 @@ def run_stm():
     apply_adjust(model, model.p0, [model.p0, model.p2], stateful_tensor_mgr)
     mem_collector.sample_memstats()
     apply_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
+    mem_collector.sample_memstats()
     mem_collector.finish_collection()
     mem_collector.reset_sampling_cnter()
     stateful_tensor_mgr.reset()
 
     # warmup done
     # use OPT-like eviction strategy
-    mem_collector.sample_memstats()
     apply_adjust(model, model.p0, [model.p0, model.p1], stateful_tensor_mgr)
     mem_collector.sample_memstats()
     apply_adjust(model, model.p1, [model.p0, model.p1], stateful_tensor_mgr)
@@ -70,6 +69,7 @@ def run_stm():
     apply_adjust(model, model.p0, [model.p0, model.p2], stateful_tensor_mgr)
     mem_collector.sample_memstats()
     apply_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
+    mem_collector.sample_memstats()
 
 
 def apply_adjust(model: torch.nn.Module, compute_param: Parameter, cuda_param_after_adjust: List[Parameter],
