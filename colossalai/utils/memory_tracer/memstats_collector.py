@@ -109,12 +109,12 @@ class MemStatsCollector:
     def current_non_model_data(self, device_type: str) -> int:
         """get the non model data of the current sampling moment
         """
-        return self.non_model_data_list(device_type)[self._sampling_cnter.current()]
+        return self.non_model_data_list(device_type)[self._sampling_cnter.current() - 1]
 
     def next_non_model_data(self, device_type: str):
         """get the non model data of the next sampling moment
         """
-        return self.non_model_data_list(device_type)[self._sampling_cnter.next()]
+        return self.non_model_data_list(device_type)[self._sampling_cnter.next() - 1]
 
     @property
     def sampling_time(self):
