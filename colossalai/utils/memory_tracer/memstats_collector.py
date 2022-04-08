@@ -15,8 +15,6 @@ class SamplingCounter:
 
     def advance(self):
         self._samplint_cnt += 1
-        if self._max_sampling_cnt is not None:
-            self._samplint_cnt = self._samplint_cnt % self._max_sampling_cnt
 
     def next(self):
         assert self._max_sampling_cnt is not None
@@ -29,8 +27,7 @@ class SamplingCounter:
         return self._max_sampling_cnt
 
     def reset(self):
-        if self._max_sampling_cnt is not None:
-            self._max_sampling_cnt = max(self._max_sampling_cnt, self._samplint_cnt)
+        self._max_sampling_cnt = self._samplint_cnt
         self._samplint_cnt = 0
 
 
