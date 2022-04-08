@@ -48,11 +48,11 @@ jobs:
         run: |
           pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip install -U pip setuptools wheel --user
-          pip install pytest tensorboard transformers
       - uses: actions/checkout@v2
       - name: Install Colossal-AI      
         run: |
           pip install -r requirements/requirements.txt
+          pip install -r requirements/requirements-test.txt
           pip install -v --no-cache-dir .
       - name: Unit Testing
         run: |
