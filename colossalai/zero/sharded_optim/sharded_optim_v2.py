@@ -350,7 +350,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
                 # TODO() optimize this line CPU (fp32) -> GPU (fp16)
                 p.colo_attr.sharded_data_tensor.reset_payload(
-                    colo_model_tensor_clone(p.half(), torch.cuda.current_device()))
+                    colo_model_tensor_clone(p.half(), p.colo_attr.sharded_data_tensor.device))
 
                 if not is_param_sharded and not self.keep_unshard:
                     # We gather full fp16 param here
