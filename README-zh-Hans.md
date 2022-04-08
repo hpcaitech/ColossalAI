@@ -33,6 +33,7 @@
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
+     <li><a href="#PaLM">BERT</a></li>
    </ul>
  </li>
 
@@ -95,6 +96,9 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
 
 - 2倍训练速度，或1.5倍序列长度
+
+### PaLM
+- [PaLM-colossalai](https://github.com/hpcaitech/PaLM-colossalai): 可扩展的谷歌 Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)) 实现。
 
 请访问我们的[文档和教程](https://www.colossalai.org/)以了解详情。
 

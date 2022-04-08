@@ -33,6 +33,7 @@
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
+     <li><a href="#PaLM">BERT</a></li>
    </ul>
  </li>
 
@@ -95,6 +96,9 @@ distributed training in a few lines.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
 
 - 2x faster training, or 50% longer sequence length
+
+### PaLM
+- [PaLM-colossalai](https://github.com/hpcaitech/PaLM-colossalai): Scalable implementation of Google's Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)).
 
 Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
 
