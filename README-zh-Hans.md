@@ -33,7 +33,7 @@
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
-     <li><a href="#PaLM">BERT</a></li>
+     <li><a href="#PaLM">PaLM</a></li>
    </ul>
  </li>
 
