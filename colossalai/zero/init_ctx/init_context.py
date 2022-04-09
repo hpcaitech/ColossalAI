@@ -213,7 +213,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         src_rank = gpc.get_ranks_in_group(ParallelMode.DATA)[0]
         for param in self.param_list:
             assert hasattr(param, 'colo_attr')
-            if not param.colo_attr.param_is_sharded and param.is_replicated:
+            if not param.colo_attr.param_is_sharded and param.colo_attr.is_replicated:
                 dist.broadcast(tensor=param.data, src=src_rank, group=self.dp_process_group)
             param.colo_attr.remove_torch_payload()
 
@@ -239,9 +239,6 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
             self.model_numel_tensor += param.numel()
 
-            # mark whether the param is replicated
-            param.is_replicated = self.is_replicated
-
             # convert parameters to half
             param_half = half_fn(param)
             param.data = param_half
@@ -260,6 +257,13 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if self.shard_param:
                 self.shard_strategy.shard([param.colo_attr.sharded_data_tensor], self.dp_process_group)
                 param.data = param.colo_attr.sharded_data_tensor.payload    # set param.data to payload
+
+            # mark whether the param is replicated
+            param.colo_attr.is_replicated = self.is_replicated
+
+            # mark whether the param should keep not sharded
+            # if True, the param is used as Zero stage 2
+            param.colo_attr.keep_not_shard = not self.shard_param
 
             self.param_list.append(param)
 
