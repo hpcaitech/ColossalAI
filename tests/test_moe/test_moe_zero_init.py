@@ -41,7 +41,7 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
     logger = get_dist_logger("test_moe_zero_init")
 
     if init_device_type == 'cuda':
-        init_device = torch.device(f"cuda:{get_current_device()}")
+        init_device = get_current_device()
     elif init_device_type == 'cpu':
         init_device = torch.device("cpu")
     else:

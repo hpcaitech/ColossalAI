@@ -16,7 +16,7 @@ from colossalai.utils import get_current_device, disposable
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity
+from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.shard_utils.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
@@ -231,7 +231,7 @@ class ShardedModelV2(nn.Module):
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
-            self._cuda_margin_space = colo_cuda_memory_capacity() - max(
+            self._cuda_margin_space = colo_device_memory_capacity(get_current_device()) - max(
                 self._memstats_collector.overall_mem_stats('cuda'))
 
     @torch.no_grad()

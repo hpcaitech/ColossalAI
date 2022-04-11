@@ -33,7 +33,7 @@ class TensorShardStrategy(BaseShardStrategy):
         if t.is_sharded:
             return
         if t.payload.device.type == 'cuda':
-            assert t.payload.device.index == get_current_device(), f"shard tensor on cuda device index {t.payload.device.index},"\
+            assert t.payload.device == get_current_device(), f"shard tensor on cuda device index {t.payload.device.index},"\
                 f" but current cuda device is {get_current_device()}"
         sharded_payload, _ = get_shard(t.payload, dist.get_rank(process_group), dist.get_world_size(process_group))
         t.reset_payload(sharded_payload)

@@ -57,10 +57,9 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
 
-        with ZeroInitContext(
-                target_device=torch.device(f'cpu:0') if cpu_offload else torch.device(f'cuda:{get_current_device()}'),
-                shard_strategy=shard_strategy,
-                shard_param=True):
+        with ZeroInitContext(target_device=torch.device(f'cpu:0') if cpu_offload else get_current_device(),
+                             shard_strategy=shard_strategy,
+                             shard_param=True):
             zero_model = model_builder(checkpoint=True)
         zero_model = ShardedModelV2(
             zero_model,
