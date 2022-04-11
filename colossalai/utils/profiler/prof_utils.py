@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Union, List
 from colossalai.core import global_context as gpc
-
+import time
 
 # copied from high version pytorch to support low version
 def _format_time(time_us):
@@ -107,14 +107,15 @@ class ProfilerContext(object):
             for prof in self.profilers:
                 prof.disable()
 
-    def to_tensorboard(self, writer):
-        from torch.utils.tensorboard import SummaryWriter
-
-        assert isinstance(writer, SummaryWriter), \
-            f'torch.utils.tensorboard.SummaryWriter is required, but found {type(writer)}.'
-
+    def to_tensorboard(self, log_dir: Union[Path, str]):
+        
+        if isinstance(log_dir, str):
+            log_dir = Path(log_dir)        
+        cur_time = str(time.time())
+        json_dir = log_dir.joinpath(cur_time).mkdir(parents=True, exist_ok=True)
+        
         for prof in self.profilers:
-            prof.to_tensorboard(writer)
+            prof.to_tensorboard(json_dir)
 
     def to_file(self, log_dir: Union[str, Path]):
         if isinstance(log_dir, str):
