@@ -81,7 +81,7 @@ def report_memory_usage(message, logger=None, report_cpu=False):
         # python doesn't do real-time garbage collection so do it explicitly to get the correct RAM reports
         gc.collect()
         vm_stats = psutil.virtual_memory()
-        vm_used = bytes_to_MB(vm_stats.total - vm_stats.available)
+        vm_used = _bytes_to_MB(vm_stats.total - vm_stats.available)
         full_log += f", CPU Virtual Memory: used = {vm_used} MB, percent = {vm_stats.percent}%"
 
     if logger is None:
