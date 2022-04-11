@@ -3,15 +3,16 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 from colossalai.registry import OPHOOKS
+
 from colossalai.utils import get_current_device
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
+
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param.tensorful_state import TensorState
-from colossalai.zero.shard_utils.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.zero.utils.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline
 
-from ._base_ophook import BaseOpHook
-
-from colossalai.zero.shard_utils.tensor_utils import colo_model_data_tensor_move_inline
+from colossalai.engine.ophooks import BaseOpHook
 
 
 @OPHOOKS.register_module

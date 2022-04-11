@@ -8,22 +8,6 @@ from colossalai.utils import is_model_parallel_parameter
 import torch.distributed as dist
 
 
-def move_tensor(input_, device):
-    assert device in ['cpu', 'gpu']
-
-    if isinstance(input_, (list, tuple)):
-        for tensor in input_:
-            tensor.data = tensor.data.cpu(
-            ) if device == 'cpu' else tensor.data.cuda()
-    elif torch.is_tensor(input_):
-        input_.data = input_.data.cpu(
-        ) if device == 'cpu' else tensor.data.cuda()
-    else:
-        raise TypeError(
-            f"Expected argument 'input_' to be torch.Tensor, list or tuple, but got {type(input_)} "
-        )
-
-
 def flatten(input_):
     return _flatten_dense_tensors(input_)
 
@@ -51,8 +35,7 @@ def shuffle_by_round_robin(tensor_list, num_partitions):
         partition_to_go = tensor_idx % num_partitions
         if partition_to_go not in partitions:
             partitions[partition_to_go] = []
-        partitions[partition_to_go].append(dict(tensor=tensor,
-                                                index=tensor_idx))
+        partitions[partition_to_go].append(dict(tensor=tensor, index=tensor_idx))
 
     partitions_count = len(partitions)
     new_tensor_list = []
@@ -73,9 +56,7 @@ def flatten_dense_tensors_with_padding(tensor_list, unit_size):
     padding = calculate_padding(num_elements, unit_size=unit_size)
 
     if padding > 0:
-        pad_tensor = torch.zeros(padding,
-                                 device=tensor_list[0].device,
-                                 dtype=tensor_list[0].dtype)
+        pad_tensor = torch.zeros(padding, device=tensor_list[0].device, dtype=tensor_list[0].dtype)
         padded_tensor_list = tensor_list + [pad_tensor]
     else:
         padded_tensor_list = tensor_list
@@ -85,6 +66,7 @@ def flatten_dense_tensors_with_padding(tensor_list, unit_size):
 
 def is_nccl_aligned(tensor):
     return tensor.data_ptr() % 4 == 0
+
 
 def get_grad_accumulate_object(tensor):
     """
@@ -108,10 +90,7 @@ def get_grad_accumulate_object(tensor):
 
 
 def split_half_float_double(tensor_list):
-    dtypes = [
-        "torch.cuda.HalfTensor", "torch.cuda.FloatTensor",
-        "torch.cuda.DoubleTensor", "torch.cuda.BFloat16Tensor"
-    ]
+    dtypes = ["torch.cuda.HalfTensor", "torch.cuda.FloatTensor", "torch.cuda.DoubleTensor", "torch.cuda.BFloat16Tensor"]
     buckets = []
     for i, dtype in enumerate(dtypes):
         bucket = [t for t in tensor_list if t.type() == dtype]
@@ -120,10 +99,7 @@ def split_half_float_double(tensor_list):
     return buckets
 
 
-def reduce_tensor(tensor,
-                  dtype,
-                  dst_rank=None,
-                  parallel_mode=ParallelMode.DATA):
+def reduce_tensor(tensor, dtype, dst_rank=None, parallel_mode=ParallelMode.DATA):
     """
     Reduce the tensor in the data parallel process group
 
@@ -165,6 +141,7 @@ def reduce_tensor(tensor,
             tensor.copy_(tensor_to_reduce)
     return tensor
 
+
 def has_inf_or_nan(tensor):
     try:
         # if tensor is half, the .float() incurs an additional deep copy, but it's necessary if
@@ -181,8 +158,7 @@ def has_inf_or_nan(tensor):
             raise
         return True
     else:
-        if tensor_sum == float('inf') or tensor_sum == -float(
-                'inf') or tensor_sum != tensor_sum:
+        if tensor_sum == float('inf') or tensor_sum == -float('inf') or tensor_sum != tensor_sum:
             return True
         return False
 
@@ -201,11 +177,7 @@ def calculate_global_norm_from_list(norm_list):
     return math.sqrt(total_norm)
 
 
-def compute_norm(gradients,
-                 params,
-                 dp_group,
-                 mp_group,
-                 norm_type=2):
+def compute_norm(gradients, params, dp_group, mp_group, norm_type=2):
     """Clips gradient norm of an iterable of parameters.
     This is adapted from torch.nn.utils.clip_grad.clip_grad_norm_ and
     added functionality to handle model parallel parameters. Note that
@@ -229,14 +201,11 @@ def compute_norm(gradients,
     if norm_type == inf:
         total_norm = max(g.data.abs().max() for g in gradients)
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-        dist.all_reduce(total_norm_cuda,
-                        op=torch.distributed.ReduceOp.MAX,
-                        group=dp_group)
+        dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=dp_group)
 
         # Take max across all GPUs.
         if mp_group is not None:
-            dist.all_reduce(tensor=total_norm_cuda,
-                            op=torch.distributed.ReduceOp.MAX)
+            dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX)
         total_norm = total_norm_cuda[0].item()
     else:
         total_norm = 0.0
@@ -248,21 +217,17 @@ def compute_norm(gradients,
             if is_model_parallel_parameter(p) or mp_rank == 0:
                 param_norm = g.data.double().norm(2)
                 total_norm += param_norm.item()**2
-            
+
         # Sum across all model parallel GPUs.
         total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-        torch.distributed.all_reduce(total_norm_cuda,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=dp_group)
-        
+        torch.distributed.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.SUM, group=dp_group)
+
         if mp_group is not None:
-            dist.all_reduce(tensor=total_norm_cuda,
-                            op=torch.distributed.ReduceOp.SUM)
+            dist.all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.SUM)
 
         total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 
-    if total_norm == float(
-            'inf') or total_norm == -float('inf') or total_norm != total_norm:
+    if total_norm == float('inf') or total_norm == -float('inf') or total_norm != total_norm:
         total_norm = -1
 
     return total_norm
