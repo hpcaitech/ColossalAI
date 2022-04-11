@@ -1,34 +1,9 @@
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory_utils.utils import colo_device_memory_used
-from colossalai.utils import get_current_device
 from colossalai.utils.memory_tracer.async_memtracer import AsyncMemoryMonitor
 import torch
 import time
 from typing import List
-
-
-class SamplingCounter:
-
-    def __init__(self) -> None:
-        self._samplint_cnt = 0
-        self._max_sampling_cnt = None
-
-    def advance(self):
-        self._samplint_cnt += 1
-
-    def next(self):
-        assert self._max_sampling_cnt is not None
-        return (self._samplint_cnt + 1) % self._max_sampling_cnt
-
-    def current(self):
-        return self._samplint_cnt
-
-    def max(self):
-        return self._max_sampling_cnt
-
-    def reset(self):
-        self._max_sampling_cnt = self._samplint_cnt
-        self._samplint_cnt = 0
 
 
 class MemStatsCollector:
@@ -44,7 +19,6 @@ class MemStatsCollector:
     """
 
     def __init__(self) -> None:
-        self._sampling_cnter = SamplingCounter()
         self._mem_monitor = AsyncMemoryMonitor()
         self._model_data_cuda_list = []
         self._overall_cuda_list = []
@@ -57,6 +31,7 @@ class MemStatsCollector:
         self._sampling_time = []
 
         self._start_flag = False
+        self._period_idx = 0
 
     def overall_mem_stats(self, device_type: str):
         if device_type == 'cuda':
@@ -106,15 +81,22 @@ class MemStatsCollector:
         else:
             raise TypeError
 
-    def current_non_model_data(self, device_type: str) -> int:
-        """get the non model data of the current sampling moment
-        """
-        return self.non_model_data_list(device_type)[self._sampling_cnter.current()]
+    def max_non_model_data(self, device_type: str) -> int:
+        """Get max non model data memory usage of current sampling period
 
-    def next_non_model_data(self, device_type: str):
-        """get the non model data of the next sampling moment
+        Args:
+            device_type (str): device type, can be 'cpu' or 'cuda'.
+
+        Returns:
+            int: max non model data memory usage of current sampling period
         """
-        return self.non_model_data_list(device_type)[self._sampling_cnter.next()]
+        assert not self._start_flag, 'Cannot get mem stats info during collection phase.'
+        assert len(self._sampling_time) > 0, 'Cannot get mem stats info before collection phase.'
+        next_period_idx = (self._period_idx + 1) % len(self._sampling_time)
+        current_non_model_data = self.non_model_data_list(device_type)[self._period_idx]
+        next_non_model_data = self.non_model_data_list(device_type)[next_period_idx]
+        self._period_idx = next_period_idx
+        return max(current_non_model_data, next_non_model_data)
 
     @property
     def sampling_time(self):
@@ -126,6 +108,7 @@ class MemStatsCollector:
 
     def finish_collection(self):
         self._start_flag = False
+        self._mem_monitor.finish()
 
     def sample_memstats(self) -> None:
         """
@@ -134,8 +117,6 @@ class MemStatsCollector:
         Advance the sampling cnter.
         """
         if self._start_flag:
-            sampling_cnt = self._sampling_cnter.current()
-            assert sampling_cnt == len(self._overall_cuda_list)
             self._model_data_cuda_list.append(GLOBAL_MODEL_DATA_TRACER.cuda_usage)
             self._overall_cuda_list.append(self._mem_monitor.finish())
             self._non_model_data_cuda_list.append(self._model_data_cuda_list[-1] - self._overall_cuda_list[-1])
@@ -146,13 +127,6 @@ class MemStatsCollector:
             self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
             self._sampling_time.append(time.time())
             self._mem_monitor.start()
-        # TODO(ver217): refactor sampler
-        # print(f'{self._sampling_cnter.current()} / {self._sampling_cnter.max()}, len = {len(self._sampling_time)}')
-        self._sampling_cnter.advance()
-
-    def reset_sampling_cnter(self) -> None:
-        self._sampling_cnter.reset()
-        self._mem_monitor.finish()
 
     def clear(self) -> None:
         self._model_data_cuda_list = []
@@ -162,5 +136,4 @@ class MemStatsCollector:
         self._overall_cpu_list = []
 
         self._start_flag = False
-        self._sampling_cnter.reset()
-        self._mem_monitor.finish()
+        self._period_idx = 0

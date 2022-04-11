@@ -55,7 +55,6 @@ def run_stm():
     apply_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
     mem_collector.sample_memstats()
     mem_collector.finish_collection()
-    mem_collector.reset_sampling_cnter()
     stateful_tensor_mgr.reset()
 
     # warmup done

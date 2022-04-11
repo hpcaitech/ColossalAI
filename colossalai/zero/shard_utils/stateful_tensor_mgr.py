@@ -71,8 +71,7 @@ class StatefulTensorMgr(object):
             max_cuda_non_model_data_per_period = cuda_capacity * self._warmup_cuda_available_ratio
         else:
             # max non-model-data cuda memory consumption of this sampling moment and the next sampling moment.
-            max_cuda_non_model_data_per_period = max(self._mem_stats_collector.current_non_model_data('cuda'),
-                                                     self._mem_stats_collector.next_non_model_data('cuda'))
+            max_cuda_non_model_data_per_period = self._mem_stats_collector.max_non_model_data('cuda')
 
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
