@@ -12,7 +12,7 @@ def copy_to_device(obj, device):
     if torch.is_tensor(obj):
         # Notice:
         # When in no_grad context, requires_gard is False after movement
-        ret = obj.to(device)
+        ret = obj.to(device).detach()
         ret.requires_grad = obj.requires_grad
         return ret
     elif isinstance(obj, list):
