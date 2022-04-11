@@ -4,6 +4,7 @@ from colossalai.engine import Engine
 from colossalai.engine.ophooks import MemTracerOpHook
 from colossalai.utils.profiler import BaseProfiler
 import json
+from colossalai.core import global_context as gpc
 
 class MemProfiler(BaseProfiler):
     """Wraper of MemOpHook, used to show GPU memory usage through each iteration
@@ -46,7 +47,7 @@ class MemProfiler(BaseProfiler):
                 "cuda_usage": stats
             }
         }
-
+        rank = gpc.get_global_rank()
         with open(log_dir.joinpath(f"worker{rank}.memory.json"), "w") as f:
             json.dump(data, f)
 

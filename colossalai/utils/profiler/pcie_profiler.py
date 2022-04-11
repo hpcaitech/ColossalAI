@@ -3,6 +3,7 @@ from torch.autograd.profiler import profile
 from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwidth
 from typing import List
 import json
+from colossalai.core import global_context as gpc
 
 def _get_size(dtype: str):
     if dtype == "fp16":
@@ -121,8 +122,9 @@ class PcieProfiler(BaseProfiler):
                 "count": event.count
             })
         data["events"] = events_list
-        
-        with open(json_dir.joinpath("pcie.json"), "w") as f:
+        rank = gpc.get_global_rank()
+
+        with open(json_dir.joinpath(f"worker{rank}.pcie.json"), "w") as f:
             json.dump(data, f)
 
     def to_file(self, filename: Path):

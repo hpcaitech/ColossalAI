@@ -8,6 +8,7 @@ from torch.distributed import ReduceOp
 from colossalai.utils import get_current_device
 from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwidth
 from typing import List, Optional
+from colossalai.core import global_context as gpc
 import json
 
 def _get_code_location(depth: int):
@@ -109,8 +110,9 @@ class CommProfiler(BaseProfiler):
             })
         
         data["events"] = events_list
-        
-        with open(json_dir.joinpath("communication.json"), "w") as f:
+        rank = gpc.get_global_rank()
+
+        with open(json_dir.joinpath(f"worker{rank}.communication.json"), "w") as f:
             json.dump(data, f)
 
     def to_file(self, filename: Path):
