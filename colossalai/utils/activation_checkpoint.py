@@ -13,7 +13,8 @@ def copy_to_device(obj, device):
         # Notice:
         # When in no_grad context, requires_gard is False after movement
         ret = obj.to(device)
-        ret.requires_grad = obj.requires_grad
+        if ret.is_leaf or ret.retains_grad:
+            ret.requires_grad = obj.requires_grad
         return ret
     elif isinstance(obj, list):
         return [copy_to_device(i, device) for i in obj]
