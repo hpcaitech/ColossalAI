@@ -68,9 +68,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         backoff_factor (float, optional): backoff_factor used by DynamicGradScaler. Defaults to 0.5.
         growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
         hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
-        keep_unsharded (bool, optional): if True, optimizer won't shard unsharded parameters.
-            In Zero-2, set keep_unsharded to False.
-            In Zero-3, set keep_unsharded to True.
         max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
         dp_process_group (Optional[ProcessGroup], optional): data paralle process group. Defaults to None.
         mp_process_group (Optional[ProcessGroup], optional): model paralle process group. Defaults to None.
@@ -91,7 +88,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  growth_interval: float = 1000,
                  hysteresis: float = 2,
                  max_scale: int = 2**32,
-                 keep_unsharded: bool = False,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
@@ -125,10 +121,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._found_overflow: Tensor = torch.FloatTensor([0]).to(torch.cuda.current_device())
         self._logger = get_dist_logger("ShardedOptimizerV2")
 
-        assert not (keep_unsharded and self._should_move_fp32_shards_h2d), \
-            "Keeping unsharded parameters can't be used with hybrid OS placement right now."
-        self.keep_unshard = keep_unsharded
-
         # Store fp32 param shards
         self._register_master_weight()
 
@@ -138,6 +130,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._use_memory_tracer = self.model.use_memory_tracer
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
+
+    @property
+    def loss_scale(self):
+        return self.grad_scaler.scale.item()
 
     def get_memory_usage(self) -> Tuple[int, int]:
         """ Get the memory usage of the optimizer. Including master_params (param fp32),
@@ -166,6 +162,22 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         return cuda_use, cpu_use
 
+    def zero_grad(self, *args, **kwargs):
+        self._zero_grad()
+
+    def backward(self, loss: Tensor) -> None:
+        loss = self.loss_scale * loss
+        self.optim_state = OptimState.SCALED
+        self.model.backward(loss)
+
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor) -> None:
+        self.model.backward_by_grad(tensor, grad)
+
+    def clip_grad_norm(self, model: nn.Module, max_norm: float):
+        if self.optim_state == OptimState.SCALED:
+            self._unscale_grads()
+        return super().clip_grad_norm(model, max_norm)
+
     def step(self, *args, **kwargs):
         self._prepare_grads()
         self._maybe_move_fp32_shards()
@@ -193,25 +205,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._logger.debug(
             f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory, {self.get_memory_usage()[1] / 1e6} MB CUDA Memory!",
             ranks=[0])
-        self._copy_master_param_to_param_fp16()
+        self._copy_master_model_to_model_fp16()
         return ret
-
-    def backward(self, loss: Tensor) -> None:
-        loss = self.loss_scale * loss
-        self.optim_state = OptimState.SCALED
-        self.model.backward(loss)
-
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor) -> None:
-        self.model.backward_by_grad(tensor, grad)
-
-    def clip_grad_norm(self, model: nn.Module, max_norm: float):
-        if self.optim_state == OptimState.SCALED:
-            self._unscale_grads()
-        return super().clip_grad_norm(model, max_norm)
-
-    @property
-    def loss_scale(self):
-        return self.grad_scaler.scale.item()
 
     def _check_overflow(self):
         # clear previous overflow record
@@ -240,9 +235,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     p.grad.data.div_(self.loss_scale)
         self.optim_state = OptimState.UNSCALED
 
-    def zero_grad(self, *args, **kwargs):
-        self._zero_grad()
-
     def _zero_grad(self, recover_data: bool = False):
         """zero grad and maybe recover fp16 params
         When `reuse_fp16_shard` is enabled,
@@ -262,13 +254,11 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # p.colo_attr.sharded_data_tensor stores grad now
                 # we have to recover fp16 param
                 reuse_fp16_shard = p.colo_attr.saved_grad.data_ptr() == p.colo_attr.sharded_data_tensor.data_ptr()
-                p.colo_attr.saved_grad.set_null()
                 if recover_data and reuse_fp16_shard:
-                    # We should write like this to trigger ForceFP32Paramter's half method
-                    p.data = self.master_params[p].payload
-                    p.colo_attr.sharded_data_tensor.reset_payload(
-                        colo_model_tensor_clone(p.half(), torch.cuda.current_device()))
-                    p.colo_attr.remove_torch_payload()
+                    self._copy_master_param_to_param_fp16(p)
+                else:
+                    # release saved gradient
+                    p.colo_attr.saved_grad.set_null()
 
     def sync_grad(self):
         pass
@@ -278,14 +268,13 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         for group in self.optim.param_groups:
             for p in group['params']:
                 assert hasattr(p, 'colo_attr'), 'The parameter must be wrapped with ShardedParam'
-                is_param_sharded = p.colo_attr.sharded_data_tensor.is_sharded
-                if not is_param_sharded and not self.keep_unshard:
-                    # Please use keep_unsharded to control whether shard unsharded paramters
-                    # As we only store param shard, we shard it here
+                shard_flag = not p.colo_attr.sharded_data_tensor.is_sharded and p.colo_attr.is_replicated
+                if shard_flag:
+                    # we always shard replicated paramters
                     self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
                 self.master_params[p] = StatefulTensor(
                     cast_tensor_to_fp32(p.colo_attr.sharded_data_tensor.payload.to(self.device)))
-                if not is_param_sharded and not self.keep_unshard:
+                if shard_flag:
                     # In this branch, there's no need to shard param
                     # So we gather here
                     self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
@@ -328,31 +317,27 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # Now p.data is sharded
                 # So optimizer states are sharded naturally
 
-    def _copy_master_param_to_param_fp16(self):
+    def _copy_master_model_to_model_fp16(self):
         # Copy master param data (fp32) to payload of colo_attr (fp16)
         # TODO() improve efficiency by gathering tensors into a chunk and transfering
         # a chunk.
         for group in self.optim.param_groups:
             for p in group['params']:
-                is_param_sharded = p.colo_attr.sharded_data_tensor.is_sharded
-                if not is_param_sharded and not self.keep_unshard:
-                    # We use ZeRO-2 here
-                    # The `p.colo_attr.sharded_data_tensor` saves full fp16 param
-                    # But we only have updated fp32 param shard here
-                    # So we first shard full fp16 param and copy fp32 param shard to it
-                    # Then we will gather them
-                    self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
-                # We have to use `copy_payload` instead of `reset_payload`
-                # Since p.data is fp32 and p.colo_attr.sharded_data_tensor is fp16
+                self._copy_master_param_to_param_fp16(p)
 
-                # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-                p.colo_attr.sharded_data_tensor.reset_payload(
-                    colo_model_tensor_clone(p.half(), p.colo_attr.sharded_data_tensor.device))
-                p.colo_attr.remove_torch_payload()
+    def _copy_master_param_to_param_fp16(self, p):
+        # flush gradient
+        p.colo_attr.saved_grad.set_null()
 
-                if not is_param_sharded and not self.keep_unshard:
-                    # We gather full fp16 param here
-                    self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
+        # TODO() optimize this line CPU (fp32) -> GPU (fp16)
+        p.data = self.master_params[p].payload
+        p.colo_attr.sharded_data_tensor.reset_payload(
+            colo_model_tensor_clone(p.half(), p.colo_attr.sharded_data_tensor.device))
+        p.colo_attr.remove_torch_payload()
 
-                self.master_params[p].trans_state(TensorState.HOLD)
-                p.colo_attr.saved_grad.set_null()
+        if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:
+            # We gather full fp16 param here
+            p.colo_attr.sharded_data_tensor.is_sharded = True    # since only gradient is sharded, we should set to True
+            self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
+
+        self.master_params[p].trans_state(TensorState.HOLD)

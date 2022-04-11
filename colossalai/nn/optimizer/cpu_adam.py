@@ -142,6 +142,7 @@ class CPUAdam(torch.optim.Optimizer):
                 beta1, beta2 = group['betas']
 
                 if target_device.type == 'cpu':
+                    assert p.data.numel() == p.grad.data.numel(), "parameter and gradient should have the same size"
                     assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
                     assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
                     self.cpu_adam_op.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
@@ -151,8 +152,8 @@ class CPUAdam(torch.optim.Optimizer):
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
                     assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"
 
-                    bias_correction1 = 1 - beta1 ** state['step']
-                    bias_correction2 = 1 - beta2 ** state['step']
+                    bias_correction1 = 1 - beta1**state['step']
+                    bias_correction2 = 1 - beta2**state['step']
 
                     # adam on cuda
                     self.torch_adam_update(p.data, p.grad.data, state['exp_avg'], state['exp_avg_sq'], group['lr'],

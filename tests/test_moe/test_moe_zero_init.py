@@ -71,9 +71,9 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
 
         # the parameters in moe experts is not replicated
         if 'experts' in name:
-            assert not param.is_replicated
+            assert not param.colo_attr.is_replicated
         else:
-            assert param.is_replicated
+            assert param.colo_attr.is_replicated
 
         if param.colo_attr.param_is_sharded:
             assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
