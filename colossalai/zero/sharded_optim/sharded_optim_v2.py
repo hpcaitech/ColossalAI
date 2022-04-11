@@ -118,7 +118,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                                              growth_interval=growth_interval,
                                              hysteresis=hysteresis,
                                              max_scale=max_scale)
-        self._found_overflow: Tensor = torch.FloatTensor([0]).to(torch.cuda.current_device())
+        self._found_overflow: Tensor = torch.IntTensor([0]).to(torch.cuda.current_device())
         self._logger = get_dist_logger("ShardedOptimizerV2")
 
         # Store fp32 param shards
@@ -210,20 +210,13 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def _check_overflow(self):
         # clear previous overflow record
-        self._found_overflow.fill_(0.0)
-
-        # check for overflow
-        for group in self.optim.param_groups:
-            for p in group['params']:
-                if has_inf_or_nan(p.grad):
-                    self._found_overflow.fill_(1.0)
-                    break
+        self._found_overflow.fill_(self.model.overflow_counter)
 
         # all-reduce across dp group
-        dist.all_reduce(self._found_overflow, op=dist.ReduceOp.MAX, group=self.dp_process_group)
+        dist.all_reduce(self._found_overflow, group=self.dp_process_group)
 
         # all-reduce over model parallel group
-        dist.all_reduce(self._found_overflow, op=dist.ReduceOp.MAX, group=self.mp_process_group)
+        dist.all_reduce(self._found_overflow, group=self.mp_process_group)
 
         return self._found_overflow.item() > 0
 
@@ -259,6 +252,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 else:
                     # release saved gradient
                     p.colo_attr.saved_grad.set_null()
+        self.model.overflow_counter = 0    # set overflow counter to zero
 
     def sync_grad(self):
         pass

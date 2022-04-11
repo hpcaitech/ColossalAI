@@ -148,6 +148,9 @@ class ShardedModelV2(nn.Module):
         self._cuda_margin_space = 0
         self.reuse_fp16_shard = reuse_fp16_shard
 
+        # record whether gradients have inf or nan
+        self.overflow_counter = 0
+
     def adjust_stateful_tensor_layout(self) -> None:
         self._stateful_tensor_mgr.adjust_layout()
 
@@ -345,6 +348,11 @@ class ShardedModelV2(nn.Module):
 
     # FIXME(ver217): refactor the below line when impl eviction policy
     def _save_grad(self, param: Parameter, grad: torch.Tensor):
+
+        # record whether we have overflow
+        self.overflow_counter += torch.isinf(grad).any().item()
+        self.overflow_counter += torch.isnan(grad).any().item()
+
         # move gradient to cpu
         if param.colo_attr.offload_grad:
             colo_model_data_move_to_cpu(grad)
