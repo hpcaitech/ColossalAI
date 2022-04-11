@@ -36,7 +36,7 @@ class MemProfiler(BaseProfiler):
         self._engine.remove_hook(self._mem_tracer)
 
     def to_tensorboard(self, log_dir: Path) -> None:
-        rank = self._mem_tracer._rank
+        rank = gpc.get_global_rank()
         stats = self._mem_tracer.async_mem_monitor.state_dict['mem_stats']
 
         data = {
@@ -47,7 +47,7 @@ class MemProfiler(BaseProfiler):
                 "cuda_usage": stats
             }
         }
-        rank = gpc.get_global_rank()
+        
         with open(log_dir.joinpath(f"worker{rank}.memory.json"), "w") as f:
             json.dump(data, f)
 
