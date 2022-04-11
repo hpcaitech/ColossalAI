@@ -1,11 +1,12 @@
 import pytest
 
+import colossalai
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero.shard_utils.tensor_utils import colo_tensor_mem_usage, colo_model_data_tensor_move, colo_model_data_tensor_move_inline, colo_model_data_move_to_cpu, colo_model_tensor_clone
+from colossalai.zero.sharded_param import (StatefulTensor, colo_tensor_mem_usage, colo_model_data_tensor_move,
+                                           colo_model_data_tensor_move_inline, colo_model_data_move_to_cpu,
+                                           colo_model_tensor_clone)
 from colossalai.utils.memory import colo_set_process_memory_fraction, colo_device_memory_capacity
 from colossalai.utils import free_port
-from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
-import colossalai
 
 import torch
 

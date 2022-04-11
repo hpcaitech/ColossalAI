@@ -8,9 +8,8 @@ import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.engine.ophooks import register_ophooks_recursively
-from colossalai.engine.ophooks.zero_hook import ZeroHook
+from colossalai.zero.utils import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
-from colossalai.engine.gradient_handler.utils import bucket_allreduce
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device, disposable
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
@@ -18,12 +17,12 @@ from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.zero.shard_utils.tensor_utils import colo_model_data_move_to_cpu
+from colossalai.zero.sharded_param.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
-from colossalai.zero.shard_utils.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.zero.utils.stateful_tensor_mgr import StatefulTensorMgr
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)

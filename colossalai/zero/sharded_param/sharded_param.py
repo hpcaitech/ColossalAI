@@ -1,7 +1,7 @@
 import torch
 from colossalai.zero.sharded_param import ShardedTensor
 from typing import Optional, Tuple
-from colossalai.zero.shard_utils.tensor_utils import colo_tensor_mem_usage
+from colossalai.zero.sharded_param.tensor_utils import colo_tensor_mem_usage
 from .tensorful_state import StatefulTensor, TensorState
 from typing import List
 

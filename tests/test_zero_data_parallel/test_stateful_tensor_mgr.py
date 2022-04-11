@@ -6,7 +6,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory_tracer import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_device_memory_capacity, colo_set_process_memory_fraction
-from colossalai.zero.shard_utils import StatefulTensorMgr
+from colossalai.zero.utils import StatefulTensorMgr
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from colossalai.utils import free_port
