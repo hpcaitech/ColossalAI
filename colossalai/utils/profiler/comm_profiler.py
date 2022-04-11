@@ -8,7 +8,7 @@ from torch.distributed import ReduceOp
 from colossalai.utils import get_current_device
 from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwidth
 from typing import List, Optional
-
+import json
 
 def _get_code_location(depth: int):
     ret = []
@@ -92,8 +92,26 @@ class CommProfiler(BaseProfiler):
         dist.broadcast = torch_broadcast
         dist.reduce = torch_reduce
 
-    def to_tensorboard(self, writer):
-        writer.add_text(tag="Collective Communication", text_string=self.result_str("\n\n"))
+    def to_tensorboard(self, json_dir: Path):
+        
+        data = {
+            "total_cuda_time": self.total_cuda_time,
+            "total_comm_vol": self.total_comm_vol,
+            "total_count": self.total_count
+        }
+        events_list = []
+        for location, event in self.ops_record.items():
+            events_list.append({
+                "location": location.splitlines(),
+                "self_cuda_time": event.self_cuda_time,
+                "self_comm_vol": event.self_comm_vol,
+                "self_count": event.self_count
+            })
+        
+        data["events"] = events_list
+        
+        with open(json_dir.joinpath("communication.json"), "w") as f:
+            json.dump(data, f)
 
     def to_file(self, filename: Path):
         with open(filename, "w") as f:
