@@ -8,6 +8,7 @@ from colossalai.utils import get_current_device
 from colossalai.core import global_context as gpc
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.logging import get_dist_logger
+from packaging import version
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 
@@ -144,6 +145,8 @@ def colo_set_process_memory_fraction(ratio: float) -> None:
     Args:
         ratio (float): a ratio between 0. ~ 1.
     """
+    if version.parse(torch.__version__) < version.parse('1.8'):
+        return
     global _GLOBAL_CUDA_MEM_FRACTION
     _GLOBAL_CUDA_MEM_FRACTION = ratio
     torch.cuda.set_per_process_memory_fraction(_GLOBAL_CUDA_MEM_FRACTION, get_current_device())
