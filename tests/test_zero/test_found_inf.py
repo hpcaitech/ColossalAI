@@ -14,7 +14,7 @@ from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_zero_data_parallel.test_sharded_optim_v2 import _run_step
+from tests.test_zero.test_sharded_optim_v2 import _run_step
 
 from common import CONFIG
 

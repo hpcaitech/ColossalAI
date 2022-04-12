@@ -16,7 +16,7 @@ from colossalai.engine.gradient_handler import MoeGradientHandler
 from colossalai.context import MOE_CONTEXT
 from colossalai.testing import assert_equal_in_group
 
-from tests.test_zero_data_parallel.common import CONFIG, check_grads_padding, run_fwd_bwd
+from tests.test_zero.common import CONFIG, check_grads_padding, run_fwd_bwd
 from tests.test_moe.test_moe_zero_init import MoeModel
 
 

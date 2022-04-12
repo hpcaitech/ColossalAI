@@ -11,7 +11,7 @@ from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardS
 from colossalai.zero.sharded_param import ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from colossalai.testing import rerun_on_exception
-from tests.test_zero_data_parallel.common import CONFIG, allclose
+from tests.test_zero.common import CONFIG, allclose
 from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
 
 
