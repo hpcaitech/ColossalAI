@@ -106,11 +106,9 @@ class ShardedModelV2(nn.Module):
             GLOBAL_MODEL_DATA_TRACER.register_model(self)
             self._memstats_collector = MemStatsCollector()
             self._stateful_tensor_mgr = StatefulTensorMgr(self._memstats_collector)
-            # for param in module.parameters():
-            for submodule in module.modules():
-                for param in submodule.parameters(recurse=False):
-                    if hasattr(param, 'colo_attr'):
-                        self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
+            for param in module.parameters():
+                if hasattr(param, 'colo_attr'):
+                    self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
             self._start_collect_memstats = disposable(self._memstats_collector.start_collection)
             self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
         else:
