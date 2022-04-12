@@ -118,11 +118,6 @@ If you don't want to install CUDA extension, you should add `--global-option="--
 pip install colossalai --global-option="--no_cuda_ext"
 ```
 
-If you want to use `ZeRO`, you can run:
-```bash
-pip install colossalai[zero]
-```
-
 ### Install From Source
 
 > The version of Colossal-AI will be in line with the main branch of the repository. Feel free to create an issue if you encounter any problems. :-)
