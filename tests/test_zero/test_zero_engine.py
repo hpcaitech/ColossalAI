@@ -50,7 +50,7 @@ def run_dist(rank, world_size, port, parallel_config):
         torch_optimizer = optimizer_class(torch_model.parameters(), lr=1e-3)
 
         if dist.get_world_size() > 1:
-            torch_model = DDP(torch_model)
+            torch_model = DDP(torch_model, device_ids=[torch.cuda.current_device()])
 
         i = 0
         for data, label in train_dataloader:

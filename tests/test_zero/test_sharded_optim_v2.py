@@ -86,7 +86,7 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False)
         apex_model, apex_optimizer = convert_to_apex_amp(model, optim, amp_config)
         if dist.get_world_size() > 1:
-            apex_model = DDP(apex_model)
+            apex_model = DDP(apex_model, device_ids=[torch.cuda.current_device()])
 
         for i, (data, label) in enumerate(train_dataloader):
             if i > 5:
