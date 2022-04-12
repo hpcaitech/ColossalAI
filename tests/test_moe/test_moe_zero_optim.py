@@ -65,7 +65,7 @@ def _run_test_sharded_optim_v2(cpu_offload,
     with ZeroInitContext(target_device=torch.device('cpu') if cpu_offload else get_current_device(),
                          shard_strategy=shard_strategy,
                          shard_param=True):
-        zero_model = MoeModel()
+        zero_model = MoeModel(checkpoint=True)
 
     zero_model = ShardedModelV2(zero_model,
                                 shard_strategy,
@@ -78,7 +78,7 @@ def _run_test_sharded_optim_v2(cpu_offload,
         if not p.colo_attr.param_is_sharded and p.colo_attr.is_replicated:
             assert_equal_in_group(p.colo_attr.sharded_data_tensor.payload.to(get_current_device()))
 
-    model = MoeModel().half()
+    model = MoeModel(checkpoint=True).half()
     col_model_deepcopy(zero_model, model)
     model = model.cuda().float()
 
@@ -129,4 +129,4 @@ def test_moe_zero_optim(world_size):
 
 
 if __name__ == '__main__':
-    test_moe_zero_optim(world_size=2)
+    test_moe_zero_optim(world_size=4)

@@ -31,7 +31,7 @@ def run_model_test(enable_autocast, shard_strategy_class):
     with ZeroInitContext(target_device=torch.device('cuda', torch.cuda.current_device()),
                          shard_strategy=shard_strategy,
                          shard_param=True):
-        zero_model = MoeModel()
+        zero_model = MoeModel(checkpoint=True)
     zero_model = ShardedModelV2(zero_model, shard_strategy, use_memory_tracer=True)
 
     # check whether parameters are identical in ddp
@@ -39,7 +39,7 @@ def run_model_test(enable_autocast, shard_strategy_class):
         if not p.colo_attr.param_is_sharded and p.colo_attr.is_replicated:
             assert_equal_in_group(p.colo_attr.sharded_data_tensor.payload)
 
-    model = MoeModel().half()
+    model = MoeModel(checkpoint=True).half()
     col_model_deepcopy(zero_model, model)
     model = model.cuda()
     grad_handler = MoeGradientHandler(model)
