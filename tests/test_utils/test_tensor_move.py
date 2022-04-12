@@ -5,7 +5,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.zero.sharded_param import (StatefulTensor, colo_tensor_mem_usage, colo_model_data_tensor_move,
                                            colo_model_data_tensor_move_inline, colo_model_data_move_to_cpu,
                                            colo_model_tensor_clone)
-from colossalai.utils.memory import colo_set_process_memory_fraction, colo_device_memory_capacity
+from colossalai.utils.memory import colo_device_memory_used, colo_set_process_memory_fraction, colo_device_memory_capacity
 from colossalai.utils import free_port
 
 import torch
@@ -98,4 +98,4 @@ def test_tensor_move(world_size):
 
 
 if __name__ == '__main__':
-    test_tensor_move(4)
+    test_tensor_move(world_size=8)

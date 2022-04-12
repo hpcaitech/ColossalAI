@@ -106,7 +106,8 @@ def colo_device_memory_capacity(device: torch.device) -> int:
     assert isinstance(device, torch.device)
     if device.type == 'cpu':
         mem_info = _get_cpu_memory_info()
-        return mem_info.info.total / gpc.get_world_size(ParallelMode.DATA)
+        # In the context of 1-CPU-N-GPU, the memory capacity of the current process is 1/N overall CPU memory.
+        return mem_info.total / gpc.num_processes_on_current_node
     if device.type == 'cuda':
         return torch.cuda.get_device_properties(get_current_device()).total_memory * _GLOBAL_CUDA_MEM_FRACTION
 
@@ -123,8 +124,9 @@ def colo_device_memory_used(device: torch.device) -> int:
     """
     if device.type == 'cpu':
         mem_info = _get_cpu_memory_info()
-        # FIXME(jiaruifang) we need get how many processes are using the CPU memory.
-        ret = mem_info.used / gpc.get_world_size(ParallelMode.DATA)
+        # In the context of 1-CPU-N-GPU, the memory usage of the current process is 1/N CPU memory used.
+        # Each process consumes the same amount of memory.
+        ret = mem_info.used / gpc.num_processes_on_current_node
         return ret
     elif device.type == 'cuda':
         ret: int = torch.cuda.memory_allocated(device)
