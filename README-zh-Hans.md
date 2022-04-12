@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-   一个整合高效并行技术的AI大模型训练系统。
+   一个整合高效并行技术的 AI 大模型训练系统。
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> | 
    <a href="https://www.colossalai.org/"> 文档 </a> | 
@@ -25,6 +25,7 @@
 
 ## 目录
 <ul>
+ <li><a href="#为何选择-Colossal-AI">为何选择 Colossal-AI</a> </li>
  <li><a href="#特点">特点</a> </li>
  <li>
    <a href="#展示样例">展示样例</a> 
@@ -55,15 +56,26 @@
  <li><a href="#引用我们">引用我们</a></li>
 </ul>
 
+## 为何选择 Colossal-AI
+<div align="center">
+   <a href="https://youtu.be/KnXSfjqkKN0">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/JamesDemmel_Colossal-AI.png" width="600" />
+   </a>
+
+   James Demmel 教授 (加州大学伯克利分校): Colossal-AI 让分布式训练高效、易用、可扩展。
+</div>
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
 ## 特点
 
-Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您的分布式AI模型训练像普通的单GPU模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练。
+Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让您的分布式 AI 模型训练像普通的单 GPU 模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练。
 
 - 数据并行
 - 流水线并行
 - 1维, 2维, 2.5维, 3维张量并行 
 - 序列并行
-- 友好的trainer和engine
+- 友好的 trainer 和 engine
 - 可扩展新的并行方式
 - 混合精度
 - 零冗余优化器 (ZeRO)
@@ -85,7 +97,7 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 ### GPT-2
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2.png" width=800/>
 
-- 降低11倍GPU显存占用，或超线性扩展（张量并行）
+- 降低11倍 GPU 显存占用，或超线性扩展（张量并行）
 
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/(updated)GPT-2.png" width=800>
 
@@ -111,21 +123,21 @@ Colossal-AI为您提供了一系列并行训练组件。我们的目标是让您
 ```bash
 pip install colossalai
 ```
-该命令将会安装CUDA extension，如果你已安装CUDA, NVCC和torch。 
+该命令将会安装 CUDA extension, 如果你已安装 CUDA, NVCC 和 torch。 
 
-如果你不想安装CUDA extension, 可在命令中添加`--global-option="--no_cuda_ext"`, 例如:
+如果你不想安装 CUDA extension, 可在命令中添加`--global-option="--no_cuda_ext"`, 例如:
 ```bash
 pip install colossalai --global-option="--no_cuda_ext"
 ```
 
-如果你想使用`ZeRO`, 你可以使用:
+如果你想使用 `ZeRO`, 你可以使用:
 ```bash
 pip install colossalai[zero]
 ```
 
 ### 从源代码安装
 
-> Colossal-AI的版本将与该项目的主分支保持一致。欢迎通过issue反馈你遇到的任何问题 :)
+> Colossal-AI 的版本将与该项目的主分支保持一致。欢迎通过 issue 反馈你遇到的任何问题 :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -137,7 +149,7 @@ pip install -r requirements/requirements.txt
 pip install .
 ```
 
-如果你不想安装和使用CUDA kernel fusion (使用fused优化器需安装):
+如果你不想安装和使用 CUDA kernel fusion (使用 fused 优化器需安装):
 
 ```shell
 pip install --global-option="--no_cuda_ext" .
@@ -147,14 +159,14 @@ pip install --global-option="--no_cuda_ext" .
 
 ## 使用 Docker
 
-运行以下命令从我们提供的docker文件中建立docker镜像。
+运行以下命令从我们提供的 docker 文件中建立 docker 镜像。
 
 ```bash
 cd ColossalAI
 docker build -t colossalai ./docker
 ```
 
-运行以下命令从以交互式启动docker镜像.
+运行以下命令从以交互式启动 docker 镜像.
 
 ```bash
 docker run -ti --gpus all --rm --ipc=host colossalai bash
@@ -165,7 +177,7 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 ## 社区
 欢迎通过[论坛](https://github.com/hpcaitech/ColossalAI/discussions),
 [Slack](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w),
-或[微信](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode")加入Colossal-AI社区，与我们分享你的建议和问题。
+或[微信](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png "qrcode")加入 Colossal-AI 社区，与我们分享你的建议和问题。
 
 
 ## 做出贡献
@@ -189,7 +201,7 @@ import colossalai
 from colossalai.utils import get_dataloader
 
 
-# my_config可以是config文件的路径或字典对象
+# my_config 可以是 config 文件的路径或字典对象
 # 'localhost' 仅适用于单节点，在多节点时需指明节点名
 colossalai.launch(
     config=my_config,
@@ -203,7 +215,7 @@ colossalai.launch(
 # 构建模型
 model = ...
 
-# 构建数据集, dataloader会默认处理分布式数据sampler
+# 构建数据集, dataloader 会默认处理分布式数据 sampler
 train_dataset = ...
 train_dataloader = get_dataloader(dataset=dataset,
                                 shuffle=True
@@ -216,7 +228,7 @@ optimizer = ...
 # 构建损失函数
 criterion = ...
 
-# 初始化colossalai
+# 初始化 colossalai
 engine, train_dataloader, _, _ = colossalai.initialize(
     model=model,
     optimizer=optimizer,
@@ -238,7 +250,7 @@ for epoch in range(NUM_EPOCHS):
 
 ### 构建一个简单的2维并行模型
 
-假设我们有一个非常巨大的MLP模型，它巨大的hidden size使得它难以被单个GPU容纳。我们可以将该模型的权重以二维网格的形式分配到多个GPU上，且保持你熟悉的模型构建方式。
+假设我们有一个非常巨大的 MLP 模型，它巨大的 hidden size 使得它难以被单个 GPU 容纳。我们可以将该模型的权重以二维网格的形式分配到多个 GPU 上，且保持你熟悉的模型构建方式。
 
 ```python
 from colossalai.nn import Linear2D
