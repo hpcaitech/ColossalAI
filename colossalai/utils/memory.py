@@ -146,6 +146,8 @@ def colo_set_process_memory_fraction(ratio: float) -> None:
         ratio (float): a ratio between 0. ~ 1.
     """
     if version.parse(torch.__version__) < version.parse('1.8'):
+        logger = get_dist_logger('colo_set_process_memory_fraction')
+        logger.warning('colo_set_process_memory_fraction failed because torch version is less than 1.8')
         return
     global _GLOBAL_CUDA_MEM_FRACTION
     _GLOBAL_CUDA_MEM_FRACTION = ratio
