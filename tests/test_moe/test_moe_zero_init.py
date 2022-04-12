@@ -16,7 +16,7 @@ from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardS
 
 from colossalai.testing import rerun_on_exception
 from colossalai.utils import get_current_device
-from tests.test_zero_data_parallel.common import CONFIG
+from tests.test_zero.common import CONFIG
 
 
 class MoeModel(CheckpointModule):

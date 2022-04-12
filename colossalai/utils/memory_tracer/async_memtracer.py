@@ -31,6 +31,7 @@ class AsyncMemoryMonitor:
         async_mem_monitor.finish()
         async_mem_monitor.save('log.pkl')
 
+
     Args:
         power (int, optional): the power of time interva. Defaults to 10.
 
