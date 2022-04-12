@@ -39,7 +39,7 @@ def run_model_test(enable_autocast, shard_strategy_class):
         col_model_deepcopy(zero_model, model)
         model = model.cuda()
 
-        model = DDP(model)
+        model = DDP(model, device_ids=[torch.cuda.current_device()])
 
         for i, (data, label) in enumerate(train_dataloader):
             if i > 5:
