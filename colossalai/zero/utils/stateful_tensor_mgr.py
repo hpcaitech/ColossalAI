@@ -38,10 +38,6 @@ class StatefulTensorMgr(object):
     def adjust_layout(self) -> None:
         """ Adjust the layout of statefuil tensor according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
-
-        Args:
-            mem_stats_collector (MemStatsCollector): a collector, usually owned by a Sharded Model.
-            It contains non-model footprint of a DNN model.
         """
         # find stateful tensor in state COMPUTE
         cuda_demand = 0

@@ -109,6 +109,5 @@ class ShardedParamV2(object):
 
         if self.param.grad is not None and self.param.grad.data_ptr() not in address_set:
             _update_mem_use(self.param.grad)
-            address_set.add(self.param.grad.data_ptr())
 
         return cuda_mem_use, cpu_mem_use
