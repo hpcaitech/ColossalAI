@@ -13,14 +13,12 @@ MP_PARALLEL_CONFIG = dict(fp16=dict(mode=None,), parallel=dict(pipeline=dict(siz
 
 _ZERO_MODEL_CONFIG = dict(reduce_scatter_bucket_size_mb=25,
                           fp32_reduce_scatter=False,
-                          offload_config=None,
+                          tensor_placement_policy='cuda',
                           gradient_predivide_factor=1.0,
-                          use_memory_tracer=False,
                           shard_strategy=TensorShardStrategy(),
                           reuse_fp16_shard=False)
 
-_ZERO_OPTIMIZER_CONFIG = dict(cpu_offload=False,
-                              initial_scale=2**5,
+_ZERO_OPTIMIZER_CONFIG = dict(initial_scale=2**5,
                               min_scale=1,
                               growth_factor=2,
                               backoff_factor=0.5,
