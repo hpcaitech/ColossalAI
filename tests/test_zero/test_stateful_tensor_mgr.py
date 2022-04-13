@@ -14,6 +14,7 @@ from colossalai.testing import rerun_on_exception
 from torch.nn.parameter import Parameter
 from typing import List
 from functools import partial
+from colossalai.zero.utils.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
 class Net(torch.nn.Module):
@@ -37,7 +38,8 @@ def run_stm():
         p.colo_attr = ShardedParamV2(p, set_data_none=True)
     GLOBAL_MODEL_DATA_TRACER.register_model(model)
     mem_collector = MemStatsCollector()
-    stateful_tensor_mgr = StatefulTensorMgr(mem_collector)
+    tensor_placement_policy = AutoTensorPlacementPolicy(mem_stats_collector=mem_collector)
+    stateful_tensor_mgr = StatefulTensorMgr(tensor_placement_policy)
     for p in model.parameters():
         stateful_tensor_mgr.register_stateful_param(p.colo_attr)
 

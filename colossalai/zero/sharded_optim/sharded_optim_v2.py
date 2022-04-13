@@ -16,12 +16,12 @@ from colossalai.zero.sharded_param.tensor_utils import (colo_model_data_tensor_m
                                                         colo_tensor_mem_usage)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
-from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from colossalai.zero.sharded_param.tensorful_state import (StatefulTensor, TensorState)
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
+from colossalai.zero.utils.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
 class OptimState(Enum):
@@ -57,10 +57,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         sharded_model (ShardedModelV2): A sharded model initialized by class ShardedModelV2. The optimizer will use the
             shard strategy provided by sharded model to shard param fp32 tensors.
         optimizer (Optimizer): An Optimizer instance.
-        cpu_offload (bool, optional): Is offloading the optimizer states to CPU.. Defaults to False.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
             which will be used when using hybrid CPU optimizer. 
             Make sure `reuse_fp16_shard` is enabled in `ShardedModelV2`, if `gpu_margin_mem_ratio` > `0.0`.
+            This argument is meaningless when `tensor_placement_policy` of `ShardedModelV2` is not "auto".
             Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
@@ -79,7 +79,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
     def __init__(self,
                  sharded_model: ShardedModelV2,
                  optimizer: Optimizer,
-                 cpu_offload: bool = False,
                  gpu_margin_mem_ratio: float = 0.0,
                  initial_scale: float = 2**32,
                  min_scale: float = 1,
@@ -95,18 +94,15 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         super().__init__(optimizer)
         self.shard_strategy = sharded_model.shard_strategy
         self.model: ShardedModelV2 = sharded_model
-        if cpu_offload and not sharded_model.cpu_offload:
-            raise RuntimeError(
-                f"ShardedOptimizerV2 using cpu_offload, but the sharded_model used to initialize it dose not use cpu_offload"
-            )
+
         self.gpu_margin_mem_ratio: float = float(gpu_margin_mem_ratio)
         assert 0.0 <= self.gpu_margin_mem_ratio <= 1.0, f'gpu_margin_mem_ratio must >=0.0 and <=1.0'
         # Only move fp32 shards from CPU to GPU when user allows and inner optimizer is valid
         # Inner optimizer must support optimizing hybrid (CPU and CUDA) tensors,
         # and it must set `num_fp32_shards_per_param` correctly
-        self._should_move_fp32_shards_h2d: bool = cpu_offload and self.gpu_margin_mem_ratio > 0.0 and getattr(
+        self._should_move_fp32_shards_h2d: bool = sharded_model.cpu_offload and self.gpu_margin_mem_ratio > 0.0 and getattr(
             optimizer, 'num_fp32_shards_per_param', 0) >= 2
-        self.device = torch.cuda.current_device() if not cpu_offload else torch.device('cpu')
+        self.device = sharded_model._tensor_placement_policy.device or torch.device('cpu')
         self.optim_state: OptimState = OptimState.UNSCALED
         self.dp_process_group = dp_process_group or gpc.get_group(ParallelMode.DATA)
         self.mp_process_group = mp_process_group or gpc.get_group(ParallelMode.MODEL)
@@ -123,7 +119,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         # Store fp32 param shards
         self._register_master_weight()
-
+        if self.gpu_margin_mem_ratio != 0.0 and isinstance(sharded_model._tensor_placement_policy,
+                                                           AutoTensorPlacementPolicy):
+            self._logger.warning(f'gpu_margin_mem_ratio is meaningless when tensor_placement_policy is not "auto"')
         self._logger.debug(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory!",
                            ranks=[0])
 

@@ -37,16 +37,12 @@ def _run_test_found_inf(cpu_offload, shard_strategy_class, gpu_margin_mem_ratio)
         zero_model = ShardedModelV2(
             zero_model,
             shard_strategy,
-            offload_config=dict(device='cpu') if cpu_offload else None,
-            use_memory_tracer=gpu_margin_mem_ratio > 0.0,
+            tensor_placement_policy='cpu' if cpu_offload else 'cuda',
             reuse_fp16_shard=True,
         )
 
         sharded_optim = HybridAdam(zero_model.parameters(), lr=1e-3)
-        sharded_optim = ShardedOptimizerV2(zero_model,
-                                           sharded_optim,
-                                           cpu_offload=cpu_offload,
-                                           gpu_margin_mem_ratio=gpu_margin_mem_ratio)
+        sharded_optim = ShardedOptimizerV2(zero_model, sharded_optim, gpu_margin_mem_ratio=gpu_margin_mem_ratio)
 
         for i, (data, label) in enumerate(train_dataloader):
             if i > 1:

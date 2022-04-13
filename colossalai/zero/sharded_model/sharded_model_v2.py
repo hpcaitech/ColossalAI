@@ -23,6 +23,7 @@ from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from colossalai.zero.utils.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.zero.utils.tensor_placement_policy import TENSOR_PLACEMENT_POLICIES, TensorPlacementPolicy
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
@@ -48,6 +49,11 @@ class ShardedModelV2(nn.Module):
             Generally, it should be `None`, and it's the same as `process_group`. Defaults to None.
         reduce_scatter_bucket_size_mb (int, optional): Reduce-scatter bucket size in *MB*. Defaults to 25.
         fp32_reduce_scatter (bool, optional): If set to `True`, gradients are forced to FP32 before reduce-scatter. Defaults to False.
+        tensor_placement_policy (str): Which device to place *held* tensors. It can be 'cpu', 'cuda' and 'auto'.
+            If it's 'cpu', parameters, gradients and optimizer states will be offloaded to CPU, which means min CUDA memory will be used.
+            If it's 'cuda', they won't be offloaded, which means max CUDA memory will be used.
+            If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
+            Defaults to 'cuda'.
         offload_config (Optional[dict], optional): We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload. Defaults to None.
         gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
         use_memory_tracer (bool, optional): Whether to use memoty tracer. Defaults to False.
@@ -65,9 +71,8 @@ class ShardedModelV2(nn.Module):
                  reduce_scatter_process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_bucket_size_mb: int = 25,
                  fp32_reduce_scatter: bool = False,
-                 offload_config: Optional[dict] = None,
+                 tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 use_memory_tracer: bool = False,
                  reuse_fp16_shard: bool = False):
         super().__init__()
         self.logger = get_dist_logger()
@@ -100,20 +105,22 @@ class ShardedModelV2(nn.Module):
         self.rank = dist.get_rank(self.process_group)
         self.shard_strategy = shard_strategy
 
+        assert tensor_placement_policy in TENSOR_PLACEMENT_POLICIES, f'Invalid tensor_placement_policy, got {tensor_placement_policy}'
         # Init Memory Statistics Collector
-        self._use_memory_tracer = use_memory_tracer
+        self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_model(self)
             self._memstats_collector = MemStatsCollector()
-            self._stateful_tensor_mgr = StatefulTensorMgr(self._memstats_collector)
-            for param in module.parameters():
-                if hasattr(param, 'colo_attr'):
-                    self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
             self._start_collect_memstats = disposable(self._memstats_collector.start_collection)
             self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
         else:
             self._memstats_collector = None
-            self._stateful_tensor_mgr = None
+        self._tensor_placement_policy: TensorPlacementPolicy = TENSOR_PLACEMENT_POLICIES[tensor_placement_policy](
+            mem_stats_collector=self._memstats_collector)
+        self._stateful_tensor_mgr = StatefulTensorMgr(self._tensor_placement_policy)
+        for param in module.parameters():
+            if hasattr(param, 'colo_attr'):
+                self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
 
         # Register hooks
         self._ophook_list = [
@@ -124,7 +131,7 @@ class ShardedModelV2(nn.Module):
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
         self.fp32_reduce_scatter = fp32_reduce_scatter
-        self._cpu_offload: bool = offload_config.get('device', None) == 'cpu' if offload_config else False
+        self._cpu_offload: bool = tensor_placement_policy != 'cuda'
         for param in module.parameters():
             # Init `offload_grad`
             param.colo_attr.offload_grad = self._cpu_offload
