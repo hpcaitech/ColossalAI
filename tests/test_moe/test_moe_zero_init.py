@@ -77,10 +77,10 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
             assert param.colo_attr.is_replicated
 
         if param.colo_attr.param_is_sharded:
-            assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
-                f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+            assert param.colo_attr.data_payload.device.type == init_device.type, \
+                f'{param.colo_attr.data_payload.device.type} vs. {init_device.type}'
         else:
-            assert param.colo_attr.sharded_data_tensor.payload.device.type == 'cuda'
+            assert param.colo_attr.data_payload.device.type == 'cuda'
 
 
 def _run_dist(rank, world_size, port):

@@ -55,7 +55,7 @@ def _run_test_found_inf(cpu_offload, shard_strategy_class, gpu_margin_mem_ratio)
             data, label = data.cuda(), label.cuda()
             _run_step(zero_model, sharded_optim, data, label, criterion, False)
             for param in zero_model.parameters():
-                assert not has_inf_or_nan(param.colo_attr.sharded_data_tensor.payload)
+                assert not has_inf_or_nan(param.colo_attr.data_payload)
 
 
 def _run_dist(rank, world_size, port):

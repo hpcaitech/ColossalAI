@@ -46,8 +46,8 @@ def run_model_test(init_device_type, shard_strategy_class):
             assert hasattr(param, 'colo_attr')
             assert param.colo_attr.sharded_data_tensor.dtype == torch.half
             assert param.colo_attr.sharded_data_tensor.is_sharded
-            assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
-                f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+            assert param.colo_attr.data_payload.device.type == init_device.type, \
+                f'{param.colo_attr.data_payload.device.type} vs. {init_device.type}'
 
         cuda_mem_use, _ = colo_model_mem_usage(model)
         model_data_cuda_mem_MB = cuda_mem_use / 1e6
