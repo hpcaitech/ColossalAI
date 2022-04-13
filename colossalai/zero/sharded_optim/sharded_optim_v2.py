@@ -57,10 +57,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         sharded_model (ShardedModelV2): A sharded model initialized by class ShardedModelV2. The optimizer will use the
             shard strategy provided by sharded model to shard param fp32 tensors.
         optimizer (Optimizer): An Optimizer instance.
-        cpu_offload (bool, optional): Is offloading the optimizer states to CPU.. Defaults to False.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
             which will be used when using hybrid CPU optimizer. 
             Make sure `reuse_fp16_shard` is enabled in `ShardedModelV2`, if `gpu_margin_mem_ratio` > `0.0`.
+            This argument is meaningless when `tensor_placement_policy` of `ShardedModelV2` is not "auto".
             Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
