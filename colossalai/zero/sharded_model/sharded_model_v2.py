@@ -50,7 +50,7 @@ class ShardedModelV2(nn.Module):
         reduce_scatter_bucket_size_mb (int, optional): Reduce-scatter bucket size in *MB*. Defaults to 25.
         fp32_reduce_scatter (bool, optional): If set to `True`, gradients are forced to FP32 before reduce-scatter. Defaults to False.
         tensor_placement_policy (str): Which device to place *held* tensors. It can be 'cpu', 'cuda' and 'auto'.
-            If it's 'cpu', parameters, gradients and optimizers states will be offloaded to CPU, which means min CUDA memory will be used.
+            If it's 'cpu', parameters, gradients and optimizer states will be offloaded to CPU, which means min CUDA memory will be used.
             If it's 'cuda', they won't be offloaded, which means max CUDA memory will be used.
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
             Defaults to 'cuda'.
