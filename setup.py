@@ -216,6 +216,9 @@ setup(
     extras_require={
         'zero': fetch_requirements('requirements/requirements-zero.txt'),
     },
+    scripts=[
+          'bin/colossal',
+      ],
     python_requires='>=3.7',
     classifiers=[
         'Programming Language :: Python :: 3',
