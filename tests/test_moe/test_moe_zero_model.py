@@ -32,7 +32,7 @@ def run_model_test(enable_autocast, shard_strategy_class):
                          shard_strategy=shard_strategy,
                          shard_param=True):
         zero_model = MoeModel(checkpoint=True)
-    zero_model = ShardedModelV2(zero_model, shard_strategy, use_memory_tracer=True)
+    zero_model = ShardedModelV2(zero_model, shard_strategy)
 
     # check whether parameters are identical in ddp
     for name, p in zero_model.named_parameters():

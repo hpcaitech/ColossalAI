@@ -69,8 +69,7 @@ def _run_test_sharded_optim_v2(cpu_offload,
 
     zero_model = ShardedModelV2(zero_model,
                                 shard_strategy,
-                                offload_config=dict(device='cpu') if cpu_offload else None,
-                                use_memory_tracer=gpu_margin_mem_ratio > 0.0,
+                                tensor_placement_policy='cpu' if cpu_offload else 'cuda',
                                 reuse_fp16_shard=reuse_fp16_shard)
 
     # check whether parameters are identical in ddp
@@ -88,7 +87,6 @@ def _run_test_sharded_optim_v2(cpu_offload,
     sharded_optim = optimizer_class(zero_model.parameters(), lr=1e-3)
     sharded_optim = ShardedOptimizerV2(zero_model,
                                        sharded_optim,
-                                       cpu_offload=cpu_offload,
                                        initial_scale=2**5,
                                        gpu_margin_mem_ratio=gpu_margin_mem_ratio)
 
