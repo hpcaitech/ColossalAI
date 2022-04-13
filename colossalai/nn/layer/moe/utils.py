@@ -8,7 +8,7 @@ from .experts import FFNExperts, TPExperts
 class ForceFP32Parameter(torch.nn.Parameter):
 
     def half(self, memory_format=None):
-        return self
+        return self.data
 
 
 class NormalNoiseGenerator:

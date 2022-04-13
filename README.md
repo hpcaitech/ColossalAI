@@ -25,6 +25,7 @@
 
 ## Table of Contents
 <ul>
+ <li><a href="#Why-Colossal-AI">Why Colossal-AI</a> </li>
  <li><a href="#Features">Features</a> </li>
  <li>
    <a href="#Demo">Demo</a> 
@@ -33,6 +34,7 @@
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
+     <li><a href="#PaLM">PaLM</a></li>
    </ul>
  </li>
 
@@ -53,6 +55,17 @@
    </ul>
  <li><a href="#Cite-Us">Cite Us</a></li>
 </ul>
+
+## Why Colossal-AI
+<div align="center">
+   <a href="https://youtu.be/KnXSfjqkKN0">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/JamesDemmel_Colossal-AI.png" width="600" />
+   </a>
+
+   Prof. James Demmel (UC Berkeley): Colossal-AI makes distributed training efficient, easy and scalable.
+</div>
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Features
 
@@ -96,6 +109,9 @@ distributed training in a few lines.
 
 - 2x faster training, or 50% longer sequence length
 
+### PaLM
+- [PaLM-colossalai](https://github.com/hpcaitech/PaLM-colossalai): Scalable implementation of Google's Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)).
+
 Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -112,11 +128,6 @@ This command will install CUDA extension if your have installed CUDA, NVCC and t
 If you don't want to install CUDA extension, you should add `--global-option="--no_cuda_ext"`, like:
 ```bash
 pip install colossalai --global-option="--no_cuda_ext"
-```
-
-If you want to use `ZeRO`, you can run:
-```bash
-pip install colossalai[zero]
 ```
 
 ### Install From Source

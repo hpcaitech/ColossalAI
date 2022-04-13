@@ -18,11 +18,3 @@ def test_load_config():
     assert config.train_data.dataset, 'cannot access grandchild attribute'
     assert isinstance(config.train_data.dataset.transform_pipeline[0], dict), \
         f'expected attribute transform_pipeline elements to be a dict, but found {type(config.train_data.dataset.transform_pipeline)}'
-
-
-@pytest.mark.cpu
-def test_load_ophooks():
-    dict = {'type': 'MemTracerOpHook', 'warmup': 10, 'refreshrate': 20}
-    ophook = build_ophooks(dict)
-    assert ophook.refreshrate == 20
-    assert ophook.warmup == 10

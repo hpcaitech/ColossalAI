@@ -57,17 +57,14 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, optimizer_class, criterion = get_components_func()
 
-        with ZeroInitContext(
-                target_device=torch.device(f'cpu:0') if cpu_offload else torch.device(f'cuda:{get_current_device()}'),
-                shard_strategy=shard_strategy,
-                shard_param=True,
-                rm_torch_payload_on_the_fly=False):
+        with ZeroInitContext(target_device=torch.device(f'cpu:0') if cpu_offload else get_current_device(),
+                             shard_strategy=shard_strategy,
+                             shard_param=True):
             zero_model = model_builder(checkpoint=True)
         zero_model = ShardedModelV2(
             zero_model,
             shard_strategy,
-            offload_config=dict(device='cpu') if cpu_offload else None,
-            use_memory_tracer=gpu_margin_mem_ratio > 0.0,
+            tensor_placement_policy='cpu' if cpu_offload else 'cuda',
             reuse_fp16_shard=use_cpuadam,
         )
 
@@ -81,14 +78,13 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         sharded_optim = optimizer_class(zero_model.parameters(), lr=1e-3)
         sharded_optim = ShardedOptimizerV2(zero_model,
                                            sharded_optim,
-                                           cpu_offload=cpu_offload,
                                            initial_scale=2**5,
                                            gpu_margin_mem_ratio=gpu_margin_mem_ratio)
 
         amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False)
         apex_model, apex_optimizer = convert_to_apex_amp(model, optim, amp_config)
         if dist.get_world_size() > 1:
-            apex_model = DDP(apex_model)
+            apex_model = DDP(apex_model, device_ids=[torch.cuda.current_device()])
 
         for i, (data, label) in enumerate(train_dataloader):
             if i > 5:

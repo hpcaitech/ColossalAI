@@ -13,7 +13,7 @@ from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     colo_model_mem_usage
-from colossalai.utils.memory_utils.utils import colo_device_memory_used
+from colossalai.utils.memory import colo_device_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -28,9 +28,8 @@ def run_model_test(init_device_type, shard_strategy_class):
 
     for get_components_func in non_distributed_component_funcs:
         model_builder, _, _, _, _ = get_components_func()
-        model_numel_tensor = torch.zeros(1, dtype=torch.int)
         if init_device_type == 'cuda':
-            init_device = torch.device(f"cuda:{get_current_device()}")
+            init_device = get_current_device()
         elif init_device_type == 'cpu':
             init_device = torch.device("cpu")
         else:
@@ -40,16 +39,15 @@ def run_model_test(init_device_type, shard_strategy_class):
         with ZeroInitContext(target_device=init_device,
                              shard_strategy=shard_strategy_class(),
                              shard_param=True,
-                             model_numel_tensor=model_numel_tensor,
-                             rm_torch_payload_on_the_fly=False):
+                             model_numel_tensor=model_numel_tensor):
             model = model_builder(checkpoint=True)
 
         for param in model.parameters():
             assert hasattr(param, 'colo_attr')
             assert param.colo_attr.sharded_data_tensor.dtype == torch.half
             assert param.colo_attr.sharded_data_tensor.is_sharded
-            assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
-                f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+            assert param.colo_attr.data_payload.device.type == init_device.type, \
+                f'{param.colo_attr.data_payload.device.type} vs. {init_device.type}'
 
         cuda_mem_use, _ = colo_model_mem_usage(model)
         model_data_cuda_mem_MB = cuda_mem_use / 1e6

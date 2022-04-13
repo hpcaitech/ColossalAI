@@ -23,25 +23,26 @@ def get_parallel_rank(parallel_mode: ParallelMode):
 
 
 class _Classifier2p5D(torch.autograd.Function):
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(
-            ctx: Any,
-            A: Tensor,
-            B: Tensor,
-            bias,
-            tesseract_dim: int,
-            out_shape: Tuple[int, ...],
-            row_rank: int,
-            col_rank: int,
-            row_parallel_mode: ParallelMode,
-            col_parallel_mode: ParallelMode,
-            data_parallel_rank: int,
-            pipeline_parallel_rank: int,
-            pipeline_parallel_size: int,
-            tensor_parallel_size: int,
+        ctx: Any,
+        A: Tensor,
+        B: Tensor,
+        bias,
+        tesseract_dim: int,
+        out_shape: Tuple[int, ...],
+        row_rank: int,
+        col_rank: int,
+        row_parallel_mode: ParallelMode,
+        col_parallel_mode: ParallelMode,
+        data_parallel_rank: int,
+        pipeline_parallel_rank: int,
+        pipeline_parallel_size: int,
+        tensor_parallel_size: int,
     ) -> Tensor:
-
+        A = A.clone().detach()
         A_shape = A.shape
         A = A.reshape((-1, A_shape[-1]))
         B_shape = B.shape
@@ -509,6 +510,7 @@ class Matmul_ATB_2p5D(torch.autograd.Function):
 
 
 class _Add_Bias_2p5D(torch.autograd.Function):
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any, input: Tensor, bias: Tensor, output_size_per_partition: int, tesseract_dim: int,
@@ -689,6 +691,7 @@ def layernorm_2p5d(input: Tensor, E_x: Tensor, Var_x: Tensor, hidden_size: int,
 
 
 class _AllGatherTensor2p5D(torch.autograd.Function):
+
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
     def forward(ctx: Any, inputs: Tensor, dim: int, col_parallel_mode: ParallelMode) -> Tensor:
@@ -777,6 +780,7 @@ def split_batch_2p5d(input_: Tensor, dim: int = 0) -> Tensor:
 
 
 class _ReduceTensor2p5D(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, input_, parallel_mode):
         return all_reduce(input_, parallel_mode)
@@ -801,6 +805,7 @@ def reduce_tensor_2p5d(input_: Tensor, parallel_mode: ParallelMode) -> Tensor:
 
 
 class _ReduceScatterTensor2p5D(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, input_, dim, parallel_mode):
         ctx.dim = dim
@@ -833,6 +838,7 @@ def reduce_scatter_tensor_2p5d(input_: Tensor, dim: int, parallel_mode: Parallel
 
 
 class _RreduceByBatch2p5D(torch.autograd.Function):
+
     @staticmethod
     def symbolic(graph, input_, reduce_mean: bool = False):
         output = all_reduce(input_, ParallelMode.PARALLEL_2P5D_COL)

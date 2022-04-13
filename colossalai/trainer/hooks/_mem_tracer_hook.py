@@ -1,9 +1,8 @@
-from cgitb import Hook
 from colossalai.registry import HOOKS
 from torch import Tensor
 from colossalai.trainer.hooks import BaseHook
 from colossalai.utils.memory_tracer import AsyncMemoryMonitor
-from ._metric_hook import LearningRateMetric, MetricHook
+
 
 @HOOKS.register_module
 class MemTraceHook(BaseHook):
@@ -11,6 +10,7 @@ class MemTraceHook(BaseHook):
     This hook is used to record memory usage info, and pass to trainer.states
     You can use it as other trainer hook and fetch data from trainer.states['metrics][mode]
     """
+
     def __init__(
         self,
         priority: int = 0,
@@ -36,7 +36,7 @@ class MemTraceHook(BaseHook):
     def before_test_iter(self, trainer):
         self._memory_monitor.start()
         return super().before_test(trainer)
-    
+
     def after_test_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         self._memory_monitor.finish()
         trainer.states['metrics']['train'] = self._memory_monitor.state_dict

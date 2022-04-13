@@ -8,21 +8,22 @@ import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.engine.ophooks import register_ophooks_recursively
-from colossalai.engine.ophooks.zero_hook import ZeroHook
+from colossalai.zero.utils import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
-from colossalai.engine.gradient_handler.utils import bucket_allreduce
 from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device
+from colossalai.utils import get_current_device, disposable
 from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.utils.memory_utils.utils import colo_cuda_memory_capacity
+from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.zero.shard_utils.tensor_utils import colo_model_data_move_to_cpu
+from colossalai.zero.sharded_param.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
+from colossalai.zero.utils.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.zero.utils.tensor_placement_policy import TENSOR_PLACEMENT_POLICIES, TensorPlacementPolicy
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
@@ -36,7 +37,6 @@ class ShardedModelV2(nn.Module):
 
     Note:
         You must use ``ShardedModelV2`` with ``ShardedOptimizerV2``.
-
     Note:
         Make sure you don't use gradient accumulation and your optimizer can work with fp16 gradient and fp32 parameter,
         if you enable ``reuse_fp16_shard``.
@@ -49,6 +49,11 @@ class ShardedModelV2(nn.Module):
             Generally, it should be `None`, and it's the same as `process_group`. Defaults to None.
         reduce_scatter_bucket_size_mb (int, optional): Reduce-scatter bucket size in *MB*. Defaults to 25.
         fp32_reduce_scatter (bool, optional): If set to `True`, gradients are forced to FP32 before reduce-scatter. Defaults to False.
+        tensor_placement_policy (str): Which device to place *held* tensors. It can be 'cpu', 'cuda' and 'auto'.
+            If it's 'cpu', parameters, gradients and optimizer states will be offloaded to CPU, which means min CUDA memory will be used.
+            If it's 'cuda', they won't be offloaded, which means max CUDA memory will be used.
+            If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
+            Defaults to 'cuda'.
         offload_config (Optional[dict], optional): We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload. Defaults to None.
         gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
         use_memory_tracer (bool, optional): Whether to use memoty tracer. Defaults to False.
@@ -66,9 +71,8 @@ class ShardedModelV2(nn.Module):
                  reduce_scatter_process_group: Optional[ProcessGroup] = None,
                  reduce_scatter_bucket_size_mb: int = 25,
                  fp32_reduce_scatter: bool = False,
-                 offload_config: Optional[dict] = None,
+                 tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
-                 use_memory_tracer: bool = False,
                  reuse_fp16_shard: bool = False):
         super().__init__()
         self.logger = get_dist_logger()
@@ -101,23 +105,33 @@ class ShardedModelV2(nn.Module):
         self.rank = dist.get_rank(self.process_group)
         self.shard_strategy = shard_strategy
 
+        assert tensor_placement_policy in TENSOR_PLACEMENT_POLICIES, f'Invalid tensor_placement_policy, got {tensor_placement_policy}'
         # Init Memory Statistics Collector
-        self._use_memory_tracer = use_memory_tracer
+        self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_model(self)
             self._memstats_collector = MemStatsCollector()
+            self._start_collect_memstats = disposable(self._memstats_collector.start_collection)
+            self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
         else:
             self._memstats_collector = None
-        self._iter_cnter = 0
+        self._tensor_placement_policy: TensorPlacementPolicy = TENSOR_PLACEMENT_POLICIES[tensor_placement_policy](
+            mem_stats_collector=self._memstats_collector)
+        self._stateful_tensor_mgr = StatefulTensorMgr(self._tensor_placement_policy)
+        for param in module.parameters():
+            if hasattr(param, 'colo_attr'):
+                self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
 
         # Register hooks
-        self._ophook_list = [ZeroHook(self.shard_strategy, self._memstats_collector, self.process_group)]
-        register_ophooks_recursively(self.module, self._ophook_list, filter_fn=lambda m: not m.param_is_sharded)
-        self.param_hook_mgr = BaseParamHookMgr(self.sharded_params)
+        self._ophook_list = [
+            ZeroHook(self.shard_strategy, self._memstats_collector, self._stateful_tensor_mgr, self.process_group)
+        ]
+        register_ophooks_recursively(self.module, self._ophook_list)
+        self.param_hook_mgr = BaseParamHookMgr(list(self.module.parameters()))
         self.param_hook_mgr.register_backward_hooks(self._grad_post_backward_hook)
 
         self.fp32_reduce_scatter = fp32_reduce_scatter
-        self._cpu_offload: bool = offload_config.get('device', None) == 'cpu' if offload_config else False
+        self._cpu_offload: bool = tensor_placement_policy != 'cuda'
         for param in module.parameters():
             # Init `offload_grad`
             param.colo_attr.offload_grad = self._cpu_offload
@@ -138,6 +152,12 @@ class ShardedModelV2(nn.Module):
         self._cuda_margin_space = 0
         self.reuse_fp16_shard = reuse_fp16_shard
 
+        # record whether gradients have inf or nan
+        self.overflow_counter = 0
+
+    def adjust_stateful_tensor_layout(self) -> None:
+        self._stateful_tensor_mgr.adjust_layout()
+
     @property
     def use_memory_tracer(self):
         return self._use_memory_tracer
@@ -150,40 +170,35 @@ class ShardedModelV2(nn.Module):
     def cpu_offload(self):
         return self._cpu_offload
 
-    def dump_memory_stats(self, filename: str = 'dump_mem_stats.log') -> None:
-        """Dummy memory tracer collected infomation to a file.
-
-        Example::
-
-            try:
-                # forward: model(inputs)
-                # backward: optimizer.backward()
-            except Exception as e:
-                model.dump_memory_stats()
-                exit(0)
-
-        Args:
-            filename (str, optional): Output file name. Defaults to 'dump_mem_stats.log'.
+    def dump_memory_stats(self, filename: Optional[str] = 'dump_mem_stats.log') -> None:
+        """
+        dummy memory tracer collected infomation to a file.
+        try:
+            # forward: model(inputs)
+            # backward: optimizer.backward()
+        except Exception as e:
+            model.dump_memory_stats()
+            exit(0)
         """
         if self._use_memory_tracer:
             self.logger.error(f'dump memort tracer collected infomation to a {filename}', ranks=[0])
             if gpc.get_global_rank() == 0:
                 with open(filename, 'w+') as f:
-                    f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device())/1e9} GB\n')
-                    f.write(f'cuda max allocated {torch.cuda.max_memory_allocated(get_current_device())/1e9} GB\n')
+                    f.write(f'cuda reserved {torch.cuda.memory_reserved(get_current_device()) / 1e9} GB\n')
+                    f.write(f'cuda max allocated {torch.cuda.max_memory_allocated(get_current_device()) / 1e9} GB\n')
                     f.write('CUDA model data (GB)\n')
-                    f.write(str(self._memstats_collector.model_data_cuda_list('cuda', 'GB')))
+                    f.write(str(self._memstats_collector.model_data_list('cuda', 'GB')))
                     f.write('\n')
                     f.write('CUDA non model data (GB)\n')
-                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cuda', 'GB')))
+                    f.write(str(self._memstats_collector.non_model_data_list('cuda', 'GB')))
                     f.write('CPU non model data (GB)\n')
-                    f.write(str(self._memstats_collector.non_model_data_cuda_list('cpu', 'GB')))
+                    f.write(str(self._memstats_collector.non_model_data_list('cpu', 'GB')))
                     f.write('\n')
 
     def _pre_forward_operations(self):
-        if self._iter_cnter == 0 and self._memstats_collector:
-            # the operation will affect the memory tracer behavior in ZeroHook
-            self._memstats_collector.start_collection()
+        # the operation will affect the memory tracer behavior in ZeroHook
+        if self._memstats_collector:
+            self._start_collect_memstats()
 
         for p in self.module.parameters():
             if hasattr(p, 'colo_attr'):
@@ -214,17 +229,14 @@ class ShardedModelV2(nn.Module):
             ophook.post_iter()
 
     def _update_memstats(self):
-        if self._iter_cnter == 0 and self._memstats_collector:
-            self._memstats_collector.finish_collection()
         if self._memstats_collector:
-            self._memstats_collector.reset_sampling_cnter()
+            self._finish_collect_memstats()
             # cuda margin space = cuda mem capacity - max fwd/bwd cuda mem used.
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
-            self._cuda_margin_space = colo_cuda_memory_capacity() - max(
+            self._cuda_margin_space = colo_device_memory_capacity(get_current_device()) - max(
                 self._memstats_collector.overall_mem_stats('cuda'))
-        self._iter_cnter += 1
 
     @torch.no_grad()
     def _post_backward_operations(self) -> None:
@@ -249,17 +261,13 @@ class ShardedModelV2(nn.Module):
                 torch.cuda.current_stream().synchronize()
         self.reducer.free()
 
-        # all reduce gradients for unsharded parameters
-        reduce_list = [p for p in self.unshard_params if p.is_replicated]
-        bucket_allreduce(reduce_list, self.process_group)
-
         # 3. shard tensors not dealed in the zero hook
         tensor_list = []
         for p in self.sharded_params:
             if not p.colo_attr.param_is_sharded:
                 tensor_list.append(p.colo_attr.sharded_data_tensor)
                 p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD_AFTER_BWD)
-                p.colo_attr.remove_torch_payload()
+                p.colo_attr.set_data_none()
         self.shard_strategy.shard(tensor_list, self.process_group)
 
         # 4. set all parameters' grad to None
@@ -273,15 +281,6 @@ class ShardedModelV2(nn.Module):
             # We also allows to interleave no-sync pass with sync passes, if desired.
             if not self._require_backward_grad_sync:
                 continue
-
-            # move unsharded param grad to saved_grad
-            if not p.colo_attr.param_is_sharded:
-                if p.colo_attr.offload_grad:
-                    colo_model_data_move_to_cpu(p.grad)
-                if p.colo_attr.saved_grad.is_null():
-                    p.colo_attr.saved_grad.reset_payload(p.grad.data)
-                else:
-                    p.colo_attr.saved_grad.payload.add_(p.grad.data)
 
             p.grad = None
 
@@ -311,62 +310,85 @@ class ShardedModelV2(nn.Module):
         assert not grad.requires_grad, 'ShardedModel only works with gradients that don\'t require gradients'
         if not self._require_backward_grad_sync:
             return
+        # used to cheat Pytorch, since we can't return None
+        empty_grad = torch.empty_like(grad)
+        free_storage(empty_grad)
+        # As torch didn't allow modifying grad in hook, we make a copy
+        grad = grad.clone()
+        if param.colo_attr.is_replicated:
+            self._reduce_scatter_handler(param, grad)
+        else:
+            self._save_grad(param, grad)
+        return empty_grad
+
+    def _reduce_scatter_handler(self, param: Parameter, grad: torch.Tensor) -> None:
         self.comm_stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(self.comm_stream):
-            new_grad = grad.clone()
             if self.fp32_reduce_scatter:
-                new_grad.data = new_grad.data.to(param.dtype)
+                grad.data = grad.data.to(param.dtype)
             if self.gradient_predivide_factor > 1.0:
                 # Average grad by world_size for consistency with PyTorch DDP.
-                new_grad.data.div_(self.gradient_predivide_factor)
-            orig_grad_data = new_grad.data
+                grad.data.div_(self.gradient_predivide_factor)
             if self.world_size > 1:
-                grad_chunks = chunk_and_pad(orig_grad_data, self.reduce_scatter_process_group.size())
+                grad_chunks = chunk_and_pad(grad, self.reduce_scatter_process_group.size())
                 self.reducer.reduce_scatter_async(grad_chunks,
                                                   group=self.reduce_scatter_process_group,
                                                   callback_fn=functools.partial(self._reduce_scatter_callback, param))
             else:
-                self._reduce_scatter_callback(param, new_grad)
-            orig_grad_data.record_stream(self.comm_stream)
+                self._reduce_scatter_callback(param, grad)
         torch.cuda.current_stream().wait_stream(self.comm_stream)
-        empty_grad = torch.empty_like(grad)
-        free_storage(empty_grad)
-        return empty_grad
 
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
         assert isinstance(reduced_grad,
                           torch.Tensor), f"_reduce_scatter_callback accept reduced_grad as {type(reduced_grad)}"
-        reduced_grad = reduced_grad.view(-1)
+        reduced_grad.data = reduced_grad.data.view(-1)
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
-        # FIXME(ver217): remove the below line when impl eviction policy
+        self._save_grad(param, reduced_grad)
+
+    # FIXME(ver217): refactor the below line when impl eviction policy
+    def _save_grad(self, param: Parameter, grad: torch.Tensor):
+
+        # record whether we have overflow
+        self.overflow_counter += torch.isinf(grad).any().item()
+        self.overflow_counter += torch.isnan(grad).any().item()
+
+        # move gradient to cpu
         if param.colo_attr.offload_grad:
-            colo_model_data_move_to_cpu(reduced_grad)
+            colo_model_data_move_to_cpu(grad)
+
         if self.reuse_fp16_shard:
+            # make parameters point to gradient
+
             assert param.colo_attr.saved_grad.is_null(
             ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
-            param.colo_attr.sharded_data_tensor.reset_payload(reduced_grad)
-            param.colo_attr.sharded_data_tensor.is_sharded = True
-            param.colo_attr.saved_grad.reset_payload(param.colo_attr.sharded_data_tensor.payload)
+
+            param.colo_attr.reset_grad_payload(grad)
+            param.colo_attr.reset_grad_payload(grad)    # release the memory of param
+
+            if param.colo_attr.is_replicated:
+                param.colo_attr.sharded_data_tensor.is_sharded = True
         else:
-            reduced_grad = cast_tensor_to_fp32(reduced_grad)
+
+            fp32_grad = cast_tensor_to_fp32(grad)
+
             if param.colo_attr.saved_grad.is_null():
-                param.colo_attr.saved_grad.reset_payload(reduced_grad)
+                param.colo_attr.reset_grad_payload(fp32_grad)
             else:
-                param.colo_attr.saved_grad.payload.add_(reduced_grad.view_as(param.colo_attr.saved_grad.payload))
+                param.colo_attr.grad_payload.add_(fp32_grad.view_as(param.colo_attr.grad_payload))
+
+        # keep saved_grad in HOLD state
         param.colo_attr.saved_grad.trans_state(TensorState.HOLD)
 
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.colo_attr.sharded_data_tensor for p in self.sharded_params], self.process_group)
-        prev_params = {}
         for p in self.sharded_params:
-            prev_params[p] = p.data
-            p.data = p.colo_attr.sharded_data_tensor.payload
+            p.data = p.colo_attr.data_payload
         gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
         self.shard_strategy.shard([p.colo_attr.sharded_data_tensor for p in self.sharded_params], self.process_group)
         for p in self.sharded_params:
-            p.data = prev_params[p]
+            p.colo_attr.set_data_none()
         return gathered_state_dict
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):

@@ -12,7 +12,7 @@ def copy_to_device(obj, device):
     if torch.is_tensor(obj):
         # Notice:
         # When in no_grad context, requires_gard is False after movement
-        ret = obj.to(device)
+        ret = obj.to(device).detach()
         ret.requires_grad = obj.requires_grad
         return ret
     elif isinstance(obj, list):
@@ -68,7 +68,10 @@ class CheckpointFunction(torch.autograd.Function):
             else:
                 ctx.inputs.append(arg)
 
-        ctx.save_for_backward(*tensor_inputs)
+        if activation_offload:
+            ctx.tensor_inputs = tensor_inputs
+        else:
+            ctx.save_for_backward(*tensor_inputs)
         return outputs
 
     @staticmethod
@@ -79,7 +82,11 @@ class CheckpointFunction(torch.autograd.Function):
         # Copy the list to avoid modifying original list.
         inputs = list(ctx.inputs)
         tensor_indices = ctx.tensor_indices
-        tensors = ctx.saved_tensors
+
+        if ctx.activation_offload:
+            tensors = ctx.tensor_inputs
+        else:
+            tensors = ctx.saved_tensors
 
         # store the current states
         bwd_cpu_rng_state = torch.get_rng_state()

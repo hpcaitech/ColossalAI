@@ -21,7 +21,7 @@ from common import CONFIG, check_grads_padding, run_fwd_bwd
 
 
 @parameterize("enable_autocast", [True])
-@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
+@parameterize("shard_strategy_class", [BucketTensorShardStrategy])
 def run_model_test(enable_autocast, shard_strategy_class):
     test_models = ['repeated_computed_layers', 'resnet18', 'bert', 'no_leaf_module']
     shard_strategy = shard_strategy_class()
@@ -29,20 +29,17 @@ def run_model_test(enable_autocast, shard_strategy_class):
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
 
-        rm_torch_payload_on_the_fly = False
-
-        with ZeroInitContext(target_device=torch.cuda.current_device(),
+        with ZeroInitContext(target_device=torch.device('cuda', torch.cuda.current_device()),
                              shard_strategy=shard_strategy,
-                             shard_param=True,
-                             rm_torch_payload_on_the_fly=rm_torch_payload_on_the_fly):
+                             shard_param=True):
             zero_model = model_builder(checkpoint=True)
-        zero_model = ShardedModelV2(zero_model, shard_strategy, use_memory_tracer=True)
+        zero_model = ShardedModelV2(zero_model, shard_strategy)
 
         model = model_builder(checkpoint=True).half()
         col_model_deepcopy(zero_model, model)
         model = model.cuda()
 
-        model = DDP(model)
+        model = DDP(model, device_ids=[torch.cuda.current_device()])
 
         for i, (data, label) in enumerate(train_dataloader):
             if i > 5:

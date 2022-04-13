@@ -213,9 +213,6 @@ setup(
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     install_requires=fetch_requirements('requirements/requirements.txt'),
-    extras_require={
-        'zero': fetch_requirements('requirements/requirements-zero.txt'),
-    },
     scripts=[
           'bin/colossal',
       ],
