@@ -1,6 +1,6 @@
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_device_memory_used
-from colossalai.utils.memory_tracer.async_memtracer import AsyncMemoryMonitor
+from colossalai.utils.memory_tracer import AsyncMemoryMonitor
 import torch
 import time
 from typing import List
