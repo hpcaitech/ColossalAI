@@ -37,7 +37,7 @@ def run_model_test(enable_autocast, shard_strategy_class):
     # check whether parameters are identical in ddp
     for name, p in zero_model.named_parameters():
         if not p.colo_attr.param_is_sharded and p.colo_attr.is_replicated:
-            assert_equal_in_group(p.colo_attr.sharded_data_tensor.payload)
+            assert_equal_in_group(p.colo_attr.data_payload)
 
     model = MoeModel(checkpoint=True).half()
     col_model_deepcopy(zero_model, model)

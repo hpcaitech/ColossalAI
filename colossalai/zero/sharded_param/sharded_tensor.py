@@ -9,6 +9,7 @@ class ShardedTensor(StatefulTensor):
         r"""
         A tensor sharded in multiple processes. Constructed from an existing torch.Tensor instance.
         """
+        assert tensor.requires_grad is False
         super().__init__(tensor, state)
 
         # kept the shape, numel and dtype of the init tensor.
@@ -16,6 +17,11 @@ class ShardedTensor(StatefulTensor):
         self._origin_numel = tensor.numel()
         self._origin_dtype = tensor.dtype
         self._is_sharded = False
+
+    @property
+    def dtype(self) -> torch.dtype:
+        assert self._payload.dtype == self._origin_dtype
+        return self._payload.dtype
 
     @property
     def origin_numel(self) -> int:

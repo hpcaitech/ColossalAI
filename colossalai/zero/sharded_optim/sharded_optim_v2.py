@@ -266,8 +266,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 if shard_flag:
                     # we always shard replicated paramters
                     self.shard_strategy.shard([p.colo_attr.sharded_data_tensor], self.dp_process_group)
-                self.master_params[p] = StatefulTensor(
-                    cast_tensor_to_fp32(p.colo_attr.sharded_data_tensor.payload.to(self.device)))
+                self.master_params[p] = StatefulTensor(cast_tensor_to_fp32(p.colo_attr.data_payload.to(self.device)))
                 if shard_flag:
                     # In this branch, there's no need to shard param
                     # So we gather here
@@ -296,10 +295,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad
                 # We just set p.data = p.colo_attr.saved_grad.payload here
-                p.data = p.colo_attr.saved_grad.payload
-                p.grad = p.colo_attr.saved_grad.payload
+                p.data = p.colo_attr.grad_payload
+                p.grad = p.colo_attr.grad_payload
                 # Set p.data to empty tensor, in case of memory leaking
-                p.colo_attr.remove_torch_payload()
+                p.colo_attr.set_data_none()
 
     def _point_param_fp16_to_master_param(self):
         # assign master param pointers to p.data.
@@ -325,9 +324,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         # TODO() optimize this line CPU (fp32) -> GPU (fp16)
         p.data = self.master_params[p].payload
-        p.colo_attr.sharded_data_tensor.reset_payload(
-            colo_model_tensor_clone(p.half(), p.colo_attr.sharded_data_tensor.device))
-        p.colo_attr.remove_torch_payload()
+        p.colo_attr.reset_data_payload(
+            colo_model_tensor_clone(p.half().detach(), p.colo_attr.sharded_data_tensor.device))
+        p.colo_attr.set_data_none()
 
         if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:
             # We gather full fp16 param here

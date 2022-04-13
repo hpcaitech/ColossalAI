@@ -34,7 +34,7 @@ def run_stm():
     colo_set_process_memory_fraction(fraction)
     model = Net()
     for p in model.parameters():
-        p.colo_attr = ShardedParamV2(p, rm_torch_payload=True)
+        p.colo_attr = ShardedParamV2(p, set_data_none=True)
     GLOBAL_MODEL_DATA_TRACER.register_model(model)
     mem_collector = MemStatsCollector()
     stateful_tensor_mgr = StatefulTensorMgr(mem_collector)

@@ -260,7 +260,7 @@ class ShardedModelV2(nn.Module):
             if not p.colo_attr.param_is_sharded:
                 tensor_list.append(p.colo_attr.sharded_data_tensor)
                 p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD_AFTER_BWD)
-                p.colo_attr.remove_torch_payload()
+                p.colo_attr.set_data_none()
         self.shard_strategy.shard(tensor_list, self.process_group)
 
         # 4. set all parameters' grad to None
@@ -357,8 +357,8 @@ class ShardedModelV2(nn.Module):
             assert param.colo_attr.saved_grad.is_null(
             ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
 
-            param.colo_attr.saved_grad.reset_payload(grad)
-            param.colo_attr.sharded_data_tensor.reset_payload(grad)    # release the memory of param
+            param.colo_attr.reset_grad_payload(grad)
+            param.colo_attr.reset_grad_payload(grad)    # release the memory of param
 
             if param.colo_attr.is_replicated:
                 param.colo_attr.sharded_data_tensor.is_sharded = True
@@ -367,9 +367,9 @@ class ShardedModelV2(nn.Module):
             fp32_grad = cast_tensor_to_fp32(grad)
 
             if param.colo_attr.saved_grad.is_null():
-                param.colo_attr.saved_grad.reset_payload(fp32_grad)
+                param.colo_attr.reset_grad_payload(fp32_grad)
             else:
-                param.colo_attr.saved_grad.payload.add_(fp32_grad.view_as(param.colo_attr.saved_grad.payload))
+                param.colo_attr.grad_payload.add_(fp32_grad.view_as(param.colo_attr.grad_payload))
 
         # keep saved_grad in HOLD state
         param.colo_attr.saved_grad.trans_state(TensorState.HOLD)
@@ -377,11 +377,11 @@ class ShardedModelV2(nn.Module):
     def state_dict(self, destination=None, prefix='', keep_vars=False) -> 'OrderedDict[str, torch.Tensor]':
         self.shard_strategy.gather([p.colo_attr.sharded_data_tensor for p in self.sharded_params], self.process_group)
         for p in self.sharded_params:
-            p.data = p.colo_attr.sharded_data_tensor.payload
+            p.data = p.colo_attr.data_payload
         gathered_state_dict = self.module.state_dict(destination, prefix, keep_vars)
         self.shard_strategy.shard([p.colo_attr.sharded_data_tensor for p in self.sharded_params], self.process_group)
         for p in self.sharded_params:
-            p.colo_attr.remove_torch_payload()
+            p.colo_attr.set_data_none()
         return gathered_state_dict
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):

@@ -50,27 +50,27 @@ def _run_shard_param_v2(rank, world_size, port):
     param_ref = deepcopy(param)
     sparam = ShardedParamV2(param=param)
 
-    allclose(sparam.sharded_data_tensor.payload, param_ref.data)
+    allclose(sparam.data_payload, param_ref.data)
 
     # Test get memory usage
     sparam.saved_grad = StatefulTensor(torch.randn(2, 3))
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2, f"cpu_mem_use: {cpu_mem_use}"
 
-    sparam.remove_torch_payload()
+    sparam.set_data_none()
     assert (param.data.numel() == 0)
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     # 4 is size of dummy tensor of param.data
     assert cpu_mem_use == 2 * 3 * 4 * 2
 
     sparam.saved_grad = StatefulTensor(torch.randn(2, 3))
-    sparam.remove_torch_payload()
+    sparam.set_data_none()
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2
     assert cuda_mem_use == 0
 
     # append a grad to torch param
-    param.data = sparam.sharded_data_tensor.payload
+    param.data = sparam.data_payload
     param.grad = torch.randn(2, 3)
     cuda_mem_use, cpu_mem_use = sparam.get_memory_usage()
     assert cpu_mem_use == 2 * 3 * 4 * 2 + 2 * 3 * 4, f"cpu_mem_use {cpu_mem_use}"

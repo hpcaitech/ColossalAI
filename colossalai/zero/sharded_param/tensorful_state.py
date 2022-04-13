@@ -19,11 +19,11 @@ class StatefulTensor(object):
     https://arxiv.org/abs/2108.05818
     """
 
-    def __init__(self, tensor: torch.Tensor, state: Optional[TensorState] = TensorState.HOLD) -> None:
+    def __init__(self, tensor: Optional[torch.Tensor], state: Optional[TensorState] = TensorState.HOLD) -> None:
         self._state = state
         self._payload = tensor
         if self._state == TensorState.FREE:
-            assert self._payload is None, f"payload has to None if {self._state}"
+            assert self._payload is None, f"payload has to None if state is {self._state}"
 
     def data_ptr(self):
         if self._payload is None:
@@ -50,13 +50,13 @@ class StatefulTensor(object):
             self._payload = None
 
     @property
-    def payload(self) -> int:
+    def payload(self) -> Optional[torch.Tensor]:
         return self._payload
 
-    def copy_payload(self, tensor) -> int:
+    def copy_payload(self, tensor) -> None:
         self._payload.view(-1).copy_(tensor.view(-1))
 
-    def reset_payload(self, tensor) -> int:
+    def reset_payload(self, tensor) -> None:
         del self._payload
         self._payload = tensor
         self.trans_state(TensorState.HOLD)
@@ -67,15 +67,14 @@ class StatefulTensor(object):
 
     @property
     def dtype(self) -> torch.dtype:
-        assert self._payload.dtype == self._origin_dtype
-        return self._origin_dtype
+        return self._payload.dtype
+
+    @property
+    def shape(self):
+        return self._payload.shape
 
     def to(self, device: torch.device):
         raise RuntimeError("Use colo_model_tensor_move install of call .to() on ShardedTensor")
 
     def to_(self, device: torch.device):
         raise RuntimeError("Use colo_model_tensor_move install of call .to_() on ShardedTensor")
-
-    @property
-    def shape(self):
-        return self._payload.shape
