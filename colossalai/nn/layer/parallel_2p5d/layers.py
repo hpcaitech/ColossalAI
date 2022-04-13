@@ -235,10 +235,11 @@ class LayerNorm2p5D(ParallelLayer):
             If a single integer is used, it is treated as a singleton list, and this module will
             normalize over the last dimension which is expected to be of that specific size.
         eps (float, optional): a value added to the denominator for numerical stability, defaults to 1e-05.
+        bias (bool, optional): Whether to add a bias, defaults to ``True``.
         dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
     """
 
-    def __init__(self, normalized_shape: int, eps: float = 1e-05, dtype=None):
+    def __init__(self, normalized_shape: int, eps: float = 1e-05, bias=True, dtype=None):
         super().__init__()
 
         # layer norm config
@@ -259,13 +260,17 @@ class LayerNorm2p5D(ParallelLayer):
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
 
         self.weight = Parameter(torch.ones(self.partitioned_partition, **factory_kwargs))
-        self.bias = Parameter(torch.zeros(self.partitioned_partition, **factory_kwargs))
+        if bias:
+            self.bias = Parameter(torch.zeros(self.partitioned_partition, **factory_kwargs))
+        else:
+            self.bias = None
 
         self._set_tensor_parallel_attribute()
 
     def _set_tensor_parallel_attribute(self):
         set_tensor_parallel_attribute_by_partition(self.weight, self.tesseract_dim)
-        set_tensor_parallel_attribute_by_partition(self.bias, self.tesseract_dim)
+        if self.bias is not None:
+            set_tensor_parallel_attribute_by_partition(self.bias, self.tesseract_dim)
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
@@ -314,7 +319,9 @@ class LayerNorm2p5D(ParallelLayer):
     def _save_to_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
-        local_state = OrderedDict({weight_key: self.weight, bias_key: self.bias})
+        local_state = OrderedDict({weight_key: self.weight})
+        if self.bias is not None:
+            local_state[bias_key] = self.bias
 
         # gather in column groups
         local_state = gather_tensor_parallel_state_dict(
@@ -364,15 +371,18 @@ class LayerNorm2p5D(ParallelLayer):
             Var_x = 1.0 / torch.sqrt(Var_x + self.variance_epsilon)
 
         output = layernorm_2p5d(x, E_x, Var_x, self.normalized_shape, ParallelMode.PARALLEL_2P5D_ROW)
-        bias = add_bias_2p5d(None, self.bias, self.partitioned_partition, self.tesseract_dim, self.row_rank,
-                             self.col_rank, self.dep_rank, ParallelMode.PARALLEL_2P5D_COL, True,
-                             self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
-                             self.tensor_parallel_size)
         scale = add_bias_2p5d(None, self.weight, self.partitioned_partition, self.tesseract_dim, self.row_rank,
                               self.col_rank, self.dep_rank, ParallelMode.PARALLEL_2P5D_COL, True,
                               self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
                               self.tensor_parallel_size)
-        output = torch.addcmul(bias, scale, output)
+        if self.bias is not None:
+            bias = add_bias_2p5d(None, self.bias, self.partitioned_partition, self.tesseract_dim, self.row_rank,
+                                 self.col_rank, self.dep_rank, ParallelMode.PARALLEL_2P5D_COL, True,
+                                 self.data_parallel_rank, self.pipeline_parallel_rank, self.pipeline_parallel_size,
+                                 self.tensor_parallel_size)
+            output = torch.addcmul(bias, scale, output)
+        else:
+            output = torch.mul(scale, output)
         return output
 
 
