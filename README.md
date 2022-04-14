@@ -84,7 +84,7 @@ distributed training in a few lines.
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 
 - Friendly Usage
-  - Configuration file based
+  - Zero-code style Switching parallel strategies using config files
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
