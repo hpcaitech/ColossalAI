@@ -73,25 +73,33 @@ Colossal-AI provides a collection of parallel training components for you. We ai
 distributed deep learning models just like how you write your model on your laptop. We provide user-friendly tools to kickstart
 distributed training in a few lines.
 
-- Data Parallelism
-- Pipeline Parallelism
-- 1D, 2D, 2.5D, 3D tensor parallelism
-- Sequence parallelism
-- Friendly trainer and engine
-- Extensible for new parallelism
-- Mixed Precision Training
-- Zero Redundancy Optimizer (ZeRO)
+- Parallelism strategies
+  - Data Parallelism
+  - Pipeline Parallelism
+  - 1D, [2D](https://arxiv.org/abs/2104.05343), [2.5D](https://arxiv.org/abs/2105.14500), 3D Tensor parallelism
+  - [Sequence parallelism](https://arxiv.org/abs/2105.13120)
+  - [Zero Redundancy Optimizer (ZeRO)](https://arxiv.org/abs/2108.05818)
+
+- Heterogeneous Memory Menagement 
+  - [PatrickStar](https://arxiv.org/abs/2108.05818)
+
+- Friendly Usage
+  - Configuration file based
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Demo
 ### ViT
+<p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+</p>
 
 - 14x larger batch size, and 5x faster training for Tensor Parallelism = 64
 
 ### GPT-3
+<p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
+</p>
 
 - Save 50% GPU resources, and 10.7% acceleration
 
