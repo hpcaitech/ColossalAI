@@ -90,12 +90,16 @@ distributed training in a few lines.
 
 ## Demo
 ### ViT
+<p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+</p>
 
 - 14x larger batch size, and 5x faster training for Tensor Parallelism = 64
 
 ### GPT-3
+<p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
+</p>
 
 - Save 50% GPU resources, and 10.7% acceleration
 
