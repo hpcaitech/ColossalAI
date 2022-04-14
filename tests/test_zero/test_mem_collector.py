@@ -10,7 +10,7 @@ from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.shard_utils import BucketTensorShardStrategy
 from colossalai.utils import free_port
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from functools import partial
 
 
@@ -64,7 +64,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_mem_collector(world_size=2):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

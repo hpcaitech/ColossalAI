@@ -10,7 +10,7 @@ from colossalai.gemini import StatefulTensorMgr
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from colossalai.utils import free_port
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from torch.nn.parameter import Parameter
 from typing import List
 from functools import partial
@@ -120,8 +120,8 @@ def run_dist(rank, world_size, port):
     run_stm()
 
 
-@pytest.mark.gpu
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
 def test_stateful_tensor_manager(world_size=1):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

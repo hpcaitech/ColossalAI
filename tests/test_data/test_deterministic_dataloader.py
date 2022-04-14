@@ -17,7 +17,7 @@ from colossalai.builder import build_dataset, build_transform
 from colossalai.context import ParallelMode, Config
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 
 CONFIG = Config(
     dict(
@@ -79,7 +79,7 @@ def run_data_sampler(rank, world_size, port):
 
 
 @pytest.mark.cpu
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_data_sampler():
     world_size = 4
     test_func = partial(run_data_sampler, world_size=world_size, port=free_port())

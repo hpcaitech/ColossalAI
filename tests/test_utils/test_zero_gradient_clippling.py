@@ -16,7 +16,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad_norm_
 from colossalai.zero.shard_utils.tensor_shard_strategy import TensorShardStrategy
 from functools import partial
-from colossalai.testing import parameterize, rerun_on_exception
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 
 
 def checkpoint_wrapper(module, enable=True):
@@ -102,7 +102,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_zero_clip_grad():
     world_size = 4
     run_func = partial(run_dist, world_size=world_size, port=free_port())
