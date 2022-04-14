@@ -9,8 +9,7 @@ from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param.tensorful_state import TensorState
-from colossalai.zero.utils.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline
+from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 
 from colossalai.engine.ophooks import BaseOpHook
 

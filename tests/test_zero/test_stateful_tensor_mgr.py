@@ -14,7 +14,7 @@ from colossalai.testing import rerun_on_exception
 from torch.nn.parameter import Parameter
 from typing import List
 from functools import partial
-from colossalai.zero.utils.tensor_placement_policy import AutoTensorPlacementPolicy
+from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
 class Net(torch.nn.Module):
