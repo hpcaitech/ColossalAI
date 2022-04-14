@@ -6,7 +6,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory_tracer import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_set_process_memory_fraction
-from colossalai.zero.utils import StatefulTensorMgr
+from colossalai.gemini import StatefulTensorMgr
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from colossalai.utils import free_port
@@ -14,7 +14,9 @@ from colossalai.testing import rerun_on_exception
 from torch.nn.parameter import Parameter
 from typing import List
 from functools import partial
-from colossalai.zero.utils.tensor_placement_policy import AutoTensorPlacementPolicy
+
+from colossalai.gemini import StatefulTensorMgr
+from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
 class Net(torch.nn.Module):

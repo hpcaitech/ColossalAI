@@ -21,7 +21,7 @@ from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
-from colossalai.zero.utils.tensor_placement_policy import AutoTensorPlacementPolicy
+from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
 class OptimState(Enum):
