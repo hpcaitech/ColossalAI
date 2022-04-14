@@ -21,10 +21,10 @@ class Net(torch.nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
-        # each parameter is 512 MB
-        self.p0 = Parameter(torch.empty(1024, 1024, 128))
-        self.p1 = Parameter(torch.empty(1024, 1024, 128))
-        self.p2 = Parameter(torch.empty(1024, 1024, 128))
+        # each parameter is 128 MB
+        self.p0 = Parameter(torch.empty(1024, 1024, 32))
+        self.p1 = Parameter(torch.empty(1024, 1024, 32))
+        self.p2 = Parameter(torch.empty(1024, 1024, 32))
 
 
 def limit_cuda_memory(memory_in_g: float):
@@ -36,7 +36,7 @@ def limit_cuda_memory(memory_in_g: float):
 def run_stm():
     # warmup phase use 20% CUDA memory to store params
     # only 2 params can be on CUDA
-    limit_cuda_memory(5.1)
+    limit_cuda_memory(1.26)
     model = Net()
     for p in model.parameters():
         p.colo_attr = ShardedParamV2(p, set_data_none=True)
@@ -70,7 +70,7 @@ def run_stm():
 
     # warmup done
     # only 2 params can be on CUDA
-    limit_cuda_memory(1.1)
+    limit_cuda_memory(0.26)
     # use OPT-like eviction strategy
     apply_adjust(model, model.p0, [model.p0, model.p1], stateful_tensor_mgr)
     mem_collector.sample_model_data()
@@ -126,4 +126,5 @@ def test_stateful_tensor_manager(world_size=1):
 
 
 if __name__ == '__main__':
+    # this unit test can pass if available CUDA memory >= 1.5G
     test_stateful_tensor_manager()
