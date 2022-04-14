@@ -253,9 +253,6 @@ class ShardedModelV2(nn.Module):
             with torch.cuda.stream(self.comm_stream):
                 self.reducer.flush()
             torch.cuda.current_stream().wait_stream(self.comm_stream)
-            if self._cpu_offload:
-                # Wait for the non-blocking GPU -> CPU grad transfers to finish.
-                torch.cuda.current_stream().synchronize()
         self.reducer.free()
 
         # 3. shard tensors not dealed in the zero hook
@@ -338,7 +335,7 @@ class ShardedModelV2(nn.Module):
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
         assert isinstance(reduced_grad,
                           torch.Tensor), f"_reduce_scatter_callback accept reduced_grad as {type(reduced_grad)}"
-        reduced_grad.data = reduced_grad.data.view(-1)
+        reduced_grad.data = reduced_grad.data.contiguous().view(-1)
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
@@ -362,7 +359,7 @@ class ShardedModelV2(nn.Module):
             ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
 
             param.colo_attr.reset_grad_payload(grad)
-            param.colo_attr.reset_grad_payload(grad)    # release the memory of param
+            param.colo_attr.reset_data_payload(grad)    # release the memory of param
 
             if param.colo_attr.is_replicated:
                 param.colo_attr.sharded_data_tensor.is_sharded = True

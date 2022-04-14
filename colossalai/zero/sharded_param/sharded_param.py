@@ -70,7 +70,6 @@ class ShardedParamV2(object):
         assert type(tensor) is torch.Tensor
         assert tensor.requires_grad is False
         self.sharded_data_tensor.reset_payload(tensor)
-        self.set_data_none()
 
     def reset_grad_payload(self, tensor: torch.Tensor):
         assert type(tensor) is torch.Tensor
