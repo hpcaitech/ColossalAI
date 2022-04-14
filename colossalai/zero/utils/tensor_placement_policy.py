@@ -61,7 +61,7 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             max_cuda_non_model_data_per_period = cuda_capacity * self._warmup_non_model_data_ratio
         else:
             # max non-model-data cuda memory consumption of this sampling moment and the next sampling moment.
-            max_cuda_non_model_data_per_period = self.mem_stats_collector.max_non_model_data('cuda')
+            max_cuda_non_model_data_per_period = self.mem_stats_collector.next_period_non_model_data_usage('cuda')
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
         if avail_cuda_model_data < cuda_demand:
@@ -71,7 +71,7 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             freed_cuda_model_data = 0
             to_free_tensor_list = hold_cuda_tensor_list
             if not warmup:
-                next_compute_idx: Dict[StatefulTensor, int] = {t: len(compute_list) for t in hold_cuda_tensor_list}
+                next_compute_idx = {t: len(compute_list) for t in hold_cuda_tensor_list}
                 for i in range(len(compute_list) - 1, compute_idx, -1):
                     if compute_list[i] in next_compute_idx:
                         next_compute_idx[compute_list[i]] = i

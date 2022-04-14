@@ -13,7 +13,7 @@ def colo_tensor_mem_usage(tensor: Union[torch.Tensor, StatefulTensor]) -> Tuple[
 
     cuda_use, cpu_use = 0, 0
 
-    mem_use = t.numel() * t.element_size()
+    mem_use = t.storage().size() * t.element_size()
     if t.device.type == 'cuda':
         cuda_use += mem_use
     elif t.device.type == 'cpu':
