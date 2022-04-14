@@ -36,7 +36,7 @@ def _run_shard_tensor(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 2])
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_shard_tensor(world_size):
     run_func = partial(_run_shard_tensor, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
