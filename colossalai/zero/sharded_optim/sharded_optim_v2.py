@@ -288,6 +288,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
     def _prepare_grads(self):
         for group in self.optim.param_groups:
             for p in group['params']:
+                if p.colo_attr.saved_grad.is_null():
+                    continue
                 p.colo_attr.saved_grad.trans_state(TensorState.COMPUTE)
                 # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
                 # If we change p.grad directly
