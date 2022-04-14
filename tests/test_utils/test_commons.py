@@ -1,6 +1,6 @@
 from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
 from colossalai.utils import free_port
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.zero.sharded_param import ShardedTensor
 import colossalai
 
@@ -35,7 +35,7 @@ def run_tensor_move(rank):
     assert (tgt_t.device.type == 'cpu')
 
 
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_tensor_move():
     mp.spawn(run_tensor_move, nprocs=1)
 

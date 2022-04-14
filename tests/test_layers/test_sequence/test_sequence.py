@@ -7,7 +7,7 @@ import pytest
 
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from functools import partial
 
 CONFIG = dict(parallel=dict(tensor=dict(size=4, mode='sequence')))
@@ -132,7 +132,7 @@ def run_test(rank, world_size):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_sequence():
     world_size = 4
     run_func = partial(run_test, world_size=world_size)
