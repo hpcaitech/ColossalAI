@@ -362,7 +362,7 @@ class ShardedModelV2(nn.Module):
             ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
 
             param.colo_attr.reset_grad_payload(grad)
-            param.colo_attr.reset_grad_payload(grad)    # release the memory of param
+            param.colo_attr.reset_data_payload(grad)    # release the memory of param
 
             if param.colo_attr.is_replicated:
                 param.colo_attr.sharded_data_tensor.is_sharded = True
