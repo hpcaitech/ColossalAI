@@ -112,7 +112,7 @@ def run_dist(rank, world_size, port):
     run_stm()
 
 
-@pytest.mark.dist
+@pytest.mark.skip
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_stateful_tensor_manager(world_size=1):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
