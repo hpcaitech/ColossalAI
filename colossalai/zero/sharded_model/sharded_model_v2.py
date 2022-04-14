@@ -23,7 +23,7 @@ from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from colossalai.zero.utils.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.zero.utils.tensor_placement_policy import TENSOR_PLACEMENT_POLICIES, TensorPlacementPolicy
+from colossalai.zero.utils.tensor_placement_policy import TensorPlacementPolicyFactory, TensorPlacementPolicy
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
@@ -105,8 +105,6 @@ class ShardedModelV2(nn.Module):
         self.rank = dist.get_rank(self.process_group)
         self.shard_strategy = shard_strategy
 
-        assert tensor_placement_policy in TENSOR_PLACEMENT_POLICIES, f'Invalid tensor_placement_policy, got {tensor_placement_policy}'
-        # Init Memory Statistics Collector
         self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
             GLOBAL_MODEL_DATA_TRACER.register_model(self)
@@ -115,8 +113,8 @@ class ShardedModelV2(nn.Module):
             self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
         else:
             self._memstats_collector = None
-        self._tensor_placement_policy: TensorPlacementPolicy = TENSOR_PLACEMENT_POLICIES[tensor_placement_policy](
-            mem_stats_collector=self._memstats_collector)
+        self._tensor_placement_policy: TensorPlacementPolicy = TensorPlacementPolicyFactory.create(
+            tensor_placement_policy)(mem_stats_collector=self._memstats_collector)
         self._stateful_tensor_mgr = StatefulTensorMgr(self._tensor_placement_policy)
         for param in module.parameters():
             if hasattr(param, 'colo_attr'):

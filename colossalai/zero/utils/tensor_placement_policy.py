@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import List, Optional, Dict
 import torch
 from colossalai.utils import get_current_device
@@ -6,16 +7,16 @@ from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
 from colossalai.utils.memory_tracer import MemStatsCollector
 from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
+from typing import Type
 
-__all__ = ['TENSOR_PLACEMENT_POLICIES']
 
-
-class TensorPlacementPolicy:
+class TensorPlacementPolicy(ABC):
 
     def __init__(self, device: Optional[torch.device], mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
         self.device: Optional[torch.device] = device
         self.mem_stats_collector: Optional[MemStatsCollector] = mem_stats_collector
 
+    @abstractmethod
     def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> None:
         raise NotImplementedError
 
@@ -87,8 +88,15 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
                 )
 
 
-TENSOR_PLACEMENT_POLICIES = {
-    'cpu': CPUTensorPlacementPolicy,
-    'cuda': CUDATensorPlacementPolicy,
-    'auto': AutoTensorPlacementPolicy
-}
+class TensorPlacementPolicyFactory:
+
+    @staticmethod
+    def create(policy_name: str) -> Type[TensorPlacementPolicy]:
+        if policy_name == 'cpu':
+            return CPUTensorPlacementPolicy
+        elif policy_name == 'cuda':
+            return CUDATensorPlacementPolicy
+        elif policy_name == 'auto':
+            return AutoTensorPlacementPolicy
+        else:
+            raise TypeError(f"Unknown tensor placement policy {policy_name}")
