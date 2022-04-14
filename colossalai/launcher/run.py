@@ -215,7 +215,7 @@ def main(args=None):
     logger = get_dist_logger()
     parser = build_args_parser()
     args = parser.parse_args(args)
-
+    
     device_pool = fetch_hostfile(args.hostfile)
 
     active_devices = None
@@ -245,7 +245,7 @@ def main(args=None):
         else:
             nproc_per_node = args.num_gpus
         if torch.__version__ <= "1.09":
-            cmd = [sys.executable, "-m", 
+            cmd = [sys.executable, "-u", "-m", 
                     "torch.distributed.launch",
                     f"--nproc_per_node={nproc_per_node}",
                     f"--master_addr={args.master_addr}",

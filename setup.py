@@ -214,7 +214,8 @@ setup(
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     install_requires=fetch_requirements('requirements/requirements.txt'),
     scripts=[
-          'bin/colossal',
+          'bin/colossal_launch',
+          'bin/colossal_benchmark',
       ],
     python_requires='>=3.7',
     classifiers=[

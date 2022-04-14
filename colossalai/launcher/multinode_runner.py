@@ -67,7 +67,7 @@ class PDSHRunner(MultiNodeRunner):
         colossal_launch = [
             exports,
             f"cd {os.path.abspath('.')};",
-            sys.executable, "-m", 
+            sys.executable, "-u", "-m", 
             "torch.distributed.launch",
             f"--nproc_per_node={args.num_gpus}",
             f"--master_addr={args.master_addr}",
@@ -76,7 +76,71 @@ class PDSHRunner(MultiNodeRunner):
         return pdsh_cmd_args + colossal_launch + [self.user_script] + self.user_arguments
 
 class OpenMPIRunner(MultiNodeRunner):
-    pass
+    def __init__(self, args, device_pool):
+        super().__init__(args)
+        self.device_pool = device_pool
+
+    def backend_exists(self):
+        return shutil.which('ompi_info')
+
+    @property
+    def name(self):
+        return "openmpi"
+
+    def get_cmd(self, environment, active_devices):
+        total_process_count = sum(self.device_pool.values())
+
+        mpirun_cmd = [
+            'mpirun',
+            '-n',
+            f'{total_process_count}',
+            '-hostfile',
+            f'{self.args.hostfile}'
+        ]
+
+        export_cmd = []
+        for k, v in self.exports.items():
+            export_cmd += ['-x', f'{k}={quote(v)}']
+
+        python_exec = []
+        python_exec = [sys.executable, "-u", "-m"]
+
+        return mpirun_cmd + export_cmd + python_exec + [self.user_script
+                                                        ] + self.user_arguments
 
 class SLURMRunner(MultiNodeRunner):
-    pass
+    def __init__(self, args):
+        super().__init__(args)
+
+    def backend_exists(self):
+        return shutil.which('slurm_info')
+
+    @property
+    def name(self):
+        return "slurm"
+
+    def get_cmd(self, environment, active_devices, args):
+
+        assert "-p" in args.launcher_args
+        srun_args = args.launcher_args.strip().split()
+        assert len(srun_args) >= 2, "we need more info about which partition to use."
+        partition_name = srun_args(srun_args.index("-p")+1)
+        slurm_cmd = [
+            'srun',
+            "-p",
+            f"{partition_name}",
+            "--nodes",
+            f"{args.num_nodes}",
+            "--tasks",
+            f"{args.num_gpus}"
+        ]
+
+        export_cmd = []
+        for k, v in self.exports.items():
+            export_cmd += ['-x', f'{k}={quote(v)}']
+
+        python_exec = []
+        python_exec = [sys.executable, "-u", "-m"]
+
+        return slurm_cmd + export_cmd + python_exec + [self.user_script
+                                                        ] + self.user_arguments
