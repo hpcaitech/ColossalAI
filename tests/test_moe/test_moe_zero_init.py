@@ -5,6 +5,7 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
+from colossalai.nn import CheckpointModule
 from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize
 from colossalai.utils import free_port
@@ -15,13 +16,13 @@ from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardS
 
 from colossalai.testing import rerun_on_exception
 from colossalai.utils import get_current_device
-from tests.test_zero_data_parallel.common import CONFIG
+from tests.test_zero.common import CONFIG
 
 
-class MoeModel(nn.Module):
+class MoeModel(CheckpointModule):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, checkpoint: bool = False):
+        super().__init__(checkpoint)
         self.proj1 = nn.Linear(4, 16)
         expert_cls = nn.Linear
         expert_args_dict = dict(in_features=16, out_features=16)
@@ -52,7 +53,7 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
                          shard_strategy=shard_strategy_class(),
                          shard_param=True,
                          model_numel_tensor=model_numel_tensor):
-        model = MoeModel()
+        model = MoeModel(checkpoint=True)
 
     for name, param in model.named_parameters():
         assert hasattr(param, 'colo_attr')
@@ -76,10 +77,10 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
             assert param.colo_attr.is_replicated
 
         if param.colo_attr.param_is_sharded:
-            assert param.colo_attr.sharded_data_tensor.payload.device.type == init_device.type, \
-                f'{param.colo_attr.sharded_data_tensor.payload.device.type} vs. {init_device.type}'
+            assert param.colo_attr.data_payload.device.type == init_device.type, \
+                f'{param.colo_attr.data_payload.device.type} vs. {init_device.type}'
         else:
-            assert param.colo_attr.sharded_data_tensor.payload.device.type == 'cuda'
+            assert param.colo_attr.data_payload.device.type == 'cuda'
 
 
 def _run_dist(rank, world_size, port):

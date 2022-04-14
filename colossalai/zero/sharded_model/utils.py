@@ -14,6 +14,6 @@ def col_model_deepcopy(sharded_model: ShardedModelV2, other_model: torch.nn.Modu
         shard_flag = zero_param.colo_attr.sharded_data_tensor.is_sharded
         if shard_flag:
             sharded_model.shard_strategy.gather([zero_param.colo_attr.sharded_data_tensor])
-        param.data = copy.deepcopy(zero_param.colo_attr.sharded_data_tensor.payload)
+        param.data = copy.deepcopy(zero_param.colo_attr.data_payload)
         if shard_flag:
             sharded_model.shard_strategy.shard([zero_param.colo_attr.sharded_data_tensor])

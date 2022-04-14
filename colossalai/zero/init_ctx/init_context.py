@@ -215,7 +215,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             assert hasattr(param, 'colo_attr')
             if not param.colo_attr.param_is_sharded and param.colo_attr.is_replicated:
                 dist.broadcast(tensor=param.data, src=src_rank, group=self.dp_process_group)
-            param.colo_attr.remove_torch_payload()
+            param.colo_attr.set_data_none()
 
         del self.param_list
 
@@ -252,11 +252,11 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if param.grad is not None:
                 param.grad = param.grad.to(target_device)
 
-            param.colo_attr = ShardedParamV2(param, rm_torch_payload=False)
+            param.colo_attr = ShardedParamV2(param, set_data_none=False)
 
             if self.shard_param:
                 self.shard_strategy.shard([param.colo_attr.sharded_data_tensor], self.dp_process_group)
-                param.data = param.colo_attr.sharded_data_tensor.payload    # set param.data to payload
+                param.data = param.colo_attr.data_payload    # set param.data to payload
 
             # mark whether the param is replicated
             param.colo_attr.is_replicated = self.is_replicated

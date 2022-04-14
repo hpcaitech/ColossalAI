@@ -14,7 +14,7 @@ from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_zero_data_parallel.test_sharded_optim_v2 import _run_step
+from tests.test_zero.test_sharded_optim_v2 import _run_step
 
 from common import CONFIG
 
@@ -37,16 +37,12 @@ def _run_test_found_inf(cpu_offload, shard_strategy_class, gpu_margin_mem_ratio)
         zero_model = ShardedModelV2(
             zero_model,
             shard_strategy,
-            offload_config=dict(device='cpu') if cpu_offload else None,
-            use_memory_tracer=gpu_margin_mem_ratio > 0.0,
+            tensor_placement_policy='cpu' if cpu_offload else 'cuda',
             reuse_fp16_shard=True,
         )
 
         sharded_optim = HybridAdam(zero_model.parameters(), lr=1e-3)
-        sharded_optim = ShardedOptimizerV2(zero_model,
-                                           sharded_optim,
-                                           cpu_offload=cpu_offload,
-                                           gpu_margin_mem_ratio=gpu_margin_mem_ratio)
+        sharded_optim = ShardedOptimizerV2(zero_model, sharded_optim, gpu_margin_mem_ratio=gpu_margin_mem_ratio)
 
         for i, (data, label) in enumerate(train_dataloader):
             if i > 1:
@@ -55,7 +51,7 @@ def _run_test_found_inf(cpu_offload, shard_strategy_class, gpu_margin_mem_ratio)
             data, label = data.cuda(), label.cuda()
             _run_step(zero_model, sharded_optim, data, label, criterion, False)
             for param in zero_model.parameters():
-                assert not has_inf_or_nan(param.colo_attr.sharded_data_tensor.payload)
+                assert not has_inf_or_nan(param.colo_attr.data_payload)
 
 
 def _run_dist(rank, world_size, port):

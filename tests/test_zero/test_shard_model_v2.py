@@ -33,13 +33,13 @@ def run_model_test(enable_autocast, shard_strategy_class):
                              shard_strategy=shard_strategy,
                              shard_param=True):
             zero_model = model_builder(checkpoint=True)
-        zero_model = ShardedModelV2(zero_model, shard_strategy, use_memory_tracer=True)
+        zero_model = ShardedModelV2(zero_model, shard_strategy)
 
         model = model_builder(checkpoint=True).half()
         col_model_deepcopy(zero_model, model)
         model = model.cuda()
 
-        model = DDP(model)
+        model = DDP(model, device_ids=[torch.cuda.current_device()])
 
         for i, (data, label) in enumerate(train_dataloader):
             if i > 5:

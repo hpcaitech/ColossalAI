@@ -19,7 +19,7 @@ from colossalai.utils.checkpointing import (broadcast_state_dict, gather_tensor_
 from colossalai.utils.cuda import get_current_device
 from torch import Tensor
 from torch.nn.parameter import Parameter
-from ..vanilla import VanillaPatchEmbedding
+from ..vanilla import VanillaPatchEmbedding, VanillaLayerNorm
 
 from ..base_layer import ParallelLayer
 from ..colossalai_layer._utils import ColossalaiModule
@@ -85,20 +85,19 @@ class LayerNorm1D(ColossalaiModule):
     r"""
     Layer Normalization for colossalai
 
-    :param normalized_shape: input shape from an expected input
-        of size. :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
-        \times \ldots \times \text{normalized_shape}[-1]]`
-        If a single integer is used, it is treated as a singleton list, and this module will
-        normalize over the last dimension which is expected to be of that specific size.
-    :type normalized_shape: int
-    :param eps: a value added to the denominator for numerical stability, defaults to 1e-05
-    :type eps: float, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
+    Args:
+        normalized_shape (int): input shape from an expected input of size.
+            :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+            \times \ldots \times \text{normalized_shape}[-1]]`
+            If a single integer is used, it is treated as a singleton list, and this module will
+            normalize over the last dimension which is expected to be of that specific size.
+        eps (float): a value added to the denominator for numerical stability, defaults to 1e-05.
+        bias (bool, optional): Whether to add a bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
     """
 
-    def __init__(self, normalized_shape: int, eps=1e-05, dtype=None):
-        norm = LayerNorm(normalized_shape, eps=eps, device=get_current_device(), dtype=dtype)
+    def __init__(self, normalized_shape: int, eps=1e-05, bias=True, dtype=None):
+        norm = VanillaLayerNorm(normalized_shape, eps=eps, bias=bias, dtype=dtype)
         super().__init__(norm)
 
     def _load_from_state_dict(self, state_dict, prefix, *args):

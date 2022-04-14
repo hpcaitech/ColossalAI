@@ -5,7 +5,6 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.zero.sharded_param import (StatefulTensor, colo_tensor_mem_usage, colo_model_data_tensor_move,
                                            colo_model_data_tensor_move_inline, colo_model_data_move_to_cpu,
                                            colo_model_tensor_clone)
-from colossalai.utils.memory import colo_set_process_memory_fraction, colo_device_memory_capacity
 from colossalai.utils import free_port
 
 import torch
@@ -30,13 +29,6 @@ def _run_colo_tensor_mem_usage():
             c2, g2 = colo_tensor_mem_usage(t2)
             assert c1 * 4 == c2
             assert g1 * 4 == g2
-
-
-def _run_colo_set_process_memory_fraction_and_colo_device_memory_capacity():
-    frac1 = colo_device_memory_capacity(get_current_device())
-    colo_set_process_memory_fraction(0.5)
-    frac2 = colo_device_memory_capacity(get_current_device())
-    assert frac2 * 2 == frac1
 
 
 def _run_colo_model_data_tensor_move_inline():
@@ -82,20 +74,20 @@ def _run_colo_model_tensor_clone():
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    _run_colo_set_process_memory_fraction_and_colo_device_memory_capacity()
+
+    _run_colo_tensor_mem_usage()
     _run_colo_model_data_tensor_move_inline()
     _run_colo_model_data_tensor_move()
-    _run_colo_tensor_mem_usage()
     _run_colo_model_data_move_to_cpu()
     _run_colo_model_tensor_clone()
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4, 5])
-def test_tensor_move(world_size):
+def test_zero_tensor_utils(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_tensor_move(4)
+    test_zero_tensor_utils(world_size=2)

@@ -190,7 +190,7 @@ class _Layernorm3D(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, input_: Tensor, weight: Tensor, bias: Tensor, normalized_shape: int, eps: float,
+    def forward(ctx, input_: Tensor, weight: Tensor, bias: Optional[Tensor], normalized_shape: int, eps: float,
                 input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,
                 output_parallel_mode: ParallelMode) -> Tensor:
         mean = all_reduce(torch.sum(input_, dim=-1, keepdim=True), output_parallel_mode) / normalized_shape
@@ -201,8 +201,11 @@ class _Layernorm3D(torch.autograd.Function):
         ctx.save_for_backward(mu, sigma, weight)
 
         z = mu / sigma
-        output = weight * z + bias
+        output = weight * z
+        if bias is not None:
+            output = output + bias
 
+        ctx.use_bias = bias is not None
         ctx.normalized_shape = normalized_shape
         ctx.input_parallel_mode = input_parallel_mode
         ctx.weight_parallel_mode = weight_parallel_mode
@@ -215,12 +218,17 @@ class _Layernorm3D(torch.autograd.Function):
     def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
         mu, sigma, weight = ctx.saved_tensors
         with torch.no_grad():
-            bias_grad, weight_grad = output_grad, output_grad * mu / sigma
-            grads = torch.stack([bias_grad, weight_grad]).contiguous()
-            grads = torch.sum(grads, dim=tuple(range(len(grads.shape))[1:-1]))
-            grads = all_reduce(grads, ctx.weight_parallel_mode)
-            grads = all_reduce(grads, ctx.input_parallel_mode)
-            bias_grad, weight_grad = grads[0], grads[1]
+            weight_grad = output_grad * mu / sigma
+            if ctx.use_bias:
+                bias_grad = output_grad
+                weight_grad = torch.stack([bias_grad, weight_grad]).contiguous()
+            else:
+                bias_grad = None
+            weight_grad = torch.sum(weight_grad, dim=tuple(range(len(weight_grad.shape))[1:-1]))
+            weight_grad = all_reduce(weight_grad, ctx.weight_parallel_mode)
+            weight_grad = all_reduce(weight_grad, ctx.input_parallel_mode)
+            if ctx.use_bias:
+                bias_grad, weight_grad = weight_grad[0], weight_grad[1]
 
             dz = output_grad * weight
             dvar = dz * mu * (-0.5) * sigma**(-3)
@@ -234,7 +242,7 @@ class _Layernorm3D(torch.autograd.Function):
         return input_grad, weight_grad, bias_grad, None, None, None, None, None
 
 
-def layernorm_3d(input_: Tensor, weight: Tensor, bias: Tensor, normalized_shape: int, eps: float,
+def layernorm_3d(input_: Tensor, weight: Tensor, bias: Optional[Tensor], normalized_shape: int, eps: float,
                  input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,
                  output_parallel_mode: ParallelMode) -> Tensor:
     r"""3D parallel Layernorm.
