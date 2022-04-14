@@ -53,10 +53,9 @@ class ShardedModelV2(nn.Module):
             If it's 'cpu', parameters, gradients and optimizer states will be offloaded to CPU, which means min CUDA memory will be used.
             If it's 'cuda', they won't be offloaded, which means max CUDA memory will be used.
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
+            Note that 'auto' policy can only work well when no other processes use CUDA during your training.
             Defaults to 'cuda'.
-        offload_config (Optional[dict], optional): We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload. Defaults to None.
         gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
-        use_memory_tracer (bool, optional): Whether to use memoty tracer. Defaults to False.
         reuse_fp16_shard (bool, optional): Whether to reuse fp16 shard for param and grad. 
             Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation. 
             In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad). 
