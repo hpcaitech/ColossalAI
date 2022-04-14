@@ -76,15 +76,15 @@ distributed training in a few lines.
 - Parallelism strategies
   - Data Parallelism
   - Pipeline Parallelism
-  - 1D, [2D](https://arxiv.org/abs/2104.05343), [2.5D](https://arxiv.org/abs/2105.14500), 3D Tensor parallelism
-  - [Sequence parallelism](https://arxiv.org/abs/2105.13120)
+  - 1D, [2D](https://arxiv.org/abs/2104.05343), [2.5D](https://arxiv.org/abs/2105.14500), [3D](https://arxiv.org/abs/2105.14450) Tensor Parallelism
+  - [Sequence Parallelism](https://arxiv.org/abs/2105.13120)
   - [Zero Redundancy Optimizer (ZeRO)](https://arxiv.org/abs/2108.05818)
 
 - Heterogeneous Memory Menagement 
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 
 - Friendly Usage
-  - Configuration file based
+  - Parallelism based on configuration file
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
