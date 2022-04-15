@@ -36,10 +36,11 @@ class LayerNorm3D(ParallelLayer):
             If a single integer is used, it is treated as a singleton list, and this module will
             normalize over the last dimension which is expected to be of that specific size.
         eps (float, optional): a value added to the denominator for numerical stability, defaults to 1e-12.
+        bias (bool, optional): Whether to add a bias, defaults to ``True``.
         dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
     """
 
-    def __init__(self, normalized_shape: int, eps: float = 1e-12, dtype=None):
+    def __init__(self, normalized_shape: int, eps: float = 1e-12, bias=True, dtype=None):
 
         super().__init__()
         self.input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
@@ -51,18 +52,23 @@ class LayerNorm3D(ParallelLayer):
 
         self.weight = Parameter(
             torch.ones(self.normalized_shape_per_partition, device=get_current_device(), dtype=dtype))
-        self.bias = Parameter(torch.zeros(self.normalized_shape_per_partition, device=get_current_device(),
-                                          dtype=dtype))
+        if bias:
+            self.bias = Parameter(torch.zeros(self.normalized_shape_per_partition,
+                                              device=get_current_device(), dtype=dtype))
+        else:
+            self.bias = None
         self.variance_epsilon = eps
         self._set_tensor_parallel_attributes()
 
     def _set_tensor_parallel_attributes(self) -> None:
         set_tensor_parallel_attribute_by_partition(self.weight, self.depth)
-        set_tensor_parallel_attribute_by_partition(self.bias, self.depth)
+        if self.bias is not None:
+            set_tensor_parallel_attribute_by_partition(self.bias, self.depth)
 
     def reset_parameters(self) -> None:
-        init.zeros_()(self.bias)
         init.ones_()(self.weight)
+        if self.bias is not None:
+            init.zeros_()(self.bias)
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
@@ -104,7 +110,9 @@ class LayerNorm3D(ParallelLayer):
     def _save_to_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
-        local_state = OrderedDict({weight_key: self.weight, bias_key: self.bias})
+        local_state = OrderedDict({weight_key: self.weight})
+        if self.bias is not None:
+            local_state[bias_key] = self.bias
 
         # gather in output groups
         if gpc.get_local_rank(self.input_parallel_mode) == 0 and \

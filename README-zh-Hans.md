@@ -71,26 +71,30 @@
 
 Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让您的分布式 AI 模型训练像普通的单 GPU 模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练。
 
-- 数据并行
-- 流水线并行
-- 1维, 2维, 2.5维, 3维张量并行 
-- 序列并行
-- 友好的 trainer 和 engine
-- 可扩展新的并行方式
-- 混合精度
-- 零冗余优化器 (ZeRO)
-
+- 并行化策略
+  - 数据并行
+  - 流水线并行
+  - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
+  - [序列并行](https://arxiv.org/abs/2105.13120)
+  - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/2108.05818)
+- 异构内存管理
+  - [PatrickStar](https://arxiv.org/abs/2108.05818)
+- 使用友好
+  - 基于参数文件的并行化
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 展示样例
 ### ViT
-
+<p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+</p>
 
 - 14倍批大小和5倍训练速度（张量并行=64）
 
 ### GPT-3
+<p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
+</p>
 
 - 释放 50% GPU 资源占用, 或 10.7% 加速
 

@@ -5,7 +5,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
 from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
-from colossalai.zero.utils.tensor_placement_policy import TensorPlacementPolicy
+from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicy
 from typing import List
 from colossalai.logging import get_dist_logger
 
@@ -38,10 +38,6 @@ class StatefulTensorMgr(object):
     def adjust_layout(self) -> None:
         """ Adjust the layout of statefuil tensor according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
-
-        Args:
-            mem_stats_collector (MemStatsCollector): a collector, usually owned by a Sharded Model.
-            It contains non-model footprint of a DNN model.
         """
         # find stateful tensor in state COMPUTE
         cuda_demand = 0

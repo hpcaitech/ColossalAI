@@ -9,7 +9,7 @@ from colossalai.core import global_context as gpc
 from colossalai.utils import free_port, get_current_device
 from colossalai.nn.layer.moe import Top1Router, Top2Router, MoeLayer, Experts
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 
 BATCH_SIZE = 16
 NUM_EXPERTS = 4
@@ -87,7 +87,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
 @pytest.mark.parametrize("hidden_size", [32, 144])
 @pytest.mark.parametrize("data_type", [torch.float32, torch.float16])
 @pytest.mark.parametrize("router", [Top1Router, Top2Router])
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_moe_kernel(rs, hidden_size, data_type, router):
     world_size = 4
     run_func = partial(run_routing,
