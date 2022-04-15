@@ -13,7 +13,7 @@ from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 from colossalai.context import reset_seeds
 from colossalai.global_variables import tensor_parallel_env as tp_env
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 
 CONFIG_PATH_LIST = list(Path(__file__).parent.glob('configs/*.py'))
 
@@ -141,7 +141,7 @@ def run_dist(rank, world_size, backend, port_list, host):
 
 
 @pytest.mark.cpu
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_context():
     """
     As no computation or communication is done, we can run this test on CPU.

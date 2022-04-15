@@ -3,6 +3,7 @@ from functools import partial
 from pathlib import Path
 
 import colossalai
+from colossalai.testing.utils import rerun_if_address_is_in_use
 import pytest
 import torch
 import torch.multiprocessing as mp
@@ -10,7 +11,7 @@ import torch.nn as nn
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import free_port, get_dataloader
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from torch.optim import Adam
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
@@ -87,7 +88,7 @@ def run_no_pipeline(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_engine():
     world_size = 4
     func = partial(run_no_pipeline, world_size=world_size, port=free_port())

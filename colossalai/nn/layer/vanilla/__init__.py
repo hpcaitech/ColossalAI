@@ -1,5 +1,7 @@
-from .layers import DropPath, VanillaClassifier, VanillaPatchEmbedding, \
-    WrappedDropout, WrappedDropPath
+from .layers import (DropPath, VanillaClassifier, VanillaLayerNorm,
+                     VanillaPatchEmbedding, WrappedDropout, WrappedDropPath)
 
-__all__ = ['VanillaPatchEmbedding', 'VanillaClassifier', 'DropPath',
-           'WrappedDropout', 'WrappedDropPath']
+__all__ = [
+    "VanillaLayerNorm", "VanillaPatchEmbedding", "VanillaClassifier",
+    "DropPath", "WrappedDropout", "WrappedDropPath"
+]

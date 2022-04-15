@@ -254,3 +254,37 @@ class VanillaClassifier(nn.Module):
 
     def forward(self, input_: Tensor) -> Tensor:
         return F.linear(input_, self.weight, self.bias)
+
+
+@LAYERS.register_module
+class VanillaLayerNorm(nn.Module):
+    r"""
+    Layer Normalization for colossalai
+
+    Args:
+        normalized_shape (int): input shape from an expected input of size.
+            :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+            \times \ldots \times \text{normalized_shape}[-1]]`
+            If a single integer is used, it is treated as a singleton list, and this module will
+            normalize over the last dimension which is expected to be of that specific size.
+        eps (float): a value added to the denominator for numerical stability, defaults to 1e-05.
+        bias (bool, optional): Whether to add a bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+    """
+
+    def __init__(self, normalized_shape: int, eps=1e-05, bias=True, dtype=None):
+        super().__init__()
+
+        self.normalized_shape = (normalized_shape,)
+        self.variance_epsilon = eps
+
+        factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
+
+        self.weight = nn.Parameter(torch.ones(normalized_shape, **factory_kwargs))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(normalized_shape, **factory_kwargs))
+        else:
+            self.bias = None
+
+    def forward(self, x: Tensor) -> Tensor:
+        return F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.variance_epsilon)

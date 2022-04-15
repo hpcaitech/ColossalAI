@@ -15,7 +15,7 @@ from colossalai.nn.loss import CrossEntropyLoss
 from colossalai.trainer import Trainer, hooks
 from colossalai.utils import free_port, get_dataloader
 from colossalai.utils.gradient_accumulation import GradAccumLrSchedulerByStep
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from model_zoo.vit import vit_tiny_patch4_32
 from torchvision import transforms
 from torchvision.datasets import CIFAR10
@@ -23,9 +23,10 @@ from torchvision.datasets import CIFAR10
 BATCH_SIZE = 4
 NUM_EPOCHS = 60
 WARMUP_EPOCHS = 5
-CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=2, tensor=dict(size=2, mode='1d')),
-                fp16=dict(mode=AMP_TYPE.NAIVE),
-                gradient_accumulation=2)
+CONFIG = dict(NUM_MICRO_BATCHES=2,
+              parallel=dict(pipeline=2, tensor=dict(size=2, mode='1d')),
+              fp16=dict(mode=AMP_TYPE.NAIVE),
+              gradient_accumulation=2)
 
 
 def run_trainer(rank, world_size, port):
@@ -79,7 +80,7 @@ def run_trainer(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_hybrid_parallel():
     world_size = 8
     run_func = partial(run_trainer, world_size=world_size, port=free_port())

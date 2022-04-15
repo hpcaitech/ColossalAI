@@ -10,7 +10,7 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers
 from colossalai.initialize import launch
 from colossalai.utils import free_port
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from checks_1d.check_layer_1d import *
 
 CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=4, mode='1d')),)
@@ -35,7 +35,7 @@ def check_layer(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_1d():
     world_size = 4
     run_func = partial(check_layer, world_size=world_size, port=free_port())
