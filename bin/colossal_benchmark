@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from colossalai.launcher.run import main
+from colossalai.benchmark.run import launch
 
 if __name__ == '__main__':
-    main()
+    launch()
