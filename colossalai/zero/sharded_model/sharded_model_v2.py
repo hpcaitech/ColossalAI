@@ -22,8 +22,8 @@ from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
 from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
-from colossalai.zero.utils.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.zero.utils.tensor_placement_policy import TensorPlacementPolicyFactory, TensorPlacementPolicy
+from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicyFactory, TensorPlacementPolicy
 
 from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
@@ -53,10 +53,9 @@ class ShardedModelV2(nn.Module):
             If it's 'cpu', parameters, gradients and optimizer states will be offloaded to CPU, which means min CUDA memory will be used.
             If it's 'cuda', they won't be offloaded, which means max CUDA memory will be used.
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
+            Note that 'auto' policy can only work well when no other processes use CUDA during your training.
             Defaults to 'cuda'.
-        offload_config (Optional[dict], optional): We currently only support CPU offload. Set to `{"device": "cpu"}` to enable CPU offload. Defaults to None.
         gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
-        use_memory_tracer (bool, optional): Whether to use memoty tracer. Defaults to False.
         reuse_fp16_shard (bool, optional): Whether to reuse fp16 shard for param and grad. 
             Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation. 
             In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad). 
@@ -254,9 +253,6 @@ class ShardedModelV2(nn.Module):
             with torch.cuda.stream(self.comm_stream):
                 self.reducer.flush()
             torch.cuda.current_stream().wait_stream(self.comm_stream)
-            if self._cpu_offload:
-                # Wait for the non-blocking GPU -> CPU grad transfers to finish.
-                torch.cuda.current_stream().synchronize()
         self.reducer.free()
 
         # 3. shard tensors not dealed in the zero hook
@@ -339,7 +335,7 @@ class ShardedModelV2(nn.Module):
     def _reduce_scatter_callback(self, param: Parameter, reduced_grad: torch.Tensor) -> None:
         assert isinstance(reduced_grad,
                           torch.Tensor), f"_reduce_scatter_callback accept reduced_grad as {type(reduced_grad)}"
-        reduced_grad.data = reduced_grad.data.view(-1)
+        reduced_grad.data = reduced_grad.data.contiguous().view(-1)
         if self.gradient_postdivide_factor > 1:
             # Average grad by world_size for consistency with PyTorch DDP.
             reduced_grad.data.div_(self.gradient_postdivide_factor)
@@ -363,7 +359,7 @@ class ShardedModelV2(nn.Module):
             ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
 
             param.colo_attr.reset_grad_payload(grad)
-            param.colo_attr.reset_grad_payload(grad)    # release the memory of param
+            param.colo_attr.reset_data_payload(grad)    # release the memory of param
 
             if param.colo_attr.is_replicated:
                 param.colo_attr.sharded_data_tensor.is_sharded = True

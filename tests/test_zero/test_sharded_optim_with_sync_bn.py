@@ -10,7 +10,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import TensorShardStrategy
@@ -71,7 +71,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_sharded_optim_with_sync_bn():
     """
     This test is to make sure that buffers are synchronized between ranks

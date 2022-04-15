@@ -70,7 +70,6 @@ class ShardedParamV2(object):
         assert type(tensor) is torch.Tensor
         assert tensor.requires_grad is False
         self.sharded_data_tensor.reset_payload(tensor)
-        self.set_data_none()
 
     def reset_grad_payload(self, tensor: torch.Tensor):
         assert type(tensor) is torch.Tensor
@@ -109,6 +108,5 @@ class ShardedParamV2(object):
 
         if self.param.grad is not None and self.param.grad.data_ptr() not in address_set:
             _update_mem_use(self.param.grad)
-            address_set.add(self.param.grad.data_ptr())
 
         return cuda_mem_use, cpu_mem_use

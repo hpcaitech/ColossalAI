@@ -101,5 +101,9 @@ class ModelDataTracer(metaclass=SingletonMeta):
         cuda_usage, _ = self._get_mem_usage()
         return cuda_usage
 
+    @property
+    def both_mem_usage(self):
+        return self._get_mem_usage()
+
 
 GLOBAL_MODEL_DATA_TRACER = ModelDataTracer()

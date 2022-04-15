@@ -14,7 +14,7 @@ from colossalai.nn.layer import MoeModule
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import get_current_device
 from tests.test_zero.common import CONFIG
 
@@ -91,7 +91,7 @@ def _run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [2, 4])
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_moe_zero_init(world_size):
     run_func = partial(_run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
