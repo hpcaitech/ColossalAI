@@ -738,10 +738,11 @@ def split_batch_2d(input_: Tensor, dim: int = 0) -> Tensor:
         :class:`torch.tensor`: The tensor has been split.
     """
     dim_size = input_.size(dim)
-    if dim_size <= 1:
+    world_size = gpc.get_world_size(ParallelMode.PARALLEL_2D_COL)
+
+    if world_size <= 1:
         return input_
 
-    world_size = gpc.get_world_size(ParallelMode.PARALLEL_2D_COL)
     assert dim_size % world_size == 0, \
         f'The batch size ({dim_size}) is not a multiple of 2D size ({world_size}).'
 
