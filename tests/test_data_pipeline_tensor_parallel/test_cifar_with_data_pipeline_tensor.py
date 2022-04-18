@@ -79,6 +79,7 @@ def run_trainer(rank, world_size, port):
                 display_progress=True)
 
 
+@pytest.mark.skip
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_hybrid_parallel():
