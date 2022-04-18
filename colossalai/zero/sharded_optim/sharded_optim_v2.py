@@ -299,6 +299,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 if p.colo_attr.saved_grad.is_null():
                     continue
                 p.colo_attr.saved_grad.trans_state(TensorState.COMPUTE)
+                # If reuse_fp16_shard, grad fp16 which wasn't be offloaded may be evicted to CPU
+                if not p.colo_attr.offload_grad:
+                    colo_model_data_tensor_move_inline(p.colo_attr.grad_payload, torch.cuda.current_device())
                 # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad
