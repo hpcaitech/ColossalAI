@@ -72,7 +72,7 @@ def run_stm():
 
     # warmup done
     # only 2 params can be on CUDA
-    limit_cuda_memory(0.26)
+    limit_cuda_memory(0.26 / tensor_placement_policy._steady_cuda_cap_ratio)
     # use OPT-like eviction strategy
     apply_adjust(model, model.p0, [model.p0, model.p1], stateful_tensor_mgr)
     mem_collector.sample_model_data()
@@ -120,7 +120,6 @@ def run_dist(rank, world_size, port):
     run_stm()
 
 
-@pytest.mark.skip
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_stateful_tensor_manager(world_size=1):
