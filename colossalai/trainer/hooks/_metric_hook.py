@@ -324,7 +324,7 @@ class ThroughputMetric(Metric):
         epoch_only (bool): Whether the metric only read for the full epoch.
     """
 
-    def __init__(self, epoch_only: bool, ignored_steps: int = 0, tflops_per_step=0):
+    def __init__(self, epoch_only: bool, ignored_steps: int = 0, tflops_per_step: int = 0):
         super().__init__(epoch_only=epoch_only)
         self.ignored_steps = ignored_steps
         self.cur_steps = 0
