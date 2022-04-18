@@ -1,5 +1,5 @@
 import click
-from colossalai.launcher.run import main as col_launch
+from colossalai.cli.launcher.run import main as col_launch
 
 class Arguments():
     def __init__(self, dict):
