@@ -25,13 +25,14 @@ def _format_number(val, prec=5):
 
 
 class LogByEpochHook(BaseHook):
-    """Hook to log by epoch
+    """Hook to log by epoch.
 
-    :param logger: Logger for the log
-    :param interval: Recording interval, defaults to 1
-    :type interval: int, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 1
-    :type priority: int, optional
+    Args:
+        logger (:class:`colossalai.logging.DistributedLogger`): Logger for recording the log information.
+        interval (int, optional): Interval of printing log information, defaults to 1.
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front,
+            defaults to 1. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(self,
@@ -48,10 +49,12 @@ class LogByEpochHook(BaseHook):
 
 @HOOKS.register_module
 class LogMetricByStepHook(BaseHook):
-    """Hook to log metric by step
+    """Hook to log metric by step.
 
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
-    :type priority: int, optional
+    Args:
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front,
+            defaults to 10. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(self, priority: int = 10):
@@ -74,11 +77,12 @@ class LogMetricByStepHook(BaseHook):
 class LogMetricByEpochHook(LogByEpochHook):
     """Specialized hook to record the metric to log.
 
-    :param logger: Logger for the log
-    :param interval: Recording interval, defaults to 1
-    :type interval: int, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
-    :type priority: int, optional
+    Args:
+        logger (:class:`colossalai.logging.DistributedLogger`): Logger for recording the log information.
+        interval (int, optional): Interval of printing log information, defaults to 1.
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front,
+            defaults to 10. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(self,
@@ -116,14 +120,14 @@ class LogMetricByEpochHook(LogByEpochHook):
 class TensorboardHook(BaseHook):
     """Specialized hook to record the metric to Tensorboard.
 
-    :param log_dir: Directory of log
-    :type log_dir: str
-    :param ranks: Ranks of processors
-    :type ranks: typing.List
-    :param parallel_mode: Parallel mode, defaults to colossalai.context.parallel_mode.ParallelMode.GLOBAL
-    :type parallel_mode: :class:`colossalai.context.parallel_mode.ParallelMode`, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
-    :type priority: int, optional
+    Args:
+        log_dir (str): Directory of log.
+        ranks (list): Ranks of processors.
+        parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`, optional): Parallel mode used in trainer,
+            defaults to colossalai.context.parallel_mode.ParallelMode.GLOBAL.
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front,
+            defaults to 10. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(self,
@@ -200,18 +204,15 @@ class TensorboardHook(BaseHook):
 class LogTimingByEpochHook(LogByEpochHook):
     """Specialized hook to write timing record to log.
 
-    :param timer: Timer for the hook
-    :type timer: :class:`colossalai.utils.MultiTimer`
-    :param logger: Logger for the log
-    :type logger: :class:`colossalai.logging.DistributedLogger`
-    :param interval: Recording interval, defaults to 1
-    :type interval: int, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
-    :type priority: int, optional
-    :param log_eval: Whether writes in evaluation, defaults to True
-    :type log_eval: bool, optional
-    :param ignore_num_train_steps: Number of training steps to ignore, defaults to 0
-    :type ignore_num_train_steps: int, optional
+    Args:
+        timer (:class:`colossalai.utils.MultiTimer`): Timer for the hook.
+        logger (:class:`colossalai.logging.DistributedLogger`): Logger for recording the log information.
+        interval (int, optional): Interval of printing log information, defaults to 1.
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front
+            defaults to 10. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
+        log_eval (bool, optional): Whether writes in evaluation, defaults to True.
+        ignore_num_train_steps (int, optional): Number of training steps to ignore, defaults to 0.
     """
 
     def __init__(self,
@@ -270,14 +271,13 @@ class LogTimingByEpochHook(LogByEpochHook):
 class LogMemoryByEpochHook(LogByEpochHook):
     """Specialized Hook to write memory usage record to log.
 
-    :param logger: Logger for the log
-    :type logger: colossalai.logging.DistributedLogger
-    :param interval: Recording interval, defaults to 1
-    :type interval: int, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
-    :type priority: int, optional
-    :param log_eval: Whether writes in evaluation, defaults to True
-    :type log_eval: bool, optional
+    Args:
+        logger (:class:`colossalai.logging.DistributedLogger`): Logger for recording the log information.
+        interval (int, optional): Interval of printing log information, defaults to 1.
+        priority (int, optional): Priority in the printing, hooks with small priority will be printed in front
+            defaults to 1. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
+        log_eval (bool, optional): Whether writes in evaluation, defaults to True.
     """
 
     def __init__(self,

@@ -8,4 +8,5 @@ colossalai.engine
    :maxdepth: 2
 
    colossalai.engine.gradient_handler
+   colossalai.engine.ophooks
    colossalai.engine.schedule

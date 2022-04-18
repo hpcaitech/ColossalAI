@@ -5,7 +5,7 @@ import argparse
 import os
 import pprint
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -20,22 +20,26 @@ from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.builder.builder import build_gradient_handler
 from colossalai.context import Config, ConfigException, ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.engine.schedule import NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule, get_tensor_shape
+
+from colossalai.context.moe_context import MOE_CONTEXT
 from colossalai.engine import Engine
-from colossalai.global_variables import moe_env
+from colossalai.engine.ophooks import BaseOpHook
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 from colossalai.utils import (accumulate_gradient, get_current_device, is_using_ddp, is_using_pp, is_using_sequence,
                               sync_model_param)
-from colossalai.zero import convert_to_zero, ShardedOptimizer
-from colossalai.engine.ophooks import BaseOpHook
+from colossalai.utils.moe import sync_moe_model_param
+from colossalai.zero import convert_to_zero_v2
+from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
 
 
 def get_default_parser():
     """Reads user command line and uses an argument parser to parse the input arguments.
     Input arguments include configuration, host, port, world size, local rank, backend for torch.distributed.
 
-    :return: Returns the parser with the default arguments, the user may add customized arguments into this parser
-    :rtype: Namespace
+    Returns:
+       Namespace: Returns the parser with the default arguments, the user may add customized arguments into this parser.
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, help='path to the config file')
@@ -60,26 +64,21 @@ def launch(config: Union[str, Path, Config, Dict],
     """This function first parses the configuration arguments, using :func:`parse_args()` in case one of the input
     arguments are not given. Then initialize and set distributed environment by calling global_context's functions.
 
-    :param config: Config file or config file path are both acceptable
-    :type config: Union[str, dict, Config]
-    :param rank: Rank for the default process group
-    :type rank: int
-    :param world_size: World size of the default process group
-    :type world_size: int
-    :param host: The master address for distributed training
-    :type host: str
-    :param port: The master port for distributed training
-    :type port: str
-    :param backend: Backend for torch.distributed
-    :type backend: str, optional
-    :param local_rank: Rank for the process on the node and is used to set the default CUDA device, defaults to None.
-        If local_rank = None, the default device ordinal will be calculated automatically
-    :type local_rank: int, optional
-    :param seed: Specified random seed for every processes
-    :type seed: int, optional
-    :param verbose: Whether to print logs
-    :type verbose: bool, optional
-    :raises Exception: Raise exception when config type is wrong
+    Args:
+        config (Union[str, dict, Config]): Config file or config file path are both acceptable
+        rank (int): Rank for the default process group
+        world_size (int): World size of the default process group
+        host (str): The master address for distributed training
+        port (str): The master port for distributed training
+        backend (str, optional): Backend for ``torch.distributed``, defaults to ``nccl``
+        local_rank (int, optional):
+            Rank for the process on the node and is used to set the default CUDA device,
+            defaults to None. If local_rank = None, the default device ordinal will be calculated automatically.
+        seed (int, optional): Specified random seed for every process. Defaults to 1024.
+        verbose (bool, optional): Whether to print logs. Defaults to True.
+
+    Raises:
+        Exception: Raise exception when config type is wrong
     """
     gpc.verbose = verbose
 
@@ -103,6 +102,9 @@ def launch(config: Union[str, Path, Config, Dict],
         # if local rank is not given, calculate automatically
         gpc.set_device(local_rank)
 
+    # set the number of processes running on the same node
+    gpc.detect_num_processes_on_current_node()
+
     gpc.set_seed(seed)
 
     if verbose:
@@ -123,18 +125,13 @@ def launch_from_slurm(config: Union[str, Path, Config, Dict],
     """A wrapper for colossalai.launch for SLURM launcher by reading rank and world size from the environment variables
     set by SLURM
 
-    :param config: Config file or config file path are both acceptable
-    :type config: Union[str, dict, Config]
-    :param host: The master address for distributed training
-    :type host: str
-    :param port: The master port for distributed training
-    :type port: str
-    :param backend: Backend for torch.distributed
-    :type backend: str, optional
-    :param seed: Specified random seed for every processes
-    :type seed: int, optional
-    :param verbose: Whether to print logs
-    :type verbose: bool, optional
+    Args:
+        config (Union[str, dict, Config]): Config file or config file path are both acceptable
+        host (str): The master address for distributed training
+        port (str): The master port for distributed training
+        backend (str, optional): Backend for ``torch.distributed``, defaults to ``nccl``
+        seed (int, optional): Specified random seed for every process. Defaults to 1024.
+        verbose (bool, optional): Whether to print logs. Defaults to True.
     """
     rank = int(os.environ['SLURM_PROCID'])
     world_size = int(os.environ['SLURM_NPROCS'])
@@ -157,18 +154,13 @@ def launch_from_openmpi(config: Union[str, Path, Config, Dict],
     """A wrapper for colossalai.launch for OpenMPI launcher by reading rank and world size from the environment variables
     set by OpenMPI
 
-    :param config: Config file or config file path are both acceptable
-    :type config: Union[str, dict, Config]
-    :param host: The master address for distributed training
-    :type host: str
-    :param port: The master port for distributed training
-    :type port: str
-    :param backend: Backend for torch.distributed
-    :type backend: str, optional
-    :param seed: Specified random seed for every processes
-    :type seed: int, optional
-    :param verbose: Whether to print logs
-    :type verbose: bool, optional
+    Args:
+        config (Union[str, dict, Config]): Config file or config file path are both acceptable
+        host (str): The master address for distributed training
+        port (str): The master port for distributed training
+        backend (str, optional): Backend for ``torch.distributed``, defaults to ``nccl``
+        seed (int, optional): Specified random seed for every process. Defaults to 1024.
+        verbose (bool, optional): Whether to print logs. Defaults to True.
     """
     rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
     local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
@@ -191,14 +183,11 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
     """A wrapper for colossalai.launch for torchrun or torch.distributed.launch by reading rank and world size
     from the environment variables set by PyTorch
 
-    :param config: Config file or config file path are both acceptable
-    :type config: Union[str, dict, Config]
-    :param backend: Backend for torch.distributed
-    :type backend: str, optional
-    :param seed: Specified random seed for every processes
-    :type seed: int, optional
-    :param verbose: Whether to print logs
-    :type verbose: bool, optional
+    Args:
+        config (Union[str, dict, Config]): Config file or config file path are both acceptable
+        backend (str, optional): Backend for ``torch.distributed``, defaults to ``nccl``
+        seed (int, optional): Specified random seed for every process. Defaults to 1024.
+        verbose (bool, optional): Whether to print logs. Defaults to True.
     """
     rank = int(os.environ['RANK'])
     local_rank = int(os.environ['LOCAL_RANK'])
@@ -227,22 +216,20 @@ def initialize(model: nn.Module,
     """Core function to wrap the essential training components with our functionality based on the config which is
     loaded into gpc.config.
 
-    :param model: Your model instance
-    :type model: :class:`torch.nn.Module`
-    :param optimizer: Your optimizer instance
-    :type optimizer: :class:`torch.optim.optimizer.Optimizer`
-    :param criterion: Your criterion instance
-    :type criterion: :class:`torch.nn.modules.loss._Loss`, optional
-    :param train_dataloader: Dataloader for training
-    :type train_dataloader: :class:`torch.utils.data.DataLoader`, optional
-    :param test_dataloader: Dataloader for testing
-    :type test_dataloader: :class:`torch.utils.data.DataLoader`, optional
-    :param lr_scheduler: Your lr scheduler instance, optional
-    :type lr_scheduler: :class:`torch.nn.lr_scheduler._LRScheduler`, optional
-    :param verbose: Whether to print logs
-    :type verbose: bool, optional
-    :return: (engine, train_dataloader, test_dataloader, lr_scheduler)
-    :rtype: Tuple
+    Args:
+        model (:class:`torch.nn.Module` or Callbale): Your model instance or a function to build the model.
+        optimizer (:class:`torch.optim.optimizer.Optimizer` or :class:`Type[torch.optim.optimizer]`):
+            Your optimizer instance.
+        criterion (:class:`torch.nn.modules.loss._Loss`, optional): Your criterion instance.
+        train_dataloader (:class:`torch.utils.data.DataLoader`, optional): Dataloader for training.
+        test_dataloader (:class:`torch.utils.data.DataLoader`, optional): Dataloader for testing.
+        lr_scheduler (:class:`torch.nn.lr_scheduler._LRScheduler`, optional): Your lr scheduler instance, optional.
+        verbose (bool, optional): Whether to print logs.
+
+    Returns:
+        Tuple (engine, train_dataloader, test_dataloader, lr_scheduler):
+            A tuple of ``(engine, train_dataloader, test_dataloader, lr_scheduler)``
+            where only ``engine`` could not be None.
     """
     # get logger
     logger = get_dist_logger()
@@ -267,12 +254,42 @@ def initialize(model: nn.Module,
     if verbose:
         logger.info(f"cuDNN benchmark = {cudnn_benchmark}, deterministic = {cudnn_deterministic}", ranks=[0])
 
-    # first sync model across dp ranks
-    model.to(get_current_device())
-    use_zero3 = hasattr(gpc.config, 'zero') and gpc.config.zero.level == 3
-    if not moe_env.is_initialized() and not use_zero3:
+    # zero
+    use_zero = hasattr(gpc.config, 'zero')
+    if use_zero:
+        zero_cfg = gpc.config.get('zero', None)
+        if zero_cfg is not None:
+            cfg_ = zero_cfg.copy()
+        else:
+            cfg_ = {}
+        optimizer_config = zero_cfg.get('optimizer_config', None)
+        model_config = zero_cfg.get('model_config', None)
+        model, optimizer = convert_to_zero_v2(model,
+                                              optimizer,
+                                              model_config=model_config,
+                                              optimizer_config=optimizer_config)
+
+        logger.info("Initializing ZeRO model and optimizer finished!", ranks=[0])
+        # FIXME() throw a warning if using zero with MP
+        if gpc.get_world_size(ParallelMode.MODEL) > 1:
+            logger.warning("ZeRO currently has not been tested with model parallelism.", ranks=[0])
+    else:
+        if isinstance(model, nn.Module):
+            # first sync model across dp ranks
+            model.to(get_current_device())
+        elif isinstance(model, Callable):
+            model = model().to(get_current_device())
+
+        # optimizer maybe a optimizer_cls
+        logger.warning("Initializing an non ZeRO model with optimizer class")
+        if isinstance(optimizer, Callable):
+            optimizer = optimizer(model.parameters())
+
+    if not use_zero:
         if is_using_sequence():
             sync_model_param(model, ParallelMode.SEQUENCE_DP)
+        elif MOE_CONTEXT.is_initialized:
+            sync_moe_model_param(model)
         elif is_using_ddp():
             sync_model_param(model, ParallelMode.DATA)
     else:
@@ -283,18 +300,13 @@ def initialize(model: nn.Module,
 
     # check amp and zero
     fp16_cfg = gpc.config.get('fp16', None)
-    zero_cfg = gpc.config.get('zero', None)
 
-    if fp16_cfg is not None and fp16_cfg.mode is not None and zero_cfg is not None:
+    if fp16_cfg is not None and fp16_cfg.mode is not None and use_zero:
         raise ConfigException(
             "It is not allowed to set fp16 and zero configuration in your config file at the same time")
 
     # clip grad norm
     clip_grad_norm = gpc.config.get('clip_grad_norm', 0.0)
-    if clip_grad_norm > 0:
-        if zero_cfg is not None:
-            raise ConfigException(
-                "clip_grad_norm should be specified with zero, you should specify clip_grad in zero configuration")
 
     # initialize amp
     amp_mode = None
@@ -304,17 +316,12 @@ def initialize(model: nn.Module,
         if is_using_pp():
             assert amp_mode == AMP_TYPE.NAIVE, 'Pipeline only support NaiveAMP currently'
         if amp_mode == AMP_TYPE.NAIVE:
-            cfg_['clip_grad'] = clip_grad_norm
+            cfg_['clip_grad_norm'] = clip_grad_norm
         model, optimizer, criterion = convert_to_amp(model=model,
                                                      optimizer=optimizer,
                                                      criterion=criterion,
                                                      mode=amp_mode,
                                                      amp_config=cfg_)
-
-    if zero_cfg is not None:
-        cfg_ = zero_cfg.copy()
-        level = cfg_.pop('level')
-        model, optimizer = convert_to_zero(model=model, optimizer=optimizer, level=level, zero_config=cfg_)
 
     # gradient handler
     gradient_handler_cfg = gpc.config.get('gradient_handler', None)
@@ -324,14 +331,14 @@ def initialize(model: nn.Module,
         # 1. if optimizer is ZERO, then use zero grad handler
         # 2. if dp size is larger than 1 and pipeline is not used, use pytorch ddp
         # 3. if using pipeline and dp size larger than 1, use data parallel grad handler
-        if isinstance(optimizer, ShardedOptimizer):
+        if isinstance(optimizer, ShardedOptimizerV2):
             gradient_handler_cfg = [dict(type='ZeROGradientHandler')]
             if verbose:
                 logger.info(
                     "Training with zero is detected, ZeROGradientHandler is automatically "
                     "added even though not specified in the configuration",
                     ranks=[0])
-        elif is_using_ddp() and moe_env.is_initialized():
+        elif is_using_ddp() and MOE_CONTEXT.is_initialized:
             gradient_handler_cfg = [dict(type='MoeGradientHandler')]
             if verbose:
                 logger.info(
@@ -381,6 +388,26 @@ def initialize(model: nn.Module,
     if isinstance(model, DDP) and isinstance(model.module, NaiveAMPModel):
         model.module.sync_buffer = False
 
+    # initialize schedule for engine
+    if is_using_pp():
+        tensor_shape = get_tensor_shape()
+        use_interleaved = hasattr(gpc.config, 'model') and hasattr(gpc.config.model, 'num_chunks')
+        if gpc.is_initialized(ParallelMode.PARALLEL_1D):
+            scatter_gather = True
+        else:
+            scatter_gather = False
+        if use_interleaved:
+            schedule = InterleavedPipelineSchedule(gpc.config.NUM_MICRO_BATCHES,
+                                                   gpc.config.model.num_chunks,
+                                                   tensor_shape=tensor_shape,
+                                                   scatter_gather_tensors=scatter_gather)
+        else:
+            schedule = PipelineSchedule(gpc.config.NUM_MICRO_BATCHES,
+                                        tensor_shape=tensor_shape,
+                                        scatter_gather_tensors=scatter_gather)
+    else:
+        schedule = NonPipelineSchedule()
+
     if gradient_handler_cfg is None:
         gradient_handlers = None
         if verbose and not isinstance(model, DDP):
@@ -392,7 +419,7 @@ def initialize(model: nn.Module,
         gradient_handlers = [build_gradient_handler(cfg, model, optimizer) for cfg in gradient_handler_cfg]
 
     # check if optimizer is ColossalaiOptimizer
-    if not isinstance(optimizer, (ColossalaiOptimizer, ShardedOptimizer)):
+    if not isinstance(optimizer, (ColossalaiOptimizer, ShardedOptimizerV2)):
         optimizer = ColossalaiOptimizer(optim=optimizer)
 
     # gradient accumulation
@@ -411,6 +438,7 @@ def initialize(model: nn.Module,
                     criterion=criterion,
                     gradient_handlers=gradient_handlers,
                     clip_grad_norm=clip_grad_norm,
-                    ophook_list=ophooks)
+                    ophook_list=ophooks,
+                    schedule=schedule)
 
     return engine, train_dataloader, test_dataloader, lr_scheduler

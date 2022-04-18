@@ -28,43 +28,41 @@ class OneCycleLR(_OneCycleLR):
     claims that "unpublished work has shown even better results by using only two phases". To
     mimic the behaviour of the original paper instead, set ``three_phase=True``.
 
-    :param optimizer: Wrapped optimizer
-    :type optimizer: torch.optim.Optimizer
-    :param total_steps: Number of total training steps
-    :type total_steps: int
-    :param pct_start: The percentage of the cycle (in number of steps) spent increasing the learning rate, defaults to 0.3
-    :type pct_start: float, optional
-    :param anneal_strategy: {'cos', 'linear'}
-        Specifies the annealing strategy: "cos" for cosine annealing, "linear" for
-        linear annealing, defaults to 'cos'
-    :type anneal_strategy: str, optional
-    :param cycle_momentum: If ``True``, momentum is cycled inversely
-        to learning rate between 'base_momentum' and 'max_momentum', defaults to True
-    :type cycle_momentum: bool, optional
-    :param base_momentum:  Lower momentum boundaries in the cycle
-        for each parameter group. Note that momentum is cycled inversely
-        to learning rate; at the peak of a cycle, momentum is
-        'base_momentum' and learning rate is 'max_lr', defaults to 0.85
-    :type base_momentum: float, optional
-    :param max_momentum: Upper momentum boundaries in the cycle
-        for each parameter group. Functionally,
-        it defines the cycle amplitude (max_momentum - base_momentum).
-        Note that momentum is cycled inversely
-        to learning rate; at the start of a cycle, momentum is 'max_momentum'
-        and learning rate is 'base_lr', defaults to 0.95
-    :type max_momentum: float, optional
-    :param div_factor: Determines the initial learning rate via
-        initial_lr = max_lr/div_factor, defaults to 25.0
-    :type div_factor: float, optional
-    :param final_div_factor: Determines the minimum learning rate via
-        min_lr = initial_lr/final_div_factor, defaults to 10000.0
-    :type final_div_factor: float, optional
-    :param last_epoch: The index of the last batch. This parameter is used when
-        resuming a training job. Since `step()` should be invoked after each
-        batch instead of after each epoch, this number represents the total
-        number of *batches* computed, not the total number of epochs computed.
-        When last_epoch=-1, the schedule is started from the beginning, defaults to -1
-    :type last_epoch: int, optional
+    Args:
+        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
+        total_steps (int): Number of total training steps.
+        pct_start (float, optional):
+            The percentage of the cycle (in number of steps) spent increasing the learning rate, defaults to 0.3.
+        anneal_strategy (str, optional): {'cos', 'linear'}, Specifies the annealing strategy:
+            "cos" for cosine annealing, "linear" for linear annealing, defaults to 'cos'.
+        cycle_momentum (bool, optional): If ``True``, momentum is cycled inversely
+            to learning rate between 'base_momentum' and 'max_momentum', defaults to True.
+        base_momentum (float, optional):  Lower momentum boundaries in the cycle for each parameter group.
+            Note that momentum is cycled inversely to learning rate; at the peak of a cycle, momentum is
+            'base_momentum' and learning rate is 'max_lr', defaults to 0.85.
+        max_momentum (float, optional): Upper momentum boundaries in the cycle for each parameter group.
+            Functionally, it defines the cycle amplitude (max_momentum - base_momentum).
+            Note that momentum is cycled inversely to learning rate; at the start of a cycle, momentum is 'max_momentum'
+            and learning rate is 'base_lr', defaults to 0.95.
+        div_factor (float, optional): Determines the initial learning rate via
+            initial_lr = max_lr/div_factor, defaults to 25.0.
+        final_div_factor (float, optional): Determines the minimum learning rate via
+            min_lr = initial_lr/final_div_factor, defaults to 10000.0.
+        last_epoch (int, optional): The index of the last batch. This parameter is used when resuming a training job.
+            Since `step()` should be invoked after each batch instead of after each epoch, this number represents
+            the total number of *batches* computed, not the total number of epochs computed.
+            When last_epoch=-1, the schedule is started from the beginning, defaults to -1
+
+    The ``kwargs`` for initializing torch.optim.lr_scheduler.OneCycleLR should include parameters below:
+    ::
+
+        epochs (int, optional, default=None)
+        steps_per_epoch (int, optional, default=None)
+        three_phase (bool, optional, default=False)
+        verbose (bool, optional, default=False)
+
+    More details about kwargs could be found in
+    `OneCycleLR <https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html#torch.optim.lr_scheduler.OneCycleLR>`_.
 
     .. _Super-Convergence\: Very Fast Training of Neural Networks Using Large Learning Rates:
         https://arxiv.org/abs/1708.07120

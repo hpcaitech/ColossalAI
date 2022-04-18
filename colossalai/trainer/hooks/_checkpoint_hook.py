@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
-
-import os.path as osp
+import torch
 from colossalai.logging import get_dist_logger
 
 from colossalai.registry import HOOKS
 from colossalai.trainer.hooks import BaseHook
-from colossalai.utils import is_dp_rank_0
-from colossalai.utils.checkpointing import get_latest_checkpoint_path, get_checkpoint_path
-from colossalai.utils.checkpointing import save_checkpoint, load_checkpoint
+from colossalai.utils.checkpointing import save_checkpoint
 from ._lr_scheduler_hook import LRSchedulerHook
 
 
@@ -16,119 +13,69 @@ from ._lr_scheduler_hook import LRSchedulerHook
 class SaveCheckpointHook(BaseHook):
     """Saves the model by interval in training process.
 
-    :param interval: Saving interval, defaults to 1
-    :type interval: int, optional
-    :param checkpoint_dir: Directory of saving checkpoint, defaults to None
-    :type checkpoint_dir: str, optional
-    :param suffix: Saving suffix of the file, defaults to ''
-    :type suffix: str, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 10
-    :type priority: int, optional
+    Args:
+       interval (int, optional): Number of epochs between saving the checkpoint, defaults to 1.
+            if save_by_iter is True, this arg refers to the number of iters between saving.
+       checkpoint_dir (str, optional): File name to save the checkpoint, defaults to None.
+       model (torch.nn.Module, Optional): The model to save, defaults to None. When not passing,
+            'trainer.engine.model' will be used. We encourage you to pass the model in it to avoid some
+            unexpected bugs, especially when using **DDP**.
+       save_by_iter (bool, optional): Whether saving the checkpoint by iter, default to False.
+       priority (int, optional): Priority in the printing, hooks with small priority will be printed in front
+            defaults to 10. If different hooks share same priority, the order of printing would
+            depend on the hooks order in the hook list.
     """
 
     def __init__(self,
                  interval: int = 1,
                  checkpoint_dir: str = None,
-                 suffix: str = '',
+                 model: torch.nn.Module = None,
+                 save_by_iter: bool = False,
                  priority: int = 10):
         super().__init__(priority=priority)
         self.interval = interval
         self.checkpoint_dir = checkpoint_dir
-        self.suffix = suffix
+        self.model = model
+        self.save_by_iter = save_by_iter
         self.logger = get_dist_logger()
 
         # get lr scheduler from the LRSchedulerHook before train
         self._lr_scheduler = None
 
     def after_hook_is_attached(self, trainer):
-        # check if lr scheduler is present in LRSchedulerHook
+        # get lr scheduler if exists
         for hook in trainer.hooks:
             if isinstance(hook, LRSchedulerHook):
                 self._lr_scheduler = hook.lr_scheduler
                 break
+        self.model = self.model if self.model is not None else trainer.engine.model
+
+    
+    def after_train_iter(self, trainer, output, label, loss):
+        """Saves the model after a training iter.
+        """
+        # save by interval
+        if self.save_by_iter and trainer.cur_step % self.interval == 0:
+            save_checkpoint(self.checkpoint_dir,
+                            trainer.cur_epoch,
+                            self.model,
+                            trainer.engine.optimizer,
+                            self._lr_scheduler)
+            self.logger.info(
+                f'checkpoint for iteration {trainer.cur_step} is saved to {self.checkpoint_dir}', ranks=[0])
+        else:
+            pass
+
 
     def after_train_epoch(self, trainer):
         """Saves the model after a training epoch.
         """
         # save by interval
         if trainer.cur_epoch % self.interval == 0:
-            # only gpus with data parallel rank equals to 0 write to the disk
-            if is_dp_rank_0():
-                save_path = get_checkpoint_path(self.checkpoint_dir,
-                                                trainer.cur_epoch,
-                                                suffix=self.suffix)
-
-                save_checkpoint(save_path,
-                                trainer.cur_epoch,
-                                trainer.engine.model,
-                                trainer.engine.optimizer,
-                                self._lr_scheduler)
-                self.logger.info(
-                    f'checkpoint for epoch {trainer.cur_epoch} is saved to {self.checkpoint_dir}', ranks=[0])
-
-
-@HOOKS.register_module
-class LoadCheckpointHook(BaseHook):
-    """Loads the model before training process.
-
-    :param checkpoint_dir: Directory of saving checkpoint, defaults to None
-    :type checkpoint_dir: str, optional
-    :param epoch: Epoch number to be set, defaults to -1
-    :type epoch: str, optional
-    :param finetune: Whether allows to load a part of the model, defaults to False
-    :type finetune: bool, optional
-    :param strict: Whether loads a model that has the same shape of parameters, defaults to False
-    :type strict: bool, optional
-    :param suffix: Suffic, defaults to ''
-    :type suffix: str, optional
-    :param priority: Priority in the printing, hooks with small priority will be printed in front, defaults to 0
-    :type priority: int, optional
-    """
-
-    def __init__(self,
-                 checkpoint_dir: str = None,
-                 epoch: int = -1,
-                 finetune: bool = False,
-                 strict: bool = False,
-                 suffix: str = '',
-                 priority: int = 0) -> None:
-        super().__init__(priority=priority)
-        self.epoch = epoch
-        self.checkpoint_dir = checkpoint_dir
-        self.finetune = finetune
-        self.suffix = suffix
-        self.strict = strict
-        self.logger = get_dist_logger()
-
-    def before_train(self, trainer):
-        """Loads parameters to the model before training.
-        """
-        # check if lr scheduler is present in LRSchedulerHook
-        lr_scheduler = None
-        for hook in trainer.hooks:
-            if isinstance(hook, LRSchedulerHook):
-                lr_scheduler = hook.lr_scheduler
-                break
-
-        # use latest checkpoint if epoch = -1
-        if self.epoch == -1:
-            path = get_latest_checkpoint_path(self.checkpoint_dir, suffix=self.suffix)
-        else:
-            path = get_checkpoint_path(self.checkpoint_dir, epoch=self.epoch, suffix=self.suffix)
-
-        if osp.exists(path):
-            last_epoch, _ = load_checkpoint(path,
-                                            trainer.engine.model,
-                                            trainer.engine.optimizer,
-                                            lr_scheduler,
-                                            finetune=self.finetune,
-                                            strict=self.strict)
-            if self.finetune:
-                trainer.cur_epoch = 0
-            else:
-                trainer.cur_epoch = last_epoch
-
+            save_checkpoint(self.checkpoint_dir,
+                            trainer.cur_epoch,
+                            self.model,
+                            trainer.engine.optimizer,
+                            self._lr_scheduler)
             self.logger.info(
-                f'loaded checkpoint from {path}', ranks=[0])
-        else:
-            raise FileNotFoundError(f'checkpoint is not found at {path}')
+                f'checkpoint for epoch {trainer.cur_epoch} is saved to {self.checkpoint_dir}', ranks=[0])

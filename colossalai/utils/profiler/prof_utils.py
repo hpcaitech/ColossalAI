@@ -70,11 +70,10 @@ class BaseProfiler(ABC):
 
 
 class ProfilerContext(object):
-    """
-    Profiler context manager
-    Usage:
+    """Profiler context manager
 
-    ```python
+    Usage::
+
         world_size = 4
         inputs = torch.randn(10, 10, dtype=torch.float32, device=get_current_device())
         outputs = torch.empty(world_size, 10, 10, dtype=torch.float32, device=get_current_device())
@@ -91,7 +90,6 @@ class ProfilerContext(object):
             dist.reduce(inputs, 0)
 
         prof.show()
-    ```
     """
 
     def __init__(self, profilers: List[BaseProfiler] = None, enable: bool = True):

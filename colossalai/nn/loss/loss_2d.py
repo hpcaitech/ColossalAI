@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_tensor_2d
+from colossalai.nn.layer.parallel_2d import reduce_by_batch_2d, split_batch_2d
 from colossalai.nn.layer.parallel_2d._utils import assert_summa_initialization
 from colossalai.registry import LOSSES
 from colossalai.utils import get_current_device
@@ -13,14 +13,22 @@ from torch.nn.modules.loss import _Loss
 
 @LOSSES.register_module
 class CrossEntropyLoss2D(_Loss):
-    """
-    Cross entropy loss for 2D parallelism
+    r"""Cross entropy loss for 2D parallelism
 
-    :param reduction: whether to average the loss, defaults to True
-    :param args: Args for loss function
-    :param kwargs: Kwargs for loss function
+    Args:
+        reduction (bool, optional): whether to average the loss, defaults to True.
 
-    :type reduction: bool, optional
+    The ``args`` and ``kwargs`` should include parameters below:
+    ::
+
+        weight (Tensor, optional)
+        size_average (bool, optional)
+        ignore_index (int, optional)
+        reduce (bool, optional)
+        label_smoothing (float, optional)
+
+    More details about ``args``, ``kwargs`` and ``torch.nn.functional.cross_entropy`` could be found in
+    `Cross_entropy <https://pytorch.org/docs/stable/generated/torch.nn.functional.cross_entropy.html#torch.nn.functional.cross_entropy>`_.
     """
 
     def __init__(self, reduction=True, *args, **kwargs):
@@ -31,12 +39,16 @@ class CrossEntropyLoss2D(_Loss):
         self.loss_kwargs = kwargs
 
     def forward(self, logits, targets):
-        """Calculate loss between logits and targets
+        """Calculate loss between logits and targets.
 
-        :param logits: Output logits of model
-        :param targets: True targets from data
+        Args:
+            logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
+            targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
+
+        Returns:
+            float: the loss between logits and targets.
         """
-        targets = split_tensor_2d(targets)
+        targets = split_batch_2d(targets)
         loss = cross_entropy(logits, targets, reduction='none', *self.loss_args, **self.loss_kwargs)
         if self.reduction_mean:
             loss = loss.mean()
@@ -116,12 +128,10 @@ class _VocabParallelCrossEntropy2D(torch.autograd.Function):
 
 @LOSSES.register_module
 class VocabParallelCrossEntropyLoss2D(_Loss):
-    """
-    Vocab parallel cross entropy loss for 2D parallelism
+    """Vocab parallel cross entropy loss for 2D parallelism.
 
-    :param reduction: whether to average the loss, defaults to True
-
-    :type reduction: bool, optional
+    Args:
+        reduction (bool, optional): whether to average the loss, defaults to True.
     """
 
     def __init__(self, reduction=True):
@@ -129,12 +139,13 @@ class VocabParallelCrossEntropyLoss2D(_Loss):
         self.reduction_mean = reduction
 
     def forward(self, logits, targets):
-        """Calculate loss between logits and targets
+        """Calculate loss between logits and targets.
 
-        :param logits: Output logits of model
-        :param targets: True targets from data
+        Args:
+            logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
+            targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
         """
-        targets = split_tensor_2d(targets)
+        targets = split_batch_2d(targets)
         loss = _VocabParallelCrossEntropy2D.apply(
             logits,
             targets,

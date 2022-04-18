@@ -1,3 +1,5 @@
 pytest
 rpyc
 matplotlib
+tensorboard
+transformers

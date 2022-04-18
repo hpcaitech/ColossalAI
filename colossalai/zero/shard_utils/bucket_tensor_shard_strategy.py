@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import torch
 import torch.distributed as dist
@@ -10,8 +10,14 @@ from .tensor_shard_strategy import TensorShardStrategy
 
 
 class BucketTensorShardStrategy(TensorShardStrategy):
+    """Use the same shard scheme as `TensorShardStrategy`'s, but it gathers tensors of a sub-module together, 
+    which will fully utilize network bandwidth. 
+    It is especially useful when sub-module contains bias, 
+    since we cannot utilize network bandwidth well if we only gather a bias tensor (bias is usaully small).
+    """
 
-    def gather(self, tensor_list: List[ShardedTensor]):
+    def gather(self, tensor_list: List[ShardedTensor], process_group: Optional[dist.ProcessGroup] = None):
+
         tensor_list: List[ShardedTensor] = [t for t in tensor_list if t.is_sharded]
         if len(tensor_list) == 0:
             return
@@ -20,15 +26,17 @@ class BucketTensorShardStrategy(TensorShardStrategy):
         buffer_list: List[torch.Tensor] = []
         tensor_numels = [t.payload.numel() for t in tensor_list]
         buffer_size = sum(tensor_numels)
-        for i in range(self.world_size):
-            if i == self.local_rank:
+        world_size = dist.get_world_size(process_group)
+        rank = dist.get_rank(process_group)
+        for i in range(world_size):
+            if i == rank:
                 buffer_list.append(flatten([t.payload for t in tensor_list]).cuda(get_current_device()))
                 # Release payload here, to decrease peak memory usage
                 for t in tensor_list:
                     t.reset_payload(None)
             else:
                 buffer_list.append(torch.zeros(buffer_size, dtype=dtype, device=get_current_device()))
-        dist.all_gather(buffer_list, buffer_list[self.local_rank], group=self.process_group)
+        dist.all_gather(buffer_list, buffer_list[rank], group=process_group)
         # Move to target device before splitting buffer
         # Ensure we utilize maximum PCIE bandwidth
         buffer_list = [buffer.to(target_device) for buffer in buffer_list]

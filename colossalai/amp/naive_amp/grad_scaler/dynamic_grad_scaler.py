@@ -3,6 +3,7 @@
 
 import torch
 from .base_grad_scaler import BaseGradScaler
+from typing import Optional
 
 __all__ = ['DynamicGradScaler']
 
@@ -10,17 +11,25 @@ __all__ = ['DynamicGradScaler']
 class DynamicGradScaler(BaseGradScaler):
 
     def __init__(self,
-                 initial_scale: int = 2**16,
-                 growth_factor: int = 2,
+                 initial_scale: float = 2**16,
+                 growth_factor: float = 2,
                  backoff_factor: float = 0.5,
                  growth_interval: int = 1000,
-                 min_scale: int = None,
-                 max_scale: int = None,
-                 hysteresis: int = None,
+                 min_scale: Optional[float] = None,
+                 max_scale: Optional[float] = None,
+                 hysteresis: int = 2,
                  verbose: bool = False):
         super().__init__(initial_scale, verbose)
-        self._min_scale = min_scale
-        self._max_scale = max_scale
+        if min_scale:
+            self._min_scale = torch.cuda.FloatTensor([min_scale])
+        else:
+            self._min_scale = None
+
+        if max_scale:
+            self._max_scale = torch.cuda.FloatTensor([max_scale])
+        else:
+            self._max_scale = None
+
         self._growth_factor = growth_factor
         self._backoff_factor = backoff_factor
         self._growth_interval = growth_interval

@@ -2,6 +2,8 @@
 # -*- encoding: utf-8 -*-
 
 import random
+import socket
+from collections import Counter
 from typing import Union
 
 import numpy as np
@@ -9,42 +11,32 @@ import torch
 import torch.distributed as dist
 from colossalai.constants import ALLOWED_MODES, INITIALIZER_MAPPING
 from colossalai.context.config import Config
-from colossalai.global_variables import moe_env
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.logging import get_dist_logger
 from colossalai.registry import DIST_GROUP_INITIALIZER
 
 from .parallel_mode import ParallelMode
 from .random import add_seed, get_seeds, set_mode
+from colossalai.context.singleton_meta import SingletonMeta
 
 
-class ParallelContext:
+class ParallelContext(metaclass=SingletonMeta):
     """This class provides interface functions for users to get the parallel context,
     such as the global rank, the local rank, the world size, etc. of each device.
 
+    Note:
+        The parallel_mode used in this class should be concluded in ``ParallelMode``.
+        More details about ``ParallelMode`` could be found in
+        `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
 
-    __instance = None
-
-    @staticmethod
-    def get_instance():
-        if ParallelContext.__instance is None:
-            ParallelContext()
-        return ParallelContext.__instance
-
     def __init__(self):
-        # create a singleton instance
-        if ParallelContext.__instance is not None:
-            raise Exception(
-                'ParallelContext is a singleton class, you should get the instance by colossalai.core.global_context')
-        else:
-            ParallelContext.__instance = self
-
         # distributed settings
         self._global_ranks = dict()
         self._local_ranks = dict()
         self._world_sizes = dict()
         self._groups = dict()
+        self._cpu_groups = dict()
         self._ranks_in_group = dict()
 
         # load config from file
@@ -55,6 +47,7 @@ class ParallelContext:
         self.data_parallel_size = 1
         self.pipeline_parallel_size = 1
         self.tensor_parallel_size = 1
+        self.num_processes_on_current_node = -1
         self.virtual_pipeline_parallel_size = None
         self.virtual_pipeline_parallel_rank = None
 
@@ -77,10 +70,12 @@ class ParallelContext:
     def load_config(self, config: Union[dict, str]):
         """Loads the configuration from either a dict or a file.
 
-        :param config: Either a dict containing the configuration information or the filename
-            of a file containing the configuration information
-        :type config: dict or str
-        :raises TypeError: Raises a TypeError if `config` is neither a dict or a str
+        Args:
+            config (dict or str): Either a dict containing the configuration information or the filename
+                of a file containing the configuration information.
+
+        Raises:
+            TypeError: Raises a TypeError if `config` is neither a dict nor a str.
         """
         if isinstance(config, str):
             self._config = Config.from_file(config)
@@ -89,6 +84,13 @@ class ParallelContext:
         else:
             raise TypeError("Invalid type for config, only dictionary or string is supported")
 
+    def detect_num_processes_on_current_node(self):
+        hostname = socket.gethostname()
+        hostname_list = [None for _ in range(self.get_world_size(ParallelMode.GLOBAL))]
+        dist.all_gather_object(hostname_list, hostname, group=self.get_group(ParallelMode.GLOBAL))
+        counter = Counter(hostname_list)
+        self.num_processes_on_current_node = counter[hostname]
+
     @staticmethod
     def _check_parallel_mode(parallel_mode: ParallelMode):
         assert isinstance(parallel_mode, ParallelMode)
@@ -96,20 +98,21 @@ class ParallelContext:
     def get_global_rank(self):
         """Returns the global rank of the current device.
 
-        :return: The global rank of the current device
-        :rtype: int
+        Returns:
+            int: The global rank of the current device
         """
         return self._global_ranks[ParallelMode.GLOBAL]
 
     def add_global_rank(self, parallel_mode: ParallelMode, rank: int):
         """Adds the global rank of the current device for `parallel_mode` to the context.
 
-        :param parallel_mode: The parallel mode for the rank
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :param rank: The rank to be added
-        :type rank: int
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode for the rank.
+            rank (int): The rank to be added
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._global_ranks[parallel_mode] = rank
@@ -117,12 +120,15 @@ class ParallelContext:
     def get_local_rank(self, parallel_mode: ParallelMode):
         """Returns the local rank of the current device.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
-        :return: The local rank of the current device for `parallel_mode`
-        :rtype: int
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            int: The local rank of the current device for `parallel_mode`.
         """
         self._check_parallel_mode(parallel_mode)
         return self._local_ranks[parallel_mode]
@@ -130,12 +136,13 @@ class ParallelContext:
     def add_local_rank(self, parallel_mode: ParallelMode, rank: int):
         """Adds the local rank of the current device for `parallel_mode` to the context.
 
-        :param parallel_mode: The parallel mode for the rank
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :param rank: The rank to be added
-        :type rank: int
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The parallel mode for the rank.
+            rank (int): The rank to be added.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._local_ranks[parallel_mode] = rank
@@ -143,12 +150,15 @@ class ParallelContext:
     def get_next_global_rank(self, parallel_mode: ParallelMode):
         """Returns the global rank of the next device.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
-        :return: The global rank of the next device for `parallel_mode`
-        :rtype: int
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            int: The global rank of the next device for `parallel_mode`.
         """
         self._check_parallel_mode(parallel_mode)
 
@@ -162,12 +172,15 @@ class ParallelContext:
     def get_prev_global_rank(self, parallel_mode: ParallelMode):
         """Returns the global rank of the previous device.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
-        :return: The global rank of the previous device for `parallel_mode`
-        :rtype: int
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            int: The global rank of the previous device for `parallel_mode`.
         """
         self._check_parallel_mode(parallel_mode)
 
@@ -182,13 +195,16 @@ class ParallelContext:
         """Returns a boolean value indicating whether the current device is the first one
         among its group for `parallel_mode`.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
-        :return: a boolean value indicating whether the current device is the first one
-            among its group for `parallel_mode`
-        :rtype: bool
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            bool: a boolean value indicating whether the current device is the first one
+            among its group for `parallel_mode`.
         """
         rank = self.get_local_rank(parallel_mode)
         return rank == 0
@@ -197,13 +213,16 @@ class ParallelContext:
         """Returns a boolean value indicating whether the current device is the last one
         among its group for `parallel_mode`.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
-        :return: a boolean value indicating whether the current device is the last one
-            among its group for `parallel_mode`
-        :rtype: bool
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            bool: a boolean value indicating whether the current device is the first one
+            among its group for `parallel_mode`.
         """
         rank = self.get_local_rank(parallel_mode)
         world_size = self.get_world_size(parallel_mode)
@@ -225,12 +244,15 @@ class ParallelContext:
     def get_world_size(self, parallel_mode: ParallelMode):
         """Returns the world size for `parallel_mode`.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
-        :return: The world size for `parallel_mode`
-        :rtype: int
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            int: The world size for `parallel_mode`.
         """
         self._check_parallel_mode(parallel_mode)
         return self._world_sizes[parallel_mode]
@@ -238,18 +260,49 @@ class ParallelContext:
     def add_world_size(self, parallel_mode: ParallelMode, world_size: int):
         """Adds world size for `parallel_mode`.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :param world_size: The world size to be added
-        :type world_size: int
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            world_size (int): The world size to be added
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._world_sizes[parallel_mode] = world_size
 
     def get_group(self, parallel_mode: ParallelMode):
         """Returns the group of the current device for `parallel_mode`.
+
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            torch.distributed.ProcessGroup: The group of the current device for `parallel_mode`.
+        """
+        self._check_parallel_mode(parallel_mode)
+        return self._groups[parallel_mode]
+
+    def add_group(self, parallel_mode: ParallelMode, group: dist.ProcessGroup):
+        """Adds the group of the current device for `parallel_mode`.
+
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            group (torch.distributed.ProcessGroup): The group to be added
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+        """
+        self._check_parallel_mode(parallel_mode)
+        self._groups[parallel_mode] = group
+
+    def get_cpu_group(self, parallel_mode: ParallelMode):
+        """Returns the Gloo group of the current device for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -259,10 +312,10 @@ class ParallelContext:
         :rtype: torch.distributed.ProcessGroup
         """
         self._check_parallel_mode(parallel_mode)
-        return self._groups[parallel_mode]
+        return self._cpu_groups[parallel_mode]
 
-    def add_group(self, parallel_mode: ParallelMode, group: dist.ProcessGroup):
-        """Adds the group of the current device for `parallel_mode`.
+    def add_cpu_group(self, parallel_mode: ParallelMode, group: dist.ProcessGroup):
+        """Adds the Gloo group of the current device for `parallel_mode`.
 
         :param parallel_mode: The chosen parallel mode
         :type parallel_mode: :class:`colossalai.context.ParallelMode`
@@ -272,17 +325,20 @@ class ParallelContext:
             of :class:`colossalai.context.ParallelMode`
         """
         self._check_parallel_mode(parallel_mode)
-        self._groups[parallel_mode] = group
+        self._cpu_groups[parallel_mode] = group
 
     def get_ranks_in_group(self, parallel_mode: ParallelMode):
         """Returns the rank of the current device for `parallel_mode` in the group.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
-        :return: the rank of the current device for `parallel_mode` in the group
-        :rtype: int
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
+
+        Returns:
+            int: The rank of the current device for `parallel_mode` in the group.
         """
         self._check_parallel_mode(parallel_mode)
         return self._ranks_in_group[parallel_mode]
@@ -290,48 +346,50 @@ class ParallelContext:
     def add_ranks_in_group(self, parallel_mode: ParallelMode, ranks: list):
         """Adds the ranks of the current device for `parallel_mode` in the group.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :param ranks: List of ranks to be added
-        :type ranks: list
-        :raises AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
-            of :class:`colossalai.context.ParallelMode`
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+            ranks (list): List of ranks to be added
+
+        Raises:
+            AssertionError: Raises an AssertionError if `parallel_mode` is not an instance
+                of :class:`colossalai.context.ParallelMode`.
         """
         self._check_parallel_mode(parallel_mode)
         self._ranks_in_group[parallel_mode] = ranks
 
     def init_global_dist(self, rank: int, world_size: int, backend: str, host: str, port: int):
         """Initializes the global distributed environment
-        :param rank: rank for the default process group
-        :type rank: int
-        :param world_size: world size of the default process group
-        :type world_size: int
-        :param host: the master address for distributed training
-        :type host: str
-        :param port: the master port for distributed training
-        :type port: str
-        :param backend: backend for torch.distributed
-        :type backend: str
+
+        Args:
+           rank (int): rank for the default process group.
+           world_size (int): world size of the default process group.
+           backend (str): backend for ``torch.distributed``
+           host (str): the master address for distributed training.
+           port (str): the master port for distributed training
         """
         # initialize the default process group
         init_method = f'tcp://{host}:{port}'
         dist.init_process_group(rank=rank, world_size=world_size, backend=backend, init_method=init_method)
 
         # None will give the default global process group for pytorch dist operations
-        self._register_dist(rank, world_size, None, list(range(world_size)), ParallelMode.GLOBAL)
+        ranks = list(range(world_size))
+        cpu_group = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else None
+        self._register_dist(rank, world_size, dist.GroupMember.WORLD, cpu_group, ranks, ParallelMode.GLOBAL)
         self.add_global_rank(ParallelMode.GLOBAL, rank)
 
-    def _register_dist(self, local_rank, world_size, process_group, ranks_in_group, mode):
+    def _register_dist(self, local_rank, world_size, process_group, cpu_group, ranks_in_group, mode):
         self.add_local_rank(mode, local_rank)
         self.add_world_size(mode, world_size)
         self.add_group(mode, process_group)
+        self.add_cpu_group(mode, cpu_group)
         self.add_ranks_in_group(mode, ranks_in_group)
 
     def check_sanity(self):
         """Checks sanity of the parallel context.
 
-        :raises AssertionError: Raises an AssertionError if the world size does not equal to the product
-            of data paralle size, pipeline parallel size and tensor parallel size
+        Raises:
+            AssertionError: Raises an AssertionError if the world size does not equal to the product
+                of data parallel size, pipeline parallel size and tensor parallel size.
         """
         dps = self.data_parallel_size
         pps = self.pipeline_parallel_size
@@ -356,7 +414,8 @@ class ParallelContext:
     def init_parallel_groups(self):
         """Initializes the parallel groups.
 
-        :raises AssertionError: Raises an AssertionError if the field paralle is not present in the config file
+        Raises:
+            AssertionError: Raises an AssertionError if the field parallel is not present in the config file.
         """
 
         # get rank and world size
@@ -407,13 +466,6 @@ class ParallelContext:
             # add this config to initialize later
             pg_init.append(dict(type=INITIALIZER_MAPPING[tensor_parallel_mode.lower()], **tensor_parallel_cfg))
 
-        # initialization for moe environment
-        if parallel_config is not None and 'moe' in parallel_config:
-            param = parallel_config['moe']
-            assert 'size' in param, "Moe model parallel size should be given"
-            moe_env.setup(param['size'])
-            pg_init.append(dict(type=INITIALIZER_MAPPING['moe']))
-
         # run initialization of different process groups
         for initializer_cfg in pg_init:
             cfg = initializer_cfg.copy()
@@ -433,11 +485,11 @@ class ParallelContext:
         """Returns a boolean value indicating whether `parallel_mode` is initialized
         in the current system.
 
-        :param parallel_mode: The chosen parallel mode
-        :type parallel_mode: :class:`colossalai.context.ParallelMode`
-        :return: a boolean value indicating whether `parallel_mode` is initialized
-            in the current system
-        :rtype: bool
+        Args:
+            parallel_mode (:class:`colossalai.context.ParallelMode`): The chosen parallel mode.
+
+        Returns:
+            bool: a boolean value indicating whether `parallel_mode` is initialized in the current system.
         """
         return parallel_mode in self._groups
 
@@ -449,12 +501,13 @@ class ParallelContext:
                 dist.destroy_process_group(group)
         # destroy global process group
         dist.destroy_process_group()
+        self._groups.clear()
 
     def set_device(self, device_ordinal: int = None):
         """Sets distributed processes to be bound to devices.
 
-        :param device_ordinal: the device id to be bound to
-        :type device_ordinal: int, optional
+        Args:
+           device_ordinal (int, optional): the device id to be bound to
         """
         global_rank = self.get_global_rank()
         if device_ordinal is None:
@@ -468,8 +521,8 @@ class ParallelContext:
     def set_seed(self, seed: int):
         """Sets seeds for all random libraries.
 
-        :param seed: seed for random states
-        :type seed: int
+        Args:
+            seed (int): seed for random states
         """
         random.seed(seed)
         np.random.seed(seed)
@@ -517,3 +570,6 @@ class ParallelContext:
 
     def set_virtual_pipeline_parallel_rank(self, rank):
         self.virtual_pipeline_parallel_rank = rank
+
+
+global_context = ParallelContext()

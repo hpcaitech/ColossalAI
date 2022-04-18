@@ -10,19 +10,14 @@ from colossalai.initialize import launch
 from colossalai.logging import get_dist_logger
 from functools import partial
 from colossalai.utils import free_port
+from colossalai.testing import rerun_on_exception
 
 DIR_PATH = osp.dirname(osp.realpath(__file__))
 CONFIG_PATH = osp.join(DIR_PATH, 'resnet_config.py')
 
 
 def run_partition(rank, world_size, port):
-    launch(config=CONFIG_PATH,
-           rank=rank,
-           world_size=world_size,
-           host='localhost',
-           port=port,
-           backend='nccl'
-           )
+    launch(config=CONFIG_PATH, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     logger = get_dist_logger()
     logger.info('finished initialization')
 
@@ -37,6 +32,7 @@ def run_partition(rank, world_size, port):
 
 
 @pytest.mark.dist
+@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_partition():
     world_size = 4
     run_func = partial(run_partition, world_size=world_size, port=free_port())

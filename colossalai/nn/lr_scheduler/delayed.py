@@ -14,16 +14,15 @@ class _enable_get_lr_call:
 
 
 class DelayerScheduler(_LRScheduler):
-    """ Starts with a flat lr schedule until it reaches N epochs the applies a scheduler 
+    """Starts with a flat lr schedule until it reaches N epochs then applies
+    the specific scheduler (For example: ReduceLROnPlateau)
 
-    :param optimizer: Wrapped optimizer.
-    :type optimizer: torch.optim.Optimizer
-    :param delay_epochs: Number of epochs to keep the initial lr until starting aplying the scheduler
-    :type delay_epochs: int
-    :param after_scheduler: After target_epoch, use this scheduler(eg. ReduceLROnPlateau)
-    :type after_scheduler: torch.optim.lr_scheduler
-    :param last_epoch: The index of last epoch, defaults to -1
-    :type last_epoch: int, optional
+    Args:
+        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
+        delay_epochs (int): Number of epochs to keep the initial lr until starting applying the scheduler.
+        after_scheduler (:class:`torch.optim.lr_scheduler`): After target_epoch, use this scheduler.
+        last_epoch (int, optional): The index of last epoch, defaults to -1. When last_epoch=-1,
+            the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
     def __init__(self, optimizer, delay_epochs, after_scheduler, last_epoch=-1):
@@ -57,16 +56,15 @@ class DelayerScheduler(_LRScheduler):
 
 
 class WarmupScheduler(_LRScheduler):
-    """ Starts with a linear warmup lr schedule until it reaches N epochs the applies a scheduler
+    """Starts with a linear warmup lr schedule until it reaches N epochs then applies
+    the specific scheduler (For example: ReduceLROnPlateau).
 
-    :param optimizer: Wrapped optimizer.
-    :type optimizer: torch.optim.Optimizer
-    :param warmup_epochs: Number of epochs to linearly warmup lr until starting aplying the scheduler
-    :type warmup_epochs: int
-    :param after_scheduler: After target_epoch, use this scheduler(eg. ReduceLROnPlateau)
-    :type after_scheduler: torch.optim.lr_scheduler
-    :param last_epoch: The index of last epoch, defaults to -1
-    :type last_epoch: int, optional
+    Args:
+        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
+        warmup_epochs (int): Number of epochs to linearly warmup lr until starting applying the scheduler.
+        after_scheduler (:class:`torch.optim.lr_scheduler`): After target_epoch, use this scheduler.
+        last_epoch (int, optional): The index of last epoch, defaults to -1. When last_epoch=-1,
+            the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
     def __init__(self, optimizer, warmup_epochs, after_scheduler, last_epoch=-1):
@@ -97,18 +95,16 @@ class WarmupScheduler(_LRScheduler):
 
 
 class WarmupDelayerScheduler(_LRScheduler):
-    """ Starts with a linear warmup lr schedule until it reaches N epochs and a flat lr schedule until it reaches M epochs the applies a scheduler 
+    """Starts with a linear warmup lr schedule until it reaches N epochs and a flat lr schedule
+    until it reaches M epochs then applies the specific scheduler (For example: ReduceLROnPlateau).
 
-    :param optimizer: Wrapped optimizer.
-    :type optimizer: torch.optim.Optimizer
-    :param warmup_epochs: Number of epochs to linearly warmup lr until starting aplying the scheduler
-    :type warmup_epochs: int
-    :param delay_epochs: Number of epochs to keep the initial lr until starting aplying the scheduler
-    :type delay_epochs: int
-    :param after_scheduler: After target_epoch, use this scheduler(eg. ReduceLROnPlateau)
-    :type after_scheduler: torch.optim.lr_scheduler
-    :param last_epoch: The index of last epoch, defaults to -1
-    :type last_epoch: int, optional
+    Args:
+        optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
+        warmup_epochs (int): Number of epochs to linearly warmup lr until starting applying the scheduler.
+        delay_epochs (int): Number of epochs to keep the initial lr until starting applying the scheduler.
+        after_scheduler (:class:`torch.optim.lr_scheduler`): After target_epoch, use this scheduler.
+        last_epoch (int, optional): The index of last epoch, defaults to -1. When last_epoch=-1,
+            the schedule is started from the beginning or When last_epoch=-1, sets initial lr as lr.
     """
 
     def __init__(self, optimizer, warmup_epochs, delay_epochs, after_scheduler, last_epoch=-1):

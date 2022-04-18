@@ -9,8 +9,7 @@ jobs:
     name: Assign Reviewer for PR
     runs-on: ubuntu-latest
     if: |
-      github.event.pull_request.draft == false && 
-      (github.base_ref == 'main' || github.base_ref == 'develop') 
+      github.event.pull_request.draft == false && github.base_ref == 'main'
       && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' 
       && toJson(github.event.pull_request.requested_reviewers) == '[]'
     steps:

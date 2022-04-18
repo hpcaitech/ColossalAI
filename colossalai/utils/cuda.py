@@ -20,13 +20,15 @@ def set_to_cuda(models):
         return models.to(get_current_device())
 
 
-def get_current_device():
-    """Returns the index of a currently selected device (gpu/cpu).
+def get_current_device() -> torch.device:
+    """
+    Returns currently selected device (gpu/cpu).
+    If cuda available, return gpu, otherwise return cpu.    
     """
     if torch.cuda.is_available():
-        return torch.cuda.current_device()
+        return torch.device(f'cuda:{torch.cuda.current_device()}')
     else:
-        return 'cpu'
+        return torch.device('cpu')
 
 
 def synchronize():

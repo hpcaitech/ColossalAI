@@ -21,6 +21,7 @@ __all__ = [
 
 @LAYERS.register_module
 class GPTEmbedding(nn.Module):
+
     def __init__(self,
                  embedding_dim: int,
                  vocab_size: int,
@@ -42,7 +43,7 @@ class GPTEmbedding(nn.Module):
     def word_embedding_weight(self):
         return self.word_embeddings.weight
 
-    def forward(self, input_ids, attention_mask=None, position_ids=None, tokentype_ids=None):
+    def forward(self, input_ids, position_ids=None, tokentype_ids=None):
         seq_length = input_ids.size(1)
         if position_ids is None:
             position_ids = torch.arange(seq_length, dtype=torch.long, device=get_current_device()).unsqueeze(0)
@@ -51,23 +52,12 @@ class GPTEmbedding(nn.Module):
             x = x + self.tokentype_embeddings(tokentype_ids)
         x = self.dropout(x)
 
-        # We create a 3D attention mask from a 2D tensor mask.
-        # Sizes are [batch_size, 1, 1, to_seq_length]
-        # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
-        # Adapted from huggingface
-        if attention_mask is not None:
-            batch_size = input_ids.shape[0]
-            attention_mask = attention_mask.view(batch_size, -1)
-            attention_mask = col_nn.partition_batch(attention_mask)
-            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-            attention_mask = attention_mask.to(dtype=x.dtype)  # fp16 compatibility
-            attention_mask = (1.0 - attention_mask) * -10000.0
-
-        return x, attention_mask
+        return x
 
 
 @LAYERS.register_module
 class GPTSelfAttention(nn.Module):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -82,7 +72,8 @@ class GPTSelfAttention(nn.Module):
         self.query_key_value = col_nn.Linear(dim, 3 * dim, dtype=dtype, bias=bias)
         if fuse_scale_mask_softmax:
             from colossalai.kernel import FusedScaleMaskSoftmax
-            from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
+            from colossalai.kernel.cuda_native.scaled_softmax import \
+                AttnMaskType
             self.softmax = FusedScaleMaskSoftmax(input_in_fp16=True,
                                                  input_in_bf16=False,
                                                  attn_mask_type=AttnMaskType.causal,
@@ -125,7 +116,7 @@ class GPTSelfAttention(nn.Module):
 
         x = torch.matmul(x, v)
         x = x.transpose(1, 2)
-        new_context_layer_shape = x.size()[:-2] + (all_head_size, )
+        new_context_layer_shape = x.size()[:-2] + (all_head_size,)
         x = x.reshape(new_context_layer_shape)
 
         x = self.dense(x)
@@ -136,6 +127,7 @@ class GPTSelfAttention(nn.Module):
 
 @LAYERS.register_module
 class GPTMLP(nn.Module):
+
     def __init__(self,
                  dim: int,
                  mlp_ratio: float,
@@ -160,6 +152,7 @@ class GPTMLP(nn.Module):
 
 @LAYERS.register_module
 class GPTBlock(CheckpointModule):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -172,8 +165,9 @@ class GPTBlock(CheckpointModule):
                  bias: bool = True,
                  apply_post_layernorm: bool = False,
                  fuse_scale_mask_softmax: bool = False,
-                 checkpoint: bool = False):
-        super().__init__(checkpoint)
+                 checkpoint: bool = False,
+                 activation_offload: bool = False):
+        super().__init__(checkpoint, activation_offload)
         self.apply_post_layernorm = apply_post_layernorm
         self.norm1 = col_nn.LayerNorm(normalized_shape=dim, eps=layernorm_epsilon, dtype=dtype)
         self.attn = GPTSelfAttention(dim=dim,
@@ -206,6 +200,7 @@ class GPTBlock(CheckpointModule):
 
 @LAYERS.register_module
 class GPTLMHead(nn.Module):
+
     def __init__(self,
                  dim: int,
                  vocab_size: int,
@@ -226,6 +221,7 @@ class GPTLMHead(nn.Module):
 
 @LOSSES.register_module
 class GPTLMLoss(nn.Module):
+
     def __init__(self):
         super().__init__()
         self.loss = col_nn.CrossEntropyLoss()
@@ -239,6 +235,7 @@ class GPTLMLoss(nn.Module):
 
 @MODELS.register_module
 class GPT(nn.Module):
+
     def __init__(self,
                  vocab_size: int = 50304,
                  max_position_embeddings: int = 1024,
@@ -256,7 +253,8 @@ class GPT(nn.Module):
                  bias: bool = True,
                  apply_post_layernorm: bool = False,
                  fuse_scale_mask_softmax: bool = False,
-                 checkpoint: bool = False) -> None:
+                 checkpoint: bool = False,
+                 activation_offload: bool = False) -> None:
         super().__init__()
         self.embed = GPTEmbedding(embedding_dim=dim,
                                   vocab_size=vocab_size,
@@ -278,6 +276,7 @@ class GPT(nn.Module):
                 apply_post_layernorm=apply_post_layernorm,
                 fuse_scale_mask_softmax=fuse_scale_mask_softmax,
                 checkpoint=checkpoint,
+                activation_offload=activation_offload
             ) for _ in range(depth)
         ])
 
@@ -289,7 +288,19 @@ class GPT(nn.Module):
                               dtype=dtype)
 
     def forward(self, input_ids, attention_mask=None):
-        x, attention_mask = self.embed(input_ids, attention_mask)
+        x = self.embed(input_ids)
+
+        # We create a 3D attention mask from a 2D tensor mask.
+        # Sizes are [batch_size, 1, 1, to_seq_length]
+        # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
+        # Adapted from huggingface
+        if attention_mask is not None:
+            batch_size = input_ids.shape[0]
+            attention_mask = attention_mask.view(batch_size, -1)
+            attention_mask = col_nn.partition_batch(attention_mask)
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+            attention_mask = attention_mask.to(dtype=x.dtype)    # fp16 compatibility
+            attention_mask = (1.0 - attention_mask) * -10000.0
 
         for block in self.blocks:
             x, attention_mask = block(x, attention_mask)
@@ -300,6 +311,7 @@ class GPT(nn.Module):
 
 
 class PipelineGPT(nn.Module):
+
     def __init__(self,
                  vocab_size: int = 50304,
                  max_position_embeddings: int = 1024,
@@ -353,7 +365,22 @@ class PipelineGPT(nn.Module):
 
     def forward(self, x=None, input_ids=None, attention_mask=None):
         if self.first:
-            x, attention_mask = self.embed(input_ids, attention_mask)
+            x = self.embed(input_ids)
+
+        # We create a 3D attention mask from a 2D tensor mask.
+        # Sizes are [batch_size, 1, 1, to_seq_length]
+        # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
+        # Adapted from huggingface
+        if attention_mask is not None:
+            if self.first:
+                batch_size = input_ids.shape[0]
+            else:
+                batch_size = x.shape[0]
+            attention_mask = attention_mask.view(batch_size, -1)
+            attention_mask = col_nn.partition_batch(attention_mask)
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+            attention_mask = attention_mask.to(dtype=x.dtype)    # fp16 compatibility
+            attention_mask = (1.0 - attention_mask) * -10000.0
 
         for block in self.blocks:
             x, attention_mask = block(x, attention_mask)

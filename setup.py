@@ -201,6 +201,7 @@ setup(
     description='An integrated large-scale model training system with efficient parallelization techniques',
     long_description=fetch_readme(),
     long_description_content_type='text/markdown',
+    license='Apache Software License 2.0',
     url='https://www.colossalai.org',
     project_urls={
         'Forum': 'https://github.com/hpcaitech/ColossalAI/discussions',
@@ -212,9 +213,6 @@ setup(
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     install_requires=fetch_requirements('requirements/requirements.txt'),
-    extras_require={
-        'zero': fetch_requirements('requirements/requirements-zero.txt'),
-    },
     python_requires='>=3.7',
     classifiers=[
         'Programming Language :: Python :: 3',

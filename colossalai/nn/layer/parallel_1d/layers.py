@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 import math
+from collections import OrderedDict
 from typing import Callable, Tuple
 
 import torch
@@ -10,38 +11,42 @@ from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.kernel import LayerNorm
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
+from colossalai.utils.checkpointing import (broadcast_state_dict, gather_tensor_parallel_state_dict,
+                                            partition_tensor_parallel_state_dict)
 from colossalai.utils.cuda import get_current_device
 from torch import Tensor
 from torch.nn.parameter import Parameter
+from ..vanilla import VanillaPatchEmbedding, VanillaLayerNorm
 
 from ..base_layer import ParallelLayer
+from ..colossalai_layer._utils import ColossalaiModule
 from ..utils import divide, set_tensor_parallel_attribute_by_partition
 from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
                      split_forward_gather_backward)
 
 
 @LAYERS.register_module
-class Linear1D(torch.nn.Module):
-    """
-    Linear layer for 1D parallelism
+class Linear1D(ColossalaiModule):
+    r"""Linear layer for 1D parallelism.
 
-    :param in_features: size of each input sample
-    :type in_features: int
-    :param out_features: size of each output sample
-    :type out_features: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to True
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
-        which is preserved for kernel fusion, defaults to False
-    :type skip_bias_add: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        gather_output (bool, optional): Whether to call all-gather on output, defaults to False.
+        skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to False
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -53,58 +58,87 @@ class Linear1D(torch.nn.Module):
                  skip_bias_add: bool = False,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
-        super().__init__()
         parallel_input = get_parallel_input()
         if not parallel_input:
-            self.layer = Linear1D_Col(in_features,
-                                      out_features,
-                                      bias=bias,
-                                      dtype=dtype,
-                                      gather_output=gather_output,
-                                      skip_bias_add=skip_bias_add,
-                                      weight_initializer=weight_initializer,
-                                      bias_initializer=bias_initializer)
+            layer = Linear1D_Col(in_features,
+                                 out_features,
+                                 bias=bias,
+                                 dtype=dtype,
+                                 gather_output=gather_output,
+                                 skip_bias_add=skip_bias_add,
+                                 weight_initializer=weight_initializer,
+                                 bias_initializer=bias_initializer)
         else:
-            self.layer = Linear1D_Row(in_features,
-                                      out_features,
-                                      bias=bias,
-                                      dtype=dtype,
-                                      parallel_input=parallel_input,
-                                      skip_bias_add=skip_bias_add,
-                                      weight_initializer=weight_initializer,
-                                      bias_initializer=bias_initializer)
+            layer = Linear1D_Row(in_features,
+                                 out_features,
+                                 bias=bias,
+                                 dtype=dtype,
+                                 parallel_input=parallel_input,
+                                 skip_bias_add=skip_bias_add,
+                                 weight_initializer=weight_initializer,
+                                 bias_initializer=bias_initializer)
+        super().__init__(layer)
 
-    @property
-    def weight(self):
-        return self.layer.weight
 
-    @property
-    def bias(self):
-        return self.layer.bias
+@LAYERS.register_module
+class LayerNorm1D(ColossalaiModule):
+    r"""
+    Layer Normalization for colossalai
 
-    def forward(self, input_: Tensor) -> Tensor:
-        return self.layer(input_)
+    Args:
+        normalized_shape (int): input shape from an expected input of size.
+            :math:`[* \times \text{normalized_shape}[0] \times \text{normalized_shape}[1]
+            \times \ldots \times \text{normalized_shape}[-1]]`
+            If a single integer is used, it is treated as a singleton list, and this module will
+            normalize over the last dimension which is expected to be of that specific size.
+        eps (float): a value added to the denominator for numerical stability, defaults to 1e-05.
+        bias (bool, optional): Whether to add a bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+    """
+
+    def __init__(self, normalized_shape: int, eps=1e-05, bias=True, dtype=None):
+        norm = VanillaLayerNorm(normalized_shape, eps=eps, bias=bias, dtype=dtype)
+        super().__init__(norm)
+
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            # weight
+            weight = state_dict.pop(weight_key, None)
+            if weight is not None:
+                local_state[weight_key] = weight
+            # bias
+            bias = state_dict.pop(bias_key, None)
+            if bias is not None:
+                local_state[bias_key] = bias
+
+        local_state = broadcast_state_dict(local_state, ParallelMode.PARALLEL_1D)
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            super()._save_to_state_dict(destination, prefix, keep_vars)
 
 
 @LAYERS.register_module
 class Classifier1D(ParallelLayer):
-    """RowLinear with given weight
-    Classifier of 1D parallelism
-    
-    :param in_features: size of input features
-    :type in_features: int
-    :param num_classes: number of classes in the dataset
-    :type num_classes: int
-    :param weight: weight of the classifier, defaults to True
-    :type weight: torch.nn.Parameter, optional
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    r"""RowLinear with given weight. Classifier of 1D parallelism.
+
+    Args:
+        in_features (int): size of each input sample.
+        num_classes (int): number of classes.
+        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -142,6 +176,7 @@ class Classifier1D(ParallelLayer):
         set_parallel_input(False)
         env.vocab_parallel = False
 
+
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.num_classes
         if self.has_weight:
@@ -155,11 +190,66 @@ class Classifier1D(ParallelLayer):
             num_partition = gpc.get_world_size(ParallelMode.TENSOR)
             set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
 
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            # weight
+            if self.has_weight:
+                weight = state_dict.pop(weight_key, None)
+                if weight is not None:
+                    local_state[weight_key] = weight
+            # bias
+            if self.bias is not None:
+                bias = state_dict.pop(bias_key, None)
+                if bias is not None:
+                    local_state[bias_key] = bias
+
+        local_state = partition_tensor_parallel_state_dict(local_state,
+                                                           ParallelMode.PARALLEL_1D,
+                                                           dims={
+                                                               weight_key: -1,
+                                                               bias_key: 0
+                                                           },
+                                                           partition_states={
+                                                               weight_key: True,
+                                                               bias_key: False
+                                                           })
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        local_state = OrderedDict()
+        if self.has_weight:
+            local_state[weight_key] = self.weight
+        if self.bias is not None:
+            local_state[bias_key] = self.bias
+        local_state = gather_tensor_parallel_state_dict(local_state,
+                                                        ParallelMode.PARALLEL_1D,
+                                                        dims={
+                                                            weight_key: -1,
+                                                            bias_key: 0
+                                                        },
+                                                        partition_states={
+                                                            weight_key: True,
+                                                            bias_key: False
+                                                        },
+                                                        keep_vars=keep_vars)
+        destination.update(local_state)
+
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.
         if self.parallel_input:
+            assert input_.shape[-1] == self.weight.shape[-1], \
+            'Invalid shapes in Classifier1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                input_.shape, self.weight.shape, self.weight.shape[-1])
             input_ = input_
         else:
+            assert divide(input_.shape[-1], gpc.tensor_parallel_size) == self.weight.shape[-1], \
+            'Invalid shapes in Classifier1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                input_.shape, self.weight.shape, self.weight.shape[-1] * gpc.tensor_parallel_size)
             input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
         output_parallel = F.linear(input_, self.weight)
@@ -171,23 +261,21 @@ class Classifier1D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelClassifier1D(ParallelLayer):
-    """ColLinear with given weight
-    Classifier of 1D parallelism
-    
-    :param in_features: size of input features
-    :type in_features: int
-    :param num_classes: number of classes in the dataset
-    :type num_classes: int
-    :param weight: weight of the classifier, defaults to True
-    :type weight: torch.nn.Parameter, optional
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    r"""ColLinear with given weight. Classifier of 1D parallelism.
+
+    Args:
+        in_features (int): size of each input sample.
+        num_classes (int): number of classes.
+        weight (:class:`torch.nn.Parameter`, optional): weight of the classifier, defaults to None.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -239,7 +327,59 @@ class VocabParallelClassifier1D(ParallelLayer):
         if self.bias is not None:
             set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            # weight
+            if self.has_weight:
+                weight = state_dict.pop(weight_key, None)
+                if weight is not None:
+                    local_state[weight_key] = weight
+            # bias
+            if self.bias is not None:
+                bias = state_dict.pop(bias_key, None)
+                if bias is not None:
+                    local_state[bias_key] = bias
+
+        local_state = partition_tensor_parallel_state_dict(local_state,
+                                                           ParallelMode.PARALLEL_1D,
+                                                           dims={
+                                                               weight_key: 0,
+                                                               bias_key: 0
+                                                           },
+                                                           partition_states={
+                                                               weight_key: True,
+                                                               bias_key: True
+                                                           })
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        local_state = OrderedDict()
+        if self.has_weight:
+            local_state[weight_key] = self.weight
+        if self.bias is not None:
+            local_state[bias_key] = self.bias
+        local_state = gather_tensor_parallel_state_dict(local_state,
+                                                        ParallelMode.PARALLEL_1D,
+                                                        dims={
+                                                            weight_key: 0,
+                                                            bias_key: 0
+                                                        },
+                                                        partition_states={
+                                                            weight_key: True,
+                                                            bias_key: True
+                                                        },
+                                                        keep_vars=keep_vars)
+        destination.update(local_state)
+
     def forward(self, input_: Tensor) -> Tensor:
+        assert input_.shape[-1] == self.weight.shape[-1], \
+            'Invalid shapes in VocabParallelClassifier1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                input_.shape, self.weight.shape, self.weight.shape[-1])
         # Set up backprop all-reduce.
         input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
         # Matrix multiply.
@@ -249,30 +389,28 @@ class VocabParallelClassifier1D(ParallelLayer):
 
 @LAYERS.register_module
 class Linear1D_Col(ParallelLayer):
-    """Linear layer with column parallelism.
+    r"""Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
     its second dimension as :math:`A = [A_1, ..., A_p]`.
 
-    :param in_features: first dimension of matrix A.
-    :type in_features: int
-    :param output_size: second dimension of matrix A.
-    :type output_size: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param gather_output: If true, call all-gether on output and make Y avaiable
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
-    :type gather_output: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
-        which is preserved for kernel fusion, defaults to False
-    :type skip_bias_add: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+        skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to Fals
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -309,7 +447,9 @@ class Linear1D_Col(ParallelLayer):
         with seed(ParallelMode.TENSOR):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
-        set_parallel_input(True)
+        is_parallel_output = not self.gather_output
+        set_parallel_input(is_parallel_output)
+
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
@@ -323,7 +463,56 @@ class Linear1D_Col(ParallelLayer):
         if self.bias is not None:
             set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            # weight
+            weight = state_dict.pop(weight_key, None)
+            if weight is not None:
+                local_state[weight_key] = weight
+            # bias
+            if self.bias is not None:
+                bias = state_dict.pop(bias_key, None)
+                if bias is not None:
+                    local_state[bias_key] = bias
+
+        local_state = partition_tensor_parallel_state_dict(local_state,
+                                                           ParallelMode.PARALLEL_1D,
+                                                           dims={
+                                                               weight_key: 0,
+                                                               bias_key: 0
+                                                           },
+                                                           partition_states={
+                                                               weight_key: True,
+                                                               bias_key: True
+                                                           })
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        local_state = OrderedDict({weight_key: self.weight})
+        if self.bias is not None:
+            local_state[bias_key] = self.bias
+        local_state = gather_tensor_parallel_state_dict(local_state,
+                                                        ParallelMode.PARALLEL_1D,
+                                                        dims={
+                                                            weight_key: 0,
+                                                            bias_key: 0
+                                                        },
+                                                        partition_states={
+                                                            weight_key: True,
+                                                            bias_key: True
+                                                        },
+                                                        keep_vars=keep_vars)
+        destination.update(local_state)
+
     def forward(self, input_: Tensor) -> Tuple[Tensor, Tensor]:
+        assert input_.shape[-1] == self.weight.shape[-1], \
+            'Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                input_.shape, self.weight.shape, self.weight.shape[-1])
         # Set up backprop all-reduce.
         input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
         # Matrix multiply.
@@ -335,6 +524,7 @@ class Linear1D_Col(ParallelLayer):
             output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
         else:
             output = output_parallel
+
         if self.skip_bias_add:
             return output, self.bias
         else:
@@ -343,25 +533,23 @@ class Linear1D_Col(ParallelLayer):
 
 @LAYERS.register_module
 class Linear1D_Row(ParallelLayer):
-    """ Linear layer with row parallelism 
+    r""" Linear layer with row parallelism
 
-    :param in_features: size of each input sample
-    :type in_features: int
-    :param out_features: size of each output sample
-    :type out_features: int
-    :param bias: If set to ``False``, the layer will not learn an additive bias, defaults to ``True``
-    :type bias: bool, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param parallel_input: If set to ``True``, it's assumed that the input is splitted, defaults to False
-    :type parallel_input: bool, optional
-    :param skip_bias_add: If set to ``True``, it will skip bias add for linear layer,
-        which is preserved for kernel fusion, defaults to False
-    :type skip_bias_add: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        parallel_input (bool, optional): If set to ``True``, it's assumed that the input is split, defaults to False.
+        skip_bias_add (bool, optional): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to Fals
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -401,6 +589,7 @@ class Linear1D_Row(ParallelLayer):
         self._set_tensor_parallel_attributes()
         set_parallel_input(False)
 
+
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
         weight_initializer(self.weight, fan_in=fan_in, fan_out=fan_out)
@@ -412,11 +601,63 @@ class Linear1D_Row(ParallelLayer):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)
         set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
 
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            # weight
+            weight = state_dict.pop(weight_key, None)
+            if weight is not None:
+                local_state[weight_key] = weight
+            # bias
+            if self.bias is not None:
+                bias = state_dict.pop(bias_key, None)
+                if bias is not None:
+                    local_state[bias_key] = bias
+
+        local_state = partition_tensor_parallel_state_dict(local_state,
+                                                           ParallelMode.PARALLEL_1D,
+                                                           dims={
+                                                               weight_key: -1,
+                                                               bias_key: 0
+                                                           },
+                                                           partition_states={
+                                                               weight_key: True,
+                                                               bias_key: False
+                                                           })
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        weight_key = prefix + 'weight'
+        bias_key = prefix + 'bias'
+        local_state = OrderedDict({weight_key: self.weight})
+        if self.bias is not None:
+            local_state[bias_key] = self.bias
+        local_state = gather_tensor_parallel_state_dict(local_state,
+                                                        ParallelMode.PARALLEL_1D,
+                                                        dims={
+                                                            weight_key: -1,
+                                                            bias_key: 0
+                                                        },
+                                                        partition_states={
+                                                            weight_key: True,
+                                                            bias_key: False
+                                                        },
+                                                        keep_vars=keep_vars)
+        destination.update(local_state)
+
     def forward(self, input_: Tensor) -> Tensor:
         # Set up backprop all-reduce.
         if self.parallel_input:
+            assert input_.shape[-1] == self.weight.shape[-1], \
+            'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                input_.shape, self.weight.shape, self.weight.shape[-1])
             input_ = input_
         else:
+            assert divide(input_.shape[-1], gpc.tensor_parallel_size) == self.weight.shape[-1], \
+            'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                input_.shape, self.weight.shape, self.weight.shape[-1] * gpc.tensor_parallel_size)
             input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
         output_parallel = F.linear(input_, self.weight)
@@ -432,21 +673,33 @@ class Linear1D_Row(ParallelLayer):
 
 @LAYERS.register_module
 class Embedding1D(ParallelLayer):
-    """
-    Embedding for 1D parallelism
+    r"""Embedding for 1D parallelism.
 
-    :param num_embeddings: number of embeddings
-    :type num_embeddings: int
-    :param embedding_dim: dimension of embedding
-    :type embedding_dim: int
-    :param padding_idx: index of padding, defaults to None
-    :type padding_idx: int, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to normal initializer
-    :type weight_initializer: typing.Callable, optional
-    :param args: Args used in F.embedding
-    :param kwargs: Kwargs used in F.embedding
+    Args:
+        num_embeddings (int): number of embeddings.
+        embedding_dim (int): dimension of embedding.
+        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
+            therefore, the embedding vector at padding_idx is not updated during training,
+            i.e. it remains as a fixed “pad”, defaults to None.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            he initializer of weight, defaults to normal initializer.
+
+    The ``args`` and ``kwargs`` used in :class:`torch.nn.functional.embedding` should contain:
+    ::
+
+        max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
+                    renormalized to have norm max_norm. Note: this will modify weight in-place.
+        norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.
+        scale_grad_by_freq (bool, optional): If given, this will scale gradients by the inverse
+                    of frequency of the words in the mini-batch. Default False.
+        sparse (bool, optional): If True, gradient w.r.t. weight will be a sparse tensor. Default False.
+
+    More details about ``args`` and ``kwargs`` could be found in
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_
     """
 
     def __init__(self,
@@ -488,6 +741,31 @@ class Embedding1D(ParallelLayer):
             with torch.no_grad():
                 self.weight[self.padding_idx].fill_(0)
 
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        weight_key = prefix + 'weight'
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            # weight
+            weight = state_dict.pop(weight_key, None)
+            if weight is not None:
+                local_state[weight_key] = weight
+
+        local_state = partition_tensor_parallel_state_dict(local_state,
+                                                           ParallelMode.PARALLEL_1D,
+                                                           dims={weight_key: -1},
+                                                           partition_states={weight_key: True})
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        weight_key = prefix + 'weight'
+        local_state = OrderedDict({weight_key: self.weight})
+        local_state = gather_tensor_parallel_state_dict(local_state,
+                                                        ParallelMode.PARALLEL_1D,
+                                                        dims={weight_key: -1},
+                                                        partition_states={weight_key: True},
+                                                        keep_vars=keep_vars)
+        destination.update(local_state)
+
     def forward(self, input_: Tensor) -> Tensor:
 
         output_parallel = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
@@ -499,20 +777,33 @@ class Embedding1D(ParallelLayer):
 
 @LAYERS.register_module
 class VocabParallelEmbedding1D(torch.nn.Module):
-    """Embedding parallelized in the vocabulary dimension.
+    r"""Embedding parallelized in the vocabulary dimension.
 
-    :param num_embeddings: number of embeddings
-    :type num_embeddings: int
-    :param embedding_dim: dimension of embedding
-    :type embedding_dim: int
-    :param padding_idx: index of padding, defaults to None
-    :type padding_idx: int, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to normal initializer
-    :type weight_initializer: typing.Callable, optional
-    :param args: Args used in F.embedding
-    :param kwargs: Kwargs used in F.embedding
+    Args:
+        num_embeddings (int): number of embeddings.
+        embedding_dim (int): dimension of embedding.
+        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
+            therefore, the embedding vector at padding_idx is not updated during training,
+            i.e. it remains as a fixed “pad”, defaults to None.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            he initializer of weight, defaults to normal initializer.
+
+    The ``args`` and ``kwargs`` used in :class:``torch.nn.functional.embedding`` should contain:
+    ::
+
+        max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
+                    renormalized to have norm max_norm. Note: this will modify weight in-place.
+        norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.
+        scale_grad_by_freq (bool, optional): If given, this will scale gradients by the inverse
+                    of frequency of the words in the mini-batch. Default False.
+        sparse (bool, optional): If True, gradient w.r.t. weight will be a sparse tensor. Default False.
+
+    More details about ``args`` and ``kwargs`` could be found in
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
+
+    More details about initializer please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(self,
@@ -555,9 +846,34 @@ class VocabParallelEmbedding1D(torch.nn.Module):
 
     def _fill_padding_idx_with_zero(self) -> None:
         if self.padding_idx is not None and \
-            self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
+                self.padding_idx >= self.vocab_start_index and self.padding_idx < self.vocab_end_index:
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
+
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        weight_key = prefix + 'weight'
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            # weight
+            weight = state_dict.pop(weight_key, None)
+            if weight is not None:
+                local_state[weight_key] = weight
+
+        local_state = partition_tensor_parallel_state_dict(local_state,
+                                                           ParallelMode.PARALLEL_1D,
+                                                           dims={weight_key: 0},
+                                                           partition_states={weight_key: True})
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        weight_key = prefix + 'weight'
+        local_state = OrderedDict({weight_key: self.weight})
+        local_state = gather_tensor_parallel_state_dict(local_state,
+                                                        ParallelMode.PARALLEL_1D,
+                                                        dims={weight_key: 0},
+                                                        partition_states={weight_key: True},
+                                                        keep_vars=keep_vars)
+        destination.update(local_state)
 
     def forward(self, input_: Tensor) -> Tensor:
         # Build the mask.
@@ -578,13 +894,11 @@ class VocabParallelEmbedding1D(torch.nn.Module):
 
 @LAYERS.register_module
 class Dropout1D(ParallelLayer):
-    """
-    Dropout layer of 1D parallelism
+    """Dropout layer of 1D parallelism.
 
-    :param p: dropout rate, defaults to 0.5
-    :type p: float, optional
-    :param inplace: If set to ``True``, will do this operation in-place, defaults tp ``False``
-    :type inplace: bool, optional
+    Args:
+        p (float, optional): probability of an element to be zeroed, defaults 0.5.
+        inplace (bool, optional): whether to do dropout in-place, default to be False.
     """
 
     def __init__(self, p: float = 0.5, inplace: bool = False):
@@ -600,3 +914,66 @@ class Dropout1D(ParallelLayer):
         else:
             output = F.dropout(input_, self.p, self.training, self.inplace)
         return output
+
+
+@LAYERS.register_module
+class PatchEmbedding1D(ColossalaiModule):
+    """
+    2D Image to Patch Embedding
+
+    :param img_size: image size
+    :type img_size: int
+    :param patch_size: patch size
+    :type patch_size: int
+    :param in_chans: number of channels of input image
+    :type in_chans: int
+    :param embed_size: size of embedding
+    :type embed_size: int
+    :param dtype: The dtype of parameters, defaults to None
+    :type dtype: torch.dtype, optional
+    :param flatten: whether to flatten output tensor, defaults to True
+    :type flatten: bool, optional
+    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
+    :type weight_initializer: typing.Callable, optional
+    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
+    :type bias_initializer: typing.Callable, optional
+    :param position_embed_initializer: The intializer of position embedding, defaults to zero
+    :type position_embed_initializer: typing.Callable, optional
+    """
+
+    def __init__(self,
+                 img_size: int,
+                 patch_size: int,
+                 in_chans: int,
+                 embed_size: int,
+                 dtype: torch.dtype = None,
+                 flatten: bool = True,
+                 weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 position_embed_initializer: Callable = init.zeros_()):
+        embed = VanillaPatchEmbedding(img_size,
+                                      patch_size,
+                                      in_chans,
+                                      embed_size,
+                                      dtype=dtype,
+                                      flatten=flatten,
+                                      weight_initializer=weight_initializer,
+                                      bias_initializer=bias_initializer,
+                                      position_embed_initializer=position_embed_initializer)
+        super().__init__(embed)
+
+    def _load_from_state_dict(self, state_dict, prefix, *args):
+        local_state = OrderedDict()
+        param_keys = [prefix + 'weight', prefix + 'bias', prefix + 'cls_token', prefix + 'pos_embed']
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            for key in param_keys:
+                param = state_dict.pop(key, None)
+                if param is not None:
+                    local_state[key] = param
+
+        local_state = broadcast_state_dict(local_state, ParallelMode.PARALLEL_1D)
+        super()._load_from_state_dict(local_state, prefix, *args)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
+            super()._save_to_state_dict(destination, prefix, keep_vars)

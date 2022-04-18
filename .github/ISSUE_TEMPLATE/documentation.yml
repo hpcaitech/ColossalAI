@@ -1,5 +1,7 @@
 name: 📚 Documentation
 description: Report an issue related to https://www.colossalai.org/
+title: "[DOC]: "
+labels: [documentation]
 
 body:
 - type: markdown

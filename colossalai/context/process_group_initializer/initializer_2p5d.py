@@ -31,14 +31,17 @@ def _check_tesseract_env_var(tesseract_dim: int, tesseract_dep: int):
 
 # i row j col k dep
 class Initializer_2p5D_ROW(ProcessGroupInitializer):
-    """2p5d tensor parallel initialization among rows.
+    """2.5d tensor parallel initialization among rows.
 
-    :param tesseract_dim: The dimension of tesseract
-    :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
-
-    :type tesseract_dim: int
-    :type tesseract_dep: int
+    Args:
+        tesseract_dim (int): The dimension of tesseract.
+        tesseract_dep (int): The dimension of depth.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
@@ -50,14 +53,16 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
             "Tensor parallel size should be depth * dim ** 2 in 2.5D parallel"
 
     def init_dist_group(self):
-        """Initialize 2p5D tensor row parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 2.5D tensor row parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2p5D tensor row parallelism's information
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2.5D tensor row parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_ROW
 
@@ -69,25 +74,30 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
                         for i in range(self.tesseract_dim)
                     ]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 class Initializer_2p5D_Col(ProcessGroupInitializer):
-    """2p5d tensor parallel initialization among cols.
+    """2.5d tensor parallel initialization among cols.
 
-    :param tesseract_dim: The dimension of tesseract
-    :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
-
-    :type tesseract_dim: int
-    :type tesseract_dep: int
+    Args:
+        tesseract_dim (int): The dimension of tesseract.
+        tesseract_dep (int): The dimension of depth.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
@@ -99,14 +109,16 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
             "Tensor parallel size should be depth * dim ** 2 in 2.5D parallel"
 
     def init_dist_group(self):
-        """Initialize 2p5D tensor col parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 2.5D tensor col parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2p5D tensor col parallelism's information
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2.5D tensor col parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_COL
 
@@ -118,25 +130,30 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
                         for j in range(self.tesseract_dim)
                     ]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 class Initializer_2p5D_Dep(ProcessGroupInitializer):
-    """2p5D tensor parallel initialization among depths.
+    """2.5D tensor parallel initialization among depths.
 
-    :param tesseract_dim: The dimension of tesseract
-    :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
-
-    :type tesseract_dim: int
-    :type tesseract_dep: int
+    Args:
+        tesseract_dim (int): The dimension of tesseract.
+        tesseract_dep (int): The dimension of depth.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
@@ -148,14 +165,16 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
             "Tensor parallel size should be depth * dim ** 2 in 2.5D parallel"
 
     def init_dist_group(self):
-        """Initialize 2p5D tensor depth parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 2.5D tensor depth parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2p5D tensor depth parallelism's information
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2.5D tensor depth parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_DEP
 
@@ -167,26 +186,31 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
                         for k in range(self.tesseract_dep)
                     ]
                     group = dist.new_group(ranks)
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
                         group_world_size = len(ranks)
                         process_group = group
+                        cpu_group = group_cpu
                         ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 # i row j col k dep
 class Initializer_2p5D_XZ(ProcessGroupInitializer):
-    """2p5d tensor parallel initialization among cols times dep.
+    """2.5d tensor parallel initialization among cols times dep.
 
-    :param tesseract_dim: The dimension of tesseract
-    :param tesseract_dep: The dimension of depth
-    :param args: Args used to initialize base class
-
-    :type tesseract_dim: int
-    :type tesseract_dep: int
+    Args:
+        tesseract_dim (int): The dimension of tesseract.
+        tesseract_dep (int): The dimension of depth.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
     """
 
     def __init__(self, tesseract_dim: int, tesseract_dep: int, *args):
@@ -198,14 +222,16 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
             "Tensor parallel size should be depth * dim ** 2 in 2.5D parallel"
 
     def init_dist_group(self):
-        """Initialize 2p5D tensor colXdepth parallel groups, and assign local_ranks and groups to each gpu.
+        """Initialize 2.5D tensor colXdepth parallel groups, and assign local_ranks and groups to each gpu.
 
-        :return: 2p5D tensor colXdepth parallelism's information
-        :rtype: Tuple(local_rank, group_world_size, process_group, ranks_in_group, mode)
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                2.5D tensor colXdepth parallelism's information in a tuple.
         """
         local_rank = None
         ranks_in_group = None
         process_group = None
+        cpu_group = None
         group_world_size = None
         mode = ParallelMode.PARALLEL_2P5D_XZ
 
@@ -217,14 +243,16 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
                     for j in range(self.tesseract_dim)
                 ]
                 group = dist.new_group(ranks)
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
                     group_world_size = len(ranks)
                     process_group = group
+                    cpu_group = group_cpu
                     ranks_in_group = ranks
 
-        return local_rank, group_world_size, process_group, ranks_in_group, mode
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
 @DIST_GROUP_INITIALIZER.register_module
@@ -232,20 +260,14 @@ class Initializer_2p5D(ProcessGroupInitializer):
     """
     Serve as the single entry point to Tesseract parallel initialization.
 
-    :param rank: The rank of current process
-    :param world_size: Size of whole communication world
-    :param config: Running configuration
-    :param data_parallel_size: Size of data parallel
-    :param pipeline_parallel_size: Size of pipeline parallel
-    :param tensor_parallel_size: Size of tensor parallel
-    :param depth: The depth of 2p5d parallel
-    :type rank: int
-    :type world_size: int
-    :type config: Config
-    :type data_parallel_size: int
-    :type pipeline_parallel_size: int
-    :type tensor_parallel_size: int
-    :type depth: int
+    Args:
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
+        depth (int): The depth of 2.5d parallel.
     """
 
     def __init__(self, rank: int, world_size: int, config: Config, data_parallel_size: int, pipeline_parallel_size: int,
@@ -266,9 +288,11 @@ class Initializer_2p5D(ProcessGroupInitializer):
         self.xz_initializer = Initializer_2p5D_XZ(self.tesseract_dim, self.tesseract_dep, *args)
 
     def init_dist_group(self):
-        """Initialize 2p5D tensor row, col, depth, and colXdepth parallel groups, and assign local_ranks and groups to each gpu.
-        :return: Whole 2p5D tensor parallelism's information
-        :rtype: list of Tuples (local_rank, group_world_size, process_group, ranks_in_group, mode)
+        """Initialize 2.5D tensor row, col, depth, and colXdepth parallel groups, and assign local_ranks and groups to each gpu.
+
+        Returns:
+            List[Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode)]:
+                Whole 2.5D tensor parallelism's information in a list of tuples.
         """
         parallel_setting = [
             self.col_initializer.init_dist_group(),

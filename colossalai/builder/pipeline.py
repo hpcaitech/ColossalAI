@@ -1,7 +1,6 @@
 import copy
 import heapq
 
-
 from colossalai.builder import build_model, build_layer
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
@@ -13,14 +12,13 @@ def _binary_partition(weights, st, ed):
     """Returns the binary partition position of `weights`, given the start
     position `st` and the end position `ed`.
 
-    :param weights: A python list to be binary partitioned
-    :type weights: list
-    :param st: the start position of the binary partition
-    :type st: int
-    :param ed: the end postition of the binary partition
-    :type ed: int
-    :return: the binary partition position of `weights`
-    :rtype: int
+    Args:
+        weights (list): A python list to be binary partitioned
+        st (int): the start position of the binary partition
+        ed (int): the end position of the binary partition
+
+    Returns:
+        int: the binary partition position of `weights`
     """
     w_sum = weights[ed - 1]
     prefix = 0
@@ -41,6 +39,7 @@ def _binary_partition(weights, st, ed):
 def _heap_addition(weights, intervals, add_cnt):
     """
     """
+
     def _heap_push(heap, st, ed):
         value = weights[ed - 1]
         if st > 0:
@@ -163,29 +162,31 @@ def count_layer_params(layers):
     return param_counts
 
 
-def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method: str = 'parameter', verbose: bool = False):
-    """An intializer to split the model into different stages for pipeline parallelism.
+def build_pipeline_model_from_cfg(config,
+                                  num_chunks: int = 1,
+                                  partition_method: str = 'parameter',
+                                  verbose: bool = False):
+    """An initializer to split the model into different stages for pipeline parallelism.
 
     An example for the model config is shown below. The class VisionTransformerFromConfig should
     inherit colossalai.nn.model.ModelFromConfig to allow this initializer to build model from a sequence
     of layer configurations.
 
-    model_config = dict(
-        type='VisionTransformerFromConfig',
-        embedding_cfg=dict(...),
-        ...
-    )
+    ::
 
-    :param config: Configuration of the model
-    :type config: dict
-    :param num_chunks: The number of chunks you want to have on the current stage. This value should be 1
-                        in most cases unless you are using virutal pipeline parallelism.
-    :type num_chunks: int, optional
-    :param partition_method: This parameter determines how you want to split your model layers into stages,
-                                you can set it as 'layer' or 'parameter'
-    :type partition_method: str, optional
-    :param verbose: Whether to print the logs
-    :type verbose: bool, optional
+        model_config = dict(
+            type='VisionTransformerFromConfig',
+            embedding_cfg=dict(...),
+            ...
+        )
+
+    Args:
+        config (dict): Configuration of the model.
+        num_chunks (int, optional): The number of chunks you want to have on the current stage.
+            This value should be 1 in most cases unless you are using virtual pipeline parallelism.
+        partition_method (str, optional): This parameter determines how you want to split your model
+            layers into stages, you can set it as 'layer' or 'parameter'.
+        verbose (bool, optional): Whether to print the logs.
     """
     ori_model = build_model(config)
     layers = ori_model.layers_cfg
@@ -220,7 +221,7 @@ def build_pipeline_model_from_cfg(config, num_chunks: int = 1, partition_method:
 
             log_str += f'\n===== stage={stage}, layers={num_layers} =====\n'
             for st, ed in parts[stage]:
-                for idx, layer in enumerate(layers[st: ed]):
+                for idx, layer in enumerate(layers[st:ed]):
                     log_str += f'\t{idx + st:2d}: {layer}\n'
         logger.info(log_str, ranks=[0])
 
@@ -240,13 +241,11 @@ def build_pipeline_model(layers: nn.Sequential, num_chunks: int = 1, verbose: bo
     """An intializer to split the model into different stages for pipeline parallelism.
     Note that `layer` must be `torch.nn.Sequential`.
 
-    :param layers: Layers of model
-    :type layers: `torch.nn.Sequential`
-    :param num_chunks: The number of chunks you want to have on the current stage. This value should be 1
-                        in most cases unless you are using virutal pipeline parallelism.
-    :type num_chunks: int, optional
-    :param verbose: Whether to print the logs
-    :type verbose: bool, optional
+    Args:
+        layers (`torch.nn.Sequential`): Layers of model
+        num_chunks: The number of chunks you want to have on the current stage. This value should be 1
+                        in most cases unless you are using virtual pipeline parallelism.
+        verbose (bool, optional): Whether to print the logs.
     """
     pipeline_parallel_size = gpc.get_world_size(ParallelMode.PIPELINE)
     pipeline_rank = gpc.get_local_rank(ParallelMode.PIPELINE)

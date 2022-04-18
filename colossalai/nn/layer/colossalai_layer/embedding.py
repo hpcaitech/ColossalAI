@@ -5,14 +5,16 @@ from colossalai.utils import get_current_device
 from torch import dtype, nn
 
 from ... import init as init
-from ..parallel_1d import *
-from ..parallel_2d import *
-from ..parallel_2p5d import *
-from ..parallel_3d import *
+from ..parallel_1d import Embedding1D, PatchEmbedding1D, VocabParallelEmbedding1D
+from ..parallel_2d import Embedding2D, PatchEmbedding2D, VocabParallelEmbedding2D
+from ..parallel_2p5d import Embedding2p5D, PatchEmbedding2p5D, VocabParallelEmbedding2p5D
+from ..parallel_3d import Embedding3D, PatchEmbedding3D, VocabParallelEmbedding3D
 from ..utils import get_tensor_parallel_mode
-from ..vanilla import *
+from ..vanilla import VanillaPatchEmbedding
+from ._utils import ColossalaiModule
 
 _parallel_embedding = {
+    '1d': Embedding1D,
     '2d': Embedding2D,
     '2.5d': Embedding2p5D,
     '3d': Embedding3D,
@@ -27,29 +29,41 @@ _vocab_parallel_embedding = {
 
 _parallel_patchembedding = {
     None: VanillaPatchEmbedding,
-    '1d': VanillaPatchEmbedding,
+    '1d': PatchEmbedding1D,
     '2d': PatchEmbedding2D,
     '2.5d': PatchEmbedding2p5D,
     '3d': PatchEmbedding3D
 }
 
 
-class Embedding(nn.Module):
-    """
-    Embedding for colossalai
+class Embedding(ColossalaiModule):
+    r"""Embedding for colossalai.
 
-    :param num_embeddings: number of embeddings
-    :type num_embeddings: int
-    :param embedding_dim: dimension of embedding
-    :type embedding_dim: int
-    :param padding_idx: index of padding, defaults to None
-    :type padding_idx: int, optional
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param weight_initializer: The intializer of weight, defaults to normal initializer
-    :type weight_initializer: typing.Callable, optional
-    :param args: Args used in F.embedding
-    :param kwargs: Kwargs used in F.embedding
+    Args:
+        num_embeddings (int): number of embeddings.
+        embedding_dim (int): dimension of embedding.
+        padding_idx (int, optional): If specified, the entries at padding_idx do not contribute to the gradient;
+            therefore, the embedding vector at padding_idx is not updated during training,
+            i.e. it remains as a fixed “pad”, defaults to None.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        weight_initializer (:class:`typing.Callable`, optional):
+            he initializer of weight, defaults to normal initializer.
+
+    The ``args`` and ``kwargs`` used in :class:`torch.nn.functional.embedding` should contain:
+    ::
+
+        max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
+                    renormalized to have norm max_norm. Note: this will modify weight in-place.
+        norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.
+        scale_grad_by_freq (bool, optional): If given, this will scale gradients by the inverse
+                    of frequency of the words in the mini-batch. Default False.
+        sparse (bool, optional): If True, gradient w.r.t. weight will be a sparse tensor. Default False.
+
+    More details about ``args`` and ``kwargs`` could be found in
+    `Embedding <https://pytorch.org/docs/stable/generated/torch.nn.functional.embedding.html#torch.nn.functional.embedding>`_.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_
     """
 
     def __init__(self,
@@ -61,14 +75,13 @@ class Embedding(nn.Module):
                  vocab_parallel_limit: int = 2048,
                  *args,
                  **kwargs) -> None:
-        super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
-        if tensor_parallel is None or (tensor_parallel == '1d' and num_embeddings <= vocab_parallel_limit):
-            self.embed = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, *args,
-                                      **kwargs).to(dtype).to(get_current_device())
-            weight_initializer(self.embed.weight, fan_in=num_embeddings, fan_out=embedding_dim)
+        if tensor_parallel is None:
+            embed = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx, *args,
+                                 **kwargs).to(dtype).to(get_current_device())
+            weight_initializer(embed.weight, fan_in=num_embeddings, fan_out=embedding_dim)
         elif num_embeddings <= vocab_parallel_limit:
-            self.embed = _parallel_embedding[tensor_parallel](
+            embed = _parallel_embedding[tensor_parallel](
                 num_embeddings,
                 embedding_dim,
                 padding_idx=padding_idx,
@@ -78,7 +91,7 @@ class Embedding(nn.Module):
                 **kwargs,
             )
         else:
-            self.embed = _vocab_parallel_embedding[tensor_parallel](
+            embed = _vocab_parallel_embedding[tensor_parallel](
                 num_embeddings,
                 embedding_dim,
                 padding_idx=padding_idx,
@@ -87,37 +100,28 @@ class Embedding(nn.Module):
                 *args,
                 **kwargs,
             )
-
-    @property
-    def weight(self):
-        return self.embed.weight
-
-    def forward(self, *args):
-        return self.embed(*args)
+        super().__init__(embed)
 
 
-class PatchEmbedding(nn.Module):
-    """
-    2D Image to Patch Embedding
+class PatchEmbedding(ColossalaiModule):
+    """2D Image to Patch Embedding.
 
-    :param img_size: image size
-    :type img_size: int
-    :param patch_size: patch size
-    :type patch_size: int
-    :param in_chans: number of channels of input image
-    :type in_chans: int
-    :param embed_size: size of embedding
-    :type embed_size: int
-    :param dtype: The dtype of parameters, defaults to None
-    :type dtype: torch.dtype, optional
-    :param flatten: whether to flatten output tensor, defaults to True
-    :type flatten: bool, optional
-    :param weight_initializer: The intializer of weight, defaults to kaiming uniform initializer
-    :type weight_initializer: typing.Callable, optional
-    :param bias_initializer: The intializer of bias, defaults to xavier uniform initializer
-    :type bias_initializer: typing.Callable, optional
-    :param position_embed_initializer: The intializer of position embedding, defaults to zero
-    :type position_embed_initializer: typing.Callable, optional
+    Args:
+        img_size (int): image size.
+        patch_size (int): patch size.
+        in_chans (int): number of channels of input image.
+        embed_size (int): size of embedding.
+        dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
+        flatten (bool, optional): whether to flatten output tensor, defaults to True.
+        weight_initializer (:class:`typing.Callable`, optional):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (:class:`typing.Callable`, optional):
+            The initializer of bias, defaults to xavier uniform initializer.
+        position_embed_initializer (:class:`typing.Callable`, optional):
+            The initializer of position embedding, defaults to zeros initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
 
     def __init__(
@@ -132,9 +136,8 @@ class PatchEmbedding(nn.Module):
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
         position_embed_initializer: Callable = init.zeros_()
     ) -> None:
-        super().__init__()
         tensor_parallel = get_tensor_parallel_mode()
-        self.embed = _parallel_patchembedding[tensor_parallel](
+        embed = _parallel_patchembedding[tensor_parallel](
             img_size,
             patch_size,
             in_chans,
@@ -145,22 +148,4 @@ class PatchEmbedding(nn.Module):
             bias_initializer=bias_initializer,
             position_embed_initializer=position_embed_initializer,
         )
-
-    @property
-    def weight(self):
-        return self.embed.weight
-
-    @property
-    def bias(self):
-        return self.embed.bias
-
-    @property
-    def pos_embed(self):
-        return self.embed.pos_embed
-
-    @property
-    def cls_token(self):
-        return self.embed.cls_token
-
-    def forward(self, *args):
-        return self.embed(*args)
+        super().__init__(embed)
