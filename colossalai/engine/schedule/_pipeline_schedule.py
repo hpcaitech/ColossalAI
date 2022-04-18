@@ -115,8 +115,7 @@ class PipelineSchedule(BaseSchedule):
     def pre_processing(self, engine):
         # TODO: remove this after testing new zero with pipeline parallelism
         model = engine.model
-        from colossalai.zero.sharded_model import ShardedModelV2
-        if isinstance(model, (NaiveAMPModel, ShardedModelV2)):
+        if isinstance(model, (NaiveAMPModel)) or hasattr(model, 'colo_attr'):
             self.dtype = torch.half
             model = model.model
         sig = inspect.signature(model.forward)
@@ -125,10 +124,9 @@ class PipelineSchedule(BaseSchedule):
 
     @staticmethod
     def _call_engine(model, input_tensor, batch_data):
-        from colossalai.zero.sharded_model import ShardedModelV2
         if isinstance(model, NaiveAMPModel):
             sig = inspect.signature(model.model.forward)
-        elif isinstance(model, ShardedModelV2):
+        elif hasattr(model, 'colo_attr'):
             sig = inspect.signature(model.module.forward)
         else:
             sig = inspect.signature(model.forward)
@@ -389,8 +387,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
 
     def pre_processing(self, engine):
         # FIXME(jiaruifang) we shall not use ShardedModelV2 in pipeline mode, due to circular dependency.
-        from colossalai.zero.sharded_model import ShardedModelV2
-        if isinstance(engine.model, ShardedModelV2):
+        if hasattr(engine.model, 'colo_attr'):
             self.dtype = torch.half
         elif isinstance(engine.model[0], NaiveAMPModel):
             self.dtype = torch.half
