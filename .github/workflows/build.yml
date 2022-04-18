@@ -4,6 +4,11 @@ on:
   pull_request:
     types: [synchronize, labeled]
 
+env:
+  https_proxy: "http://127.0.0.1:7890"
+  http_proxy: "http://127.0.0.1:7890"
+  all_proxy: "socks5://127.0.0.1:7890"
+
 jobs:
   build:
     name: Build and Test Colossal-AI
@@ -15,12 +20,11 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: frankleeeee/pytorch-cuda:1.10.1-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+      options: --gpus all --network host --ipc host --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /home/ubuntu/scripts:/home/ubuntu/scripts
     timeout-minutes: 40
     steps:
       - name: Install dependencies
         run: |
-          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip install -U pip setuptools wheel --user
       - uses: actions/checkout@v2
         with:
