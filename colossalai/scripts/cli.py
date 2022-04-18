@@ -8,7 +8,7 @@ class Arguments():
 
 @click.group()
 def cli():
-    click.echo("hello world")
+    pass
 
 @click.command()
 @click.option("--hostfile", 
