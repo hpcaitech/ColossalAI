@@ -3,8 +3,8 @@ from colossalai.benchmark.utils import BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM, ITER_
 from colossalai.benchmark.run import launch as col_benchmark
 
 class Arguments():
-    def __init__(self, dict):
-        for k, v in dict.items():
+    def __init__(self, arg_dict):
+        for k, v in arg_dict.items():
             self.__dict__[k] = v
 
 @click.group()

@@ -68,79 +68,79 @@ def build_configs(args):
         config_dict = build_configs_helper(valid_device_cnt)
     return config_dict
 
-def profile_1d(input, config, args):
+def profile_1d(input_tensor, config, args):
     gpc.load_config(config)
     gpc.init_parallel_groups()
     assert gpc.is_initialized(ParallelMode.PARALLEL_1D)
     model = MLP(args.hid_dim).cuda()
-    input = input.cuda()
-    torch.distributed.broadcast(input, src=0)
+    input_tensor = input_tensor.cuda()
+    torch.distributed.broadcast(input_tensor, src=0)
     timer = Timer()
     iter_times = args.num_steps
     timer.start()
     for i in range(iter_times):
-        input = model(input)
+        input_tensor = model(input_tensor)
         synchronize()
     result_1d = timer.stop()
     return result_1d
 
-def profile_2d(input, config, args):
+def profile_2d(input_tensor, config, args):
     gpc.load_config(config)
     gpc.init_parallel_groups()
     assert gpc.is_initialized(ParallelMode.PARALLEL_2D_COL)
     assert gpc.is_initialized(ParallelMode.PARALLEL_2D_ROW)
     model = MLP(args.hid_dim).cuda()
-    input = input.cuda()
-    torch.distributed.broadcast(input, src=0)
-    input = torch.chunk(input, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)]
-    input = torch.chunk(input, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_ROW)]
+    input_tensor = input_tensor.cuda()
+    torch.distributed.broadcast(input_tensor, src=0)
+    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)]
+    input_tensor = torch.chunk(input_tensor, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_ROW)]
     timer = Timer()
     iter_times = args.num_steps
     timer.start()
     for i in range(iter_times):
-        input = model(input)
+        input_tensor = model(input_tensor)
         synchronize()
     result_2d = timer.stop()
     return result_2d
 
-def profile_2p5d(input, config, args):
+def profile_2p5d(input_tensor, config, args):
     gpc.load_config(config)
     gpc.init_parallel_groups()
     assert gpc.is_initialized(ParallelMode.PARALLEL_2P5D_COL)
     assert gpc.is_initialized(ParallelMode.PARALLEL_2P5D_ROW)
     assert gpc.is_initialized(ParallelMode.PARALLEL_2P5D_DEP)
     model = MLP(args.hid_dim).cuda()
-    input = input.cuda()
-    torch.distributed.broadcast(input, src=0)
-    input = torch.chunk(input, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)]
-    input = torch.chunk(input, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)]
-    input = torch.chunk(input, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)]
+    input_tensor = input_tensor.cuda()
+    torch.distributed.broadcast(input_tensor, src=0)
+    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)]
+    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)]
+    input_tensor = torch.chunk(input_tensor, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)]
     timer = Timer()
     iter_times = args.num_steps
     timer.start()
     for i in range(iter_times):
-        input = model(input)
+        input_tensor = model(input_tensor)
         synchronize()
     result_2p5d = timer.stop()
     return result_2p5d
 
-def profile_3d(input, config, args):
+def profile_3d(input_tensor, config, args):
     gpc.load_config(config)
     gpc.init_parallel_groups()
     assert gpc.is_initialized(ParallelMode.PARALLEL_3D_WEIGHT)
     assert gpc.is_initialized(ParallelMode.PARALLEL_3D_INPUT)
     assert gpc.is_initialized(ParallelMode.PARALLEL_3D_OUTPUT)
     model = MLP(args.hid_dim).cuda()
-    input = input.cuda()
-    torch.distributed.broadcast(input, src=0)
-    input = torch.chunk(input, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)]
-    input = torch.chunk(input, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)]
-    input = torch.chunk(input, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)]
+    input_tensor = input_tensor.cuda()
+    torch.distributed.broadcast(input_tensor, src=0)
+    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)]
+    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)]
+    input_tensor = torch.chunk(input_tensor, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)]
     timer = Timer()
     iter_times = args.num_steps
     timer.start()
     for i in range(iter_times):
-        input = model(input)
+        input_tensor = model(input_tensor)
         synchronize()
     result_3d = timer.stop()
     return result_3d
