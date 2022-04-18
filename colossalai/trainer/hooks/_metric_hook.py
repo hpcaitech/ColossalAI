@@ -353,12 +353,12 @@ class ThroughputMetric(Metric):
         self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
             gpc.get_world_size(ParallelMode.DATA)
         self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
-        samplePerSec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
+        sample_per_sec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
         if self._tflop_per_step > 0:
             tflops = _format_number(self._tflop_per_step / (self.last_step_used_time.item() + 1e-12))
-            return f"{samplePerSec} samplePerSec, {tflops} Tflops"
+            return f"{sample_per_sec} sample_per_sec, {tflops} Tflops"
         else:
-            return f"{samplePerSec} samplePerSec"
+            return f"{sample_per_sec} sample_per_sec"
 
     def get_accumulated_value(self) -> float:
         self.accumulated_used_time = all_reduce(self.accumulated_used_time, ParallelMode.DATA) / \
