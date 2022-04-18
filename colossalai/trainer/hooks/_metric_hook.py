@@ -354,7 +354,7 @@ class ThroughputMetric(Metric):
             gpc.get_world_size(ParallelMode.DATA)
         self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
         samplePerSec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
-        if tflops > 0:
+        if self._tflops_per_step > 0:
             tflops = _format_number(self._tflops_per_step / (self.last_step_used_time.item() + 1e-12))
             return f"{samplePerSec} samplePerSec, {tflops} Tflops"
         else:
