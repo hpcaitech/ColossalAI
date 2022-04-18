@@ -10,7 +10,7 @@ from colossalai.utils import print_rank_0
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import free_port
-from colossalai.benchmark import build_args_parser, build_configs, \
+from colossalai.cli.benchmark import build_args_parser, build_configs, \
         build_input_tensor, profile_1d, profile_2d, profile_2p5d, profile_3d, \
         BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM, ITER_TIMES
 

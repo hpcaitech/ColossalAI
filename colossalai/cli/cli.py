@@ -1,6 +1,6 @@
 import click
-from colossalai.benchmark.utils import BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM, ITER_TIMES
-from colossalai.benchmark.run import launch as col_benchmark
+from colossalai.cli.benchmark.utils import BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM, ITER_TIMES
+from colossalai.cli.benchmark.run import launch as col_benchmark
 
 class Arguments():
     def __init__(self, arg_dict):
