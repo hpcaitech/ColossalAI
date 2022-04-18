@@ -213,8 +213,7 @@ def parse_inclusion_exclusion(device_pool, inclusion, exclusion):
 
 def main(args=None):
     logger = get_dist_logger()
-    parser = build_args_parser()
-    args = parser.parse_args(args)
+    assert args is not None, "args should not be None."
     
     device_pool = fetch_hostfile(args.hostfile)
 

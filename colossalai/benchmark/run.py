@@ -14,10 +14,9 @@ from colossalai.benchmark import build_args_parser, build_configs, \
         BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM, ITER_TIMES
 
 
-def launch():
+def launch(args=None):
     train_script = inspect.getfile(inspect.currentframe())
-    parser = build_args_parser()
-    args = parser.parse_args()
+    assert args is not None, "args should not be None"
     env = os.environ.copy()
     if args.num_gpus == -1 or args.num_gpus > torch.cuda.device_count():
             nproc_per_node = torch.cuda.device_count()
