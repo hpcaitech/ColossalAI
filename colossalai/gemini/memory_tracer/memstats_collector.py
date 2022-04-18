@@ -1,6 +1,7 @@
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
+from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
+from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.utils.memory import colo_device_memory_used
-from colossalai.utils.memory_tracer import SyncCudaMemoryMonitor
+
 import torch
 import time
 from typing import List
