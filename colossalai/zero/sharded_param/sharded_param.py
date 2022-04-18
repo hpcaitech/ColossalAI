@@ -5,18 +5,13 @@ from colossalai.zero.sharded_param.tensor_utils import colo_tensor_mem_usage
 from .tensorful_state import StatefulTensor, TensorState
 from typing import List
 
-# use this tensor as empty data point for parameters
-# we do not want users use param.data when its torch payload is removed
-# empty tensor is expected to raise error when get used
-FAKE_EMPTY_TENSOR = torch.BoolTensor([], device='cpu')
-
 EMPTY_TENSOR_DICT = {}
 
 
 def get_empty_tensor(device: torch.device, dtype: torch.dtype):
     key = (device, dtype)
     if key not in EMPTY_TENSOR_DICT:
-        EMPTY_TENSOR_DICT[key] = FAKE_EMPTY_TENSOR.to(device, dtype)
+        EMPTY_TENSOR_DICT[key] = torch.empty(0, dtype=dtype, device=device)
 
     return EMPTY_TENSOR_DICT[key]
 
