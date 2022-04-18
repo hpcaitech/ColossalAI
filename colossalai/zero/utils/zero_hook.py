@@ -5,13 +5,14 @@ import torch.distributed as dist
 from colossalai.registry import OPHOOKS
 
 from colossalai.utils import get_current_device
-from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
 
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_param.tensorful_state import TensorState
-from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
-
 from colossalai.engine.ophooks import BaseOpHook
+
+from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.gemini.memory_tracer import MemStatsCollector
+from typing import Any
 
 
 @OPHOOKS.register_module

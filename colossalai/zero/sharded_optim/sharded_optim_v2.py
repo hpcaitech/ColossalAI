@@ -10,7 +10,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.utils.memory_tracer.model_data_memtracer import \
+from colossalai.gemini.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
 from colossalai.zero.sharded_param.tensor_utils import (colo_model_data_tensor_move_inline, colo_model_tensor_clone,
                                                         colo_tensor_mem_usage)
@@ -299,6 +299,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 if p.colo_attr.saved_grad.is_null():
                     continue
                 p.colo_attr.saved_grad.trans_state(TensorState.COMPUTE)
+                # If reuse_fp16_shard, grad fp16 which wasn't be offloaded may be evicted to CPU
+                if not p.colo_attr.offload_grad:
+                    colo_model_data_tensor_move_inline(p.colo_attr.grad_payload, torch.cuda.current_device())
                 # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad

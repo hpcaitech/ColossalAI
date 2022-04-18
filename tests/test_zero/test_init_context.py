@@ -11,7 +11,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory_tracer.model_data_memtracer import \
+from colossalai.gemini.memory_tracer.model_data_memtracer import \
     colo_model_mem_usage
 from colossalai.utils.memory import colo_device_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
