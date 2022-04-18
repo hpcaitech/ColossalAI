@@ -46,7 +46,9 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
     def __init__(self, mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
         super().__init__(None, mem_stats_collector=mem_stats_collector)
         # model data will use 1-self._warmup_non_model_data_ratio CUDA memory in warmup phase
+        # TODO(ver217): make these args configurable
         self._warmup_non_model_data_ratio: float = 0.8
+        self._steady_cuda_cap_ratio: float = 0.8
 
     def evict_tensors(self,
                       hold_cuda_tensor_list: List[StatefulTensor],
@@ -63,6 +65,7 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         else:
             # max non-model-data cuda memory consumption of this sampling moment and the next sampling moment.
             max_cuda_non_model_data_per_period = self.mem_stats_collector.next_period_non_model_data_usage('cuda')
+            cuda_capacity *= self._steady_cuda_cap_ratio
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
         if avail_cuda_model_data < cuda_demand:
