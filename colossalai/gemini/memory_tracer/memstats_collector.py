@@ -139,6 +139,9 @@ class MemStatsCollector:
         self._model_data_cpu_list = []
         self._overall_cpu_list = []
 
+        self._non_model_data_cpu_list = []
+        self._non_model_data_cuda_list = []
+
         self._start_flag = False
         self._step_idx = 0
         self._step_total = 0
