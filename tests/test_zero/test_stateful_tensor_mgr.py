@@ -75,20 +75,10 @@ def run_stm():
     limit_cuda_memory(0.26 / tensor_placement_policy._steady_cuda_cap_ratio)
     # use OPT-like eviction strategy
     apply_adjust(model, model.p0, [model.p0, model.p1], stateful_tensor_mgr)
-    mem_collector.sample_model_data()
-    mem_collector.sample_overall_data()
     apply_adjust(model, model.p1, [model.p0, model.p1], stateful_tensor_mgr)
-    mem_collector.sample_model_data()
-    mem_collector.sample_overall_data()
     apply_adjust(model, model.p2, [model.p0, model.p2], stateful_tensor_mgr)
-    mem_collector.sample_model_data()
-    mem_collector.sample_overall_data()
     apply_adjust(model, model.p0, [model.p0, model.p2], stateful_tensor_mgr)
-    mem_collector.sample_model_data()
-    mem_collector.sample_overall_data()
     apply_adjust(model, model.p1, [model.p1, model.p2], stateful_tensor_mgr)
-    mem_collector.sample_model_data()
-    mem_collector.finish_collection()
 
 
 def apply_adjust(model: torch.nn.Module, compute_param: Parameter, cuda_param_after_adjust: List[Parameter],
