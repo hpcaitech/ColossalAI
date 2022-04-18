@@ -15,11 +15,12 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: frankleeeee/pytorch-cuda:1.10.1-11.3.0
-      options: --gpus all --network host --ipc host --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /home/gitact/docker/config.json:/root/.docker/config.json
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 40
     steps:
       - name: Install dependencies
         run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip install -U pip setuptools wheel --user
       - uses: actions/checkout@v2
         with:
