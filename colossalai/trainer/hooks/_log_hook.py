@@ -168,7 +168,7 @@ class TensorboardHook(BaseHook):
     def _log_by_epoch(self, trainer, mode: str):
         for metric_name, metric_calculator in trainer.states['metrics'][mode].items():
             if metric_calculator.epoch_only:
-                val, tflops_value = metric_calculator.get_accumulated_value()
+                val = metric_calculator.get_accumulated_value()
                 if self._is_valid_rank_to_log:
                     self.writer.add_scalar(f'{metric_name}/{mode}', val, trainer.cur_step)
 
