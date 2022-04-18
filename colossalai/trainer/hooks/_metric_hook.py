@@ -324,7 +324,7 @@ class ThroughputMetric(Metric):
         epoch_only (bool): Whether the metric only read for the full epoch.
     """
 
-    def __init__(self, epoch_only: bool, ignored_steps: int = 0, tflops_per_step: int = 0):
+    def __init__(self, epoch_only: bool, ignored_steps: int = 0, tflop_per_step: int = 0):
         super().__init__(epoch_only=epoch_only)
         self.ignored_steps = ignored_steps
         self.cur_steps = 0
@@ -332,7 +332,7 @@ class ThroughputMetric(Metric):
         self.accumulated_used_time = torch.zeros(1, device=get_current_device())
         self.last_step_num_samples = torch.zeros(1, device=get_current_device())
         self.last_step_used_time = torch.zeros(1, device=get_current_device())
-        self._tflops_per_step = tflops_per_step
+        self._tflop_per_step = tflop_per_step
 
     def reset(self) -> None:
         # self.cur_steps = 0
@@ -354,8 +354,8 @@ class ThroughputMetric(Metric):
             gpc.get_world_size(ParallelMode.DATA)
         self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
         samplePerSec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
-        if self._tflops_per_step > 0:
-            tflops = _format_number(self._tflops_per_step / (self.last_step_used_time.item() + 1e-12))
+        if self._tflop_per_step > 0:
+            tflops = _format_number(self._tflop_per_step / (self.last_step_used_time.item() + 1e-12))
             return f"{samplePerSec} samplePerSec, {tflops} Tflops"
         else:
             return f"{samplePerSec} samplePerSec"
@@ -382,14 +382,17 @@ class ThroughputHook(MetricHook):
             depend on the hooks order in the hook list.
     """
 
-    def __init__(self, ignored_steps: int = 0, priority: int = 10):
+    def __init__(self, ignored_steps: int = 0, priority: int = 10, tflop_per_step: int = 0):
         super().__init__(priority)
         self.ignored_steps = ignored_steps
+        self._tflop_per_step = tflop_per_step
 
     def after_hook_is_attached(self, trainer):
         self._check_metric_states_initialization(trainer)
         if self._is_stage_to_compute:
-            self.metric = ThroughputMetric(epoch_only=True, ignored_steps=self.ignored_steps)
+            self.metric = ThroughputMetric(epoch_only=True,
+                                           ignored_steps=self.ignored_steps,
+                                           tflop_per_step=self._tflop_per_step)
 
             # register the metric
             trainer.states['metrics']['train']['Throughput'] = self.metric
