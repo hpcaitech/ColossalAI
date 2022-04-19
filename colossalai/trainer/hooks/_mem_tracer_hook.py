@@ -1,7 +1,7 @@
 from colossalai.registry import HOOKS
 from torch import Tensor
 from colossalai.trainer.hooks import BaseHook
-from colossalai.utils.memory_tracer import AsyncMemoryMonitor
+from colossalai.gemini.memory_tracer import AsyncMemoryMonitor
 
 
 @HOOKS.register_module

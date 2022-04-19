@@ -91,8 +91,6 @@ def run_dist(rank, world_size, port, parallel_config):
 
 
 # FIXME: enable this test in next PR
-
-
 @pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [2, 4])

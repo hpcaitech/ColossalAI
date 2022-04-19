@@ -8,8 +8,6 @@ from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc
 from typing import Union
-from colossalai.utils.memory_tracer import AsyncMemoryMonitor
-import os
 import math
 
 
@@ -25,6 +23,7 @@ class MemTracerOpHook(BaseOpHook):
     """
 
     def __init__(self, warmup: int = 50, refreshrate: int = 10, data_prefix: str = "memstats"):
+        from colossalai.gemini.memory_tracer import AsyncMemoryMonitor
         super().__init__()
         self.async_mem_monitor = AsyncMemoryMonitor()
         self._curiter = 0

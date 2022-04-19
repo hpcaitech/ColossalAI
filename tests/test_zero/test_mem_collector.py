@@ -14,7 +14,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from functools import partial
 
 
-class TestModel(torch.nn.Module):
+class MyTestModel(torch.nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
@@ -37,7 +37,7 @@ def run_mem_collector_testing():
     colo_set_process_memory_fraction(fraction)
     shard_strategy = BucketTensorShardStrategy()
     with ZeroInitContext(target_device=get_current_device(), shard_strategy=shard_strategy, shard_param=True):
-        model = TestModel()
+        model = MyTestModel()
 
     model = ShardedModelV2(module=model,
                            shard_strategy=shard_strategy,
