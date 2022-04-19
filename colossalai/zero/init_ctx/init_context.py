@@ -12,6 +12,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
+from colossalai.zero.comm import ZeroDist
 from contextlib import AbstractContextManager
 
 
@@ -191,6 +192,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         The Callback function when entering the context
         """
         self.logger = get_dist_logger("ZeroInitContext")
+        ZeroDist.zero_comm_init(self.dp_process_group)    # initialize zero communication world
 
         # substitute fan-in and fan-out calculation
         self.nn_fanin_fanout = nn.init._calculate_fan_in_and_fan_out

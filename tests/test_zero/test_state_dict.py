@@ -11,7 +11,7 @@ import torch.multiprocessing as mp
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
+from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy, ZeroTensorShardStrategy)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -19,7 +19,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from common import CONFIG
 
 
-@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
+@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy, ZeroTensorShardStrategy])
 def run_zero_state_dict(shard_strategy_class):
     test_models = ['repeated_computed_layers', 'resnet18']
     shard_strategy = shard_strategy_class()
