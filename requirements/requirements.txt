@@ -7,3 +7,4 @@ tensorboard
 packaging
 pre-commit
 rich
+click
