@@ -2,8 +2,9 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 import torch
 from colossalai.utils import get_current_device
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 from colossalai.utils.memory import colo_device_memory_capacity
+
+from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
 from colossalai.gemini.memory_tracer import MemStatsCollector
 from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER

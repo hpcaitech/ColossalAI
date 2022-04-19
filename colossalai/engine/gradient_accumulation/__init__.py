@@ -6,6 +6,11 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from ._gradient_accumulation import GradAccumDataloader, GradAccumOptimizer, GradAccumLrSchedulerByStep, GradAccumGradientHandler
 
+__all__ = [
+    'accumulate_gradient', 'GradAccumDataloader', 'GradAccumOptimizer', 'GradAccumLrSchedulerByStep',
+    'GradAccumGradientHandler'
+]
+
 
 def accumulate_gradient(model: nn.Module,
                         optimizer: Optimizer,
@@ -43,7 +48,3 @@ def accumulate_gradient(model: nn.Module,
         lr_scheduler = GradAccumLrSchedulerByStep(lr_scheduler, accumulate_size=accumulate_size)
 
     return optimizer, dataloader, gradient_handlers, lr_scheduler
-
-
-__all__ = ['accumulate_gradient', 'GradAccumDataloader', 'GradAccumOptimizer',
-           'GradAccumLrSchedulerByStep', 'GradAccumGradientHandler']

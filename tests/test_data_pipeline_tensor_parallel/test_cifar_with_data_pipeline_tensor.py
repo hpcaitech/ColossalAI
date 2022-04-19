@@ -14,7 +14,7 @@ from colossalai.nn import LinearWarmupLR
 from colossalai.nn.loss import CrossEntropyLoss
 from colossalai.trainer import Trainer, hooks
 from colossalai.utils import free_port, get_dataloader
-from colossalai.utils.gradient_accumulation import GradAccumLrSchedulerByStep
+from colossalai.engine.gradient_accumulation import GradAccumLrSchedulerByStep
 from colossalai.testing import rerun_if_address_is_in_use
 from model_zoo.vit import vit_tiny_patch4_32
 from torchvision import transforms
