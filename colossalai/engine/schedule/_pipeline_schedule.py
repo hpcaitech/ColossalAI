@@ -387,8 +387,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         self.num_model_chunks = num_model_chunks
 
     def pre_processing(self, engine):
-        # FIXME(jiaruifang) we shall not use ShardedModelV2 in pipeline mode, due to circular dependency.
-        if isinstance(model, ShardedModelV2):
+        if isinstance(engine.model[0], ShardedModelV2):
             self.dtype = torch.half
         elif isinstance(engine.model[0], NaiveAMPModel):
             self.dtype = torch.half
