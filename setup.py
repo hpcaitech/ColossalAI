@@ -213,6 +213,10 @@ setup(
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     install_requires=fetch_requirements('requirements/requirements.txt'),
+    entry_points='''
+        [console_scripts]
+        colossal=colossalai.cli.cli:cli
+    ''',
     python_requires='>=3.7',
     classifiers=[
         'Programming Language :: Python :: 3',
