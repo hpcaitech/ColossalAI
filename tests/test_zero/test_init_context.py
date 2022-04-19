@@ -15,14 +15,14 @@ from colossalai.gemini.memory_tracer.model_data_memtracer import \
     colo_model_mem_usage
 from colossalai.utils.memory import colo_device_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy, ZeroTensorShardStrategy)
+from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 from common import CONFIG
 
 
 @parameterize("init_device_type", ['cpu', 'cuda'])
-@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy, ZeroTensorShardStrategy])
+@parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
 def run_model_test(init_device_type, shard_strategy_class):
     logger = get_dist_logger("test_zero_init")
 
