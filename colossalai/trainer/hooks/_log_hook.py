@@ -14,7 +14,14 @@ from colossalai.logging import DistributedLogger
 from colossalai.utils import report_memory_usage, is_dp_rank_0, \
     is_tp_rank_0, is_no_pp_or_last_stage, MultiTimer
 from ._base_hook import BaseHook
-from ._commons_ import _format_number
+
+
+def _format_number(val, prec=5):
+    if isinstance(val, float):
+        return f'{val:.{prec}g}'
+    elif torch.is_tensor(val) and torch.is_floating_point(val):
+        return f'{val.item():.{prec}g}'
+    return val
 
 
 class LogByEpochHook(BaseHook):
@@ -28,7 +35,10 @@ class LogByEpochHook(BaseHook):
             depend on the hooks order in the hook list.
     """
 
-    def __init__(self, logger, interval: int = 1, priority: int = 1):
+    def __init__(self,
+                 logger,
+                 interval: int = 1,
+                 priority: int = 1):
         super().__init__(priority)
         self.logger = logger
         self._interval = interval
@@ -53,12 +63,14 @@ class LogMetricByStepHook(BaseHook):
     def after_train_iter(self, trainer, *args):
         trainer.states['step_metrics'] = dict()
         for metric_name, metric_calculator in trainer.states['metrics']['train'].items():
-            trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_value()
+            trainer.states['step_metrics'][metric_name.lower()] = \
+                f'{_format_number(metric_calculator.get_last_step_value())}'
 
     def after_test_iter(self, trainer, *args):
         trainer.states['step_metrics'] = dict()
         for metric_name, metric_calculator in trainer.states['metrics']['test'].items():
-            trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_value()
+            trainer.states['step_metrics'][metric_name.lower()] = \
+                f'{_format_number(metric_calculator.get_last_step_value())}'
 
 
 @HOOKS.register_module
@@ -73,14 +85,18 @@ class LogMetricByEpochHook(LogByEpochHook):
             depend on the hooks order in the hook list.
     """
 
-    def __init__(self, logger, interval: int = 1, priority: int = 10) -> None:
+    def __init__(self,
+                 logger,
+                 interval: int = 1,
+                 priority: int = 10) -> None:
         super().__init__(logger, interval, priority)
         self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0() and is_no_pp_or_last_stage()
 
     def _get_str(self, trainer, mode):
         msg = []
         for metric_name, metric_calculator in trainer.states['metrics'][mode].items():
-            msg.append(f'{metric_name} = {_format_number(metric_calculator.get_accumulated_value())}')
+            msg.append(
+                f'{metric_name} = {_format_number(metric_calculator.get_accumulated_value())}')
         msg = ' | '.join(msg)
         return msg
 
@@ -114,13 +130,12 @@ class TensorboardHook(BaseHook):
             depend on the hooks order in the hook list.
     """
 
-    def __init__(
-        self,
-        log_dir: str,
-        ranks: List = None,
-        parallel_mode: ParallelMode = ParallelMode.GLOBAL,
-        priority: int = 10,
-    ) -> None:
+    def __init__(self,
+                 log_dir: str,
+                 ranks: List = None,
+                 parallel_mode: ParallelMode = ParallelMode.GLOBAL,
+                 priority: int = 10,
+                 ) -> None:
         super().__init__(priority=priority)
         from torch.utils.tensorboard import SummaryWriter
 
@@ -265,14 +280,13 @@ class LogMemoryByEpochHook(LogByEpochHook):
         log_eval (bool, optional): Whether writes in evaluation, defaults to True.
     """
 
-    def __init__(
-            self,
-            logger: DistributedLogger,
-            interval: int = 1,
-            priority: int = 10,
-            log_eval: bool = True,
-            report_cpu: bool = False,    # no reference
-    ) -> None:
+    def __init__(self,
+                 logger: DistributedLogger,
+                 interval: int = 1,
+                 priority: int = 10,
+                 log_eval: bool = True,
+                 report_cpu: bool = False,  # no reference
+                 ) -> None:
         super().__init__(logger=logger, interval=interval, priority=priority)
         self._log_eval = log_eval
         self._is_rank_to_log = is_dp_rank_0() and is_tp_rank_0()

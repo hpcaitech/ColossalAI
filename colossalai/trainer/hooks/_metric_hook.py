@@ -13,7 +13,6 @@ from colossalai.registry import HOOKS
 from colossalai.utils import get_current_device, is_no_pp_or_last_stage
 
 from ._base_hook import BaseHook
-from ._commons_ import _format_number
 
 
 class Metric(ABC):
@@ -52,7 +51,7 @@ class Metric(ABC):
         pass
 
     @abstractmethod
-    def get_last_step_value(self) -> str:
+    def get_last_step_value(self):
         """Returns the metric value in the last iteration.
         """
         pass
@@ -121,10 +120,10 @@ class LossMetric(Metric):
         self.accum_loss.div_(self.count)
         return self.accum_loss.item()
 
-    def get_last_step_value(self) -> str:
+    def get_last_step_value(self):
         """Returns :attr:`last_step_loss`.
         """
-        return str(self.last_step_loss)
+        return self.last_step_loss
 
     @staticmethod
     def is_better(a, b):
@@ -149,8 +148,8 @@ class LearningRateMetric(Metric):
     def update(self, lr) -> None:
         self.lr = lr
 
-    def get_last_step_value(self) -> str:
-        return str(self.lr)
+    def get_last_step_value(self):
+        return self.lr
 
     def get_accumulated_value(self):
         return self.lr
@@ -204,10 +203,10 @@ class AccuracyMetric(Metric):
         self.accumulated_sum += self.last_step_sum
         self.accumulated_correct += self.last_step_correct
 
-    def get_last_step_value(self) -> str:
+    def get_last_step_value(self):
         self.last_step_sum = all_reduce(self.last_step_sum, ParallelMode.DATA)
         self.last_step_correct = all_reduce(self.last_step_correct, ParallelMode.DATA)
-        return str(_format_number((self.last_step_correct / self.last_step_sum).item()))
+        return (self.last_step_correct / self.last_step_sum).item()
 
     def get_accumulated_value(self):
         self.accumulated_sum = all_reduce(self.accumulated_sum, ParallelMode.DATA)
@@ -323,8 +322,7 @@ class ThroughputMetric(Metric):
     Args:
         epoch_only (bool): Whether the metric only read for the full epoch.
     """
-
-    def __init__(self, epoch_only: bool, ignored_steps: int = 0, tflop_per_step: int = 0):
+    def __init__(self, epoch_only: bool, ignored_steps: int = 0):
         super().__init__(epoch_only=epoch_only)
         self.ignored_steps = ignored_steps
         self.cur_steps = 0
@@ -332,7 +330,6 @@ class ThroughputMetric(Metric):
         self.accumulated_used_time = torch.zeros(1, device=get_current_device())
         self.last_step_num_samples = torch.zeros(1, device=get_current_device())
         self.last_step_used_time = torch.zeros(1, device=get_current_device())
-        self._tflop_per_step = tflop_per_step
 
     def reset(self) -> None:
         # self.cur_steps = 0
@@ -349,18 +346,13 @@ class ThroughputMetric(Metric):
             self.accumulated_num_samples += self.last_step_num_samples
             self.accumulated_used_time += self.last_step_used_time
 
-    def get_last_step_value(self) -> str:
+    def get_last_step_value(self):
         self.last_step_used_time = all_reduce(self.last_step_used_time, ParallelMode.DATA) / \
             gpc.get_world_size(ParallelMode.DATA)
         self.last_step_num_samples = all_reduce(self.last_step_num_samples, ParallelMode.DATA)
-        sample_per_sec = _format_number(self.last_step_num_samples / (self.last_step_used_time + 1e-12).item())
-        if self._tflop_per_step > 0:
-            tflops = _format_number(self._tflop_per_step / (self.last_step_used_time.item() + 1e-12))
-            return f"{sample_per_sec} sample_per_sec, {tflops} Tflops"
-        else:
-            return f"{sample_per_sec} sample_per_sec"
+        return (self.last_step_num_samples / (self.last_step_used_time + 1e-12)).item()
 
-    def get_accumulated_value(self) -> float:
+    def get_accumulated_value(self):
         self.accumulated_used_time = all_reduce(self.accumulated_used_time, ParallelMode.DATA) / \
             gpc.get_world_size(ParallelMode.DATA)
         self.accumulated_num_samples = all_reduce(self.accumulated_num_samples, ParallelMode.DATA)
@@ -381,18 +373,14 @@ class ThroughputHook(MetricHook):
             defaults to 10. If different hooks share same priority, the order of printing would
             depend on the hooks order in the hook list.
     """
-
-    def __init__(self, ignored_steps: int = 0, priority: int = 10, tflop_per_step: int = 0):
+    def __init__(self, ignored_steps: int = 0, priority: int = 10):
         super().__init__(priority)
         self.ignored_steps = ignored_steps
-        self._tflop_per_step = tflop_per_step
 
     def after_hook_is_attached(self, trainer):
         self._check_metric_states_initialization(trainer)
         if self._is_stage_to_compute:
-            self.metric = ThroughputMetric(epoch_only=True,
-                                           ignored_steps=self.ignored_steps,
-                                           tflop_per_step=self._tflop_per_step)
+            self.metric = ThroughputMetric(epoch_only=True, ignored_steps=self.ignored_steps)
 
             # register the metric
             trainer.states['metrics']['train']['Throughput'] = self.metric
@@ -404,8 +392,7 @@ class ThroughputHook(MetricHook):
 
     def after_train_iter(self, trainer, *args):
         if self._is_stage_to_compute:
-            self.metric.update(trainer.engine.schedule.batch_size,
-                               trainer._timer.get_timer('Train-step').get_elapsed_time())
+            self.metric.update(trainer.engine.schedule.batch_size, trainer._timer.get_timer('Train-step').get_elapsed_time())
 
     def before_test(self, trainer):
         if self._is_stage_to_compute:
@@ -413,5 +400,4 @@ class ThroughputHook(MetricHook):
 
     def after_test_iter(self, trainer, *args):
         if self._is_stage_to_compute:
-            self.metric.update(trainer.engine.schedule.batch_size,
-                               trainer._timer.get_timer('Test-step').get_elapsed_time())
+            self.metric.update(trainer.engine.schedule.batch_size, trainer._timer.get_timer('Test-step').get_elapsed_time())
