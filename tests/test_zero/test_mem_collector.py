@@ -8,7 +8,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity, colo_set_process_memory_fraction
 from colossalai.zero.init_ctx import ZeroInitContext
 from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.shard_utils import BucketTensorShardStrategy
+from colossalai.zero.shard_utils import ZeroTensorShardStrategy
 from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
 from functools import partial
@@ -35,7 +35,7 @@ def run_mem_collector_testing():
     fraction = (50 * 1024**2) / cuda_capacity
     # limit max memory to 50MB
     colo_set_process_memory_fraction(fraction)
-    shard_strategy = BucketTensorShardStrategy()
+    shard_strategy = ZeroTensorShardStrategy()
     with ZeroInitContext(target_device=get_current_device(), shard_strategy=shard_strategy, shard_param=True):
         model = MyTestModel()
 

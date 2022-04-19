@@ -135,6 +135,12 @@ if build_cuda_ext:
             })
 
     ext_modules.append(
+        cuda_ext_helper(name='colossal_zero_comm',
+                        sources=['zero_comm.cpp'],
+                        extra_cuda_flags=['-DUSE_C10D_NCCL'],
+                        extra_cxx_flags=['-DUSE_C10D_NCCL']))
+
+    ext_modules.append(
         cuda_ext_helper('colossal_C', [
             'colossal_C_frontend.cpp', 'multi_tensor_sgd_kernel.cu', 'multi_tensor_scale_kernel.cu',
             'multi_tensor_adam.cu', 'multi_tensor_l2norm_kernel.cu', 'multi_tensor_lamb.cu'

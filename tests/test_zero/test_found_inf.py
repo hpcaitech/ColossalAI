@@ -9,7 +9,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import BucketTensorShardStrategy
+from colossalai.zero.shard_utils import ZeroTensorShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
@@ -20,7 +20,7 @@ from common import CONFIG
 
 
 @parameterize("cpu_offload", [True, False])
-@parameterize("shard_strategy_class", [BucketTensorShardStrategy])
+@parameterize("shard_strategy_class", [ZeroTensorShardStrategy])
 @parameterize("gpu_margin_mem_ratio", [0.0, 0.7])
 def _run_test_found_inf(cpu_offload, shard_strategy_class, gpu_margin_mem_ratio):
     test_models = ['repeated_computed_layers']
