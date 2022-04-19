@@ -9,7 +9,7 @@ colossalai.utils
 
    colossalai.utils.data_sampler
    colossalai.utils.gradient_accumulation
-   colossalai.utils.memory_tracer
+   colossalai.gemini.memory_tracer
    colossalai.utils.memory_utils
    colossalai.utils.multi_tensor_apply
    colossalai.utils.profiler

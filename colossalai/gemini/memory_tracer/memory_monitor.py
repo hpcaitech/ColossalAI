@@ -5,7 +5,7 @@ import json
 
 import torch
 
-from colossalai.utils.memory import colo_device_memory_used
+from colossalai.utils import colo_device_memory_used
 from colossalai.utils import get_current_device
 
 
