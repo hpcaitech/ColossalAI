@@ -24,13 +24,15 @@ def _substitute_init_recursively(cls, func):
 class InsertPostInitMethodToModuleSubClasses(object):
 
     def __init__(self):
-        pass
+        self._old_default_dtype = None
 
     def __enter__(self):
         r"""
         Enter the context scope.
         """
 
+        self._old_default_dtype = torch.get_default_dtype()
+        torch.set_default_dtype(torch.half)
         def preprocess_after(f):
 
             @functools.wraps(f)
@@ -61,6 +63,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
 
+        torch.set_default_dtype(self._old_default_dtype)
         def _disable_class(cls):
             cls.__init__ = cls._old_init
 
@@ -239,9 +242,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
             self.model_numel_tensor += param.numel()
 
-            # convert parameters to half
-            param_half = half_fn(param)
-            param.data = param_half
+            assert param.dtype == torch.half
             if param.grad is not None:
                 grad_half = half_fn(param.grad)
                 param.grad.data = grad_half
