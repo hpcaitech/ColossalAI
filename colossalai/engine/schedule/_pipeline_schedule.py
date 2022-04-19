@@ -116,7 +116,7 @@ class PipelineSchedule(BaseSchedule):
     def pre_processing(self, engine):
         # TODO: remove this after testing new zero with pipeline parallelism
         model = engine.model
-        if isinstance(model, (NaiveAMPModel)) or isinstance(model, ShardedModelV2):
+        if isinstance(model, (NaiveAMPModel, ShardedModelV2)):
             self.dtype = torch.half
             model = model.model
         sig = inspect.signature(model.forward)
