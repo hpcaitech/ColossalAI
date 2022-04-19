@@ -275,9 +275,6 @@ def initialize(model: nn.Module,
                                               optimizer_config=optimizer_config)
 
         logger.info("Initializing ZeRO model and optimizer finished!", ranks=[0])
-        # FIXME() throw a warning if using zero with MP
-        if gpc.get_world_size(ParallelMode.MODEL) > 1:
-            logger.warning("ZeRO currently has not been tested with model parallelism.", ranks=[0])
     else:
         if isinstance(model, nn.Module):
             # first sync model across dp ranks
