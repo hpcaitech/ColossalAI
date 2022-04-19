@@ -127,7 +127,7 @@ class PipelineSchedule(BaseSchedule):
     def _call_engine(model, input_tensor, batch_data):
         if isinstance(model, NaiveAMPModel):
             sig = inspect.signature(model.model.forward)
-        elif isinstance(model, ShardedModelV2):
+        elif hasattr(model, 'colo_attr'):
             sig = inspect.signature(model.module.forward)
         else:
             sig = inspect.signature(model.forward)
