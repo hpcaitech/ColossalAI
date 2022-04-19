@@ -3,8 +3,8 @@ import colossalai
 import pytest
 import torch.multiprocessing as mp
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory_tracer import MemStatsCollector
-from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
+from colossalai.gemini.memory_tracer import MemStatsCollector
+from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_set_process_memory_fraction
 from colossalai.gemini import StatefulTensorMgr
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
