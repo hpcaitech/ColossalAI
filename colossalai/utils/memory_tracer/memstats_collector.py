@@ -1,7 +1,6 @@
-from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
-from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
+from colossalai.utils.memory_tracer.model_data_memtracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_device_memory_used
-
+from colossalai.utils.memory_tracer import SyncCudaMemoryMonitor
 import torch
 import time
 from typing import List
@@ -138,9 +137,6 @@ class MemStatsCollector:
 
         self._model_data_cpu_list = []
         self._overall_cpu_list = []
-
-        self._non_model_data_cpu_list = []
-        self._non_model_data_cuda_list = []
 
         self._start_flag = False
         self._step_idx = 0
