@@ -7,7 +7,8 @@ from .common import (clip_grad_norm_fp32, conditional_context, copy_tensor_paral
                      param_is_not_tensor_parallel_duplicate, print_rank_0, switch_virtual_pipeline_parallel_rank,
                      sync_model_param, disposable)
 from .data_sampler import DataParallelSampler, get_dataloader
-from .memory import report_memory_usage, colo_device_memory_used, colo_set_process_memory_fraction, colo_device_memory_capacity
+from .memory import (report_memory_usage, colo_device_memory_used, colo_set_process_memory_fraction,
+                     colo_device_memory_capacity, colo_set_cpu_memory_capacity, colo_get_cpu_memory_capacity)
 from .timer import MultiTimer, Timer
 from .tensor_detector import TensorDetector
 
@@ -19,5 +20,5 @@ __all__ = [
     'report_memory_usage', 'colo_device_memory_capacity', 'colo_device_memory_used', 'colo_set_process_memory_fraction',
     'Timer', 'MultiTimer', 'multi_tensor_applier', 'DataParallelSampler', 'get_dataloader',
     'switch_virtual_pipeline_parallel_rank', 'TensorDetector', 'load_checkpoint', 'save_checkpoint',
-    'ensure_path_exists', 'disposable'
+    'ensure_path_exists', 'disposable', 'colo_set_cpu_memory_capacity', 'colo_get_cpu_memory_capacity'
 ]
