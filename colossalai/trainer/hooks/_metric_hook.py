@@ -387,17 +387,19 @@ class ThroughputHook(MetricHook):
             depend on the hooks order in the hook list.
     """
 
-    def __init__(self, ignored_steps: int = 0, priority: int = 10, tflop_per_step: int = 0):
+    def __init__(self, ignored_steps: int = 0, priority: int = 10, tflop_per_step: int = 0, use_local=False):
         super().__init__(priority)
         self.ignored_steps = ignored_steps
         self._tflop_per_step = tflop_per_step
+        self._use_local = use_local
 
     def after_hook_is_attached(self, trainer):
         self._check_metric_states_initialization(trainer)
         if self._is_stage_to_compute:
             self.metric = ThroughputMetric(epoch_only=True,
                                            ignored_steps=self.ignored_steps,
-                                           tflop_per_step=self._tflop_per_step)
+                                           tflop_per_step=self._tflop_per_step,
+                                           use_local=self._use_local)
 
             # register the metric
             trainer.states['metrics']['train']['Throughput'] = self.metric
