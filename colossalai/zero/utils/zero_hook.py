@@ -2,6 +2,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+from colossalai.logging import get_dist_logger
 from colossalai.registry import OPHOOKS
 
 from colossalai.utils import get_current_device
@@ -27,6 +28,7 @@ class ZeroHook(BaseOpHook):
                  stateful_tensor_mgr: Optional[StatefulTensorMgr] = None,
                  process_group: Optional[dist.ProcessGroup] = None):
         super().__init__()
+        self.logger = get_dist_logger("ZeROHook")
         self.shard_strategy = shard_strategy
         self.process_group = process_group
 
@@ -112,4 +114,6 @@ class ZeroHook(BaseOpHook):
 
     def post_iter(self):
         if self._stateful_tensor_mgr:
+            self.logger.info(
+                f"CPU-GPU data moving this iteration {self._stateful_tensor_mgr.cpu_gpu_move_volume/1e9} GB", ranks=[0])
             self._stateful_tensor_mgr.reset()

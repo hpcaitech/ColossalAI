@@ -27,9 +27,12 @@ class CPUTensorPlacementPolicy(TensorPlacementPolicy):
     def __init__(self, mem_stats_collector: Optional[MemStatsCollector] = None) -> None:
         super().__init__(torch.device('cpu'), mem_stats_collector=mem_stats_collector)
 
-    def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> None:
+    def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> int:
+        volume = 0
         for t in hold_cuda_tensor_list:
             colo_model_data_tensor_move_inline(t, self.device)
+            volume += t.payload.numel() * t.payload.element_size()
+        return volume
 
 
 class CUDATensorPlacementPolicy(TensorPlacementPolicy):
@@ -38,8 +41,8 @@ class CUDATensorPlacementPolicy(TensorPlacementPolicy):
         assert torch.cuda.is_available(), 'Cannot use CUDATensorPlacementPolicy when CUDA is not available'
         super().__init__(get_current_device(), mem_stats_collector=mem_stats_collector)
 
-    def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> None:
-        pass
+    def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> int:
+        return 0
 
 
 class AutoTensorPlacementPolicy(TensorPlacementPolicy):
@@ -57,7 +60,24 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
                       warmup: bool = True,
                       compute_list: List[StatefulTensor] = [],
                       compute_idx: int = 0,
-                      **kwargs) -> None:
+                      **kwargs) -> int:
+        """
+        Evict tensors from CUDA device.
+
+        Args:
+            hold_cuda_tensor_list (List[StatefulTensor]): the list of tensor in state of HOLD-like
+            cuda_demand (int, optional): the volume of data needed on cuda device. Defaults to 0.
+            warmup (bool, optional): a flag indicates whether in the phase of warmup. Defaults to True.
+            compute_list (List[StatefulTensor], optional): TODO. Defaults to [].
+            compute_idx (int, optional): the idx of computing device. Defaults to 0.
+
+        Raises:
+            RuntimeError:
+
+        Returns:
+            int: the volume of memory that is evicted
+        """
+        volume = 0
         cuda_capacity = colo_device_memory_capacity(get_current_device())
         used_cuda_model_data = GLOBAL_MODEL_DATA_TRACER.cuda_usage
         if warmup:
@@ -87,10 +107,13 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
                     break
                 freed_cuda_model_data += colo_tensor_mem_usage(t)[0]
                 colo_model_data_tensor_move_inline(t, torch.device('cpu'))
+                volume += t.payload.numel() * t.payload.element_size()
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError(
                     f"Adjust layout failed! No enough CUDA memory! Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
                 )
+
+        return volume
 
 
 class TensorPlacementPolicyFactory:
