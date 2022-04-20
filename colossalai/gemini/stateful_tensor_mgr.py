@@ -28,6 +28,8 @@ class StatefulTensorMgr(object):
         self._compute_list: List[StatefulTensor] = []
         self._compute_idx: int = -1
 
+        self._cpu_gpu_move_volume = 0
+
     def register_stateful_param(self, param: ShardedParamV2) -> None:
         assert isinstance(param, ShardedParamV2)
         for t in param.get_payload_tensors():
@@ -56,20 +58,26 @@ class StatefulTensorMgr(object):
                     cuda_demand += colo_tensor_mem_usage(tensor.payload)[1]
             else:
                 raise RuntimeError
-        self._tensor_placement_policy.evict_tensors(hold_cuda_tensor_list,
-                                                    cuda_demand=cuda_demand,
-                                                    warmup=self._warmup,
-                                                    compute_list=self._compute_list,
-                                                    compute_idx=self._compute_idx)
+        self._cpu_gpu_move_volume += self._tensor_placement_policy.evict_tensors(hold_cuda_tensor_list,
+                                                                                 cuda_demand=cuda_demand,
+                                                                                 warmup=self._warmup,
+                                                                                 compute_list=self._compute_list,
+                                                                                 compute_idx=self._compute_idx)
         # move COMPUTE tensors to CUDA
         for t in move_to_cuda_tensor_list:
             colo_model_data_tensor_move_inline(t, get_current_device())
+            self._cpu_gpu_move_volume += t.payload.numel() * t.payload.element_size()
+
+    @property
+    def cpu_gpu_move_volume(self):
+        return self._cpu_gpu_move_volume
 
     def reset(self):
         """This function must be called when each iteration finishes
         """
         self._warmup = False
         self._compute_idx = -1
+        self._cpu_gpu_move_volume = 0
 
     def _trans_state(self, trans_state_func, stateful_tensor, state):
         trans_state_func(state)
