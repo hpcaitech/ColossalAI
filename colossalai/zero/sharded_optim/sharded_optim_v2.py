@@ -122,7 +122,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         self._register_master_weight()
         if self.gpu_margin_mem_ratio != 0.0 and not isinstance(sharded_model._tensor_placement_policy,
                                                                AutoTensorPlacementPolicy):
-            self._logger.warning(f'gpu_margin_mem_ratio is meaningless when tensor_placement_policy is not "auto"')
+            self._logger.warning(f'gpu_margin_mem_ratio is meaningless when tensor_placement_policy is not "auto"',
+                                 ranks=[0])
 
         if self._verbose:
             self._logger.debug(
