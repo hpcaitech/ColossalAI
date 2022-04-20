@@ -25,7 +25,7 @@ from colossalai.context import Config
     "Specify computing devices to NOT use during execution. Mutually exclusive with --include. Formatting is the same as --include."
 )
 @click.option("--num_nodes", type=int, default=-1, help="Total number of worker nodes to use.")
-@click.option("--nprocs_per_node", type=int, default=-1, help="Number of GPUs to use on each node.")
+@click.option("--nproc_per_node", type=int, default=-1, help="Number of GPUs to use on each node.")
 @click.option("--master_port",
               type=int,
               default=29500,
@@ -45,7 +45,7 @@ from colossalai.context import Config
               help="(optional) pass launcher specific arguments as a single quoted argument.")
 @click.argument("user_script", type=str)
 @click.argument('user_args', nargs=-1)
-def run(host: str, hostfile: str, num_nodes: int, nprocs_per_node: int, include: str, exclude: str, master_addr: str,
+def run(host: str, hostfile: str, num_nodes: int, nproc_per_node: int, include: str, exclude: str, master_addr: str,
         master_port: int, launcher: str, launcher_args: str, user_script: str, user_args: str):
     """
     To launch multiple processes on a single node or multiple nodes via command line.
@@ -66,5 +66,4 @@ def run(host: str, hostfile: str, num_nodes: int, nprocs_per_node: int, include:
     args_dict = locals()
     args = Config(args_dict)
     args.user_args = list(args.user_args)
-    # (lsg) TODO: fix this function
-    # launch_multi_processes(args)
+    launch_multi_processes(args)
