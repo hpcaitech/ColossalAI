@@ -11,6 +11,7 @@ from colossalai.logging import get_dist_logger
 from packaging import version
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
+_GLOBAL_CPU_MEM_CAPACITY = -1
 
 
 def _bytes_to_MB(val, decimal=2):
@@ -106,9 +107,8 @@ def colo_device_memory_capacity(device: torch.device) -> int:
     """
     assert isinstance(device, torch.device)
     if device.type == 'cpu':
-        mem_info = _get_cpu_memory_info()
         # In the context of 1-CPU-N-GPU, the memory capacity of the current process is 1/N overall CPU memory.
-        return mem_info.total / gpc.num_processes_on_current_node
+        return colo_get_cpu_memory_capacity() / gpc.num_processes_on_current_node
     if device.type == 'cuda':
         return torch.cuda.get_device_properties(get_current_device()).total_memory * _GLOBAL_CUDA_MEM_FRACTION
 
@@ -152,3 +152,27 @@ def colo_set_process_memory_fraction(ratio: float) -> None:
     global _GLOBAL_CUDA_MEM_FRACTION
     _GLOBAL_CUDA_MEM_FRACTION = ratio
     torch.cuda.set_per_process_memory_fraction(_GLOBAL_CUDA_MEM_FRACTION, get_current_device())
+
+
+def colo_set_cpu_memory_capacity(size: int) -> None:
+    global _GLOBAL_CPU_MEM_CAPACITY
+    mem_info = _get_cpu_memory_info()
+    total_size = mem_info.total
+    if size <= total_size:
+        _GLOBAL_CPU_MEM_CAPACITY = size
+    else:
+        _GLOBAL_CPU_MEM_CAPACITY = total_size
+
+
+def colo_get_cpu_memory_capacity() -> int:
+    """
+    Get the cpu memory capacity. We may not use all of it.
+    Returns:
+        int: _description_
+    """
+    global _GLOBAL_CPU_MEM_CAPACITY
+    if _GLOBAL_CPU_MEM_CAPACITY == -1:
+        mem_info = _get_cpu_memory_info()
+        return mem_info.total
+    else:
+        return _GLOBAL_CPU_MEM_CAPACITY
