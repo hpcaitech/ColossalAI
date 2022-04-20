@@ -5,7 +5,7 @@ from .api import (
 
 def stateful_op_impl(func):
     """
-    Provides a way for users to write their own custom sharded operator. This
+    Provides a way for users to write their own custom operator. This
     can be used to override existing StatefulTensorV2 operators or write a new
     one not supported by StatefulTensorV2. If the operator in question is covered
     by ``__torch_function__`` dispatch and has a StatefulTensorV2 as any of its
@@ -13,7 +13,7 @@ def stateful_op_impl(func):
 
     Example::
         >>> @custom_stateful_op(torch.nn.functional.linear)
-        >>> def my_custom_sharded_linear(types, args, kwargs, process_group):
+        >>> def my_custom_linear(types, args, kwargs, process_group):
         >>>   ....
         >>>
         >>> input = torch.rand(10, 32)
@@ -25,9 +25,6 @@ def stateful_op_impl(func):
     The types, args and kwargs parameters are the same parameters that are
     passed to ``__torch_function__`` dispatch API
     (https://pytorch.org/docs/stable/notes/extending.html#extending-torch).
-    There is an additional ``process_group`` parameter which is the
-    process_group used for the StatefulTensorV2 and can be used by
-    implementations for communications within a sharded implementation.
 
     Args:
         func(Callable): Torch function for which we want to provide a sharded
