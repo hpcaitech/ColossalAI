@@ -386,7 +386,7 @@ class ThroughputHook(MetricHook):
             defaults to 10. If different hooks share same priority, the order of printing would
             depend on the hooks order in the hook list.
         tflop_per_step(int, optional): tera floating point operations per step.
-        use_local (bool, optional): Whether to use local time.
+        use_local (bool, optional): Whether to use local time for throughput calculation.
     """
 
     def __init__(self, ignored_steps: int = 0, priority: int = 10, tflop_per_step: int = 0, use_local=False):

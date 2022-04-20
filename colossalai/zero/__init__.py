@@ -23,10 +23,10 @@ def convert_to_zero_v2(model: nn.Module, optimizer: torch.optim.Optimizer, model
 
     logger = get_dist_logger('convert_to_zero_v2')
 
-    logger.info(f'optimizer_config is {optimizer_config}')
+    logger.info(f'optimizer_config is {optimizer_config}', ranks=[0])
     if optimizer_config is None:
         optimizer_config = dict()
-    logger.info(f'model_config is {model_config}')
+    logger.info(f'model_config is {model_config}', ranks=[0])
     if model_config is None:
         model_config = dict()
 
