@@ -48,8 +48,8 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         super().__init__(None, mem_stats_collector=mem_stats_collector)
         # model data will use 1-self._warmup_non_model_data_ratio CUDA memory in warmup phase
         # TODO(ver217): make these args configurable
-        self._warmup_non_model_data_ratio: float = 0.8
-        self._steady_cuda_cap_ratio: float = 0.8
+        self._warmup_non_model_data_ratio: float = 0.2
+        self._steady_cuda_cap_ratio: float = 0.7
 
     def evict_tensors(self,
                       hold_cuda_tensor_list: List[StatefulTensor],
