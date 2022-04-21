@@ -187,8 +187,12 @@ def launch_multi_processes(args):
 
     runner = MultiNodeRunner()
     curr_path = os.path.abspath('.')
+<<<<<<< HEAD
     env = dict(**os.environ)
     runner.connect(host_info_list=active_device_pool, workdir=curr_path, env=env)
+=======
+    runner.connect(host_info_list=active_device_pool, workdir=curr_path)
+>>>>>>> 3133ab8... [cli] fixed multi-node job launching
 
     for node_id, hostinfo in enumerate(active_device_pool):
         cmd = get_launch_command(master_addr=args.master_addr,
