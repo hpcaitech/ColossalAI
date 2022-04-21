@@ -17,8 +17,8 @@ def stateful_op_impl(func):
         >>>   ....
         >>>
         >>> input = torch.rand(10, 32)
-        >>> weight = sharded_tensor.rand(32, 16)
-        >>> bias = torch.rand(16)
+        >>> weight = StatefulTensor(torch.rand(32, 16))
+        >>> bias = StatefulTensor(torch.rand(16))
         >>> # This will call 'my_custom_stateful_linear'
         >>> torch.nn.functional.linear(input, weight, bias)
 

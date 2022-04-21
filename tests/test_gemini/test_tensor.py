@@ -1,8 +1,10 @@
+from numpy import allclose
 import torch
 from torch import nn
 from colossalai.gemini.tensor.stateful_tensor import StatefulTensorV2
 # TODO(jiaruifang) auto import
 from colossalai.gemini.tensor._ops import *
+from colossalai.gemini.tensor.api import _STATEFUL_OPS
 
 
 def test_linear():
@@ -31,10 +33,21 @@ def test_linear():
     loss.backward()
 
 
-def test_stateful_tensor():
-    t = StatefulTensorV2(torch.empty(3, 5))
+def test_uniform():
+    t = StatefulTensorV2(torch.zeros(3, 5))
+    # print(_STATEFUL_OPS)
     torch.nn.init.uniform_(t)
+    print(t)
+
+
+def test_element_wise():
+    t_ref = torch.randn(3, 5)
+    t = StatefulTensorV2(t_ref.clone())
+    assert torch.mean(t) == torch.mean(t_ref)
+    assert allclose(torch.nn.functional.gelu(t), torch.nn.functional.gelu(t_ref))
+    assert allclose(torch.nn.functional.relu(t), torch.nn.functional.relu(t_ref))
 
 
 if __name__ == '__main__':
     test_linear()
+    test_element_wise()
