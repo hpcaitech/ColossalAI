@@ -5,7 +5,7 @@ from packaging import version
 
 
 @colo_op_impl(torch.nn.functional.linear)
-def stateful_linear(types, args, kwargs, pg):
+def colo_linear(types, args, kwargs, pg):
     """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.linear``.
     This method computes a linear.
     """

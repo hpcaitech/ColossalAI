@@ -4,7 +4,7 @@ from colossalai.tensor import ColoTensor
 
 
 @colo_op_impl(torch.mean)
-def stateful_mean(types, args=(), kwargs=None, pg=None):
+def colo_mean(types, args=(), kwargs=None, pg=None):
     stateful_tensor = args[0]
     return torch.mean(stateful_tensor.torch_tensor())
 

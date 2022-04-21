@@ -8,7 +8,7 @@ def validate_param(param, param_name):
 
 
 @colo_op_impl(torch.nn.init.uniform_)
-def stateful_uniform(types, args=(), kwargs=None, pg=None):
+def colo_uniform(types, args=(), kwargs=None, pg=None):
     r"""
     Fills the Tensor in sharded_tensor.local_shards with values drawn from the uniform
     distribution :math:`\mathcal{U}(a, b)`.
