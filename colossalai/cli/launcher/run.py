@@ -85,7 +85,7 @@ def get_launch_command(master_addr: str,
                        user_args: List[str],
                        node_rank: int = 0,
                        num_nodes: int = 1):
-    if version.parse(torch.__version__) < version.parse("1.10.0"):
+    if version.parse(torch.__version__) < version.parse("1.10"):
         cmd = [
             sys.executable, "-u", "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
             f"--master_addr={master_addr}", f"--master_port={master_port}", f"--nnodes={num_nodes}",
@@ -187,7 +187,14 @@ def launch_multi_processes(args):
 
     runner = MultiNodeRunner()
     curr_path = os.path.abspath('.')
-    env = dict(**os.environ)
+
+    # collect current path env
+    env = dict()
+    for k, v in os.environ.items():
+        if v and '\n' not in v:
+            env[k] = v
+
+    # establish remote connection
     runner.connect(host_info_list=active_device_pool, workdir=curr_path, env=env)
 
     for node_id, hostinfo in enumerate(active_device_pool):

@@ -6,8 +6,7 @@ import click
 
 
 def run_on_host(hostinfo, workdir, recv_conn, send_conn, env):
-    fab_conn = fabric.Connection(hostinfo.hostname, port=hostinfo.port, inline_ssh_env=True)
-    fab_conn.config.run.env = env
+    fab_conn = fabric.Connection(hostinfo.hostname, port=hostinfo.port)
     finish = False
     while not finish:
         cmds = recv_conn.recv()
@@ -20,7 +19,9 @@ def run_on_host(hostinfo, workdir, recv_conn, send_conn, env):
                     if hostinfo.is_local_host:
                         fab_conn.local(cmds, hide=False)
                     else:
-                        fab_conn.run(cmds, hide=False)
+                        env_msg = ' '.join([f'{k}=\"{v}\"' for k, v in env.items()])
+                        with fab_conn.prefix(f"export {env_msg}"):
+                            fab_conn.run(cmds, hide=False, env=env)
                     send_conn.send('success')
             except:
                 click.echo(f"Error: failed to run {cmds} on {hostinfo.hostname}")
