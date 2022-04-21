@@ -16,7 +16,6 @@ class StatefulTensorV2(object):
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         global _STATEFUL_OPS
-        print(_STATEFUL_OPS)
         if func in _STATEFUL_OPS:
             # Find StatefulTensorV2 instance to get process_group.
             for arg in args:
