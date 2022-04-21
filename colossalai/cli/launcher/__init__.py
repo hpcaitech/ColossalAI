@@ -34,19 +34,11 @@ from colossalai.context import Config
               type=str,
               default="127.0.0.1",
               help="(optional) IP address of node 0, will be inferred via 'hostname -I' if not specified.")
-@click.option(
-    "--launcher",
-    type=click.Choice(['torch', 'openmpi', 'slurm'], case_sensitive=False),
-    default="torch",
-    help="(optional) choose launcher backend for multi-node training. Options currently include PDSH, OpenMPI, SLURM.")
-@click.option("--launcher_args",
-              type=str,
-              default=None,
-              help="(optional) pass launcher specific arguments as a single quoted argument.")
+@click.option("--ssh-port", type=int, default=None, help="(optional) the port used for ssh connection")
 @click.argument("user_script", type=str)
 @click.argument('user_args', nargs=-1)
 def run(host: str, hostfile: str, num_nodes: int, nproc_per_node: int, include: str, exclude: str, master_addr: str,
-        master_port: int, launcher: str, launcher_args: str, user_script: str, user_args: str):
+        master_port: int, ssh_port: int, user_script: str, user_args: str):
     """
     To launch multiple processes on a single node or multiple nodes via command line.
 
@@ -63,6 +55,10 @@ def run(host: str, hostfile: str, num_nodes: int, nproc_per_node: int, include: 
         # run with hostfile
         colossalai run --hostfile <file_path> train.py
     """
+    if not user_script.endswith('.py'):
+        click.echo(f'Error: invalid Python file {user_script}. Did you use a wrong option? Try colossalai run --help')
+        exit()
+
     args_dict = locals()
     args = Config(args_dict)
     args.user_args = list(args.user_args)
