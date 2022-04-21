@@ -5,8 +5,9 @@ from multiprocessing import Pipe, Process
 import click
 
 
-def run_on_host(hostinfo, workdir, recv_conn, send_conn):
-    fab_conn = fabric.Connection(hostinfo.hostname, port=hostinfo.port)
+def run_on_host(hostinfo, workdir, recv_conn, send_conn, env):
+    fab_conn = fabric.Connection(hostinfo.hostname, port=hostinfo.port, inline_ssh_env=True)
+    fab_conn.config.run.env = env
     finish = False
     while not finish:
         cmds = recv_conn.recv()
@@ -38,11 +39,11 @@ class MultiNodeRunner:
     def add_export(self, key, var):
         self.exports[key.strip()] = var.strip()
 
-    def connect(self, host_info_list: HostInfoList, workdir: str):
+    def connect(self, host_info_list: HostInfoList, workdir: str, env: dict):
         for hostinfo in host_info_list:
             master_send_conn, worker_recv_conn = Pipe()
             master_recv_conn, worker_send_conn = Pipe()
-            p = Process(target=run_on_host, args=(hostinfo, workdir, worker_recv_conn, worker_send_conn))
+            p = Process(target=run_on_host, args=(hostinfo, workdir, worker_recv_conn, worker_send_conn, env))
             p.start()
             self.processes[hostinfo.hostname] = p
             self.master_recv_conns[hostinfo.hostname] = master_recv_conn

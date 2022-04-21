@@ -1,12 +1,9 @@
 import click
-import subprocess
-import collections
 import sys
 import os
 import torch
 from colossalai.context import Config
 from .multinode_runner import MultiNodeRunner
-from copy import deepcopy
 from .hostinfo import HostInfo, HostInfoList
 from typing import List
 from packaging import version
@@ -88,7 +85,7 @@ def get_launch_command(master_addr: str,
                        user_args: List[str],
                        node_rank: int = 0,
                        num_nodes: int = 1):
-    if version.parse(torch.__version__) < version.parse("1.10.0"):
+    if version.parse(torch.__version__) < version.parse("1.10"):
         cmd = [
             sys.executable, "-u", "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
             f"--master_addr={master_addr}", f"--master_port={master_port}", f"--nnodes={num_nodes}",
@@ -190,7 +187,8 @@ def launch_multi_processes(args):
 
     runner = MultiNodeRunner()
     curr_path = os.path.abspath('.')
-    runner.connect(host_info_list=active_device_pool, workdir=curr_path)
+    env = dict(**os.environ)
+    runner.connect(host_info_list=active_device_pool, workdir=curr_path, env=env)
 
     for node_id, hostinfo in enumerate(active_device_pool):
         cmd = get_launch_command(master_addr=args.master_addr,
