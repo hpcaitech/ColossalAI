@@ -26,10 +26,10 @@ def convert_parameter(module: torch.nn.Module, param_name: str):
 
     st = _convert_tensor(tensor)
 
-    # Replace param with ShardedTensor.
+    # Replace param with StatefulTensorV2.
 
     # Need to delete the attribute first since param_name might be
-    # torch.nn.Parameter and can't be replaced with ShardedTensor which is
+    # torch.nn.Parameter and can't be replaced with StatefulTensorV2 which is
     # not torch.nn.Parameter.
     delattr(module, param_name)
 

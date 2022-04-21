@@ -13,5 +13,5 @@ def _register_stateful_op(op, func):
         raise TypeError(f'Custom stateful op function expects signature: '
                         f'(types, args, kwargs, process_group), but received '
                         f'signature: {signature(func)}')
-    global _SHARDED_OPS
+    global _STATEFUL_OPS
     _STATEFUL_OPS[op] = func
