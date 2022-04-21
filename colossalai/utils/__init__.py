@@ -11,6 +11,7 @@ from .memory import (report_memory_usage, colo_device_memory_used, colo_set_proc
                      colo_device_memory_capacity, colo_set_cpu_memory_capacity, colo_get_cpu_memory_capacity)
 from .timer import MultiTimer, Timer
 from .tensor_detector import TensorDetector
+from .model.init_context import InsertPostInitMethodToModuleSubClasses
 
 __all__ = [
     'checkpoint', 'free_port', 'print_rank_0', 'sync_model_param', 'is_dp_rank_0', 'is_tp_rank_0',
@@ -20,5 +21,6 @@ __all__ = [
     'report_memory_usage', 'colo_device_memory_capacity', 'colo_device_memory_used', 'colo_set_process_memory_fraction',
     'Timer', 'MultiTimer', 'multi_tensor_applier', 'DataParallelSampler', 'get_dataloader',
     'switch_virtual_pipeline_parallel_rank', 'TensorDetector', 'load_checkpoint', 'save_checkpoint',
-    'ensure_path_exists', 'disposable', 'colo_set_cpu_memory_capacity', 'colo_get_cpu_memory_capacity'
+    'ensure_path_exists', 'disposable', 'colo_set_cpu_memory_capacity', 'colo_get_cpu_memory_capacity',
+    'InsertPostInitMethodToModuleSubClasses'
 ]
