@@ -18,11 +18,11 @@ def register_elementwise_op(op):
         as ``torch.nn.functional.gelu`` or ``torch.nn.functional.relu``.
         This method computes on either a normal tensor or a sharded tensor.
         """
-        input = args[0]
+        input_tensor = args[0]
         # Validate types
-        if not isinstance(input, StatefulTensorV2):
+        if not isinstance(input_tensor, StatefulTensorV2):
             raise TypeError("input needs to be a StatefulTensorV2")
-        return op(input.torch_tensor())
+        return op(input_tensor.torch_tensor())
 
 
 register_elementwise_op(torch.nn.functional.gelu)

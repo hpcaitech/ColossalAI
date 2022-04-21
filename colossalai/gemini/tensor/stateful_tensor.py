@@ -26,8 +26,6 @@ class StatefulTensorV2(object):
             for kwarg in kwargs.values():
                 if isinstance(kwarg, StatefulTensorV2):
                     return _STATEFUL_OPS[func](types, args, kwargs, None)
-            print('inside stateful tensor, found no valid args type')
-        else:
-            print(f'not find {func} in _STATEFUL_OPS')
+
         raise RuntimeError(f"torch function '{func.__name__}', with args: {args} and "
                            f"kwargs: {kwargs} not supported for StatefulTensorV2!")

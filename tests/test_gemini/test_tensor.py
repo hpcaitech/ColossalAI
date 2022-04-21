@@ -5,6 +5,7 @@ from colossalai.gemini.tensor.stateful_tensor import StatefulTensorV2
 # TODO(jiaruifang) auto import
 from colossalai.gemini.tensor._ops import *
 from colossalai.gemini.tensor.api import _STATEFUL_OPS
+from copy import deepcopy
 
 
 def test_linear():
@@ -12,10 +13,13 @@ def test_linear():
     out_dim = 5
 
     fc = torch.nn.Linear(in_dim, out_dim, bias=True)
+    fc_ref = deepcopy(fc)
 
-    sharded_weight = StatefulTensorV2(torch.randn(out_dim, in_dim, requires_grad=True))
-    bias = torch.randn(out_dim, requires_grad=True)
-    sharded_bias = StatefulTensorV2(bias)
+    input_ref = torch.randn(1, in_dim)
+    input = input_ref.clone()
+
+    sharded_weight = StatefulTensorV2(fc_ref.weight)
+    sharded_bias = StatefulTensorV2(fc_ref.bias)
 
     # replace the torch nn.Parameters with ShardedTensor
     delattr(fc, 'weight')
@@ -27,10 +31,16 @@ def test_linear():
     fc.bias.requires_grad = True
 
     # torch.nn.functional.linear(torch.randn(1, in_dim), sharded_weight, sharded_bias)
-    out = fc(torch.randn(1, in_dim))
-
+    out = fc(input)
     loss = out.sum()
     loss.backward()
+
+    out_ref = fc_ref(input_ref)
+    loss_ref = out_ref.sum()
+    loss_ref.backward()
+
+    assert (loss_ref == loss)
+    assert allclose(fc_ref.weight.grad, fc.weight.torch_tensor().grad)
 
 
 # The test case failed
@@ -51,4 +61,4 @@ def test_element_wise():
 
 if __name__ == '__main__':
     test_linear()
-    test_element_wise()
+    # test_element_wise()

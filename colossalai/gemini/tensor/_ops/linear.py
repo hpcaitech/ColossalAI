@@ -9,10 +9,7 @@ def stateful_linear(types, args, kwargs, pg):
     """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.linear``.
     This method computes a linear.
     """
-    print(f'inside sharded_linear {len(args)}')
-    print(f'inside sharded_linear kwargs {kwargs}')
-    # print(args)
-    input = args[0]
+    input_tensor = args[0]
     weight = args[1]
 
     if version.parse(torch.__version__) > version.parse("1.11.0"):
@@ -25,10 +22,8 @@ def stateful_linear(types, args, kwargs, pg):
         if isinstance(bias, StatefulTensorV2):
             bias = bias.torch_tensor()
 
-    print(bias)
-
     # Add communication logic before and after linear call.
     if isinstance(weight, StatefulTensorV2):
-        return torch.nn.functional.linear(input, weight.torch_tensor(), bias)
+        return torch.nn.functional.linear(input_tensor, weight.torch_tensor(), bias)
     else:
-        return torch.nn.functional.linear(input, weight, bias)
+        return torch.nn.functional.linear(inpinput_tensorut, weight, bias)
