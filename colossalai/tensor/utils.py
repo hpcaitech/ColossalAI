@@ -1,14 +1,10 @@
 import torch
-import torch.distributed as dist
-from torch.distributed import distributed_c10d
 
-from colossalai.gemini.tensor.stateful_tensor import StatefulTensorV2
+from colossalai.tensor.colo_tensor import ColoTensor
 
 
-def _convert_tensor(tensor: torch.Tensor) -> StatefulTensorV2:
-    if not tensor.is_contiguous():
-        raise ValueError('input tensor is not a contiguous Tensor')
-    return StatefulTensorV2(tensor)
+def _convert_tensor(tensor: torch.Tensor) -> ColoTensor:
+    return ColoTensor(tensor)
 
 
 def convert_parameter(module: torch.nn.Module, param_name: str):
@@ -26,10 +22,10 @@ def convert_parameter(module: torch.nn.Module, param_name: str):
 
     st = _convert_tensor(tensor)
 
-    # Replace param with StatefulTensorV2.
+    # Replace param with ColoTensor.
 
     # Need to delete the attribute first since param_name might be
-    # torch.nn.Parameter and can't be replaced with StatefulTensorV2 which is
+    # torch.nn.Parameter and can't be replaced with ColoTensor which is
     # not torch.nn.Parameter.
     delattr(module, param_name)
 
