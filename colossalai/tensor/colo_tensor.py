@@ -5,10 +5,10 @@ from typing import Tuple
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
-    1. It contains a torch.Tensor as attribute.
+    1. It contains a torch.Tensor as an attribute.
     2. It supports lazy init the tensor's payload.
-    3. It can hijack the torch functions which using ColoTensor as an args to our customized functions.
-    4. It supports distributing the tensor's payload to the shards. (TODO)
+    3. It can hijack the torch functions which using ColoTensors as args to our customized functions.
+    4. It supports distributing the tensor's payload to the shards among processes. (TODO)
     """
 
     def __new__(cls, *args, **kwargs):
