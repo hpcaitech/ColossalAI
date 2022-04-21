@@ -9,6 +9,7 @@ from .multinode_runner import MultiNodeRunner
 from copy import deepcopy
 from .hostinfo import HostInfo, HostInfoList
 from typing import List
+from packaging import version
 
 # Constants that define our syntax
 NODE_SEP = ','
@@ -87,7 +88,7 @@ def get_launch_command(master_addr: str,
                        user_args: List[str],
                        node_rank: int = 0,
                        num_nodes: int = 1):
-    if torch.__version__ < '1.10':
+    if version.parse(torch.__version__) < version.parse("1.10.0"):
         cmd = [
             sys.executable, "-u", "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
             f"--master_addr={master_addr}", f"--master_port={master_port}", f"--nnodes={num_nodes}",
