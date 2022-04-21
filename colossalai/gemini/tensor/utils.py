@@ -2,6 +2,7 @@ import torch
 import torch.distributed as dist
 from torch.distributed import distributed_c10d
 
+
 from colossalai.gemini.tensor.stateful_tensor import ColoTensor
 
 
@@ -9,6 +10,7 @@ def _convert_tensor(tensor: torch.Tensor) -> ColoTensor:
     if not tensor.is_contiguous():
         raise ValueError('input tensor is not a contiguous Tensor')
     return ColoTensor(tensor)
+
 
 
 def convert_parameter(module: torch.nn.Module, param_name: str):
@@ -31,6 +33,7 @@ def convert_parameter(module: torch.nn.Module, param_name: str):
     # Need to delete the attribute first since param_name might be
     # torch.nn.Parameter and can't be replaced with ColoTensor
     #  which is
+
     # not torch.nn.Parameter.
     delattr(module, param_name)
 
