@@ -2,7 +2,8 @@ from pathlib import Path
 from torch.autograd.profiler import profile
 from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwidth
 from typing import List
-
+import json
+from colossalai.core import global_context as gpc
 
 def _get_size(dtype: str):
     if dtype == "fp16":
@@ -104,8 +105,27 @@ class PcieProfiler(BaseProfiler):
 
         self.profiler = None
 
-    def to_tensorboard(self, writer):
-        writer.add_text(tag="Data Transmission", text_string=self.result_str("\n\n"))
+    def to_tensorboard(self, json_dir: Path):
+        data = {
+            "h2d_time": self.h2d_time,
+            "h2d_count": self.h2d_count,
+            "d2h_time": self.d2h_time,
+            "d2h_count": self.d2h_count,
+
+        }
+        events_list = []
+        for location, event in self.ops_record.items():
+            events_list.append({
+                "location": location.splitlines(),
+                "cuda_time": event.cuda_time,
+                "pcie_vol": event.pcie_vol,
+                "count": event.count
+            })
+        data["events"] = events_list
+        rank = gpc.get_global_rank()
+
+        with open(json_dir.joinpath(f"worker{rank}.pcie.json"), "w") as f:
+            json.dump(data, f)
 
     def to_file(self, filename: Path):
         with open(filename, "w") as f:
