@@ -63,6 +63,6 @@ class ColoTensor(object):
                 kwargs = {}
 
             kwargs = {
-                kwarg: kwargs[kwarg].torch_tensor() if isinstance(kwarg, ColoTensor) else kwarg for kwarg in kwargs
+                k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k,v in kwargs.items()
             }
             return func(*args, **kwargs)
