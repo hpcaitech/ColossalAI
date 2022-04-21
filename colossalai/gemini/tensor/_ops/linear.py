@@ -26,4 +26,4 @@ def stateful_linear(types, args, kwargs, pg):
     if isinstance(weight, StatefulTensorV2):
         return torch.nn.functional.linear(input_tensor, weight.torch_tensor(), bias)
     else:
-        return torch.nn.functional.linear(inpinput_tensorut, weight, bias)
+        return torch.nn.functional.linear(input_tensor, weight, bias)

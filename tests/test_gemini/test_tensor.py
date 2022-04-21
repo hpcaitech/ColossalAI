@@ -16,7 +16,7 @@ def test_linear():
     fc_ref = deepcopy(fc)
 
     input_ref = torch.randn(1, in_dim)
-    input = input_ref.clone()
+    input_tensor = input_ref.clone()
 
     sharded_weight = StatefulTensorV2(fc_ref.weight)
     sharded_bias = StatefulTensorV2(fc_ref.bias)
@@ -31,7 +31,7 @@ def test_linear():
     fc.bias.requires_grad = True
 
     # torch.nn.functional.linear(torch.randn(1, in_dim), sharded_weight, sharded_bias)
-    out = fc(input)
+    out = fc(input_tensor)
     loss = out.sum()
     loss.backward()
 
