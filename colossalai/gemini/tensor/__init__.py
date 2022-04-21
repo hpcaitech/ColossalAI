@@ -17,9 +17,9 @@ def stateful_op_impl(func):
         >>>   ....
         >>>
         >>> input = torch.rand(10, 32)
-        >>> weight = StatefulTensor(torch.rand(32, 16))
-        >>> bias = StatefulTensor(torch.rand(16))
-        >>> # This will call 'my_custom_stateful_linear'
+        >>> weight = StatefulTensorV2(torch.rand(32, 16))
+        >>> bias = StatefulTensorV2(torch.rand(16))
+        >>> # This will call `my_custom_linear` instead of the default.
         >>> torch.nn.functional.linear(input, weight, bias)
 
     The types, args and kwargs parameters are the same parameters that are
