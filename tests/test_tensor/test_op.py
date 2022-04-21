@@ -14,8 +14,8 @@ def test_linear():
     input_ref = torch.randn(1, in_dim)
     input_tensor = input_ref.clone()
 
-    sharded_weight = ColoTensor._init_from_torch_tensor(fc_ref.weight)
-    sharded_bias = ColoTensor._init_from_torch_tensor(fc_ref.bias)
+    sharded_weight = ColoTensor.init_from_torch_tensor(fc_ref.weight)
+    sharded_bias = ColoTensor.init_from_torch_tensor(fc_ref.bias)
 
     # replace the torch nn.Parameters with ShardedTensor
     delattr(fc, 'weight')
@@ -48,7 +48,7 @@ def test_linear():
 
 def test_element_wise():
     t_ref = torch.randn(3, 5)
-    t = ColoTensor._init_from_torch_tensor(t_ref.clone())
+    t = ColoTensor.init_from_torch_tensor(t_ref.clone())
     assert torch.mean(t) == torch.mean(t_ref)
     assert allclose(torch.nn.functional.gelu(t), torch.nn.functional.gelu(t_ref))
     assert allclose(torch.nn.functional.relu(t), torch.nn.functional.relu(t_ref))
@@ -57,7 +57,7 @@ def test_element_wise():
 # Test a function not wrapped by
 def test_no_wrap_op():
     t_ref = torch.randn(3, 5)
-    t = ColoTensor._init_from_torch_tensor(t_ref.clone())
+    t = ColoTensor.init_from_torch_tensor(t_ref.clone())
     assert torch.sum(t) == torch.sum(t_ref)
 
 
