@@ -67,5 +67,5 @@ def test_lazy_init_tensor():
     assert lazy_t.torch_tensor().numel() == 6
 
 if __name__ == '__main__':
-    test_no_wrap_op()
+    test_linear()
     # test_element_wise()
