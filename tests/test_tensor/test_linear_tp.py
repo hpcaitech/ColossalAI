@@ -17,6 +17,7 @@ from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 
 
+
 def run_linear_tp1d_row_test():
     in_dim = 4
     out_dim = 5
@@ -31,7 +32,7 @@ def run_linear_tp1d_row_test():
 
     # shard weight at begiin
     world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
-    sharded_weight = ColoTensor(in_dim / world_size, out_dim, shard_spec="1Drow")
+    sharded_weight = ColoTensor(out_dim, in_dim // world_size, shard_spec="1Drow")
     sharded_bias = ColoTensor.init_from_torch_tensor(fc_ref.bias)
 
     # replace the torch nn.Parameters with ShardedTensor

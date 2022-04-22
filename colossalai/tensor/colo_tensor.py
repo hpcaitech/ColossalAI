@@ -42,6 +42,10 @@ class ColoTensor(object):
     def grad(self):
         return self._torch_tensor.grad
 
+    @property
+    def size(self):
+        return self._size
+
     @staticmethod
     def init_from_torch_tensor(tensor: torch.Tensor, shard_spec: str = None) -> 'ColoTensor':
         colo_t = ColoTensor(*tensor.size(),
