@@ -217,7 +217,7 @@ setup(
         [console_scripts]
         colossalai=colossalai.cli:cli
     ''',
-    python_requires='>=3.7',
+    python_requires='>=3.6',
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: Apache Software License',
