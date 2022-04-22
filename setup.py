@@ -9,8 +9,7 @@ this_dir = os.path.dirname(os.path.abspath(__file__))
 build_cuda_ext = True
 ext_modules = []
 
-if '--no_cuda_ext' in sys.argv:
-    sys.argv.remove('--no_cuda_ext')
+if int(os.environ.get('NO_CUDA_EXT', '0')) == 1:
     build_cuda_ext = False
 
 
