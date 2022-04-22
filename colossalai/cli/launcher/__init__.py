@@ -38,7 +38,7 @@ from colossalai.context import Config
 @click.argument("user_script", type=str)
 @click.argument('user_args', nargs=-1)
 def run(host: str, hostfile: str, num_nodes: int, nproc_per_node: int, include: str, exclude: str, master_addr: str,
-        master_port: int, ssh_port: int, user_script: str, user_args: str):
+        master_port: int, ssh_port: int, user_script: str, user_args: str) -> None:
     """
     To launch multiple processes on a single node or multiple nodes via command line.
 
