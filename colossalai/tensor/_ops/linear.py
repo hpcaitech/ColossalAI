@@ -19,8 +19,9 @@ def colo_linear(types, args, kwargs, pg):
             bias = None
     else:
         bias = kwargs.get('bias', None)
-        if isinstance(bias, ColoTensor):
-            bias = bias.torch_tensor()
+    
+    if isinstance(bias, ColoTensor):
+        bias = bias.torch_tensor()
 
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):

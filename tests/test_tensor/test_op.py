@@ -3,7 +3,6 @@ import torch
 from colossalai.tensor import ColoTensor
 from copy import deepcopy
 
-
 def test_linear():
     in_dim = 4
     out_dim = 5
@@ -45,7 +44,6 @@ def test_linear():
 #     torch.nn.init.uniform_(t)
 #     print(t)
 
-
 def test_element_wise():
     t_ref = torch.randn(3, 5)
     t = ColoTensor.init_from_torch_tensor(t_ref.clone())
@@ -59,14 +57,18 @@ def test_no_wrap_op():
     t_ref = torch.randn(3, 5)
     t = ColoTensor.init_from_torch_tensor(t_ref.clone())
     assert torch.sum(t) == torch.sum(t_ref)
-
+    assert torch.sum(input=t) == torch.sum(input=t_ref)
 
 def test_lazy_init_tensor():
     lazy_t = ColoTensor(2, 3, dtype=torch.float32, requires_grad=True)
     assert lazy_t._torch_tensor.numel() == 0
     assert lazy_t.torch_tensor().numel() == 6
 
+def check_all():
+    test_linear()
+    test_element_wise()
+    test_no_wrap_op()
+    test_lazy_init_tensor()
 
 if __name__ == '__main__':
-    test_lazy_init_tensor()
-    # test_element_wise()
+    check_all()
