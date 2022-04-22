@@ -1,4 +1,3 @@
-from random import weibullvariate
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor.colo_tensor import ColoTensor
