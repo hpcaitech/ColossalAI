@@ -20,6 +20,7 @@ class ColoTensor(object):
             dtype=None,
             requires_grad=False,
             pin_memory=False,
+            device=None,
             torch_tensor=torch.empty(0),
             shard_spec: str = None,
     ):
@@ -27,6 +28,7 @@ class ColoTensor(object):
         self._dtype = dtype
         self._requires_grad = requires_grad
         self._pin_memory = pin_memory
+        self._device = device
         self._torch_tensor = torch_tensor
         self._shard_spec = shard_spec
 
@@ -46,14 +48,18 @@ class ColoTensor(object):
     def size(self):
         return self._size
 
+    def numel(self):
+        return sum(self._size)
+
     @staticmethod
-    def init_from_torch_tensor(tensor: torch.Tensor, shard_spec: str = None) -> 'ColoTensor':
+
+    def init_from_torch_tensor(tensor: torch.Tensor, save_payload=True) -> 'ColoTensor':
         colo_t = ColoTensor(*tensor.size(),
                             dtype=tensor.dtype,
                             requires_grad=tensor.requires_grad,
-                            pin_memory=tensor.pin_memory,
-                            torch_tensor=tensor,
-                            shard_spec=shard_spec)
+                            pin_memory=tensor.is_pinned(),
+                            device=tensor.device,
+                            torch_tensor=tensor if save_payload else torch.empty(0))
         return colo_t
 
     def del_torch_tensor(self) -> None:
@@ -61,12 +67,12 @@ class ColoTensor(object):
         self._torch_tensor = torch.empty(self._size)
 
     def torch_tensor(self) -> torch.Tensor:
-        if self._torch_tensor == None or self._torch_tensor.numel() == 0:
-            print(self._size, type(self._size))
+        if self._torch_tensor.numel() == 0:
             self._torch_tensor = torch.empty(*self._size,
                                              dtype=self._dtype,
+                                             pin_memory=self._pin_memory,
                                              requires_grad=self._requires_grad,
-                                             pin_memory=self._pin_memory)
+                                             device=self._device)
         return self._torch_tensor
 
     @classmethod
