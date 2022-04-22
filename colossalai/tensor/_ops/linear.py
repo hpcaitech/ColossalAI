@@ -19,18 +19,12 @@ def colo_linear(types, args, kwargs, pg):
             bias = None
     else:
         bias = kwargs.get('bias', None)
-
+    
     if isinstance(bias, ColoTensor):
         bias = bias.torch_tensor()
 
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):
-        if weight.shard_spec == None:
-            return torch.nn.functional.linear(input_tensor, weight.torch_tensor(), bias)
-        elif weight.shard_spec == '1Drow':
-            # TODO(jzy): implement 1Drow TP linear here.
-            raise NotImplementedError
-        else:
-            raise NotImplementedError
+        return torch.nn.functional.linear(input_tensor, weight.torch_tensor(), bias)
     else:
         return torch.nn.functional.linear(input_tensor, weight, bias)
