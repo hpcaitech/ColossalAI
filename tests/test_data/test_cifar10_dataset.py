@@ -10,23 +10,10 @@ from torch.utils.data import DataLoader
 
 from colossalai.builder import build_dataset, build_transform
 from colossalai.context import Config
+from torchvision.transforms import ToTensor
 
-TRAIN_DATA = dict(
-    dataset=dict(
-        type='CIFAR10',
-        root=Path(os.environ['DATA']),
-        train=True,
-        download=True
-    ),
-    dataloader=dict(batch_size=4, shuffle=True, num_workers=2),
-    transform_pipeline=[
-        dict(type='ToTensor'),
-        dict(type='Normalize',
-             mean=(0.5, 0.5, 0.5),
-             std=(0.5, 0.5, 0.5)
-             )
-    ]
-)
+TRAIN_DATA = dict(dataset=dict(type='CIFAR10', root=Path(os.environ['DATA']), train=True, download=True),
+                  dataloader=dict(batch_size=4, shuffle=True, num_workers=2))
 
 
 @pytest.mark.cpu
@@ -37,7 +24,7 @@ def test_cifar10_dataset():
     transform_cfg = config.transform_pipeline
 
     # build transform
-    transform_pipeline = [build_transform(cfg) for cfg in transform_cfg]
+    transform_pipeline = [ToTensor()]
     transform_pipeline = transforms.Compose(transform_pipeline)
     dataset_cfg['transform'] = transform_pipeline
 
