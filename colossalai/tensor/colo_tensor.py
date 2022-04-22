@@ -43,9 +43,10 @@ class ColoTensor(object):
                             torch_tensor=tensor if save_payload else torch.empty(0))
         return colo_t
 
-    def del_torch_tensor(self) -> None:
-        self._size = (0,)
-        self._torch_tensor = torch.empty(self._size)
+    def del_torch_tensor(self, save_shape=False) -> None:
+        if save_shape:
+            self._size = (0,)
+        self._torch_tensor = torch.empty((0,))
 
     def torch_tensor(self) -> torch.Tensor:
         if self._torch_tensor.numel() == 0:
