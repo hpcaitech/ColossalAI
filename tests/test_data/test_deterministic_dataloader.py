@@ -13,26 +13,24 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 
 import colossalai
-from colossalai.builder import build_dataset, build_transform
+from colossalai.builder import build_dataset
 from colossalai.context import ParallelMode, Config
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
+from torchvision import transforms
 
 CONFIG = Config(
     dict(
-        train_data=dict(dataset=dict(
-            type='CIFAR10',
-            root=Path(os.environ['DATA']),
-            train=True,
-            download=True,
+        train_data=dict(
+            dataset=dict(
+                type='CIFAR10',
+                root=Path(os.environ['DATA']),
+                train=True,
+                download=True,
+            ),
+            dataloader=dict(num_workers=2, batch_size=2, shuffle=True),
         ),
-                        dataloader=dict(num_workers=2, batch_size=2, shuffle=True),
-                        transform_pipeline=[
-                            dict(type='ToTensor'),
-                            dict(type='RandomCrop', size=32),
-                            dict(type='Normalize', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-                        ]),
         parallel=dict(
             pipeline=dict(size=1),
             tensor=dict(size=1, mode=None),
@@ -50,7 +48,7 @@ def run_data_sampler(rank, world_size, port):
     transform_cfg = gpc.config.train_data.transform_pipeline
 
     # build transform
-    transform_pipeline = [build_transform(cfg) for cfg in transform_cfg]
+    transform_pipeline = [transforms.ToTensor(), transforms.RandomCrop(size=32)]
     transform_pipeline = transforms.Compose(transform_pipeline)
     dataset_cfg['transform'] = transform_pipeline
 
