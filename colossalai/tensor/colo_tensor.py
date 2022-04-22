@@ -1,6 +1,6 @@
 import torch
 from .op_wrapper import _COLOSSAL_OPS
-from typing import Tuple, Optional
+from typing import Tuple
 
 
 class ColoTensor(object):
@@ -21,35 +21,20 @@ class ColoTensor(object):
             requires_grad=False,
             pin_memory=False,
             torch_tensor=torch.empty(0),
-            shard_spec: str = None,
     ):
         self._size = size
         self._dtype = dtype
         self._requires_grad = requires_grad
         self._pin_memory = pin_memory
         self._torch_tensor = torch_tensor
-        self._shard_spec = shard_spec
-
-    @property
-    def shard_spec(self) -> Optional[str]:
-        return self._shard_spec
-
-    @property
-    def data(self):
-        return self._torch_tensor.data
-
-    @property
-    def grad(self):
-        return self._torch_tensor.grad
 
     @staticmethod
-    def init_from_torch_tensor(tensor: torch.Tensor, shard_spec: str = None) -> 'ColoTensor':
+    def init_from_torch_tensor(tensor: torch.Tensor):
         colo_t = ColoTensor(*tensor.size(),
                             dtype=tensor.dtype,
                             requires_grad=tensor.requires_grad,
                             pin_memory=tensor.pin_memory,
-                            torch_tensor=tensor,
-                            shard_spec=shard_spec)
+                            torch_tensor=tensor)
         return colo_t
 
     def del_torch_tensor(self) -> None:
@@ -82,5 +67,7 @@ class ColoTensor(object):
             if kwargs is None:
                 kwargs = {}
 
-            kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
+            kwargs = {
+                k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k,v in kwargs.items()
+            }
             return func(*args, **kwargs)
