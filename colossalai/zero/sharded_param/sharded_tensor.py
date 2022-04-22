@@ -20,8 +20,8 @@ class ShardedTensor(StatefulTensor):
 
     @property
     def dtype(self) -> torch.dtype:
-        assert self.torch_tensor().dtype == self._origin_dtype
-        return self.torch_tensor().dtype
+        assert self._payload.dtype == self._origin_dtype
+        return self._payload.dtype
 
     @property
     def origin_numel(self) -> int:
