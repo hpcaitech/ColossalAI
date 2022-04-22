@@ -11,7 +11,7 @@ from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardS
 from colossalai.zero.sharded_param import ShardedTensor
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
 from tests.test_zero.common import CONFIG, allclose
-from colossalai.zero.sharded_param.tensorful_state import StatefulTensor
+from colossalai.gemini.stateful_tensor import StatefulTensor
 
 
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])

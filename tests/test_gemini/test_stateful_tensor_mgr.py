@@ -6,9 +6,8 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.gemini.memory_tracer import MemStatsCollector
 from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_set_process_memory_fraction
-from colossalai.gemini import StatefulTensorMgr
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from colossalai.zero.sharded_param.tensorful_state import TensorState
+from colossalai.gemini.stateful_tensor import TensorState
 from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
 from torch.nn.parameter import Parameter

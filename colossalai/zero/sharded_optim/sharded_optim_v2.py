@@ -12,15 +12,15 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.gemini.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
-from colossalai.zero.sharded_param.tensor_utils import (colo_model_data_tensor_move_inline, colo_model_tensor_clone,
-                                                        colo_tensor_mem_usage)
+from colossalai.gemini.tensor_utils import (colo_model_data_tensor_move_inline, colo_model_tensor_clone,
+                                            colo_tensor_mem_usage)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
-from colossalai.zero.sharded_param.tensorful_state import (StatefulTensor, TensorState)
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
+from colossalai.gemini.stateful_tensor import (StatefulTensor, TensorState)
 from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
@@ -253,7 +253,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             for p in group['params']:
                 # p.colo_attr.sharded_data_tensor stores grad now
                 # we have to recover fp16 param
-                reuse_fp16_shard = p.colo_attr.saved_grad.data_ptr() == p.colo_attr.sharded_data_tensor.data_ptr()
+                reuse_fp16_shard = (p.colo_attr.sharded_data_tensor.payload_size == 0)
                 if recover_data and reuse_fp16_shard:
                     self._copy_master_param_to_param_fp16(p)
                 else:
@@ -332,12 +332,23 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def _copy_master_param_to_param_fp16(self, p):
         # flush gradient
-        p.colo_attr.saved_grad.set_null()
+        if p.colo_attr.sharded_data_tensor.payload_size == 0:
+            # here reuse_fp16_shard is True
+            # in order to use copy below, we should give sharded data tensor a payload
+            p.colo_attr.sharded_data_tensor.payload_relay(p.colo_attr.saved_grad)
+        else:
+            p.colo_attr.saved_grad.set_null()
+
+        p.data = self.master_params[p].payload
+
+        # we need to allocate new memory for keep_not_shard paramters
+        # in order to use copy, otherwise, the sizes of tensor is not compatible
+        if p.colo_attr.data_payload.numel() != p.data.numel():
+            p.colo_attr.data_payload_reset(
+                torch.empty(p.data.shape, dtype=p.colo_attr.data_payload.dtype, device=p.colo_attr.data_payload.device))
 
         # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-        p.data = self.master_params[p].payload
-        p.colo_attr.reset_data_payload(
-            colo_model_tensor_clone(p.half().detach(), p.colo_attr.sharded_data_tensor.device))
+        p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
         p.colo_attr.set_data_none()
 
         if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:

@@ -2,9 +2,8 @@ import functools
 import torch
 import types
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
+from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
+from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
 from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicy
 from typing import List
 from colossalai.logging import get_dist_logger
@@ -30,7 +29,8 @@ class StatefulTensorMgr(object):
 
         self._cpu_gpu_move_volume = 0
 
-    def register_stateful_param(self, param: ShardedParamV2) -> None:
+    def register_stateful_param(self, param) -> None:
+        from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
         assert isinstance(param, ShardedParamV2)
         for t in param.get_payload_tensors():
             assert isinstance(t, StatefulTensor)
