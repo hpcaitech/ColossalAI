@@ -60,8 +60,8 @@ def test_no_wrap_op():
     assert torch.sum(input=t) == torch.sum(input=t_ref)
 
 def test_lazy_init_tensor():
-    lazy_t = ColoTensor((2, 3), dtype=torch.float32, requires_grad=True)
-    assert lazy_t._torch_tensor == None
+    lazy_t = ColoTensor(2, 3, dtype=torch.float32, requires_grad=True)
+    assert lazy_t._torch_tensor.numel() == 0
     assert lazy_t.torch_tensor().numel() == 6
 
 def check_all():
