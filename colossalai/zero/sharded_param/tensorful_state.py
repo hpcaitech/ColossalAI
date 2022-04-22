@@ -25,7 +25,7 @@ class StatefulTensor(ColoTensor):
             super().__init__(tensor.size(), dtype=tensor.dtype, requires_grad=tensor.requires_grad, \
                 pin_memory=tensor.pin_memory, torch_tensor=tensor)
         else:
-            super().__init__((0))
+            super().__init__(0)
 
         self._state = state
         if self._state == TensorState.FREE:
