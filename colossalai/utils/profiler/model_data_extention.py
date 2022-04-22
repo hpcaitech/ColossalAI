@@ -27,13 +27,13 @@ def generic_instant_event(name, pid, tid, timestamp, args):
 class ModelDataEvent:
     EVENT_NAME = '[modelData]'
 
-    def __init__(self, timestamp: int, device_type: DeviceType, bytes: int) -> None:
+    def __init__(self, timestamp: int, device_type: DeviceType, bytes_: int) -> None:
         self.pid = os.getpid()
         self.tid = threading.get_ident()
         self.timestamp = timestamp
         self.device_type = device_type
         self.device_id = torch.cuda.current_device() if device_type == DeviceType.CUDA else -1
-        self.bytes = bytes
+        self.bytes = bytes_
 
     def state_dict(self):
         return generic_instant_event(ModelDataEvent.EVENT_NAME, self.pid, self.tid, self.timestamp, {
@@ -82,11 +82,11 @@ class ModelDataTracerHook(BaseOpHook):
         if self._enable:
             self.tracer.sample()
 
-    def pre_bwd_exec(self, module: torch.nn.Module, input, output):
+    def pre_bwd_exec(self, module: torch.nn.Module, input_, output):
         if self._enable:
             self.tracer.sample()
 
-    def post_bwd_exec(self, module: torch.nn.Module, input):
+    def post_bwd_exec(self, module: torch.nn.Module, input_):
         if self._enable:
             self.tracer.sample()
 
