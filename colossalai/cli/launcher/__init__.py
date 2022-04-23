@@ -53,17 +53,23 @@ def run(host: str, hostfile: str, num_nodes: int, nproc_per_node: int, include: 
     To launch multiple processes on a single node or multiple nodes via command line.
 
     Usage::
-        # run on the current node with all available GPUs
-        colossalai run train.py
+        # run with 4 GPUs on the current node use default port 29500
+        colossalai run --nprocs_per_node 4 train.py
 
-        # run with only 2 GPUs on the current node
-        colossalai run --nprocs_per_node 2 train.py
+        # run with 2 GPUs on the current node at port 29550
+        colossalai run --nprocs_per_node 4 --master_port 29550 train.py
 
         # run on two nodes
-        colossalai run --host <host1>,<host2> train.py
+        colossalai run --host <host1>,<host2> --master_addr host1  --nprocs_per_node 4 train.py
 
         # run with hostfile
-        colossalai run --hostfile <file_path> train.py
+        colossalai run --hostfile <file_path> --master_addr <host>  --nprocs_per_node 4 train.py
+
+        # run with hostfile with only included hosts
+        colossalai run --hostfile <file_path> --master_addr host1 --include host1,host2  --nprocs_per_node 4 train.py
+
+        # run with hostfile excluding the hosts selected
+        colossalai run --hostfile <file_path> --master_addr host1 --exclude host2  --nprocs_per_node 4 train.py
     """
     if not user_script.endswith('.py'):
         click.echo(f'Error: invalid Python file {user_script}. Did you use a wrong option? Try colossalai run --help')
