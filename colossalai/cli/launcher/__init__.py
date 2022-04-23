@@ -15,16 +15,19 @@ from colossalai.context import Config
     type=str,
     default=None,
     help=
-    "Specify computing devices to use during execution. String format is NODE_SPEC@NODE_SPEC where NODE_SPEC=<worker-name>:<list-of-slots>"
-)
+    "Specify computing devices to use during execution. String format is NODE_SPEC@NODE_SPEC where NODE_SPEC=<worker-name>:<list-of-slots>,"
+    " only effective when used with --hostfile.")
 @click.option(
     "--exclude",
     type=str,
     default=None,
     help=
-    "Specify computing devices to NOT use during execution. Mutually exclusive with --include. Formatting is the same as --include."
-)
-@click.option("--num_nodes", type=int, default=-1, help="Total number of worker nodes to use.")
+    "Specify computing devices to NOT use during execution. Mutually exclusive with --include. Formatting is the same as --includ,"
+    " only effective when used with --hostfile.")
+@click.option("--num_nodes",
+              type=int,
+              default=-1,
+              help="Total number of worker nodes to use, only effective when used with --hostfile.")
 @click.option("--nproc_per_node", type=int, default=-1, help="Number of GPUs to use on each node.")
 @click.option("--master_port",
               type=int,

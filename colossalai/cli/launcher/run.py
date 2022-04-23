@@ -151,9 +151,11 @@ def get_launch_command(
         extra_launch_args = dict()
 
     torch_version = version.parse(torch.__version__)
-    if torch_version < version.parse("1.9"):
+    assert torch_version.major == 1
+
+    if torch_version.minor < 9:
         cmd = [
-            sys.executable, "-u", "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
+            sys.executable, "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
             f"--master_addr={master_addr}", f"--master_port={master_port}", f"--nnodes={num_nodes}",
             f"--node_rank={node_rank}"
         ]
@@ -169,7 +171,7 @@ def get_launch_command(
                 value = extra_launch_args.pop(key)
                 default_torchrun_rdzv_args[key] = value
 
-        if torch_version < version.parse("1.10"):
+        if torch_version.minor < 10:
             cmd = [
                 sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc_per_node}",
                 f"--nnodes={num_nodes}", f"--node_rank={node_rank}"
