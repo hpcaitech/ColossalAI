@@ -8,4 +8,3 @@ from .moe import *
 from .utils import *
 from .vanilla import *
 from .wrapper import *
-from .layer_spec import *

@@ -1,33 +1,11 @@
 import torch
 import functools
-from colossalai.zero.init_ctx.init_context import _substitute_init_recursively, InsertPostInitMethodToModuleSubClasses
+from colossalai.utils.model.utils import _substitute_init_recursively, InsertPostInitMethodToModuleSubClasses, call_to_str
 from colossalai.builder.pipeline import partition_uniform, partition_balanced
 from colossalai.core import global_context as gpc
 
 
-def call_to_str(base, *args, **kwargs):
-    """Construct a string representation of a call.
-
-    Args:
-        base (str): name of the call
-        args (tuple, optional): args to ``base``
-        kwargs (dict, optional): kwargs supplied to ``base``
-
-    Returns:
-        str: A string representation of base(*args, **kwargs)
-    """
-    name = f'{base}('
-    if args:
-        name += ', '.join(repr(arg) for arg in args)
-        if kwargs:
-            name += ', '
-    if kwargs:
-        name += ', '.join(f'{key}={repr(arg)}' for key, arg in kwargs.items())
-    name += ')'
-    return name
-
-
-class LayerSpecContext(InsertPostInitMethodToModuleSubClasses):
+class Pipelinable(InsertPostInitMethodToModuleSubClasses):
 
     def __init__(self):
         super().__init__()
