@@ -5,7 +5,7 @@ from colossalai.builder.pipeline import partition_uniform, partition_balanced
 from colossalai.core import global_context as gpc
 
 
-class Pipelinable(InsertPostInitMethodToModuleSubClasses):
+class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
 
     def __init__(self):
         super().__init__()

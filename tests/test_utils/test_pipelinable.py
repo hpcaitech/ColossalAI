@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.utils.model.pipelinable import Pipelinable
+from colossalai.utils.model.pipelinable import PipelinableContext
 
 from functools import partial
 from colossalai.utils import free_port
@@ -33,7 +33,7 @@ class MLP(torch.nn.Module):
 
 
 def run_pipelinable(rank):
-    pipelinable = Pipelinable()
+    pipelinable = PipelinableContext()
     with pipelinable:
         model = MLP()
 
