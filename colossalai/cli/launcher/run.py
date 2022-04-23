@@ -107,8 +107,9 @@ def get_launch_command(master_addr: str,
                        nproc_per_node: int,
                        user_script: str,
                        user_args: List[str],
-                       node_rank: int = 0,
-                       num_nodes: int = 1) -> str:
+                       node_rank: int,
+                       num_nodes: int,
+                       extra_launch_args: str = None) -> str:
     """
     Generate a command for distributed training.
 
@@ -124,6 +125,12 @@ def get_launch_command(master_addr: str,
     Returns:
         cmd (str): the command the start distributed training
     """
+    if extra_launch_args:
+        extra_launch_args = extra_launch_args.split(',')
+        extra_launch_args = [f'--{arg}' for arg in extra_launch_args]
+    else:
+        extra_launch_args = []
+
     if version.parse(torch.__version__) < version.parse("1.10"):
         cmd = [
             sys.executable, "-u", "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
@@ -136,7 +143,7 @@ def get_launch_command(master_addr: str,
             f"--master_port={master_port}", f"--nnodes={num_nodes}", f"--node_rank={node_rank}"
         ]
 
-    cmd += [user_script] + user_args
+    cmd += extra_launch_args + [user_script] + user_args
     cmd = ' '.join(cmd)
     return cmd
 
@@ -225,7 +232,8 @@ def launch_multi_processes(args: Config) -> None:
                                  user_script=args.user_script,
                                  user_args=args.user_args,
                                  node_rank=node_id,
-                                 num_nodes=len(active_device_pool))
+                                 num_nodes=len(active_device_pool),
+                                 extra_launch_args=args.extra_launch_args)
         runner.send(hostinfo=hostinfo, cmd=cmd)
 
     runner.recv_from_all()

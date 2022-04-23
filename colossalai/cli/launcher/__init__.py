@@ -34,11 +34,18 @@ from colossalai.context import Config
               type=str,
               default="127.0.0.1",
               help="(optional) IP address of node 0, will be inferred via 'hostname -I' if not specified.")
+@click.option(
+    "--extra_launch_args",
+    type=str,
+    default=None,
+    help=
+    "Set additional torch distributed launcher arguments such as --standalone. The format is --extra_launch_args arg1=1,arg2=2. "
+    "This will be converted to --arg1=1 --arg2=2 during execution")
 @click.option("--ssh-port", type=int, default=None, help="(optional) the port used for ssh connection")
 @click.argument("user_script", type=str)
 @click.argument('user_args', nargs=-1)
 def run(host: str, hostfile: str, num_nodes: int, nproc_per_node: int, include: str, exclude: str, master_addr: str,
-        master_port: int, ssh_port: int, user_script: str, user_args: str) -> None:
+        master_port: int, extra_launch_args: str, ssh_port: int, user_script: str, user_args: str) -> None:
     """
     To launch multiple processes on a single node or multiple nodes via command line.
 
