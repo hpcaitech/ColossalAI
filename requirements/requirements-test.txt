@@ -1,5 +1,3 @@
 pytest
-rpyc
-matplotlib
-tensorboard
+torchvision
 transformers
