@@ -102,14 +102,16 @@ def parse_device_filter(device_pool: HostInfoList, include_str=None, exclude_str
     return filtered_hosts
 
 
-def get_launch_command(master_addr: str,
-                       master_port: int,
-                       nproc_per_node: int,
-                       user_script: str,
-                       user_args: List[str],
-                       node_rank: int,
-                       num_nodes: int,
-                       extra_launch_args: str = None) -> str:
+def get_launch_command(
+    master_addr: str,
+    master_port: int,
+    nproc_per_node: int,
+    user_script: str,
+    user_args: List[str],
+    node_rank: int,
+    num_nodes: int,
+    extra_launch_args: str = None,
+) -> str:
     """
     Generate a command for distributed training.
 
@@ -125,25 +127,60 @@ def get_launch_command(master_addr: str,
     Returns:
         cmd (str): the command the start distributed training
     """
-    if extra_launch_args:
-        extra_launch_args = extra_launch_args.split(',')
-        extra_launch_args = [f'--{arg}' for arg in extra_launch_args]
-    else:
-        extra_launch_args = []
 
-    if version.parse(torch.__version__) < version.parse("1.10"):
+    def _arg_dict_to_list(arg_dict):
+        ret = []
+
+        for k, v in arg_dict.items():
+            if v:
+                ret.append(f'--{k}={v}')
+            else:
+                ret.append(f'--{k}')
+        return ret
+
+    if extra_launch_args:
+        extra_launch_args_dict = dict()
+        for arg in extra_launch_args.split(','):
+            if '=' in arg:
+                k, v = arg.split('=')
+                extra_launch_args_dict[k] = v
+            else:
+                extra_launch_args_dict[arg] = None
+        extra_launch_args = extra_launch_args_dict
+    else:
+        extra_launch_args = dict()
+
+    torch_version = version.parse(torch.__version__)
+    if torch_version < version.parse("1.9"):
         cmd = [
             sys.executable, "-u", "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
             f"--master_addr={master_addr}", f"--master_port={master_port}", f"--nnodes={num_nodes}",
             f"--node_rank={node_rank}"
         ]
     else:
-        cmd = [
-            "torchrun", f"--nproc_per_node={nproc_per_node}", f"--master_addr={master_addr}",
-            f"--master_port={master_port}", f"--nnodes={num_nodes}", f"--node_rank={node_rank}"
-        ]
+        # extra launch args for torch distributed launcher with torch >= 1.9
+        default_torchrun_rdzv_args = dict(rdzv_backend="c10d",
+                                          rdzv_endpoint=f"{master_addr}:{master_port}",
+                                          rdzv_id="colossalai-default-job")
 
-    cmd += extra_launch_args + [user_script] + user_args
+        # update rdzv arguments
+        for key in default_torchrun_rdzv_args.keys():
+            if key in extra_launch_args:
+                value = extra_launch_args.pop(key)
+                default_torchrun_rdzv_args[key] = value
+
+        if torch_version < version.parse("1.10"):
+            cmd = [
+                sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc_per_node}",
+                f"--nnodes={num_nodes}", f"--node_rank={node_rank}"
+            ]
+        else:
+            cmd = [
+                "torchrun", f"--nproc_per_node={nproc_per_node}", f"--nnodes={num_nodes}", f"--node_rank={node_rank}"
+            ]
+        cmd += _arg_dict_to_list(default_torchrun_rdzv_args)
+
+    cmd += _arg_dict_to_list(extra_launch_args) + [user_script] + user_args
     cmd = ' '.join(cmd)
     return cmd
 
