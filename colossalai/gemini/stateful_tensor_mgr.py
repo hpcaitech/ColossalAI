@@ -42,7 +42,7 @@ class StatefulTensorMgr(object):
         by mem_stats_collector, which should belongs to a Sharded Model.
         """
         # find stateful tensor in state COMPUTE
-        cuda_demand = 0
+        cuda_demand = StatefulTensor.GST_MGR.state_mem['cpu'][TensorState.COMPUTE]
         move_to_cuda_tensor_list = []
         hold_cuda_tensor_list = []
         for tensor in self._stateful_tensor_list:
@@ -55,7 +55,6 @@ class StatefulTensorMgr(object):
             elif tensor.device.type == 'cpu':
                 if tensor.state == TensorState.COMPUTE:
                     move_to_cuda_tensor_list.append(tensor)
-                    cuda_demand += colo_tensor_mem_usage(tensor.payload)[1]
             else:
                 raise RuntimeError
         self._cpu_gpu_move_volume += self._tensor_placement_policy.evict_tensors(hold_cuda_tensor_list,
@@ -66,7 +65,7 @@ class StatefulTensorMgr(object):
         # move COMPUTE tensors to CUDA
         for t in move_to_cuda_tensor_list:
             colo_model_data_tensor_move_inline(t, get_current_device())
-            self._cpu_gpu_move_volume += t.payload.numel() * t.payload.element_size()
+            self._cpu_gpu_move_volume += t.payload_size
 
     @property
     def cpu_gpu_move_volume(self):

@@ -76,7 +76,6 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         Returns:
             int: the volume of memory that is evicted
         """
-        volume = 0
         cuda_capacity = colo_device_memory_capacity(get_current_device())
         used_cuda_model_data = StatefulTensor.GST_MGR.total_mem['cuda']
         if warmup:
@@ -88,11 +87,12 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             cuda_capacity *= self._steady_cuda_cap_ratio
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
+
+        freed_cuda_model_data = 0
         if avail_cuda_model_data < cuda_demand:
             # Move cuda_demand - avail_cuda_model_data volume of tensors
             # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
-            freed_cuda_model_data = 0
             to_free_tensor_list = hold_cuda_tensor_list
             if not warmup:
                 next_compute_idx = {t: len(compute_list) for t in hold_cuda_tensor_list}
@@ -104,15 +104,14 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             for t in to_free_tensor_list:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
-                freed_cuda_model_data += colo_tensor_mem_usage(t)[0]
+                freed_cuda_model_data += t.payload_size
                 colo_model_data_tensor_move_inline(t, torch.device('cpu'))
-                volume += t.payload.numel() * t.payload.element_size()
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError(
                     f"Adjust layout failed! No enough CUDA memory! Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
                 )
 
-        return volume
+        return freed_cuda_model_data
 
 
 class TensorPlacementPolicyFactory:
