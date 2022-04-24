@@ -155,7 +155,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         torch.set_rng_state(self.cpu_rng_state)
         torch.cuda.set_rng_state(self.cuda_rng_state)
 
-    def _post_init_method(self, module: torch.nn.Module):
+    def _post_init_method(self, module: torch.nn.Module, *args, **kwargs):
         """
         The function to call at the end of the constructor of each module.
         NOTE() The module may be passed to this function multiple times.
@@ -184,11 +184,12 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if param.grad is not None:
                 param.grad = param.grad.to(target_device)
 
-            param.colo_attr = ShardedParamV2(param, set_data_none=False)
+            param.colo_attr = ShardedParamV2(param, set_data_none=True)
 
             if self.shard_param:
                 self.shard_strategy.shard([param.colo_attr.sharded_data_tensor], self.dp_process_group)
-                param.data = param.colo_attr.data_payload    # set param.data to payload
+
+            param.data = param.colo_attr.data_payload    # set param.data to payload
 
             # mark whether the param is replicated
             param.colo_attr.is_replicated = self.is_replicated

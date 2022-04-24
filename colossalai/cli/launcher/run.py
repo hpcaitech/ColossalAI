@@ -1,65 +1,72 @@
 import click
-import subprocess
-import collections
 import sys
 import os
 import torch
 from colossalai.context import Config
-from .multinode_runner import PDSHRunner
-from copy import deepcopy
+from .multinode_runner import MultiNodeRunner
+from .hostinfo import HostInfo, HostInfoList
+from typing import List
+from packaging import version
+
+# Constants that define our syntax
+NODE_SEP = ','
 
 
-def fetch_hostfile(hostfile_path):
+def fetch_hostfile(hostfile_path: str, ssh_port: int) -> HostInfoList:
+    """
+    Parse the hostfile to obtain a list of hosts.
+    
+    A hostfile should look like:
+    worker-0
+    worker-1
+    worker-2
+    ...
+
+    Args:
+        hostfile_path (str): the path to the hostfile
+        ssh_port (int): the port to connect to the host
+    """
+
     if not os.path.isfile(hostfile_path):
         click.echo(f"Error: Unable to find the hostfile, no such file: {hostfile_path}")
         exit()
 
-    # e.g., worker-0:16
     with open(hostfile_path, 'r') as fd:
-        device_pool = collections.OrderedDict()
+        device_pool = HostInfoList()
+
         for line in fd.readlines():
             line = line.strip()
             if line == '':
                 # skip empty lines
                 continue
-            try:
-                hostname, slot_count = line.split(":")
-                slot_count = int(slot_count)
-            except ValueError as err:
-                click.echo(f"Error: Hostfile is not formatted correctly, expected <hostname>:<slot>, but found {line}")
-                exit()
 
-            if hostname in device_pool:
+            # build the HostInfo object
+            hostname = line.strip()
+            hostinfo = HostInfo(hostname=hostname, port=ssh_port)
+
+            if device_pool.has(hostname):
                 click.echo(f"Error: found duplicate host {hostname} in the hostfile")
                 exit()
-            device_pool[hostname] = slot_count
+
+            device_pool.append(hostinfo)
     return device_pool
 
 
-def _stable_remove_duplicates(data):
-    # Create a new list in the same order as original but with duplicates
-    # removed, should never be more than ~16 elements so simple is best
-    new_list = []
-    for x in data:
-        if x not in new_list:
-            new_list.append(x)
-    return new_list
-
-
-def parse_device_filter(host_info, include_str=None, exclude_str=None):
+def parse_device_filter(device_pool: HostInfoList, include_str=None, exclude_str=None) -> HostInfoList:
     '''Parse an inclusion or exclusion string and filter a hostfile dictionary.
 
     Examples:
-        include_str="worker-0@worker-1:0,2" will use all slots on worker-0 and
-          slots [0, 2] on worker-1.
-        exclude_str="worker-1:0" will use all available devices except
-          slot 0 on worker-1.
-    '''
+        include_str="worker-0,worker-1" will execute jobs only on worker-0 and worker-1.
+        exclude_str="worker-1" will use all available devices except worker-1.
 
-    # Constants that define our syntax
-    NODE_SEP = '@'
-    SLOT_LIST_START = ':'
-    SLOT_SEP = ','
+    Args:
+        device_pool (HostInfoList): a list of HostInfo objects
+        include_str (str): --include option passed by user, default None
+        exclude_str (str): --exclude option passed by user, default None
+    
+    Returns:
+        filtered_hosts (HostInfoList): filtered hosts after inclusion/exclusion
+    '''
 
     # Ensure include/exclude are mutually exclusive
     if include_str and exclude_str:
@@ -68,100 +75,143 @@ def parse_device_filter(host_info, include_str=None, exclude_str=None):
 
     # no-op
     if include_str is None and exclude_str is None:
-        return host_info
+        return device_pool
 
     # Either build from scratch or remove items
-    filtered_hosts = dict()
     if include_str:
         parse_str = include_str
+        filtered_hosts = HostInfoList()
     elif exclude_str:
-        filtered_hosts = deepcopy(host_info)
         parse_str = exclude_str
+        filtered_hosts = device_pool
 
     # foreach node in the list
     for node_config in parse_str.split(NODE_SEP):
-        # Node can either be alone or node:slot,slot,slot
-        if SLOT_LIST_START in node_config:
-            hostname, slots = node_config.split(SLOT_LIST_START)
-            slots = [int(x) for x in slots.split(SLOT_SEP)]
+        hostname = node_config
+        hostinfo = device_pool.get_hostinfo(hostname)
+        # sanity check hostname
+        if not device_pool.has(hostname):
+            click.echo(f"Error: Hostname '{hostname}' not found in hostfile")
+            exit()
 
-            # sanity checks
-            if hostname not in host_info:
-                click.echo(f"Hostname '{hostname}' not found in hostfile")
-                exit()
-            for slot in slots:
-                if slot not in host_info[hostname]:
-                    click.echo(f"No slot '{slot}' specified on host '{hostname}'")
+        if include_str:
+            filtered_hosts.append(hostinfo)
+        elif exclude_str:
+            filtered_hosts.remove(hostname)
 
-            # If include string, build the list from here
-            if include_str:
-                filtered_hosts[hostname] = slots
-            elif exclude_str:
-                for slot in slots:
-                    click.echo(f'- removing {slot} from {hostname}')
-                    filtered_hosts[hostname].remove(slot)
+    return filtered_hosts
 
-        # User just specified the whole node
+
+def get_launch_command(
+    master_addr: str,
+    master_port: int,
+    nproc_per_node: int,
+    user_script: str,
+    user_args: List[str],
+    node_rank: int,
+    num_nodes: int,
+    extra_launch_args: str = None,
+) -> str:
+    """
+    Generate a command for distributed training.
+
+    Args:
+        master_addr (str): the host of the master node
+        master_port (str): the port of the master node
+        nproc_per_node (str): the number of processes to launch on each node
+        user_script (str): the user Python file
+        user_args (str): the arguments for the user script
+        node_rank (int): the unique ID for the node
+        num_nodes (int): the number of nodes to execute jobs
+
+    Returns:
+        cmd (str): the command the start distributed training
+    """
+
+    def _arg_dict_to_list(arg_dict):
+        ret = []
+
+        for k, v in arg_dict.items():
+            if v:
+                ret.append(f'--{k}={v}')
+            else:
+                ret.append(f'--{k}')
+        return ret
+
+    if extra_launch_args:
+        extra_launch_args_dict = dict()
+        for arg in extra_launch_args.split(','):
+            if '=' in arg:
+                k, v = arg.split('=')
+                extra_launch_args_dict[k] = v
+            else:
+                extra_launch_args_dict[arg] = None
+        extra_launch_args = extra_launch_args_dict
+    else:
+        extra_launch_args = dict()
+
+    torch_version = version.parse(torch.__version__)
+    assert torch_version.major == 1
+
+    if torch_version.minor < 9:
+        cmd = [
+            sys.executable, "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
+            f"--master_addr={master_addr}", f"--master_port={master_port}", f"--nnodes={num_nodes}",
+            f"--node_rank={node_rank}"
+        ]
+    else:
+        # extra launch args for torch distributed launcher with torch >= 1.9
+        default_torchrun_rdzv_args = dict(rdzv_backend="c10d",
+                                          rdzv_endpoint=f"{master_addr}:{master_port}",
+                                          rdzv_id="colossalai-default-job")
+
+        # update rdzv arguments
+        for key in default_torchrun_rdzv_args.keys():
+            if key in extra_launch_args:
+                value = extra_launch_args.pop(key)
+                default_torchrun_rdzv_args[key] = value
+
+        if torch_version.minor < 10:
+            cmd = [
+                sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc_per_node}",
+                f"--nnodes={num_nodes}", f"--node_rank={node_rank}"
+            ]
         else:
-            hostname = node_config
-            # sanity check hostname
-            if hostname not in host_info:
-                click.echo(f"Hostname '{hostname}' not found in hostfile")
-                exit()
+            cmd = [
+                "torchrun", f"--nproc_per_node={nproc_per_node}", f"--nnodes={num_nodes}", f"--node_rank={node_rank}"
+            ]
+        cmd += _arg_dict_to_list(default_torchrun_rdzv_args)
 
-            if include_str:
-                filtered_hosts[hostname] = host_info[hostname]
-            elif exclude_str:
-                filtered_hosts[hostname] = []
-
-    # Post-processing to remove duplicates and empty nodes
-    del_keys = []
-    for hostname in filtered_hosts:
-        # Remove duplicates
-        filtered_hosts[hostname] = _stable_remove_duplicates(filtered_hosts[hostname])
-        # Remove empty hosts
-        if len(filtered_hosts[hostname]) == 0:
-            del_keys.append(hostname)
-
-    # remove unneeded hosts
-    for name in del_keys:
-        del filtered_hosts[name]
-
-    # Lastly, go over filtered_hosts and convert to a OrderedDict() to ensure
-    # we map ranks to nodes correctly by maintaining host_info ordering.
-    ordered_hosts = collections.OrderedDict()
-    for host in host_info:
-        if host in filtered_hosts:
-            ordered_hosts[host] = filtered_hosts[host]
-
-    return ordered_hosts
+    cmd += _arg_dict_to_list(extra_launch_args) + [user_script] + user_args
+    cmd = ' '.join(cmd)
+    return cmd
 
 
-def parse_inclusion_exclusion(device_pool, inclusion, exclusion):
-    active_devices = collections.OrderedDict()
-    for hostname, slots in device_pool.items():
-        active_devices[hostname] = list(range(slots))
-
-    return parse_device_filter(active_devices, include_str=inclusion, exclude_str=exclusion)
-
-
-def launch_multi_processes(args):
+def launch_multi_processes(args: Config) -> None:
     """
     Launch multiple processes on a single node or multiple nodes.
 
     The overall logic can be summarized as the pseudo code below:
     
-    if hostfile given:
-        hostinfo = parse_hostfile(hostfile)
-        hostinfo = include_or_exclude_hosts(hostinfo)
-        launch_on_multi_nodes(hostinfo)
-    elif hosts given:
-        hostinfo = parse_hosts(hosts)
-        launch_on_multi_nodes(hostinfo)
-    else:
-        launch_on_current_node()
+        if hostfile given:
+            hostinfo = parse_hostfile(hostfile)
+            hostinfo = include_or_exclude_hosts(hostinfo)
+            launch_on_multi_nodes(hostinfo)
+        elif hosts given:
+            hostinfo = parse_hosts(hosts)
+            launch_on_multi_nodes(hostinfo)
+        else:
+            launch_on_current_node()
+    
+    Args:
+        args (Config): the arguments taken from command line
+
     """
     assert isinstance(args, Config)
+
+    if args.nproc_per_node is None:
+        click.echo("--nproc_per_node did not receive any value")
+        exit()
 
     # cannot accept hosts and hostfile at the same time
     if args.host and args.hostfile:
@@ -169,75 +219,63 @@ def launch_multi_processes(args):
 
     # check if hostfile is given
     if args.hostfile:
-        device_pool = fetch_hostfile(args.hostfile)
-    else:
-        device_pool = None
-
-    # filter and only keep the ones needed
-    active_devices = None
-    if device_pool:
-        active_devices = parse_inclusion_exclusion(device_pool, args.include, args.exclude)
+        device_pool = fetch_hostfile(args.hostfile, ssh_port=args.ssh_port)
+        active_device_pool = parse_device_filter(device_pool, args.include, args.exclude)
 
         if args.num_nodes > 0:
             # only keep the first num_nodes to execute jobs
-            updated_active_devices = collections.OrderedDict()
-            for count, hostname in enumerate(active_devices.keys()):
+            updated_active_device_pool = HostInfoList()
+            for count, hostinfo in enumerate(active_device_pool):
                 if args.num_nodes == count:
                     break
-                updated_active_devices[hostname] = active_devices[hostname]
-            active_devices = updated_active_devices
-
-        if args.nproc_per_node > 0:
-            # only keep the first
-            updated_active_devices = collections.OrderedDict()
-            for hostname, active_devices in active_devices.items():
-                if len(active_devices) < args.nproc_per_node:
-                    click.echo(
-                        f"Error: The number of available GPUs on {hostname} is smaller than the argument nproc_per_node"
-                    )
-                    exit()
-                updated_active_devices[hostname] = active_devices[args.nproc_per_node]
-            active_devices = updated_active_devices
+                updated_active_device_pool.append(hostinfo)
+            active_device_pool = updated_active_device_pool
+    else:
+        active_device_pool = None
 
     env = os.environ.copy()
 
     # use hosts if hostfile is not given
-    if args.host and active_devices is None:
-        hostinfo = collections.OrderedDict()
-        host_list = args.host.strip().split(',')
+    if args.host and active_device_pool is None:
+        active_device_pool = HostInfoList()
+        host_list = args.host.strip().split(NODE_SEP)
         for hostname in host_list:
-            hostinfo[hostname] = args.nproc_per_node
-        active_devices = hostinfo
+            hostinfo = HostInfo(hostname=hostname, port=args.ssh_port)
+            active_device_pool.append(hostinfo)
 
-    # run on local node if not hosts or hostfile is given
-    if not active_devices:
-        if args.nproc_per_node == -1 or args.nproc_per_node > torch.cuda.device_count():
-            nproc_per_node = torch.cuda.device_count()
-        else:
-            nproc_per_node = args.nproc_per_node
+    if not active_device_pool:
+        # run on local node if not hosts or hostfile is given
+        # add local node to host info list
+        active_device_pool = HostInfoList()
+        localhost_info = HostInfo(hostname='127.0.0.1', port=args.ssh_port)
+        active_device_pool.append(localhost_info)
 
-        if torch.__version__ <= "1.9":
-            cmd = [
-                sys.executable, "-u", "-m", "torch.distributed.launch", f"--nproc_per_node={nproc_per_node}",
-                f"--master_addr={args.master_addr}", f"--master_port={args.master_port}"
-            ] + [args.user_script] + args.user_args
-        else:
-            cmd = [
-                "torchrun", f"--nproc_per_node={nproc_per_node}", f"--master_addr={args.master_addr}",
-                f"--master_port={args.master_port}"
-            ] + [args.user_script] + args.user_args
-    else:
-        runner = PDSHRunner(args)
+    # launch distributed processes
+    runner = MultiNodeRunner()
+    curr_path = os.path.abspath('.')
 
-        curr_path = os.path.abspath('.')
-        if 'PYTHONPATH' in env:
-            env['PYTHONPATH'] = curr_path + ":" + env['PYTHONPATH']
-        else:
-            env['PYTHONPATH'] = curr_path
+    # collect current path env
+    env = dict()
+    for k, v in os.environ.items():
+        # do not support multi-line env var
+        if v and '\n' not in v:
+            env[k] = v
 
-        cmd = runner.get_cmd(env, active_devices, args)
+    # establish remote connection
+    runner.connect(host_info_list=active_device_pool, workdir=curr_path, env=env)
 
-    result = subprocess.Popen(cmd, env=env)
-    result.wait()
-    if result.returncode > 0:
-        sys.exit(result.returncode)
+    # execute distributed launching command
+    for node_id, hostinfo in enumerate(active_device_pool):
+        cmd = get_launch_command(master_addr=args.master_addr,
+                                 master_port=args.master_port,
+                                 nproc_per_node=args.nproc_per_node,
+                                 user_script=args.user_script,
+                                 user_args=args.user_args,
+                                 node_rank=node_id,
+                                 num_nodes=len(active_device_pool),
+                                 extra_launch_args=args.extra_launch_args)
+        runner.send(hostinfo=hostinfo, cmd=cmd)
+
+    runner.recv_from_all()
+    runner.stop_all()
+    runner.recv_from_all()

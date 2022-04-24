@@ -399,6 +399,8 @@ def initialize(model: nn.Module,
         else:
             scatter_gather = False
         if use_interleaved:
+            if isinstance(model, nn.Sequential):
+                model = nn.ModuleList([model])
             schedule = InterleavedPipelineSchedule(gpc.config.NUM_MICRO_BATCHES,
                                                    gpc.config.model.num_chunks,
                                                    tensor_shape=tensor_shape,
@@ -434,7 +436,6 @@ def initialize(model: nn.Module,
             accumulate_size=grad_accum_size,
             gradient_handlers=gradient_handlers,
             lr_scheduler=lr_scheduler)
-
     engine = Engine(model=model,
                     optimizer=optimizer,
                     criterion=criterion,

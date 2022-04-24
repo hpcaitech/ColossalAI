@@ -35,4 +35,4 @@ def convert_to_zero_v2(model: nn.Module, optimizer: torch.optim.Optimizer, model
     return zero_model, zero_optimizer
 
 
-__all__ = ['convert_to_zerov2', 'ShardedModelV2', 'ShardedOptimizerV2']
+__all__ = ['convert_to_zero_v2', 'ShardedModelV2', 'ShardedOptimizerV2']

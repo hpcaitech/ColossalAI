@@ -1,8 +1,8 @@
 import torch
-from colossalai.zero.sharded_param import ShardedTensor
 from typing import Optional, Tuple
-from colossalai.zero.sharded_param.tensor_utils import colo_tensor_mem_usage
-from .tensorful_state import StatefulTensor, TensorState
+from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
+from colossalai.gemini.tensor_utils import colo_tensor_mem_usage
+from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
 from typing import List
 
 EMPTY_TENSOR_DICT = {}
@@ -50,6 +50,7 @@ class ShardedParamV2(object):
 
     @property
     def data_payload(self):
+        assert not self.sharded_data_tensor.is_null()
         return self.sharded_data_tensor.payload
 
     @property
@@ -61,15 +62,15 @@ class ShardedParamV2(object):
     def param_is_sharded(self):
         return self.sharded_data_tensor.is_sharded
 
-    def reset_data_payload(self, tensor: torch.Tensor):
+    def data_payload_reset(self, tensor: torch.Tensor):
         assert type(tensor) is torch.Tensor
         assert tensor.requires_grad is False
-        self.sharded_data_tensor.reset_payload(tensor)
+        self.sharded_data_tensor.payload_reset(tensor)
 
-    def reset_grad_payload(self, tensor: torch.Tensor):
+    def grad_payload_reset(self, tensor: torch.Tensor):
         assert type(tensor) is torch.Tensor
         assert tensor.requires_grad is False
-        self.saved_grad.reset_payload(tensor)
+        self.saved_grad.payload_reset(tensor)
 
     def get_memory_usage(self) -> Tuple[int, int]:
         """
