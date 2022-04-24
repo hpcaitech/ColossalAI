@@ -5,18 +5,22 @@ from colossalai.context import Config
 
 @click.command(help="Launch distributed training on a single node or multiple nodes",
                context_settings=dict(ignore_unknown_options=True))
-@click.option("-H", "-host", "--host", type=str, default=None, help="the list of machines to launch")
-@click.option("--hostfile",
+@click.option("-H",
+              "-host",
+              "--host",
               type=str,
               default=None,
-              help="Hostfile path that defines the device pool available to the job (e.g. worker-name:number of slots)")
+              help="the list of hostnames to launch in the format <host1>,<host2>")
 @click.option(
-    "--include",
+    "--hostfile",
     type=str,
     default=None,
-    help=
-    "Specify computing devices to use during execution. String format is NODE_SPEC@NODE_SPEC where NODE_SPEC=<worker-name>:<list-of-slots>,"
-    " only effective when used with --hostfile.")
+    help="Hostfile path that defines the device pool available to the job, each line in the file is a hostname")
+@click.option("--include",
+              type=str,
+              default=None,
+              help="Specify computing devices to use during execution. String format is <host1>,<host2>,"
+              " only effective when used with --hostfile.")
 @click.option(
     "--exclude",
     type=str,
