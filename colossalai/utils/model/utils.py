@@ -50,7 +50,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             @functools.wraps(f)
             def wrapper(module: torch.nn.Module, *args, **kwargs):
                 f(module, *args, **kwargs)
-                self._post_init_method(module)
+                self._post_init_method(module, *args, **kwargs)
 
             return wrapper
 
@@ -93,7 +93,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
             return False
 
     # To be implemented by inheriting classes
-    def _post_init_method(self, module):
+    def _post_init_method(self, module, *args, **kwargs):
         pass
 
     def _pre_context_exec(self):

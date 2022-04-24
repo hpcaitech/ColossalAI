@@ -28,39 +28,6 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
     def funcs_count(self):
         return len(self._func_dict)
 
-    def __enter__(self):
-        r"""
-        Enter the context scope.
-        """
-
-        def preprocess_after(f):
-
-            @functools.wraps(f)
-            def wrapper(module: torch.nn.Module, *args, **kwargs):
-                f(module, *args, **kwargs)
-                self._post_init_method(module, *args, **kwargs)
-
-            return wrapper
-
-        def _enable_class(cls):
-            cls._old_init = cls.__init__
-            cls.__init__ = preprocess_after(cls.__init__)
-
-        # The function is called during init subclass.
-        def _init_subclass(cls, **kwargs):
-            cls.__init__ = preprocess_after(cls.__init__)
-
-        # Replace .__init__() for all existing subclasses of torch.nn.Module
-        # Excution self._post_init_method after the default init function.
-        _substitute_init_recursively(torch.nn.modules.module.Module, _enable_class)
-
-        # holding on to the current __init__subclass__ for exit
-        torch.nn.modules.module.Module._old_init_subclass = (torch.nn.modules.module.Module.__init_subclass__)
-        # Replace .__init__() for future subclasses of torch.nn.Module
-        torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
-
-        self._pre_context_exec()
-
     def _pre_context_exec(self):
         """ 
         The Callback function when entering the context
