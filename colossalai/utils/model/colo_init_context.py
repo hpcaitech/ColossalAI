@@ -12,7 +12,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         super().__init__()
         self._lazy_memory_allocate = lazy_memory_allocate
 
-    def _post_init_method(self, module: torch.nn.Module):
+    def _post_init_method(self, module: torch.nn.Module, *args, **kwargs):
         """
         The function to call at the end of the constructor of each module.
         FIXME(fjr) The module may be passed to this function multiple times?
