@@ -1,8 +1,9 @@
-from numpy import product
 import torch
 from typing import Tuple
-import numpy
+from numpy import product
 from .op_wrapper import _COLOSSAL_OPS
+from typing import Optional
+
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
@@ -53,7 +54,6 @@ class ColoTensor(object):
         return product(self._size)
 
     @staticmethod
-
     def init_from_torch_tensor(tensor: torch.Tensor, save_payload=True) -> 'ColoTensor':
         colo_t = ColoTensor(*tensor.size(),
                             dtype=tensor.dtype,
