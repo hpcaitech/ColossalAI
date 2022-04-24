@@ -25,6 +25,7 @@ class profile(torch_profile):
             ``ProfilerAction`` value that specifies the profiler action to perform at each step.
         on_trace_ready (callable): callable that is called at each step when ``schedule``
             returns ``ProfilerAction.RECORD_AND_SAVE`` during the profiling.
+        engine (Optional[Engine], optional): An ``Engine`` instance. Defaults to None.
         record_shapes (bool): save information about operator's input shapes.
         profile_memory (bool): track tensor memory allocation/deallocation.
         with_stack (bool): record source information (file and line number) for the ops.
@@ -36,9 +37,7 @@ class profile(torch_profile):
             then aten::add's module hierarchy is A.B
             Note that this support exist, at the moment, only for TorchScript models
             and not eager mode models.
-        use_cuda (bool):
-            .. deprecated:: 1.8.1
-                use ``activities`` instead.
+        profile_stateful_tensor_memory (bool): track stateful tensor memory usage. ``engine`` must not be None if you enable this.
 
     .. note::
         Use :func:`~torch.profiler.schedule` to generate the callable schedule.
