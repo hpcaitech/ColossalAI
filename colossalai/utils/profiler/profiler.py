@@ -11,6 +11,7 @@ import tempfile
 import gzip
 from colossalai.utils.profiler.extention import ProfilerExtension
 from colossalai.utils.profiler.stateful_tensor_mem_extention import StatefulTensorMemoryProfilerExtention
+from colossalai.logging import get_dist_logger
 
 
 class profile(torch_profile):
@@ -140,10 +141,11 @@ class profile(torch_profile):
                          with_stack=with_stack,
                          with_flops=with_flops,
                          with_modules=with_modules)
+        self._logger = get_dist_logger()
         self.extentions: List[ProfilerExtension] = []
         if profile_stateful_tensor_memory:
             if engine is None:
-                print('ignore "profile_model_data" since engine is None')
+                self._logger.warning('Ignore "profile_model_data" since engine is None', ranks=[0])
             else:
                 self.extentions.append(StatefulTensorMemoryProfilerExtention(engine))
 

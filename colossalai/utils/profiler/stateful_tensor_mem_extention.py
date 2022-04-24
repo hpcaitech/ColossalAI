@@ -110,8 +110,8 @@ class StatefulTensorMemoryProfilerExtention(ProfilerExtension):
         self.hook_registered = False
 
     def prepare_trace(self):
+        self.hook.enable()
         if not self.hook_registered:
-            self.hook.enable()
             self.engine.add_hook(self.hook)
             self.hook_registered = True
 
@@ -121,10 +121,12 @@ class StatefulTensorMemoryProfilerExtention(ProfilerExtension):
 
     def stop_trace(self):
         self.tracer.stop_trace()
+        self.hook.disable()
         if self.hook_registered:
-            self.hook.disable()
             self.engine.remove_hook(self.hook)
-            self.hook_registered = False
+            # remove_hook is not implemented now
+            # FIXME(ver217): uncomment below line when remove_hook is implemented
+            # self.hook_registered = False
 
     def extend_chrome_trace(self, trace: dict) -> dict:
         trace['traceEvents'].extend(self.tracer.state_dict())
