@@ -202,3 +202,8 @@ class StatefulTensor(object):
         # update the information of each state
         manager.state_mem[from_type][state] -= size
         manager.state_mem[to_type][state] += size
+
+    def __del__(self):
+        self.set_null()
+        StatefulTensor.GST_MGR.delete_instance()
+        del self
