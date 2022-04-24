@@ -1,7 +1,7 @@
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
 from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.zero.sharded_param import ShardedTensor
+from colossalai.gemini.tensor_utils import colo_model_data_tensor_move, colo_model_data_tensor_move_inline
 import colossalai
 
 import torch

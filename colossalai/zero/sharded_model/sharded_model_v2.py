@@ -17,11 +17,11 @@ from colossalai.gemini.memory_tracer.model_data_memtracer import \
     GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
+from colossalai.gemini.tensor_utils import colo_model_data_move_to_cpu
+from colossalai.gemini.stateful_tensor import TensorState
 from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicyFactory, TensorPlacementPolicy
 
@@ -358,8 +358,11 @@ class ShardedModelV2(nn.Module):
             assert param.colo_attr.saved_grad.is_null(
             ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
 
-            param.colo_attr.reset_grad_payload(grad.data)
-            param.colo_attr.reset_data_payload(grad.data)    # release the memory of param
+            param.colo_attr.grad_payload_reset(grad.data)
+            # release the memory of param
+            # we set a false None for parameter's payload
+            # so we can get paramter's device and dtype later in optimizer
+            param.colo_attr.data_payload_reset(torch.empty(0, device=grad.device, dtype=grad.dtype))
 
             if param.colo_attr.is_replicated:
                 param.colo_attr.sharded_data_tensor.is_sharded = True
@@ -368,7 +371,7 @@ class ShardedModelV2(nn.Module):
             fp32_grad = cast_tensor_to_fp32(grad)
 
             if param.colo_attr.saved_grad.is_null():
-                param.colo_attr.reset_grad_payload(fp32_grad)
+                param.colo_attr.grad_payload_reset(fp32_grad)
             else:
                 param.colo_attr.grad_payload.add_(fp32_grad.view_as(param.colo_attr.grad_payload))
 

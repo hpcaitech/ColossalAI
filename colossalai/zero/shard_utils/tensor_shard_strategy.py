@@ -3,10 +3,10 @@ from typing import List, Optional
 import torch
 import torch.distributed as dist
 from colossalai.utils import get_current_device
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.shard_utils.commons import get_shard
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
+from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline
 
 
 class TensorShardStrategy(BaseShardStrategy):
@@ -36,7 +36,7 @@ class TensorShardStrategy(BaseShardStrategy):
             assert t.payload.device == get_current_device(), f"shard tensor on cuda device index {t.payload.device.index},"\
                 f" but current cuda device is {get_current_device()}"
         sharded_payload, _ = get_shard(t.payload, dist.get_rank(process_group), dist.get_world_size(process_group))
-        t.reset_payload(sharded_payload)
+        t.payload_reset(sharded_payload)
         t.is_sharded = True
 
     def _gather_tensor(self, t: ShardedTensor, process_group: Optional[dist.ProcessGroup] = None):
@@ -53,6 +53,6 @@ class TensorShardStrategy(BaseShardStrategy):
 
         dist.all_gather(buffer_list, buffer_list[rank], group=process_group, async_op=False)
         gathered_payload = torch.narrow(buffer, 0, 0, t.origin_numel).reshape(t.origin_shape)
-        t.reset_payload(gathered_payload)
+        t.payload_reset(gathered_payload)
         colo_model_data_tensor_move_inline(t, target_device)
         t.is_sharded = False
