@@ -26,4 +26,4 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         save_torch_payload = True if not self._lazy_memory_allocate else False
         for name, param in name_list:
             delattr(module, name)
-            setattr(module, name, ColoTensor.init_from_torch_tensor(tensor=param.data, save_payload=save_torch_payload))
+            setattr(module, name, ColoTensor.init_from_torch_tensor(tensor=param, save_payload=save_torch_payload))

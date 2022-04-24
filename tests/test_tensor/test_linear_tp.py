@@ -12,9 +12,9 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-import torch.distributed as dist
 
 from _utils import check_equal, replace_parameter_add_grad, broadcast_tensor_chunk
+
 
 def run_linear_tp1d_row_test():
     device = get_current_device()
@@ -72,6 +72,7 @@ def run_linear_tp1d_row_test():
 
     B_grad = B_master.grad
     check_equal(B_grad, layer.bias.grad)
+
 
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
