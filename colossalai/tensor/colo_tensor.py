@@ -1,7 +1,8 @@
+from numpy import product
 import torch
+from typing import Tuple
+import numpy
 from .op_wrapper import _COLOSSAL_OPS
-from typing import Tuple, Optional
-
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
@@ -49,7 +50,7 @@ class ColoTensor(object):
         return self._size
 
     def numel(self):
-        return sum(self._size)
+        return product(self._size)
 
     @staticmethod
 
@@ -62,9 +63,18 @@ class ColoTensor(object):
                             torch_tensor=tensor if save_payload else torch.empty(0))
         return colo_t
 
-    def del_torch_tensor(self) -> None:
-        self._size = (0,)
-        self._torch_tensor = torch.empty(self._size)
+    def del_torch_tensor(self, save_shape=False) -> None:
+        """
+        delete the payload of the torch tensor.
+
+        Args:
+            save_shape (bool, optional): if saving the shape of the torch_tensor. 
+            If saving the shape, the size of self._torch_tensor is inconsist with the self._size.
+            Defaults to False.
+        """
+        if not save_shape:
+            self._size = (0,)
+        self._torch_tensor = torch.empty((0,), device=self._device, dtype=self._dtype)
 
     def torch_tensor(self) -> torch.Tensor:
         if self._torch_tensor.numel() == 0:

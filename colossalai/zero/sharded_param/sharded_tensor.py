@@ -1,6 +1,5 @@
 import torch
-from colossalai.zero.sharded_param.tensorful_state import StatefulTensor, TensorState
-from typing import Optional
+from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
 
 
 class ShardedTensor(StatefulTensor):

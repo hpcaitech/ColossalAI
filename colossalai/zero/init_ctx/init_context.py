@@ -184,11 +184,12 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if param.grad is not None:
                 param.grad = param.grad.to(target_device)
 
-            param.colo_attr = ShardedParamV2(param, set_data_none=False)
+            param.colo_attr = ShardedParamV2(param, set_data_none=True)
 
             if self.shard_param:
                 self.shard_strategy.shard([param.colo_attr.sharded_data_tensor], self.dp_process_group)
-                param.data = param.colo_attr.data_payload    # set param.data to payload
+
+            param.data = param.colo_attr.data_payload    # set param.data to payload
 
             # mark whether the param is replicated
             param.colo_attr.is_replicated = self.is_replicated
