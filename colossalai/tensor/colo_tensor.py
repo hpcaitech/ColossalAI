@@ -53,6 +53,22 @@ class ColoTensor(object):
     def size(self):
         return self._size
 
+    @property
+    def shape(self):
+        return torch.Size(self._size)
+
+    def size(self, dim=None):
+        if dim is None:
+            return self.shape
+        return self._size[dim]
+
+    def dim(self):
+        return len(self._size)
+
+    def normal_(self, mean=0., std=1.):
+        torch_tensor = self.torch_tensor()
+        return torch_tensor.normal_(mean=mean, std=std)
+
     def numel(self):
         return product(self._size)
 
