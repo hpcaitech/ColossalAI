@@ -3,7 +3,10 @@ from .op_wrapper import _COLOSSAL_OPS
 import torch
 from typing import Tuple, Optional
 from numpy import product
-
+from colossalai.core import global_context as gpc
+from colossalai.context import ParallelMode
+from colossalai.nn.layer.utils import divide
+from colossalai.utils.cuda import get_current_device
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
@@ -84,6 +87,28 @@ class ColoTensor(object):
                                              requires_grad=self._requires_grad,
                                              device=self._device)
         return self._torch_tensor
+
+    def set_spec(self, spec: str, lazy_shard: bool=False) -> None:
+        self._shard_spec = spec
+        if lazy_shard == False:
+            self._shard()
+
+    def _shard(self):
+        assert self._shard_spec is not None, 'You should call set_spec() before _shard() ColoTensor.'
+        if self._shard_spec == "1Drow": # TODO It actually represents the sharding layout for Linear-1Drow-weight, but we make it simpler now.
+            num_partition = gpc.get_world_size(ParallelMode.TENSOR)
+            local_rank = gpc.get_local_rank(ParallelMode.TENSOR)
+            dim = -1
+            chunk_size = divide(self._size[dim], num_partition)
+            device = get_current_device()
+            # Reshape to get shard for this rank and we don't want autograd
+            # recording here for the narrow op and 'local_shard' should be a
+            # leaf variable in the autograd graph.
+            self._torch_tensor = self._torch_tensor.narrow(dim, 
+                    local_rank * chunk_size, chunk_size).detach().contiguous() # TODO Shall we clone() here since detach() will point to the old tensor?
+            self._torch_tensor.requires_grad = self._requires_grad
+            self._size = self._torch_tensor.size()
+            self._device = device # TODO A `fake` device now because torch_tensor.device always = cpu
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):

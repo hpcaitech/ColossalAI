@@ -1,10 +1,11 @@
+from zmq import device
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from colossalai.nn import CheckpointModule
 from .utils.dummy_data_generator import DummyDataGenerator
 from .registry import non_distributed_component_funcs
-
+from colossalai.utils.cuda import get_current_device
 
 class SimpleNet(CheckpointModule):
     """
@@ -25,8 +26,8 @@ class SimpleNet(CheckpointModule):
 class DummyDataLoader(DummyDataGenerator):
 
     def generate(self):
-        data = torch.rand(16, 4)
-        label = torch.randint(low=0, high=2, size=(16,))
+        data = torch.rand(16, 4, device=get_current_device())
+        label = torch.randint(low=0, high=2, size=(16,), device=get_current_device())
         return data, label
 
 

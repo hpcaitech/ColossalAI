@@ -23,9 +23,9 @@ def run_simple_net():
     with ColoInitContext():
         model = model_builder(checkpoint=True)
 
-    # TODO(jzy) we set the Specs for weight of each linear.
-    # model.proj1.weight.set_spec('1Drow')
-    # model.proj2.weight.set_spec('1Drow')
+    # we set the Specs for weight of each linear.
+    model.proj1.weight.set_spec('1Drow')
+    model.proj2.weight.set_spec('1Drow')
 
     for i, (data, label) in enumerate(train_dataloader):
         output = model(data)
