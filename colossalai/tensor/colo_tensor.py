@@ -1,7 +1,6 @@
 from numpy import product
 import torch
-from typing import Tuple
-import numpy
+from typing import Tuple, Optional
 from .op_wrapper import _COLOSSAL_OPS
 
 class ColoTensor(object):

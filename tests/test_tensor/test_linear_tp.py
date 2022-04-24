@@ -14,7 +14,7 @@ from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 import torch.distributed as dist
 
-from test_tensor_utils import check_equal, replace_parameter_add_grad, broadcast_tensor_chunk
+from _utils import check_equal, replace_parameter_add_grad, broadcast_tensor_chunk
 
 def run_linear_tp1d_row_test():
     device = get_current_device()
