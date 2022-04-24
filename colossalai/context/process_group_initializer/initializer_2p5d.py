@@ -105,8 +105,6 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
-        assert self.tensor_parallel_size == self.tesseract_dim ** 2 * self.tesseract_dep, \
-            "Tensor parallel size should be depth * dim ** 2 in 2.5D parallel"
 
     def init_dist_group(self):
         """Initialize 2.5D tensor col parallel groups, and assign local_ranks and groups to each gpu.
@@ -161,8 +159,6 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
-        assert self.tensor_parallel_size == self.tesseract_dim ** 2 * self.tesseract_dep, \
-            "Tensor parallel size should be depth * dim ** 2 in 2.5D parallel"
 
     def init_dist_group(self):
         """Initialize 2.5D tensor depth parallel groups, and assign local_ranks and groups to each gpu.
@@ -218,8 +214,6 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
         self.num_group = self.world_size // self.tensor_parallel_size
         self.tesseract_dep = tesseract_dep
         self.tesseract_dim = tesseract_dim
-        assert self.tensor_parallel_size == self.tesseract_dim ** 2 * self.tesseract_dep, \
-            "Tensor parallel size should be depth * dim ** 2 in 2.5D parallel"
 
     def init_dist_group(self):
         """Initialize 2.5D tensor colXdepth parallel groups, and assign local_ranks and groups to each gpu.
