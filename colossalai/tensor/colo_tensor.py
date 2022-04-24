@@ -56,7 +56,7 @@ class ColoTensor(object):
         """
         if not save_shape:
             self._size = (0,)
-        self._torch_tensor = torch.empty((0,), dtype=self._dtype)
+        self._torch_tensor = torch.empty((0,), device=self._device, dtype=self._dtype)
 
     def torch_tensor(self) -> torch.Tensor:
         if self._torch_tensor.numel() == 0:
