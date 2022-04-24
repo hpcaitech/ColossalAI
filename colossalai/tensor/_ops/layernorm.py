@@ -8,7 +8,7 @@ from colossalai.tensor import ColoTensor
 def colo_layernorm(types, args=(), kwargs=None, pg=None):
     arg_num = len(args)
     if arg_num > 0:
-        input = args[0]
+        input_tensor = args[0]
     if arg_num > 1:
         normalized_shape = args[1]
     if arg_num > 2:
@@ -19,7 +19,7 @@ def colo_layernorm(types, args=(), kwargs=None, pg=None):
         eps = args[5]
 
     if 'input' in kwargs:
-        input = kwargs['input']
+        input_tensor = kwargs['input']
     if 'weight' in kwargs:
         weight = kwargs['weight']
     if 'bias' in kwargs:
@@ -27,11 +27,12 @@ def colo_layernorm(types, args=(), kwargs=None, pg=None):
     if 'eps' in kwargs:
         eps = kwargs['eps']
 
-    if isinstance(input, ColoTensor):
-        input = input.torch_tensor()
+    if isinstance(input_tensor, ColoTensor):
+        input_tensor = input_tensor.torch_tensor()
     if isinstance(weight, ColoTensor):
         weight = weight.torch_tensor()
     if isinstance(bias, ColoTensor):
         bias = bias.torch_tensor()
 
-    return ColoTensor.init_from_torch_tensor(torch.nn.functional.layer_norm(input, normalized_shape, weight, bias, eps))
+    return ColoTensor.init_from_torch_tensor(
+        torch.nn.functional.layer_norm(input_tensor, normalized_shape, weight, bias, eps))
