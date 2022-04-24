@@ -3,6 +3,7 @@ import torch
 from typing import Tuple, Optional
 from .op_wrapper import _COLOSSAL_OPS
 
+
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
     1. It contains a torch.Tensor as an attribute.
@@ -52,7 +53,6 @@ class ColoTensor(object):
         return product(self._size)
 
     @staticmethod
-
     def init_from_torch_tensor(tensor: torch.Tensor, save_payload=True) -> 'ColoTensor':
         colo_t = ColoTensor(*tensor.size(),
                             dtype=tensor.dtype,
@@ -103,3 +103,6 @@ class ColoTensor(object):
 
             kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
             return func(*args, **kwargs)
+
+    def backward(self):
+        self._torch_tensor.backward(retain_graph=True)

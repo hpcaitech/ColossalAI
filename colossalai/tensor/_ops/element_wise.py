@@ -5,8 +5,10 @@ from colossalai.tensor import ColoTensor
 
 @colo_op_impl(torch.mean)
 def colo_mean(types, args=(), kwargs=None, pg=None):
-    stateful_tensor = args[0]
-    return torch.mean(stateful_tensor.torch_tensor())
+    input_t = args[0]
+    if isinstance(input_t, ColoTensor):
+        input_t = input_t.torch_tensor()
+    return ColoTensor.init_from_torch_tensor(torch.mean(input_t))
 
 
 def register_elementwise_op(op):
@@ -22,7 +24,7 @@ def register_elementwise_op(op):
         # Validate types
         if not isinstance(input_tensor, ColoTensor):
             raise TypeError("input needs to be a ColoTensor")
-        return op(input_tensor.torch_tensor())
+        return ColoTensor.init_from_torch_tensor(op(input_tensor.torch_tensor()))
 
 
 register_elementwise_op(torch.nn.functional.gelu)
