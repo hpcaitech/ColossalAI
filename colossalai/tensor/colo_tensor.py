@@ -104,5 +104,5 @@ class ColoTensor(object):
             kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
             return func(*args, **kwargs)
 
-    def backward(self):
-        self._torch_tensor.backward(retain_graph=True)
+    def backward(self, retain_graph: bool):
+        self._torch_tensor.backward(retain_graph=retain_graph)
