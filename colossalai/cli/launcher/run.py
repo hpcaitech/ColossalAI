@@ -209,8 +209,8 @@ def launch_multi_processes(args: Config) -> None:
     """
     assert isinstance(args, Config)
 
-    if args.nproc_per_node < 0:
-        click.echo("--nproc_per_node received an invalid value which is smaller than 1")
+    if args.nproc_per_node is None:
+        click.echo("--nproc_per_node did not receive any value")
 
     # cannot accept hosts and hostfile at the same time
     if args.host and args.hostfile:

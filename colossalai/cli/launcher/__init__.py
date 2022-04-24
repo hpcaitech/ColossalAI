@@ -32,7 +32,7 @@ from colossalai.context import Config
               type=int,
               default=-1,
               help="Total number of worker nodes to use, only effective when used with --hostfile.")
-@click.option("--nproc_per_node", type=int, default=-1, help="Number of GPUs to use on each node.")
+@click.option("--nproc_per_node", type=int, default=None, help="Number of GPUs to use on each node.")
 @click.option("--master_port",
               type=int,
               default=29500,
