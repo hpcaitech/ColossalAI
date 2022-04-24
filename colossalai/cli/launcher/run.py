@@ -211,6 +211,7 @@ def launch_multi_processes(args: Config) -> None:
 
     if args.nproc_per_node is None:
         click.echo("--nproc_per_node did not receive any value")
+        exit()
 
     # cannot accept hosts and hostfile at the same time
     if args.host and args.hostfile:
