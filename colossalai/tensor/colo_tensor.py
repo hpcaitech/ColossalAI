@@ -4,7 +4,6 @@ from typing import Tuple
 import numpy
 from .op_wrapper import _COLOSSAL_OPS
 
-
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
     1. It contains a torch.Tensor as an attribute.
@@ -24,6 +23,7 @@ class ColoTensor(object):
             pin_memory=False,
             device=None,
             torch_tensor=torch.empty(0),
+            shard_spec: str = None,
     ):
         self._size = size
         self._dtype = dtype
@@ -31,11 +31,29 @@ class ColoTensor(object):
         self._pin_memory = pin_memory
         self._device = device
         self._torch_tensor = torch_tensor
+        self._shard_spec = shard_spec
+
+    @property
+    def shard_spec(self) -> Optional[str]:
+        return self._shard_spec
+
+    @property
+    def data(self):
+        return self._torch_tensor.data
+
+    @property
+    def grad(self):
+        return self._torch_tensor.grad
+
+    @property
+    def size(self):
+        return self._size
 
     def numel(self):
         return product(self._size)
 
     @staticmethod
+
     def init_from_torch_tensor(tensor: torch.Tensor, save_payload=True) -> 'ColoTensor':
         colo_t = ColoTensor(*tensor.size(),
                             dtype=tensor.dtype,
