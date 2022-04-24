@@ -13,8 +13,6 @@ from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device, disposable
 from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollector
-from colossalai.gemini.memory_tracer.model_data_memtracer import \
-    GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
@@ -106,7 +104,6 @@ class ShardedModelV2(nn.Module):
 
         self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
-            GLOBAL_MODEL_DATA_TRACER.register_model(self)
             self._memstats_collector = MemStatsCollector()
             self._start_collect_memstats = disposable(self._memstats_collector.start_collection)
             self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
