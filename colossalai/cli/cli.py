@@ -1,5 +1,6 @@
 import click
 from .launcher import run
+from .check import check
 from colossalai.cli.benchmark.utils import BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM, ITER_TIMES
 from colossalai.cli.benchmark.run import launch as col_benchmark
 
@@ -29,6 +30,7 @@ def benchmark(num_gpus, bs, seq_len, hid_dim, num_steps):
 
 
 cli.add_command(run)
+cli.add_command(check)
 cli.add_command(benchmark)
 
 if __name__ == '__main__':

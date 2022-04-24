@@ -31,9 +31,6 @@ class BucketTensorShardStrategy(TensorShardStrategy):
         for i in range(world_size):
             if i == rank:
                 buffer_list.append(flatten([t.payload for t in tensor_list]).cuda(get_current_device()))
-                # Release payload here, to decrease peak memory usage
-                for t in tensor_list:
-                    t.reset_payload(None)
             else:
                 buffer_list.append(torch.zeros(buffer_size, dtype=dtype, device=get_current_device()))
         dist.all_gather(buffer_list, buffer_list[rank], group=process_group)
@@ -44,6 +41,6 @@ class BucketTensorShardStrategy(TensorShardStrategy):
         for i, t in enumerate(tensor_list):
             gathered_payload = [buffer[offset:offset + tensor_numels[i]] for buffer in buffer_list]
             gathered_payload = torch.cat(gathered_payload)[:t.origin_numel].view(t.origin_shape)
-            t.reset_payload(gathered_payload)
+            t.payload_reset(gathered_payload)
             t.is_sharded = False
             offset += tensor_numels[i]
