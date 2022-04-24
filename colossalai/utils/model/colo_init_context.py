@@ -12,17 +12,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         super().__init__()
         self._lazy_memory_allocate = lazy_memory_allocate
 
-    def _pre_context_exec(self):
-        """ 
-        The Callback function when entering the context
-        """
-        pass
-
-    def _post_context_exec(self):
-        """The callback function when exiting context.
-        """
-        pass
-
     def _post_init_method(self, module: torch.nn.Module):
         """
         The function to call at the end of the constructor of each module.
