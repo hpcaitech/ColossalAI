@@ -1,6 +1,6 @@
-from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.utils.memory import colo_device_memory_used
+from colossalai.gemini.stateful_tensor import StatefulTensor
 
 import torch
 import time
@@ -92,7 +92,8 @@ class MemStatsCollector:
         """Sampling model data statistics.
         """
         if self._start_flag:
-            cuda_mem, cpu_mem = GLOBAL_MODEL_DATA_TRACER.both_mem_usage
+            cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
+            cpu_mem = StatefulTensor.GST_MGR.total_mem['cpu']
             self._model_data_cuda_list.append(cuda_mem)
             self._model_data_cpu_list.append(cpu_mem)
 
@@ -110,24 +111,6 @@ class MemStatsCollector:
             assert len(self._model_data_cuda_list) == len(self._overall_cuda_list)
 
             self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
-            self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
-            self._sampling_time.append(time.time())
-            self._mem_monitor.start()
-
-    def sample_memstats(self) -> None:
-        """
-        Sampling memory statistics.
-        Record the current model data CUDA memory usage as well as system CUDA memory usage.
-        Advance the sampling cnter.
-        """
-        if self._start_flag:
-            self._model_data_cuda_list.append(GLOBAL_MODEL_DATA_TRACER.cuda_usage)
-            self._overall_cuda_list.append(self._mem_monitor.finish())
-            self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
-
-            self._model_data_cpu_list.append(GLOBAL_MODEL_DATA_TRACER.cpu_usage)
-            # FIXME(jiaruifang) cpu sys used should also return from self._mem_monitor()
-            self._overall_cpu_list.append(colo_device_memory_used(torch.device(f'cpu')))
             self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
             self._sampling_time.append(time.time())
             self._mem_monitor.start()

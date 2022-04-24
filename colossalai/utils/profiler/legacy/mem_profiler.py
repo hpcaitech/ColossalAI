@@ -3,7 +3,7 @@ from typing import Union
 from colossalai.engine import Engine
 from torch.utils.tensorboard import SummaryWriter
 from colossalai.engine.ophooks import MemTracerOpHook
-from colossalai.utils.profiler import BaseProfiler
+from colossalai.utils.profiler.legacy.prof_utils import BaseProfiler
 
 
 class MemProfiler(BaseProfiler):

@@ -7,7 +7,6 @@ from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
 from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.gemini.memory_tracer import MemStatsCollector
-from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
 from typing import Type
 
 
@@ -79,7 +78,7 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         """
         volume = 0
         cuda_capacity = colo_device_memory_capacity(get_current_device())
-        used_cuda_model_data = GLOBAL_MODEL_DATA_TRACER.cuda_usage
+        used_cuda_model_data = StatefulTensor.GST_MGR.total_mem['cuda']
         if warmup:
             # We designate a part of CUDA memory for model data in warmup iterations.
             max_cuda_non_model_data_per_period = cuda_capacity * self._warmup_non_model_data_ratio
