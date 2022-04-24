@@ -6,3 +6,4 @@ packaging
 pre-commit
 rich
 click
+fabric
