@@ -10,7 +10,7 @@ import os
 import tempfile
 import gzip
 from colossalai.utils.profiler.extention import ProfilerExtension
-from colossalai.utils.profiler.model_data_extention import ModelDataProfilerExtention
+from colossalai.utils.profiler.stateful_tensor_mem_extention import StatefulTensorMemoryProfilerExtention
 
 
 class profile(torch_profile):
@@ -131,7 +131,7 @@ class profile(torch_profile):
                  with_stack: bool = False,
                  with_flops: bool = False,
                  with_modules: bool = False,
-                 profile_model_data: bool = False) -> None:
+                 profile_stateful_tensor_memory: bool = False) -> None:
         super().__init__(activities=activities,
                          schedule=schedule,
                          on_trace_ready=on_trace_ready,
@@ -141,11 +141,11 @@ class profile(torch_profile):
                          with_flops=with_flops,
                          with_modules=with_modules)
         self.extentions: List[ProfilerExtension] = []
-        if profile_model_data:
+        if profile_stateful_tensor_memory:
             if engine is None:
                 print('ignore "profile_model_data" since engine is None')
             else:
-                self.extentions.append(ModelDataProfilerExtention(engine))
+                self.extentions.append(StatefulTensorMemoryProfilerExtention(engine))
 
     def prepare_trace(self) -> None:
         if hasattr(super(), 'prepare_trace'):

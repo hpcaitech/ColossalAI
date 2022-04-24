@@ -1,13 +1,12 @@
 import os
 import threading
 import time
+import torch
 from enum import Enum
 from typing import List
-from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
+from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.engine.ophooks import BaseOpHook
-import torch
 from colossalai.engine import Engine
-import os
 from colossalai.utils.profiler.extention import ProfilerExtension
 
 
@@ -24,8 +23,8 @@ def generic_instant_event(name, pid, tid, timestamp, args):
     return {'ph': 'i', 's': 't', 'name': name, 'pid': pid, 'tid': tid, 'ts': timestamp, 'args': args}
 
 
-class ModelDataEvent:
-    EVENT_NAME = '[modelData]'
+class StatefulTensorMemoryEvent:
+    EVENT_NAME = '[statefulTensorMemory]'
 
     def __init__(self, timestamp: int, device_type: DeviceType, bytes_: int) -> None:
         self.pid = os.getpid()
@@ -36,25 +35,26 @@ class ModelDataEvent:
         self.bytes = bytes_
 
     def state_dict(self):
-        return generic_instant_event(ModelDataEvent.EVENT_NAME, self.pid, self.tid, self.timestamp, {
+        return generic_instant_event(StatefulTensorMemoryEvent.EVENT_NAME, self.pid, self.tid, self.timestamp, {
             'Device Type': self.device_type.value,
             'Device Id': self.device_id,
             'Bytes': self.bytes
         })
 
 
-class ModelDataTracer:
+class StatefulTensorMemoryTracer:
 
     def __init__(self) -> None:
-        self.events: List[ModelDataEvent] = []
+        self.events: List[StatefulTensorMemoryEvent] = []
         self._tracing = False
 
     def sample(self):
-        cuda_model_data, cpu_model_data = GLOBAL_MODEL_DATA_TRACER.both_mem_usage
+        cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
+        cpu_mem = StatefulTensor.GST_MGR.total_mem['cpu']
         timestamp = get_timestamp_us()
         if self._tracing:
-            self.events.append(ModelDataEvent(timestamp, DeviceType.CUDA, cuda_model_data))
-            self.events.append(ModelDataEvent(timestamp, DeviceType.CPU, cpu_model_data))
+            self.events.append(StatefulTensorMemoryEvent(timestamp, DeviceType.CUDA, cuda_mem))
+            self.events.append(StatefulTensorMemoryEvent(timestamp, DeviceType.CPU, cpu_mem))
 
     def start_trace(self):
         self.events.clear()
@@ -67,9 +67,9 @@ class ModelDataTracer:
         return [event.state_dict() for event in self.events]
 
 
-class ModelDataTracerHook(BaseOpHook):
+class StatefulTensorMemoryTracerHook(BaseOpHook):
 
-    def __init__(self, tracer: ModelDataTracer):
+    def __init__(self, tracer: StatefulTensorMemoryTracer):
         super().__init__()
         self.tracer = tracer
         self._enable = False
@@ -101,12 +101,12 @@ class ModelDataTracerHook(BaseOpHook):
         self._enable = False
 
 
-class ModelDataProfilerExtention(ProfilerExtension):
+class StatefulTensorMemoryProfilerExtention(ProfilerExtension):
 
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
-        self.tracer = ModelDataTracer()
-        self.hook = ModelDataTracerHook(self.tracer)
+        self.tracer = StatefulTensorMemoryTracer()
+        self.hook = StatefulTensorMemoryTracerHook(self.tracer)
         self.hook_registered = False
 
     def prepare_trace(self):
