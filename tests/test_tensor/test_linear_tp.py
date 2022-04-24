@@ -35,7 +35,7 @@ def run_linear_tp1d_row_test():
 
     W_shape = (out_features, in_features)
     W_master = torch.randn(W_shape, dtype=dtype, device=device)
-    W = broadcast_tensor_chunk(W_master, chunk_size=DEPTH, local_rank=local_rank)
+    W = broadcast_tensor_chunk(W_master, chunk_size=1)
     W.requires_grad = True
 
     B_shape = (out_features)
@@ -45,7 +45,7 @@ def run_linear_tp1d_row_test():
 
     # replace the torch nn.Parameters with ColoTensor
     sharded_weight = ColoTensor.init_from_torch_tensor(W)
-    sharded_weight._shard_spec = "1Drow"
+    sharded_weight.set_spec(spec="1Drow") # reshard
     sharded_bias = ColoTensor.init_from_torch_tensor(B)
     replace_parameter_add_grad(layer, sharded_weight, sharded_bias)
     out = layer(A)

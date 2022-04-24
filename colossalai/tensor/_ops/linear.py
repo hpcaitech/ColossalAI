@@ -6,6 +6,7 @@ from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward
 from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
+from colossalai.utils.cuda import get_current_device
 
 @colo_op_impl(torch.nn.functional.linear)
 def colo_linear(types, args, kwargs, pg):
@@ -39,12 +40,15 @@ def colo_linear(types, args, kwargs, pg):
             # Input:S[1]
             input_per_partition = split_forward_gather_backward(input_tensor, ParallelMode.PARALLEL_1D, dim=-1)
             # Output:P
-            partial_output = torch.nn.functional.linear(input_per_partition, weight.torch_tensor())
+            device = get_current_device() # TODO where to put to(deivce)?
+            weight_ = weight.torch_tensor().to(device)
+            partial_output = torch.nn.functional.linear(input_per_partition, weight_)
             # Reduce(Output)
             output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
             # Bias
             if bias is not None:
-                output = output + bias
+                bias_ = bias.to(device)
+                output = output + bias_
             return output
             
         else:
