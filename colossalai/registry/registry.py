@@ -35,7 +35,7 @@ class Registry:
             AssertionError: Raises an AssertionError if the module has already been registered before.
         """
         module_name = module_class.__name__
-        assert module_name not in self._registry
+        assert module_name not in self._registry, f"{module_name} not found in {self.name}"
         self._registry[module_name] = module_class
 
         # return so as to use it normally if via importing
