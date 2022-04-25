@@ -5,10 +5,10 @@ from colossalai.core import global_context as gpc
 
 
 class ComputePattern(Enum):
-    TP1DRow = 1,
-    TP1DCol = 2,
-    ZeRO = 3,
-    DP = 4,
+    TP1DRow = 1
+    TP1DCol = 2
+    ZeRO = 3
+    DP = 4
 
 
 class ParallelAction(object):
