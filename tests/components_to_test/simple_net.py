@@ -1,11 +1,10 @@
-from zmq import device
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from colossalai.nn import CheckpointModule
 from .utils.dummy_data_generator import DummyDataGenerator
 from .registry import non_distributed_component_funcs
 from colossalai.utils.cuda import get_current_device
+
 
 class SimpleNet(CheckpointModule):
     """
