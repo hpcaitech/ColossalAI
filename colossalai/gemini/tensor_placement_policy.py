@@ -8,6 +8,7 @@ from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, c
 from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.gemini.memory_tracer import MemStatsCollector
 from typing import Type
+import functools
 
 
 class TensorPlacementPolicy(ABC):
@@ -95,12 +96,8 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_tensor_list = hold_cuda_tensor_list
             if not warmup:
-                next_compute_idx = {t: len(compute_list) for t in hold_cuda_tensor_list}
-                for i in range(len(compute_list) - 1, compute_idx, -1):
-                    if compute_list[i] in next_compute_idx:
-                        next_compute_idx[compute_list[i]] = i
-                next_compute_idx = sorted(next_compute_idx.items(), key=lambda pair: pair[1], reverse=True)
-                to_free_tensor_list = [t for (t, idx) in next_compute_idx]
+                to_free_tensor_list = self._sort_hold_cuda_tensors(tuple(hold_cuda_tensor_list), compute_idx, tuple(compute_list))
+                print(self._sort_hold_cuda_tensors.cache_info())
             for t in to_free_tensor_list:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
@@ -112,6 +109,17 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
                 )
 
         return freed_cuda_model_data
+
+    
+    @staticmethod
+    @functools.lru_cache(maxsize=None, typed=True)
+    def _sort_hold_cuda_tensors(hold_cuda_tensors: tuple, compute_idx: int, compute_list: tuple) -> list:
+        next_compute_idx = {t: len(compute_list) for t in hold_cuda_tensors}
+        for i in range(len(compute_list) - 1, compute_idx, -1):
+            if compute_list[i] in next_compute_idx:
+                next_compute_idx[compute_list[i]] = i
+        next_compute_idx = sorted(next_compute_idx.items(), key=lambda pair: pair[1], reverse=True)
+        return [t for (t, idx) in next_compute_idx]
 
 
 class TensorPlacementPolicyFactory:
