@@ -31,7 +31,11 @@ def colo_linear(types, args, kwargs, pg):
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):
         if weight.shard_spec == None or weight.shard_spec.size == 0:
-            return torch.nn.functional.linear(input_tensor, weight.torch_tensor(), bias)
+            if isinstance(input_tensor, ColoTensor):
+                input_tensor = input_tensor.torch_tensor()
+            if isinstance(weight, ColoTensor):
+                weight = weight.torch_tensor()
+            return torch.nn.functional.linear(input_tensor, weight, bias)
         elif weight.shard_spec.size == 1:
             if ComputePattern.TP1DRow in weight.shard_spec.compute_patterns:
                 # Input:S[1] x Weight:S[0] = Output:P
