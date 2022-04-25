@@ -8,13 +8,13 @@ from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device, synchronize
 
 
-def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode):
+def ring_forward(tensor_send_next: torch.Tensor, parallel_mode: ParallelMode) -> torch.Tensor:
     """Sends a tensor to the next member and receives a tensor from the previous member.
     This function returns the received tensor from the previous member.
 
     Args:
-        tensor_send_next: Tensor sent to next member
-        parallel_mode: Parallel group mode used in this communication
+        tensor_send_next (:class:`torch.Tensor`): Tensor sent to next member
+        parallel_mode (ParallelMode): Parallel group mode used in this communication
 
     Returns:
         :class:`torch.Tensor`: The tensor received from the previous.
