@@ -41,8 +41,10 @@ def colo_linear(types, args, kwargs, pg):
                 # All-Reduce(Output) + bias = res
                 assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.size(-1), \
                 'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                    input_tensor.shape, weight.size, weight.size[-1] * gpc.tensor_parallel_size)
+                    input_tensor.shape, weight.size, weight.size(-1) * gpc.tensor_parallel_size)
                 # Input:S[1]
+                if isinstance(input_tensor, ColoTensor):
+                    input_tensor = input_tensor.torch_tensor()
                 parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
                 input_per_partition = split_forward_gather_backward(input_tensor, parallel_action.parallel_mode, dim=-1)
                 # Output:P
@@ -54,7 +56,7 @@ def colo_linear(types, args, kwargs, pg):
                 if bias is not None:
                     bias_ = bias
                     output = output + bias_
-                return output
+                return ColoTensor.init_from_torch_tensor(output)
             else:
                 raise NotImplementedError
         else:
