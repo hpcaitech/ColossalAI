@@ -29,7 +29,6 @@ def run_simple_net():
 
     for i, (data, label) in enumerate(train_dataloader):
         output = model(data)
-        print(output)
         if criterion:
             loss = criterion(output, label)
         else:

@@ -6,8 +6,7 @@ from numpy import product
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 from colossalai.nn.layer.utils import divide
-from colossalai.utils.cuda import get_current_device
-
+from colossalai.tensor.spec import TensorSpec, ComputePattern, ParallelAction
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
@@ -28,7 +27,7 @@ class ColoTensor(object):
             pin_memory=False,
             device=None,
             torch_tensor=torch.empty(0),
-            shard_spec: str = None,
+            shard_spec: TensorSpec = None,
     ):
         self._size = size
         self._dtype = dtype
@@ -39,7 +38,7 @@ class ColoTensor(object):
         self._shard_spec = shard_spec
 
     @property
-    def shard_spec(self) -> Optional[str]:
+    def shard_spec(self) -> Optional[TensorSpec]:
         return self._shard_spec
 
     @property
@@ -109,7 +108,7 @@ class ColoTensor(object):
                                              device=self._device)
         return self._torch_tensor
 
-    def set_spec(self, spec: str, lazy_shard: bool = False) -> None:
+    def set_spec(self, spec: TensorSpec, lazy_shard: bool = False) -> None:
         self._shard_spec = spec
         if lazy_shard == False:
             self._shard()
@@ -121,7 +120,6 @@ class ColoTensor(object):
             local_rank = gpc.get_local_rank(ParallelMode.TENSOR)
             dim = -1
             chunk_size = divide(self._size[dim], num_partition)
-            device = get_current_device()
             # Reshape to get shard for this rank and we don't want autograd
             # recording here for the narrow op and 'local_shard' should be a
             # leaf variable in the autograd graph.
@@ -129,7 +127,6 @@ class ColoTensor(object):
             ).contiguous()    # TODO Shall we clone() here since detach() will point to the old tensor?
             self._torch_tensor.requires_grad = self._requires_grad
             self._size = self._torch_tensor.size()
-            self._device = device    # TODO A `fake` device now because torch_tensor.device always = cpu
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
