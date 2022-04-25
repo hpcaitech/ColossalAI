@@ -1,12 +1,12 @@
+from colossalai.context import parallel_mode
 from .op_wrapper import _COLOSSAL_OPS
 
 import torch
 from typing import Tuple, Optional
 from numpy import product
 from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
 from colossalai.nn.layer.utils import divide
-from colossalai.tensor.spec import TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
@@ -27,7 +27,7 @@ class ColoTensor(object):
             pin_memory=False,
             device=None,
             torch_tensor=torch.empty(0),
-            shard_spec: TensorSpec = None,
+            shard_spec: TensorSpec = TensorSpec(),
     ):
         self._size = size
         self._dtype = dtype
@@ -38,7 +38,7 @@ class ColoTensor(object):
         self._shard_spec = shard_spec
 
     @property
-    def shard_spec(self) -> Optional[TensorSpec]:
+    def shard_spec(self) -> TensorSpec:
         return self._shard_spec
 
     @property
@@ -115,10 +115,11 @@ class ColoTensor(object):
 
     def _shard(self):
         assert self._shard_spec is not None, 'You should call set_spec() before _shard() ColoTensor.'
-        if self._shard_spec.num_policy == 1:
+        if self._shard_spec.num_action == 1:
             if ComputePattern.TP1DRow in self._shard_spec.compute_patterns:
-                num_partition = gpc.get_world_size(ParallelMode.TENSOR)
-                local_rank = gpc.get_local_rank(ParallelMode.TENSOR)
+                parallel_action = self._shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
+                num_partition = gpc.get_world_size(parallel_action.parallel_mode)
+                local_rank = gpc.get_local_rank(parallel_action.parallel_mode)
                 dim = -1
                 chunk_size = divide(self._size[dim], num_partition)
                 # Reshape to get shard for this rank and we don't want autograd

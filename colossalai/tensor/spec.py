@@ -10,10 +10,10 @@ class ComputePattern(Enum):
 
 
 class ParallelAction(object):
-    def __init__(self, priority=0, compute_pattern=ComputePattern.DP, process_group=ParallelMode.DATA) -> None:
+    def __init__(self, priority=0, compute_pattern=ComputePattern.DP, parallel_mode=ParallelMode.DATA) -> None:
         self.priority = priority
         self.compute_pattern = compute_pattern
-        self.process_group = process_group
+        self.parallel_mode = parallel_mode
 
 
 class TensorSpec(object):
@@ -47,7 +47,7 @@ class TensorSpec(object):
         return self._parallel_action_list
 
     @property
-    def num_policy(self):
+    def num_action(self):
         return len(self._parallel_action_list)
 
     @property
@@ -56,7 +56,7 @@ class TensorSpec(object):
 
     def sort(self):
         if len(self._parallel_action_list) > 0:
-            self._parallel_action_list.sort(key=lambda parallel_action : parallel_action.priority, reverse=True)
+            self._parallel_action_list.sort(key=lambda parallel_action : parallel_action.priority)
     
     def get_action_by_compute_pattern(self, compute_pattern: ComputePattern):
         for parallel_action in self._parallel_action_list:
