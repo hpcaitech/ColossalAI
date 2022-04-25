@@ -35,7 +35,7 @@ def colo_linear(types, args, kwargs, pg):
         elif weight.shard_spec == '1Drow':
             # Input:S[1] x Weight:S[0] = Output:P
             # All-Reduce(Output) + bias = res
-            assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.siz(-1), \
+            assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.size(-1), \
             'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_tensor.shape, weight.size, weight.size[-1] * gpc.tensor_parallel_size)
             # Input:S[1]
