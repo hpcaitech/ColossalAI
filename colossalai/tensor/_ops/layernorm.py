@@ -1,4 +1,3 @@
-from numpy import isin, kaiser
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor
