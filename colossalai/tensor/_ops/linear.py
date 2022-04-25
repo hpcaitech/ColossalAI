@@ -30,13 +30,13 @@ def colo_linear(types, args, kwargs, pg):
 
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):
-        if weight.shard_spec == None or weight.shard_spec.size == 0:
+        if weight.shard_spec == None or weight.shard_spec.num_policy == 0:
             if isinstance(input_tensor, ColoTensor):
                 input_tensor = input_tensor.torch_tensor()
             if isinstance(weight, ColoTensor):
                 weight = weight.torch_tensor()
             return torch.nn.functional.linear(input_tensor, weight, bias)
-        elif weight.shard_spec.size == 1:
+        elif weight.shard_spec.num_policy == 1:
             if ComputePattern.TP1DRow in weight.shard_spec.compute_patterns:
                 # Input:S[1] x Weight:S[0] = Output:P
                 # All-Reduce(Output) + bias = res
@@ -46,14 +46,13 @@ def colo_linear(types, args, kwargs, pg):
                 # Input:S[1]
                 input_per_partition = split_forward_gather_backward(input_tensor, ParallelMode.PARALLEL_1D, dim=-1)
                 # Output:P
-                device = get_current_device()    # TODO where to put to(deivce)?
-                weight_ = weight.torch_tensor().to(device)
+                weight_ = weight.torch_tensor()
                 partial_output = torch.nn.functional.linear(input_per_partition, weight_)
                 # Reduce(Output)
                 output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
                 # Bias
                 if bias is not None:
-                    bias_ = bias.to(device)
+                    bias_ = bias
                     output = output + bias_
                 return output
             else:

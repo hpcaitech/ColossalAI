@@ -46,16 +46,18 @@ class TensorSpec(object):
     def parallel_action_list(self):
         return self._parallel_action_list
 
+    @property
+    def num_policy(self):
+        return len(self._parallel_action_list)
+
+    @property
+    def compute_patterns(self):
+        return [parallel_action.compute_pattern for parallel_action in self._parallel_action_list]
+
     def sort(self):
         if len(self._parallel_action_list) > 0:
             self._parallel_action_list.sort(key=lambda parallel_action : parallel_action.priority, reverse=True)
     
-    def size(self):
-        return len(self._parallel_action_list)
-
-    def compute_patterns(self):
-        return [parallel_action.compute_pattern for parallel_action in self._parallel_action_list]
-
     def get_action_by_compute_pattern(self, compute_pattern: ComputePattern):
         for parallel_action in self._parallel_action_list:
             if parallel_action.compute_pattern == compute_pattern:
