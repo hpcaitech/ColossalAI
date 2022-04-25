@@ -9,6 +9,18 @@ __all__ = ['DynamicGradScaler']
 
 
 class DynamicGradScaler(BaseGradScaler):
+    """A gradient scaler which uses dynamic loss scale
+
+    Args:
+        initial_scale (float): the initial loss scale, defaults to 2**16
+        growth_factor (float): the multiplication factor for increasing loss scale, defaults to 2
+        backoff_factor (float): the multiplication factor for decreasing loss scale, defaults to 0.5
+        growth_interval (int): the number of steps to increase loss scale when no overflow occurs, defaults to 1000
+        min_scale (float): the minimum loss scale, defaults to None
+        max_scale (float): the maximum loss scale, defaults to None
+        hysteresis (int):  the number of overflows before decreasing loss scale, defaults to 2
+        verbose (bool): whether to log messages, defaults to False
+    """
 
     def __init__(self,
                  initial_scale: float = 2**16,
@@ -39,6 +51,9 @@ class DynamicGradScaler(BaseGradScaler):
         self._sanity_checks()
 
     def _sanity_checks(self) -> None:
+        """Check if the arguments are correct.
+        """
+
         if self._min_scale:
             assert self._min_scale > 0, 'The minimum gradient scale cannot be zero or negative'
         if self._max_scale:
@@ -48,6 +63,11 @@ class DynamicGradScaler(BaseGradScaler):
         assert self._hysteresis >= 0, 'The hysteresis cannot be negative'
 
     def update(self, overflow: bool) -> None:
+        """Update the loss scale.
+
+        Args:
+            overflow (bool): whether overflow occurs
+        """
         if overflow:
             self._hysteresis_step += 1
             self._growth_step = 0
@@ -67,11 +87,17 @@ class DynamicGradScaler(BaseGradScaler):
                     ranks=[0])
 
     def _backoff_scale(self) -> None:
+        """Decrease the loss scale
+        """
+
         self._scale = self._scale * self._backoff_factor
         if self._min_scale:
             self._scale = torch.max(self._scale, self._min_scale)
 
     def _grow_scale(self) -> None:
+        """Increase the loss scale
+        """
+
         self._scale = self._scale * self._growth_factor
         if self._max_scale:
             self._scale = torch.min(self._scale, self._max_scale)

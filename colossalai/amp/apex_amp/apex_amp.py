@@ -28,7 +28,7 @@ class ApexAMPOptimizer(ColossalaiOptimizer):
             scaled_loss.backward()
 
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
-        """Clip gradients' norm
+        """Clip gradients by norm
 
         Args:
             model (torch.nn.Module): Your model object
