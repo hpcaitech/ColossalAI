@@ -6,8 +6,7 @@ from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward
 from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
-from colossalai.utils.cuda import get_current_device
-
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 
 @colo_op_impl(torch.nn.functional.linear)
 def colo_linear(types, args, kwargs, pg):
@@ -30,32 +29,36 @@ def colo_linear(types, args, kwargs, pg):
 
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):
-        if weight.shard_spec == None:
+        if weight.shard_spec == None or weight.shard_spec.num_action == 0:
             if isinstance(input_tensor, ColoTensor):
                 input_tensor = input_tensor.torch_tensor()
             if isinstance(weight, ColoTensor):
                 weight = weight.torch_tensor()
             return torch.nn.functional.linear(input_tensor, weight, bias)
-        elif weight.shard_spec == '1Drow':
-            # Input:S[1] x Weight:S[0] = Output:P
-            # All-Reduce(Output) + bias = res
-            assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.size(-1), \
-            'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                input_tensor.shape, weight.size, weight.size[-1] * gpc.tensor_parallel_size)
-            # Input:S[1]
-            input_per_partition = split_forward_gather_backward(input_tensor, ParallelMode.PARALLEL_1D, dim=-1)
-            # Output:P
-            device = get_current_device()    # TODO where to put to(deivce)?
-            weight_ = weight.torch_tensor().to(device)
-            partial_output = torch.nn.functional.linear(input_per_partition, weight_)
-            # Reduce(Output)
-            output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
-            # Bias
-            if bias is not None:
-                bias_ = bias.to(device)
-                output = output + bias_
-            return output
-
+        elif weight.shard_spec.num_action == 1:
+            if ComputePattern.TP1DRow in weight.shard_spec.compute_patterns:
+                # Input:S[1] x Weight:S[0] = Output:P
+                # All-Reduce(Output) + bias = res
+                assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.size(-1), \
+                'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                    input_tensor.shape, weight.size, weight.size(-1) * gpc.tensor_parallel_size)
+                # Input:S[1]
+                if isinstance(input_tensor, ColoTensor):
+                    input_tensor = input_tensor.torch_tensor()
+                parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
+                input_per_partition = split_forward_gather_backward(input_tensor, parallel_action.parallel_mode, dim=-1)
+                # Output:P
+                weight_ = weight.torch_tensor()
+                partial_output = torch.nn.functional.linear(input_per_partition, weight_)
+                # Reduce(Output)
+                output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
+                # Bias
+                if bias is not None:
+                    bias_ = bias
+                    output = output + bias_
+                return ColoTensor.init_from_torch_tensor(output)
+            else:
+                raise NotImplementedError
         else:
             raise NotImplementedError
     else:
