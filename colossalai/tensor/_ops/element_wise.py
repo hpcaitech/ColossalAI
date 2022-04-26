@@ -3,12 +3,36 @@ from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor
 
 
+@colo_op_impl(torch.allclose)
+def colo_mean(types, args=(), kwargs=None, pg=None):
+    a = args[0]
+    b = args[1]
+
+    if isinstance(a, ColoTensor):
+        a = a.torch_tensor()
+    elif isinstance(b, ColoTensor):
+        b = b.torch_tensor()
+
+    return torch.allclose(a, b, **kwargs)
+
+
 @colo_op_impl(torch.mean)
 def colo_mean(types, args=(), kwargs=None, pg=None):
     input_t = args[0]
     if isinstance(input_t, ColoTensor):
         input_t = input_t.torch_tensor()
     return ColoTensor.init_from_torch_tensor(torch.mean(input_t))
+
+
+@colo_op_impl(torch.add)
+def s(types, args=(), kwargs=None, pg=None):
+    a = args[0]
+    b = args[1]
+    if isinstance(a, ColoTensor):
+        a = a.torch_tensor()
+    if isinstance(b, ColoTensor):
+        b = b.torch_tensor()
+    return ColoTensor.init_from_torch_tensor(torch.add(a.torch_tensor(), b.torch_tensor()))
 
 
 def register_elementwise_op(op):
