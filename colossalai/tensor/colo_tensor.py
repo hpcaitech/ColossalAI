@@ -8,6 +8,7 @@ from colossalai.core import global_context as gpc
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 
+
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
     1. It contains a torch.Tensor as an attribute.
@@ -36,6 +37,9 @@ class ColoTensor(object):
         self._device = device
         self._torch_tensor = torch_tensor
         self._shard_spec = shard_spec
+
+    def __getitem__(self, key):
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor()[key])
 
     @property
     def shard_spec(self) -> TensorSpec:
@@ -148,7 +152,10 @@ class ColoTensor(object):
                 kwargs = {}
 
             kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
-            return func(*args, **kwargs)
+            return ColoTensor.init_from_torch_tensor(func(*args, **kwargs))
 
-    def backward(self, gradient: Optional[torch.Tensor] = None , retain_graph: bool = False):
+    def backward(self, gradient: Optional[torch.Tensor] = None, retain_graph: bool = False):
         self._torch_tensor.backward(gradient=gradient, retain_graph=retain_graph)
+
+    def __add__(self, o) -> "ColoTensor":
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor() + o.torch_tensor())
