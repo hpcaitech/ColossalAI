@@ -1,3 +1,4 @@
+from ast import Pass
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor.colo_tensor import ColoTensor
@@ -41,14 +42,31 @@ def colo_linear(types, args, kwargs, pg):
             if ComputePattern.TP1DRow in weight.shard_spec.compute_patterns:
                 # Input:S[1] x Weight:S[0] = Output:P
                 # All-Reduce(Output) + bias = res
-                assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.size(-1), \
-                'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
-                    input_tensor.shape, weight.size, weight.size(-1) * gpc.tensor_parallel_size)
                 # Input:S[1]
+                input_spec = None
                 if isinstance(input_tensor, ColoTensor):
+                    input_spec = input_tensor.shard_spec
                     input_tensor = input_tensor.torch_tensor()
-                parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
-                input_per_partition = split_forward_gather_backward(input_tensor, parallel_action.parallel_mode, dim=-1)
+
+                if input_spec == None or input_spec.num_action == 0:
+                    # Not splited yet.
+                    assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.size(-1), \
+                    'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                    input_tensor.shape, weight.size, weight.size(-1) * gpc.tensor_parallel_size)
+                    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
+                    input_per_partition = split_forward_gather_backward(input_tensor, parallel_action.parallel_mode, dim=-1)
+                elif input_tensor.shard_spec.num_action == 1:
+                    if ComputePattern.TP1DCol in input_spec.compute_patterns:
+                        # Splited by 1Dcol
+                        assert input_tensor.shape[-1] == weight.size(-1), \
+                        'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                        input_tensor.shape, weight.size, weight.size(-1))
+                        input_per_partition = input_tensor
+                    else:
+                        raise NotImplementedError
+                else:
+                    raise NotImplementedError
+
                 # Output:P
                 weight_ = weight.torch_tensor()
                 partial_output = torch.nn.functional.linear(input_per_partition, weight_)
@@ -57,7 +75,12 @@ def colo_linear(types, args, kwargs, pg):
                 # Bias
                 if bias is not None:
                     output = output + bias
-                return ColoTensor.init_from_torch_tensor(output)
+                
+                # set ColoTensor spec
+                output = ColoTensor.init_from_torch_tensor(output)
+                return output
+            elif ComputePattern.TP1DCol in weight.shard_spec.compute_patterns:
+                pass
             else:
                 raise NotImplementedError
         else:

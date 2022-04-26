@@ -7,8 +7,9 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 from colossalai.tensor import named_params_with_colotensor
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.context.parallel_mode import ParallelMode
 
 from functools import partial
 
