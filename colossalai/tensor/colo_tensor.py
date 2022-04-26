@@ -157,5 +157,21 @@ class ColoTensor(object):
     def backward(self, gradient: Optional[torch.Tensor] = None, retain_graph: bool = False):
         self._torch_tensor.backward(gradient=gradient, retain_graph=retain_graph)
 
+    ## TODO(fjr) we reduce redundency of the following code
     def __add__(self, o) -> "ColoTensor":
         return ColoTensor.init_from_torch_tensor(self.torch_tensor() + o.torch_tensor())
+
+    def __truediv__(self, o) -> "ColoTensor":
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor() / o)
+
+    def view(self, *args: int) -> "ColoTensor":
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor().view(*args))
+
+    def permute(self, *args) -> "ColoTensor":
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor().permute(*args))
+
+    def transpose(self, *args) -> "ColoTensor":
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor().transpose(*args))
+
+    def contiguous(self):
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor().contiguous())
