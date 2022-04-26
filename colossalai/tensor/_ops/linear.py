@@ -1,4 +1,3 @@
-from numpy import isin
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor.colo_tensor import ColoTensor
@@ -7,7 +6,7 @@ from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward
 from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import ComputePattern
 
 
 @colo_op_impl(torch.nn.functional.linear)
