@@ -8,6 +8,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import named_params_with_colotensor
 
 from functools import partial
 
@@ -20,6 +21,8 @@ def run_simple_net():
     with ColoInitContext(device=get_current_device()):
         model = model_builder(checkpoint=True)
 
+    for param in named_params_with_colotensor(model):
+        print(param)
     # we set the Specs for weight of each linear.
     parallel_action_list = [
         ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
