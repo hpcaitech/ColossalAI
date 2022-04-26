@@ -1,19 +1,13 @@
-from cProfile import label
-from statistics import mode
-from colossalai.tensor.colo_tensor import ColoTensor
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 import colossalai
 import pytest
-import torch
 import torch.multiprocessing as mp
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
 from colossalai.utils import ColoInitContext
 
-import torch.distributed as dist
 from functools import partial
 
 

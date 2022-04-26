@@ -53,11 +53,11 @@ def test_linear():
 
     # torch.nn.functional.linear(torch.randn(1, in_dim), sharded_weight, sharded_bias)
     out = fc(input_tensor)
-    loss = out.sum()
+    loss = torch.sum(out)
     loss.backward()
 
     out_ref = fc_ref(input_ref)
-    loss_ref = out_ref.sum()
+    loss_ref = torch.sum(out_ref)
     loss_ref.backward()
 
     assert (loss_ref == loss)

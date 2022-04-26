@@ -6,7 +6,8 @@ from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward
 from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import ComputePattern
+
 
 @colo_op_impl(torch.nn.functional.linear)
 def colo_linear(types, args, kwargs, pg):
@@ -25,6 +26,7 @@ def colo_linear(types, args, kwargs, pg):
         bias = kwargs.get('bias', None)
 
     if isinstance(bias, ColoTensor):
+        assert bias.shard_spec.num_action == 0, f"We currently only support bias is duplicated among processes in the linear operator"
         bias = bias.torch_tensor()
 
     # Add communication logic before and after linear call.
@@ -34,7 +36,7 @@ def colo_linear(types, args, kwargs, pg):
                 input_tensor = input_tensor.torch_tensor()
             if isinstance(weight, ColoTensor):
                 weight = weight.torch_tensor()
-            return torch.nn.functional.linear(input_tensor, weight, bias)
+            return ColoTensor.init_from_torch_tensor(torch.nn.functional.linear(input_tensor, weight, bias))
         elif weight.shard_spec.num_action == 1:
             if ComputePattern.TP1DRow in weight.shard_spec.compute_patterns:
                 # Input:S[1] x Weight:S[0] = Output:P
@@ -54,8 +56,7 @@ def colo_linear(types, args, kwargs, pg):
                 output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
                 # Bias
                 if bias is not None:
-                    bias_ = bias
-                    output = output + bias_
+                    output = output + bias
                 return ColoTensor.init_from_torch_tensor(output)
             else:
                 raise NotImplementedError
