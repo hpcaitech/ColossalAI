@@ -115,4 +115,4 @@ class ZeroHook(BaseOpHook):
         if self._stateful_tensor_mgr:
             self.logger.info(
                 f"CPU-GPU data moving this iteration {self._stateful_tensor_mgr.cpu_gpu_move_volume/1e9} GB", ranks=[0])
-            self._stateful_tensor_mgr.reset()
+            self._stateful_tensor_mgr.finish_iter()
