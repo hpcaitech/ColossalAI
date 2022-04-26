@@ -24,17 +24,6 @@ def colo_mean(types, args=(), kwargs=None, pg=None):
     return ColoTensor.init_from_torch_tensor(torch.mean(input_t))
 
 
-@colo_op_impl(torch.add)
-def s(types, args=(), kwargs=None, pg=None):
-    a = args[0]
-    b = args[1]
-    if isinstance(a, ColoTensor):
-        a = a.torch_tensor()
-    if isinstance(b, ColoTensor):
-        b = b.torch_tensor()
-    return ColoTensor.init_from_torch_tensor(torch.add(a.torch_tensor(), b.torch_tensor()))
-
-
 def register_elementwise_op(op):
 
     @colo_op_impl(op)
