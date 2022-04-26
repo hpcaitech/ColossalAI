@@ -7,7 +7,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, ParallelAction, ColoTensor
 from colossalai.context import ParallelMode
 
 from functools import partial
@@ -28,6 +28,8 @@ def run_simple_net():
 
     # A naive way to set spec for all weights in Linear
     for name, p in named_params_with_colotensor(model):
+        if not isinstance(p, ColoTensor):
+            continue
         if 'weight' in name and 'LayerNorm' not in name and 'ln' not in name and 'embed' not in name:
             p.set_spec(spec)
 
