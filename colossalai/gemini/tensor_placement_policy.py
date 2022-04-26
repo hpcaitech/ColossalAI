@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from time import time
 from typing import List, Optional
 import torch
 from colossalai.utils import get_current_device
@@ -8,6 +9,7 @@ from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, c
 from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.gemini.memory_tracer import MemStatsCollector
 from typing import Type
+import functools
 
 
 class TensorPlacementPolicy(ABC):
@@ -31,7 +33,7 @@ class CPUTensorPlacementPolicy(TensorPlacementPolicy):
         for t in hold_cuda_tensor_list:
             colo_model_data_tensor_move_inline(t, self.device)
             volume += t.payload.numel() * t.payload.element_size()
-        return volume
+        return volume, 0
 
 
 class CUDATensorPlacementPolicy(TensorPlacementPolicy):
@@ -41,7 +43,7 @@ class CUDATensorPlacementPolicy(TensorPlacementPolicy):
         super().__init__(get_current_device(), mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self, hold_cuda_tensor_list: List[StatefulTensor], **kwargs) -> int:
-        return 0
+        return 0, 0
 
 
 class AutoTensorPlacementPolicy(TensorPlacementPolicy):
@@ -51,7 +53,7 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         # model data will use 1-self._warmup_non_model_data_ratio CUDA memory in warmup phase
         # TODO(ver217): make these args configurable
         self._warmup_non_model_data_ratio: float = 0.8
-        self._steady_cuda_cap_ratio: float = 0.8
+        self._steady_cuda_cap_ratio: float = 0.9
 
     def evict_tensors(self,
                       hold_cuda_tensor_list: List[StatefulTensor],
@@ -76,6 +78,7 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
         Returns:
             int: the volume of memory that is evicted
         """
+        start = time()
         cuda_capacity = colo_device_memory_capacity(get_current_device())
         used_cuda_model_data = StatefulTensor.GST_MGR.total_mem['cuda']
         if warmup:
@@ -87,20 +90,18 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
             cuda_capacity *= self._steady_cuda_cap_ratio
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
-
         freed_cuda_model_data = 0
+        end = time()
         if avail_cuda_model_data < cuda_demand:
             # Move cuda_demand - avail_cuda_model_data volume of tensors
             # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
             to_free_tensor_list = hold_cuda_tensor_list
             if not warmup:
-                next_compute_idx = {t: len(compute_list) for t in hold_cuda_tensor_list}
-                for i in range(len(compute_list) - 1, compute_idx, -1):
-                    if compute_list[i] in next_compute_idx:
-                        next_compute_idx[compute_list[i]] = i
-                next_compute_idx = sorted(next_compute_idx.items(), key=lambda pair: pair[1], reverse=True)
-                to_free_tensor_list = [t for (t, idx) in next_compute_idx]
+                to_free_tensor_list = self._sort_hold_cuda_tensors(tuple(hold_cuda_tensor_list), compute_idx,
+                                                                   tuple(compute_list))
+                # print(self._sort_hold_cuda_tensors.cache_info())
+            end = time()
             for t in to_free_tensor_list:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
@@ -110,8 +111,17 @@ class AutoTensorPlacementPolicy(TensorPlacementPolicy):
                 raise RuntimeError(
                     f"Adjust layout failed! No enough CUDA memory! Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
                 )
+        return freed_cuda_model_data, end - start
 
-        return freed_cuda_model_data
+    @staticmethod
+    @functools.lru_cache(maxsize=None)
+    def _sort_hold_cuda_tensors(hold_cuda_tensors: tuple, compute_idx: int, compute_list: tuple) -> list:
+        next_compute_idx = {t: len(compute_list) for t in hold_cuda_tensors}
+        for i in range(len(compute_list) - 1, compute_idx, -1):
+            if compute_list[i] in next_compute_idx:
+                next_compute_idx[compute_list[i]] = i
+        next_compute_idx = sorted(next_compute_idx.items(), key=lambda pair: pair[1], reverse=True)
+        return [t for (t, idx) in next_compute_idx]
 
 
 class TensorPlacementPolicyFactory:
