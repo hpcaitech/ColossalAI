@@ -33,7 +33,7 @@ def named_params_with_colotensor(
         >>> model = torch.nn.Linear(*linear_size)
         >>> delattr(model.weight)
         >>> setattr(model.weight, ColoTensor(...))
-        >>> for name, param in named_params_with_sharded_tensor(model):
+        >>> for name, param in named_params_with_colotensor(model):
         >>>    if name in ['weight']:
         >>>        print(param.size())
 
