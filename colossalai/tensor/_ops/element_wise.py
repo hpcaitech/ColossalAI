@@ -3,6 +3,19 @@ from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor
 
 
+@colo_op_impl(torch.allclose)
+def colo_mean(types, args=(), kwargs=None, pg=None):
+    a = args[0]
+    b = args[1]
+
+    if isinstance(a, ColoTensor):
+        a = a.torch_tensor()
+    elif isinstance(b, ColoTensor):
+        b = b.torch_tensor()
+
+    return torch.allclose(a, b, **kwargs)
+
+
 @colo_op_impl(torch.mean)
 def colo_mean(types, args=(), kwargs=None, pg=None):
     input_t = args[0]
@@ -29,3 +42,22 @@ def register_elementwise_op(op):
 
 register_elementwise_op(torch.nn.functional.gelu)
 register_elementwise_op(torch.nn.functional.relu)
+
+
+@colo_op_impl(torch.sum)
+def sum_op(types, args=(), kwargs=None, pg=None):
+    """
+    Handles ``__torch_function__`` dispatch for the elementwise op such
+    as ``torch.sum`.
+    This method computes on either a normal tensor or a sharded tensor.
+    """
+    if len(args) > 0:
+        input_tensor = args[0]
+    if kwargs is None:
+        kwargs = {}
+    if 'input' in kwargs:
+        input_tensor = kwargs['input']
+    # Validate types
+    if not isinstance(input_tensor, ColoTensor):
+        raise TypeError("input needs to be a ColoTensor")
+    return ColoTensor.init_from_torch_tensor(torch.sum(input_tensor.torch_tensor()))

@@ -111,10 +111,10 @@ class ShardedModelV2(nn.Module):
             self._memstats_collector = None
         self._tensor_placement_policy: TensorPlacementPolicy = TensorPlacementPolicyFactory.create(
             tensor_placement_policy)(mem_stats_collector=self._memstats_collector)
+
         self._stateful_tensor_mgr = StatefulTensorMgr(self._tensor_placement_policy)
-        for param in module.parameters():
-            if hasattr(param, 'colo_attr'):
-                self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
+        param_tensor_list = [p.colo_attr.sharded_data_tensor for p in module.parameters() if hasattr(p, 'colo_attr')]
+        self._stateful_tensor_mgr.register_stateful_tensor_list(param_tensor_list)
 
         # Register hooks
         self._ophook_list = [
@@ -197,6 +197,8 @@ class ShardedModelV2(nn.Module):
         for p in self.module.parameters():
             if hasattr(p, 'colo_attr'):
                 p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+
+        self._stateful_tensor_mgr.start_iter()
 
     def _post_forward_operations(self):
         for p in self.module.parameters():

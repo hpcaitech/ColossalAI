@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from asyncio.log import logger
 from typing import List, Iterable
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
-from torch.optim import Optimizer
 
 from colossalai.logging import get_dist_logger
 from torch import Tensor
@@ -23,7 +21,7 @@ class Engine:
 
     Args:
         model (``torch.nn.Module``): The neural network model.
-        optimizer (``torch.optim.Optimizer``): Optimizer for updating the parameters.
+        optimizer (``colossalai.nn.optimizer.ColossalaiOptimizer``): Optimizer for updating the parameters.
         criterion (``torch.nn.modules.loss._Loss``, optional): Loss function for calculating loss.
         gradient_handlers (List[``BaseGradientHandler``], optional): A list of gradient handler used in backward.
         clip_grad_norm (float, optional): The norm of gradient clipping.
@@ -57,7 +55,7 @@ class Engine:
 
     def __init__(self,
                  model: Module,
-                 optimizer: Optimizer,
+                 optimizer: "ColossalaiOptimizer",
                  criterion: Optional[_Loss] = None,
                  gradient_handlers: Optional[List[BaseGradientHandler]] = None,
                  clip_grad_norm: float = 0.0,
@@ -84,9 +82,11 @@ class Engine:
             self._ophook_list = []
         else:
             self._ophook_list = ophook_list
-        
+
         # build schedule
         if schedule:
+            assert isinstance(schedule, BaseSchedule), \
+                f'expected schedule to be of type BaseSchedule, but got {type(schedule)}'
             self._schedule = schedule
         else:
             self._schedule = NonPipelineSchedule()
@@ -187,7 +187,7 @@ class Engine:
         """
         for handler in self._gradient_handlers:
             handler.handle_gradient()
-    
+
     def execute_schedule(self, data_iter: Iterable, **kwargs):
         """Run the forward, loss computation, and backward for the model.
         Returns a tuple of (output, label, loss).
