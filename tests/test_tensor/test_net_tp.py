@@ -1,5 +1,6 @@
 from cProfile import label
 from statistics import mode
+from colossalai.tensor.colo_tensor import ColoTensor
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 import colossalai
@@ -11,6 +12,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 from colossalai.utils import ColoInitContext
+from colossalai.tensor import named_params_with_colotensor
 
 import torch.distributed as dist
 from functools import partial
@@ -20,21 +22,25 @@ def run_simple_net():
     # A simple net with two stacked nn.Linear
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
-    with ColoInitContext():
+
+    with ColoInitContext(device=get_current_device()):
         model = model_builder(checkpoint=True)
 
+    for param in named_params_with_colotensor(model):
+        print(param)
     # we set the Specs for weight of each linear.
-    model.proj1.weight.set_spec('1Drow')
-    model.proj2.weight.set_spec('1Drow')
+    # model.proj1.weight.set_spec('1Drow')
+    # model.proj2.weight.set_spec('1Drow')
 
     for i, (data, label) in enumerate(train_dataloader):
         output = model(data)
-        print(output)
+
         if criterion:
             loss = criterion(output, label)
         else:
             loss = output
 
+        print(loss.torch_tensor())
         loss.backward()
 
         if i > 5:
@@ -49,6 +55,7 @@ def run_dist(rank, world_size, port):
     run_simple_net()
 
 
+@pytest.mark.skip
 @pytest.mark.dist
 @parameterize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
