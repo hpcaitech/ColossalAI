@@ -18,6 +18,10 @@ class PipelineSharedModuleGradientHandler(BaseGradientHandler):
     :func:`handle_gradient` among all sub pipeline parallel groups.
     For better performance, it bucketizes the gradients of all parameters that are 
     the same type to improve the efficiency of communication.
+
+    Args:
+        model (Module): Model where the gradients accumulate.
+        optimizer (Optimizer): Optimizer for updating the parameters.
     """
 
     def handle_gradient(self):

@@ -14,6 +14,10 @@ class MoeGradientHandler(BaseGradientHandler):
     :func:`handle_gradient` among a data parallel group.
     For better performance, it bucketizes the gradients of all parameters that are
     the same type to improve the efficiency of communication.
+
+    Args:
+        model (Module): Model where the gradients accumulate.
+        optimizer (Optimizer): Optimizer for updating the parameters.
     """
 
     def __init__(self, model, optimizer=None):
@@ -28,7 +32,6 @@ class MoeGradientHandler(BaseGradientHandler):
 
         if global_data > 1:
             epsize_param_dict = get_moe_epsize_param_dict(self._model)
-
 
             # epsize is 1, indicating the params are replicated among processes in data parallelism
             # use the ParallelMode.DATA to get data parallel group
