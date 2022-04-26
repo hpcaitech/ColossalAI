@@ -3,7 +3,7 @@ import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor.colo_tensor import ColoTensor
 from colossalai.context import ParallelMode
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input
+from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, reduce_grad
 from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
@@ -27,8 +27,11 @@ def colo_linear(types, args, kwargs, pg):
         bias = kwargs.get('bias', None)
 
     if isinstance(bias, ColoTensor):
-        assert bias.shard_spec.num_action == 0, f"We currently only support bias is duplicated among processes in the linear operator"
-        bias = bias.torch_tensor()
+        if bias.shard_spec == None or bias.shard_spec.num_action == 0:
+            bias = bias.torch_tensor()
+        elif bias.shard_spec.num_action == 1:
+            if ComputePattern.TP1DCol in bias.shard_spec.compute_patterns:
+                
 
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):
@@ -44,6 +47,7 @@ def colo_linear(types, args, kwargs, pg):
                 # All-Reduce(Output) + bias = res
                 # Input:S[1]
                 input_spec = None
+                parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
                 if isinstance(input_tensor, ColoTensor):
                     input_spec = input_tensor.shard_spec
                     input_tensor = input_tensor.torch_tensor()
@@ -53,7 +57,6 @@ def colo_linear(types, args, kwargs, pg):
                     assert divide(input_tensor.shape[-1], gpc.tensor_parallel_size) == weight.size(-1), \
                     'Invalid shapes in 1Drow forward: input={}, weight={}. Expected last dim of input {}.'.format(
                     input_tensor.shape, weight.size, weight.size(-1) * gpc.tensor_parallel_size)
-                    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
                     input_per_partition = split_forward_gather_backward(input_tensor, parallel_action.parallel_mode, dim=-1)
                 elif input_tensor.shard_spec.num_action == 1:
                     if ComputePattern.TP1DCol in input_spec.compute_patterns:
@@ -71,16 +74,35 @@ def colo_linear(types, args, kwargs, pg):
                 weight_ = weight.torch_tensor()
                 partial_output = torch.nn.functional.linear(input_per_partition, weight_)
                 # Reduce(Output)
-                output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
+                output = reduce_input(partial_output, parallel_action.parallel_mode)
                 # Bias
                 if bias is not None:
                     output = output + bias
-                
                 # set ColoTensor spec
                 output = ColoTensor.init_from_torch_tensor(output)
                 return output
             elif ComputePattern.TP1DCol in weight.shard_spec.compute_patterns:
-                pass
+                # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
+                # All-Gather(Output)
+                gather_out = True
+                input_spec = None
+                parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
+                if isinstance(input_tensor, ColoTensor):
+                    input_spec = input_tensor.shard_spec
+                    input_tensor = input_tensor.torch_tensor()
+                
+                if input_spec == None or input_spec.num_action == 0:
+                    # Not splited yet.
+                    assert input_tensor.shape[-1] == weight.size(-1), \
+                        'Invalid shapes in 1Dcol forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                            input_tensor.shape, weight.size, weight.size(-1))
+                    input_parallel = reduce_grad(input_tensor, parallel_action.parallel_mode)
+                else:
+                    raise NotImplementedError
+                
+                input_parallel
+
+
             else:
                 raise NotImplementedError
         else:
