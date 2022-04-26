@@ -7,6 +7,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 
 from functools import partial
 
@@ -20,8 +21,12 @@ def run_simple_net():
         model = model_builder(checkpoint=True)
 
     # we set the Specs for weight of each linear.
-    # model.proj1.weight.set_spec('1Drow')
-    # model.proj2.weight.set_spec('1Drow')
+    parallel_action_list = [
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
+    ]
+    spec = TensorSpec(parallel_action_list)
+    model.proj1.weight.set_spec(spec=spec)
+    model.proj2.weight.set_spec(spec=spec)
 
     for i, (data, label) in enumerate(train_dataloader):
         output = model(data)
@@ -38,7 +43,6 @@ def run_simple_net():
             break
 
     # TODO(jzy) check the results with col.nn.Linear?
-
 
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
