@@ -1,4 +1,3 @@
-from colossalai.context import parallel_mode
 from .op_wrapper import _COLOSSAL_OPS
 
 import torch
@@ -6,8 +5,8 @@ from typing import Tuple, Optional, Callable
 from numpy import product
 from colossalai.core import global_context as gpc
 from colossalai.nn.layer.utils import divide
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
-
+from colossalai.tensor import TensorSpec, ComputePattern, ShardPattern
+from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, gather_forward_split_backward
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
@@ -37,6 +36,7 @@ class ColoTensor(object):
         self._device = device
         self._torch_tensor = torch_tensor
         self._shard_spec = shard_spec
+        self._shard_pattern = ShardPattern.NA
 
     def __getitem__(self, key):
         return ColoTensor.init_from_torch_tensor(self.torch_tensor()[key])
@@ -44,6 +44,10 @@ class ColoTensor(object):
     @property
     def shard_spec(self) -> TensorSpec:
         return self._shard_spec
+
+    @property
+    def shard_pattern(self):
+        return self._shard_pattern
 
     @property
     def data(self):
@@ -112,22 +116,51 @@ class ColoTensor(object):
                                              device=self._device)
         return self._torch_tensor
 
-    def set_spec(self, spec: TensorSpec, lazy_shard: bool = False) -> None:
+    def set_spec(self, spec: TensorSpec, shard: bool = True) -> None:
         self._shard_spec = spec
-        if lazy_shard == False:
-            self._shard()
+        if shard == True:
+            self.shard()
+    
+    def set_shard_pattern(self, shard_pattern: ShardPattern):
+        self._shard_pattern = shard_pattern
 
-    def _shard(self):
+    def shard(self):
         assert self._shard_spec is not None, 'You should call set_spec() before _shard() ColoTensor.'
-        if self._shard_spec.num_action == 1:
-            if ComputePattern.TP1DRow in self._shard_spec.compute_patterns:
-                parallel_action = self._shard_spec.get_action_by_compute_pattern(
-                    ComputePattern.TP1DRow)
-                self._shard_1d(parallel_action=parallel_action, dim=-1)
-            elif ComputePattern.TP1DCol in self._shard_spec.compute_patterns:
-                parallel_action = self._shard_spec.get_action_by_compute_pattern(
-                    ComputePattern.TP1DCol)
-                self._shard_1d(parallel_action=parallel_action, dim=0)
+        if self._shard_pattern is not ShardPattern.NA: # reshard
+            self.gather()
+        # Model Parameters
+        if ComputePattern.TP1DRow in self._shard_spec.compute_patterns:
+            parallel_action = self._shard_spec.get_action_by_compute_pattern(
+                ComputePattern.TP1DRow)
+            self._shard_1d(parallel_action=parallel_action, dim=-1)
+            self._shard_pattern = ShardPattern.Col # We bind our ComputePattern on weight, which has to be transposed when linear().
+        elif ComputePattern.TP1DCol in self._shard_spec.compute_patterns:
+            parallel_action = self._shard_spec.get_action_by_compute_pattern(
+                ComputePattern.TP1DCol)
+            self._shard_1d(parallel_action=parallel_action, dim=0)
+            self._shard_pattern = ShardPattern.Row
+
+    def gather(self):
+        assert self.is_activation(), 'Currently we only support gather Activation ColoTensor.'
+        assert not self.is_gathered(), 'Only sharded ColoTensor can be gathered.'
+        parallel_action = self._shard_spec.get_action_by_compute_pattern(
+            ComputePattern.Activation)
+        if self._shard_pattern == ShardPattern.Row:
+            dim = 0
+        elif self._shard_pattern == ShardPattern.Col:
+            dim = -1
+        self._torch_tensor = gather_forward_split_backward(self._torch_tensor, parallel_action.parallel_mode, dim=dim)
+        self._shard_pattern = ShardPattern.NA
+
+    def is_gathered(self) -> bool:
+        return self._shard_pattern == ShardPattern.NA
+
+    def has_spec(self) -> bool:
+        return self._shard_spec is not None and self._shard_spec.num_action > 0
+
+    def is_activation(self) -> bool:
+        return self._shard_spec is not None and self._shard_spec.num_action == 1 \
+            and ComputePattern.Activation in self._shard_spec.compute_patterns
     
     def _shard_1d(self, parallel_action, dim=-1):
         num_partition = gpc.get_world_size(parallel_action.parallel_mode)
