@@ -86,7 +86,6 @@ def colo_linear(types, args, kwargs, pg):
                 # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
                 # All-Gather(Output)
                 # Input:B
-                gather_out = False # TODO(jzy) For demo's convenience, now it's fixed gather_out.
                 input_spec = None
                 output_spec = None
                 parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
@@ -111,7 +110,7 @@ def colo_linear(types, args, kwargs, pg):
                 weight_ = weight.torch_tensor()
                 output_parallel = torch.nn.functional.linear(input_parallel, weight_, bias)
                
-                if gather_out:
+                if parallel_action.gather_out:
                     # All-Gather(Output)
                     output = gather_forward_split_backward(output_parallel, parallel_action.parallel_mode, dim=-1)
                     output = ColoTensor.init_from_torch_tensor(output)

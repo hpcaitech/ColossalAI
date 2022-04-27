@@ -56,13 +56,6 @@ def run_1d_row_tp():
 
     model = model.cuda()
 
-    # we set the Specs for weight of each linear.
-    parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
-    ]
-    spec = TensorSpec(parallel_action_list)
-    model.proj1.weight.set_spec(spec=spec)
-    model.proj2.weight.set_spec(spec=spec)
 
     for i, (data, label) in enumerate(train_dataloader):
         data = data.to(get_current_device())
