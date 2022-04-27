@@ -19,6 +19,7 @@ from colossalai.core import global_context as gpc
 from colossalai.context.moe_context import MOE_CONTEXT
 
 from colossalai.logging import get_dist_logger
+from colossalai.schema import validate_config
 
 from colossalai.engine.schedule import NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule, get_tensor_shape
 from colossalai.engine import Engine
@@ -94,6 +95,8 @@ def launch(config: Union[str, Path, Config, Dict],
         config = Config(config)
     if isinstance(config, (str, Path)):
         config = Config.from_file(config)
+
+    validate_config(config)
     gpc.load_config(config)
 
     # init default process group
