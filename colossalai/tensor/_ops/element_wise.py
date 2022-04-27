@@ -12,7 +12,8 @@ def colo_mean(types, args=(), kwargs=None, pg=None):
         a = a.torch_tensor()
     elif isinstance(b, ColoTensor):
         b = b.torch_tensor()
-
+    if kwargs is None:
+        kwargs = {}
     return torch.allclose(a, b, **kwargs)
 
 
