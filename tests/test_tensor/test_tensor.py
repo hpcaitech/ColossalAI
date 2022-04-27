@@ -34,3 +34,12 @@ def test_wrapped_tensor_func():
     # return >1 torch.Tensor
     t_split1, t_split2 = t.split(2)
     assert isinstance(t_split1, ColoTensor) and isinstance(t_split2, ColoTensor)
+
+
+def test_operand():
+    t_ref = torch.randn(4, 5)
+    t = ColoTensor.init_from_torch_tensor(t_ref.clone())
+
+    t_ref_res = t_ref + t_ref
+    t_res = t + t
+    assert torch.allclose(t_ref_res, t_res)
