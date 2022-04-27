@@ -56,9 +56,6 @@ def run_1d_row_tp():
 
     model = model.cuda()
 
-    # for param in named_params_with_colotensor(model):
-    #     print(param)
-
     for i, (data, label) in enumerate(train_dataloader):
         data = data.to(get_current_device())
         label = label.to(get_current_device())
@@ -84,11 +81,9 @@ def run_1d_row_tp():
                 loss_torch = output_torch
 
         if rank == 0:
-            print(loss.torch_tensor().item())
-            print('loss torch', loss_torch.item())
-
+            # print(loss.torch_tensor().item())
+            # print('loss torch', loss_torch.item())
             assert torch.allclose(loss.torch_tensor(), loss_torch, rtol=1e-2)
-            # print(loss.torch_tensor(), loss_torch)
 
         loss.backward()
 
@@ -101,10 +96,9 @@ def run_1d_row_tp():
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_simple_net()
+    run_1d_row_tp()
 
 
-@pytest.mark.skip
 @pytest.mark.dist
 @parameterize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
