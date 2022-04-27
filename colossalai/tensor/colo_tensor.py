@@ -132,7 +132,6 @@ class ColoTensor(object):
     def _shard_1d(self, parallel_action, dim=-1):
         num_partition = gpc.get_world_size(parallel_action.parallel_mode)
         local_rank = gpc.get_local_rank(parallel_action.parallel_mode)
-        dim = -1
         chunk_size = divide(self._size[dim], num_partition)
         # Reshape to get shard for this rank and we don't want autograd
         # recording here for the narrow op and 'local_shard' should be a

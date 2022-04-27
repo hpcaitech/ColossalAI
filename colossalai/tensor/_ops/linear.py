@@ -86,7 +86,7 @@ def colo_linear(types, args, kwargs, pg):
                 # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
                 # All-Gather(Output)
                 # Input:B
-                gather_out = True # TODO(jzy) For demo's convenience, now it's fixed gather_out.
+                gather_out = False # TODO(jzy) For demo's convenience, now it's fixed gather_out.
                 input_spec = None
                 output_spec = None
                 parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
