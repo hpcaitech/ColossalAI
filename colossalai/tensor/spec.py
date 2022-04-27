@@ -12,11 +12,11 @@ class ComputePattern(Enum):
 
 class ParallelAction(object):
 
-    def __init__(self, priority=0, compute_pattern=ComputePattern.DP, parallel_mode=ParallelMode.DATA) -> None:
+    def __init__(self, priority=0, compute_pattern=ComputePattern.DP, parallel_mode=ParallelMode.DATA, gather_out=True) -> None:
         self.priority = priority
         self.compute_pattern = compute_pattern
         self.parallel_mode = parallel_mode
-
+        self.gather_out = gather_out
 
 class TensorSpec(object):
     """
