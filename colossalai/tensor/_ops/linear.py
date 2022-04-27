@@ -1,13 +1,13 @@
 from ast import Pass
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor.colo_tensor import ColoTensor
 from colossalai.context import ParallelMode
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, reduce_grad
+from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, \
+    gather_forward_split_backward, reduce_grad
 from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
-from colossalai.tensor import ComputePattern
+from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor
 
 
 @colo_op_impl(torch.nn.functional.linear)
@@ -26,28 +26,29 @@ def colo_linear(types, args, kwargs, pg):
     else:
         bias = kwargs.get('bias', None)
 
+    bias_spec = None
     if isinstance(bias, ColoTensor):
-        if bias.shard_spec == None or bias.shard_spec.num_action == 0:
-            bias = bias.torch_tensor()
-        elif bias.shard_spec.num_action == 1:
-            if ComputePattern.TP1DCol in bias.shard_spec.compute_patterns:
+        bias_spec = bias.shard_spec
+        bias = bias.torch_tensor()
+            #if :
                 
-
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):
         if weight.shard_spec == None or weight.shard_spec.num_action == 0:
+            assert bias_spec == None or bias_spec.num_action == 0, 'Invalid bias spec for native Linear op'
             if isinstance(input_tensor, ColoTensor):
                 input_tensor = input_tensor.torch_tensor()
             if isinstance(weight, ColoTensor):
                 weight = weight.torch_tensor()
             return ColoTensor.init_from_torch_tensor(torch.nn.functional.linear(input_tensor, weight, bias))
         elif weight.shard_spec.num_action == 1:
-            if ComputePattern.TP1DRow in weight.shard_spec.compute_patterns:
+            parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
+            compute_patterns = weight.shard_spec.compute_patterns
+            if ComputePattern.TP1DRow in compute_patterns:
                 # Input:S[1] x Weight:S[0] = Output:P
                 # All-Reduce(Output) + bias = res
                 # Input:S[1]
                 input_spec = None
-                parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
                 if isinstance(input_tensor, ColoTensor):
                     input_spec = input_tensor.shard_spec
                     input_tensor = input_tensor.torch_tensor()
@@ -77,15 +78,17 @@ def colo_linear(types, args, kwargs, pg):
                 output = reduce_input(partial_output, parallel_action.parallel_mode)
                 # Bias
                 if bias is not None:
+                    assert bias_spec == None or bias_spec.num_action == 0, 'Invalid bias spec for 1Drow Linear op'
                     output = output + bias
-                # set ColoTensor spec
                 output = ColoTensor.init_from_torch_tensor(output)
                 return output
-            elif ComputePattern.TP1DCol in weight.shard_spec.compute_patterns:
+            elif ComputePattern.TP1DCol in compute_patterns:
                 # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
                 # All-Gather(Output)
-                gather_out = True
+                # Input:B
+                gather_out = True # TODO(jzy) For demo's convenience, now it's fixed gather_out.
                 input_spec = None
+                output_spec = None
                 parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
                 if isinstance(input_tensor, ColoTensor):
                     input_spec = input_tensor.shard_spec
@@ -99,9 +102,32 @@ def colo_linear(types, args, kwargs, pg):
                     input_parallel = reduce_grad(input_tensor, parallel_action.parallel_mode)
                 else:
                     raise NotImplementedError
+                # Bias:S[1]
+                if bias is not None:
+                    assert bias_spec is not None and bias_spec.num_action == 1 and \
+                        ComputePattern.TP1DCol in bias_spec.compute_patterns, \
+                            'Invalid bias spec for 1Dcol Linear op'
                 
-                input_parallel
-
+                weight_ = weight.torch_tensor()
+                output_parallel = torch.nn.functional.linear(input_parallel, weight_, bias)
+               
+                if gather_out:
+                    # All-Gather(Output)
+                    output = gather_forward_split_backward(output_parallel, parallel_action.parallel_mode, dim=-1)
+                    output = ColoTensor.init_from_torch_tensor(output)
+                else:
+                    output = ColoTensor.init_from_torch_tensor(output_parallel)
+                    out_parallel_action_list = [
+                        ParallelAction(
+                            priority=1, compute_pattern=ComputePattern.TP1DCol, 
+                            parallel_mode=parallel_action.parallel_mode
+                        )
+                    ]
+                    output_spec = TensorSpec(out_parallel_action_list)
+                # set ColoTensor spec
+                if output_spec is not None:
+                    output.set_spec(output_spec)
+                return output
 
             else:
                 raise NotImplementedError
