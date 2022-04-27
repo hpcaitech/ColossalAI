@@ -46,12 +46,22 @@ def ColoModulize(module):
             elif isinstance(p, torch.Tensor):
                 yield name, p
 
+    def colo_parameters(self, *args, **kargs):
+        for _, p in named_params_with_colotensor(self, *args, **kargs):
+            yield p
+
+    def colo_named_parameters(self, *args, **kargs):
+        for name, p in named_params_with_colotensor(self, *args, **kargs):
+            yield name, p
+
     module.old_named_parameters = module.named_parameters
     module.old_parameters = module.parameters
 
     funcType = types.MethodType
     module.parameters = funcType(fake_parameters, module)
     module.named_parameters = funcType(fake_named_parameters, module)
+    module.colo_parameters = funcType(colo_parameters, module)
+    module.colo_named_parameters = funcType(colo_named_parameters, module)
     module._colo_visited = True
 
 

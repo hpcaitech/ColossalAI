@@ -48,7 +48,7 @@ def run_1d_row_tp():
         model_torch = model_torch.cuda()
 
     # A naive way to set spec for all weights in Linear
-    for name, p in named_params_with_colotensor(model):
+    for name, p in model.colo_named_parameters():
         if not isinstance(p, ColoTensor):
             continue
         if 'weight' in name and 'LayerNorm' not in name and 'ln' not in name and 'embed' not in name:
