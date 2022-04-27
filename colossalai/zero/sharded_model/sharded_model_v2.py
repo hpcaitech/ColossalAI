@@ -388,7 +388,12 @@ class ShardedModelV2(nn.Module):
         return gathered_state_dict
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):
-        raise NotImplementedError
+        for name, p in self.module.named_parameters():
+            if name in state_dict:
+                p.colo_attr.data_payload_reset(state_dict[name])
+                self.shard_strategy.shard([p.sharded_data_tensor])
+            elif strict:
+                raise RuntimeError(f'Missing key in state_dict: {name}')
 
     def __getitem__(self, idx: int):
         assert isinstance(self.module, nn.ModuleList)
