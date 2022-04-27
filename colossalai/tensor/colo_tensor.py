@@ -2,11 +2,12 @@ from colossalai.context import parallel_mode
 from .op_wrapper import _COLOSSAL_OPS
 
 import torch
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Callable
 from numpy import product
 from colossalai.core import global_context as gpc
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+
 
 class ColoTensor(object):
     """ Data Structure for Tensor in Colossal-AI
@@ -36,6 +37,9 @@ class ColoTensor(object):
         self._device = device
         self._torch_tensor = torch_tensor
         self._shard_spec = shard_spec
+
+    def __getitem__(self, key):
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor()[key])
 
     @property
     def shard_spec(self) -> TensorSpec:
@@ -156,7 +160,47 @@ class ColoTensor(object):
                 kwargs = {}
 
             kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
-            return func(*args, **kwargs)
+            return cls._filter_outputs_with_colo(func(*args, **kwargs))
 
-    def backward(self, gradient: Optional[torch.Tensor] = None , retain_graph: bool = False):
+    def backward(self, gradient: Optional[torch.Tensor] = None, retain_graph: bool = False):
         self._torch_tensor.backward(gradient=gradient, retain_graph=retain_graph)
+
+    def __add__(self, o) -> "ColoTensor":
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor() + o.torch_tensor())
+
+    def __truediv__(self, o) -> "ColoTensor":
+        return ColoTensor.init_from_torch_tensor(self.torch_tensor() / o)
+
+    def __getattr__(self, name):
+
+        def replace_tensor_with_colo(func):
+
+            def execute_func(*args, **kwargs):
+                # transform the ColoTensor args to torch Tensor.
+                args = [arg.torch_tensor() if isinstance(arg, ColoTensor) else arg for arg in args]
+                if kwargs is None:
+                    kwargs = {}
+                kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
+                return self._filter_outputs_with_colo(func(*args, **kwargs))
+
+            return execute_func
+
+        assert hasattr(self._torch_tensor, name), f"torch.Tensor has not attribute named as {name}. So is ColoTensor"
+        attr = getattr(self._torch_tensor, name)
+
+        if isinstance(attr, Callable):
+            return replace_tensor_with_colo(attr)
+        else:
+            return attr
+
+    @classmethod
+    def _filter_outputs_with_colo(cls, outputs):
+        if outputs is None:    # return None
+            return None
+        elif type(outputs) is not tuple:    # num of return val = 1
+            return ColoTensor.init_from_torch_tensor(outputs) if type(outputs) is torch.Tensor else outputs
+        else:    # num of return val > 1
+            return tuple([
+                ColoTensor.init_from_torch_tensor(output) if type(output) is torch.Tensor else output
+                for output in outputs
+            ])
