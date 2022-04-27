@@ -1,4 +1,3 @@
-from ast import Pass
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.context import ParallelMode
@@ -30,7 +29,6 @@ def colo_linear(types, args, kwargs, pg):
     if isinstance(bias, ColoTensor):
         bias_spec = bias.shard_spec
         bias = bias.torch_tensor()
-            #if :
                 
     # Add communication logic before and after linear call.
     if isinstance(weight, ColoTensor):

@@ -56,7 +56,6 @@ def run_1d_row_tp():
 
     model = model.cuda()
 
-
     for i, (data, label) in enumerate(train_dataloader):
         data = data.to(get_current_device())
         label = label.to(get_current_device())
