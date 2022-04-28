@@ -101,13 +101,13 @@ def colo_linear(types, args, kwargs, pg):
         bias = ColoTensor.init_from_torch_tensor(bias)
                 
     # Add communication logic before and after linear call.
-    if not weight.has_spec():
+    if not weight.has_spec(): # No Model Parallel Applied
         assert not bias.has_spec(), 'Invalid bias spec for native Linear op'
         input_tensor = input_tensor.torch_tensor()
         weight = weight.torch_tensor()
         bias = bias.torch_tensor()
         return ColoTensor.init_from_torch_tensor(torch.nn.functional.linear(input_tensor, weight, bias))
-    elif weight.shard_spec.num_action == 1:
+    elif weight.shard_spec.num_action == 1: # Single Model Parallel Applied
         compute_patterns = weight.shard_spec.compute_patterns
         if ComputePattern.TP1DRow in compute_patterns:
             return colo_linear_1Drow(input_tensor, weight, bias)
