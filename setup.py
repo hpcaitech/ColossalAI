@@ -94,7 +94,12 @@ def fetch_readme():
 
 def get_version():
     with open('version.txt') as f:
-        return f.read().strip()
+        version = f.read().strip()
+        if build_cuda_ext:
+            torch_version = ''.join(torch.__version__.split('.')[:2])
+            cuda_version = ''.join(get_cuda_bare_metal_version(CUDA_HOME)[1:])
+            version += f'+torch{torch_version}cu{cuda_version}'
+        return version
 
 
 if build_cuda_ext:
