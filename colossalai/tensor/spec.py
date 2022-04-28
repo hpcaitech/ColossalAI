@@ -4,20 +4,25 @@ from colossalai.context.parallel_mode import ParallelMode
 
 
 class ComputePattern(Enum):
-    Activation = 0 # TODO(jzy) A tmp place to store Activation info. Find a better place in future.
     TP1DRow = 1
     TP1DCol = 2
     ZeRO = 3
     DP = 4
+
 
 class ShardPattern(Enum):
     NA = 0
     Row = 1
     Col = 2
 
+
 class ParallelAction(object):
 
-    def __init__(self, priority=0, compute_pattern=ComputePattern.DP, parallel_mode=ParallelMode.DATA, gather_out=True) -> None:
+    def __init__(self,
+                 priority=0,
+                 compute_pattern=ComputePattern.DP,
+                 parallel_mode=ParallelMode.DATA,
+                 gather_out=True) -> None:
         self.priority = priority
         self.compute_pattern = compute_pattern
         self.parallel_mode = parallel_mode
@@ -64,7 +69,7 @@ class TensorSpec(object):
     @property
     def compute_patterns(self):
         return [parallel_action.compute_pattern for parallel_action in self._parallel_action_list]
-    
+
     @property
     def shard_pattern(self):
         return self._shard_pattern
