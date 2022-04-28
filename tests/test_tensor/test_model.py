@@ -138,6 +138,7 @@ def test_colo_optimizer():
 
     colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
     for i, (data, label) in enumerate(train_dataloader):
+        colo_optimizer.zero_grad()
         data = data.to(get_current_device())
         label = label.to(get_current_device())
 
