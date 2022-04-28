@@ -8,7 +8,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, ParallelAction, ColoTensor
+from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ColoOptimizer
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 
@@ -25,6 +25,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
+
 
 def run_1d_col_tp():
     # A simple net with two stacked nn.Linear
@@ -98,6 +99,7 @@ def run_1d_col_tp():
         if i > 5:
             break
 
+
 # Test the overrided parameters() and named_parameters() member functions
 def test_model_parameters():
     # build a module with 2 Linear, 4 parameters in total.
@@ -125,6 +127,34 @@ def test_model_parameters():
     for p in model.fcs[0].parameters(recurse=False):
         param_cnt += 1
     assert param_cnt == 2
+
+
+def test_colo_optimizer():
+    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
+    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    set_seed(1)
+    with ColoInitContext(lazy_memory_allocate=False, device=get_current_device()):
+        model = model_builder(checkpoint=True)
+
+    colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
+    for i, (data, label) in enumerate(train_dataloader):
+        colo_optimizer.zero_grad()
+        data = data.to(get_current_device())
+        label = label.to(get_current_device())
+
+        # Bcast rank0 data to all processes
+        if criterion:
+            output = model(data)
+            loss = criterion(output, label)
+        else:
+            output = model(data, label)
+            loss = output
+
+        loss.backward()
+        colo_optimizer.step()
+
+        if i > 5:
+            break
 
 
 def run_1d_row_tp():
@@ -209,4 +239,5 @@ def test_simple_net(world_size):
 
 if __name__ == '__main__':
     # test_simple_net()
-    test_model_parameters()
+    # test_model_parameters()
+    test_colo_optimizer()

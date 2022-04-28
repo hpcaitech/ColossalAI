@@ -94,7 +94,16 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         save_torch_payload = True if not self._lazy_memory_allocate else False
         for name, param in name_list:
             delattr(module, name)
-            setattr(module, name,
-                    ColoTensor.init_from_torch_tensor(tensor=param.to(self._device), save_payload=save_torch_payload))
+
+            # detaching tensor is necessary for optimizers.
+            requires_grad = param.requires_grad
+            tensor_detached = param.to(self._device).detach()
+            tensor_detached.requires_grad = requires_grad
+
+            setattr(
+                module, name,
+                ColoTensor.init_from_torch_tensor(tensor=tensor_detached,
+                                                  save_payload=save_torch_payload,
+                                                  is_model_data=True))
 
         ColoModulize(module)
