@@ -11,7 +11,24 @@ from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, Parall
 def colo_embedding_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, args, kwargs) -> ColoTensor:
     # embedding_1Dcol split the weight(lookup table)
     # Gather splitted lookup table
-    pass
+    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol_Embedding)
+    if input_tensor.is_activation() and not input_tensor.is_gathered():
+        input_tensor.gather()
+
+    output_parallel = torch.nn.functional.embedding(input_tensor.torch_tensor(), weight.torch_tensor(), 
+        *args, **kwargs)
+    output = ColoTensor.init_from_torch_tensor(output_parallel)
+    out_parallel_action_list = [
+        ParallelAction(
+            priority=1, compute_pattern=ComputePattern.Activation, 
+            parallel_mode=parallel_action.parallel_mode
+        )
+    ]
+    output_spec = TensorSpec(out_parallel_action_list)
+    output.set_spec(output_spec, shard=False)
+    output.set_shard_pattern(ShardPattern.Col)
+    output.gather()
+    return output
 
 @colo_op_impl(torch.nn.functional.embedding)
 def colo_embedding(types, args, kwargs, pg):
@@ -36,7 +53,7 @@ def colo_embedding(types, args, kwargs, pg):
         return ColoTensor.init_from_torch_tensor(output)
     elif weight.shard_spec.num_action == 1: # Single Model Parallel Applied
         compute_patterns = weight.shard_spec.compute_patterns
-        if ComputePattern.TP1DCol_Linear in compute_patterns:
+        if ComputePattern.TP1DCol_Embedding in compute_patterns:
             return colo_embedding_1Dcol(input_tensor, weight, args, kwargs)
         else:
             raise NotImplementedError

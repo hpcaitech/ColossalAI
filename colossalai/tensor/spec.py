@@ -7,8 +7,10 @@ class ComputePattern(Enum):
     Activation = 0 # TODO(jzy) A tmp place to store Activation info. Find a better place in future.
     TP1DRow_Linear = 1
     TP1DCol_Linear = 2
-    ZeRO = 3
-    DP = 4
+    TP1DRow_Embedding = 3
+    TP1DCol_Embedding = 4
+    ZeRO = 5
+    DP = 6
 
 class ShardPattern(Enum):
     NA = 0
