@@ -12,7 +12,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, args, kwa
     # embedding_1Dcol split the weight(lookup table)
     # Gather splitted lookup table
     parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol_Embedding)
-    if input_tensor.is_activation() and not input_tensor.is_gathered():
+    if not input_tensor.is_gathered():
         input_tensor.gather()
 
     output_parallel = torch.nn.functional.embedding(input_tensor.torch_tensor(), weight.torch_tensor(), 

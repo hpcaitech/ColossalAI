@@ -27,7 +27,7 @@ def colo_layernorm(types, args=(), kwargs=None, pg=None):
         eps = kwargs['eps']
 
     if isinstance(input_tensor, ColoTensor):
-        if input_tensor.is_activation() and not input_tensor.is_gathered():
+        if not input_tensor.is_gathered():
             input_tensor.gather()
         input_tensor = input_tensor.torch_tensor()
     if isinstance(weight, ColoTensor):
