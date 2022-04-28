@@ -135,6 +135,12 @@ class PipelineSchedule(BaseSchedule):
         else:
             sig = inspect.signature(model.forward)
         if isinstance(batch_data, torch.Tensor):
+            for p in sig.parameters.values():
+                if p.kind == inspect.Parameter.VAR_KEYWORD:
+                    if input_tensor is None:
+                        return model(batch_data)
+                    else:
+                        return model(input_tensor)
             if input_tensor is None:
                 return model(batch_data)
             elif len(sig.parameters) > 1:
@@ -148,7 +154,7 @@ class PipelineSchedule(BaseSchedule):
                     filter_batch = False
             if filter_batch:
                 batch_data = {k: v for k, v in batch_data.items() if k in sig.parameters}
-            if input_tensor is None:
+            if input_tensor is None and filter_batch:
                 return model(**batch_data)
             else:
                 return model(input_tensor, **batch_data)
