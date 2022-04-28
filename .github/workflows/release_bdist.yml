@@ -55,7 +55,7 @@ jobs:
       - name: 🚀 Deploy
         uses: garygrossgarten/github-action-scp@release
         with:
-          local: dist/*
+          local: dist
           remote: ${{ secrets.PRIVATE_PYPI_DIR }}
           host: ${{ secrets.PRIVATE_PYPI_HOST }}
           username: ${{ secrets.PRIVATE_PYPI_USER }}
