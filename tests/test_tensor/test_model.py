@@ -58,7 +58,7 @@ def test_model_parameters():
 
 def run_1d_row_tp():
     # A simple net with two stacked nn.Linear
-    get_components_func = non_distributed_component_funcs.get_callable('bert')
+    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
