@@ -391,7 +391,7 @@ class ShardedModelV2(nn.Module):
         for name, p in self.module.named_parameters():
             if name in state_dict:
                 p.colo_attr.data_payload_reset(state_dict[name])
-                self.shard_strategy.shard([p.sharded_data_tensor])
+                self.shard_strategy.shard([p.colo_attr.sharded_data_tensor])
             elif strict:
                 raise RuntimeError(f'Missing key in state_dict: {name}')
 
