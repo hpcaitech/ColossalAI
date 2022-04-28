@@ -43,7 +43,6 @@ class ColoTensor(object):
         self._pin_memory = pin_memory
         self._device = device
         self._torch_tensor = torch_tensor
-        self._torch_tensor.requires_grad = self._requires_grad
         self._shard_spec = shard_spec
         self._shard_pattern = ShardPattern.NA
         if is_model_data:
@@ -104,7 +103,7 @@ class ColoTensor(object):
                             requires_grad=tensor.requires_grad,
                             pin_memory=tensor.is_pinned(),
                             device=tensor.device,
-                            torch_tensor=tensor.detach() if save_payload else torch.empty(0),
+                            torch_tensor=tensor if save_payload else torch.empty(0),
                             is_model_data=is_model_data)
         return colo_t
 
