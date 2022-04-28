@@ -47,7 +47,7 @@ def run_linear_tp1d_col_test():
     sharded_weight = ColoTensor.init_from_torch_tensor(W)
     sharded_bias = ColoTensor.init_from_torch_tensor(B)
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
     sharded_weight.set_spec(spec) # reshard
@@ -110,7 +110,7 @@ def run_linear_tp1d_row_test():
     # replace the torch nn.Parameters with ColoTensor
     sharded_weight = ColoTensor.init_from_torch_tensor(W)
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
     sharded_weight.set_spec(spec=spec) # reshard

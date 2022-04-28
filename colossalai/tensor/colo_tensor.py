@@ -129,14 +129,14 @@ class ColoTensor(object):
         if self._shard_pattern is not ShardPattern.NA: # reshard
             self.gather()
         # Model Parameters
-        if ComputePattern.TP1DRow in self._shard_spec.compute_patterns:
+        if ComputePattern.TP1DRow_Linear in self._shard_spec.compute_patterns:
             parallel_action = self._shard_spec.get_action_by_compute_pattern(
-                ComputePattern.TP1DRow)
+                ComputePattern.TP1DRow_Linear)
             self._shard_1d(parallel_action=parallel_action, dim=-1)
             self._shard_pattern = ShardPattern.Col # We bind our ComputePattern on weight, which has to be transposed when linear().
-        elif ComputePattern.TP1DCol in self._shard_spec.compute_patterns:
+        elif ComputePattern.TP1DCol_Linear in self._shard_spec.compute_patterns:
             parallel_action = self._shard_spec.get_action_by_compute_pattern(
-                ComputePattern.TP1DCol)
+                ComputePattern.TP1DCol_Linear)
             self._shard_1d(parallel_action=parallel_action, dim=0)
             self._shard_pattern = ShardPattern.Row
 
