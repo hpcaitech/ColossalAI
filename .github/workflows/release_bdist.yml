@@ -1,0 +1,62 @@
+name: Release bdist wheel
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: choice
+        description: version for testing
+        default: 'all'
+        required: true
+        options:
+        - all
+        - pytorch-cuda:1.9.0-11.1.1 # python 3.8
+        - pytorch-cuda:1.8.1-11.1.1 # python 3.8
+        - pytorch-cuda:1.7.1-11.0.3 # python 3.8
+        - pytorch-cuda:1.6.0-10.2 # python 3.6
+        
+
+jobs:
+  matrix_preparation:
+    name: Prepare Container List
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - id: set-matrix
+      run: |
+        [ "${{github.event.inputs.version}}" != "" ] && matrix="[\"frankleeeee/${{github.event.inputs.version}}\"]"
+        [ "${{github.event.inputs.version}}" == "" ] || [ "${{github.event.inputs.version}}" == "all" ] && \
+          matrix="[\"frankleeeee/pytorch-cuda:1.9.0-11.1.1\", \"frankleeeee/pytorch-cuda:1.8.1-11.1.1\", \"frankleeeee/pytorch-cuda:1.7.1-11.0.3\", \"frankleeeee/pytorch-cuda:1.6.0-10.2\"]"
+        echo $matrix
+        echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
+
+  build:
+    name: Release bdist wheels
+    needs: matrix_preparation
+    if: github.repository == 'hpcaitech/ColossalAI' && contains(fromJson('["FrankLeeeee", "ver217", "feifeibear", "kurisusnowdeng"]'), github.actor)
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: ${{ matrix.container }}
+      options: --gpus all --rm
+    timeout-minutes: 120
+    steps:
+      - name: Install dependencies
+        run: |
+          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+          pip install -U pip setuptools wheel --user
+      - uses: actions/checkout@v2
+      - name: Build bdist wheel
+        run: |
+          python setup.py bdist_wheel
+      - name: 🚀 Deploy
+        uses: garygrossgarten/github-action-scp@release
+        with:
+          local: dist/*
+          remote: ${{ secrets.PRIVATE_PYPI_DIR }}
+          host: ${{ secrets.PRIVATE_PYPI_HOST }}
+          username: ${{ secrets.PRIVATE_PYPI_USER }}
+          password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
