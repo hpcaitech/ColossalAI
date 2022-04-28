@@ -18,12 +18,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, args, kwa
     output_parallel = torch.nn.functional.embedding(input_tensor.torch_tensor(), weight.torch_tensor(), 
         *args, **kwargs)
     output = ColoTensor.init_from_torch_tensor(output_parallel)
-    out_parallel_action_list = [
-        ParallelAction(
-            priority=1, compute_pattern=ComputePattern.Activation, 
-            parallel_mode=parallel_action.parallel_mode
-        )
-    ]
+    out_parallel_action_list = [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)]
     output_spec = TensorSpec(out_parallel_action_list)
     output.set_spec(output_spec, shard=False)
     output.set_shard_pattern(ShardPattern.Col)
