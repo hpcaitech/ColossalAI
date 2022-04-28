@@ -27,9 +27,38 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
+# Test the overrided parameters() and named_parameters() member functions
+def test_model_parameters():
+    # build a module with 2 Linear, 4 parameters in total.
+    class Net(torch.nn.Module):
+
+        def __init__(self):
+            super().__init__()
+            self.fcs = torch.nn.Sequential(torch.nn.Linear(2, 3), torch.nn.Linear(3, 2))
+            self.extra_param = torch.nn.Parameter(torch.randn(2))
+
+    with ColoInitContext(device=get_current_device()):
+        model = Net()
+
+    param_cnt = 0
+    for name, p in model.named_parameters():
+        param_cnt += 1
+    assert param_cnt == 5
+
+    param_cnt = 0
+    for name, p in model.named_parameters(recurse=False):
+        param_cnt += 1
+    assert param_cnt == 1
+
+    param_cnt = 0
+    for p in model.fcs[0].parameters(recurse=False):
+        param_cnt += 1
+    assert param_cnt == 2
+
+
 def run_1d_row_tp():
     # A simple net with two stacked nn.Linear
-    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
+    get_components_func = non_distributed_component_funcs.get_callable('bert')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
@@ -108,4 +137,5 @@ def test_simple_net(world_size):
 
 
 if __name__ == '__main__':
-    test_simple_net()
+    # test_simple_net()
+    test_model_parameters()
