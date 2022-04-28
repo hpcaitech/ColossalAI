@@ -166,6 +166,7 @@ class ColoTensor(object):
             dim = -1
         self._torch_tensor = gather_forward_split_backward(self._torch_tensor, parallel_action.parallel_mode, dim=dim)
         self._shard_pattern = ShardPattern.NA
+        self._size = self._torch_tensor.size()
 
     def is_gathered(self) -> bool:
         return self._shard_pattern == ShardPattern.NA
