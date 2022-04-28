@@ -62,6 +62,9 @@ class TorchAMPOptimizer(ColossalaiOptimizer):
 class TorchAMPModel(nn.Module):
     """A wrapper class for a model object which executes forward with values automatically
     cast to fp16
+
+    Args:
+        model (:class:`torch.nn.Module`): a torch model instance
     """
 
     def __init__(self, model: nn.Module) -> None:
@@ -70,6 +73,9 @@ class TorchAMPModel(nn.Module):
 
     @torch_amp.autocast()
     def forward(self, *args, **kwargs):
+        """
+        Execute forward under the torch amp context
+        """
         return self.model(*args, **kwargs)
 
 
@@ -86,4 +92,7 @@ class TorchAMPLoss(nn.Module):
 
     @torch_amp.autocast()
     def forward(self, *args, **kwargs):
+        """
+        Execute forward under the torch amp context
+        """
         return self.loss(*args, **kwargs)

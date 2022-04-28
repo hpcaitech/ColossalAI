@@ -11,6 +11,9 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
         amp_config (Union[:class:`colossalai.context.Config`, dict]): configuration for initializing apex_amp.
 
+    Returns:
+        Tuple: A tuple (model, optimizer).
+
     The ``amp_config`` should include parameters below:
     ::
 
@@ -26,9 +29,6 @@ def convert_to_apex_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         verbosity (int, default=1)
         min_loss_scale (float, default=None)
         max_loss_scale (float, default=2.**24)
-
-    Returns:
-        Tuples: A tuple (model, optimizer).
 
     More details about ``amp_config`` refer to `amp_config <https://nvidia.github.io/apex/amp.html?highlight=apex%20amp>`_.
     """

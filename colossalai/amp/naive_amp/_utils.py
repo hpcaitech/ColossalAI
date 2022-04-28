@@ -3,6 +3,14 @@ from torch import Tensor
 
 
 def has_inf_or_nan(tensor):
+    """Check if tensor has inf or nan values.
+
+    Args:
+        tensor (:class:`torch.Tensor`): a torch tensor object
+
+    Returns:
+        bool: Whether the tensor has inf or nan. True for yes and False for no.
+    """
     try:
         # if tensor is half, the .float() incurs an additional deep copy, but it's necessary if
         # Pytorch's .sum() creates a one-element tensor of the same type as tensor
@@ -24,8 +32,8 @@ def has_inf_or_nan(tensor):
 
 
 def zero_gard_by_list(tensor_list: List[Tensor], set_to_none: bool = True) -> None:
-    """
-    Clear the gradient of a list of tensors,
+    """Clear the gradient of a list of tensors,
+
     Note: copied from torch.optim.optimizer.
     """
     for param in tensor_list:

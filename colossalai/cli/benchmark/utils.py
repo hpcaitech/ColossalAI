@@ -1,146 +1,154 @@
+import math
+import time
+from grpc import Call
 import torch
-from .simple_model import MLP
-from colossalai.utils import Timer, synchronize
+
+from colossalai.utils import MultiTimer
 from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
-from argparse import ArgumentParser
+from colossalai.context import ParallelMode, Config
+from typing import List, Dict, Tuple, Callable
 
-BATCH_SIZE = 8
-SEQ_LENGTH = 120
-HIDDEN_DIM = 1024
-ITER_TIMES = 2000
 
-def build_args_parser() -> ArgumentParser:
-    """Helper function parsing the command line options."""
+def get_time_stamp() -> int:
+    """
+    Return the time stamp for profiling.
 
-    parser = ArgumentParser(description="colossal benchmark")
+    Returns:
+        time_stamp (int): the time given by time.time()
+    """
 
-    parser.add_argument("--num_gpus",
-                        type=int,
-                        default=-1,
-                        help="Total number of devices to use.")
-    parser.add_argument("--bs",
-                        type=int,
-                        default=BATCH_SIZE,
-                        help="Batch size of the input tensor.")
-    parser.add_argument("--seq_len",
-                        type=int,
-                        default=SEQ_LENGTH,
-                        help="Sequence length of the input tensor.")
-    parser.add_argument("--hid_dim",
-                        type=int,
-                        default=HIDDEN_DIM,
-                        help="Hidden dimension of the input tensor.")
-    parser.add_argument("--num_steps",
-                        type=int,
-                        default=ITER_TIMES,
-                        help="The number of iteration times.")
-    return parser
+    torch.cuda.synchronize()
+    time_stamp = time.time()
+    return time_stamp
 
-def build_input_tensor(args):
-    return torch.rand(args.bs, args.seq_len, args.hid_dim)
 
-def build_configs_helper(device_cnt: int):
-    config_dict = {}
+def get_memory_states() -> Tuple[float]:
+    """
+    Return the memory statistics.
 
-    if device_cnt < 2:
-        return config_dict
+    Returns:
+        max_allocated (float): the allocated CUDA memory 
+        max_cached (float):  the cached CUDA memory 
+    """
+
+    max_allocated = torch.cuda.max_memory_allocated() / (1024**3)
+    max_cached = torch.cuda.max_memory_reserved() / (1024**3)
+    torch.cuda.reset_peak_memory_stats()
+    torch.cuda.empty_cache()
+    return max_allocated, max_cached
+
+
+def find_all_configs(device_cnt: int) -> List[Dict]:
+    """
+    Find all possible configurations for tensor parallelism
+
+    Args:
+        device_cnt (int): the number of devices
+
+    Returns:
+        config_list (List[Dict]): a list of configurations
+    """
+
+    def _is_square(num):
+        return math.floor(math.sqrt(num))**2 == num
+
+    def _is_cube(num):
+        return math.floor(num**(1. / 3.))**3 == num
+
+    config_list = []
+
+    # add non-parallel config
+    config = dict(parallel=dict(tensor=dict(size=device_cnt, mode=None)))
+    config_list.append(config)
+
+    # add 1D config
+    config = dict(parallel=dict(tensor=dict(size=device_cnt, mode='1d')))
+    config_list.append(config)
+
+    # add 1D config only if device_cnt is a square
+    if _is_square(device_cnt):
+        config = dict(parallel=dict(tensor=dict(size=device_cnt, mode='2d')))
+        config_list.append(config)
+
+    # check for 2.5D
+    # iterate over depth
+    for depth in range(1, device_cnt):
+        if device_cnt % depth == 0 and _is_square(device_cnt // depth):
+            config = dict(parallel=dict(tensor=dict(size=device_cnt, mode='2.5d', depth=depth)))
+            config_list.append(config)
+
+    # check for 3D if device_cnt is a cube
+    if _is_cube(device_cnt):
+        config = dict(parallel=dict(tensor=dict(size=device_cnt, mode='3d')))
+        config_list.append(config)
+
+    config_list = [Config(cfg) for cfg in config_list]
+    return config_list
+
+
+def profile_model(model: torch.nn.Module, warmup_steps: int, profile_steps: int, data_func: Callable,
+                  timer: MultiTimer) -> Tuple[float]:
+    """
+    Profile the forward and backward of a model
+
+    Args:
+        model (torch.nn.Module): a PyTorch model
+        warmup_steps (int): the number of steps for warmup
+        profile_steps (int): the number of steps for profiling
+        data_func (Callable): a function to generate random data
+        timer (colossalai.utils.Multitimer): a timer instance for time recording
     
-    if device_cnt < 4:
-        config_dict["1d"] = dict(parallel=dict(tensor=dict(size=2, mode='1d')))
-    elif device_cnt < 8:
-        config_dict["1d"] = dict(parallel=dict(tensor=dict(size=4, mode='1d')))
-        config_dict["2d"] = dict(parallel=dict(tensor=dict(size=4, mode='2d')))
-    else:
-        config_dict["1d"] = dict(parallel=dict(tensor=dict(size=8, mode='1d')))
-        config_dict["2d"] = dict(parallel=dict(data=2, tensor=dict(size=4, mode='2d')))
-        config_dict["2p5d"] = dict(parallel=dict(tensor=dict(size=8, mode='2.5d', depth=2)))
-        config_dict["3d"] = dict(parallel=dict(tensor=dict(size=8, mode='3d')))
-    
-    return config_dict
+    Returns:
+        fwd_time (float): the average forward time taken by forward pass in second
+        bwd_time (float): the average backward time taken by forward pass in second
+        max_allocated (float): the maximum GPU memory allocated in GB
+        max_cached (float): the maximum GPU memory cached in GB
+    """
 
-def build_configs(args):
-    total_device_cnt = torch.cuda.device_count()
-    if args.num_gpus == -1:
-        config_dict = build_configs_helper(total_device_cnt)
-    else:
-        valid_device_cnt = min(args.num_gpus, total_device_cnt)
-        config_dict = build_configs_helper(valid_device_cnt)
-    return config_dict
+    def _run_step(data):
+        timer.start('forward')
+        out = model(data)
+        timer.stop('forward', keep_in_history=True)
+        timer.start('backward')
+        out.mean().backward()
+        timer.stop('backward', keep_in_history=True)
 
-def profile_1d(input_tensor, config, args):
-    gpc.load_config(config)
-    gpc.init_parallel_groups()
-    assert gpc.is_initialized(ParallelMode.PARALLEL_1D)
-    model = MLP(args.hid_dim).cuda()
-    input_tensor = input_tensor.cuda()
-    torch.distributed.broadcast(input_tensor, src=0)
-    timer = Timer()
-    iter_times = args.num_steps
-    timer.start()
-    for i in range(iter_times):
-        input_tensor = model(input_tensor)
-        synchronize()
-    result_1d = timer.stop()
-    return result_1d
+    data_list = [data_func() for _ in range(warmup_steps)]
+    for data in data_list:
+        _run_step(data)
+    timer.reset('forward')
+    timer.reset('backward')
 
-def profile_2d(input_tensor, config, args):
-    gpc.load_config(config)
-    gpc.init_parallel_groups()
-    assert gpc.is_initialized(ParallelMode.PARALLEL_2D_COL)
-    assert gpc.is_initialized(ParallelMode.PARALLEL_2D_ROW)
-    model = MLP(args.hid_dim).cuda()
-    input_tensor = input_tensor.cuda()
-    torch.distributed.broadcast(input_tensor, src=0)
-    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_COL)]
-    input_tensor = torch.chunk(input_tensor, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_2D_ROW)]
-    timer = Timer()
-    iter_times = args.num_steps
-    timer.start()
-    for i in range(iter_times):
-        input_tensor = model(input_tensor)
-        synchronize()
-    result_2d = timer.stop()
-    return result_2d
+    for _ in range(profile_steps):
+        data = data_func()
+        _run_step(data)
 
-def profile_2p5d(input_tensor, config, args):
-    gpc.load_config(config)
-    gpc.init_parallel_groups()
-    assert gpc.is_initialized(ParallelMode.PARALLEL_2P5D_COL)
-    assert gpc.is_initialized(ParallelMode.PARALLEL_2P5D_ROW)
-    assert gpc.is_initialized(ParallelMode.PARALLEL_2P5D_DEP)
-    model = MLP(args.hid_dim).cuda()
-    input_tensor = input_tensor.cuda()
-    torch.distributed.broadcast(input_tensor, src=0)
-    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_DEP)]
-    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_COL)]
-    input_tensor = torch.chunk(input_tensor, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_2P5D_ROW)]
-    timer = Timer()
-    iter_times = args.num_steps
-    timer.start()
-    for i in range(iter_times):
-        input_tensor = model(input_tensor)
-        synchronize()
-    result_2p5d = timer.stop()
-    return result_2p5d
+    max_allocated, max_cached = get_memory_states()
+    fwd_time = timer.get_timer('forward').get_history_mean()
+    bwd_time = timer.get_timer('backward').get_history_mean()
+    return fwd_time, bwd_time, max_allocated, max_cached
 
-def profile_3d(input_tensor, config, args):
-    gpc.load_config(config)
-    gpc.init_parallel_groups()
-    assert gpc.is_initialized(ParallelMode.PARALLEL_3D_WEIGHT)
-    assert gpc.is_initialized(ParallelMode.PARALLEL_3D_INPUT)
-    assert gpc.is_initialized(ParallelMode.PARALLEL_3D_OUTPUT)
-    model = MLP(args.hid_dim).cuda()
-    input_tensor = input_tensor.cuda()
-    torch.distributed.broadcast(input_tensor, src=0)
-    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_WEIGHT)]
-    input_tensor = torch.chunk(input_tensor, 2, dim=0)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_INPUT)]
-    input_tensor = torch.chunk(input_tensor, 2, dim=-1)[gpc.get_local_rank(ParallelMode.PARALLEL_3D_OUTPUT)]
-    timer = Timer()
-    iter_times = args.num_steps
-    timer.start()
-    for i in range(iter_times):
-        input_tensor = model(input_tensor)
-        synchronize()
-    result_3d = timer.stop()
-    return result_3d
+
+def get_batch_data(dim: int, batch_size: int, seq_length: int, mode: ParallelMode) -> torch.Tensor:
+    """
+    Return a random data of shape (batch_size, seq_length, dim) for profiling.
+
+    Args:
+        dim (int): hidden size
+        batch_size (int): the number of data samples
+        seq_length (int): the number of tokens
+        mode (ParallelMode): Colossal-AI ParallelMode enum
+
+    Returns:
+        data (torch.Tensor): random data
+    """
+
+    if mode in ['2d', '2.5d']:
+        batch_size = batch_size // 2
+        dim = dim // 2
+    elif mode == '3d':
+        batch_size = batch_size // 4
+        dim = dim // 2
+
+    data = torch.rand(batch_size, seq_length, dim).cuda()
+    return data

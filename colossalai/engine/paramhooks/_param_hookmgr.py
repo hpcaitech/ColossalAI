@@ -28,7 +28,11 @@ class BaseParamHookMgr(object):
                 handle = p.register_hook(functools.partial(hook_call, p))
                 p._base_param_hook = handle
 
-    def remove_hooks(self):
+    def remove_hooks(self) -> None:
+        """
+        Remove hooks from model parameters.
+        """
+
         for p in self._param_list:
             if p.requires_grad and hasattr(p, '_base_param_hook'):
                 p._base_param_hook.remove()

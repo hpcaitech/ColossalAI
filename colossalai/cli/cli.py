@@ -1,8 +1,7 @@
 import click
 from .launcher import run
 from .check import check
-from colossalai.cli.benchmark.utils import BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM, ITER_TIMES
-from colossalai.cli.benchmark.run import launch as col_benchmark
+from .benchmark import benchmark
 
 
 class Arguments():
@@ -15,18 +14,6 @@ class Arguments():
 @click.group()
 def cli():
     pass
-
-
-@click.command()
-@click.option("--num_gpus", type=int, default=-1)
-@click.option("--bs", type=int, default=BATCH_SIZE)
-@click.option("--seq_len", type=int, default=SEQ_LENGTH)
-@click.option("--hid_dim", type=int, default=HIDDEN_DIM)
-@click.option("--num_steps", type=int, default=ITER_TIMES)
-def benchmark(num_gpus, bs, seq_len, hid_dim, num_steps):
-    args_dict = locals()
-    args = Arguments(args_dict)
-    col_benchmark(args)
 
 
 cli.add_command(run)

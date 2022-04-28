@@ -285,7 +285,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     shard_mem = self.master_params[p].payload.numel() * self.master_params[p].payload.element_size()
                     if fp32_shards_used_cuda_margin_mem + shard_mem < fp32_shards_available_cuda_margin_mem:
                         colo_model_data_tensor_move_inline(self.master_params[p], torch.cuda.current_device())
-                        p.grad.data = p.grad.data.to(torch.cuda.current_device())
+                        colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
                         p.colo_attr.offload_grad = False
                         fp32_shards_used_cuda_margin_mem += shard_mem
 
@@ -297,7 +297,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 p.colo_attr.saved_grad.trans_state(TensorState.COMPUTE)
                 # If reuse_fp16_shard, grad fp16 which wasn't be offloaded may be evicted to CPU
                 if not p.colo_attr.offload_grad:
-                    colo_model_data_tensor_move_inline(p.colo_attr.grad_payload, torch.cuda.current_device())
+                    colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
                 # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad

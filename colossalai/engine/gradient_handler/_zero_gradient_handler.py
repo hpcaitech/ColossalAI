@@ -8,6 +8,10 @@ class ZeROGradientHandler(BaseGradientHandler):
     A all-reduce collective communication will be operated in
     :func:`handle_gradient` among a data parallel group.
     This class is specialized with ZeRO optimization.
+
+    Args:
+        model (Module): Model where the gradients accumulate.
+        optimizer (Optimizer): Optimizer for updating the parameters.
     """
 
     def handle_gradient(self):
