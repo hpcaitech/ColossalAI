@@ -145,7 +145,7 @@ def run_linear_tp1d_row_test():
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_linear_tp1d_row_test()
+    #run_linear_tp1d_row_test()
     run_linear_tp1d_col_test()
 
 @pytest.mark.dist
