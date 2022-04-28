@@ -4,10 +4,12 @@ from colossalai.context.parallel_mode import ParallelMode
 
 
 class ComputePattern(Enum):
-    TP1DRow = 1
-    TP1DCol = 2
-    ZeRO = 3
-    DP = 4
+    TP1DRow_Linear = 1
+    TP1DCol_Linear = 2
+    TP1DRow_Embedding = 3
+    TP1DCol_Embedding = 4
+    ZeRO = 5
+    DP = 6
 
 
 class ShardPattern(Enum):
@@ -43,14 +45,14 @@ class TensorSpec(object):
     # using ZeRO with DP-degree = 4 and 1DRowTP with TP-degree = 2.
     # parallel_action_list = [
     # ParallelAction(10, ComputePattern.ZeRO, gpc.get_group(ParallelMode.DATA)),
-    # ParallelAction(1, ComputePattern.TP1DRow, gpc.get_group(ParallelMode.PARALLEL_1D))
+    # ParallelAction(1, ComputePattern.TP1DRow_Linear, gpc.get_group(ParallelMode.PARALLEL_1D))
     # ]
     # When the ColoTensor is initialized,
     # we first splitting tensor according to ParallelAction of ZeRO,
-    # then splitting tensor according to ParallelAction of TP1DRow.
+    # then splitting tensor according to ParallelAction of TP1DRow_Linear.
     # During Linear computation
     # Before Linear Op, we gather the tensors according to ZeRO.
-    # We perform Linear Op according to compute pattern of TP1DRow.
+    # We perform Linear Op according to compute pattern of TP1DRow_Linear.
     # After Linear Op, we split the tensors according to ZeRO.
 
     def __init__(self, parallel_action_list: List[ParallelAction] = [], shard_pattern: ShardPattern = ShardPattern.NA):

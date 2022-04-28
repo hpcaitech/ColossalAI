@@ -9,8 +9,8 @@ from packaging import version
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ShardPattern
 
 
-def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTensor) -> ColoTensor:
-    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
+def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias:ColoTensor) -> ColoTensor:
+    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow_Linear)
     # Input:S[1] x Weight:S[0] = Output:P
     # All-Reduce(Output) + bias = res
     # Input:S[1]
@@ -47,7 +47,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTe
     # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
     # All-Gather(Output)
     # Input:B
-    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
+    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol_Linear)
     if input_tensor.is_gathered():
         # Not splited yet.
         assert input_tensor.shape[-1] == weight.size(-1), \
@@ -108,9 +108,9 @@ def colo_linear(types, args, kwargs, pg):
         return ColoTensor.init_from_torch_tensor(torch.nn.functional.linear(input_tensor, weight, bias))
     elif weight.shard_spec.num_action == 1:    # Single Model Parallel Applied
         compute_patterns = weight.shard_spec.compute_patterns
-        if ComputePattern.TP1DRow in compute_patterns:
+        if ComputePattern.TP1DRow_Linear in compute_patterns:
             return colo_linear_1Drow(input_tensor, weight, bias)
-        elif ComputePattern.TP1DCol in compute_patterns:
+        elif ComputePattern.TP1DCol_Linear in compute_patterns:
             return colo_linear_1Dcol(input_tensor, weight, bias)
         else:
             raise NotImplementedError

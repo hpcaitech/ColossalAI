@@ -38,12 +38,12 @@ def run_1d_col_tp():
         model = model_builder(checkpoint=True)
 
     parallel_action_list_row = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec_row = TensorSpec(parallel_action_list_row)
 
     parallel_action_list_col = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec_col = TensorSpec(parallel_action_list_col)
 
@@ -168,7 +168,7 @@ def run_1d_row_tp():
         model = model_builder(checkpoint=True)
 
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
 
