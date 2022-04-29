@@ -4,7 +4,6 @@ from colossalai.nn import CheckpointModule
 from .utils.dummy_data_generator import DummyDataGenerator
 from .registry import non_distributed_component_funcs
 from colossalai.utils.cuda import get_current_device
-from collections import Counter
 
 class SimpleNet(CheckpointModule):
     """
