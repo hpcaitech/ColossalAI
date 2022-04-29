@@ -119,9 +119,12 @@ class PipelineSchedule(BaseSchedule):
     def pre_processing(self, engine):
         # TODO: remove this after testing new zero with pipeline parallelism
         model = engine.model
-        if isinstance(model, (NaiveAMPModel, ShardedModelV2)):
+        if isinstance(model, NaiveAMPModel):
             self.dtype = torch.half
             model = model.model
+        if isinstance(model, ShardedModelV2):
+            self.dtype = torch.half
+            model = model.module
         sig = inspect.signature(model.forward)
         for p in sig.parameters.values():
             assert p.kind != inspect.Parameter.VAR_POSITIONAL, '*args is not supported'
