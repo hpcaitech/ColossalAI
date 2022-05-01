@@ -52,6 +52,7 @@ jobs:
       - name: Copy scripts and checkout
         run: |
           cp -r ./.github/workflows/scripts/* ./
+          ln -s /github/home/pip_wheels ./pip_wheels
           git checkout $git_ref
         env:
           git_ref: ${{ github.event.inputs.github_ref }}

@@ -15,7 +15,7 @@ source activate $1
 
 if [ $1 == "pip" ]
 then
-    wget -q -O ./pip_wheels/$filename $url
+    wget -nc -q -O ./pip_wheels/$filename $url
     pip install ./pip_wheels/$filename
     
 elif [ $1 == 'conda' ]
