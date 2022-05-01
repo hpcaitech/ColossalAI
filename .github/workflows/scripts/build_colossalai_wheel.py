@@ -60,7 +60,7 @@ def build_colossalai(wheel_info):
 
 def main():
     wheel_info = all_wheel_info()
-    # build_colossalai(wheel_info)
+    build_colossalai(wheel_info)
 
 if __name__ == '__main__':
     main()
