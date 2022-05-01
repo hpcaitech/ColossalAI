@@ -39,6 +39,7 @@ def all_wheel_info():
             lines = file_text.strip().split('\n')
 
             for line in lines:
+                print(line)
                 for method, url, python_version in line.split():
                     wheel_info[torch_version][cuda_version][python_version] = dict(method=method, url=url)
     return wheel_info
