@@ -39,9 +39,8 @@ def all_wheel_info():
             lines = file_text.strip().split('\n')
 
             for line in lines:
-                print(line)
-                for method, url, python_version in line.split():
-                    wheel_info[torch_version][cuda_version][python_version] = dict(method=method, url=url)
+                method, url, python_version = line.split('\t')
+                wheel_info[torch_version][cuda_version][python_version] = dict(method=method, url=url)
     return wheel_info
 
 
@@ -61,7 +60,7 @@ def build_colossalai(wheel_info):
 
 def main():
     wheel_info = all_wheel_info()
-    build_colossalai(wheel_info)
+    # build_colossalai(wheel_info)
 
 if __name__ == '__main__':
     main()
