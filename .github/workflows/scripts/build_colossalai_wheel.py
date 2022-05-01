@@ -46,7 +46,7 @@ def all_wheel_info():
 
 def build_colossalai(wheel_info):
     cuda_version_major, cuda_version_minor = get_cuda_bare_metal_version()
-    cuda_version_on_host = f'cu{cuda_version_major}{cuda_version_minor}'
+    cuda_version_on_host = f'cuda{cuda_version_major}.{cuda_version_minor}'
 
     for torch_version, cuda_versioned_wheel_info in wheel_info.items():
         for cuda_version, python_versioned_wheel_info in cuda_versioned_wheel_info.items():
