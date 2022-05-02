@@ -12,7 +12,7 @@ git reset --hard HEAD
 mkdir -p ./all_dist
 source activate base
 conda create -n $python_version -y python=$python_version
-source activate $1
+source activate $python_version
 
 if [ $1 == "pip" ]
 then
