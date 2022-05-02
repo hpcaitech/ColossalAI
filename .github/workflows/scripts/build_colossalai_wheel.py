@@ -66,8 +66,7 @@ def build_colossalai(wheel_info):
                     flags = wheel_info['flags']
                     filename = url.split('/')[-1].replace('%2B', '+')
                     cmd = f'bash ./build_colossalai_wheel.sh {method} {url} {filename} {cuda_version} {python_version} {torch_version} {flags}'
-                    # os.system(cmd)
-                    print(cmd)
+                    os.system(cmd)
 
 def main():
     wheel_info = all_wheel_info()

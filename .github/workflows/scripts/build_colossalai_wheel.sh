@@ -6,6 +6,11 @@ filename=${3}
 cuda_version=${4}
 python_version=${5}
 torch_version=${6}
+flags=${@:7}
+
+echo $flags
+
+exit
 
 git reset --hard HEAD
 mkdir -p ./all_dist
