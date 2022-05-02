@@ -8,10 +8,6 @@ python_version=${5}
 torch_version=${6}
 flags=${@:7}
 
-echo $flags
-
-exit
-
 git reset --hard HEAD
 mkdir -p ./all_dist
 source activate base
