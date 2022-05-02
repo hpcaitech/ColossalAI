@@ -21,8 +21,7 @@ then
     
 elif [ $1 == 'conda' ]
 then
-    conda install pytorch==$torch_version cudatoolkit=$cuda_version $@
-    echo You may go to the party but be back before midnight.
+    conda install pytorch==$torch_version cudatoolkit=$cuda_version $flags
 else
     echo Invalid installation method
     exit
