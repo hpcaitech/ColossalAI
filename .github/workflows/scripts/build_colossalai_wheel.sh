@@ -27,6 +27,11 @@ else
     exit
 fi
 
+if [ $cuda_version == "10.2" ]
+then
+    cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
+fi
+
 python setup.py bdist_wheel
 mv ./dist/* ./all_dist
 python setup.py clean
