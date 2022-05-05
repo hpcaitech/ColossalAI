@@ -3,18 +3,21 @@ name: Release bdist wheel
 on:
   workflow_dispatch:
     inputs:
-      version:
+      cuda_version:
         type: choice
-        description: version for testing
+        description: CUDA Version
         default: 'all'
         required: true
         options:
         - all
-        - pytorch-cuda:1.9.0-11.1.1 # python 3.8
-        - pytorch-cuda:1.8.1-11.1.1 # python 3.8
-        - pytorch-cuda:1.7.1-11.0.3 # python 3.8
-        - pytorch-cuda:1.6.0-10.2 # python 3.6
-        
+        - "11.3"
+        - "11.1"
+        - "10.2"
+      github_ref:
+        type: string
+        description: Branch or Tag
+        default: 'main'
+        required: true
 
 jobs:
   matrix_preparation:
@@ -25,9 +28,9 @@ jobs:
     steps:
     - id: set-matrix
       run: |
-        [ "${{github.event.inputs.version}}" != "" ] && matrix="[\"frankleeeee/${{github.event.inputs.version}}\"]"
-        [ "${{github.event.inputs.version}}" == "" ] || [ "${{github.event.inputs.version}}" == "all" ] && \
-          matrix="[\"frankleeeee/pytorch-cuda:1.9.0-11.1.1\", \"frankleeeee/pytorch-cuda:1.8.1-11.1.1\", \"frankleeeee/pytorch-cuda:1.7.1-11.0.3\", \"frankleeeee/pytorch-cuda:1.6.0-10.2\"]"
+        [ "${{github.event.inputs.cuda_version}}" != "" ] && matrix="[\"frankleeeee/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
+        [ "${{github.event.inputs.cuda_version}}" == "" ] || [ "${{github.event.inputs.version}}" == "all" ] && \
+          matrix="[\"frankleeeee/cuda-conda:11.3\", \"frankleeeee/cuda-conda:11.1\", \"frankleeeee/cuda-conda:10.2\"]"
         echo $matrix
         echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
 
@@ -42,20 +45,28 @@ jobs:
     container:
       image: ${{ matrix.container }}
       options: --gpus all --rm
-    timeout-minutes: 120
     steps:
-      - name: Install dependencies
-        run: |
-          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-          pip install -U pip setuptools wheel --user
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      # cub is for cuda 10.2
+      - name: Copy scripts and checkout
+        run: |
+          cp -r ./.github/workflows/scripts/* ./
+          ln -s /github/home/pip_wheels ./pip_wheels
+          git checkout $git_ref
+          wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+          unzip 1.8.0.zip
+        env:
+          git_ref: ${{ github.event.inputs.github_ref }}
       - name: Build bdist wheel
         run: |
-          python setup.py bdist_wheel
+          pip install beautifulsoup4 requests
+          python ./build_colossalai_wheel.py
       - name: 🚀 Deploy
         uses: garygrossgarten/github-action-scp@release
         with:
-          local: dist
+          local: all_dist
           remote: ${{ secrets.PRIVATE_PYPI_DIR }}
           host: ${{ secrets.PRIVATE_PYPI_HOST }}
           username: ${{ secrets.PRIVATE_PYPI_USER }}
