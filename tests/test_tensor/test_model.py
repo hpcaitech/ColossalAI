@@ -38,14 +38,19 @@ def run_1d_col_tp():
         model = model_builder(checkpoint=True)
 
     parallel_action_list_row = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec_row = TensorSpec(parallel_action_list_row)
 
     parallel_action_list_col = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec_col = TensorSpec(parallel_action_list_col)
+
+    parallel_action_list_embedding_col = [
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_Embedding, parallel_mode=ParallelMode.PARALLEL_1D)
+    ]
+    spec_embedding_col = TensorSpec(parallel_action_list_embedding_col)
 
     set_seed(1)
     if rank == 0:
@@ -60,6 +65,8 @@ def run_1d_col_tp():
             p.set_spec(spec_col)
         if 'proj2' in name and 'weight' in name:
             p.set_spec(spec_row)
+        if 'embed' in name and 'weight' in name:
+            p.set_spec(spec_embedding_col)
 
     model = model.cuda()
 
@@ -168,9 +175,14 @@ def run_1d_row_tp():
         model = model_builder(checkpoint=True)
 
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
+
+    parallel_action_list_embedding_row = [
+        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Embedding, parallel_mode=ParallelMode.PARALLEL_1D)
+    ]
+    spec_embedding_row = TensorSpec(parallel_action_list_embedding_row)
 
     set_seed(1)
     if rank == 0:
@@ -183,6 +195,8 @@ def run_1d_row_tp():
             continue
         if 'weight' in name and 'LayerNorm' not in name and 'ln' not in name and 'embed' not in name:
             p.set_spec(spec)
+        if 'embed' in name and 'weight' in name:
+            p.set_spec(spec_embedding_row)
 
     model = model.cuda()
 
@@ -227,7 +241,7 @@ def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_1d_row_tp()
-
+    run_1d_col_tp()
 
 @pytest.mark.dist
 @parameterize('world_size', [1, 4])
@@ -238,6 +252,6 @@ def test_simple_net(world_size):
 
 
 if __name__ == '__main__':
-    # test_simple_net()
+    test_simple_net()
     # test_model_parameters()
-    test_colo_optimizer()
+    # test_colo_optimizer()
