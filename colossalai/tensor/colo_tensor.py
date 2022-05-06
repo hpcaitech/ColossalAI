@@ -7,12 +7,7 @@ from colossalai.core import global_context as gpc
 from colossalai.nn.layer.utils import divide
 from colossalai.tensor import TensorSpec, ComputePattern, ShardPattern
 from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, gather_forward_split_backward
-from enum import Enum
-
-
-class TensorType(Enum):
-    MODEL = 0
-    NONMODEL = 1    # mainly activations
+from .const import TensorType
 
 
 class ColoTensor(object):
@@ -26,17 +21,14 @@ class ColoTensor(object):
     def __new__(cls, *args, **kwargs):
         return super(ColoTensor, cls).__new__(cls)
 
-    def __init__(
-            self,
-            *size: Tuple[int],
-            dtype=None,
-            requires_grad=False,
-            pin_memory=False,
-            device=None,
-            torch_tensor=torch.empty(0),
-            shard_spec: TensorSpec = TensorSpec(),
-            is_model_data: bool = False,
-    ):
+    def __init__(self,
+                 *size: Tuple[int],
+                 dtype=None,
+                 requires_grad=False,
+                 pin_memory=False,
+                 device=None,
+                 torch_tensor=torch.empty(0),
+                 shard_spec: TensorSpec = TensorSpec()):
         self._size = size
         self._dtype = dtype
         self._requires_grad = requires_grad
@@ -45,10 +37,7 @@ class ColoTensor(object):
         self._torch_tensor = torch_tensor
         self._shard_spec = shard_spec
         self._shard_pattern = ShardPattern.NA
-        if is_model_data:
-            self._type = TensorType.MODEL
-        else:
-            self._type = TensorType.NONMODEL
+        self._type = TensorType.NONMODEL
 
     def __getitem__(self, key):
         return ColoTensor.init_from_torch_tensor(self.torch_tensor()[key])
@@ -97,14 +86,13 @@ class ColoTensor(object):
         return product(self._size)
 
     @staticmethod
-    def init_from_torch_tensor(tensor: torch.Tensor, save_payload=True, is_model_data=False) -> 'ColoTensor':
+    def init_from_torch_tensor(tensor: torch.Tensor, save_payload=True) -> 'ColoTensor':
         colo_t = ColoTensor(*tensor.size(),
                             dtype=tensor.dtype,
                             requires_grad=tensor.requires_grad,
                             pin_memory=tensor.is_pinned(),
                             device=tensor.device,
-                            torch_tensor=tensor if save_payload else torch.empty(0),
-                            is_model_data=is_model_data)
+                            torch_tensor=tensor if save_payload else torch.empty(0))
         return colo_t
 
     def del_torch_tensor(self, save_shape=False) -> None:
@@ -143,12 +131,11 @@ class ColoTensor(object):
             self.gather()
         # Model Parameters
         if self._shard_spec.num_action == 1:
-            parallel_action = self._shard_spec.get_action_by_compute_pattern(
-                    self._shard_spec.compute_patterns[0])
+            parallel_action = self._shard_spec.get_action_by_compute_pattern(self._shard_spec.compute_patterns[0])
             if parallel_action.compute_pattern in [ComputePattern.TP1DRow_Linear, \
                 ComputePattern.TP1DCol_Embedding]:
                 self._shard_1d(parallel_action=parallel_action, dim=-1)
-                self._shard_pattern = ShardPattern.Col # We bind our ComputePattern on weight, which has to be transposed when linear().
+                self._shard_pattern = ShardPattern.Col    # We bind our ComputePattern on weight, which has to be transposed when linear().
             elif parallel_action.compute_pattern in [ComputePattern.TP1DCol_Linear, \
                 ComputePattern.TP1DRow_Embedding]:
                 self._shard_1d(parallel_action=parallel_action, dim=0)
@@ -157,7 +144,7 @@ class ColoTensor(object):
                 raise NotImplementedError
 
     def gather(self):
-        assert self.is_activation(), 'Currently we only support gather Activation ColoTensor.'
+        assert not self.is_model_data(), 'Currently we only support gather Activation ColoTensor.'
         assert not self.is_gathered(), 'Only sharded ColoTensor can be gathered.'
         parallel_action = self._shard_spec.get_action_by_compute_pattern(ComputePattern.DP)
         if self._shard_pattern == ShardPattern.Row:
@@ -174,8 +161,8 @@ class ColoTensor(object):
     def has_spec(self) -> bool:
         return self._shard_spec is not None and self._shard_spec.num_action > 0
 
-    def is_activation(self) -> bool:
-        return self._type == TensorType.NONMODEL
+    def is_model_data(self) -> bool:
+        return self._type == TensorType.MODEL
 
     def _shard_1d(self, parallel_action, dim=-1):
         num_partition = gpc.get_world_size(parallel_action.parallel_mode)
