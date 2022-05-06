@@ -199,7 +199,7 @@ def _build_kwargs_for_function(function, kw_dict):
     return kw_dict
 
 
-def _exec_func_wiht_kwargs(func, kw_dict, input_tensor, kwargs):
+def _exec_func_with_kwargs(func, kw_dict, input_tensor, kwargs):
     """
     We suppose the callable object passed to to_layer_list method in two purpose:
         a. use the callable object to modify input tensor, such as \
@@ -231,10 +231,10 @@ def _exec_funcs_with_kwargs(func_dict, func_key, input_tensor, kwargs):
     if isinstance(funcs_to_exec, list):
         for f in funcs_to_exec:
             f_kwargs = _build_kwargs_for_function(f, kwargs)
-            input_tensor = _exec_func_wiht_kwargs(f, f_kwargs, input_tensor, kwargs)
+            input_tensor = _exec_func_with_kwargs(f, f_kwargs, input_tensor, kwargs)
     else:
         f_kwargs = _build_kwargs_for_function(funcs_to_exec, kwargs)
-        input_tensor = _exec_func_wiht_kwargs(funcs_to_exec, f_kwargs, input_tensor, kwargs)
+        input_tensor = _exec_func_with_kwargs(funcs_to_exec, f_kwargs, input_tensor, kwargs)
 
     return input_tensor
 
