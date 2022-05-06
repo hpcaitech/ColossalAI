@@ -122,7 +122,7 @@ def run_1d_col_tp():
         model_torch = model_torch.cuda()
 
     # A naive way to set spec for all weights in Linear
-    for name, p in named_params_with_colotensor(model):
+    for name, p in model.colo_named_parameters():
         if not isinstance(p, ColoTensor):
             continue
         if 'proj1' in name and ('weight' in name or 'bias' in name):
@@ -331,10 +331,7 @@ def run_bert_1d():
     ]
     spec_embedding_col = TensorSpec(parallel_action_list_embedding_col)
 
-    for name, p in model.named_parameters():
-        print(f"{name}: {p}")
-
-    for name, p in named_params_with_colotensor(model):
+    for name, p in model.colo_named_parameters():
         if not isinstance(p, ColoTensor):
             continue
         #print(name)
@@ -342,10 +339,10 @@ def run_bert_1d():
             p.set_spec(spec_col)
         if '_embeddings' in name and 'weight' in name:
             p.set_spec(spec_embedding_col)
-    for name, p in named_params_with_colotensor(model):
-        if not isinstance(p, ColoTensor):
-            continue
-        #print(f"{name}: is_gathered {p.is_gathered()}")
+    # for name, p in model.colo_named_parameters():
+    #     if not isinstance(p, ColoTensor):
+    #         continue
+    #     print(f"{name}: is_gathered {p.is_gathered()}")
 
     model = model.cuda()
 
@@ -383,7 +380,6 @@ def test_simple_net(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
-@pytest.mark.skip
 @pytest.mark.dist
 #@pytest.mark.parametrize('world_size', [1, 4])
 #Don't really add it to pytest now. After finishing Classifier and Loss, I(jzy) will remove this annotation.
