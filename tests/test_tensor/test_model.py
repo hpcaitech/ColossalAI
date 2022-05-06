@@ -331,10 +331,13 @@ def run_bert_1d():
     ]
     spec_embedding_col = TensorSpec(parallel_action_list_embedding_col)
 
+    for name, p in model.named_parameters():
+        print(f"{name}: {p}")
+
     for name, p in named_params_with_colotensor(model):
         if not isinstance(p, ColoTensor):
             continue
-        print(name)
+        #print(name)
         if 'classifier' in name and ('weight' in name or 'bias' in name):
             p.set_spec(spec_col)
         if '_embeddings' in name and 'weight' in name:
@@ -342,7 +345,7 @@ def run_bert_1d():
     for name, p in named_params_with_colotensor(model):
         if not isinstance(p, ColoTensor):
             continue
-        print(f"{name}: is_gathered {p.is_gathered()}")
+        #print(f"{name}: is_gathered {p.is_gathered()}")
 
     model = model.cuda()
 
