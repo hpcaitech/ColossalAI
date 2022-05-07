@@ -61,9 +61,11 @@ def count_tensors(use_colossal):
                 output = model(colo_input)
             output = model(colo_input)
             ret = _count_tensors()
+
+            _visit_graph(graph_ctx.graph_nodes[0])
+
             del graph_ctx
             return ret
-            # _visit_graph(graph_ctx.graph_nodes[0])
         else:
             input_t = torch.randn(4)
             output = model(input_t)
