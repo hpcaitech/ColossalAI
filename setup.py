@@ -138,17 +138,21 @@ if build_cuda_ext:
                 'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + version_dependent_macros + extra_cuda_flags)
             })
 
-    ext_modules.append(
-        cuda_ext_helper('colossal_C', [
-            'colossal_C_frontend.cpp', 'multi_tensor_sgd_kernel.cu', 'multi_tensor_scale_kernel.cu',
-            'multi_tensor_adam.cu', 'multi_tensor_l2norm_kernel.cu', 'multi_tensor_lamb.cu'
-        ], ['-lineinfo']))
+ 
 
     cc_flag = ['-gencode', 'arch=compute_70,code=sm_70']
     _, bare_metal_major, _ = get_cuda_bare_metal_version(CUDA_HOME)
     if int(bare_metal_major) >= 11:
         cc_flag.append('-gencode')
         cc_flag.append('arch=compute_80,code=sm_80')
+
+    extra_cuda_flags = ['-lineinfo']
+
+    ext_modules.append(
+        cuda_ext_helper('colossal_C', [
+            'colossal_C_frontend.cpp', 'multi_tensor_sgd_kernel.cu', 'multi_tensor_scale_kernel.cu',
+            'multi_tensor_adam.cu', 'multi_tensor_l2norm_kernel.cu', 'multi_tensor_lamb.cu'
+        ], extra_cuda_flags + cc_flag))
 
     extra_cuda_flags = [
         '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '--expt-relaxed-constexpr',
