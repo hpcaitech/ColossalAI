@@ -144,9 +144,17 @@ def run_1d_hybrid_tp(model_name):
         parallel_action_list_col = [
             ParallelAction(priority=1,
                            compute_pattern=ComputePattern.TP1DCol_Linear,
-                           parallel_mode=ParallelMode.PARALLEL_1D)
+                           parallel_mode=ParallelMode.PARALLEL_1D),
         ]
         spec_col = TensorSpec(parallel_action_list_col)
+
+        parallel_action_list_classifier_col = [
+            ParallelAction(priority=1,
+                           compute_pattern=ComputePattern.TP1DCol_Linear,
+                           parallel_mode=ParallelMode.PARALLEL_1D,
+                           gather_out=False),
+        ]
+        spec_classifier_col = TensorSpec(parallel_action_list_classifier_col)
 
         parallel_action_list_embedding_col = [
             ParallelAction(priority=1,
@@ -158,12 +166,14 @@ def run_1d_hybrid_tp(model_name):
         for name, p in model.colo_named_parameters():
             if not isinstance(p, ColoTensor):
                 continue
+            if 'embed' in name and 'weight' in name:
+                p.set_spec(spec_embedding_col)
             if 'proj1' in name and ('weight' in name or 'bias' in name):
                 p.set_spec(spec_col)
             if 'proj2' in name and 'weight' in name:
                 p.set_spec(spec_row)
-            if 'embed' in name and 'weight' in name:
-                p.set_spec(spec_embedding_col)
+            if 'classifier' in name and ('weight' in name or 'bias' in name):
+                p.set_spec(spec_classifier_col)
 
     set_seed(1)
     if rank == 0:

@@ -17,6 +17,7 @@ class SimpleNet(CheckpointModule):
         self.ln1 = nn.LayerNorm(8)
         self.proj2 = nn.Linear(8, 4)
         self.ln2 = nn.LayerNorm(4)
+        self.classifier = nn.Linear(4, 4)
 
     def forward(self, x):
         x = self.embed(x)
@@ -24,6 +25,7 @@ class SimpleNet(CheckpointModule):
         x = self.ln1(x)
         x = self.proj2(x)
         x = self.ln2(x)
+        x = self.classifier(x)
         return x
 
 
@@ -31,8 +33,8 @@ class SimpleNet(CheckpointModule):
 class DummyDataLoader(DummyDataGenerator):
 
     def generate(self):
-        data = torch.randint(low=0, high=20, size=(16,20), device=get_current_device())
-        label = torch.randint(low=0, high=2, size=(16,4), device=get_current_device())
+        data = torch.randint(low=0, high=20, size=(16,), device=get_current_device())
+        label = torch.randint(low=0, high=2, size=(16,), device=get_current_device())
         return data, label
 
 
