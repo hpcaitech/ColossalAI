@@ -8,20 +8,12 @@ from colossalai.nn.loss.loss_1d import VocabParallelCrossEntropyLoss1D
 def colo_cross_entropy(types, args=(), kwargs=None, pg=None):
     arg_num = len(args)
 
-    start = 0
-    input_tensor = None
-    target = None
-    weight = None
     if arg_num > 0:
         input_tensor = args[0]
-        start = 1
     if arg_num > 1:
         target = args[1]
-        start = 2
     if arg_num > 2:
         weight = args[2]
-        start = 3
-    args = args[start:]
 
     if 'input' in kwargs:
         input_tensor = kwargs.pop('input')
