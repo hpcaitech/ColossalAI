@@ -5,7 +5,7 @@ from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ShardPattern
-from colossalai.tensor.graph import GraphOpNode
+from colossalai.tensor.graph import GraphOpNode, GraphGlobalEnv
 
 
 def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTensor) -> ColoTensor:
@@ -99,8 +99,9 @@ def colo_linear(types, args, kwargs, pg):
         bias = ColoTensor.init_from_torch_tensor(bias)
 
     # building the computing graph, inputs -> op
-    cur_op_node = GraphOpNode('linear', [weight, bias])
-    cur_op_node.add_prev_tensor(input_tensor)
+    if GraphGlobalEnv().graph_building:
+        cur_op_node = GraphOpNode('linear', [weight, bias])
+        cur_op_node.add_prev_tensor(input_tensor)
 
     # Add communication logic before and after linear call.
     ret_tensor = None
@@ -122,6 +123,7 @@ def colo_linear(types, args, kwargs, pg):
         raise NotImplementedError
 
     # building the computing graph, op -> output
-    cur_op_node.add_post_tensor(ret_tensor)
+    if GraphGlobalEnv().graph_building:
+        cur_op_node.add_post_tensor(ret_tensor)
 
     return ret_tensor

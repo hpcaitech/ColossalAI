@@ -1,3 +1,3 @@
-from .graph_node import GraphNode, GraphOpNode, GraphContext
+from .graph_node import GraphNode, GraphOpNode, GraphContext, GraphGlobalEnv
 
-__all__ = ['GraphNode', 'GraphOpNode', 'GraphContext']
+__all__ = ['GraphNode', 'GraphOpNode', 'GraphContext', 'GraphGlobalEnv']

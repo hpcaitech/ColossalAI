@@ -7,6 +7,11 @@ class GraphGlobalEnv(metaclass=SingletonMeta):
     def __init__(self) -> None:
         self.graph_building = False
         self.graph_node_list = []
+        self.node_id = -1
+
+    def get_node_id(self):
+        self.node_id += 1
+        return self.node_id
 
     def add_graph_node(self, node):
         self.graph_node_list.append(node)
@@ -24,20 +29,20 @@ class GraphContext():
 
     def __enter__(self):
         GraphGlobalEnv().graph_building = True
+        GraphGlobalEnv().graph_node_list = []
 
     def __exit__(self, *exc_info):
         GraphGlobalEnv().graph_building = False
+        GraphGlobalEnv().node_id = -1
         self.graph_nodes = GraphGlobalEnv().graph_node_list
 
 
 class GraphNode(object):
-    myid = 0
 
     def __init__(self) -> None:
         self.prev_nodes = []
         self.post_nodes = []
-        GraphNode.myid = GraphNode.myid + 1
-        self.id = GraphNode.myid
+        self.id = GraphGlobalEnv().get_node_id()
 
     def add_prev_node(self, node):
         if GraphGlobalEnv().graph_building:
