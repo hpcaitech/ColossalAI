@@ -38,6 +38,7 @@ class ColoTensor(object):
         self._shard_spec = shard_spec
         self._shard_pattern = ShardPattern.NA
         self._type = TensorType.NONMODEL
+        self._graph_node = None
 
     def __getitem__(self, key):
         return ColoTensor.init_from_torch_tensor(self.torch_tensor()[key])
