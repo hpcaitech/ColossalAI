@@ -48,10 +48,7 @@ class GraphNode(object):
             self.post_nodes.append(node)
 
     def post_node_empty(self) -> bool:
-        if len(self.post_nodes) == 0:
-            return True
-        else:
-            return False
+        return len(self.post_nodes) == 0
 
 
 class GraphOpNode(GraphNode):
