@@ -45,7 +45,6 @@ def _get_tensors():
 def _count_tensors():
     cnt = 0
     for t in _get_tensors():
-        print(t)
         cnt += 1
     return cnt
 
@@ -61,20 +60,20 @@ def count_tensors(use_colossal):
             with graph_ctx:
                 output = model(colo_input)
             output = model(colo_input)
+            ret = _count_tensors()
+            del graph_ctx
+            return ret
             # _visit_graph(graph_ctx.graph_nodes[0])
         else:
             input_t = torch.randn(4)
             output = model(input_t)
             output = model(input_t)
-
-    return _count_tensors()
+            return _count_tensors()
 
 
 def test_check_activation_tensors():
-    b = count_tensors(False)
-    a = count_tensors(True)
-    assert a == b
+    assert count_tensors(False) == count_tensors(True)
 
 
 if __name__ == "__main__":
-    count_tensors()
+    count_tensors(True)
