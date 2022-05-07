@@ -26,7 +26,7 @@ from dataclasses import fields
 def _post_init_colo(self):
     class_fields = fields(self)
     # Safety and consistency checks
-    if not len(class_fields):
+    if len(class_fields) == 0:
         raise ValueError(f"{self.__class__.__name__} has no fields.")
     if not all(field.default is None for field in class_fields[1:]):
         raise ValueError(f"{self.__class__.__name__} should not have more than one required field.")
@@ -361,7 +361,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     for name in ['simple_net']:
         run_1d_row_tp(name)
-    for name in ['bert', 'simple_net']:    
+    for name in ['bert', 'simple_net']:
         run_1d_hybrid_tp(name)
 
 

@@ -1,15 +1,14 @@
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.context import ParallelMode
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, \
-    gather_forward_split_backward, reduce_grad
+from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, reduce_grad
 from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ShardPattern
+from colossalai.tensor.graph import GraphOpNode, GraphGlobalEnv
 
 
-def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias:ColoTensor) -> ColoTensor:
+def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTensor) -> ColoTensor:
     parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow_Linear)
     # Input:S[1] x Weight:S[0] = Output:P
     # All-Reduce(Output) + bias = res
@@ -99,20 +98,32 @@ def colo_linear(types, args, kwargs, pg):
     if bias is not None and not isinstance(bias, ColoTensor):
         bias = ColoTensor.init_from_torch_tensor(bias)
 
+    # building the computing graph, inputs -> op
+    if GraphGlobalEnv().graph_building:
+        cur_op_node = GraphOpNode('linear', [weight, bias])
+        cur_op_node.add_prev_tensor(input_tensor)
+
     # Add communication logic before and after linear call.
+    ret_tensor = None
     if not weight.has_spec():    # No Model Parallel Applied
         assert not bias.has_spec(), 'Invalid bias spec for native Linear op'
         input_tensor = input_tensor.torch_tensor()
         weight = weight.torch_tensor()
         bias = bias.torch_tensor()
-        return ColoTensor.init_from_torch_tensor(torch.nn.functional.linear(input_tensor, weight, bias))
+        ret_tensor = ColoTensor.init_from_torch_tensor(torch.nn.functional.linear(input_tensor, weight, bias))
     elif weight.shard_spec.num_action == 1:    # Single Model Parallel Applied
         compute_patterns = weight.shard_spec.compute_patterns
         if ComputePattern.TP1DRow_Linear in compute_patterns:
-            return colo_linear_1Drow(input_tensor, weight, bias)
+            ret_tensor = colo_linear_1Drow(input_tensor, weight, bias)
         elif ComputePattern.TP1DCol_Linear in compute_patterns:
-            return colo_linear_1Dcol(input_tensor, weight, bias)
+            ret_tensor = colo_linear_1Dcol(input_tensor, weight, bias)
         else:
             raise NotImplementedError
     else:
         raise NotImplementedError
+
+    # building the computing graph, op -> output
+    if GraphGlobalEnv().graph_building:
+        cur_op_node.add_post_tensor(ret_tensor)
+
+    return ret_tensor
