@@ -5,7 +5,7 @@ from colossalai.nn.layer.utils import divide
 from colossalai.core import global_context as gpc
 from packaging import version
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ShardPattern
-from colossalai.tensor.graph import GraphOpNode, GraphNode
+from colossalai.tensor.graph import GraphOpNode
 
 
 def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTensor) -> ColoTensor:

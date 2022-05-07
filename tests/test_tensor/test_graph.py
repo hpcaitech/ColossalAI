@@ -2,6 +2,7 @@ from torch import nn
 import torch
 from colossalai.tensor import ColoTensor
 from colossalai.tensor.graph import GraphContext
+import gc
 
 
 class SimpleNet(nn.Module):
@@ -9,20 +10,15 @@ class SimpleNet(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.proj1 = nn.Linear(4, 8)
-        # self.ln1 = nn.LayerNorm(8)
         self.proj2 = nn.Linear(8, 4)
         self.proj3 = nn.Linear(4, 4)
         self.proj4 = nn.Linear(4, 4)
-        # self.ln2 = nn.LayerNorm(4)
 
     def forward(self, x):
-        # x = self.embed(x)
         x = self.proj1(x)
-        # x = self.ln1(x)
         x = self.proj2(x)
         x = self.proj3(x)
         x = self.proj4(x)
-        # x = self.ln2(x)
         return x
 
 
@@ -37,17 +33,48 @@ def _visit_graph(start_node):
         _visit_graph(node)
 
 
-def test_graph():
+def _get_tensors():
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj):
+                yield obj
+        except Exception as e:
+            print('A trivial exception occured: {}'.format(e))
+
+
+def _count_tensors():
+    cnt = 0
+    for t in _get_tensors():
+        print(t)
+        cnt += 1
+    return cnt
+
+
+def count_tensors(use_colossal):
     model = SimpleNet()
 
-    colo_input = ColoTensor.init_from_torch_tensor(torch.randn(4))
-    with GraphContext():
-        output = model(colo_input)
-    output = model(colo_input)
-    print(colo_input._graph_node)
-    _visit_graph(colo_input._graph_node)
-    # print(output)
+    model.eval()
+    with torch.no_grad():
+        if use_colossal:
+            colo_input = ColoTensor.init_from_torch_tensor(torch.randn(4))
+            graph_ctx = GraphContext()
+            with graph_ctx:
+                output = model(colo_input)
+            output = model(colo_input)
+            # _visit_graph(graph_ctx.graph_nodes[0])
+        else:
+            input_t = torch.randn(4)
+            output = model(input_t)
+            output = model(input_t)
+
+    return _count_tensors()
+
+
+def test_check_activation_tensors():
+    b = count_tensors(False)
+    a = count_tensors(True)
+    assert a == b
 
 
 if __name__ == "__main__":
-    test_graph()
+    count_tensors()
