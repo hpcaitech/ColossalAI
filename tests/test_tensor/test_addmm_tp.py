@@ -27,7 +27,7 @@ class Conv1D(nn.Module):
         w = torch.empty(nx, nf)
         nn.init.normal_(w, std=0.02)
         self.weight = nn.Parameter(w)
-        self.bias = nn.Parameter(torch.zeros(nf))
+        self.bias = nn.Parameter(torch.ones(nf))
 
     def forward(self, x):
         size_out = x.size()[:-1] + (self.nf,)
