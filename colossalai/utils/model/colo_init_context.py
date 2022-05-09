@@ -6,7 +6,7 @@ import types
 from torch import nn
 from typing import Iterator, Tuple, Union, Optional
 
-# Adaped from torch.nn.module.Module.register_param
+# Adapted from torch.nn.module.Module.register_param
 def _register_parameter_with_col(self, name: str, param):
     if '_parameters' not in self.__dict__:
         raise AttributeError(
@@ -37,7 +37,7 @@ def _register_parameter_with_col(self, name: str, param):
     else:
         self._parameters[name] = param
 
-# Adaped from torch.nn.module.Module.__setattr__
+# Adapted from torch.nn.module.Module.__setattr__
 def _setattr_with_colo(self, name: str, value: Union[torch.Tensor, torch.nn.Module, ColoTensor]):
     def remove_from(*dicts_or_sets):
         for d in dicts_or_sets:
