@@ -1,4 +1,3 @@
-from re import I
 from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
 from colossalai.tensor import ColoTensor, ColoParameter
