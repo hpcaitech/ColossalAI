@@ -12,19 +12,19 @@ def _register_parameter_with_colotensor(self, name: str, param):
         raise AttributeError(
             "cannot assign parameter before Module.__init__() call")
 
-    elif not isinstance(name, torch._six.string_classes):
+    if not isinstance(name, torch._six.string_classes):
         raise TypeError("parameter name should be a string. "
                         "Got {}".format(torch.typename(name)))
-    elif '.' in name:
+    if '.' in name:
         raise KeyError("parameter name can't contain \".\"")
-    elif name == '':
+    if name == '':
         raise KeyError("parameter name can't be empty string \"\"")
-    elif hasattr(self, name) and name not in self._parameters:
+    if hasattr(self, name) and name not in self._parameters:
         raise KeyError("attribute '{}' already exists".format(name))
 
     if param is None:
         self._parameters[name] = None
-    elif not (isinstance(param, torch.nn.Parameter) or isinstance(param, ColoParameter)):
+    elif not isinstance(param, (torch.nn.Parameter, ColoParameter)):
         raise TypeError("cannot assign '{}' object to parameter '{}' "
                         "(torch.nn.Parameter or ColoParameter or None required)"
                         .format(torch.typename(param), name))
@@ -48,7 +48,7 @@ def _setattr_with_colotensor(self, name: str, value: Union[torch.Tensor, torch.n
                     d.discard(name)
 
     params = self.__dict__.get('_parameters')
-    if isinstance(value, torch.nn.Parameter) or isinstance(value, ColoTensor):
+    if isinstance(value, (ColoTensor, torch.nn.Parameter)):
         if params is None:
             raise AttributeError(
                 "cannot assign parameters before Module.__init__() call")
