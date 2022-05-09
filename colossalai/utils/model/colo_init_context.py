@@ -7,7 +7,7 @@ from torch import nn
 from typing import Iterator, Tuple, Union, Optional
 
 # Adapted from torch.nn.module.Module.register_param
-def _register_parameter_with_col(self, name: str, param):
+def _register_parameter_with_colotensor(self, name: str, param):
     if '_parameters' not in self.__dict__:
         raise AttributeError(
             "cannot assign parameter before Module.__init__() call")
@@ -38,7 +38,7 @@ def _register_parameter_with_col(self, name: str, param):
         self._parameters[name] = param
 
 # Adapted from torch.nn.module.Module.__setattr__
-def _setattr_with_colo(self, name: str, value: Union[torch.Tensor, torch.nn.Module, ColoTensor]):
+def _setattr_with_colotensor(self, name: str, value: Union[torch.Tensor, torch.nn.Module, ColoTensor]):
     def remove_from(*dicts_or_sets):
         for d in dicts_or_sets:
             if name in d:
@@ -155,8 +155,8 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         self._device = device
 
         # TODO(jzy) replace it with old __setattr__ in the exit() of context?
-        torch.nn.Module.__setattr__ = _setattr_with_colo
-        torch.nn.Module.register_parameter = _register_parameter_with_col
+        torch.nn.Module.__setattr__ = _setattr_with_colotensor
+        torch.nn.Module.register_parameter = _register_parameter_with_colotensor
 
     def _post_init_method(self, module: torch.nn.Module, *args, **kwargs):
         """

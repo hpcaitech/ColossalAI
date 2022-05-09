@@ -23,7 +23,7 @@ from transformers.file_utils import ModelOutput
 from dataclasses import fields
 
 
-def _post_init_colo(self):
+def _post_init_colotensor(self):
     class_fields = fields(self)
     # Safety and consistency checks
     if len(class_fields) == 0:
@@ -72,7 +72,7 @@ def _post_init_colo(self):
                 self[field.name] = v
 
 
-ModelOutput.__post_init__ = _post_init_colo
+ModelOutput.__post_init__ = _post_init_colotensor
 # complete the hack
 
 
