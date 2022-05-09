@@ -23,7 +23,7 @@ from transformers.file_utils import ModelOutput
 from dataclasses import fields
 
 
-def _post_init_colo(self):
+def _post_init_colotensor(self):
     class_fields = fields(self)
     # Safety and consistency checks
     if len(class_fields) == 0:
@@ -72,7 +72,7 @@ def _post_init_colo(self):
                 self[field.name] = v
 
 
-ModelOutput.__post_init__ = _post_init_colo
+ModelOutput.__post_init__ = _post_init_colotensor
 # complete the hack
 
 
@@ -278,6 +278,26 @@ def test_colo_optimizer():
         if i > 5:
             break
 
+def _test_pretrained():
+    from _utils import check_equal
+    from transformers import BertForMaskedLM
+    set_seed(1)
+    model_pretrained = BertForMaskedLM.from_pretrained('bert-base-uncased')
+    with ColoInitContext(lazy_memory_allocate=False, device=get_current_device()):
+        model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+
+    model_pretrained = model_pretrained.cuda()
+    model = model.cuda()
+
+    dict_pretrained = {}
+    dict_col = {}
+    for name, param in model_pretrained.named_parameters():
+        dict_pretrained[name] = param
+    for name, param in model.named_parameters():
+        dict_col[name] = param
+    
+    for name, param in dict_pretrained.items():
+        check_equal(param, dict_col[name])
 
 def run_1d_row_tp(model_name: str):
     # A simple net with two stacked nn.Linear
@@ -377,4 +397,5 @@ def test_model(world_size):
 if __name__ == '__main__':
     # test_model_parameters()
     # test_colo_optimizer()
-    test_model()
+    # test_model()
+    _test_pretrained()
