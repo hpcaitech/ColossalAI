@@ -8,8 +8,10 @@ class ComputePattern(Enum):
     TP1DCol_Linear = 2
     TP1DRow_Embedding = 3
     TP1DCol_Embedding = 4
-    ZeRO = 5
-    DP = 6
+    TP1DRow_mm = 5
+    TP1DCol_mm = 6
+    ZeRO = 7
+    DP = 8
 
 
 class ShardPattern(Enum):
