@@ -43,9 +43,9 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
 
 def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Union[int, float],
                      alpha: Union[int, float]) -> ColoTensor:
-    # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
+    # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
     # All-Gather(Output)
-    # Input:B
+    # mat1:B
     parallel_action = mat2.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol_mm)
     if mat1.is_gathered():
         # Not splited yet.
@@ -54,7 +54,7 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
                 mat1.shape, mat2.shape, mat2.size(0))
         input_parallel = reduce_grad(mat1.torch_tensor(), parallel_action.parallel_mode)
 
-    # Bias:S[1]
+    # input:S[1]
     assert input_tensor.has_spec() and input_tensor.shard_spec.num_action == 1 and \
         input_tensor.shard_pattern in [ShardPattern.Col, ShardPattern.Row], \
         'Invalid bias spec for 1Dcol Linear op'
