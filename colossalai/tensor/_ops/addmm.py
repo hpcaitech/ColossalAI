@@ -34,7 +34,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     partial_output = torch.mm(input_per_partition, mat2.torch_tensor())
     # Reduce(Output)
     output = reduce_input(partial_output, parallel_action.parallel_mode)
-    # Bias
+    # input
     assert not input_tensor.has_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor.torch_tensor() + alpha * output
     output = ColoTensor.init_from_torch_tensor(output)
@@ -59,7 +59,11 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
         input_tensor.shard_pattern in [ShardPattern.Col, ShardPattern.Row], \
         'Invalid bias spec for 1Dcol Linear op'
 
-    output_parallel = torch.mm(input_parallel, mat2.torch_tensor())
+    output_parallel = torch.addmm(input_tensor.torch_tensor(),
+                                  input_parallel,
+                                  mat2.torch_tensor(),
+                                  beta=beta,
+                                  alpha=alpha)
 
     output = ColoTensor.init_from_torch_tensor(output_parallel)
     out_parallel_action_list = [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)]
