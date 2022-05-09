@@ -142,9 +142,8 @@ if build_cuda_ext:
         res = re.search(r'sm_(\d+)', arch)
         if res:
             arch_cap = res[1]
-            cc_flag.extend(['-gencode', f'arch=compute_{arch_cap},code={arch}'])
-    print(cc_flag)
-    exit()
+            if int(arch_cap) >= 60:
+                cc_flag.extend(['-gencode', f'arch=compute_{arch_cap},code={arch}'])
 
     extra_cuda_flags = ['-lineinfo']
 
