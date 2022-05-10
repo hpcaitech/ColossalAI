@@ -154,7 +154,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         self._lazy_memory_allocate = lazy_memory_allocate
         self._device = device
 
-        # TODO(jzy) replace it with old __setattr__ in the exit() of context?
         torch.nn.Module.__setattr__ = _setattr_with_colotensor
         torch.nn.Module.register_parameter = _register_parameter_with_colotensor
 
