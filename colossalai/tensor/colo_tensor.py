@@ -142,12 +142,15 @@ class ColoTensor(object):
         # Model Parameters
         if self._shard_spec.num_action == 1:
             parallel_action = self._shard_spec.get_action_by_compute_pattern(self._shard_spec.compute_patterns[0])
-            if parallel_action.compute_pattern in [ComputePattern.TP1DRow_Linear, \
-                ComputePattern.TP1DCol_Embedding]:
+            if parallel_action.compute_pattern in [
+                    ComputePattern.TP1DRow_Linear, ComputePattern.TP1DCol_Embedding, ComputePattern.TP1DCol_mm
+            ]:
                 self._shard_1d(parallel_action=parallel_action, dim=-1)
-                self._shard_pattern = ShardPattern.Col    # We bind our ComputePattern on weight, which has to be transposed when linear().
-            elif parallel_action.compute_pattern in [ComputePattern.TP1DCol_Linear, \
-                ComputePattern.TP1DRow_Embedding]:
+                # We bind our ComputePattern on weight, which has to be transposed when linear().
+                self._shard_pattern = ShardPattern.Col
+            elif parallel_action.compute_pattern in [
+                    ComputePattern.TP1DCol_Linear, ComputePattern.TP1DRow_Embedding, ComputePattern.TP1DRow_mm
+            ]:
                 self._shard_1d(parallel_action=parallel_action, dim=0)
                 self._shard_pattern = ShardPattern.Row
             else:
@@ -229,16 +232,20 @@ class ColoTensor(object):
     def __add__(self, o) -> "ColoTensor":
         if isinstance(o, ColoTensor):
             return ColoTensor.init_from_torch_tensor(self.torch_tensor() + o.torch_tensor())
-        elif isinstance(o, torch.Tensor):
+        elif isinstance(o, (torch.Tensor, int, float)):
             return ColoTensor.init_from_torch_tensor(self.torch_tensor() + o)
         else:
             raise TypeError(f'{type(o)} is not supported in ColoTensor __add__')
+
+    __radd__ = __add__
 
     def __truediv__(self, o) -> "ColoTensor":
         return ColoTensor.init_from_torch_tensor(self.torch_tensor() / o)
 
     def __getattr__(self, name):
+
         def replace_tensor_with_colo(func):
+
             def execute_func(*args, **kwargs):
                 # transform the ColoTensor args to torch Tensor.
                 args = [arg.torch_tensor() if isinstance(arg, ColoTensor) else arg for arg in args]
@@ -279,3 +286,13 @@ class ColoTensor(object):
         else:
             raise NotImplementedError
         return dim
+
+    def __mul__(self, other) -> "ColoTensor":
+        if isinstance(other, ColoTensor):
+            return ColoTensor.init_from_torch_tensor(self.torch_tensor() * other.torch_tensor())
+        elif isinstance(other, (torch.Tensor, int, float)):
+            return ColoTensor.init_from_torch_tensor(self.torch_tensor() * other)
+        else:
+            raise TypeError(f'{type(other)} is not supported in ColoTensor __mul__')
+
+    __rmul__ = __mul__
