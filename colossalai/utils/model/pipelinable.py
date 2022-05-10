@@ -123,6 +123,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                             self._func_dict[func_key] = []
                         for f in front_funcs_list:
                             self._func_dict[func_key].append(f)
+                        front_funcs_list = []
                     func_key = (layer_spec, "behind")
                     self._layer_spec_list.append(layer_spec)
                 elif isinstance(element, tuple) and element[1] == "front":
