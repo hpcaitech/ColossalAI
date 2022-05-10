@@ -289,9 +289,9 @@ class ColoTensor(object):
 
     def __mul__(self, other) -> "ColoTensor":
         if isinstance(other, ColoTensor):
-            return ColoTensor.init_from_torch_tensor(self.torch_tensor() + other.torch_tensor())
+            return ColoTensor.init_from_torch_tensor(self.torch_tensor() * other.torch_tensor())
         elif isinstance(other, (torch.Tensor, int, float)):
-            return ColoTensor.init_from_torch_tensor(self.torch_tensor() + other)
+            return ColoTensor.init_from_torch_tensor(self.torch_tensor() * other)
         else:
             raise TypeError(f'{type(other)} is not supported in ColoTensor __mul__')
 
