@@ -180,10 +180,17 @@ def run_1d_hybrid_tp(model_name):
     if rank == 0:
         model_torch = model_builder(checkpoint=True)
         model_torch = model_torch.cuda()
+        colo_optimizer_torch = ColoOptimizer(dict(model_torch.named_parameters()), torch.optim.SGD, lr=0.1)
 
     model = model.cuda()
-
+    colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
     for i, (data, label) in enumerate(train_dataloader):
+        model.train()
+        colo_optimizer.zero_grad()
+        if rank == 0:
+            model_torch.train()
+            colo_optimizer_torch.zero_grad()
+        
         data = data.to(get_current_device())
         label = label.to(get_current_device())
 
@@ -213,9 +220,11 @@ def run_1d_hybrid_tp(model_name):
             assert torch.allclose(loss.torch_tensor(), loss_torch, rtol=1e-2)
 
         loss.backward()
+        colo_optimizer.step()
 
         if rank == 0:
             loss_torch.backward()
+            colo_optimizer_torch.step()
         if i > 5:
             break
 
@@ -428,5 +437,5 @@ def _test_pretrain_load(world_size):
 if __name__ == '__main__':
     # test_model_parameters()
     # test_colo_optimizer()
-    # test_model()
-    _test_pretrain_load(4)
+    test_model(4)
+    # _test_pretrain_load(4)
