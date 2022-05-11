@@ -372,16 +372,14 @@ def _run_pretrain_load():
     dict_col = {}
     for name, param in model_pretrained.named_parameters():
         dict_pretrained[name] = param
-    #c1 = 0
-    #c2 = 0
+    c1 = 0
+    c2 = 0
     for name, param in model.colo_named_parameters():
         if isinstance(param, ColoParameter):
             c1 = c1 + 1
         else:
             c2 = c2 + 1
         dict_col[name] = param
-    #print("ColoParameter ", c1)
-    #print("Tensor ", c2)
 
     for name, param in dict_pretrained.items():
         check_equal(param, dict_col[name])
