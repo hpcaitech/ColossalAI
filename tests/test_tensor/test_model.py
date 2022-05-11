@@ -429,5 +429,4 @@ if __name__ == '__main__':
     # test_model_parameters()
     # test_colo_optimizer()
     # test_model()
-    # _test_pretrain_load(4)
-    _run_pretrain_load()
+    _test_pretrain_load(4)
