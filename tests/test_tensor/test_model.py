@@ -380,6 +380,8 @@ def _run_pretrain_load():
         else:
             c2 = c2 + 1
         dict_col[name] = param
+    print(c1)
+    print(c2)
 
     for name, param in dict_pretrained.items():
         check_equal(param, dict_col[name])
