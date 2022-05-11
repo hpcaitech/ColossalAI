@@ -1,3 +1,4 @@
+from colossalai.tensor.colo_parameter import ColoParameter
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 import colossalai
@@ -371,7 +372,13 @@ def _run_pretrain_load():
     dict_col = {}
     for name, param in model_pretrained.named_parameters():
         dict_pretrained[name] = param
-    for name, param in model.named_parameters():
+    c1 = 0
+    c2 = 0
+    for name, param in model.colo_named_parameters():
+        if isinstance(param, ColoParameter):
+            c1 = c1 + 1
+        else:
+            c2 = c2 + 1
         dict_col[name] = param
 
     for name, param in dict_pretrained.items():
@@ -416,4 +423,5 @@ if __name__ == '__main__':
     # test_model_parameters()
     # test_colo_optimizer()
     # test_model()
-    _test_pretrain_load(4)
+    # _test_pretrain_load(4)
+    _run_pretrain_load()
