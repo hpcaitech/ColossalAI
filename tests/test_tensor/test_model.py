@@ -1,4 +1,3 @@
-from operator import mod
 from colossalai.tensor.colo_parameter import ColoParameter
 from tests.components_to_test.registry import non_distributed_component_funcs
 
