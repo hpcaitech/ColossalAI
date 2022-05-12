@@ -16,6 +16,7 @@ from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 
 from _utils import check_equal, replace_parameter_add_grad, broadcast_tensor_chunk
 
+
 def run_embedding_tp1d_col_test():
     device = get_current_device()
     dtype = torch.float32
@@ -28,7 +29,7 @@ def run_embedding_tp1d_col_test():
     layer_master = torch.nn.Embedding(num_embeddings, embedding_dim)
     layer = torch.nn.Embedding(num_embeddings, embedding_dim)
 
-    A_master = torch.tensor((0,3,6,9), device=device)
+    A_master = torch.tensor((0, 3, 6, 9), device=device)
     A = broadcast_tensor_chunk(A_master, chunk_size=1)
 
     W_shape = (num_embeddings, embedding_dim)
@@ -39,11 +40,12 @@ def run_embedding_tp1d_col_test():
     # replace the torch nn.Parameters with ColoTensor
     sharded_weight = ColoTensor.init_from_torch_tensor(W)
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_Embedding, 
-        parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1,
+                       compute_pattern=ComputePattern.TP1DCol_Embedding,
+                       parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
-    sharded_weight.set_spec(spec) # reshard
+    sharded_weight.set_spec(spec)    # reshard
     replace_parameter_add_grad(layer, sharded_weight)
     out = layer(A)
 
@@ -65,6 +67,7 @@ def run_embedding_tp1d_col_test():
     W_grad = torch.chunk(W_grad, DEPTH, dim=-1)[local_rank]
     check_equal(W_grad, layer.weight.grad)
 
+
 def run_embedding_tp1d_row_test():
     device = get_current_device()
     dtype = torch.float32
@@ -77,7 +80,7 @@ def run_embedding_tp1d_row_test():
     layer_master = torch.nn.Embedding(num_embeddings, embedding_dim)
     layer = torch.nn.Embedding(num_embeddings, embedding_dim)
 
-    A_master = torch.tensor((0,3,6,9), device=device)
+    A_master = torch.tensor((0, 3, 6, 9), device=device)
     A = broadcast_tensor_chunk(A_master, chunk_size=1)
 
     W_shape = (num_embeddings, embedding_dim)
@@ -88,11 +91,12 @@ def run_embedding_tp1d_row_test():
     # replace the torch nn.Parameters with ColoTensor
     sharded_weight = ColoTensor.init_from_torch_tensor(W)
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Embedding, 
-        parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1,
+                       compute_pattern=ComputePattern.TP1DRow_Embedding,
+                       parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
-    sharded_weight.set_spec(spec) # reshard
+    sharded_weight.set_spec(spec)    # reshard
     replace_parameter_add_grad(layer, sharded_weight)
     out = layer(A)
 
@@ -114,11 +118,13 @@ def run_embedding_tp1d_row_test():
     W_grad = torch.chunk(W_grad, DEPTH, dim=0)[local_rank]
     check_equal(W_grad, layer.weight.grad)
 
+
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_embedding_tp1d_col_test()
     run_embedding_tp1d_row_test()
+
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])

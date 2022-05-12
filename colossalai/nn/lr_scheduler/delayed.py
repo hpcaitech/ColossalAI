@@ -2,6 +2,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 
 class _enable_get_lr_call:
+
     def __init__(self, o):
         self.o = o
 

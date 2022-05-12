@@ -380,7 +380,7 @@ def _run_pretrain_load():
         if isinstance(param, ColoParameter):
             c1 += 1
         else:
-            c2 +=1
+            c2 += 1
         dict_col[name] = param
     assert c_ref == c1
     assert c2 == 0

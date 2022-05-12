@@ -25,7 +25,6 @@ author = 'HPC-AI Technology Inc.'
 # The full version, including alpha/beta/rc tags
 release = '0.0.1'
 
-
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be
@@ -91,6 +90,8 @@ source_suffix = ['.rst', '.md', '.MD']
 
 import inspect
 import colossalai
+
+
 def linkcode_resolve(domain, info):
     """
     Determine the URL corresponding to Python object

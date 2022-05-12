@@ -6,6 +6,7 @@ from colossalai.nn.layer import WrappedDropPath as DropPath
 class TransformerLayer(nn.Module):
     """Transformer layer builder.
     """
+
     def __init__(self,
                  att: nn.Module,
                  ffn: nn.Module,

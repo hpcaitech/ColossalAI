@@ -28,8 +28,7 @@ class VisionTransformerFromConfig(ModelFromConfig):
         self.embed_dim = embed_dim
         self.num_tokens = 1
         self.tensor_splitting_cfg = tensor_splitting_cfg
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)
-               ]  # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]    # stochastic depth decay rule
         if token_fusion_cfg is None:
             token_fusion_cfg = []
         else:
@@ -38,18 +37,17 @@ class VisionTransformerFromConfig(ModelFromConfig):
         self.layers_cfg = [
             embedding_cfg,
 
-            # input tensor splitting
+        # input tensor splitting
             *self._generate_tensor_splitting_cfg(),
             *token_fusion_cfg,
 
-            # blocks
-            *self._generate_block_cfg(
-                dpr=dpr, block_cfg=block_cfg, depth=depth),
+        # blocks
+            *self._generate_block_cfg(dpr=dpr, block_cfg=block_cfg, depth=depth),
 
-            # norm
+        # norm
             norm_cfg,
 
-            # head
+        # head
             head_cfg
         ]
 
@@ -74,13 +72,13 @@ class VisionTransformerFromConfig(ModelFromConfig):
         else:
             return []
 
-    def forward(self, x):  # [512, 3, 32, 32]
+    def forward(self, x):    # [512, 3, 32, 32]
         for layer in self.layers:
             if isinstance(x, tuple):
                 x = layer(*x)
             else:
                 x = layer(x)
-        return x  # [256, 5]
+        return x    # [256, 5]
 
     def init_weights(self):
         # TODO: add init weights

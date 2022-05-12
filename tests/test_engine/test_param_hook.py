@@ -5,7 +5,9 @@ import torch
 import torch.nn.functional as F
 import copy
 
+
 class SubNet(nn.Module):
+
     def __init__(self, out_features) -> None:
         super().__init__()
         self.bias = nn.Parameter(torch.zeros(out_features))
@@ -15,6 +17,7 @@ class SubNet(nn.Module):
 
 
 class Net(nn.Module):
+
     def __init__(self, checkpoint=False) -> None:
         super().__init__()
         self.fc1 = nn.Linear(5, 5)
@@ -28,8 +31,10 @@ class Net(nn.Module):
         x = self.fc2(x)
         return x
 
+
 def net_data():
     return (torch.randn(2, 5, dtype=torch.float, device='cuda'),)
+
 
 def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
     if loose:
@@ -43,23 +48,27 @@ def test_base_param_hook():
     model.train()
     inputs = net_data()
 
-    def run_model(model, inputs, use_param_hook = False):
+    def run_model(model, inputs, use_param_hook=False):
         if use_param_hook:
+
             class HooKWrapper:
+
                 def __init__(self) -> None:
                     self.hook_triggered_times = 0
 
                 def wrapper_func(self):
+
                     def hook(param, grad) -> torch.Tensor or None:
                         self.hook_triggered_times += 1
                         return grad
+
                     return hook
 
             hookwrapper = HooKWrapper()
             param_list = [p for p in model.parameters()]
             hook_mgr = BaseParamHookMgr(param_list)
             hook_mgr.register_backward_hooks(hookwrapper.wrapper_func())
-        
+
         model.zero_grad(set_to_none=True)
 
         with torch.cuda.amp.autocast():
@@ -70,17 +79,18 @@ def test_base_param_hook():
         if use_param_hook:
             hook_mgr.remove_hooks()
             return hookwrapper.hook_triggered_times
-    
+
     model_copy = copy.deepcopy(model)
 
     run_model(model, inputs, False)
     ret2 = run_model(model_copy, inputs, True)
-    
+
     # Make sure param hook has only be fired once in case of parameter sharing
     assert ret2 == len(list(model.parameters()))
 
     for p, p_copy in zip(model.parameters(), model_copy.parameters()):
         assert allclose(p.grad, p_copy.grad), f"{p.grad} vs {p_copy.grad}"
+
 
 if __name__ == '__main__':
     test_base_param_hook()

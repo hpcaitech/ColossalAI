@@ -6,12 +6,13 @@ import types
 from torch import nn
 from typing import Iterator, Tuple, Union, Optional
 
+
 # find named_params includes replica
 def _named_params_with_replica(
-        module: nn.Module,
-        prefix: str = '',
-        recurse: bool = True,
-    ) -> Iterator[Tuple[str, Union[nn.Parameter, ColoTensor]]]:
+    module: nn.Module,
+    prefix: str = '',
+    recurse: bool = True,
+) -> Iterator[Tuple[str, Union[nn.Parameter, ColoTensor]]]:
     modules = module.named_modules(prefix=prefix) if recurse else [(prefix, module)]
 
     for mod_prefix, mod in modules:
@@ -21,11 +22,11 @@ def _named_params_with_replica(
             name = mod_prefix + ('.' if mod_prefix else '') + name
             yield name, val
 
+
 # Adapted from torch.nn.module.Module.register_param
 def _register_parameter_with_colotensor(self, name: str, param):
     if '_parameters' not in self.__dict__:
-        raise AttributeError(
-            "cannot assign parameter before Module.__init__() call")
+        raise AttributeError("cannot assign parameter before Module.__init__() call")
 
     if not isinstance(name, torch._six.string_classes):
         raise TypeError("parameter name should be a string. "
@@ -41,19 +42,19 @@ def _register_parameter_with_colotensor(self, name: str, param):
         self._parameters[name] = None
     elif not isinstance(param, (torch.nn.Parameter, ColoParameter)):
         raise TypeError("cannot assign '{}' object to parameter '{}' "
-                        "(torch.nn.Parameter or ColoParameter or None required)"
-                        .format(torch.typename(param), name))
+                        "(torch.nn.Parameter or ColoParameter or None required)".format(torch.typename(param), name))
     elif param.grad_fn:
-        raise ValueError(
-            "Cannot assign non-leaf Tensor to parameter '{0}'. Model "
-            "parameters must be created explicitly. To express '{0}' "
-            "as a function of another Tensor, compute the value in "
-            "the forward() method.".format(name))
+        raise ValueError("Cannot assign non-leaf Tensor to parameter '{0}'. Model "
+                         "parameters must be created explicitly. To express '{0}' "
+                         "as a function of another Tensor, compute the value in "
+                         "the forward() method.".format(name))
     else:
         self._parameters[name] = param
 
+
 # Adapted from torch.nn.module.Module.__setattr__
 def _setattr_with_colotensor(self, name: str, value: Union[torch.Tensor, torch.nn.Module, ColoTensor]):
+
     def remove_from(*dicts_or_sets):
         for d in dicts_or_sets:
             if name in d:
@@ -65,40 +66,36 @@ def _setattr_with_colotensor(self, name: str, value: Union[torch.Tensor, torch.n
     params = self.__dict__.get('_parameters')
     if isinstance(value, (ColoTensor, torch.nn.Parameter)):
         if params is None:
-            raise AttributeError(
-                "cannot assign parameters before Module.__init__() call")
+            raise AttributeError("cannot assign parameters before Module.__init__() call")
         remove_from(self.__dict__, self._buffers, self._modules, self._non_persistent_buffers_set)
         self.register_parameter(name, value)
     elif params is not None and name in params:
         if value is not None:
             raise TypeError("cannot assign '{}' as parameter '{}' "
-                            "(torch.nn.Parameter or None expected)"
-                            .format(torch.typename(value), name))
+                            "(torch.nn.Parameter or None expected)".format(torch.typename(value), name))
         self.register_parameter(name, value)
     else:
         modules = self.__dict__.get('_modules')
         if isinstance(value, torch.nn.Module):
             if modules is None:
-                raise AttributeError(
-                    "cannot assign module before Module.__init__() call")
+                raise AttributeError("cannot assign module before Module.__init__() call")
             remove_from(self.__dict__, self._parameters, self._buffers, self._non_persistent_buffers_set)
             modules[name] = value
         elif modules is not None and name in modules:
             if value is not None:
                 raise TypeError("cannot assign '{}' as child module '{}' "
-                                "(torch.nn.Module or None expected)"
-                                .format(torch.typename(value), name))
+                                "(torch.nn.Module or None expected)".format(torch.typename(value), name))
             modules[name] = value
         else:
             buffers = self.__dict__.get('_buffers')
             if buffers is not None and name in buffers:
                 if value is not None and not isinstance(value, torch.Tensor):
                     raise TypeError("cannot assign '{}' as buffer '{}' "
-                                    "(torch.Tensor or None expected)"
-                                    .format(torch.typename(value), name))
+                                    "(torch.Tensor or None expected)".format(torch.typename(value), name))
                 buffers[name] = value
             else:
                 object.__setattr__(self, name, value)
+
 
 def ColoModulize(module):
     """
@@ -128,6 +125,7 @@ def ColoModulize(module):
     module.colo_parameters = module.old_parameters
     module.colo_named_parameters = module.old_named_parameters
     module._colo_visited = True
+
 
 class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
@@ -159,15 +157,16 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 continue
 
             split = name.rfind('.')
-            if split >= 0: # param in submodule
+            if split >= 0:    # param in submodule
                 module_name = name[:split]
-                param_name = name[split+1:]
+                param_name = name[split + 1:]
             else:
-                module_name = '' # param in current module
+                module_name = ''    # param in current module
                 param_name = name
             name_list.append((module_name, param_name))
 
-        replaced_tensors = dict() # record mapping between (torch.Tensor, ColoTensor) to distinguish the same reference
+        replaced_tensors = dict(
+        )    # record mapping between (torch.Tensor, ColoTensor) to distinguish the same reference
         for module_name, param_name in name_list:
             submodule = module.get_submodule(module_name)
             param = submodule.get_parameter(param_name)
@@ -180,7 +179,8 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 tensor_detached = param.to(self._device).detach()
                 tensor_detached.requires_grad = requires_grad
 
-                colo_param = ColoParameter.init_from_torch_tensor(tensor=tensor_detached, save_payload=save_torch_payload)
+                colo_param = ColoParameter.init_from_torch_tensor(tensor=tensor_detached,
+                                                                  save_payload=save_torch_payload)
                 # add mapping record
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)

@@ -63,6 +63,7 @@ _init_rules = dict(
 
 @LAYERS.register_module
 class ViTEmbedding(nn.Module):
+
     def __init__(self,
                  img_size: int,
                  patch_size: int,
@@ -90,6 +91,7 @@ class ViTEmbedding(nn.Module):
 
 @LAYERS.register_module
 class ViTSelfAttention(nn.Module):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -127,7 +129,7 @@ class ViTSelfAttention(nn.Module):
 
         x = torch.matmul(x, v)
         x = x.transpose(1, 2)
-        new_context_layer_shape = x.size()[:-2] + (all_head_size, )
+        new_context_layer_shape = x.size()[:-2] + (all_head_size,)
         x = x.reshape(new_context_layer_shape)
 
         x = self.dense(x)
@@ -138,6 +140,7 @@ class ViTSelfAttention(nn.Module):
 
 @LAYERS.register_module
 class ViTMLP(nn.Module):
+
     def __init__(self,
                  dim: int,
                  mlp_ratio: int,
@@ -172,6 +175,7 @@ class ViTMLP(nn.Module):
 
 @LAYERS.register_module
 class ViTHead(nn.Module):
+
     def __init__(self,
                  dim: int,
                  num_classes: int,
@@ -206,6 +210,7 @@ class ViTHead(nn.Module):
 
 @LAYERS.register_module
 class ViTBlock(CheckpointModule):
+
     def __init__(self,
                  dim: int,
                  num_heads: int,
@@ -246,6 +251,7 @@ class ViTBlock(CheckpointModule):
 
 @MODELS.register_module
 class VisionTransformer(nn.Module):
+
     def __init__(self,
                  img_size: int = 224,
                  patch_size: int = 16,

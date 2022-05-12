@@ -16,6 +16,7 @@ from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 
 from _utils import check_equal, replace_parameter_add_grad, broadcast_tensor_chunk
 
+
 def run_linear_tp1d_col_test():
     device = get_current_device()
     dtype = torch.float32
@@ -47,10 +48,12 @@ def run_linear_tp1d_col_test():
     sharded_weight = ColoTensor.init_from_torch_tensor(W)
     sharded_bias = ColoTensor.init_from_torch_tensor(B)
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1,
+                       compute_pattern=ComputePattern.TP1DCol_Linear,
+                       parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
-    sharded_weight.set_spec(spec) # reshard
+    sharded_weight.set_spec(spec)    # reshard
     sharded_bias.set_spec(spec)
 
     replace_parameter_add_grad(layer, sharded_weight, sharded_bias)
@@ -79,6 +82,7 @@ def run_linear_tp1d_col_test():
     B_grad = B_master.grad
     B_grad = torch.chunk(B_grad, DEPTH, dim=0)[local_rank]
     check_equal(B_grad, layer.bias.grad)
+
 
 def run_linear_tp1d_row_test():
     device = get_current_device()
@@ -110,10 +114,12 @@ def run_linear_tp1d_row_test():
     # replace the torch nn.Parameters with ColoTensor
     sharded_weight = ColoTensor.init_from_torch_tensor(W)
     parallel_action_list = [
-        ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_Linear, parallel_mode=ParallelMode.PARALLEL_1D)
+        ParallelAction(priority=1,
+                       compute_pattern=ComputePattern.TP1DRow_Linear,
+                       parallel_mode=ParallelMode.PARALLEL_1D)
     ]
     spec = TensorSpec(parallel_action_list)
-    sharded_weight.set_spec(spec=spec) # reshard
+    sharded_weight.set_spec(spec=spec)    # reshard
     sharded_bias = ColoTensor.init_from_torch_tensor(B)
     replace_parameter_add_grad(layer, sharded_weight, sharded_bias)
     out = layer(A)
@@ -147,6 +153,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_linear_tp1d_row_test()
     run_linear_tp1d_col_test()
+
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])

@@ -10,12 +10,6 @@ NUM_ATTN_HEADS = 12
 NUM_MICRO_BATCHES = 2
 
 # resnet 18
-model = dict(type='VanillaResNet',
-             block_type='ResNetBasicBlock',
-             layers=[2, 2, 2, 2],
-             num_cls=10)
+model = dict(type='VanillaResNet', block_type='ResNetBasicBlock', layers=[2, 2, 2, 2], num_cls=10)
 
-parallel = dict(
-    pipeline=dict(size=4),
-    tensor=dict(size=1, mode=None)
-)
+parallel = dict(pipeline=dict(size=4), tensor=dict(size=1, mode=None))

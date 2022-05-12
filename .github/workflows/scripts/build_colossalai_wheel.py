@@ -4,10 +4,10 @@ import re
 import os
 import subprocess
 
-
 WHEEL_TEXT_ROOT_URL = 'https://github.com/hpcaitech/public_assets/tree/main/colossalai/torch_build/torch_wheels'
 RAW_TEXT_FILE_PREFIX = 'https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/torch_build/torch_wheels'
 CUDA_HOME = os.environ['CUDA_HOME']
+
 
 def get_cuda_bare_metal_version():
     raw_output = subprocess.check_output([CUDA_HOME + "/bin/nvcc", "-V"], universal_newlines=True)
@@ -18,6 +18,7 @@ def get_cuda_bare_metal_version():
     bare_metal_minor = release[1][0]
 
     return bare_metal_major, bare_metal_minor
+
 
 def all_wheel_info():
     page_text = requests.get(WHEEL_TEXT_ROOT_URL).text
@@ -68,15 +69,11 @@ def build_colossalai(wheel_info):
                     cmd = f'bash ./build_colossalai_wheel.sh {method} {url} {filename} {cuda_version} {python_version} {torch_version} {flags}'
                     os.system(cmd)
 
+
 def main():
     wheel_info = all_wheel_info()
     build_colossalai(wheel_info)
 
+
 if __name__ == '__main__':
     main()
-
-
-
-
-
-        

@@ -10,18 +10,19 @@ from .conv import conv1x1
 @LAYERS.register_module
 class ResLayer(nn.Module):
 
-    def __init__(self,
-                 block_type: str,
-                 norm_layer_type: str,
-                 inplanes: int,
-                 planes: int,
-                 blocks: int,
-                 groups: int,
-                 base_width: int,
-                 stride: int = 1,
-                 dilation: int = 1,
-                 dilate: bool = False,
-                 ):
+    def __init__(
+        self,
+        block_type: str,
+        norm_layer_type: str,
+        inplanes: int,
+        planes: int,
+        blocks: int,
+        groups: int,
+        base_width: int,
+        stride: int = 1,
+        dilation: int = 1,
+        dilate: bool = False,
+    ):
         super().__init__()
         self.block = LAYERS.get_module(block_type)
         self.norm_layer = LAYERS.get_module(norm_layer_type)
@@ -49,13 +50,18 @@ class ResLayer(nn.Module):
             )
 
         layers = []
-        layers.append(self.block(self.inplanes, self.planes, self.stride, downsample, self.groups,
-                                 self.base_width, previous_dilation, norm_layer))
+        layers.append(
+            self.block(self.inplanes, self.planes, self.stride, downsample, self.groups, self.base_width,
+                       previous_dilation, norm_layer))
         self.inplanes = self.planes * self.block.expansion
         for _ in range(1, self.blocks):
-            layers.append(self.block(self.inplanes, self.planes, groups=self.groups,
-                                     base_width=self.base_width, dilation=self.dilation,
-                                     norm_layer=norm_layer))
+            layers.append(
+                self.block(self.inplanes,
+                           self.planes,
+                           groups=self.groups,
+                           base_width=self.base_width,
+                           dilation=self.dilation,
+                           norm_layer=norm_layer))
 
         return nn.Sequential(*layers)
 
