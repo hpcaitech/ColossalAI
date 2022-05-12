@@ -231,6 +231,7 @@ class ColoTensor(object):
 
     def to_dist_spec(self, dist_spec: _DistSpec) -> None:
         self._torch_tensor = DistSpecManager.handle_trans_spec(self.torch_tensor(), self.spec.dist_spec, dist_spec)
-        # self._torch_tensor.requires_grad = self._requires_grad
+        if self._torch_tensor.is_leaf:
+            self._torch_tensor.requires_grad = self._requires_grad
         self._size = self._torch_tensor.size()
         self._spec.dist_spec = dist_spec

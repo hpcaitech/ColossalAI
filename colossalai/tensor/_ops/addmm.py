@@ -71,10 +71,9 @@ def colo_addmm(types, args, kwargs, pg):
     # Add communication logic before and after linear call.
     ret_tensor = None
     if not mat2.has_spec():    # No Model Parallel Applied
-        mat1 = to_colo_tensor(args[1])
         assert not input_tensor.has_spec(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.init_from_torch_tensor(
-            torch.addbmm(input_tensor.torch_tensor(), mat1.torch_tensor(), mat2.torch_tensor(), beta=beta, alpha=alpha))
+            torch.addbmm(input_tensor.torch_tensor(), mat1, mat2.torch_tensor(), beta=beta, alpha=alpha))
     elif mat2.spec.num_action == 1:    # Single Model Parallel Applied
         spec = TensorSpec(dist_spec.replicate(mat2.spec.dist_spec.process_group))
         mat1 = args[1] if isinstance(args[1], ColoTensor) else ColoTensor.init_from_torch_tensor(args[1], spec=spec)
