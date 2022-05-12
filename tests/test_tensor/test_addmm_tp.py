@@ -3,6 +3,7 @@ import torch
 import pytest
 import torch.nn as nn
 import torch.multiprocessing as mp
+from colossalai.tensor import dist_spec
 from colossalai.utils import ColoInitContext
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
 from colossalai.context import ParallelMode
@@ -10,6 +11,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from functools import partial
+from colossalai.core import global_context as gpc
 
 
 class Conv1D(nn.Module):
@@ -38,17 +40,21 @@ class Conv1D(nn.Module):
 
 def init_1d_row(model):
     spec = TensorSpec(
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_mm, parallel_mode=ParallelMode.PARALLEL_1D)])
-    for n, p in model.colo_named_parameters():
-        if 'weight' in n:
-            p.set_spec(spec)
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)])
+    with dist_spec.DistSpecManager.no_grad():
+        for n, p in model.colo_named_parameters():
+            if 'weight' in n:
+                p.set_spec(spec, init_pg=True)
 
 
 def init_1d_col(model):
     spec = TensorSpec(
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_mm, parallel_mode=ParallelMode.PARALLEL_1D)])
-    for n, p in model.colo_named_parameters():
-        p.set_spec(spec)
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D)])
+    with dist_spec.DistSpecManager.no_grad():
+        for n, p in model.colo_named_parameters():
+            p.set_spec(spec, init_pg=True)
 
 
 def run_with_spec(spec_init_func):

@@ -1,9 +1,13 @@
+from copy import copy
 from enum import Enum
-from typing import Tuple, List
+from typing import List
 from colossalai.context.parallel_mode import ParallelMode
+from colossalai.tensor.dist_spec.dist_spec import _DistSpec
 
 
 class ComputePattern(Enum):
+    TP1DRow = 0
+    TP1DCol = 9
     TP1DRow_Linear = 1
     TP1DCol_Linear = 2
     TP1DRow_Embedding = 3
@@ -12,12 +16,6 @@ class ComputePattern(Enum):
     TP1DCol_mm = 6
     ZeRO = 7
     DP = 8
-
-
-class ShardPattern(Enum):
-    NA = 0
-    Row = 1
-    Col = 2
 
 
 class ParallelAction(object):
@@ -57,9 +55,9 @@ class TensorSpec(object):
     # We perform Linear Op according to compute pattern of TP1DRow_Linear.
     # After Linear Op, we split the tensors according to ZeRO.
 
-    def __init__(self, parallel_action_list: List[ParallelAction] = [], shard_pattern: ShardPattern = ShardPattern.NA):
+    def __init__(self, dist_spec: _DistSpec, parallel_action_list: List[ParallelAction] = []):
         self._parallel_action_list = parallel_action_list
-        self._shard_pattern = shard_pattern
+        self.dist_spec = dist_spec
         self.sort()
 
     @property
@@ -73,10 +71,6 @@ class TensorSpec(object):
     @property
     def compute_patterns(self):
         return [parallel_action.compute_pattern for parallel_action in self._parallel_action_list]
-
-    @property
-    def shard_pattern(self):
-        return self._shard_pattern
 
     def sort(self):
         if len(self._parallel_action_list) > 0:
