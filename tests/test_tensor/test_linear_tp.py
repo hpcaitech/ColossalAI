@@ -8,7 +8,7 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
@@ -149,7 +149,7 @@ def run_dist(rank, world_size, port):
     run_linear_tp1d_col_test()
 
 @pytest.mark.dist
-@parameterize('world_size', [1, 4])
+@pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_linear_1d(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())

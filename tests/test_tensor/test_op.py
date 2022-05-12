@@ -1,6 +1,6 @@
 from numpy import allclose
 import torch
-from colossalai.tensor import ColoTensor
+from colossalai.tensor import ColoTensor, ColoParameter
 from copy import deepcopy
 from colossalai.utils import get_current_device
 
@@ -16,7 +16,7 @@ def test_layernorm():
     delattr(ln_op_colo, 'weight')
     weight_clone = ln_op.weight.clone().detach()
     weight_clone.requires_grad = True
-    setattr(ln_op_colo, 'weight', ColoTensor.init_from_torch_tensor(tensor=weight_clone))
+    setattr(ln_op_colo, 'weight', ColoParameter.init_from_torch_tensor(tensor=weight_clone))
 
     output = ln_op(input_t)
     output_colo = ln_op_colo(input_t_colo)
@@ -39,8 +39,8 @@ def test_linear():
     input_ref = torch.randn(1, in_dim)
     input_tensor = input_ref.clone()
 
-    sharded_weight = ColoTensor.init_from_torch_tensor(fc_ref.weight)
-    sharded_bias = ColoTensor.init_from_torch_tensor(fc_ref.bias)
+    sharded_weight = ColoParameter.init_from_torch_tensor(fc_ref.weight)
+    sharded_bias = ColoParameter.init_from_torch_tensor(fc_ref.bias)
 
     # replace the torch nn.Parameters with ShardedTensor
     delattr(fc, 'weight')

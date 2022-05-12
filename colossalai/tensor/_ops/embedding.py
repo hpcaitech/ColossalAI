@@ -9,7 +9,7 @@ from packaging import version
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ShardPattern
 
 def colo_embedding_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, args, kwargs) -> ColoTensor:
-    # embedding_1Dcol split the weight(lookup table)
+    # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
     parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DCol_Embedding)
     if not input_tensor.is_gathered():
@@ -23,6 +23,37 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, args, kwa
     output.set_spec(output_spec, shard=False)
     output.set_shard_pattern(ShardPattern.Col)
     output.gather()
+    return output
+
+def colo_embedding_1Drow(input_tensor: ColoTensor, weight: ColoTensor, args, kwargs) -> ColoTensor:
+    # embedding_1Drow split the weight(lookup table) to (num_embeddings/P, embedding_dim)
+    # Find index in this shard and mask those not here
+    # Reduce all
+    parallel_action = weight.shard_spec.get_action_by_compute_pattern(ComputePattern.TP1DRow_Embedding)
+    if not input_tensor.is_gathered():
+        input_tensor.gather()
+    
+    tensor_parallel_rank = gpc.get_local_rank(parallel_action.parallel_mode)
+    num_embeddings_per_partition = weight.size(0)
+    vocab_start_index = tensor_parallel_rank * num_embeddings_per_partition
+    vocab_end_index = vocab_start_index + num_embeddings_per_partition
+
+    # Build the mask.
+    input_mask = (input_tensor.torch_tensor() < vocab_start_index) | \
+        (input_tensor.torch_tensor() >= vocab_end_index)
+    # Mask the input.
+    # TODO(jzy) masked_input may be an activation managed by ColoTensor.
+    masked_input = input_tensor.torch_tensor().clone() - vocab_start_index
+    masked_input[input_mask] = 0
+
+    partial_output = torch.nn.functional.embedding(masked_input, weight.torch_tensor(), 
+        *args, **kwargs)
+
+    # Mask the output embedding.
+    partial_output[input_mask, :] = 0.
+    # Reduce across all the model parallel GPUs.
+    output = reduce_input(partial_output, parallel_action.parallel_mode)
+    output = ColoTensor.init_from_torch_tensor(output)
     return output
 
 @colo_op_impl(torch.nn.functional.embedding)
@@ -48,7 +79,9 @@ def colo_embedding(types, args, kwargs, pg):
         return ColoTensor.init_from_torch_tensor(output)
     elif weight.shard_spec.num_action == 1: # Single Model Parallel Applied
         compute_patterns = weight.shard_spec.compute_patterns
-        if ComputePattern.TP1DCol_Embedding in compute_patterns:
+        if ComputePattern.TP1DRow_Embedding in compute_patterns:
+            return colo_embedding_1Drow(input_tensor, weight, args, kwargs)
+        elif ComputePattern.TP1DCol_Embedding in compute_patterns:
             return colo_embedding_1Dcol(input_tensor, weight, args, kwargs)
         else:
             raise NotImplementedError
