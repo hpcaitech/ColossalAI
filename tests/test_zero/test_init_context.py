@@ -8,10 +8,10 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 from colossalai.logging import get_dist_logger
-from colossalai.testing import parameterize, rerun_on_exception
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory_tracer.model_data_memtracer import \
+from colossalai.gemini.memory_tracer.model_data_memtracer import \
     colo_model_mem_usage
 from colossalai.utils.memory import colo_device_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
@@ -64,7 +64,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 4])
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_zero_init_context(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

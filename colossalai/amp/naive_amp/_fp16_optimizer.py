@@ -152,18 +152,39 @@ class FP16Optimizer(Optimizer):
 
     @property
     def grad_scaler(self):
+        """Returns the gradient scaler.
+
+        Returns:
+            :class:`BaseGradScaler`: gradient scaler.
+        """
+
         return self._grad_scaler
 
     @property
     def loss_scale(self):
+        """Returns the loss scale.
+
+        Returns:
+            int: loss scale.
+        """
         return self._grad_scaler.scale
 
     @property
     def optimizer(self):
+        """Returns the optimizer.
+
+        Returns:
+            :class:`torch.optim.Optimizer`: the optimizer object wrapped.
+        """
         return self._optimizer
 
     @property
     def defaults(self):
+        """Returns the default arguments of optimizer.
+
+        Returns:
+            dict: optimizer arguments saved in defaults of the optimizer wrapped.
+        """
         return self._defaults
 
     def _check_overflow(self):
@@ -188,6 +209,12 @@ class FP16Optimizer(Optimizer):
         return self._found_overflow.item() > 0
 
     def zero_grad(self, set_to_none=True):
+        """Set gradient to zero.
+
+        Args:
+            set_to_none (bool): Whether set the gradient to None.
+        """
+
         # set_to_none = True can save some memory space
         for param_group in self._optimizer.param_groups:
             zero_gard_by_list(param_group['params'], set_to_none=set_to_none)
@@ -222,6 +249,9 @@ class FP16Optimizer(Optimizer):
                                         overflow_buf=self._dummy_overflow_buf)
 
     def step(self):
+        """Update the model parameters.
+        """
+
         # Copy gradients from model params to main params.
         self._assign_grad_to_fp32_master_param()
         self._unscale_grads()
@@ -248,10 +278,19 @@ class FP16Optimizer(Optimizer):
         return True, grad_norm
 
     def backward(self, loss):
+        """Execute backward pass.
+
+        Args:
+            loss (:class:`torch.Tensor`): the loss value.
+        """
+
         scaled_loss = loss * self.grad_scaler.scale
         scaled_loss.backward()
 
     def state_dict(self):
+        """Returns the states of the fp16 optimizer as a dict object.
+        """
+
         state_dict = {}
         state_dict['optimizer'] = self._optimizer.state_dict()
         if self.grad_scaler:
@@ -260,6 +299,12 @@ class FP16Optimizer(Optimizer):
         return state_dict
 
     def load_state_dict(self, state_dict):
+        """Load the states of the fp16 optimizer from a dict object.
+
+        Args:
+            state_dict (dict): the states of the fp16 optimizer
+        """
+
         # Optimizer.
         self._optimizer.load_state_dict(state_dict['optimizer'])
 
@@ -275,6 +320,11 @@ class FP16Optimizer(Optimizer):
                     current_param.data.copy_(ckpt_param.data)
 
     def clip_grad_norm(self, clip_grad):
+        """Clip gradients by norm.
+
+        Args:
+            clip_grad (float): the max norm for clipping
+        """
         params = []
         for param_group in self._optimizer.param_groups:
             for param in param_group['params']:

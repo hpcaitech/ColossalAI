@@ -13,77 +13,7 @@ from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_param import ShardedParamV2
 from contextlib import AbstractContextManager
-
-
-def _substitute_init_recursively(cls, func):
-    for subcls in cls.__subclasses__():
-        _substitute_init_recursively(subcls, func)
-        func(subcls)
-
-
-class InsertPostInitMethodToModuleSubClasses(object):
-
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        r"""
-        Enter the context scope.
-        """
-
-        def preprocess_after(f):
-
-            @functools.wraps(f)
-            def wrapper(module: torch.nn.Module, *args, **kwargs):
-                f(module, *args, **kwargs)
-                self._post_init_method(module)
-
-            return wrapper
-
-        def _enable_class(cls):
-            cls._old_init = cls.__init__
-            cls.__init__ = preprocess_after(cls.__init__)
-
-        # The function is called during init subclass.
-        def _init_subclass(cls, **kwargs):
-            cls.__init__ = preprocess_after(cls.__init__)
-
-        # Replace .__init__() for all existing subclasses of torch.nn.Module
-        # Excution self._post_init_method after the default init function.
-        _substitute_init_recursively(torch.nn.modules.module.Module, _enable_class)
-
-        # holding on to the current __init__subclass__ for exit
-        torch.nn.modules.module.Module._old_init_subclass = (torch.nn.modules.module.Module.__init_subclass__)
-        # Replace .__init__() for future subclasses of torch.nn.Module
-        torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
-
-        self._pre_context_exec()
-
-    def __exit__(self, exc_type, exc_value, traceback):
-
-        def _disable_class(cls):
-            cls.__init__ = cls._old_init
-
-        # Replace .__init__() for all existing subclasses of torch.nn.Module
-        _substitute_init_recursively(torch.nn.modules.module.Module, _disable_class)
-
-        # Replace .__init__() for future subclasses of torch.nn.Module
-        torch.nn.modules.module.Module.__init_subclass__ = (torch.nn.modules.module.Module._old_init_subclass)
-
-        self._post_context_exec()
-        # Now that we cleaned up the metaclass injection, raise the exception.
-        if exc_type is not None:
-            return False
-
-    # To be implemented by inheriting classes
-    def _post_init_method(self, module):
-        pass
-
-    def _pre_context_exec(self):
-        pass
-
-    def _post_context_exec(self):
-        pass
+from colossalai.utils import InsertPostInitMethodToModuleSubClasses
 
 
 class ZeroContextConfig(object):
@@ -123,6 +53,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         shard_strategy (BaseShardStrategy): Shard strategy instance.
         seed (int, optional): Random seed for weight initialization
         shard_param (bool, optional): Is param sharded after exiting the context. Defaults to False.
+        default_dtype (torch.dtype, optional): If it's not None, parameters will be initialized as ``default_dtype`` then converted to fp16.
         model_numel_tensor (torch.Tensor, optional): A tensor which will store the number of elements of model. Defaults to torch.zeros(1, dtype=torch.int).
     """
 
@@ -131,9 +62,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                  shard_strategy: BaseShardStrategy,
                  seed: int = 2**10 - 1,
                  shard_param: bool = False,
+                 default_dtype: Optional[torch.dtype] = None,
                  model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.long)):
 
-        super().__init__()
+        super().__init__(default_dtype=default_dtype)
         self.shard_strategy = shard_strategy
         self.param_list = []
         self.model_numel_tensor = model_numel_tensor
@@ -223,7 +155,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         torch.set_rng_state(self.cpu_rng_state)
         torch.cuda.set_rng_state(self.cuda_rng_state)
 
-    def _post_init_method(self, module: torch.nn.Module):
+    def _post_init_method(self, module: torch.nn.Module, *args, **kwargs):
         """
         The function to call at the end of the constructor of each module.
         NOTE() The module may be passed to this function multiple times.
@@ -252,11 +184,12 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if param.grad is not None:
                 param.grad = param.grad.to(target_device)
 
-            param.colo_attr = ShardedParamV2(param, set_data_none=False)
+            param.colo_attr = ShardedParamV2(param, set_data_none=True)
 
             if self.shard_param:
                 self.shard_strategy.shard([param.colo_attr.sharded_data_tensor], self.dp_process_group)
-                param.data = param.colo_attr.data_payload    # set param.data to payload
+
+            param.data = param.colo_attr.data_payload    # set param.data to payload
 
             # mark whether the param is replicated
             param.colo_attr.is_replicated = self.is_replicated

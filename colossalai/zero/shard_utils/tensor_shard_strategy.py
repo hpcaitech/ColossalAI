@@ -3,10 +3,10 @@ from typing import List, Optional
 import torch
 import torch.distributed as dist
 from colossalai.utils import get_current_device
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_tensor_move_inline
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.shard_utils.commons import get_shard
 from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
+from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline
 
 
 class TensorShardStrategy(BaseShardStrategy):
@@ -36,25 +36,23 @@ class TensorShardStrategy(BaseShardStrategy):
             assert t.payload.device == get_current_device(), f"shard tensor on cuda device index {t.payload.device.index},"\
                 f" but current cuda device is {get_current_device()}"
         sharded_payload, _ = get_shard(t.payload, dist.get_rank(process_group), dist.get_world_size(process_group))
-        t.reset_payload(sharded_payload)
+        t.payload_reset(sharded_payload)
         t.is_sharded = True
 
     def _gather_tensor(self, t: ShardedTensor, process_group: Optional[dist.ProcessGroup] = None):
         if not t.is_sharded:
             return
         target_device = t.device
-        buffer_list = []
         payload_numel = t.payload.numel()
         world_size = dist.get_world_size(process_group)
         rank = dist.get_rank(process_group)
-        for i in range(world_size):
-            if i == rank:
-                buffer_list.append(t.payload.cuda(get_current_device()))
-            else:
-                buffer_list.append(torch.zeros(payload_numel, dtype=t.dtype, device=get_current_device()))
+
+        buffer = torch.empty(payload_numel * world_size, dtype=t.payload.dtype, device=get_current_device())
+        buffer_list = list(torch.chunk(buffer, chunks=world_size, dim=0))
+        buffer_list[rank].copy_(t.payload)
 
         dist.all_gather(buffer_list, buffer_list[rank], group=process_group, async_op=False)
-        gathered_payload = torch.narrow(torch.cat(buffer_list), 0, 0, t.origin_numel).reshape(t.origin_shape)
-        t.reset_payload(gathered_payload)
+        gathered_payload = torch.narrow(buffer, 0, 0, t.origin_numel).reshape(t.origin_shape)
+        t.payload_reset(gathered_payload)
         colo_model_data_tensor_move_inline(t, target_device)
         t.is_sharded = False

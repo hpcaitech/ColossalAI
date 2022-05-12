@@ -12,16 +12,14 @@ from colossalai.zero.utils import ZeroHook
 from colossalai.engine.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device, disposable
-from colossalai.utils.memory_tracer.memstats_collector import MemStatsCollector
-from colossalai.utils.memory_tracer.model_data_memtracer import \
-    GLOBAL_MODEL_DATA_TRACER
+from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.zero.sharded_param.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from colossalai.zero.sharded_param.tensorful_state import TensorState
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
+from colossalai.gemini.tensor_utils import colo_model_data_move_to_cpu
+from colossalai.gemini.stateful_tensor import TensorState
 from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicyFactory, TensorPlacementPolicy
 
@@ -106,7 +104,6 @@ class ShardedModelV2(nn.Module):
 
         self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
-            GLOBAL_MODEL_DATA_TRACER.register_model(self)
             self._memstats_collector = MemStatsCollector()
             self._start_collect_memstats = disposable(self._memstats_collector.start_collection)
             self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
@@ -114,10 +111,10 @@ class ShardedModelV2(nn.Module):
             self._memstats_collector = None
         self._tensor_placement_policy: TensorPlacementPolicy = TensorPlacementPolicyFactory.create(
             tensor_placement_policy)(mem_stats_collector=self._memstats_collector)
+
         self._stateful_tensor_mgr = StatefulTensorMgr(self._tensor_placement_policy)
-        for param in module.parameters():
-            if hasattr(param, 'colo_attr'):
-                self._stateful_tensor_mgr.register_stateful_param(param.colo_attr)
+        param_tensor_list = [p.colo_attr.sharded_data_tensor for p in module.parameters() if hasattr(p, 'colo_attr')]
+        self._stateful_tensor_mgr.register_stateful_tensor_list(param_tensor_list)
 
         # Register hooks
         self._ophook_list = [
@@ -200,6 +197,8 @@ class ShardedModelV2(nn.Module):
         for p in self.module.parameters():
             if hasattr(p, 'colo_attr'):
                 p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
+
+        self._stateful_tensor_mgr.start_iter()
 
     def _post_forward_operations(self):
         for p in self.module.parameters():
@@ -358,8 +357,11 @@ class ShardedModelV2(nn.Module):
             assert param.colo_attr.saved_grad.is_null(
             ), 'Gradien accumulation is not supported when reuse_fp16_shard=True'
 
-            param.colo_attr.reset_grad_payload(grad)
-            param.colo_attr.reset_data_payload(grad)    # release the memory of param
+            param.colo_attr.grad_payload_reset(grad.data)
+            # release the memory of param
+            # we set a false None for parameter's payload
+            # so we can get paramter's device and dtype later in optimizer
+            param.colo_attr.data_payload_reset(torch.empty(0, device=grad.device, dtype=grad.dtype))
 
             if param.colo_attr.is_replicated:
                 param.colo_attr.sharded_data_tensor.is_sharded = True
@@ -368,7 +370,7 @@ class ShardedModelV2(nn.Module):
             fp32_grad = cast_tensor_to_fp32(grad)
 
             if param.colo_attr.saved_grad.is_null():
-                param.colo_attr.reset_grad_payload(fp32_grad)
+                param.colo_attr.grad_payload_reset(fp32_grad)
             else:
                 param.colo_attr.grad_payload.add_(fp32_grad.view_as(param.colo_attr.grad_payload))
 

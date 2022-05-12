@@ -37,9 +37,11 @@ def get_training_components():
     num_head = 4
     sequence_length = 12
     num_layer = 2
+    vocab_size = 30524
 
     def bert_model_builder(checkpoint):
-        config = BertConfig(gradient_checkpointing=checkpoint,
+        config = BertConfig(vocab_size=vocab_size,
+                            gradient_checkpointing=checkpoint,
                             hidden_size=hidden_dim,
                             intermediate_size=hidden_dim * 4,
                             num_attention_heads=num_head,

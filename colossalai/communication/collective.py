@@ -208,7 +208,7 @@ def reduce(tensor: Tensor,
         return out
 
 
-def scatter_object_list(scatter_object_output_list, scatter_object_input_list, src=0, group=None):
+def scatter_object_list(scatter_object_output_list, scatter_object_input_list, src=0, group=None) -> None:
     r"""Modified from `torch.distributed.scatter_object_list <https://pytorch.org/docs/stable/_modules/torch/distributed/distributed_c10d.html#scatter_object_list>` to fix issues
     """
     if dist.distributed_c10d._rank_not_in_group(group):

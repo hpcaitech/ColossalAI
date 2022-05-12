@@ -2,10 +2,12 @@ import pytest
 
 import colossalai
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero.sharded_param import (StatefulTensor, colo_tensor_mem_usage, colo_model_data_tensor_move,
-                                           colo_model_data_tensor_move_inline, colo_model_data_move_to_cpu,
-                                           colo_model_tensor_clone)
+from colossalai.gemini.tensor_utils import (colo_tensor_mem_usage, colo_model_data_tensor_move,
+                                            colo_model_data_tensor_move_inline, colo_model_data_move_to_cpu,
+                                            colo_model_tensor_clone)
+from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.utils import free_port
+from colossalai.testing import rerun_if_address_is_in_use
 
 import torch
 
@@ -84,6 +86,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4, 5])
+@rerun_if_address_is_in_use()
 def test_zero_tensor_utils(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

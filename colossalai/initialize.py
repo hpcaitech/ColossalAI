@@ -15,21 +15,26 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 
+from colossalai.core import global_context as gpc
+from colossalai.context.moe_context import MOE_CONTEXT
+
+from colossalai.logging import get_dist_logger
+
+from colossalai.engine.schedule import NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule, get_tensor_shape
+from colossalai.engine import Engine
+from colossalai.engine.ophooks import BaseOpHook
+
+from colossalai.utils import (get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param)
+from colossalai.utils.moe import sync_moe_model_param
+
 from colossalai.amp import AMP_TYPE, convert_to_amp
 from colossalai.amp.naive_amp import NaiveAMPModel
 from colossalai.builder.builder import build_gradient_handler
 from colossalai.context import Config, ConfigException, ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.engine.schedule import NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule, get_tensor_shape
+from colossalai.engine.gradient_accumulation import accumulate_gradient
 
-from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.engine import Engine
-from colossalai.engine.ophooks import BaseOpHook
-from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
-from colossalai.utils import (accumulate_gradient, get_current_device, is_using_ddp, is_using_pp, is_using_sequence,
-                              sync_model_param)
-from colossalai.utils.moe import sync_moe_model_param
+
 from colossalai.zero import convert_to_zero_v2
 from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
 
@@ -133,8 +138,14 @@ def launch_from_slurm(config: Union[str, Path, Config, Dict],
         seed (int, optional): Specified random seed for every process. Defaults to 1024.
         verbose (bool, optional): Whether to print logs. Defaults to True.
     """
-    rank = int(os.environ['SLURM_PROCID'])
-    world_size = int(os.environ['SLURM_NPROCS'])
+    try:
+        rank = int(os.environ['SLURM_PROCID'])
+        world_size = int(os.environ['SLURM_NPROCS'])
+    except KeyError as e:
+        raise RuntimeError(
+            f"Could not find {e} in the SLURM environment, visit https://www.colossalai.org/ for more information on launching with SLURM"
+        )
+
     launch(config=config,
            rank=rank,
            world_size=world_size,
@@ -162,9 +173,15 @@ def launch_from_openmpi(config: Union[str, Path, Config, Dict],
         seed (int, optional): Specified random seed for every process. Defaults to 1024.
         verbose (bool, optional): Whether to print logs. Defaults to True.
     """
-    rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
-    local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
-    world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
+    try:
+        rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
+        local_rank = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
+        world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
+    except KeyError as e:
+        raise RuntimeError(
+            f"Could not find {e} in the OpenMPI environment, visit https://www.colossalai.org/ for more information on launching with OpenMPI"
+        )
+
     launch(config=config,
            local_rank=local_rank,
            rank=rank,
@@ -189,11 +206,17 @@ def launch_from_torch(config: Union[str, Path, Config, Dict],
         seed (int, optional): Specified random seed for every process. Defaults to 1024.
         verbose (bool, optional): Whether to print logs. Defaults to True.
     """
-    rank = int(os.environ['RANK'])
-    local_rank = int(os.environ['LOCAL_RANK'])
-    world_size = int(os.environ['WORLD_SIZE'])
-    host = os.environ['MASTER_ADDR']
-    port = int(os.environ['MASTER_PORT'])
+    try:
+        rank = int(os.environ['RANK'])
+        local_rank = int(os.environ['LOCAL_RANK'])
+        world_size = int(os.environ['WORLD_SIZE'])
+        host = os.environ['MASTER_ADDR']
+        port = int(os.environ['MASTER_PORT'])
+    except KeyError as e:
+        raise RuntimeError(
+            f"Could not find {e} in the torch environment, visit https://www.colossalai.org/ for more information on launching with torch"
+        )
+
     launch(config=config,
            local_rank=local_rank,
            rank=rank,
@@ -270,9 +293,6 @@ def initialize(model: nn.Module,
                                               optimizer_config=optimizer_config)
 
         logger.info("Initializing ZeRO model and optimizer finished!", ranks=[0])
-        # FIXME() throw a warning if using zero with MP
-        if gpc.get_world_size(ParallelMode.MODEL) > 1:
-            logger.warning("ZeRO currently has not been tested with model parallelism.", ranks=[0])
     else:
         if isinstance(model, nn.Module):
             # first sync model across dp ranks
@@ -397,6 +417,8 @@ def initialize(model: nn.Module,
         else:
             scatter_gather = False
         if use_interleaved:
+            if isinstance(model, nn.Sequential):
+                model = nn.ModuleList([model])
             schedule = InterleavedPipelineSchedule(gpc.config.NUM_MICRO_BATCHES,
                                                    gpc.config.model.num_chunks,
                                                    tensor_shape=tensor_shape,
@@ -432,7 +454,6 @@ def initialize(model: nn.Module,
             accumulate_size=grad_accum_size,
             gradient_handlers=gradient_handlers,
             lr_scheduler=lr_scheduler)
-
     engine = Engine(model=model,
                     optimizer=optimizer,
                     criterion=criterion,

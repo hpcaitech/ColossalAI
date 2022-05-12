@@ -10,17 +10,14 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.utils.memory_tracer.model_data_memtracer import \
-    GLOBAL_MODEL_DATA_TRACER
-from colossalai.zero.sharded_param.tensor_utils import (colo_model_data_tensor_move_inline, colo_model_tensor_clone,
-                                                        colo_tensor_mem_usage)
+from colossalai.gemini.tensor_utils import (colo_model_data_tensor_move_inline, colo_tensor_mem_usage)
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
-from colossalai.zero.sharded_param.tensorful_state import (StatefulTensor, TensorState)
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
+from colossalai.gemini.stateful_tensor import (StatefulTensor, TensorState)
 from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
@@ -50,7 +47,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         You must use ``ShardedOptimizerV2`` with ``ShardedModelV2``.
 
     Note:
-        Make sure you enable ``use_memory_tracer`` in ``ShardedModelV2``,
+        Make sure you set ``tensor_placement_policy`` in ``ShardedModelV2`` to `"auto"`,
         if you set ``gpu_margin_mem_ratio > 0``.
 
     Args:
@@ -59,7 +56,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         optimizer (Optimizer): An Optimizer instance.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
             which will be used when using hybrid CPU optimizer. 
-            Make sure `reuse_fp16_shard` is enabled in `ShardedModelV2`, if `gpu_margin_mem_ratio` > `0.0`.
             This argument is meaningless when `tensor_placement_policy` of `ShardedModelV2` is not "auto".
             Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
@@ -84,11 +80,12 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  min_scale: float = 1,
                  growth_factor: float = 2,
                  backoff_factor: float = 0.5,
-                 growth_interval: float = 1000,
-                 hysteresis: float = 2,
-                 max_scale: int = 2**32,
+                 growth_interval: int = 1000,
+                 hysteresis: int = 2,
+                 max_scale: float = 2**32,
                  dp_process_group: Optional[ProcessGroup] = None,
-                 mp_process_group: Optional[ProcessGroup] = None) -> None:
+                 mp_process_group: Optional[ProcessGroup] = None,
+                 verbose: bool = False) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
 
         super().__init__(optimizer)
@@ -116,18 +113,20 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                                              max_scale=max_scale)
         self._found_overflow: Tensor = torch.IntTensor([0]).to(torch.cuda.current_device())
         self._logger = get_dist_logger("ShardedOptimizerV2")
+        self._verbose = verbose
 
         # Store fp32 param shards
         self._register_master_weight()
-        if self.gpu_margin_mem_ratio != 0.0 and isinstance(sharded_model._tensor_placement_policy,
-                                                           AutoTensorPlacementPolicy):
-            self._logger.warning(f'gpu_margin_mem_ratio is meaningless when tensor_placement_policy is not "auto"')
-        self._logger.debug(f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory!",
-                           ranks=[0])
+        if self.gpu_margin_mem_ratio != 0.0 and not isinstance(sharded_model._tensor_placement_policy,
+                                                               AutoTensorPlacementPolicy):
+            self._logger.warning(f'gpu_margin_mem_ratio is meaningless when tensor_placement_policy is not "auto"',
+                                 ranks=[0])
+
+        if self._verbose:
+            self._logger.debug(
+                f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory!", ranks=[0])
 
         self._use_memory_tracer = self.model.use_memory_tracer
-        if self._use_memory_tracer:
-            GLOBAL_MODEL_DATA_TRACER.register_optimizer(self)
 
     @property
     def loss_scale(self):
@@ -194,15 +193,20 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         self._point_param_fp16_to_master_param()
 
-        self._logger.debug(
-            f"Before step ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory, {self.get_memory_usage()[1] / 1e6} MB CUDA Memory!",
-            ranks=[0])
+        if self._verbose:
+            gpu_mem, cpu_mem = self.get_memory_usage()
+            self._logger.debug(
+                f"Before step ShardedOptimizerV2 consumes {gpu_mem / 1e6} MB CUDA Memory, {cpu_mem / 1e6} MB CUDA Memory!",
+                ranks=[0])
 
         ret = self.optim.step(*args, **kwargs)
 
-        self._logger.debug(
-            f"After step ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory, {self.get_memory_usage()[1] / 1e6} MB CUDA Memory!",
-            ranks=[0])
+        if self._verbose:
+            gpu_mem, cpu_mem = self.get_memory_usage()
+            self._logger.debug(
+                f"After step ShardedOptimizerV2 consumes {gpu_mem / 1e6} MB CUDA Memory, {cpu_mem / 1e6} MB CUDA Memory!",
+                ranks=[0])
+
         self._copy_master_model_to_model_fp16()
         return ret
 
@@ -244,7 +248,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             for p in group['params']:
                 # p.colo_attr.sharded_data_tensor stores grad now
                 # we have to recover fp16 param
-                reuse_fp16_shard = p.colo_attr.saved_grad.data_ptr() == p.colo_attr.sharded_data_tensor.data_ptr()
+                reuse_fp16_shard = (p.colo_attr.sharded_data_tensor.payload_size == 0)
                 if recover_data and reuse_fp16_shard:
                     self._copy_master_param_to_param_fp16(p)
                 else:
@@ -281,7 +285,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                     shard_mem = self.master_params[p].payload.numel() * self.master_params[p].payload.element_size()
                     if fp32_shards_used_cuda_margin_mem + shard_mem < fp32_shards_available_cuda_margin_mem:
                         colo_model_data_tensor_move_inline(self.master_params[p], torch.cuda.current_device())
-                        p.grad.data = p.grad.data.to(torch.cuda.current_device())
+                        colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
                         p.colo_attr.offload_grad = False
                         fp32_shards_used_cuda_margin_mem += shard_mem
 
@@ -291,6 +295,9 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 if p.colo_attr.saved_grad.is_null():
                     continue
                 p.colo_attr.saved_grad.trans_state(TensorState.COMPUTE)
+                # If reuse_fp16_shard, grad fp16 which wasn't be offloaded may be evicted to CPU
+                if not p.colo_attr.offload_grad:
+                    colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
                 # FIXME(ver217): p.data here is an empty tensor on CUDA and has no useful infomation
                 # If we change p.grad directly
                 # it may raise error because of different shape/dtype/device of p.data and p.grad
@@ -320,12 +327,23 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
     def _copy_master_param_to_param_fp16(self, p):
         # flush gradient
-        p.colo_attr.saved_grad.set_null()
+        if p.colo_attr.sharded_data_tensor.payload_size == 0:
+            # here reuse_fp16_shard is True
+            # in order to use copy below, we should give sharded data tensor a payload
+            p.colo_attr.sharded_data_tensor.payload_relay(p.colo_attr.saved_grad)
+        else:
+            p.colo_attr.saved_grad.set_null()
+
+        p.data = self.master_params[p].payload
+
+        # we need to allocate new memory for keep_not_shard paramters
+        # in order to use copy, otherwise, the sizes of tensor is not compatible
+        if p.colo_attr.data_payload.numel() != p.data.numel():
+            p.colo_attr.data_payload_reset(
+                torch.empty(p.data.shape, dtype=p.colo_attr.data_payload.dtype, device=p.colo_attr.data_payload.device))
 
         # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-        p.data = self.master_params[p].payload
-        p.colo_attr.reset_data_payload(
-            colo_model_tensor_clone(p.half().detach(), p.colo_attr.sharded_data_tensor.device))
+        p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
         p.colo_attr.set_data_none()
 
         if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:

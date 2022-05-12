@@ -1,7 +1,6 @@
 import os
 import subprocess
-import sys
-
+import re
 from setuptools import find_packages, setup
 
 # ninja build does not work unless include_dirs are abs path
@@ -9,8 +8,7 @@ this_dir = os.path.dirname(os.path.abspath(__file__))
 build_cuda_ext = True
 ext_modules = []
 
-if '--no_cuda_ext' in sys.argv:
-    sys.argv.remove('--no_cuda_ext')
+if int(os.environ.get('NO_CUDA_EXT', '0')) == 1:
     build_cuda_ext = False
 
 
@@ -95,7 +93,12 @@ def fetch_readme():
 
 def get_version():
     with open('version.txt') as f:
-        return f.read().strip()
+        version = f.read().strip()
+        if build_cuda_ext:
+            torch_version = '.'.join(torch.__version__.split('.')[:2])
+            cuda_version = '.'.join(get_cuda_bare_metal_version(CUDA_HOME)[1:])
+            version += f'+torch{torch_version}cu{cuda_version}'
+        return version
 
 
 if build_cuda_ext:
@@ -134,17 +137,21 @@ if build_cuda_ext:
                 'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + version_dependent_macros + extra_cuda_flags)
             })
 
+    cc_flag = []
+    for arch in torch.cuda.get_arch_list():
+        res = re.search(r'sm_(\d+)', arch)
+        if res:
+            arch_cap = res[1]
+            if int(arch_cap) >= 60:
+                cc_flag.extend(['-gencode', f'arch=compute_{arch_cap},code={arch}'])
+
+    extra_cuda_flags = ['-lineinfo']
+
     ext_modules.append(
         cuda_ext_helper('colossal_C', [
             'colossal_C_frontend.cpp', 'multi_tensor_sgd_kernel.cu', 'multi_tensor_scale_kernel.cu',
             'multi_tensor_adam.cu', 'multi_tensor_l2norm_kernel.cu', 'multi_tensor_lamb.cu'
-        ], ['-lineinfo']))
-
-    cc_flag = ['-gencode', 'arch=compute_70,code=sm_70']
-    _, bare_metal_major, _ = get_cuda_bare_metal_version(CUDA_HOME)
-    if int(bare_metal_major) >= 11:
-        cc_flag.append('-gencode')
-        cc_flag.append('arch=compute_80,code=sm_80')
+        ], extra_cuda_flags + cc_flag))
 
     extra_cuda_flags = [
         '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '--expt-relaxed-constexpr',
@@ -213,7 +220,11 @@ setup(
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExtension} if ext_modules else {},
     install_requires=fetch_requirements('requirements/requirements.txt'),
-    python_requires='>=3.7',
+    entry_points='''
+        [console_scripts]
+        colossalai=colossalai.cli:cli
+    ''',
+    python_requires='>=3.6',
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: Apache Software License',

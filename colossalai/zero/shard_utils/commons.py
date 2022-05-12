@@ -14,7 +14,9 @@ def get_shard(tensor: torch.Tensor, rank: int, world_size: int) -> Tuple[torch.T
     num_to_pad = chunks[0].numel() - chunks[rank].numel()
     assert num_to_pad >= 0, num_to_pad
 
-    shard = chunks[rank].clone()
-    if num_to_pad > 0:
-        shard = F.pad(shard, [0, num_to_pad])
+    shard = torch.zeros_like(chunks[0])
+    length = chunks[rank].size(0)
+    shard_temp = shard[:length]
+    shard_temp.copy_(chunks[rank])
+
     return shard, num_to_pad

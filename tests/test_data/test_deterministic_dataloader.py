@@ -9,30 +9,26 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from torchvision import transforms
-from torch.utils.data import DataLoader
+from torchvision import transforms, datasets
 
 import colossalai
-from colossalai.builder import build_dataset, build_transform
 from colossalai.context import ParallelMode, Config
 from colossalai.core import global_context as gpc
-from colossalai.utils import free_port
-from colossalai.testing import rerun_on_exception
+from colossalai.utils import get_dataloader, free_port
+from colossalai.testing import rerun_if_address_is_in_use
+from torchvision import transforms
 
 CONFIG = Config(
     dict(
-        train_data=dict(dataset=dict(
-            type='CIFAR10',
-            root=Path(os.environ['DATA']),
-            train=True,
-            download=True,
+        train_data=dict(
+            dataset=dict(
+                type='CIFAR10',
+                root=Path(os.environ['DATA']),
+                train=True,
+                download=True,
+            ),
+            dataloader=dict(num_workers=2, batch_size=2, shuffle=True),
         ),
-                        dataloader=dict(num_workers=2, batch_size=2, shuffle=True),
-                        transform_pipeline=[
-                            dict(type='ToTensor'),
-                            dict(type='RandomCrop', size=32),
-                            dict(type='Normalize', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
-                        ]),
         parallel=dict(
             pipeline=dict(size=1),
             tensor=dict(size=1, mode=None),
@@ -45,20 +41,13 @@ def run_data_sampler(rank, world_size, port):
     dist_args = dict(config=CONFIG, rank=rank, world_size=world_size, backend='gloo', port=port, host='localhost')
     colossalai.launch(**dist_args)
 
-    dataset_cfg = gpc.config.train_data.dataset
-    dataloader_cfg = gpc.config.train_data.dataloader
-    transform_cfg = gpc.config.train_data.transform_pipeline
-
-    # build transform
-    transform_pipeline = [build_transform(cfg) for cfg in transform_cfg]
-    transform_pipeline = transforms.Compose(transform_pipeline)
-    dataset_cfg['transform'] = transform_pipeline
-
     # build dataset
-    dataset = build_dataset(dataset_cfg)
+    transform_pipeline = [transforms.ToTensor(), transforms.RandomCrop(size=32, padding=4)]
+    transform_pipeline = transforms.Compose(transform_pipeline)
+    dataset = datasets.CIFAR10(root=Path(os.environ['DATA']), train=True, download=True, transform=transform_pipeline)
 
     # build dataloader
-    dataloader = DataLoader(dataset=dataset, **dataloader_cfg)
+    dataloader = get_dataloader(dataset, batch_size=8, add_sampler=False)
 
     data_iter = iter(dataloader)
     img, label = data_iter.next()
@@ -79,7 +68,7 @@ def run_data_sampler(rank, world_size, port):
 
 
 @pytest.mark.cpu
-@rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
+@rerun_if_address_is_in_use()
 def test_data_sampler():
     world_size = 4
     test_func = partial(run_data_sampler, world_size=world_size, port=free_port())
