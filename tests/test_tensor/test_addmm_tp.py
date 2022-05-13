@@ -3,13 +3,14 @@ import torch
 import pytest
 import torch.nn as nn
 import torch.multiprocessing as mp
-from colossalai.utils import ColoInitContext
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import ColoTensor
+from colossalai.tensor import dist_spec
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager
 from colossalai.context import ParallelMode
-from colossalai.utils.cuda import get_current_device
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from functools import partial
+from colossalai.core import global_context as gpc
 
 
 class Conv1D(nn.Module):
@@ -36,41 +37,61 @@ class Conv1D(nn.Module):
         return x
 
 
-def init_1d_row(model):
+def init_1d_row(weight, bias):
     spec = TensorSpec(
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow_mm, parallel_mode=ParallelMode.PARALLEL_1D)])
-    for n, p in model.colo_named_parameters():
-        if 'weight' in n:
-            p.set_spec(spec)
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)])
+    with DistSpecManager.no_grad():
+        weight.set_spec(spec)
 
 
-def init_1d_col(model):
+def check_grad_1d_row(model: torch.nn.Module, weight, bias):
+    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
+    assert torch.allclose(model.weight.grad.chunk(size, 0)[rank], weight.grad)
+    assert torch.allclose(model.bias.grad, bias.grad)
+
+
+def init_1d_col(weight, bias):
     spec = TensorSpec(
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol_mm, parallel_mode=ParallelMode.PARALLEL_1D)])
-    for n, p in model.colo_named_parameters():
-        p.set_spec(spec)
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D)])
+    with DistSpecManager.no_grad():
+        weight.set_spec(spec)
+        bias.set_spec(spec)
 
 
-def run_with_spec(spec_init_func):
-    with ColoInitContext(device=get_current_device()):
-        model = Conv1D(4, 16)
-    weight = model.weight.torch_tensor().clone()
-    bias = model.bias.torch_tensor().clone()
-    spec_init_func(model)
+def check_grad_1d_col(model: torch.nn.Module, weight, bias):
+    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
+    assert torch.allclose(model.weight.grad.chunk(size, -1)[rank], weight.grad)
+    assert torch.allclose(model.bias.grad.chunk(size, -1)[rank], bias.grad)
+
+
+def run_with_spec(spec_init_func, check_grad_func):
+    model = Conv1D(4, 16).cuda()
+    weight = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.weight.detach()))
+    bias = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.bias.detach()))
+    spec_init_func(weight, bias)
     x = torch.rand(2, 16).cuda()
     out = model(x)
-    assert torch.allclose(out.torch_tensor(), torch.addmm(bias, x, weight))
+    colo_out = torch.addmm(bias, x, weight)
+    assert torch.allclose(out, colo_out)
+    grad = torch.rand_like(out)
+    out.backward(grad)
+    colo_out.backward(grad)
+    check_grad_func(model, weight, bias)
 
 
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_with_spec(init_1d_row)
-    run_with_spec(init_1d_col)
+    run_with_spec(init_1d_row, check_grad_1d_row)
+    run_with_spec(init_1d_col, check_grad_1d_col)
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 2, 4])
+@pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_addmm_1d(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
@@ -78,4 +99,4 @@ def test_addmm_1d(world_size):
 
 
 if __name__ == '__main__':
-    test_addmm_1d(2)
+    test_addmm_1d(4)
