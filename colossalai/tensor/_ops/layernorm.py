@@ -28,7 +28,7 @@ def colo_layernorm(types, args=(), kwargs=None, pg=None):
 
     if isinstance(input_tensor, ColoTensor):
         # TODO (ver217): check input dist spec
-        input_tensor.to_dist_spec(dist_spec.replicate())
+        input_tensor.to_dist_spec(dist_spec.replicate(input_tensor.spec.get_process_group()))
         input_tensor = input_tensor.torch_tensor()
     if isinstance(weight, ColoTensor):
         weight = weight.torch_tensor()

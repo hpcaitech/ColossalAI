@@ -1,4 +1,4 @@
-from colossalai.tensor.spec import ShardPattern
+from colossalai.tensor.dist_spec import DistPlacementPattern
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor
@@ -27,12 +27,11 @@ def colo_cross_entropy(types, args=(), kwargs=None, pg=None):
     if isinstance(target, ColoTensor):
         target = target.torch_tensor()
 
-    if input_tensor.is_gathered(): # Input is gathered
-        # TODO(jzy) Shall we make the result of loss function a ColoTensor?
+    if input_tensor.spec.is_gathered(): # Input is gathered
         return ColoTensor.init_from_torch_tensor(torch.nn.functional.cross_entropy(
             input_tensor.torch_tensor(), target, weight))
-    elif input_tensor.has_spec() and input_tensor.shard_spec.num_action == 1:    # Single Model Parallel Applied
-        if input_tensor.shard_pattern == ShardPattern.Col:
+    elif input_tensor.has_spec() and input_tensor.spec.num_action == 1:    # Single Model Parallel Applied
+        if input_tensor.spec.is_1Dcol():
             return ColoTensor.init_from_torch_tensor(
                 VocabParallelCrossEntropyLoss1D()(input_tensor.torch_tensor(), target))
         else:
