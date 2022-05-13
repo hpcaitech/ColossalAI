@@ -10,12 +10,9 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, dist_spec
-
-from _utils import check_equal, replace_parameter_add_grad, broadcast_tensor_chunk
 
 
 def init_1d_row(weight, bias):
@@ -24,6 +21,13 @@ def init_1d_row(weight, bias):
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)])
     with dist_spec.DistSpecManager.no_grad():
         weight.set_spec(spec)
+
+
+def check_grad_1d_row(model: torch.nn.Module, weight, bias):
+    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
+    assert torch.allclose(model.weight.grad.chunk(size, -1)[rank], weight.grad)
+    assert torch.allclose(model.bias.grad, bias.grad)
 
 
 def init_1d_col(weight, bias):
@@ -35,13 +39,6 @@ def init_1d_col(weight, bias):
         bias.set_spec(spec)
 
 
-def check_grad_1d_row(model: torch.nn.Module, weight, bias):
-    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-    size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
-    assert torch.allclose(model.weight.grad.chunk(size, -1)[rank], weight.grad)
-    assert torch.allclose(model.bias.grad, bias.grad)
-
-
 def check_grad_1d_col(model: torch.nn.Module, weight, bias):
     rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
     size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
@@ -51,8 +48,8 @@ def check_grad_1d_col(model: torch.nn.Module, weight, bias):
 
 def run_with_spec(spec_init_func, check_grad_func):
     model = torch.nn.Linear(4, 8).cuda()
-    weight = ColoTensor.init_from_torch_tensor(model.weight.detach().requires_grad_())
-    bias = ColoTensor.init_from_torch_tensor(model.bias.detach().requires_grad_())
+    weight = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.weight.detach()))
+    bias = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.bias.detach()))
     spec_init_func(weight, bias)
     x = torch.rand(2, 4).cuda()
     out = model(x)
