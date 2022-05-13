@@ -81,3 +81,6 @@ class TensorSpec(object):
             if parallel_action.compute_pattern == compute_pattern:
                 return parallel_action
         return None
+
+    def get_process_group(self):
+        return self.dist_spec.process_group

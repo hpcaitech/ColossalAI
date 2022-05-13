@@ -14,7 +14,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTe
     # All-Reduce(Output) + bias = res
     # Input:S[1]
     input_tensor.to_dist_spec(
-        dist_spec.shard(weight.spec.dist_spec.process_group, [-1], [weight.spec.dist_spec.process_group.size()]))
+        dist_spec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group().size()]))
 
     # Output:P
     partial_output = torch.nn.functional.linear(input_tensor.torch_tensor(), weight.torch_tensor())
@@ -25,8 +25,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTe
         assert not bias.has_spec(), 'Invalid bias spec for 1Drow Linear op'
         output = output + bias.torch_tensor()
     output = ColoTensor.init_from_torch_tensor(output,
-                                               spec=TensorSpec(dist_spec.replicate(
-                                                   weight.spec.dist_spec.process_group)))
+                                               spec=TensorSpec(dist_spec.replicate(weight.spec.get_process_group())))
     return output
 
 
@@ -35,7 +34,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTe
     # All-Gather(Output)
     # Input:B
     parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
-    input_tensor.to_dist_spec(dist_spec.replicate(weight.spec.dist_spec.process_group))
+    input_tensor.to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
     input_parallel = reduce_grad(input_tensor.torch_tensor(), parallel_action.parallel_mode)
 
     output_parallel = torch.nn.functional.linear(input_parallel, weight.torch_tensor(), bias.torch_tensor())
@@ -43,11 +42,11 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: ColoTe
     output = ColoTensor.init_from_torch_tensor(
         output_parallel,
         spec=TensorSpec(
-            dist_spec.shard(weight.spec.dist_spec.process_group, [-1], [weight.spec.dist_spec.process_group.size()]),
+            dist_spec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group().size()]),
             [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)]))
     if parallel_action.gather_out:
         # All-Gather(Output)
-        output.to_dist_spec(dist_spec.replicate(weight.spec.dist_spec.process_group))
+        output.to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
     return output
 
 
