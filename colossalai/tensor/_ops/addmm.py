@@ -57,9 +57,10 @@ def colo_addmm(types, args, kwargs, pg):
     """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.linear``.
     This method computes a linear.
     """
+    input_tensor, mat1, mat2 = args[:3]
     to_colo_tensor = lambda t: t if isinstance(t, ColoTensor) else ColoTensor.init_from_torch_tensor(t)
-    input_tensor = to_colo_tensor(args[0])
-    mat2 = to_colo_tensor(args[2])
+    input_tensor = to_colo_tensor(input_tensor)
+    mat2 = to_colo_tensor(mat2)
     beta = kwargs.get('beta', 1) if kwargs else 1
     alpha = kwargs.get('alpha', 1) if kwargs else 1
 
