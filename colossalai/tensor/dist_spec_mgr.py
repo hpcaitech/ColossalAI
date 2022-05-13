@@ -1,5 +1,5 @@
 from math import dist
-from .dist_spec import DistPlacementPattern, _DistSpec
+from colossalai.tensor.dist_spec import _DistSpec
 from colossalai.nn.layer.utils import divide
 from numpy import prod
 from contextlib import contextmanager

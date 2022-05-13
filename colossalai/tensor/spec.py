@@ -1,8 +1,7 @@
-from copy import copy
 from enum import Enum
 from typing import List
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor.dist_spec.dist_spec import _DistSpec
+from colossalai.tensor.dist_spec import _DistSpec
 
 
 class ComputePattern(Enum):
