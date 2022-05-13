@@ -138,7 +138,7 @@ class ColoTensor(object):
         self._spec = spec
 
     def has_spec(self) -> bool:
-        return self._spec is not None and self._spec.num_action > 0
+        return self._spec.num_action > 0
 
     def is_model_data(self) -> bool:
         return self._type == TensorType.MODEL
