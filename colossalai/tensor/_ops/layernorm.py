@@ -27,6 +27,7 @@ def colo_layernorm(types, args=(), kwargs=None, pg=None):
         eps = kwargs['eps']
 
     if isinstance(input_tensor, ColoTensor):
+        # TODO (ver217): check input dist spec
         input_tensor.to_dist_spec(dist_spec.replicate())
         input_tensor = input_tensor.torch_tensor()
     if isinstance(weight, ColoTensor):
