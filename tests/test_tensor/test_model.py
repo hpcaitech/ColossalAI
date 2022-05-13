@@ -9,7 +9,8 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ColoOptimizer
+from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, \
+    ParallelAction, ColoTensor, ColoOptimizer, dist_spec, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 
@@ -85,6 +86,34 @@ def set_seed(seed):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
 
+def init_1d_row_linear(weight):
+    spec = TensorSpec(
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)])
+    with DistSpecManager.no_grad():
+        weight.set_spec(spec)
+
+def init_1d_col_linear(weight, gather_out=True):
+    spec = TensorSpec(
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D, \
+            gather_out=gather_out)])
+    with DistSpecManager.no_grad():
+        weight.set_spec(spec)
+
+def init_1d_row_embedding(weight):
+    spec = TensorSpec(
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DRow, parallel_mode=ParallelMode.PARALLEL_1D)])
+    with DistSpecManager.no_grad():
+        weight.set_spec(spec)
+
+def init_1d_col_embedding(weight):
+    spec = TensorSpec(
+        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D)])
+    with DistSpecManager.no_grad():
+        weight.set_spec(spec)
 
 def run_1d_hybrid_tp(model_name):
     # A simple net with two stacked nn.Linear
@@ -106,84 +135,35 @@ def run_1d_hybrid_tp(model_name):
             p2.data.copy_(p1.data)
 
     if 'bert' == model_name:
-        parallel_action_list_row = [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1DRow_Linear,
-                           parallel_mode=ParallelMode.PARALLEL_1D)
-        ]
-        spec_linear_row = TensorSpec(parallel_action_list_row)
-
-        parallel_action_list_embedding_col = [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1DCol_Embedding,
-                           parallel_mode=ParallelMode.PARALLEL_1D)
-        ]
-        spec_embedding_col = TensorSpec(parallel_action_list_embedding_col)
-
-        parallel_action_list_embedding_row = [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1DRow_Embedding,
-                           parallel_mode=ParallelMode.PARALLEL_1D)
-        ]
-        spec_embedding_row = TensorSpec(parallel_action_list_embedding_row)
-
         for name, p in model.colo_named_parameters():
             if not isinstance(p, ColoTensor):
                 continue
             # print(name)
             # num_class = type_vocab_size = 2 | (8, 2)
             if 'classifier' in name and 'weight' in name:
-                p.set_spec(spec_linear_row)
+                init_1d_row_linear(p)
             # num_class = vocab_size = 30524 | (30524, 8)
             if 'word_embeddings' in name and 'weight' in name:
-                p.set_spec(spec_embedding_row)
+                init_1d_row_embedding(p)
             # num_class = seq_len = 512 | (512, 8)
             if 'position_embeddings' in name and 'weight' in name:
-                p.set_spec(spec_embedding_row)
+                init_1d_row_embedding(p)
             # num_class = type_vocab_size = 2 | (2, 8)
             if 'token_type_embeddings' in name and 'weight' in name:
-                p.set_spec(spec_embedding_col)
+                init_1d_col_embedding(p)
     elif "simple_net" == model_name:
-        parallel_action_list_row = [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1DRow_Linear,
-                           parallel_mode=ParallelMode.PARALLEL_1D)
-        ]
-        spec_row = TensorSpec(parallel_action_list_row)
-
-        parallel_action_list_col = [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1DCol_Linear,
-                           parallel_mode=ParallelMode.PARALLEL_1D),
-        ]
-        spec_col = TensorSpec(parallel_action_list_col)
-
-        parallel_action_list_classifier_col = [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1DCol_Linear,
-                           parallel_mode=ParallelMode.PARALLEL_1D,
-                           gather_out=False),
-        ]
-        spec_classifier_col = TensorSpec(parallel_action_list_classifier_col)
-
-        parallel_action_list_embedding_col = [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1DCol_Embedding,
-                           parallel_mode=ParallelMode.PARALLEL_1D)
-        ]
-        spec_embedding_col = TensorSpec(parallel_action_list_embedding_col)
         # A naive way to set spec for all weights in Linear
         for name, p in model.colo_named_parameters():
             if not isinstance(p, ColoTensor):
                 continue
             if 'embed' in name and 'weight' in name:
-                p.set_spec(spec_embedding_col)
+                init_1d_col_embedding(p)
             if 'proj1' in name and ('weight' in name or 'bias' in name):
-                p.set_spec(spec_col)
+                init_1d_col_linear(p)
             if 'proj2' in name and 'weight' in name:
-                p.set_spec(spec_row)
+                init_1d_row_linear(p)
             if 'classifier' in name and ('weight' in name or 'bias' in name):
-                p.set_spec(spec_classifier_col)
+                init_1d_col_linear(p, gather_out=False)
 
     model = model.cuda()
     colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
@@ -251,8 +231,6 @@ def run_1d_hybrid_tp(model_name):
             break
 
 
-# FIXME (ver217): enable this test
-@pytest.mark.skip
 # Test the overrided parameters() and named_parameters() member functions
 def test_model_parameters():
     # build a module with 2 Linear, 4 parameters in total.
@@ -285,8 +263,6 @@ def test_model_parameters():
     assert param_cnt == 2
 
 
-# FIXME (ver217): enable this test
-@pytest.mark.skip
 def test_colo_optimizer():
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -329,29 +305,14 @@ def run_1d_row_tp(model_name: str):
     if rank == 0:
         model_torch = model_builder(checkpoint=True)
         model_torch = model_torch.cuda()
-
-    parallel_action_list = [
-        ParallelAction(priority=1,
-                       compute_pattern=ComputePattern.TP1DRow_Linear,
-                       parallel_mode=ParallelMode.PARALLEL_1D)
-    ]
-    spec = TensorSpec(parallel_action_list)
-
-    parallel_action_list_embedding_row = [
-        ParallelAction(priority=1,
-                       compute_pattern=ComputePattern.TP1DRow_Embedding,
-                       parallel_mode=ParallelMode.PARALLEL_1D)
-    ]
-    spec_embedding_row = TensorSpec(parallel_action_list_embedding_row)
-
     # A naive way to set spec for all weights in Linear
     for name, p in model.colo_named_parameters():
         if not isinstance(p, ColoTensor):
             continue
         if 'weight' in name and 'LayerNorm' not in name and 'ln' not in name and 'embed' not in name:
-            p.set_spec(spec)
+            init_1d_row_linear(p)
         if 'embed' in name and 'weight' in name:
-            p.set_spec(spec_embedding_row)
+            init_1d_row_embedding(p)
 
     model = model.cuda()
 
@@ -434,9 +395,6 @@ def run_model_dist(rank, world_size, port):
     for name in ['bert', 'simple_net']:
         run_1d_hybrid_tp(name)
 
-
-# FIXME (ver217): enable this test
-@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 # @parameterize('world_size', [1, 4])
@@ -454,8 +412,6 @@ def run_pretrain_load_dist(rank, world_size, port):
 
 # The test case has to download huggingface pretrained models from the internet
 # So we manually trigger the test.
-# FIXME (ver217): enable this test
-@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()

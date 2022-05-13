@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import List
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor.dist_spec import _DistSpec
+from colossalai.tensor.dist_spec import _DistSpec, DistPlacementPattern
 
 
 class ComputePattern(Enum):
@@ -84,3 +84,16 @@ class TensorSpec(object):
 
     def get_process_group(self):
         return self.dist_spec.process_group
+
+    def get_placement(self):
+        return self.dist_spec.placement
+
+    def is_gathered(self):
+        return self.dist_spec.placement == DistPlacementPattern.REPLICATE \
+            or (len(self.dist_spec.num_partitions) == 1 
+                and self.dist_spec.num_partitions[0] == 1) \
+            or (self.dist_spec.process_group.size() == 1)
+
+    def is_1Dcol(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD \
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == -1
