@@ -91,7 +91,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 2, 4])
+@pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_addmm_1d(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
@@ -99,4 +99,4 @@ def test_addmm_1d(world_size):
 
 
 if __name__ == '__main__':
-    test_addmm_1d(2)
+    test_addmm_1d(4)
