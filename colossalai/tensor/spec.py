@@ -6,6 +6,7 @@ from colossalai.tensor.dist_spec.dist_spec import _DistSpec
 
 
 class ComputePattern(Enum):
+    # TODO (ver217): remove TP1DRow_<ops>
     TP1DRow = 0
     TP1DCol = 9
     TP1DRow_Linear = 1

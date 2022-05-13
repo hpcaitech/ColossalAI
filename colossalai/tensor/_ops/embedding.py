@@ -65,19 +65,20 @@ def colo_embedding(types, args, kwargs, pg):
     weight = args[1]
     args = args[2:]
 
+    if not isinstance(input_tensor, ColoTensor):
+        input_tensor = ColoTensor.init_from_torch_tensor(input_tensor)
+
     if not isinstance(weight, ColoTensor):
         weight = ColoTensor.init_from_torch_tensor(weight)
 
     # Handle differen parallel actions.
     if not weight.has_spec():    # No Model Parallel Applied
+        input_tensor = input_tensor.torch_tensor()
         weight = weight.torch_tensor()
         output = torch.nn.functional.embedding(input_tensor, weight, *args, **kwargs)
         return ColoTensor.init_from_torch_tensor(output)
     elif weight.spec.num_action == 1:    # Single Model Parallel Applied
         compute_patterns = weight.spec.compute_patterns
-        if not isinstance(input_tensor, ColoTensor):
-            input_tensor = ColoTensor.init_from_torch_tensor(
-                input_tensor, spec=TensorSpec(dist_spec.replicate(weight.spec.dist_spec.process_group)))
         if ComputePattern.TP1DRow in compute_patterns:
             return colo_embedding_1Drow(input_tensor, weight, args, kwargs)
         elif ComputePattern.TP1DCol in compute_patterns:
