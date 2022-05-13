@@ -7,7 +7,7 @@ import torch.multiprocessing as mp
 from torch.distributed.distributed_c10d import _get_default_group
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import dist_spec
+from colossalai.tensor import dist_spec, DistSpecManager
 from functools import partial
 
 
@@ -22,15 +22,15 @@ def run():
     row_spec = dist_spec.shard(group, [0], [size])
     col_spec = dist_spec.shard(group, [-1], [size])
     mat_spec = dist_spec.shard(group, [0, 1], [depth, depth])
-    row_shard = dist_spec.DistSpecManager._shard_as(x, old_dist_spec, row_spec)
+    row_shard = DistSpecManager._shard_as(x, old_dist_spec, row_spec)
     assert torch.equal(x.chunk(size, 0)[rank], row_shard)
-    assert torch.equal(x, dist_spec.DistSpecManager._gather(row_shard, row_spec))
-    col_shard = dist_spec.DistSpecManager._shard_as(x, old_dist_spec, col_spec)
+    assert torch.equal(x, DistSpecManager._gather(row_shard, row_spec))
+    col_shard = DistSpecManager._shard_as(x, old_dist_spec, col_spec)
     assert torch.equal(x.chunk(size, -1)[rank], col_shard)
-    assert torch.equal(x, dist_spec.DistSpecManager._gather(col_shard, col_spec))
-    mat_shard = dist_spec.DistSpecManager._shard_as(x, old_dist_spec, mat_spec)
+    assert torch.equal(x, DistSpecManager._gather(col_shard, col_spec))
+    mat_shard = DistSpecManager._shard_as(x, old_dist_spec, mat_spec)
     assert torch.equal(x.chunk(depth, 0)[rank // depth].chunk(depth, 1)[rank % depth], mat_shard)
-    assert torch.equal(x, dist_spec.DistSpecManager._gather(mat_shard, mat_spec))
+    assert torch.equal(x, DistSpecManager._gather(mat_shard, mat_spec))
 
 
 def run_dist(rank, world_size, port):
