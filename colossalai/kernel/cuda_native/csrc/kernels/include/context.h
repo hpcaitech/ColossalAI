@@ -9,7 +9,7 @@
 #include "cuda_util.h"
 
 class Context {
-public:
+ public:
   Context() : _stream(nullptr) {
     CHECK_GPU_ERROR(cublasCreate(&_cublasHandle));
   }
@@ -30,7 +30,7 @@ public:
 
   cublasHandle_t get_cublashandle() { return _cublasHandle; }
 
-private:
+ private:
   cudaStream_t _stream;
   cublasHandle_t _cublasHandle;
 };
