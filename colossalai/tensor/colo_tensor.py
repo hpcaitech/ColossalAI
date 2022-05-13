@@ -9,8 +9,8 @@ from colossalai.tensor import TensorSpec, ComputePattern
 from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, gather_forward_split_backward
 from .const import TensorType
 from colossalai.tensor import dist_spec
-from colossalai.tensor.dist_spec import DistSpecManager
-from colossalai.tensor.dist_spec.dist_spec import _DistSpec
+from colossalai.tensor.dist_spec_mgr import DistSpecManager
+from colossalai.tensor.dist_spec import _DistSpec
 
 
 class ColoTensor(object):
