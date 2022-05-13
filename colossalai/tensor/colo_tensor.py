@@ -132,14 +132,10 @@ class ColoTensor(object):
                                              device=self._device)
         return self._torch_tensor
 
-    def set_spec(self, spec: TensorSpec, shard: bool = True, init_pg: bool = False) -> None:
+    def set_spec(self, spec: TensorSpec) -> None:
         spec = copy(spec)
-        if init_pg:
-            self.spec.dist_spec.process_group = spec.dist_spec.process_group
         self.to_dist_spec(spec.dist_spec)
         self._spec = spec
-        # if shard == True:
-        #     self.shard()
 
     def has_spec(self) -> bool:
         return self._spec is not None and self._spec.num_action > 0

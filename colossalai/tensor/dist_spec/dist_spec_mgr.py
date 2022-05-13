@@ -27,8 +27,6 @@ class DistSpecManager:
 
     @staticmethod
     def _shard_as(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        assert old_dist_spec.placement == DistPlacementPattern.REPLICATE
-        assert dist_spec.placement == DistPlacementPattern.SHARD
         chunk = tensor
         idx = dist_spec.process_group.rank()
         num_parts = prod(dist_spec.num_partitions)
@@ -41,7 +39,6 @@ class DistSpecManager:
 
     @staticmethod
     def _gather(tensor: torch.Tensor, old_dist_spec: _DistSpec) -> torch.Tensor:
-        assert old_dist_spec.placement == DistPlacementPattern.SHARD
         buffer = [torch.empty_like(tensor) for _ in range(old_dist_spec.process_group.size())]
         dist.all_gather(buffer, tensor, group=old_dist_spec.process_group)
         for i in range(len(old_dist_spec.dims) - 1, -1, -1):
@@ -56,13 +53,13 @@ class DistSpecManager:
 
     @staticmethod
     def _r2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        if not old_dist_spec == dist_spec:
+        if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group:
             raise NotImplementedError
         return tensor
 
     @staticmethod
     def _r2s(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        if old_dist_spec.process_group != dist_spec.process_group:
+        if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group:
             raise NotImplementedError
         return DistSpecManager._shard_as(tensor, old_dist_spec, dist_spec)
 

@@ -45,7 +45,7 @@ def init_1d_row(model):
     with dist_spec.DistSpecManager.no_grad():
         for n, p in model.colo_named_parameters():
             if 'weight' in n:
-                p.set_spec(spec, init_pg=True)
+                p.set_spec(spec)
 
 
 def init_1d_col(model):
@@ -54,7 +54,7 @@ def init_1d_col(model):
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1DCol, parallel_mode=ParallelMode.PARALLEL_1D)])
     with dist_spec.DistSpecManager.no_grad():
         for n, p in model.colo_named_parameters():
-            p.set_spec(spec, init_pg=True)
+            p.set_spec(spec)
 
 
 def run_with_spec(spec_init_func):
