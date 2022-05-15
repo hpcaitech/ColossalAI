@@ -10,8 +10,9 @@
 
 using namespace std;
 
-template <typename T> class Softmax {
-public:
+template <typename T>
+class Softmax {
+ public:
   struct Config {
     size_t nhead;
     Config(size_t nhead) : nhead(nhead) {}
@@ -36,6 +37,6 @@ public:
 
   void reset_size(size_t nhead) { config_.nhead = nhead; }
 
-private:
+ private:
   Config config_;
 };
