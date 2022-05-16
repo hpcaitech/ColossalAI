@@ -11,7 +11,7 @@ from colossalai.tensor import dist_spec
 
 def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Union[int, float],
                      alpha: Union[int, float]) -> ColoTensor:
-    parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
+    parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
     # mat1:S[1] x mat2:S[0] = Output:P
     # beta * input + alpha * All-Reduce(Output) = res
 
@@ -32,7 +32,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
 def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Union[int, float],
                      alpha: Union[int, float]) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
-    parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
+    parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
     mat1.to_dist_spec(dist_spec.replicate(mat2.spec.get_process_group()))
     mat1_torch_tensor = reduce_grad(mat1.torch_tensor(), parallel_action.parallel_mode)
 
@@ -71,16 +71,16 @@ def colo_addmm(types, args, kwargs, pg):
     # Add communication logic before and after linear call.
     ret_tensor = None
     if not mat2.has_spec():    # No Model Parallel Applied
-        assert not input_tensor.has_spec(), 'Invalid input spec for native addmm op'
+        assert mat2.spec.is_gathered(), 'Invalid mat2 spec for native addmm op'
+        assert input_tensor.spec.is_gathered(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.init_from_torch_tensor(
-            torch.addbmm(input_tensor.torch_tensor(), mat1, mat2.torch_tensor(), beta=beta, alpha=alpha))
-    elif mat2.spec.num_action == 1:    # Single Model Parallel Applied
+            torch.addmm(input_tensor.torch_tensor(), mat1, mat2.torch_tensor(), beta=beta, alpha=alpha))
+    elif mat2.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         spec = TensorSpec(dist_spec.replicate(mat2.spec.get_process_group()))
         mat1 = args[1] if isinstance(args[1], ColoTensor) else ColoTensor.init_from_torch_tensor(args[1], spec=spec)
-        compute_patterns = mat2.spec.compute_patterns
-        if ComputePattern.TP1DRow in compute_patterns:
+        if mat2.spec.is_1D_row() and input_tensor.spec.is_gathered():
             ret_tensor = colo_addmm_1Drow(input_tensor, mat1, mat2, beta, alpha)
-        elif ComputePattern.TP1DCol in compute_patterns:
+        elif mat2.spec.is_1D_col() and (input_tensor.spec.is_1D_col() or input_tensor.spec.is_1D_row()):
             ret_tensor = colo_addmm_1Dcol(input_tensor, mat1, mat2, beta, alpha)
         else:
             raise NotImplementedError

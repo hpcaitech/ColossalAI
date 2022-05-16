@@ -4,6 +4,7 @@ from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor
 from colossalai.nn.loss.loss_1d import VocabParallelCrossEntropyLoss1D
 
+
 @colo_op_impl(torch.nn.functional.cross_entropy)
 def colo_cross_entropy(types, args=(), kwargs=None, pg=None):
     arg_num = len(args)
@@ -27,13 +28,13 @@ def colo_cross_entropy(types, args=(), kwargs=None, pg=None):
     if isinstance(target, ColoTensor):
         target = target.torch_tensor()
 
-    if input_tensor.spec.is_gathered(): # Input is gathered
-        return ColoTensor.init_from_torch_tensor(torch.nn.functional.cross_entropy(
-            input_tensor.torch_tensor(), target, weight))
+    if input_tensor.spec.is_gathered():    # Input is gathered
+        return ColoTensor.init_from_torch_tensor(
+            torch.nn.functional.cross_entropy(input_tensor.torch_tensor(), target, weight))
     elif input_tensor.has_spec() and input_tensor.spec.num_action == 1:    # Single Model Parallel Applied
-        if input_tensor.spec.is_1Dcol():
-            return ColoTensor.init_from_torch_tensor(
-                VocabParallelCrossEntropyLoss1D()(input_tensor.torch_tensor(), target))
+        if input_tensor.spec.is_1D_col():
+            return ColoTensor.init_from_torch_tensor(VocabParallelCrossEntropyLoss1D()(input_tensor.torch_tensor(),
+                                                                                       target))
         else:
             raise NotImplementedError
     else:

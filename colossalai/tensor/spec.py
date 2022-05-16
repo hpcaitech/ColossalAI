@@ -5,17 +5,9 @@ from colossalai.tensor.dist_spec import _DistSpec, DistPlacementPattern
 
 
 class ComputePattern(Enum):
-    # TODO (ver217): remove TP1DRow_<ops>
-    TP1DRow = 0
-    TP1DCol = 9
-    TP1DRow_Linear = 1
-    TP1DCol_Linear = 2
-    TP1DRow_Embedding = 3
-    TP1DCol_Embedding = 4
-    TP1DRow_mm = 5
-    TP1DCol_mm = 6
-    ZeRO = 7
-    DP = 8
+    TP1D = 0
+    ZeRO = 1
+    DP = 2
 
 
 class ParallelAction(object):
@@ -45,14 +37,14 @@ class TensorSpec(object):
     # using ZeRO with DP-degree = 4 and 1DRowTP with TP-degree = 2.
     # parallel_action_list = [
     # ParallelAction(10, ComputePattern.ZeRO, gpc.get_group(ParallelMode.DATA)),
-    # ParallelAction(1, ComputePattern.TP1DRow_Linear, gpc.get_group(ParallelMode.PARALLEL_1D))
+    # ParallelAction(1, ComputePattern.TP1D_Linear, gpc.get_group(ParallelMode.PARALLEL_1D))
     # ]
     # When the ColoTensor is initialized,
     # we first splitting tensor according to ParallelAction of ZeRO,
-    # then splitting tensor according to ParallelAction of TP1DRow_Linear.
+    # then splitting tensor according to ParallelAction of TP1D_Linear.
     # During Linear computation
     # Before Linear Op, we gather the tensors according to ZeRO.
-    # We perform Linear Op according to compute pattern of TP1DRow_Linear.
+    # We perform Linear Op according to compute pattern of TP1D_Linear.
     # After Linear Op, we split the tensors according to ZeRO.
 
     def __init__(self, dist_spec: _DistSpec, parallel_action_list: List[ParallelAction] = []):
@@ -90,10 +82,17 @@ class TensorSpec(object):
 
     def is_gathered(self):
         return self.dist_spec.placement == DistPlacementPattern.REPLICATE \
-            or (len(self.dist_spec.num_partitions) == 1 
+            or (len(self.dist_spec.num_partitions) == 1
                 and self.dist_spec.num_partitions[0] == 1) \
             or (self.dist_spec.process_group.size() == 1)
 
-    def is_1Dcol(self):
+    def is_1D_col(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
             and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == -1
+
+    def is_1D_row(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD \
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
+
+    def has_compute_pattern(self, compute_pattern: ComputePattern):
+        return self.get_action_by_compute_pattern(compute_pattern) is not None

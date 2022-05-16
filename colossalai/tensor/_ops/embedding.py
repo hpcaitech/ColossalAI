@@ -12,7 +12,7 @@ from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, Parall
 def colo_embedding_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, args, kwargs) -> ColoTensor:
     # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
-    parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1DCol)
+    parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
     input_tensor.to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
 
     output_parallel = torch.nn.functional.embedding(input_tensor.torch_tensor(), weight.torch_tensor(), *args, **kwargs)
@@ -28,7 +28,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor, weight: ColoTensor, args, kwa
     # embedding_1Drow split the weight(lookup table) to (num_embeddings/P, embedding_dim)
     # Find index in this shard and mask those not here
     # Reduce all
-    parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1DRow)
+    parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
     input_tensor.to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
 
     tensor_parallel_rank = gpc.get_local_rank(parallel_action.parallel_mode)
@@ -71,16 +71,17 @@ def colo_embedding(types, args, kwargs, pg):
         weight = ColoTensor.init_from_torch_tensor(weight)
 
     # Handle differen parallel actions.
+
     if not weight.has_spec():    # No Model Parallel Applied
+        assert weight.spec.is_gathered(), 'Invalid weight spec for native embedding op'
         input_tensor = input_tensor.torch_tensor()
         weight = weight.torch_tensor()
         output = torch.nn.functional.embedding(input_tensor, weight, *args, **kwargs)
         return ColoTensor.init_from_torch_tensor(output)
-    elif weight.spec.num_action == 1:    # Single Model Parallel Applied
-        compute_patterns = weight.spec.compute_patterns
-        if ComputePattern.TP1DRow in compute_patterns:
+    elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+        if weight.spec.is_1D_row():
             return colo_embedding_1Drow(input_tensor, weight, args, kwargs)
-        elif ComputePattern.TP1DCol in compute_patterns:
+        elif weight.spec.is_1D_col():
             return colo_embedding_1Dcol(input_tensor, weight, args, kwargs)
         else:
             raise NotImplementedError
