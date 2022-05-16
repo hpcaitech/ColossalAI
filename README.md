@@ -28,13 +28,20 @@
  <li><a href="#Why-Colossal-AI">Why Colossal-AI</a> </li>
  <li><a href="#Features">Features</a> </li>
  <li>
-   <a href="#Demo">Demo</a> 
+   <a href="#Parallel-Demo">Parallel Demo</a> 
    <ul>
      <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
+   </ul>
+ </li>
+ <li>
+   <a href="#Single-GPU-Demo">Single GPU Demo</a> 
+   <ul>
+     <li><a href="#GPT-2-Single">GPT-2</a></li>
+     <li><a href="#PaLM-Single">PaLM</a></li>
    </ul>
  </li>
 
@@ -88,7 +95,7 @@ distributed training in a few lines.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Demo
+## Parallel Demo
 ### ViT
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
@@ -124,27 +131,39 @@ Please visit our [documentation and tutorials](https://www.colossalai.org/) for 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+## Single GPU Demo
+
+### GPT-2
+<p id="GPT-2-Single" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2-GPU1.png" width=450/>
+</p>
+
+- 20x larger model size on the same hardware
+
+### PaLM
+<p id="PaLM-Single" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/PaLM-GPU1.png" width=450/>
+</p>
+
+- 34x larger model size on the same hardware
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
 ## Installation
 
-### PyPI
+### Download From Official Releases
 
-```bash
-pip install colossalai
-```
-This command will install CUDA extension if your have installed CUDA, NVCC and torch. 
+You can visit the [Download](/download) page to download Colossal-AI with pre-built CUDA extensions.
 
-If you don't want to install CUDA extension, you should add `--global-option="--no_cuda_ext"`, like:
-```bash
-pip install colossalai --global-option="--no_cuda_ext"
-```
 
-### Install From Source
+### Download From Source
 
-> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to create an issue if you encounter any problems. :-)
+> The version of Colossal-AI will be in line with the main branch of the repository. Feel free to raise an issue if you encounter any problem. :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
+
 # install dependency
 pip install -r requirements/requirements.txt
 
@@ -155,7 +174,7 @@ pip install .
 If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
 
 ```shell
-pip install --global-option="--no_cuda_ext" .
+NO_CUDA_EXT=1 pip install .
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -200,80 +219,23 @@ Thanks so much to all of our amazing contributors!
 ### Start Distributed Training in Lines
 
 ```python
-import colossalai
-from colossalai.utils import get_dataloader
-
-
-# my_config can be path to config file or a dictionary obj
-# 'localhost' is only for single node, you need to specify
-# the node name if using multiple nodes
-colossalai.launch(
-    config=my_config,
-    rank=rank,
-    world_size=world_size,
-    backend='nccl',
-    port=29500,
-    host='localhost'
+parallel = dict(
+    pipeline=2,
+    tensor=dict(mode='2.5d', depth = 1, size=4)
 )
-
-# build your model
-model = ...
-
-# build you dataset, the dataloader will have distributed data
-# sampler by default
-train_dataset = ...
-train_dataloader = get_dataloader(dataset=dataset,
-                                shuffle=True
-                                )
-
-
-# build your optimizer
-optimizer = ...
-
-# build your loss function
-criterion = ...
-
-# initialize colossalai
-engine, train_dataloader, _, _ = colossalai.initialize(
-    model=model,
-    optimizer=optimizer,
-    criterion=criterion,
-    train_dataloader=train_dataloader
-)
-
-# start training
-engine.train()
-for epoch in range(NUM_EPOCHS):
-    for data, label in train_dataloader:
-        engine.zero_grad()
-        output = engine(data)
-        loss = engine.criterion(output, label)
-        engine.backward(loss)
-        engine.step()
-
 ```
 
-### Write a Simple 2D Parallel Model
-
-Let's say we have a huge MLP model and its very large hidden size makes it difficult to fit into a single GPU. We can
-then distribute the model weights across GPUs in a 2D mesh while you still write your model in a familiar way.
+### Start Heterogeneous Training in Lines
 
 ```python
-from colossalai.nn import Linear2D
-import torch.nn as nn
-
-
-class MLP_2D(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-        self.linear_1 = Linear2D(in_features=1024, out_features=16384)
-        self.linear_2 = Linear2D(in_features=16384, out_features=1024)
-
-    def forward(self, x):
-        x = self.linear_1(x)
-        x = self.linear_2(x)
-        return x
+zero = dict(
+    model_config=dict(
+        tensor_placement_policy='auto',
+        shard_strategy=TensorShardStrategy(),
+        reuse_fp16_shard=True
+    ),
+    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
+)
 
 ```
 
