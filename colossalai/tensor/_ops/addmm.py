@@ -70,11 +70,12 @@ def colo_addmm(types, args, kwargs, pg):
 
     # Add communication logic before and after linear call.
     ret_tensor = None
-    if mat2.spec.is_gathered():    # No Model Parallel Applied
+    if not mat2.has_spec():    # No Model Parallel Applied
+        assert mat2.spec.is_gathered(), 'Invalid mat2 spec for native addmm op'
         assert input_tensor.spec.is_gathered(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.init_from_torch_tensor(
             torch.addmm(input_tensor.torch_tensor(), mat1, mat2.torch_tensor(), beta=beta, alpha=alpha))
-    else:    # Single Model Parallel Applied
+    elif mat2.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         spec = TensorSpec(dist_spec.replicate(mat2.spec.get_process_group()))
         mat1 = args[1] if isinstance(args[1], ColoTensor) else ColoTensor.init_from_torch_tensor(args[1], spec=spec)
         if mat2.spec.is_1D_row() and input_tensor.spec.is_gathered():
@@ -83,6 +84,8 @@ def colo_addmm(types, args, kwargs, pg):
             ret_tensor = colo_addmm_1Dcol(input_tensor, mat1, mat2, beta, alpha)
         else:
             raise NotImplementedError
+    else:
+        raise NotImplementedError
 
     # building the computing graph, op -> output
     # if GraphGlobalEnv().graph_building:

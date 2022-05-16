@@ -71,15 +71,19 @@ def colo_embedding(types, args, kwargs, pg):
         weight = ColoTensor.init_from_torch_tensor(weight)
 
     # Handle differen parallel actions.
-    if weight.spec.is_gathered():    # No Model Parallel Applied
+
+    if not weight.has_spec():    # No Model Parallel Applied
+        assert weight.spec.is_gathered(), 'Invalid weight spec for native embedding op'
         input_tensor = input_tensor.torch_tensor()
         weight = weight.torch_tensor()
         output = torch.nn.functional.embedding(input_tensor, weight, *args, **kwargs)
         return ColoTensor.init_from_torch_tensor(output)
-    else:    # Single Model Parallel Applied
+    elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.spec.is_1D_row():
             return colo_embedding_1Drow(input_tensor, weight, args, kwargs)
         elif weight.spec.is_1D_col():
             return colo_embedding_1Dcol(input_tensor, weight, args, kwargs)
         else:
             raise NotImplementedError
+    else:
+        raise NotImplementedError

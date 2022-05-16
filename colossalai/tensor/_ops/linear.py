@@ -83,20 +83,23 @@ def colo_linear(types, args, kwargs, pg):
 
     # Add communication logic before and after linear call.
     ret_tensor = None
-    if weight.spec.is_gathered():    # No Model Parallel Applied
+    if not weight.has_spec():    # No Model Parallel Applied
+        assert bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
         assert bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
         input_tensor = input_tensor.torch_tensor()
         weight = weight.torch_tensor()
         if bias is not None:
             bias = bias.torch_tensor()
         ret_tensor = ColoTensor.init_from_torch_tensor(torch.nn.functional.linear(input_tensor, weight, bias))
-    else:    # Single Model Parallel Applied
+    elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.spec.is_1D_col() and (bias is None or bias.spec.is_gathered()):
             ret_tensor = colo_linear_1Drow(input_tensor, weight, bias)
         elif weight.spec.is_1D_row() and (bias is None or bias.spec.is_1D_row() or bias.spec.is_1D_col()):
             ret_tensor = colo_linear_1Dcol(input_tensor, weight, bias)
         else:
             raise NotImplementedError
+    else:
+        raise NotImplementedError
 
     # building the computing graph, op -> output
     if GraphGlobalEnv().graph_building:

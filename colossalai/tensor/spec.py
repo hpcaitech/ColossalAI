@@ -93,3 +93,6 @@ class TensorSpec(object):
     def is_1D_row(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
             and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
+
+    def has_compute_pattern(self, compute_pattern: ComputePattern):
+        return self.get_action_by_compute_pattern(compute_pattern) is not None
