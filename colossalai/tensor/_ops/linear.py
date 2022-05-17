@@ -67,8 +67,8 @@ def colo_linear(input_tensor: Union[ColoTensor, torch.Tensor], weight: ColoTenso
     # Add communication logic before and after linear call.
     ret_tensor = None
     if not weight.has_spec():    # No Model Parallel Applied
-        assert bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
-        assert bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
+        assert weight.spec.is_gathered(), 'Invalid weight spec for native Linear op'
+        assert bias is None or bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
         return F.linear(input_tensor, weight, bias)
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.spec.is_1D_col() and (bias is None or bias.spec.is_gathered()):
