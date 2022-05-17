@@ -1,4 +1,3 @@
-#include <cooperative_groups.h>
 #include <math.h>
 
 #include <cub/block/block_load.cuh>
@@ -6,6 +5,8 @@
 
 #include "block_reduce.h"
 #include "kernels.h"
+
+#include <cooperative_groups.h>
 
 namespace cg = cooperative_groups;
 const float EPSILON = 1e-8f;
@@ -119,7 +120,7 @@ __global__ void ker_attn_softmax(T *inp, const T *attn_mask, int from_len,
       BlockStore(ts_store).Store(inp + (token_id + i) * to_len, inp_val[i],
                                  to_len);
     }
-  }  // blockIdx.x
+  } // blockIdx.x
 }
 
 template <typename T, int block_dim, int ele_per_thread>
@@ -197,7 +198,7 @@ __global__ void ker_attn_softmax_lt32(T *inp, const T *attn_mask, int from_len,
       BlockStore(ts_store).Store(inp + (token_id + i) * to_len, inp_val[i],
                                  to_len);
     }
-  }  // blockIdx.x
+  } // blockIdx.x
 }
 
 /*
@@ -303,7 +304,8 @@ __global__ void ker_attn_softmax_bw(T *grad, const T *inp, int softmax_length) {
   cg::thread_block b = cg::this_thread_block();
   cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
 
-  for (int i = 1; i < WARP_SIZE; i <<= 1) sum += g.shfl_xor(sum, i);
+  for (int i = 1; i < WARP_SIZE; i <<= 1)
+    sum += g.shfl_xor(sum, i);
 
 #pragma unroll
   for (int i = 0; i < ITERATIONS; ++i) {

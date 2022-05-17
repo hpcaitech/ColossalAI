@@ -16,7 +16,7 @@ __global__ void ls_cross_entropy_fw_kernel(
   const int left_idx = block_start + threadIdx.x;
   const int right_idx = (blockIdx.x + 1) * vocab_size;
   float max_input[1] = {REDUCE_FLOAT_INF_NEG};
-  float sum_logits[2] = {0.f, 0.f};  // logit and logit exp
+  float sum_logits[2] = {0.f, 0.f}; // logit and logit exp
   int target_tid = targets[blockIdx.x];
 
   if (target_tid == padding_idx) {

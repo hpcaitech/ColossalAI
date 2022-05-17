@@ -15,8 +15,7 @@
 #define BLOCK_SIZE 512
 #define ILP 4
 
-template <typename T>
-__device__ __forceinline__ bool is_aligned(T *p) {
+template <typename T> __device__ __forceinline__ bool is_aligned(T *p) {
   return ((uint64_t)p) % (ILP * sizeof(T)) == 0;
 }
 
@@ -28,8 +27,7 @@ __device__ __forceinline__ void load_store(T *dst, T *src, int dst_offset,
   ((LT *)dst)[dst_offset] = ((LT *)src)[src_offset];
 }
 
-template <typename in_t, typename out_t>
-struct ScaleFunctor {
+template <typename in_t, typename out_t> struct ScaleFunctor {
   __device__ __forceinline__ void operator()(int chunk_size,
                                              volatile int *noop_gmem,
                                              TensorListMetadata<2> &tl,
@@ -78,7 +76,8 @@ struct ScaleFunctor {
         for (int ii = 0; ii < ILP; ii++) {
           r_in[ii] = 0;
           int i = i_start + threadIdx.x + ii * blockDim.x;
-          if (i < n && i < chunk_size) r_in[ii] = in[i];
+          if (i < n && i < chunk_size)
+            r_in[ii] = in[i];
         }
         // note for clarification to future michael:
         // From a pure memory dependency perspective, there's likely no point
@@ -94,13 +93,14 @@ struct ScaleFunctor {
 #pragma unroll
         for (int ii = 0; ii < ILP; ii++) {
           int i = i_start + threadIdx.x + ii * blockDim.x;
-          if (i < n && i < chunk_size) out[i] = r_out[ii];
+          if (i < n && i < chunk_size)
+            out[i] = r_out[ii];
         }
       }
     }
     if (!finite)
       *noop_gmem =
-          1;  // Blindly fire off a write.  These will race but that's ok.
+          1; // Blindly fire off a write.  These will race but that's ok.
   }
 };
 
