@@ -3,14 +3,12 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <stdio.h>
-
 #include <string>
 
 #include "kernels.h"
 
-template <typename T>
-class Dropout {
- public:
+template <typename T> class Dropout {
+public:
   struct Config {
     float ratio;
     bool training;
@@ -90,7 +88,7 @@ class Dropout {
 
   void SetTrainingMode(bool training) { _config.training = training; }
 
- private:
+private:
   uint8_t *_mask;
   Config _config;
 };

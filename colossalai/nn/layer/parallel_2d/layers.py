@@ -182,7 +182,7 @@ class Linear2D(ParallelLayer):
     def forward(self, x: Tensor) -> Tensor:
         # input: [m/q, n/q, k/q]
         # output: [m/q, n/q, h/q]
-        out_shape = x.shape[:-1] + (self.hidden_size_per_partition,)
+        out_shape = x.shape[:-1] + (self.hidden_size_per_partition, )
 
         output = Matmul_AB_2D.apply(x, self.weight, self.summa_dim, out_shape, self.row_rank, self.col_rank,
                                     ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
@@ -337,16 +337,16 @@ class LayerNorm2D(ParallelLayer):
 
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():
-            E_x = torch.sum(x, dim=-1, keepdim=True)    # [b/q, s, 1]
+            E_x = torch.sum(x, dim=-1, keepdim=True)  # [b/q, s, 1]
             torch.distributed.all_reduce(E_x, group=gpc.get_group(ParallelMode.PARALLEL_2D_ROW))
             E_x /= self.normalized_shape
 
             # Var_x in the block below is the sum of input^2
-            Var_x = torch.sum(x * x, dim=-1, keepdim=True)    # [b/q, s, 1]
+            Var_x = torch.sum(x * x, dim=-1, keepdim=True)  # [b/q, s, 1]
             torch.distributed.all_reduce(Var_x, group=gpc.get_group(ParallelMode.PARALLEL_2D_ROW))
             Var_x /= self.normalized_shape
 
-            Var_x = Var_x - E_x * E_x    # variance of x [b/q, s, 1]
+            Var_x = Var_x - E_x * E_x  # variance of x [b/q, s, 1]
             # this time 1/sqrt(Var_x + epsilon)
             Var_x = 1.0 / torch.sqrt(Var_x + self.variance_epsilon)
 
@@ -569,7 +569,7 @@ class PatchEmbedding2D(ParallelLayer):
 
         output = F.conv2d(input_, weight, bias, stride=self.patch_size)
         if self.flatten:
-            output = output.flatten(2).transpose(1, 2)    # BCHW -> BNC
+            output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
 
         cls_token = all_gather_tensor_2d(self.cls_token, -1, ParallelMode.PARALLEL_2D_COL)
         pos_embed = all_gather_tensor_2d(self.pos_embed, -1, ParallelMode.PARALLEL_2D_COL)
@@ -1012,7 +1012,7 @@ class Classifier2D(ParallelLayer):
             destination.update(local_state)
 
     def forward(self, input_: Tensor) -> Tensor:
-        out_shape = input_.shape[:-1] + (self.num_classes,)
+        out_shape = input_.shape[:-1] + (self.num_classes, )
 
         return classifier_2d(input_, self.weight, self.bias, self.summa_dim, out_shape, self.row_rank, self.col_rank,
                              ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL, self.data_parallel_rank,
@@ -1186,7 +1186,7 @@ class VocabParallelClassifier2D(ParallelLayer):
     def forward(self, x: Tensor) -> Tensor:
         # input: [m/q, n/q, k/q]
         # output: [m/q, n/q, h/q]
-        out_shape = x.shape[:-1] + (self.output_size_per_partition,)
+        out_shape = x.shape[:-1] + (self.output_size_per_partition, )
 
         output = Matmul_ABT_2D.apply(x, self.weight, self.summa_dim, out_shape, self.row_rank, self.col_rank,
                                      ParallelMode.PARALLEL_2D_ROW, ParallelMode.PARALLEL_2D_COL,

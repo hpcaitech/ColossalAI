@@ -24,8 +24,8 @@ class FusedLayerNormAffineFunction(torch.autograd.Function):
         input_ = input.contiguous()
         weight_ = weight.contiguous()
         bias_ = bias.contiguous()
-        output, mean, invvar = colossal_layer_norm_cuda.forward_affine(input_, ctx.normalized_shape, weight_, bias_,
-                                                                       ctx.eps)
+        output, mean, invvar = colossal_layer_norm_cuda.forward_affine(
+            input_, ctx.normalized_shape, weight_, bias_, ctx.eps)
         ctx.save_for_backward(input_, weight_, bias_, mean, invvar)
 
         return output
@@ -72,7 +72,8 @@ class MixedFusedLayerNorm(torch.nn.Module):
 
     def forward(self, input):
 
-        return FusedLayerNormAffineFunction.apply(input, self.weight, self.bias, self.normalized_shape, self.eps)
+        return FusedLayerNormAffineFunction.apply(input, self.weight, self.bias,
+                                                  self.normalized_shape, self.eps)
 
     def __repr__(self):
         return f'MixedFusedLayerNorm(normalized_shape={self.normalized_shape}, eps={self.eps})'
