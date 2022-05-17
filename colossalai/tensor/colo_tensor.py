@@ -32,7 +32,7 @@ class ColoTensor(torch.Tensor):
 
     def set_spec(self, spec: TensorSpec) -> None:
         spec = copy(spec)
-        self.to_dist_spec_(spec.dist_spec)
+        self.convert_to_dist_spec_(spec.dist_spec)
         self._spec = spec
 
     def has_spec(self) -> bool:
@@ -46,6 +46,7 @@ class ColoTensor(torch.Tensor):
         global _COLOSSAL_OPS
         if func in _COLOSSAL_OPS:
             func = _COLOSSAL_OPS[func]
+        # TODO (ver217): handle spec
         return super().__torch_function__(func, types, args, kwargs)
 
     def __repr__(self):
@@ -54,11 +55,11 @@ class ColoTensor(torch.Tensor):
     def is_model_data(self) -> bool:
         return self._type == TensorType.MODEL
 
-    def to_dist_spec_(self, dist_spec: _DistSpec) -> None:
+    def convert_to_dist_spec_(self, dist_spec: _DistSpec) -> None:
         self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
         self._spec.dist_spec = dist_spec
 
-    def to_dist_spec(self, dist_spec: _DistSpec) -> 'ColoTensor':
+    def convert_to_dist_spec(self, dist_spec: _DistSpec) -> 'ColoTensor':
         spec = copy(self._spec)
         spec.dist_spec = dist_spec
         ret = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)

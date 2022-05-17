@@ -13,14 +13,14 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, args, kwa
     # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
     parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
-    input_tensor.to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
+    input_tensor.convert_to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
 
     output_parallel = torch.nn.functional.embedding(input_tensor.torch_tensor(), weight.torch_tensor(), *args, **kwargs)
     output_spec = TensorSpec(
         dist_spec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group().size()]),
         [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)])
     output = ColoTensor.init_from_torch_tensor(output_parallel, spec=output_spec)
-    output.to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
+    output.convert_to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
     return output
 
 
@@ -29,7 +29,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor, weight: ColoTensor, args, kwa
     # Find index in this shard and mask those not here
     # Reduce all
     parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
-    input_tensor.to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
+    input_tensor.convert_to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
 
     tensor_parallel_rank = gpc.get_local_rank(parallel_action.parallel_mode)
     num_embeddings_per_partition = weight.size(0)

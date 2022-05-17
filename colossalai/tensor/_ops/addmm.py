@@ -15,7 +15,8 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # mat1:S[1] x mat2:S[0] = Output:P
     # beta * input + alpha * All-Reduce(Output) = res
 
-    mat1.to_dist_spec(dist_spec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group().size()]))
+    mat1.convert_to_dist_spec(
+        dist_spec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group().size()]))
 
     # Output:P
     partial_output = torch.mm(mat1.torch_tensor(), mat2.torch_tensor())
@@ -33,7 +34,7 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
                      alpha: Union[int, float]) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
     parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
-    mat1.to_dist_spec(dist_spec.replicate(mat2.spec.get_process_group()))
+    mat1.convert_to_dist_spec(dist_spec.replicate(mat2.spec.get_process_group()))
     mat1_torch_tensor = reduce_grad(mat1.torch_tensor(), parallel_action.parallel_mode)
 
     output_parallel = torch.addmm(input_tensor.torch_tensor(),
@@ -47,7 +48,7 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     output = ColoTensor.init_from_torch_tensor(output_parallel, spec=output_spec)
     if parallel_action.gather_out:
         # All-Gather(Output)
-        output.to_dist_spec(dist_spec.replicate(mat2.spec.get_process_group()))
+        output.convert_to_dist_spec(dist_spec.replicate(mat2.spec.get_process_group()))
     return output
 
 
