@@ -48,8 +48,8 @@ def check_grad_1d_col(model: torch.nn.Module, weight, bias):
 
 def run_with_spec(spec_init_func, check_grad_func):
     model = torch.nn.Linear(4, 8).cuda()
-    weight = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.weight.detach()))
-    bias = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.bias.detach()))
+    weight = ColoTensor(torch.nn.Parameter(model.weight.detach()))
+    bias = ColoTensor(torch.nn.Parameter(model.bias.detach()))
     spec_init_func(weight, bias)
     x = torch.rand(2, 4).cuda()
     out = model(x)
