@@ -1,7 +1,5 @@
 import torch
-import pytest
 from colossalai.tensor import ColoTensor, ColoParameter
-from copy import deepcopy
 from colossalai.utils import get_current_device
 from torch.nn import Parameter
 import torch.nn.functional as F
@@ -28,34 +26,8 @@ def test_layernorm():
     assert torch.allclose(ln_op.weight.grad, weight.grad)
 
 
-# The test case failed
-# def test_uniform():
-#     t = ColoTensor(torch.zeros(3, 5))
-#     torch.nn.init.uniform_(t)
-#     print(t)
-
-
-@pytest.mark.skip
-def test_element_wise():
-    t_ref = torch.randn(3, 5)
-    t = ColoTensor.init_from_torch_tensor(t_ref.clone())
-    assert torch.mean(t) == torch.mean(t_ref)
-    assert allclose(torch.nn.functional.gelu(t).torch_tensor(), torch.nn.functional.gelu(t_ref))
-    assert allclose(torch.nn.functional.relu(t).torch_tensor(), torch.nn.functional.relu(t_ref))
-
-
-# Test a function not wrapped by
-@pytest.mark.skip
-def test_no_wrap_op():
-    t_ref = torch.randn(3, 5)
-    t = ColoTensor.init_from_torch_tensor(t_ref.clone())
-    assert torch.sum(t) == torch.sum(t_ref)
-    assert torch.sum(input=t) == torch.sum(input=t_ref)
-
-
 def check_all():
-    test_element_wise()
-    test_no_wrap_op()
+    test_layernorm()
 
 
 if __name__ == '__main__':

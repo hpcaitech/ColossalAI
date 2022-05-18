@@ -10,6 +10,7 @@ from colossalai.utils.cuda import get_current_device
 
 
 @pytest.mark.skip
+# FIXME(ver217): support lazy init
 def test_lazy_init():
     in_dim = 4
     out_dim = 5
