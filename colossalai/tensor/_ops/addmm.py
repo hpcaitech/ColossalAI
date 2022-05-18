@@ -2,7 +2,6 @@ import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor
-from colossalai.tensor.graph import GraphOpNode, GraphGlobalEnv
 from colossalai.tensor import dist_spec
 from ._utils import GeneralTensor, Number, convert_to_colo_tensor
 
