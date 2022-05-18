@@ -1,4 +1,3 @@
-from random import choices
 import click
 
 from .utils import *
