@@ -4,28 +4,28 @@ from colossalai.tensor import ColoTensor, ColoParameter
 from copy import deepcopy
 from colossalai.utils import get_current_device
 from torch.nn import Parameter
+import torch.nn.functional as F
 
 
 def test_layernorm():
     ln_op = torch.nn.LayerNorm(2, 3, device=get_current_device())
-    ln_op_colo = deepcopy(ln_op)
 
     input_t = torch.randn(3, 2, device=get_current_device())
     input_t_colo = ColoTensor.from_torch_tensor(input_t.clone().detach())
 
     # prepare colossalai LN
-    delattr(ln_op_colo, 'weight')
-    setattr(ln_op_colo, 'weight', ColoTensor(Parameter(ln_op.weight.detach())))
+    weight = ColoTensor(Parameter(ln_op.weight.detach()))
+    bias = ColoTensor(Parameter(ln_op.bias.detach()))
 
     output = ln_op(input_t)
-    output_colo = ln_op_colo(input_t_colo)
+    output_colo = F.layer_norm(input_t_colo, ln_op.normalized_shape, weight, bias, ln_op.eps)
 
     assert torch.allclose(output_colo, output)
 
     torch.mean(output).backward()
     torch.mean(output_colo).backward()
 
-    assert torch.allclose(ln_op.weight.grad, ln_op_colo.weight.grad)
+    assert torch.allclose(ln_op.weight.grad, weight.grad)
 
 
 # The test case failed
@@ -54,7 +54,6 @@ def test_no_wrap_op():
 
 
 def check_all():
-    test_linear()
     test_element_wise()
     test_no_wrap_op()
 

@@ -66,7 +66,7 @@ def colo_linear(input_tensor: GeneralTensor, weight: GeneralTensor, bias: Option
     if not weight.has_spec():    # No Model Parallel Applied
         assert weight.spec.is_gathered(), 'Invalid weight spec for native Linear op'
         assert bias is None or bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
-        return ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
+        ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.spec.is_1D_col() and (bias is None or bias.spec.is_gathered()):
             ret_tensor = colo_linear_1Drow(input_tensor, weight, bias)

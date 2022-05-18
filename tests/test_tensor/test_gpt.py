@@ -5,30 +5,21 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.distributed as dist
-import torch.nn.functional as F
-from torch.utils.checkpoint import checkpoint
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.optimizer import CPUAdam
-from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import TensorShardStrategy
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from transformers import GPT2Config, GPT2LMHeadModel
 import torch.multiprocessing as mp
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, ParallelAction, ColoTensor, ColoOptimizer, dist_spec, DistSpecManager
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, ColoTensor, ColoOptimizer, dist_spec, DistSpecManager
 from colossalai.core import global_context as gpc
 from functools import partial
 # Hack huggingface Bert ModelOutput
 # Make it available to our ColoTensor
 from transformers.file_utils import ModelOutput
 from dataclasses import fields
-# from tests.test_tensor._utils import tensor_equal
+from tests.test_tensor._utils import tensor_equal
 
 
 def _post_init_colotensor(self):
@@ -153,7 +144,7 @@ def init_1d_row_spec(model):
         dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
-        for n, p in model.colo_named_parameters():
+        for n, p in model.named_parameters():
             if 'weight' in n and 'ln' not in n:
                 p.set_spec(spec)
 
@@ -163,7 +154,7 @@ def init_1d_col_spec(model):
         dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
-        for n, p in model.colo_named_parameters():
+        for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):
                 p.set_spec(spec)
 
@@ -193,14 +184,13 @@ def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor):
 
 
 def check_param_equal(model, torch_model):
-    for p, torch_p in zip(model.colo_parameters(), torch_model.parameters()):
+    for p, torch_p in zip(model.parameters(), torch_model.parameters()):
         assert tensor_shard_equal(torch_p, p)
 
 
 def check_grad_equal(model, torch_model):
-    for (n1, p), (n2, torch_p) in zip(model.colo_named_parameters(), torch_model.named_parameters()):
-        print(f'{n1} {torch_p.grad is not None} vs {p.grad is not None}')
-        # assert tensor_shard_equal(torch_p.grad, p.grad)
+    for p, torch_p in zip(model.parameters(), torch_model.parameters()):
+        assert tensor_shard_equal(torch_p.grad, p.grad)
 
 
 def run_gpt(init_spec_func):
@@ -223,70 +213,21 @@ def run_gpt(init_spec_func):
         input_ids, attn_mask = get_data(BATCH_SIZE, SEQ_LEN, VOCAB_SIZE)
         logits = model(input_ids, attn_mask)
         torch_logits = torch_model(input_ids, attn_mask)
-        # assert tensor_equal(torch_logits, logits), f'diff {torch.abs(logits - torch_logits).torch_tensor()}'
+        assert tensor_equal(torch_logits, logits)
         loss = criterion(logits, input_ids)
         torch_loss = criterion(torch_logits, input_ids)
         loss.backward()
-        # torch_loss.backward()
-        # for p in torch_model.parameters():
-        #     assert p.grad is not None
-        # for n, p in model.named_parameters():
-        #     if p.grad is None:
-        #         print(n)
-        # print(f'torch out: {torch_logits.requires_grad}, loss {torch_loss.requires_grad}')
-        # print(f'colo out: {logits.torch_tensor().requires_grad}, loss {loss.torch_tensor().requires_grad}')
-        # check_grad_equal(model, torch_model)
-
-
-class FC(torch.nn.Module):
-
-    def __init__(self, in_features: int, hidden_size: int, out_features: int) -> None:
-        super().__init__()
-        self.input_layer = torch.nn.Linear(in_features, hidden_size)
-        self.hidden_layer = torch.nn.Linear(hidden_size, hidden_size)
-        self.output_layer = torch.nn.Linear(hidden_size, out_features)
-
-    def forward(self, x):
-        x = self.input_layer(x)
-        print(f'input: {x.requires_grad}')
-        x = self.hidden_layer(x)
-        # x = checkpoint(self.hidden_layer, x)
-        # x.requires_grad_()
-        print(f'hidden: {x.requires_grad}')
-        x = self.output_layer(x)
-        print(f'output: {x.requires_grad}')
-        return x
-
-
-def run_model(model, x):
-    for n, p in model.named_parameters():
-        print(f'{n} requires_grad {p.requires_grad}')
-    out = model(x)
-    loss = torch.sum(out)
-    loss.backward()
-    grad_none = False
-    for p in model.parameters():
-        if p.grad is None:
-            grad_none = True
-    print(f'out: {out.requires_grad}, loss: {loss.requires_grad}, has None grad: {grad_none}')
+        torch_loss.backward()
+        check_grad_equal(model, torch_model)
 
 
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    # run_gpt(init_1d_row_spec)
-    with ColoInitContext(device=get_current_device()):
-        model = FC(4, 5, 1)
-    model = model.cuda()
-    torch_model = FC(4, 5, 1).cuda()
-    x = torch.rand(2, 4, device=get_current_device())
-    print('torch:')
-    run_model(torch_model, x)
-    print('colo:')
-    run_model(model, x)
+    run_gpt(init_1d_row_spec)
+    run_gpt(init_1d_col_spec)
 
 
-@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()

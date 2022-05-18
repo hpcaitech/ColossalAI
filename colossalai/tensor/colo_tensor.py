@@ -1,8 +1,6 @@
-import re
 from .op_wrapper import _COLOSSAL_OPS
 from copy import copy
 import torch
-import torch.distributed as dist
 from colossalai.tensor import TensorSpec
 from .const import TensorType
 from colossalai.tensor import dist_spec

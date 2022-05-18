@@ -3,7 +3,6 @@ from .const import TensorType
 import torch
 from colossalai.tensor import TensorSpec, dist_spec
 from copy import copy
-from torch._C import _disabled_torch_function_impl
 
 
 class ColoParameter(ColoTensor):
