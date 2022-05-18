@@ -1,11 +1,8 @@
 import torch
 from typing import Union
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, reduce_grad
-from colossalai.nn.layer.utils import divide
-from colossalai.core import global_context as gpc
+from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor
-from colossalai.tensor.graph import GraphOpNode, GraphGlobalEnv
 from colossalai.tensor import dist_spec
 
 
