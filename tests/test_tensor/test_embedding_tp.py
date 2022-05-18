@@ -44,7 +44,7 @@ def check_grad_1d_col(model: torch.nn.Module, weight):
 
 def run_with_spec(spec_init_func, check_grad_func):
     model = torch.nn.Embedding(12, 32).cuda()
-    weight = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.weight.detach()))
+    weight = ColoTensor(torch.nn.Parameter(model.weight.detach()))
     spec_init_func(weight)
     x = torch.tensor((0, 3, 6, 9)).cuda()
     out = model(x)

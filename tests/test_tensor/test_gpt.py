@@ -28,7 +28,7 @@ from functools import partial
 # Make it available to our ColoTensor
 from transformers.file_utils import ModelOutput
 from dataclasses import fields
-from tests.test_tensor._utils import tensor_equal
+# from tests.test_tensor._utils import tensor_equal
 
 
 def _post_init_colotensor(self):

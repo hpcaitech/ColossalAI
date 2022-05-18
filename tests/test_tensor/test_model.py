@@ -143,7 +143,7 @@ def run_1d_hybrid_tp(model_name):
             p2.data.copy_(p1.data)
 
     if 'bert' == model_name:
-        for name, p in model.colo_named_parameters():
+        for name, p in model.named_parameters():
             if not isinstance(p, ColoTensor):
                 continue
             # print(name)
@@ -161,7 +161,7 @@ def run_1d_hybrid_tp(model_name):
                 init_1d_col_embedding(p)
     elif "simple_net" == model_name:
         # A naive way to set spec for all weights in Linear
-        for name, p in model.colo_named_parameters():
+        for name, p in model.named_parameters():
             if not isinstance(p, ColoTensor):
                 continue
             if 'embed' in name and 'weight' in name:
@@ -187,7 +187,6 @@ def run_1d_hybrid_tp(model_name):
 
         torch.distributed.broadcast(data, 0, group=gpc.get_group(ParallelMode.PARALLEL_1D))
         torch.distributed.broadcast(label, 0, group=gpc.get_group(ParallelMode.PARALLEL_1D))
-
         # Bcast rank0 data to all processes
         if criterion:
             output = model(data)
@@ -206,10 +205,8 @@ def run_1d_hybrid_tp(model_name):
                 loss_torch = output_torch
 
         if rank == 0:
-            # print(loss.torch_tensor().item())
-            # print('loss torch', loss_torch.item())
             with torch.no_grad():
-                assert torch.allclose(loss.torch_tensor(), loss_torch, rtol=1e-2)
+                assert torch.allclose(loss, loss_torch, rtol=1e-2)
 
         loss.backward()
         colo_optimizer.step()
@@ -257,7 +254,7 @@ def test_model_parameters():
         param_cnt += 1
     assert param_cnt == 5
 
-    for name, colo_p in model.colo_named_parameters():
+    for name, colo_p in model.named_parameters():
         assert colo_p.is_model_data()
 
     param_cnt = 0
@@ -314,7 +311,7 @@ def run_1d_row_tp(model_name: str):
         model_torch = model_builder(checkpoint=True)
         model_torch = model_torch.cuda()
     # A naive way to set spec for all weights in Linear
-    for name, p in model.colo_named_parameters():
+    for name, p in model.named_parameters():
         if not isinstance(p, ColoTensor):
             continue
         if 'weight' in name and 'LayerNorm' not in name and 'ln' not in name and 'embed' not in name:
@@ -349,9 +346,7 @@ def run_1d_row_tp(model_name: str):
                 loss_torch = output_torch
 
         if rank == 0:
-            # print(loss.torch_tensor().item())
-            # print('loss torch', loss_torch.item())
-            assert torch.allclose(loss.torch_tensor(), loss_torch, rtol=1e-2)
+            assert torch.allclose(loss, loss_torch, rtol=1e-2)
 
         loss.backward()
 
@@ -380,7 +375,7 @@ def _run_pretrain_load():
         c_ref += 1
     c1 = 0
     c2 = 0
-    for name, param in model.colo_named_parameters():
+    for name, param in model.named_parameters():
         if isinstance(param, ColoParameter):
             c1 += 1
         else:

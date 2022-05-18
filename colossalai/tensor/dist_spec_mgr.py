@@ -1,4 +1,3 @@
-from math import dist
 from colossalai.tensor.dist_spec import _DistSpec
 from colossalai.nn.layer.utils import divide
 from numpy import prod

@@ -1,11 +1,22 @@
+import re
 from .op_wrapper import _COLOSSAL_OPS
 from copy import copy
 import torch
+import torch.distributed as dist
 from colossalai.tensor import TensorSpec
 from .const import TensorType
 from colossalai.tensor import dist_spec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
 from colossalai.tensor.dist_spec import _DistSpec
+from torch.overrides import get_default_nowrap_functions
+
+
+def _convert_output(output):
+    if isinstance(output, torch.Tensor) and not isinstance(output, ColoTensor):
+        output = ColoTensor.from_torch_tensor(output)
+    elif isinstance(output, (list, tuple)):
+        output = type(output)(_convert_output(o) for o in output)
+    return output
 
 
 class ColoTensor(torch.Tensor):
@@ -43,11 +54,21 @@ class ColoTensor(torch.Tensor):
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if not all(issubclass(cls, t) for t in types):
+            return NotImplemented
         global _COLOSSAL_OPS
         if func in _COLOSSAL_OPS:
             func = _COLOSSAL_OPS[func]
-        # TODO (ver217): handle spec
-        return super().__torch_function__(func, types, args, kwargs)
+
+        with torch._C.DisableTorchFunction():
+            ret = func(*args, **kwargs)
+            if func in get_default_nowrap_functions():
+                return ret
+            else:
+                return _convert_output(ret)
 
     def __repr__(self):
         return f'ColoTensor: {super().__repr__()}'
@@ -56,7 +77,8 @@ class ColoTensor(torch.Tensor):
         return self._type == TensorType.MODEL
 
     def convert_to_dist_spec_(self, dist_spec: _DistSpec) -> None:
-        self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
+        with DistSpecManager.no_grad():
+            self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
         self._spec.dist_spec = dist_spec
 
     def convert_to_dist_spec(self, dist_spec: _DistSpec) -> 'ColoTensor':
@@ -70,3 +92,13 @@ class ColoTensor(torch.Tensor):
         tensor = tensor.as_subclass(ColoTensor)
         tensor.__init__(tensor, spec=spec)
         return tensor
+
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        else:
+            with torch._C.DisableTorchFunction():
+                data = self.data.clone()
+            tensor = ColoTensor(data, spec=copy(self.spec))
+            memo[id(self)] = tensor
+            return tensor

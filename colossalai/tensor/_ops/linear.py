@@ -1,13 +1,12 @@
 import torch
 import torch.nn.functional as F
-from typing import Optional, Union
+import torch.distributed as dist
+from typing import Optional
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, reduce_grad
-from colossalai.nn.layer.utils import divide
-from colossalai.core import global_context as gpc
-from packaging import version
+from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, dist_spec
 from colossalai.tensor.graph import GraphOpNode, GraphGlobalEnv
+from ._utils import GeneralTensor, convert_to_colo_tensor
 
 
 def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> ColoTensor:
@@ -40,7 +39,6 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     input_parallel = reduce_grad(input_tensor, parallel_action.parallel_mode)
 
     output_parallel = F.linear(input_parallel, weight, bias)
-
     output = ColoTensor.from_torch_tensor(
         output_parallel,
         spec=TensorSpec(
@@ -53,12 +51,11 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
 
 
 @colo_op_impl(F.linear)
-def colo_linear(input_tensor: Union[ColoTensor, torch.Tensor], weight: ColoTensor, bias: Optional[ColoTensor] = None):
+def colo_linear(input_tensor: GeneralTensor, weight: GeneralTensor, bias: Optional[GeneralTensor] = None):
     """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.linear``.
     This method computes a linear.
     """
-    if not isinstance(input_tensor, ColoTensor):
-        input_tensor = ColoTensor.from_torch_tensor(input_tensor)
+    input_tensor, weight, bias = tuple(map(convert_to_colo_tensor, (input_tensor, weight, bias)))
 
     # building the computing graph, inputs -> op
     if GraphGlobalEnv().graph_building:
@@ -69,7 +66,7 @@ def colo_linear(input_tensor: Union[ColoTensor, torch.Tensor], weight: ColoTenso
     if not weight.has_spec():    # No Model Parallel Applied
         assert weight.spec.is_gathered(), 'Invalid weight spec for native Linear op'
         assert bias is None or bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
-        return F.linear(input_tensor, weight, bias)
+        return ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.spec.is_1D_col() and (bias is None or bias.spec.is_gathered()):
             ret_tensor = colo_linear_1Drow(input_tensor, weight, bias)
@@ -83,5 +80,4 @@ def colo_linear(input_tensor: Union[ColoTensor, torch.Tensor], weight: ColoTenso
     # building the computing graph, op -> output
     if GraphGlobalEnv().graph_building:
         cur_op_node.add_post_tensor(ret_tensor)
-
     return ret_tensor
