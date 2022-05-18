@@ -1,5 +1,4 @@
 import fabric
-from fabric import Connection
 from .hostinfo import HostInfo, HostInfoList
 from multiprocessing import Pipe, Process
 from multiprocessing import connection as mp_connection
