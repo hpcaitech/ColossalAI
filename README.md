@@ -153,7 +153,7 @@ Please visit our [documentation and tutorials](https://www.colossalai.org/) for 
 
 ### Download From Official Releases
 
-You can visit the [Download](/download) page to download Colossal-AI with pre-built CUDA extensions.
+You can visit the [Download](https://www.colossalai.org/download) page to download Colossal-AI with pre-built CUDA extensions.
 
 
 ### Download From Source

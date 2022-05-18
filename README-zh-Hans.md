@@ -149,7 +149,7 @@ Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让�
 
 ### 从官方安装
 
-您可以访问我们[下载](/download)页面来安装Colossal-AI，在这个页面上发布的版本都预编译了CUDA扩展。
+您可以访问我们[下载](https://www.colossalai.org/download)页面来安装Colossal-AI，在这个页面上发布的版本都预编译了CUDA扩展。
 
 ### 从源安装
 
