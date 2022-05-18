@@ -3,10 +3,7 @@ from copy import copy
 import torch
 from typing import Tuple, Optional, Callable, Union
 from numpy import product
-from colossalai.core import global_context as gpc
-from colossalai.nn.layer.utils import divide
-from colossalai.tensor import TensorSpec, ComputePattern
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, gather_forward_split_backward
+from colossalai.tensor import TensorSpec
 from .const import TensorType
 from colossalai.tensor import dist_spec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager

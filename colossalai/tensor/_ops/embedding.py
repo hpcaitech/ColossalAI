@@ -1,11 +1,7 @@
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.context import ParallelMode
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, reduce_input, \
-    gather_forward_split_backward, reduce_grad
-from colossalai.nn.layer.utils import divide
+from colossalai.nn.layer.parallel_1d._utils import reduce_input
 from colossalai.core import global_context as gpc
-from packaging import version
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, dist_spec
 
 
