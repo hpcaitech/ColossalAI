@@ -4,7 +4,7 @@ import pytest
 import torch.nn as nn
 import torch.multiprocessing as mp
 from colossalai.tensor import ColoTensor
-from colossalai.tensor import dist_spec
+from colossalai.tensor import distspec
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use
@@ -39,7 +39,7 @@ class Conv1D(nn.Module):
 
 def init_1d_row(weight, bias):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
@@ -54,7 +54,7 @@ def check_grad_1d_row(model: torch.nn.Module, weight, bias):
 
 def init_1d_col(weight, bias):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
@@ -70,8 +70,8 @@ def check_grad_1d_col(model: torch.nn.Module, weight, bias):
 
 def run_with_spec(spec_init_func, check_grad_func):
     model = Conv1D(4, 16).cuda()
-    weight = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.weight.detach()))
-    bias = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.bias.detach()))
+    weight = ColoTensor(torch.nn.Parameter(model.weight.detach()))
+    bias = ColoTensor(torch.nn.Parameter(model.bias.detach()))
     spec_init_func(weight, bias)
     x = torch.rand(2, 16).cuda()
     out = model(x)

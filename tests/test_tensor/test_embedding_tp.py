@@ -1,6 +1,6 @@
 import torch
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor import ColoTensor
+from colossalai.tensor import ColoTensor, distspec
 from torch.nn import functional as F
 from functools import partial
 
@@ -11,12 +11,12 @@ import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, dist_spec, DistSpecManager
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager
 
 
 def init_1d_row(weight):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
@@ -30,7 +30,7 @@ def check_grad_1d_row(model: torch.nn.Module, weight):
 
 def init_1d_col(weight):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
@@ -44,7 +44,7 @@ def check_grad_1d_col(model: torch.nn.Module, weight):
 
 def run_with_spec(spec_init_func, check_grad_func):
     model = torch.nn.Embedding(12, 32).cuda()
-    weight = ColoTensor.init_from_torch_tensor(torch.nn.Parameter(model.weight.detach()))
+    weight = ColoTensor(torch.nn.Parameter(model.weight.detach()))
     spec_init_func(weight)
     x = torch.tensor((0, 3, 6, 9)).cuda()
     out = model(x)

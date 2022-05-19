@@ -1,4 +1,4 @@
-from colossalai.tensor.dist_spec import _DistSpec
+from colossalai.tensor.distspec import _DistSpec
 from colossalai.nn.layer.utils import divide
 from numpy import prod
 from contextlib import contextmanager
@@ -53,7 +53,7 @@ class DistSpecManager:
     @staticmethod
     def _r2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
         if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group \
-            and dist_spec.process_group is not None:
+                and dist_spec.process_group is not None:
             raise NotImplementedError
         return tensor
 
@@ -66,7 +66,7 @@ class DistSpecManager:
     @staticmethod
     def _s2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
         if old_dist_spec.process_group != dist_spec.process_group \
-            and dist_spec.process_group is not None:
+                and dist_spec.process_group is not None:
             raise NotImplementedError
         return DistSpecManager._gather(tensor, old_dist_spec)
 

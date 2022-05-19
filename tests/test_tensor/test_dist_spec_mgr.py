@@ -7,7 +7,7 @@ import torch.multiprocessing as mp
 from torch.distributed.distributed_c10d import _get_default_group
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import dist_spec, DistSpecManager
+from colossalai.tensor import DistSpecManager, distspec
 from functools import partial
 
 
@@ -18,10 +18,10 @@ def run():
     depth = int(math.sqrt(size))
     assert depth == math.sqrt(size)
     x = torch.rand(8, 8).cuda()
-    old_dist_spec = dist_spec.replicate()
-    row_spec = dist_spec.shard(group, [0], [size])
-    col_spec = dist_spec.shard(group, [-1], [size])
-    mat_spec = dist_spec.shard(group, [0, 1], [depth, depth])
+    old_dist_spec = distspec.replicate()
+    row_spec = distspec.shard(group, [0], [size])
+    col_spec = distspec.shard(group, [-1], [size])
+    mat_spec = distspec.shard(group, [0, 1], [depth, depth])
     row_shard = DistSpecManager._shard_as(x, old_dist_spec, row_spec)
     assert torch.equal(x.chunk(size, 0)[rank], row_shard)
     assert torch.equal(x, DistSpecManager._gather(row_shard, row_spec))

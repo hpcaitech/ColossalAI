@@ -1,7 +1,8 @@
+import torch.distributed as dist
 from enum import Enum
 from typing import List
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor.dist_spec import _DistSpec, DistPlacementPattern
+from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
 
 
 class ComputePattern(Enum):
@@ -76,6 +77,9 @@ class TensorSpec(object):
 
     def get_process_group(self):
         return self.dist_spec.process_group
+
+    def get_process_group_size(self):
+        return dist.get_world_size(self.dist_spec.process_group)
 
     def get_placement(self):
         return self.dist_spec.placement
