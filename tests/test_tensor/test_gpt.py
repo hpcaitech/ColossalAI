@@ -10,82 +10,11 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, ColoTensor, ColoOptimizer, DistSpecManager, distspec
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, distspec
 from colossalai.core import global_context as gpc
 from functools import partial
-# Hack huggingface Bert ModelOutput
-# Make it available to our ColoTensor
-from transformers.file_utils import ModelOutput
-from dataclasses import fields
-from tests.test_tensor._utils import tensor_equal
+from _utils import tensor_equal, tensor_shard_equal
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-
-def _post_init_colotensor(self):
-    class_fields = fields(self)
-    # Safety and consistency checks
-    if len(class_fields) == 0:
-        raise ValueError(f"{self.__class__.__name__} has no fields.")
-    if not all(field.default is None for field in class_fields[1:]):
-        raise ValueError(f"{self.__class__.__name__} should not have more than one required field.")
-
-    first_field = getattr(self, class_fields[0].name)
-    other_fields_are_none = all(getattr(self, field.name) is None for field in class_fields[1:])
-
-    def is_tensor_with_colo(x):
-        """
-        Tests if `x` is a `ColoTensor` or `torch.Tensor`.
-        """
-        if isinstance(x, torch.Tensor):
-            return True
-
-        return isinstance(x, ColoTensor)
-
-    if other_fields_are_none and not is_tensor_with_colo(first_field):
-        if isinstance(first_field, dict):
-            iterator = first_field.items()
-            first_field_iterator = True
-        else:
-            try:
-                iterator = iter(first_field)
-                first_field_iterator = True
-            except TypeError:
-                first_field_iterator = False
-
-        # if we provided an iterator as first field and the iterator is a (key, value) iterator
-        # set the associated fields
-        if first_field_iterator:
-            for element in iterator:
-                if (not isinstance(element, (list, tuple)) or not len(element) == 2 or not isinstance(element[0], str)):
-                    break
-                setattr(self, element[0], element[1])
-                if element[1] is not None:
-                    self[element[0]] = element[1]
-        elif first_field is not None:
-            self[class_fields[0].name] = first_field
-    else:
-        for field in class_fields:
-            v = getattr(self, field.name)
-            if v is not None:
-                self[field.name] = v
-
-
-ModelOutput.__post_init__ = _post_init_colotensor
-
-
-def set_seed(seed):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-
-
-def get_data(batch_size, seq_len, vocab_size):
-    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
-    attention_mask = torch.ones_like(input_ids)
-    return input_ids, attention_mask
 
 
 def init_1d_row_spec(model):
@@ -106,30 +35,6 @@ def init_1d_col_spec(model):
         for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):
                 p.set_spec(spec)
-
-
-def check_tensor_equal_1d(tensor: torch.Tensor, shard: ColoTensor):
-    world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
-    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-    assert len(shard.spec.dist_spec.dims) == 1
-    dim = shard.spec.dist_spec.dims[0]
-    assert torch.equal(tensor.chunk(world_size, dim)[rank], shard.torch_tensor())
-
-
-def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor):
-    assert tensor.ndim == shard.ndim
-    if tensor.shape == shard.shape:
-        return tensor_equal(tensor, shard)
-    else:
-        dims_not_eq = torch.nonzero(torch.tensor(tensor.shape) != torch.tensor(shard.shape))
-        if dims_not_eq.numel() == 1:
-            # 1D shard
-            dim = dims_not_eq.item()
-            world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
-            rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-            return tensor_equal(tensor.chunk(world_size, dim)[rank], shard)
-        else:
-            raise NotImplementedError
 
 
 def check_param_equal(model, torch_model):
@@ -185,4 +90,4 @@ def test_gpt(world_size):
 
 
 if __name__ == '__main__':
-    test_gpt(1)
+    test_gpt(4)
