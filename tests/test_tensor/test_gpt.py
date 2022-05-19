@@ -4,9 +4,7 @@ import os
 import random
 import numpy as np
 import torch
-import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
-from transformers import GPT2Config, GPT2LMHeadModel
 import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
@@ -20,6 +18,7 @@ from functools import partial
 from transformers.file_utils import ModelOutput
 from dataclasses import fields
 from tests.test_tensor._utils import tensor_equal
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def _post_init_colotensor(self):
@@ -72,56 +71,6 @@ def _post_init_colotensor(self):
 
 
 ModelOutput.__post_init__ = _post_init_colotensor
-
-
-class GPTLMModel(nn.Module):
-
-    def __init__(self,
-                 hidden_size=768,
-                 num_layers=12,
-                 num_attention_heads=12,
-                 max_seq_len=1024,
-                 vocab_size=50304,
-                 checkpoint=False):
-        super().__init__()
-        self.checkpoint = checkpoint
-        self.model = GPT2LMHeadModel(
-            GPT2Config(n_embd=hidden_size,
-                       n_layer=num_layers,
-                       n_head=num_attention_heads,
-                       n_positions=max_seq_len,
-                       n_ctx=max_seq_len,
-                       vocab_size=vocab_size,
-                       resid_pdrop=0.0,
-                       embd_pdrop=0.0,
-                       attn_pdrop=0.0))
-        if checkpoint:
-            self.model.gradient_checkpointing_enable()
-
-    def forward(self, input_ids, attention_mask):
-        # Only return lm_logits
-        return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=not self.checkpoint)[0]
-
-
-def gpt2_s(checkpoint=True):
-    return GPTLMModel(checkpoint=checkpoint)
-
-
-def gpt2_m(checkpoint=True):
-    return GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=checkpoint)
-
-
-class GPTLMLoss(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-        self.loss_fn = nn.CrossEntropyLoss()
-
-    def forward(self, logits, labels):
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        # Flatten the tokens
-        return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
 
 def set_seed(seed):
@@ -194,23 +143,20 @@ def check_grad_equal(model, torch_model):
 
 
 def run_gpt(init_spec_func):
-    BATCH_SIZE = 4
-    SEQ_LEN = 1024
-    VOCAB_SIZE = 50304
-    NUM_STEPS = 1
-    criterion = GPTLMLoss()
+    get_components_func = non_distributed_component_funcs.get_callable('gpt2')
+    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+
     with ColoInitContext(device=get_current_device()):
-        model = gpt2_s()
+        model = model_builder()
     model = model.cuda()
-    torch_model = gpt2_s().cuda()
+    torch_model = model_builder().cuda()
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
     init_spec_func(model)
     check_param_equal(model, torch_model)
     model.train()
     torch_model.train()
-    for i in range(NUM_STEPS):
-        input_ids, attn_mask = get_data(BATCH_SIZE, SEQ_LEN, VOCAB_SIZE)
+    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
         logits = model(input_ids, attn_mask)
         torch_logits = torch_model(input_ids, attn_mask)
         assert tensor_equal(torch_logits, logits)
@@ -219,6 +165,8 @@ def run_gpt(init_spec_func):
         loss.backward()
         torch_loss.backward()
         check_grad_equal(model, torch_model)
+        if i > 0:
+            break
 
 
 def run_dist(rank, world_size, port):
