@@ -28,7 +28,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                                   scale_grad_by_freq=scale_grad_by_freq,
                                   sparse=sparse)
     output_spec = TensorSpec(
-        distspec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group().size()]),
+        distspec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group_size()]),
         [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)])
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
     output = output.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))

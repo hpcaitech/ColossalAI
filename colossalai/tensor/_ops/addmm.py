@@ -13,7 +13,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # beta * input + alpha * All-Reduce(Output) = res
 
     mat1 = mat1.convert_to_dist_spec(
-        dist_spec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group().size()]))
+        distspec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group_size()]))
 
     # Output:P
     partial_output = torch.mm(mat1, mat2)
@@ -22,7 +22,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # input
     assert not input_tensor.has_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor + alpha * output
-    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(dist_spec.replicate(mat2.spec.get_process_group())))
+    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(distspec.replicate(mat2.spec.get_process_group())))
     return output
 
 
@@ -30,17 +30,16 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
                      alpha: Number) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
     parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
-    mat1 = mat1.convert_to_dist_spec(dist_spec.replicate(mat2.spec.get_process_group()))
+    mat1 = mat1.convert_to_dist_spec(distspec.replicate(mat2.spec.get_process_group()))
     mat1 = reduce_grad(mat1, parallel_action.parallel_mode)
 
     output_parallel = torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha)
-    output_spec = TensorSpec(
-        dist_spec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group().size()]),
-        [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)])
+    output_spec = TensorSpec(distspec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group_size()]),
+                             [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)])
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
     if parallel_action.gather_out:
         # All-Gather(Output)
-        output = output.convert_to_dist_spec(dist_spec.replicate(mat2.spec.get_process_group()))
+        output = output.convert_to_dist_spec(distspec.replicate(mat2.spec.get_process_group()))
     return output
 
 
