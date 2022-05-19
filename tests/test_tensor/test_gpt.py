@@ -12,7 +12,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, ColoTensor, ColoOptimizer, dist_spec, DistSpecManager
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, ColoTensor, ColoOptimizer, DistSpecManager, distspec
 from colossalai.core import global_context as gpc
 from functools import partial
 # Hack huggingface Bert ModelOutput
@@ -141,7 +141,7 @@ def get_data(batch_size, seq_len, vocab_size):
 
 def init_1d_row_spec(model):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
@@ -151,7 +151,7 @@ def init_1d_row_spec(model):
 
 def init_1d_col_spec(model):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():

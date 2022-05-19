@@ -3,9 +3,9 @@ from copy import copy
 import torch
 from colossalai.tensor import TensorSpec
 from .const import TensorType
-from colossalai.tensor import dist_spec
+from colossalai.tensor import distspec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
-from colossalai.tensor.dist_spec import _DistSpec
+from colossalai.tensor.distspec import _DistSpec
 from torch.overrides import get_default_nowrap_functions
 
 
@@ -25,12 +25,12 @@ class ColoTensor(torch.Tensor):
     4. It supports distributing the tensor's payload to the shards among processes. (TODO)
     """
 
-    def __new__(cls, data: torch.Tensor, spec: TensorSpec = TensorSpec(dist_spec.replicate())) -> 'ColoTensor':
+    def __new__(cls, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
         if data is None:
             data = torch.empty(0)
         return torch.Tensor._make_subclass(cls, data, data.requires_grad)
 
-    def __init__(self, data: torch.Tensor, spec: TensorSpec = TensorSpec(dist_spec.replicate())) -> None:
+    def __init__(self, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
         self._spec = copy(spec)
         self._type = TensorType.NONMODEL
         self._graph_node = None
@@ -86,7 +86,7 @@ class ColoTensor(torch.Tensor):
         return ColoTensor.from_torch_tensor(ret, spec)
 
     @staticmethod
-    def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(dist_spec.replicate())) -> 'ColoTensor':
+    def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
         tensor = tensor.as_subclass(ColoTensor)
         tensor.__init__(tensor, spec=spec)
         return tensor

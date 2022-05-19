@@ -9,8 +9,8 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import named_params_with_colotensor, TensorSpec, ComputePattern, \
-    ParallelAction, ColoTensor, ColoOptimizer, dist_spec, DistSpecManager
+from colossalai.tensor import distspec, named_params_with_colotensor, TensorSpec, ComputePattern, \
+    ParallelAction, ColoTensor, ColoOptimizer, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 
@@ -89,7 +89,7 @@ def set_seed(seed):
 
 def init_1d_row_linear(weight):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
@@ -97,7 +97,7 @@ def init_1d_row_linear(weight):
 
 def init_1d_col_linear(weight, gather_out=True):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]), [
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]), [
             ParallelAction(priority=1,
                            compute_pattern=ComputePattern.TP1D,
                            parallel_mode=ParallelMode.PARALLEL_1D,
@@ -109,7 +109,7 @@ def init_1d_col_linear(weight, gather_out=True):
 
 def init_1d_row_embedding(weight):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
@@ -117,7 +117,7 @@ def init_1d_row_embedding(weight):
 
 def init_1d_col_embedding(weight):
     spec = TensorSpec(
-        dist_spec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
     with DistSpecManager.no_grad():
         weight.set_spec(spec)

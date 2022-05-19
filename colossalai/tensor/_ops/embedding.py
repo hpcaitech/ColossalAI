@@ -4,7 +4,7 @@ from typing import Optional
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input
 from colossalai.core import global_context as gpc
-from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, dist_spec
+from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, distspec
 from ._utils import GeneralTensor, convert_to_colo_tensor
 
 
@@ -18,7 +18,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
     # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
     parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
-    input_tensor = input_tensor.convert_to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
 
     output_parallel = F.embedding(input_tensor,
                                   weight,
@@ -28,10 +28,10 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                                   scale_grad_by_freq=scale_grad_by_freq,
                                   sparse=sparse)
     output_spec = TensorSpec(
-        dist_spec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group().size()]),
+        distspec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group().size()]),
         [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)])
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
-    output = output.convert_to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
+    output = output.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
     return output
 
 
@@ -46,7 +46,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     # Find index in this shard and mask those not here
     # Reduce all
     parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
-    input_tensor = input_tensor.convert_to_dist_spec(dist_spec.replicate(weight.spec.get_process_group()))
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
 
     tensor_parallel_rank = gpc.get_local_rank(parallel_action.parallel_mode)
     num_embeddings_per_partition = weight.size(0)
@@ -73,7 +73,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     partial_output[input_mask, :] = 0.
     # Reduce across all the model parallel GPUs.
     output = reduce_input(partial_output, parallel_action.parallel_mode)
-    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(dist_spec.replicate(weight.spec.get_process_group())))
+    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(distspec.replicate(weight.spec.get_process_group())))
     return output
 
 

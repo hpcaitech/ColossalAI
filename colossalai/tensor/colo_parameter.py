@@ -1,7 +1,7 @@
 from .colo_tensor import ColoTensor
 from .const import TensorType
 import torch
-from colossalai.tensor import TensorSpec, dist_spec
+from colossalai.tensor import TensorSpec, distspec
 from copy import copy
 
 
@@ -13,7 +13,7 @@ class ColoParameter(ColoTensor):
     def __new__(cls,
                 data: torch.Tensor,
                 requires_grad: bool = True,
-                spec: TensorSpec = TensorSpec(dist_spec.replicate())) -> 'ColoParameter':
+                spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoParameter':
         if data is None:
             data = torch.empty(0)
         return torch.Tensor._make_subclass(cls, data, requires_grad)
@@ -21,7 +21,7 @@ class ColoParameter(ColoTensor):
     def __init__(self,
                  data: torch.Tensor,
                  requires_grad: bool = True,
-                 spec: TensorSpec = TensorSpec(dist_spec.replicate())) -> None:
+                 spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
         self._spec = copy(spec)
         self._type = TensorType.MODEL
         self._graph_node = None
@@ -29,7 +29,7 @@ class ColoParameter(ColoTensor):
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor,
                           requires_grad: bool = True,
-                          spec: TensorSpec = TensorSpec(dist_spec.replicate())) -> 'ColoParameter':
+                          spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoParameter':
         tensor = tensor.as_subclass(ColoParameter)
         tensor.__init__(tensor, requires_grad=requires_grad, spec=spec)
         return tensor

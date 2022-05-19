@@ -1,4 +1,4 @@
-from colossalai.tensor.dist_spec import _DistSpec
+from colossalai.tensor.distspec import _DistSpec
 from colossalai.nn.layer.utils import divide
 from numpy import prod
 from contextlib import contextmanager
