@@ -77,6 +77,25 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     return output
 
 
+def colo_embedding_1d(mode: str,
+                      input_tensor: ColoTensor,
+                      weight: ColoTensor,
+                      padding_idx: Optional[int] = None,
+                      max_norm: Optional[float] = None,
+                      norm_type: float = 2.0,
+                      scale_grad_by_freq: bool = False,
+                      sparse: bool = False) -> ColoTensor:
+    assert mode in ('row', 'col')
+    funcs = {'row': colo_embedding_1Drow, 'col': colo_embedding_1Dcol}
+    return funcs[mode](input_tensor,
+                       weight,
+                       padding_idx=padding_idx,
+                       max_norm=max_norm,
+                       norm_type=norm_type,
+                       scale_grad_by_freq=scale_grad_by_freq,
+                       sparse=sparse)
+
+
 @colo_op_impl(F.embedding)
 def colo_embedding(input_tensor: GeneralTensor,
                    weight: GeneralTensor,
@@ -104,22 +123,18 @@ def colo_embedding(input_tensor: GeneralTensor,
                         sparse=sparse))
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.spec.is_1D_row():
-            return colo_embedding_1Drow(input_tensor,
-                                        weight,
-                                        padding_idx=padding_idx,
-                                        max_norm=max_norm,
-                                        norm_type=norm_type,
-                                        scale_grad_by_freq=scale_grad_by_freq,
-                                        sparse=sparse)
+            mode = 'row'
         elif weight.spec.is_1D_col():
-            return colo_embedding_1Dcol(input_tensor,
-                                        weight,
-                                        padding_idx=padding_idx,
-                                        max_norm=max_norm,
-                                        norm_type=norm_type,
-                                        scale_grad_by_freq=scale_grad_by_freq,
-                                        sparse=sparse)
+            mode = 'col'
         else:
             raise NotImplementedError
+        return colo_embedding_1d(mode,
+                                 input_tensor,
+                                 weight,
+                                 padding_idx=padding_idx,
+                                 max_norm=max_norm,
+                                 norm_type=norm_type,
+                                 scale_grad_by_freq=scale_grad_by_freq,
+                                 sparse=sparse)
     else:
         raise NotImplementedError

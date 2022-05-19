@@ -1,3 +1,4 @@
+from sqlalchemy import func
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
@@ -43,6 +44,13 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     return output
 
 
+def colo_addmm_1d(mode: str, input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
+                  alpha: Number) -> ColoTensor:
+    assert mode in ('row', 'col')
+    funcs = {'row': colo_addmm_1Drow, 'col': colo_addmm_1Dcol}
+    return funcs[mode](input_tensor, mat1, mat2, beta, alpha)
+
+
 @colo_op_impl(torch.addmm)
 def colo_addmm(input_tensor: GeneralTensor,
                mat1: GeneralTensor,
@@ -68,11 +76,12 @@ def colo_addmm(input_tensor: GeneralTensor,
         ret_tensor = ColoTensor.from_torch_tensor(torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha))
     elif mat2.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if mat2.spec.is_1D_row() and input_tensor.spec.is_gathered():
-            ret_tensor = colo_addmm_1Drow(input_tensor, mat1, mat2, beta, alpha)
+            mode = 'row'
         elif mat2.spec.is_1D_col() and (input_tensor.spec.is_1D_col() or input_tensor.spec.is_1D_row()):
-            ret_tensor = colo_addmm_1Dcol(input_tensor, mat1, mat2, beta, alpha)
+            mode = 'col'
         else:
             raise NotImplementedError
+        ret_tensor = colo_addmm_1d(mode, input_tensor, mat1, mat2, beta, alpha)
     else:
         raise NotImplementedError
 

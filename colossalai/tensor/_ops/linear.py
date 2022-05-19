@@ -49,6 +49,12 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     return output
 
 
+def colo_linear_1d(mode: str, input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> ColoTensor:
+    assert mode in ('row', 'col')
+    funcs = {'row': colo_linear_1Drow, 'col': colo_linear_1Dcol}
+    return funcs[mode](input_tensor, weight, bias)
+
+
 @colo_op_impl(F.linear)
 def colo_linear(input_tensor: GeneralTensor, weight: GeneralTensor, bias: Optional[GeneralTensor] = None):
     """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.linear``.
@@ -68,11 +74,12 @@ def colo_linear(input_tensor: GeneralTensor, weight: GeneralTensor, bias: Option
         ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.spec.is_1D_col() and (bias is None or bias.spec.is_gathered()):
-            ret_tensor = colo_linear_1Drow(input_tensor, weight, bias)
+            mode = 'row'
         elif weight.spec.is_1D_row() and (bias is None or bias.spec.is_1D_row() or bias.spec.is_1D_col()):
-            ret_tensor = colo_linear_1Dcol(input_tensor, weight, bias)
+            mode = 'col'
         else:
             raise NotImplementedError
+        ret_tensor = colo_linear_1d(mode, input_tensor, weight, bias)
     else:
         raise NotImplementedError
 
