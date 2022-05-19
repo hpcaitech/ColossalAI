@@ -1,9 +1,5 @@
 import pytest
 import colossalai
-import os
-import random
-import numpy as np
-import torch
 from colossalai.context.parallel_mode import ParallelMode
 import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
