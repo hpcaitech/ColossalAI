@@ -1,4 +1,3 @@
-from sqlalchemy import func
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
