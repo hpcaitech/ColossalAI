@@ -83,7 +83,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
 
         for name, param in name_list:
             delattr(module, name)
-            setattr(module, name, ColoTensor.init_from_torch_tensor(tensor=param, save_payload=False))
+            setattr(module, name, ColoTensor.from_torch_tensor(param))
 
     def to_layer_list(self, exec_seq=None):
         """
@@ -91,7 +91,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         If exec_seq is None, we will take the module initizing order as execution order.
         """
         if exec_seq is None:
-            #if user do not provide the model executing sequence, we use the initialization order as the executing order.
+            # if user do not provide the model executing sequence, we use the initialization order as the executing order.
             children_name = []
             for child in self._root_children:
                 layer_spec = self._layer_spec_dict[id(child)]
