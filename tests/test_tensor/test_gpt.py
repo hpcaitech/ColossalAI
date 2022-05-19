@@ -175,7 +175,6 @@ def run_dist(rank, world_size, port):
     run_gpt(init_1d_row_spec)
     run_gpt(init_1d_col_spec)
 
-@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
