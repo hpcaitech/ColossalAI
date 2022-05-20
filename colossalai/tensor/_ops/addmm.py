@@ -3,12 +3,12 @@ from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor
 from colossalai.tensor import distspec
+from colossalai.context import ParallelMode
 from ._utils import GeneralTensor, Number, convert_to_colo_tensor
 
 
 def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
                      alpha: Number) -> ColoTensor:
-    parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
     # mat1:S[1] x mat2:S[0] = Output:P
     # beta * input + alpha * All-Reduce(Output) = res
 
@@ -18,7 +18,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # Output:P
     partial_output = torch.mm(mat1, mat2)
     # Reduce(Output)
-    output = reduce_input(partial_output, parallel_action.parallel_mode)
+    output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
     # input
     assert not input_tensor.has_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor + alpha * output
@@ -29,13 +29,13 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
 def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
                      alpha: Number) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
-    parallel_action = mat2.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
+    parallel_action = mat2.spec.parallel_action
     mat1 = mat1.convert_to_dist_spec(distspec.replicate(mat2.spec.get_process_group()))
-    mat1 = reduce_grad(mat1, parallel_action.parallel_mode)
+    mat1 = reduce_grad(mat1, ParallelMode.PARALLEL_1D)
 
     output_parallel = torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha)
     output_spec = TensorSpec(distspec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group_size()]),
-                             [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)])
+                             ParallelAction(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
     if parallel_action.gather_out:
         # All-Gather(Output)
