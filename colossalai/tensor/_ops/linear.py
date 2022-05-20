@@ -1,16 +1,14 @@
-import torch
 import torch.nn.functional as F
-import torch.distributed as dist
 from typing import Optional
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, distspec
 from colossalai.tensor.graph import GraphOpNode, GraphGlobalEnv
+from colossalai.context import ParallelMode
 from ._utils import GeneralTensor, convert_to_colo_tensor
 
 
 def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> ColoTensor:
-    parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
     # Input:S[1] x Weight:S[0] = Output:P
     # All-Reduce(Output) + bias = res
     # Input:S[1]
@@ -20,7 +18,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # Output:P
     partial_output = F.linear(input_tensor, weight)
     # Reduce(Output)
-    output = reduce_input(partial_output, parallel_action.parallel_mode)
+    output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
     # Bias
     if bias is not None:
         assert not bias.has_spec(), 'Invalid bias spec for 1Drow Linear op'
@@ -34,15 +32,16 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
     # All-Gather(Output)
     # Input:B
-    parallel_action = weight.spec.get_action_by_compute_pattern(ComputePattern.TP1D)
+    parallel_action = weight.spec.parallel_action
     input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
-    input_parallel = reduce_grad(input_tensor, parallel_action.parallel_mode)
+    input_parallel = reduce_grad(input_tensor, ParallelMode.PARALLEL_1D)
 
     output_parallel = F.linear(input_parallel, weight, bias)
-    output = ColoTensor.from_torch_tensor(
-        output_parallel,
-        spec=TensorSpec(distspec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group_size()]),
-                        [ParallelAction(priority=1, parallel_mode=parallel_action.parallel_mode)]))
+    output = ColoTensor.from_torch_tensor(output_parallel,
+                                          spec=TensorSpec(
+                                              distspec.shard(weight.spec.get_process_group(), [-1],
+                                                             [weight.spec.get_process_group_size()]),
+                                              ParallelAction(ComputePattern.TP1D)))
     if parallel_action.gather_out:
         # All-Gather(Output)
         output = output.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))

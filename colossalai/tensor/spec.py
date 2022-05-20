@@ -1,26 +1,21 @@
 import torch.distributed as dist
 from enum import Enum
-from typing import List
-from colossalai.context.parallel_mode import ParallelMode
+from typing import List, Optional
 from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
 
 
 class ComputePattern(Enum):
     TP1D = 0
-    ZeRO = 1
-    DP = 2
+    TP2D = 1
+    TP2P5D = 2
+    TP3D = 3
 
 
 class ParallelAction(object):
 
-    def __init__(self,
-                 priority=0,
-                 compute_pattern=ComputePattern.DP,
-                 parallel_mode=ParallelMode.DATA,
-                 gather_out=True) -> None:
-        self.priority = priority
+    def __init__(self, compute_pattern: ComputePattern, gather_out: bool = True) -> None:
+        assert isinstance(compute_pattern, ComputePattern)
         self.compute_pattern = compute_pattern
-        self.parallel_mode = parallel_mode
         self.gather_out = gather_out
 
 
@@ -48,32 +43,9 @@ class TensorSpec(object):
     # We perform Linear Op according to compute pattern of TP1D_Linear.
     # After Linear Op, we split the tensors according to ZeRO.
 
-    def __init__(self, dist_spec: _DistSpec, parallel_action_list: List[ParallelAction] = []):
-        self._parallel_action_list = parallel_action_list
+    def __init__(self, dist_spec: _DistSpec, parallel_action: Optional[ParallelAction] = None):
+        self.parallel_action = parallel_action
         self.dist_spec = dist_spec
-        self.sort()
-
-    @property
-    def parallel_action_list(self):
-        return self._parallel_action_list
-
-    @property
-    def num_action(self):
-        return len(self._parallel_action_list)
-
-    @property
-    def compute_patterns(self):
-        return [parallel_action.compute_pattern for parallel_action in self._parallel_action_list]
-
-    def sort(self):
-        if len(self._parallel_action_list) > 0:
-            self._parallel_action_list.sort(key=lambda parallel_action: parallel_action.priority)
-
-    def get_action_by_compute_pattern(self, compute_pattern: ComputePattern):
-        for parallel_action in self._parallel_action_list:
-            if parallel_action.compute_pattern == compute_pattern:
-                return parallel_action
-        return None
 
     def get_process_group(self):
         return self.dist_spec.process_group
@@ -99,4 +71,4 @@ class TensorSpec(object):
             and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
 
     def has_compute_pattern(self, compute_pattern: ComputePattern):
-        return self.get_action_by_compute_pattern(compute_pattern) is not None
+        return self.parallel_action.compute_pattern == compute_pattern

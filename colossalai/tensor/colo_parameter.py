@@ -33,3 +33,6 @@ class ColoParameter(ColoTensor):
         tensor = tensor.as_subclass(ColoParameter)
         tensor.__init__(tensor, requires_grad=requires_grad, spec=spec)
         return tensor
+
+    def __repr__(self):
+        return f'ColoParameter: {torch.Tensor.__repr__(self)}'
