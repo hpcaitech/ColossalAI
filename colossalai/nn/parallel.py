@@ -47,11 +47,12 @@ class ColoDDP(torch.nn.Module):
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
         if self.dp_world_size > 1:
+            grad = grad / self.dp_world_size
             self.comm_stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(self.comm_stream):
-                grad = grad / self.dp_world_size
                 dist.all_reduce(grad, group=gpc.get_group(ParallelMode.DATA))
                 ColoDDP._save_grad(p, grad)
+            grad.record_stream(self.comm_stream)
         else:
             ColoDDP._save_grad(p, grad)
         return empty_grad

@@ -9,7 +9,7 @@ from colossalai.utils import ColoInitContext
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, distspec
 from colossalai.core import global_context as gpc
 from functools import partial
-from _utils import tensor_equal, tensor_shard_equal
+from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ColoDDP
@@ -64,6 +64,7 @@ def run_gpt(init_spec_func, use_ddp):
     check_param_equal(model, torch_model)
     model.train()
     torch_model.train()
+    set_seed(gpc.get_local_rank(ParallelMode.DATA))
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
         logits = model(input_ids, attn_mask)
         torch_logits = torch_model(input_ids, attn_mask)
