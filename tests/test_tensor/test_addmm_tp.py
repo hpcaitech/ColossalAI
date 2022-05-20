@@ -41,7 +41,7 @@ class Conv1D(nn.Module):
 def init_1d_row(weight, bias):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
+        ParallelAction(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
 
@@ -49,7 +49,7 @@ def init_1d_row(weight, bias):
 def init_1d_col(weight, bias):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
+        ParallelAction(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
         bias.set_spec(spec)

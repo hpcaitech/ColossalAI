@@ -20,19 +20,15 @@ from _utils import set_seed
 def init_1d_row_linear(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
+        ParallelAction(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
 
 
 def init_1d_col_linear(weight, gather_out=True):
     spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]), [
-            ParallelAction(priority=1,
-                           compute_pattern=ComputePattern.TP1D,
-                           parallel_mode=ParallelMode.PARALLEL_1D,
-                           gather_out=gather_out)
-        ])
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        ParallelAction(ComputePattern.TP1D, gather_out=gather_out))
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
 
@@ -40,7 +36,7 @@ def init_1d_col_linear(weight, gather_out=True):
 def init_1d_row_embedding(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
+        ParallelAction(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
 
@@ -48,7 +44,7 @@ def init_1d_row_embedding(weight):
 def init_1d_col_embedding(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        [ParallelAction(priority=1, compute_pattern=ComputePattern.TP1D, parallel_mode=ParallelMode.PARALLEL_1D)])
+        ParallelAction(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
 
