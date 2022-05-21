@@ -63,6 +63,10 @@ def run_dist_profiling(rank: int, world_size: int, port_list: List[int], config_
         colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
         timer = MultiTimer()
 
+        # 1D parallel should be skipped if batch size is not able to be divided exactly by 1D parallel size.
+        if config.parallel.tensor.mode == '1d' and hyperparams.batch_size % config.parallel.tensor.size != 0:
+            continue
+
         if hyperparams.model == 'mlp':
             model = MLP(dim=hyperparams.dimension, layers=hyperparams.layers)
         else:
