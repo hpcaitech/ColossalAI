@@ -1,40 +1,37 @@
-from colossalai.tensor.spec import ShardPattern
 import torch
+import torch.nn.functional as F
+from typing import Optional
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor
 from colossalai.nn.loss.loss_1d import VocabParallelCrossEntropyLoss1D
+from ._utils import GeneralTensor, convert_to_colo_tensor
 
-@colo_op_impl(torch.nn.functional.cross_entropy)
-def colo_cross_entropy(types, args=(), kwargs=None, pg=None):
-    arg_num = len(args)
 
-    if arg_num > 0:
-        input_tensor = args[0]
-    if arg_num > 1:
-        target = args[1]
-    if arg_num > 2:
-        weight = args[2]
+@colo_op_impl(F.cross_entropy)
+def colo_cross_entropy(input_tensor: GeneralTensor,
+                       target: GeneralTensor,
+                       weight: Optional[GeneralTensor] = None,
+                       size_average: Optional[bool] = None,
+                       ignore_index: int = -100,
+                       reduce: Optional[bool] = None,
+                       reduction: str = "mean",
+                       label_smoothing: float = 0.0):
+    input_tensor, target, weight = tuple(map(convert_to_colo_tensor, (input_tensor, target, weight)))
 
-    if 'input' in kwargs:
-        input_tensor = kwargs.pop('input')
-    if 'target' in kwargs:
-        target = kwargs.pop('target')
-    if 'weight' in kwargs:
-        weight = kwargs.pop('weight')
-
-    if not isinstance(input_tensor, ColoTensor):
-        input_tensor = ColoTensor.init_from_torch_tensor(input_tensor)
-    if isinstance(target, ColoTensor):
-        target = target.torch_tensor()
-
-    if input_tensor.is_gathered(): # Input is gathered
-        # TODO(jzy) Shall we make the result of loss function a ColoTensor?
-        return ColoTensor.init_from_torch_tensor(torch.nn.functional.cross_entropy(
-            input_tensor.torch_tensor(), target, weight))
-    elif input_tensor.has_spec() and input_tensor.shard_spec.num_action == 1:    # Single Model Parallel Applied
-        if input_tensor.shard_pattern == ShardPattern.Col:
-            return ColoTensor.init_from_torch_tensor(
-                VocabParallelCrossEntropyLoss1D()(input_tensor.torch_tensor(), target))
+    if input_tensor.spec.is_gathered():    # Input is gathered
+        output = F.cross_entropy(input_tensor,
+                                 target,
+                                 weight=weight,
+                                 size_average=size_average,
+                                 ignore_index=ignore_index,
+                                 reduce=reduce,
+                                 reduction=reduction,
+                                 label_smoothing=label_smoothing)
+        return ColoTensor.from_torch_tensor(output)
+    elif input_tensor.has_spec():    # Single Model Parallel Applied
+        if input_tensor.spec.is_1D_col():
+            output = VocabParallelCrossEntropyLoss1D()(input_tensor, target)
+            return ColoTensor.from_torch_tensor(output)
         else:
             raise NotImplementedError
     else:

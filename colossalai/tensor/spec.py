@@ -1,35 +1,21 @@
+import torch.distributed as dist
 from enum import Enum
-from typing import Tuple, List
-from colossalai.context.parallel_mode import ParallelMode
+from typing import List, Optional
+from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
 
 
 class ComputePattern(Enum):
-    TP1DRow_Linear = 1
-    TP1DCol_Linear = 2
-    TP1DRow_Embedding = 3
-    TP1DCol_Embedding = 4
-    TP1DRow_mm = 5
-    TP1DCol_mm = 6
-    ZeRO = 7
-    DP = 8
-
-
-class ShardPattern(Enum):
-    NA = 0
-    Row = 1
-    Col = 2
+    TP1D = 0
+    TP2D = 1
+    TP2P5D = 2
+    TP3D = 3
 
 
 class ParallelAction(object):
 
-    def __init__(self,
-                 priority=0,
-                 compute_pattern=ComputePattern.DP,
-                 parallel_mode=ParallelMode.DATA,
-                 gather_out=True) -> None:
-        self.priority = priority
+    def __init__(self, compute_pattern: ComputePattern, gather_out: bool = True) -> None:
+        assert isinstance(compute_pattern, ComputePattern)
         self.compute_pattern = compute_pattern
-        self.parallel_mode = parallel_mode
         self.gather_out = gather_out
 
 
@@ -47,43 +33,42 @@ class TensorSpec(object):
     # using ZeRO with DP-degree = 4 and 1DRowTP with TP-degree = 2.
     # parallel_action_list = [
     # ParallelAction(10, ComputePattern.ZeRO, gpc.get_group(ParallelMode.DATA)),
-    # ParallelAction(1, ComputePattern.TP1DRow_Linear, gpc.get_group(ParallelMode.PARALLEL_1D))
+    # ParallelAction(1, ComputePattern.TP1D_Linear, gpc.get_group(ParallelMode.PARALLEL_1D))
     # ]
     # When the ColoTensor is initialized,
     # we first splitting tensor according to ParallelAction of ZeRO,
-    # then splitting tensor according to ParallelAction of TP1DRow_Linear.
+    # then splitting tensor according to ParallelAction of TP1D_Linear.
     # During Linear computation
     # Before Linear Op, we gather the tensors according to ZeRO.
-    # We perform Linear Op according to compute pattern of TP1DRow_Linear.
+    # We perform Linear Op according to compute pattern of TP1D_Linear.
     # After Linear Op, we split the tensors according to ZeRO.
 
-    def __init__(self, parallel_action_list: List[ParallelAction] = [], shard_pattern: ShardPattern = ShardPattern.NA):
-        self._parallel_action_list = parallel_action_list
-        self._shard_pattern = shard_pattern
-        self.sort()
+    def __init__(self, dist_spec: _DistSpec, parallel_action: Optional[ParallelAction] = None):
+        self.parallel_action = parallel_action
+        self.dist_spec = dist_spec
 
-    @property
-    def parallel_action_list(self):
-        return self._parallel_action_list
+    def get_process_group(self):
+        return self.dist_spec.process_group
 
-    @property
-    def num_action(self):
-        return len(self._parallel_action_list)
+    def get_process_group_size(self):
+        return dist.get_world_size(self.dist_spec.process_group)
 
-    @property
-    def compute_patterns(self):
-        return [parallel_action.compute_pattern for parallel_action in self._parallel_action_list]
+    def get_placement(self):
+        return self.dist_spec.placement
 
-    @property
-    def shard_pattern(self):
-        return self._shard_pattern
+    def is_gathered(self):
+        return self.dist_spec.placement == DistPlacementPattern.REPLICATE \
+            or (len(self.dist_spec.num_partitions) == 1
+                and self.dist_spec.num_partitions[0] == 1) \
+            or (self.dist_spec.process_group.size() == 1)
 
-    def sort(self):
-        if len(self._parallel_action_list) > 0:
-            self._parallel_action_list.sort(key=lambda parallel_action: parallel_action.priority)
+    def is_1D_col(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD \
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == -1
 
-    def get_action_by_compute_pattern(self, compute_pattern: ComputePattern):
-        for parallel_action in self._parallel_action_list:
-            if parallel_action.compute_pattern == compute_pattern:
-                return parallel_action
-        return None
+    def is_1D_row(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD \
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
+
+    def has_compute_pattern(self, compute_pattern: ComputePattern):
+        return self.parallel_action.compute_pattern == compute_pattern

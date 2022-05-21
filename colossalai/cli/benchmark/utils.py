@@ -1,10 +1,8 @@
 import math
 import time
-from grpc import Call
 import torch
 
 from colossalai.utils import MultiTimer
-from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode, Config
 from typing import List, Dict, Tuple, Callable
 
