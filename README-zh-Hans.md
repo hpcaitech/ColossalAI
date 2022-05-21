@@ -83,7 +83,7 @@ Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让�
   - 流水线并行
   - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
   - [序列并行](https://arxiv.org/abs/2105.13120)
-  - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/2108.05818)
+  - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/1910.02054)
 - 异构内存管理
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
