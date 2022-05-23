@@ -48,9 +48,15 @@ def find_all_configs(device_cnt: int) -> List[Dict]:
     """
 
     def _is_square(num):
+        # 2D parallel should be implemented with at least 2 devices.
+        if num <= 1:
+            return False
         return math.floor(math.sqrt(num))**2 == num
 
     def _is_cube(num):
+        # 3D parallel should be implemented with at least 2 devices.
+        if num <= 1:
+            return False
         return math.floor(num**(1. / 3.))**3 == num
 
     config_list = []
@@ -63,7 +69,7 @@ def find_all_configs(device_cnt: int) -> List[Dict]:
     config = dict(parallel=dict(tensor=dict(size=device_cnt, mode='1d')))
     config_list.append(config)
 
-    # add 1D config only if device_cnt is a square
+    # add 2D config only if device_cnt is a square
     if _is_square(device_cnt):
         config = dict(parallel=dict(tensor=dict(size=device_cnt, mode='2d')))
         config_list.append(config)

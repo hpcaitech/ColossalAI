@@ -23,6 +23,8 @@ def run_benchmark(args: Config) -> None:
     if args.gpus is None:
         click.echo("Error: --num_gpus is not given")
         exit()
+    if args.gpus <= 1:
+        click.echo("Warning: tensor parallel will be activated with at least 2 devices.")
 
     click.echo("=== Benchmarking Parameters ===")
     for k, v in args.items():
@@ -62,6 +64,13 @@ def run_dist_profiling(rank: int, world_size: int, port_list: List[int], config_
     for config, port in zip(config_list, port_list):
         colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
         timer = MultiTimer()
+
+        # 1D parallel should be skipped if in_features or out_features is not able to be divided exactly by 1D parallel size.
+        if config.parallel.tensor.mode == '1d' and hyperparams.dimension % config.parallel.tensor.size != 0:
+            click.echo(
+                "1D parallel will be skipped because in_features or out_features is not able to be divided exactly by 1D parallel size."
+            )
+            continue
 
         if hyperparams.model == 'mlp':
             model = MLP(dim=hyperparams.dimension, layers=hyperparams.layers)
