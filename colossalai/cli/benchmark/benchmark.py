@@ -67,9 +67,9 @@ def run_dist_profiling(rank: int, world_size: int, port_list: List[int], config_
 
         # 1D parallel should be skipped if in_features or out_features is not able to be divided exactly by 1D parallel size.
         if config.parallel.tensor.mode == '1d' and hyperparams.dimension % config.parallel.tensor.size != 0:
-            logger.warning(
-                "1D parallel will be skipped because in_features or out_features is not able to be divided exactly by 1D parallel size.",
-                ranks=[0])
+            click.echo(
+                "1D parallel will be skipped because in_features or out_features is not able to be divided exactly by 1D parallel size."
+            )
             continue
 
         if hyperparams.model == 'mlp':
