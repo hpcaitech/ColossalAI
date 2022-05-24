@@ -1,0 +1,81 @@
+name: Release bdist wheel for Nightly versions
+
+on:
+  schedule:
+    # run at 00:00 of every Sunday 
+    - cron:  '0 0 * * 6'
+  workflow_dispatch:
+    inputs:
+      cuda_version:
+        type: choice
+        description: CUDA Version
+        default: 'all'
+        required: true
+        options:
+        - all
+        - "11.3"
+        - "10.2"
+jobs:
+  matrix_preparation:
+    name: Prepare Container List
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - id: set-matrix
+      run: |
+        [ "${{github.event.inputs.cuda_version}}" != "" ] && matrix="[\"hpcaitech/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
+        [ "${{github.event.inputs.cuda_version}}" == "" ] || [ "${{github.event.inputs.version}}" == "all" ] && \
+          matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
+        echo $matrix
+        echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
+
+  build:
+    name: Release bdist wheels
+    needs: matrix_preparation
+    if: github.repository == 'hpcaitech/ColossalAI' && contains(fromJson('["FrankLeeeee", "ver217", "feifeibear", "kurisusnowdeng"]'), github.actor)
+    runs-on: [self-hosted, gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: ${{ matrix.container }}
+      options: --gpus all --rm
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      # cub is for cuda 10.2
+      - name: Copy scripts and checkout
+        run: |
+          cp -r ./.github/workflows/scripts/* ./
+          ln -s /github/home/pip_wheels ./pip_wheels
+          wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+          unzip 1.8.0.zip
+      - name: Build bdist wheel
+        run: |
+          pip install beautifulsoup4 requests packaging
+          python ./build_colossalai_wheel.py --nightly
+      - name: 🚀 Deploy
+        uses: garygrossgarten/github-action-scp@release
+        with:
+          local: all_dist
+          remote: ${{ secrets.PRIVATE_PYPI_NIGHTLY_DIR }}
+          host: ${{ secrets.PRIVATE_PYPI_HOST }}
+          username: ${{ secrets.PRIVATE_PYPI_USER }}
+          password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
+  remove_old_build:
+    name: Remove old nightly build
+    needs: build
+    steps:
+      - name: executing remote ssh commands using password
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRIVATE_PYPI_HOST }}
+          username: ${{ secrets.PRIVATE_PYPI_USER }}
+          password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
+          script: |
+            cd $build_dir
+            find . -type f -mtime +0 -exec rm -f {} +
+        env:
+          build_dir: ${{ secrets.PRIVATE_PYPI_NIGHTLY_DIR }}
