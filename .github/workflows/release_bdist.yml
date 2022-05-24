@@ -28,9 +28,9 @@ jobs:
     steps:
     - id: set-matrix
       run: |
-        [ "${{github.event.inputs.cuda_version}}" != "" ] && matrix="[\"frankleeeee/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
+        [ "${{github.event.inputs.cuda_version}}" != "" ] && matrix="[\"hpcaitech/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
         [ "${{github.event.inputs.cuda_version}}" == "" ] || [ "${{github.event.inputs.version}}" == "all" ] && \
-          matrix="[\"frankleeeee/cuda-conda:11.3\", \"frankleeeee/cuda-conda:11.1\", \"frankleeeee/cuda-conda:10.2\"]"
+          matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:11.1\", \"hpcaitech/cuda-conda:10.2\"]"
         echo $matrix
         echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
 
