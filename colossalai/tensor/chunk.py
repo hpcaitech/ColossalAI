@@ -84,18 +84,28 @@ class Chunk:
         self._update_tensors_ptr()
 
     def reduce(self) -> None:
-        self.data.div_(gpc.get_world_size(ParallelMode.DATA))
+        self.data = self.data.to(get_current_device())
         dist.reduce(self.data, self.src_rank, group=gpc.get_group(ParallelMode.DATA))
         self._update_tensors_ptr()
+        for tensor_info in self.tensors_info.values():
+            tensor_info.state = TensorState.HOLD
 
     def all_reduce(self) -> None:
-        self.data.div_(gpc.get_world_size(ParallelMode.DATA))
+        self.data = self.data.to(get_current_device())
         dist.all_reduce(self.data, group=gpc.get_group(ParallelMode.DATA))
         self._update_tensors_ptr()
+        for tensor_info in self.tensors_info.values():
+            tensor_info.state = TensorState.HOLD
 
     def tensor_trans_state(self, tensor: torch.Tensor, tensor_state: TensorState) -> None:
         assert tensor != TensorState.FREE, 'Can only set a chunk of tesors to FREE'
         self.tensors_info[tensor].state = tensor_state
+
+    def update_tensor(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
+        tensor_info = self.tensors_info[tensor]
+        self.data[tensor_info.offset:tensor_info.end].copy_(data_slice.view(-1))
+        tensor.storage().resize_(0)
+        tensor.data = self.data[tensor_info.offset:tensor_info.end].view_as(tensor)
 
     @property
     def can_release(self) -> bool:
@@ -197,3 +207,11 @@ class ChunkManager:
             chunk.reduce()
         else:
             chunk.all_reduce()
+
+    def update_tensor(self, tensor: torch.Tensor, data: torch.Tensor) -> None:
+        chunk = self.tensor_chunk_map[tensor]
+        chunk.update_tensor(tensor, data)
+
+    def is_chunk_free(self, tensor: torch.Tensor) -> bool:
+        chunk = self.tensor_chunk_map[tensor]
+        return chunk.is_free
