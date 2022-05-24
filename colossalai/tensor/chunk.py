@@ -83,7 +83,18 @@ class Chunk:
         self.data = self.data.to(device)
         self._update_tensors_ptr()
 
+    def reduce(self) -> None:
+        self.data.div_(gpc.get_world_size(ParallelMode.DATA))
+        dist.reduce(self.data, self.src_rank, group=gpc.get_group(ParallelMode.DATA))
+        self._update_tensors_ptr()
+
+    def all_reduce(self) -> None:
+        self.data.div_(gpc.get_world_size(ParallelMode.DATA))
+        dist.all_reduce(self.data, group=gpc.get_group(ParallelMode.DATA))
+        self._update_tensors_ptr()
+
     def tensor_trans_state(self, tensor: torch.Tensor, tensor_state: TensorState) -> None:
+        assert tensor != TensorState.FREE, 'Can only set a chunk of tesors to FREE'
         self.tensors_info[tensor].state = tensor_state
 
     @property
@@ -99,6 +110,17 @@ class Chunk:
             if tensor_info.state in (TensorState.COMPUTE, TensorState.READY_FOR_REDUCE):
                 return False
         return True
+
+    @property
+    def can_reduce(self) -> bool:
+        for tensor_info in self.tensors_info.values():
+            if tensor_info.state != TensorState.READY_FOR_REDUCE:
+                return False
+        return True
+
+    @property
+    def is_free(self) -> bool:
+        return self.data.numel() == 0
 
 
 class ChunkManager:
@@ -166,3 +188,12 @@ class ChunkManager:
     def trans_tensor_state(self, tensor: torch.Tensor, state: TensorState) -> None:
         chunk = self.tensor_chunk_map[tensor]
         chunk.tensor_trans_state(tensor, state)
+
+    def reduce_chunk(self, tensor: torch.Tensor) -> None:
+        chunk = self.tensor_chunk_map[tensor]
+        if not chunk.can_reduce:
+            return
+        if self.enable_distributed_storage:
+            chunk.reduce()
+        else:
+            chunk.all_reduce()
