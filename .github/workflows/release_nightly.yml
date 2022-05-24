@@ -66,6 +66,7 @@ jobs:
           password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
   remove_old_build:
     name: Remove old nightly build
+    runs-on: ubuntu-latest
     needs: build
     steps:
       - name: executing remote ssh commands using password
