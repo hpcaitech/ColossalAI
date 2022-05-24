@@ -24,9 +24,8 @@ jobs:
     steps:
     - id: set-matrix
       run: |
-        [ "${{github.event.inputs.cuda_version}}" != "" ] && matrix="[\"hpcaitech/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
-        [ "${{github.event.inputs.cuda_version}}" == "" ] || [ "${{github.event.inputs.version}}" == "all" ] && \
-          matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
+        [ "${{github.event.inputs.cuda_version}}" != "all" ] && matrix="[\"hpcaitech/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
+        [ "${{github.event.inputs.cuda_version}}" == "all" ] && matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
         echo $matrix
         echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
 
@@ -66,6 +65,7 @@ jobs:
           password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
   remove_old_build:
     name: Remove old nightly build
+    runs-on: ubuntu-latest
     needs: build
     steps:
       - name: executing remote ssh commands using password
