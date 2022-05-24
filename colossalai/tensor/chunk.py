@@ -17,7 +17,8 @@ class TensorState(Enum):
     READY_FOR_REDUCE = 4
 
 
-class TensorInfo(dataclass):
+@dataclass
+class TensorInfo:
     state: TensorState
     offset: int
     end: int
