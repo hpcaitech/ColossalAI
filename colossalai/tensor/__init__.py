@@ -8,8 +8,11 @@ from ._ops import *
 from .optim.colo_optimizer import ColoOptimizer
 from . import distspec
 from .dist_spec_mgr import DistSpecManager
+from .param_op_hook import ParamOpHook, use_param_op_hooks
+from .chunk import ChunkManager, TensorState
 
 __all__ = [
     'ColoTensor', 'convert_parameter', 'colo_op_impl', 'ComputePattern', 'TensorSpec', 'ParallelAction',
-    'named_params_with_colotensor', 'ColoOptimizer', 'ColoParameter', 'distspec', 'DistSpecManager'
+    'named_params_with_colotensor', 'ColoOptimizer', 'ColoParameter', 'distspec', 'DistSpecManager', 'ParamOpHook',
+    'use_param_op_hooks', 'ChunkManager', 'TensorState'
 ]
