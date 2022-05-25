@@ -13,7 +13,8 @@ class ColoParameter(ColoTensor):
     def __new__(cls,
                 data: torch.Tensor,
                 requires_grad: bool = True,
-                spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoParameter':
+                spec: TensorSpec = TensorSpec(distspec.replicate()),
+                lazy_init: bool = False) -> 'ColoParameter':
         if data is None:
             data = torch.empty(0)
         return torch.Tensor._make_subclass(cls, data, requires_grad)
@@ -21,10 +22,13 @@ class ColoParameter(ColoTensor):
     def __init__(self,
                  data: torch.Tensor,
                  requires_grad: bool = True,
-                 spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
+                 spec: TensorSpec = TensorSpec(distspec.replicate()),
+                 lazy_init: bool = False) -> None:
         self._spec = copy(spec)
         self._type = TensorType.MODEL
         self._graph_node = None
+        if lazy_init:
+            self.free()
 
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor,
@@ -35,4 +39,6 @@ class ColoParameter(ColoTensor):
         return tensor
 
     def __repr__(self):
+        if self._is_freed:
+            return f'ColoParameter: lazy_init=True, shape={self.shape}, dtype={self.dtype}, device={self.device}'
         return f'ColoParameter: {torch.Tensor.__repr__(self)}'

@@ -25,15 +25,24 @@ class ColoTensor(torch.Tensor):
     4. It supports distributing the tensor's payload to the shards among processes. (TODO)
     """
 
-    def __new__(cls, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
+    def __new__(cls,
+                data: torch.Tensor,
+                spec: TensorSpec = TensorSpec(distspec.replicate()),
+                lazy_init: bool = False) -> 'ColoTensor':
         if data is None:
             data = torch.empty(0)
         return torch.Tensor._make_subclass(cls, data, data.requires_grad)
 
-    def __init__(self, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
+    def __init__(self,
+                 data: torch.Tensor,
+                 spec: TensorSpec = TensorSpec(distspec.replicate()),
+                 lazy_init: bool = False) -> None:
         self._spec = copy(spec)
         self._type = TensorType.NONMODEL
         self._graph_node = None
+        self._is_freed = lazy_init
+        if lazy_init:
+            self.free()
 
     @property
     def spec(self) -> TensorSpec:
@@ -69,6 +78,8 @@ class ColoTensor(torch.Tensor):
                 return _convert_output(ret)
 
     def __repr__(self):
+        if self._is_freed:
+            return f'ColoTensor: lazy_init=True, shape={self.shape}, dtype={self.dtype}, device={self.device}'
         return f'ColoTensor: {super().__repr__()}'
 
     def is_model_data(self) -> bool:
@@ -100,3 +111,20 @@ class ColoTensor(torch.Tensor):
             tensor = ColoTensor(data, spec=copy(self.spec))
             memo[id(self)] = tensor
             return tensor
+
+    def free(self) -> None:
+        if self.storage().size() > 0:
+            assert self.storage_offset() == 0
+            self.storage().resize_(0)
+            self._is_freed = True
+
+    def malloc(self) -> None:
+        if self.storage().size() == self.numel():
+            return
+        assert self.storage().size() == 0
+        self.storage().resize_(self.numel())
+        self._is_freed = False
+
+    @property
+    def is_freed(self):
+        return self._is_freed
