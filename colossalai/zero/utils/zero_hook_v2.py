@@ -26,10 +26,8 @@ class ZeROHookV2(ParamOpHook):
             self.chunk_manager.access_chunk(p)
 
     def post_forward(self, params: List[torch.Tensor]) -> None:
-        tensor_state = TensorState.HOLD
-        if self.training_phase == TrainingPhase.BACKWARD:
-            tensor_state = TensorState.HOLD_AFTER_BWD
         for p in params:
+            tensor_state = TensorState.HOLD if self.training_phase == TrainingPhase.FORWARD or not p.requires_grad else TensorState.HOLD_AFTER_BWD
             self.chunk_manager.trans_tensor_state(p, tensor_state)
         for p in params:
             self.chunk_manager.release_chunk(p)
