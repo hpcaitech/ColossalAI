@@ -3,7 +3,7 @@ from colossalai.tensor import ComputePattern
 from typing import List, Dict
 
 
-class ColoModuleHandler(object):
+class ColoModule(object):
     def __init__(self):
         self._shard_params: List[str] = []
         # Example:

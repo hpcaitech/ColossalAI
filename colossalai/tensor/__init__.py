@@ -9,7 +9,7 @@ from .optim.colo_optimizer import ColoOptimizer
 from . import distspec
 from .dist_spec_mgr import DistSpecManager
 from .module_utils import register_colo_module, is_colo_module, get_colo_module, init_colo_module, check_colo_module
-from .module_handlers import ColoLinear
+from .modules import ColoLinear
 
 __all__ = [
     'ColoTensor', 'convert_parameter', 'colo_op_impl', 'ComputePattern', 'TensorSpec', 'ParallelAction',

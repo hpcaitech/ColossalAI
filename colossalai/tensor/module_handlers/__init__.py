@@ -1,1 +1,0 @@
-from .linear import ColoLinear

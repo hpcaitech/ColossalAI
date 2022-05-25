@@ -1,9 +1,9 @@
-from .colo_module_handler import ColoModuleHandler
+from .colo_module import ColoModule
 from colossalai.tensor import ComputePattern, distspec
 from colossalai.core import global_context as gpc
 from colossalai.context.parallel_mode import ParallelMode
 
-class ColoLinear(ColoModuleHandler):
+class ColoLinear(ColoModule):
     def __init__(self):
         super(ColoLinear, self).__init__()
         self._register_shard_params(['weight', 'bias'])

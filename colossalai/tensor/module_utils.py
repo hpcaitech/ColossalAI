@@ -1,13 +1,14 @@
 from typing import Dict
 from colossalai.tensor import ColoParameter, ParallelAction, TensorSpec
+from .modules import ColoModule
 import torch
 
-_COLOSSAL_MODULES: Dict[str, object] = {}
+_COLOSSAL_MODULES: Dict[type, ColoModule] = {}
 
 
-def register_colo_module(module: torch.nn.Module, colo_module):
+def register_colo_module(module_type: type, colo_module: ColoModule):
     global _COLOSSAL_MODULES
-    _COLOSSAL_MODULES[module] = colo_module
+    _COLOSSAL_MODULES[module_type] = colo_module
 
 def is_colo_module(module: torch.nn.Module):
     global _COLOSSAL_MODULES
@@ -22,32 +23,29 @@ def get_colo_module(module: torch.nn.Module):
 
 def check_colo_module(module: torch.nn.Module, recursive=True):
     if is_colo_module(module):
-        handler = get_colo_module(module)
-        param_names = handler.get_param_names()
+        colo_module = get_colo_module(module)
+        param_names = colo_module.get_param_names()
         compute_pattern = None
         for param_name in param_names:
             param = module.get_parameter(param_name)
             if not isinstance(param, ColoParameter):
-                print(f'Invalid ColoParameter spec: {param} in {module} is not a ColoParameter .')
-                raise
+                raise Exception(f'Invalid ColoParameter spec: {param} in {module} is not a ColoParameter.')
             if param.has_spec():  
                 cur_compute_pattern = param.spec.parallel_action.compute_pattern
                 if compute_pattern is None:
                     compute_pattern = cur_compute_pattern
                 else:
                     if cur_compute_pattern != compute_pattern:
-                        print(f'Invalid ColoParameter spec: Params in {module} have different compute_pattern.')
-                        raise
+                        raise Exception(f'Invalid ColoParameter spec: Params in {module} have different compute_pattern.')
             else:
                 continue
             
         if compute_pattern is not None:
-            if not handler.has_compute_pattern(compute_pattern):
-                print(f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
-                raise
+            if not colo_module.has_compute_pattern(compute_pattern):
+                raise Exception(f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
 
             match_specs = False
-            allowed_specs = handler.get_dist_specs(compute_pattern)
+            allowed_specs = colo_module.get_dist_specs(compute_pattern)
             for _, param_specs in allowed_specs.items():
                 cur_match = True
                 for param_name, dist_spec in param_specs.items():
@@ -64,8 +62,7 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
                     match_specs = True
                     break
             if match_specs == False:
-                print(f'Invalid ColoParameter spec: Params in {module} are incorrectly sharded.')
-                raise
+                raise Exception(f'Invalid ColoParameter spec: Params in {module} are incorrectly sharded.')
     
     if recursive == True:
         for submodule in module.children():
@@ -76,10 +73,10 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
     if is_colo_module(module):
         # for each param
         # set DistSpec and ParallelAction
-        handler = get_colo_module(module)
-        if not handler.has_compute_pattern_with_label(compute_pattern, label=label):
+        colo_module = get_colo_module(module)
+        if not colo_module.has_compute_pattern_with_label(compute_pattern, label=label):
             raise NotImplementedError
-        for param_name, dist_spec in handler.get_dist_specs_with_label(compute_pattern, label=label).items():
+        for param_name, dist_spec in colo_module.get_dist_specs_with_label(compute_pattern, label=label).items():
             if dist_spec is None:
                 continue
             param = module.get_parameter(param_name)
