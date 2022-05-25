@@ -147,6 +147,8 @@ class ChunkManager:
         self.chunk_groups: Dict[str, Deque[Chunk]] = {}
         self.tensor_chunk_map: Dict[torch.Tensor, Chunk] = {}
         self.accessed_chunks: Set[Chunk] = set()
+        if enable_distributed_storage and chunk_size is None:
+            self.rank_load = torch.zeros(gpc.get_world_size(ParallelMode.DATA), dtype=torch.int64)
 
     def append_tensor(self, tensor: torch.Tensor, group_name: str) -> None:
         if self.chunk_size is not None and tensor.numel() > self.chunk_size:
@@ -158,7 +160,10 @@ class ChunkManager:
             self.chunk_groups[group_name][-1].append(tensor)
         except IndexError or ChunkFullError:
             chunk_size = self.chunk_size or tensor.numel()
-            chunk = Chunk(chunk_size, self._get_next_src_rank(group_name), tensor.dtype, self.device)
+            src_rank = self._get_next_src_rank(group_name)
+            chunk = Chunk(chunk_size, src_rank, tensor.dtype, self.device)
+            if self.enable_distributed_storage and self.chunk_size is None:
+                self.rank_load[src_rank] += chunk_size
             self.chunk_groups[group_name].append(chunk)
             chunk.append(tensor)
         self.tensor_chunk_map[tensor] = self.chunk_groups[group_name][-1]
@@ -168,11 +173,10 @@ class ChunkManager:
     def _get_next_src_rank(self, group_name: str) -> int:
         if not self.enable_distributed_storage:
             return gpc.get_local_rank(ParallelMode.DATA)
-        chunk_idx = len(self.chunk_groups[group_name])
         if self.chunk_size is None:
-            # Don't use chunk, round-robin
-            pass
+            src_rank = torch.argmin(self.rank_load).item()
         else:
+            chunk_idx = len(self.chunk_groups[group_name])
             src_rank = chunk_idx % gpc.get_world_size(ParallelMode.DATA)
         return src_rank
 
