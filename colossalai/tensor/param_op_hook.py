@@ -1,7 +1,7 @@
 import torch
 from contextlib import contextmanager
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Tuple
 
 
 class ParamOpHook(ABC):
@@ -23,7 +23,8 @@ class ParamOpHook(ABC):
         pass
 
 
-_COLOSSAL_PARAM_OP_HOOKS: List[ParamOpHook] = []
+class _ParamOpHookWrapper:
+    hooks: Tuple[ParamOpHook, ...] = tuple()
 
 
 class PreFwdPostBwd(torch.autograd.Function):
@@ -31,7 +32,7 @@ class PreFwdPostBwd(torch.autograd.Function):
     @staticmethod
     def forward(ctx, params, *args):
         ctx.params = params
-        for hook in _COLOSSAL_PARAM_OP_HOOKS:
+        for hook in _ParamOpHookWrapper.hooks:
             hook.pre_forward(ctx.params)
         if len(args) == 1:
             return args[0]
@@ -39,7 +40,7 @@ class PreFwdPostBwd(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, *grads):
-        for hook in _COLOSSAL_PARAM_OP_HOOKS:
+        for hook in _ParamOpHookWrapper.hooks:
             hook.post_backward(ctx.params)
         return (None,) + grads
 
@@ -49,23 +50,22 @@ class PostFwdPreBwd(torch.autograd.Function):
     @staticmethod
     def forward(ctx, params, args):
         ctx.parmas = params
-        for hook in _COLOSSAL_PARAM_OP_HOOKS:
+        for hook in _ParamOpHookWrapper.hooks:
             hook.post_forward(params)
         return args
 
     @staticmethod
     def backward(ctx, *grads):
-        for hook in _COLOSSAL_PARAM_OP_HOOKS:
+        for hook in _ParamOpHookWrapper.hooks:
             hook.pre_backward(ctx.params)
         return (None,) + grads
 
 
 @contextmanager
-def use_param_op_hooks(hooks: List[ParamOpHook]):
+def use_param_op_hooks(*hooks: ParamOpHook):
     try:
-        global _COLOSSAL_PARAM_OP_HOOKS
-        old_param_op_hooks = _COLOSSAL_PARAM_OP_HOOKS
-        _COLOSSAL_PARAM_OP_HOOKS = hooks
+        old_param_op_hooks = _ParamOpHookWrapper.hooks
+        _ParamOpHookWrapper.hooks = hooks
         yield
     finally:
-        _COLOSSAL_PARAM_OP_HOOKS = old_param_op_hooks
+        _ParamOpHookWrapper.hooks = old_param_op_hooks

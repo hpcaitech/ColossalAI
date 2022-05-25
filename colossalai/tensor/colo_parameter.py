@@ -3,7 +3,7 @@ from .const import TensorType
 import torch
 from colossalai.tensor import TensorSpec, distspec
 from copy import copy
-from .param_op_hook import _COLOSSAL_PARAM_OP_HOOKS, PreFwdPostBwd, PostFwdPreBwd
+from .param_op_hook import _ParamOpHookWrapper, PreFwdPostBwd, PostFwdPreBwd
 
 
 class ColoParameter(ColoTensor):
@@ -40,7 +40,7 @@ class ColoParameter(ColoTensor):
 
     @classmethod
     def __torch_function__(cls, func, types, args=..., kwargs=None):
-        if len(_COLOSSAL_PARAM_OP_HOOKS) > 0:
+        if len(_ParamOpHookWrapper.hooks) > 0:
             if not func.__name__.startswith('__'):
                 params = list(filter(lambda arg: isinstance(arg, ColoParameter), args))
                 if len(params) > 0:

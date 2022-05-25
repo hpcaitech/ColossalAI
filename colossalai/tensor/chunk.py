@@ -101,7 +101,6 @@ class Chunk:
     def update_tensor(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
         tensor_info = self.tensors_info[tensor]
         self.data[tensor_info.offset:tensor_info.end].copy_(data_slice.view(-1))
-        tensor.storage().resize_(0)
         tensor.data = self.data[tensor_info.offset:tensor_info.end].view_as(tensor)
 
     @property
@@ -189,7 +188,7 @@ class ChunkManager:
         chunk = self.tensor_chunk_map[tensor]
         if chunk.can_release:
             chunk.release()
-        self.accessed_chunks.remove(chunk)
+            self.accessed_chunks.remove(chunk)
 
     def move_chunk(self, tensor: torch.Tensor, device: torch.device) -> None:
         chunk = self.tensor_chunk_map[tensor]

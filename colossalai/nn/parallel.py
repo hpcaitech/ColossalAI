@@ -98,12 +98,13 @@ class ColoDDPV2(ColoDDP):
     def forward(self, *args, **kwargs):
         self.module.zero_grad(set_to_none=True)
         for p, fp32_p in zip(self.module.parameters(), self.fp32_params):
-            self.chunk_manager.update_tensor(p, fp32_p)
-        with use_param_op_hooks([self.param_op_hook]):
+            if not self.chunk_manager.is_chunk_free(p):
+                self.chunk_manager.update_tensor(p, fp32_p)
+        with use_param_op_hooks(self.param_op_hook):
             return self.module(*args, **kwargs)
 
     def backward(self, loss: torch.Tensor):
-        with self.param_op_hook.switch_to_backward(), use_param_op_hooks([self.param_op_hook]):
+        with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
             loss.backward()
         for p in self.module.parameters():
             if self.chunk_manager.is_chunk_free(p):
