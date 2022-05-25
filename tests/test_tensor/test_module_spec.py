@@ -19,24 +19,7 @@ from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSp
 from _utils import tensor_equal, tensor_shard_equal
 
 
-def init_1d_row(weight, bias):
-    spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_spec(spec)
-
-
-def init_1d_col(weight, bias):
-    spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_spec(spec)
-        bias.set_spec(spec)
-
-
-def run_with_spec(spec_init_func):
+def run_with_spec(label):
     with ColoInitContext(device=get_current_device()):
         model = torch.nn.Linear(4, 8)
 
@@ -44,13 +27,8 @@ def run_with_spec(spec_init_func):
     
     register_colo_module(torch.nn.Linear, ColoLinear())
     parallel_action = ParallelAction(ComputePattern.TP1D)
-    if spec_init_func == init_1d_row:
-        label = 'row'
-    else:
-        label = 'col'
     init_colo_module(model, parallel_action, recursive=True, label=label)
     
-    spec_init_func(model_handy.weight, model_handy.bias)
     x = torch.rand(2, 4).cuda()
     out = model(x)
     colo_out = model_handy(x)
@@ -65,8 +43,9 @@ def run_with_spec(spec_init_func):
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_with_spec(init_1d_row)
-    run_with_spec(init_1d_col)
+    run_with_spec('col')
+    run_with_spec('row')
+    run_with_spec('default')
 
 
 @pytest.mark.dist
