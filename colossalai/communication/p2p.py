@@ -38,6 +38,41 @@ def _get_tensor_shape(tensor_shape: TensorShape, chunk_tensor: bool = False) -> 
     return tensor_chunk_shape, chunk_tensor
 
 
+def create_recv_buffer_with_shapes(recv_shapes, dtype, scatter_gather_tensors):
+    if isinstance(recv_shapes, torch.Size):
+        recv_chunk_shape, recv_split = _get_tensor_shape(recv_shapes, scatter_gather_tensors)
+        buffer_recv = torch.empty(recv_chunk_shape, requires_grad=True, device=get_current_device(), dtype=dtype)
+        return buffer_recv, recv_split
+    buffer_recv = []
+    for recv_shape in recv_shapes:
+        recv_chunk_shape, recv_split = _get_tensor_shape(recv_shape, scatter_gather_tensors)
+        tensor_recv = torch.empty(recv_chunk_shape, requires_grad=True, device=get_current_device(), dtype=dtype)
+        buffer_recv.append(tensor_recv)
+    return buffer_recv, recv_split
+
+
+def process_object_to_send(object_send, scatter_gather_tensors):
+    if isinstance(object_send, torch.Tensor):
+        send_split = _get_tensor_shape(object_send.shape, scatter_gather_tensors)[1]
+        if send_split:
+            object_send = split_tensor_into_1d_equal_chunks(object_send)
+    else:
+        send_split = _get_tensor_shape(object_send[0].shape, scatter_gather_tensors)[1]
+        if send_split:
+            for tensor_send in object_send:
+                tensor_send = split_tensor_into_1d_equal_chunks(tensor_send)
+
+
+def filling_ops_queue(obj, comm_op, comm_rank, ops_queue):
+    if isinstance(obj, torch.Tensor):
+        op_to_add = dist.P2POp(comm_op, obj, comm_rank)
+        ops_queue.append(op_to_add)
+    else:
+        for tensor_to_comm in obj:
+            op_to_add = dist.P2POp(comm_op, tensor_to_comm, comm_rank)
+            ops_queue.append(op_to_add)
+
+
 def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = None,
                  object_send_prev: Union[torch.Tensor, List[torch.Tensor]] = None,
                  recv_prev: bool = False,
@@ -79,38 +114,13 @@ def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = Non
 
     if recv_prev:
         assert recv_prev_shape is not None
-        if isinstance(recv_prev_shape, torch.Size):
-            recv_prev_chunk_shape, recv_prev_split = _get_tensor_shape(recv_prev_shape, scatter_gather_tensors)
-            tensor_recv_prev = torch.empty(recv_prev_chunk_shape,
-                                           requires_grad=True,
-                                           device=get_current_device(),
-                                           dtype=dtype)
-        else:
-            tensor_recv_prev = []
-            for recv_shape in recv_prev_shape:
-                recv_prev_chunk_shape, recv_prev_split = _get_tensor_shape(recv_shape, scatter_gather_tensors)
-                tensor_recv = torch.empty(recv_prev_chunk_shape,
-                                          requires_grad=True,
-                                          device=get_current_device(),
-                                          dtype=dtype)
-                tensor_recv_prev.append(tensor_recv)
+        tensor_recv_prev, recv_prev_split = create_recv_buffer_with_shapes(recv_prev_shape, dtype,
+                                                                           scatter_gather_tensors)
+
     if recv_next:
         assert recv_next_shape is not None
-        if isinstance(recv_next_shape, torch.Size):
-            recv_next_chunk_shape, recv_next_split = _get_tensor_shape(recv_next_shape, scatter_gather_tensors)
-            tensor_recv_next = torch.empty(recv_next_chunk_shape,
-                                           requires_grad=True,
-                                           device=get_current_device(),
-                                           dtype=dtype)
-        else:
-            tensor_recv_next = []
-            for recv_shape in recv_next_shape:
-                recv_next_chunk_shape, recv_next_split = _get_tensor_shape(recv_shape, scatter_gather_tensors)
-                tensor_recv = torch.empty(recv_next_chunk_shape,
-                                          requires_grad=True,
-                                          device=get_current_device(),
-                                          dtype=dtype)
-                tensor_recv_next.append(tensor_recv)
+        tensor_recv_next, recv_next_split = create_recv_buffer_with_shapes(recv_next_shape, dtype,
+                                                                           scatter_gather_tensors)
 
     if object_send_prev is not None or recv_prev:
         if prev_rank is None:
@@ -121,65 +131,23 @@ def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = Non
             next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
 
     if object_send_prev is not None:
-        if isinstance(object_send_prev, torch.Tensor):
-            send_prev_split = _get_tensor_shape(object_send_prev.shape, scatter_gather_tensors)[1]
-        else:
-            send_prev_split = _get_tensor_shape(object_send_prev[0].shape, scatter_gather_tensors)[1]
-        if send_prev_split:
-            if isinstance(object_send_prev, torch.Tensor):
-                object_send_prev = split_tensor_into_1d_equal_chunks(object_send_prev)
-            else:
-                for tensor_send in object_send_prev:
-                    tensor_send = split_tensor_into_1d_equal_chunks(tensor_send)
+        process_object_to_send(object_send_prev, scatter_gather_tensors)
 
     if object_send_next is not None:
-        if isinstance(object_send_next, torch.Tensor):
-            send_next_split = _get_tensor_shape(object_send_next.shape, scatter_gather_tensors)[1]
-        else:
-            send_next_split = _get_tensor_shape(object_send_next[0].shape, scatter_gather_tensors)[1]
-        if send_next_split:
-            if isinstance(object_send_next, torch.Tensor):
-                object_send_next = split_tensor_into_1d_equal_chunks(object_send_next)
-            else:
-                for tensor_send in object_send_next:
-                    tensor_send = split_tensor_into_1d_equal_chunks(tensor_send)
+        process_object_to_send(object_send_next, scatter_gather_tensors)
 
     ops = []
     if object_send_prev is not None:
-        if isinstance(object_send_prev, torch.Tensor):
-            send_prev_op = dist.P2POp(dist.isend, object_send_prev, prev_rank)
-            ops.append(send_prev_op)
-        else:
-            for tensor_send in object_send_prev:
-                send_prev_op = dist.P2POp(dist.isend, tensor_send, prev_rank)
-                ops.append(send_prev_op)
+        filling_ops_queue(object_send_prev, dist.isend, prev_rank, ops)
 
     if tensor_recv_prev is not None:
-        if isinstance(tensor_recv_prev, torch.Tensor):
-            recv_prev_op = dist.P2POp(dist.irecv, tensor_recv_prev, prev_rank)
-            ops.append(recv_prev_op)
-        else:
-            for tensor_recv in tensor_recv_prev:
-                recv_prev_op = dist.P2POp(dist.irecv, tensor_recv, prev_rank)
-                ops.append(recv_prev_op)
+        filling_ops_queue(tensor_recv_prev, dist.irecv, prev_rank, ops)
 
     if tensor_recv_next is not None:
-        if isinstance(tensor_recv_next, torch.Tensor):
-            recv_next_op = dist.P2POp(dist.irecv, tensor_recv_next, next_rank)
-            ops.append(recv_next_op)
-        else:
-            for tensor_recv in tensor_recv_next:
-                recv_next_op = dist.P2POp(dist.irecv, tensor_recv, next_rank)
-                ops.append(recv_next_op)
+        filling_ops_queue(tensor_recv_next, dist.irecv, next_rank, ops)
 
     if object_send_next is not None:
-        if isinstance(object_send_next, torch.Tensor):
-            send_next_op = dist.P2POp(dist.isend, object_send_next, next_rank)
-            ops.append(send_next_op)
-        else:
-            for tensor_send in object_send_next:
-                send_next_op = dist.P2POp(dist.isend, tensor_send, next_rank)
-                ops.append(send_next_op)
+        filling_ops_queue(object_send_next, dist.isend, next_rank, ops)
 
     if len(ops) > 0:
         reqs = dist.batch_isend_irecv(ops)

@@ -95,11 +95,11 @@ def check_layer(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_p2p():
+def test_object_list_p2p():
     world_size = 2
     run_func = partial(check_layer, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_p2p()
+    test_object_list_p2p()
