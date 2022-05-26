@@ -78,7 +78,9 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
         colo_module.register(compute_pattern)
         if not colo_module.has_compute_pattern_with_mode(compute_pattern, mode=mode):
             raise NotImplementedError
-        updated_modules = {module}
+        # a set for modules which update at least one param in the init process.
+        # these modules need to be checked whether all params still match one of the valid compute pattern.
+        modules_update_param = {module}
         for param_name, dist_spec in colo_module.get_dist_specs_with_mode(compute_pattern, mode=mode).items():
             if dist_spec is None:
                 continue
@@ -86,9 +88,9 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
             if isinstance(param, ColoParameter):
                 spec = TensorSpec(dist_spec, parallel_action)
                 param.set_spec(spec)
-                for mod in param.get_shared_param_modules():
-                    updated_modules.add(mod)
-        for mod in updated_modules:
+                for mod in param.shared_param_modules:
+                    modules_update_param.add(mod)
+        for mod in modules_update_param:
             check_colo_module(mod, recursive=False)
     if recursive == True:
         for submodule in module.children():

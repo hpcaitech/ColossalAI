@@ -128,7 +128,7 @@ def run_check_shared_param():
     num_head = 4
     sequence_length = 12
     num_layer = 2
-    vocab_size = 30524
+    vocab_size = 24
 
     config = BertConfig(vocab_size=vocab_size,
                         hidden_size=hidden_dim,
@@ -144,7 +144,7 @@ def run_check_shared_param():
     model = model.cuda()
     parallel_action = ParallelAction(ComputePattern.TP1D)
     # model.cls.predictions.decoder and model.cls.predictions share the bias, and they should have the same spec
-    assert len(model.cls.predictions.decoder.bias.get_shared_param_modules()) == 2
+    assert len(model.cls.predictions.decoder.bias.shared_param_modules) == 2
     # They are all Linear, so both row is allowed. This should pass check.
     init_colo_module(model, parallel_action, recursive=True, mode='row')
     # This should be detected by check because model.cls.predictions.decoder is wrong now.
