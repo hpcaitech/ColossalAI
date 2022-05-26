@@ -7,7 +7,12 @@ class ColoLinear(ColoModule):
     def __init__(self):
         super(ColoLinear, self).__init__()
         self._register_shard_params(['weight', 'bias'])
-        self._set_TP1D()
+        self._register = False
+        
+    def register(self):
+        if self._register == False:
+            self._set_TP1D()
+            self._register = True
         
     def _set_TP1D(self):
         # TP1D Row Linear

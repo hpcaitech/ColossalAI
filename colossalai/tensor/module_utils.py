@@ -17,7 +17,9 @@ def is_colo_module(module: torch.nn.Module):
 def get_colo_module(module: torch.nn.Module):
     global _COLOSSAL_MODULES
     if is_colo_module(module):
-        return _COLOSSAL_MODULES[type(module)]
+        colo_module = _COLOSSAL_MODULES[type(module)]
+        colo_module.register()
+        return colo_module
     else:
         return None
 

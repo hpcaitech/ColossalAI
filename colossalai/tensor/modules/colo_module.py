@@ -46,3 +46,6 @@ class ColoModule(object):
 
     def get_param_names(self):
         return self._shard_params
+
+    def register(self):
+        raise NotImplementedError
