@@ -56,11 +56,12 @@ def process_object_to_send(object_send, scatter_gather_tensors):
         send_split = _get_tensor_shape(object_send.shape, scatter_gather_tensors)[1]
         if send_split:
             object_send = split_tensor_into_1d_equal_chunks(object_send)
-    else:
-        send_split = _get_tensor_shape(object_send[0].shape, scatter_gather_tensors)[1]
+        return object_send
+    for tensor_send in object_send:
+        send_split = _get_tensor_shape(tensor_send.shape, scatter_gather_tensors)[1]
         if send_split:
-            for tensor_send in object_send:
-                tensor_send = split_tensor_into_1d_equal_chunks(tensor_send)
+            tensor_send = split_tensor_into_1d_equal_chunks(tensor_send)
+    return object_send
 
 
 def filling_ops_queue(obj, comm_op, comm_rank, ops_queue):
@@ -131,10 +132,10 @@ def _communicate(object_send_next: Union[torch.Tensor, List[torch.Tensor]] = Non
             next_rank = gpc.get_next_global_rank(ParallelMode.PIPELINE)
 
     if object_send_prev is not None:
-        process_object_to_send(object_send_prev, scatter_gather_tensors)
+        object_send_prev = process_object_to_send(object_send_prev, scatter_gather_tensors)
 
     if object_send_next is not None:
-        process_object_to_send(object_send_next, scatter_gather_tensors)
+        object_send_next = process_object_to_send(object_send_next, scatter_gather_tensors)
 
     ops = []
     if object_send_prev is not None:
