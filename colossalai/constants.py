@@ -4,7 +4,7 @@
 ALLOWED_MODES = [None, '1d', '2d', '2.5d', '3d', 'sequence']
 TENSOR_PARALLEL_MODE = 'tensor_parallel_mode'
 
-# intializer
+# initializer
 INITIALIZER_MAPPING = {
     'data': 'Initializer_Data',
     'tensor': 'Initializer_Tensor',
