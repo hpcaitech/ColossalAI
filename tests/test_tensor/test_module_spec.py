@@ -122,7 +122,7 @@ def run_linear_with_spec(mode):
     assert tensor_shard_equal(model.weight.grad, model_handy.weight.grad)
     assert tensor_shard_equal(model.bias.grad, model_handy.bias.grad)
 
-def run_check_duplicated_param():
+def run_check_shared_param():
     from transformers import BertForMaskedLM, BertConfig
     hidden_dim = 8
     num_head = 4
@@ -144,7 +144,7 @@ def run_check_duplicated_param():
     model = model.cuda()
     parallel_action = ParallelAction(ComputePattern.TP1D)
     # model.cls.predictions.decoder and model.cls.predictions share the bias, and they should have the same spec
-    assert len(model.cls.predictions.decoder.bias.get_linked_modules()) == 2
+    assert len(model.cls.predictions.decoder.bias.get_shared_param_modules()) == 2
     # They are all Linear, so both row is allowed. This should pass check.
     init_colo_module(model, parallel_action, recursive=True, mode='row')
     # This should be detected by check because model.cls.predictions.decoder is wrong now.
@@ -173,7 +173,7 @@ def run_dist_model(rank, world_size, port):
 def run_dist_check(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_check_duplicated_param()
+    run_check_shared_param()
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])

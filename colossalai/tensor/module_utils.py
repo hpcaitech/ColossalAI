@@ -86,7 +86,7 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
             if isinstance(param, ColoParameter):
                 spec = TensorSpec(dist_spec, parallel_action)
                 param.set_spec(spec)
-                for mod in param.get_linked_modules():
+                for mod in param.get_shared_param_modules():
                     updated_modules.add(mod)
         for mod in updated_modules:
             check_colo_module(mod, recursive=False)
