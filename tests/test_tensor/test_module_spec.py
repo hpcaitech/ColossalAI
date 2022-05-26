@@ -143,11 +143,11 @@ def run_check_shared_param():
 
     model = model.cuda()
     parallel_action = ParallelAction(ComputePattern.TP1D)
-    # model.cls.predictions.decoder and model.cls.predictions share the bias, and they should have the same spec
+    # model.cls.predictions.decoder and model.cls.predictions share the bias, so they should have the same spec
     assert len(model.cls.predictions.decoder.bias.shared_param_modules) == 2
     # They are all Linear, so both row is allowed. This should pass check.
     init_colo_module(model, parallel_action, recursive=True, mode='row')
-    # This should be detected by check because model.cls.predictions.decoder is wrong now.
+    # This should be detected by check because you can not set weight as row while set bias as col.
     col_spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ParallelAction(ComputePattern.TP1D))
