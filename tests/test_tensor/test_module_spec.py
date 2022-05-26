@@ -19,17 +19,18 @@ from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSp
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 
-def run_simplenet_with_spec(mode):
-    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
+def run_model_with_spec(mode, model_name):
+    print(f'model_name: {model_name} | mode: {mode}')
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
 
     set_seed(1)
     with ColoInitContext(device=get_current_device()):
-        model = model_builder(checkpoint=True)
+        model = model_builder(checkpoint=False)
     
     if rank == 0:
-        model_seq = model_builder(checkpoint=True)
+        model_seq = model_builder(checkpoint=False)
         model_seq = model_seq.cuda()
 
         # Make two models have the same init params
@@ -111,27 +112,36 @@ def run_linear_with_spec(mode):
     assert tensor_shard_equal(model.bias.grad, model_handy.bias.grad)
 
 
-def run_dist(rank, world_size, port, func):
+def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    func('col')
-    func('row')
-    func('default')
+    run_linear_with_spec('col')
+    run_linear_with_spec('row')
+
+def run_dist_model(rank, world_size, port):
+    config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    for model_name in ['simple_net', 'bert']:
+        run_model_with_spec('col', model_name)
+        if 'simple_net' == model_name:
+            # Bert in our testcase is a classification model returning 0 or 1.
+            # row shard for all layers is invalid because the first dim of some layer is the classification type size 2.
+            run_model_with_spec('row', model_name)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_module_linear_1d(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), func=run_linear_with_spec)
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
-def test_module_simplenet(world_size):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), func=run_simplenet_with_spec)
+def test_module_model(world_size):
+    run_func = partial(run_dist_model, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 if __name__ == '__main__':
-    test_module_simplenet(4)
+    test_module_model(4)
