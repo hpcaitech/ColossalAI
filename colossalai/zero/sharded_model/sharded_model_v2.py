@@ -390,7 +390,8 @@ class ShardedModelV2(nn.Module):
     def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]', strict: bool = True):
         for name, p in self.module.named_parameters():
             if name in state_dict:
-                p.colo_attr.data_payload_reset(state_dict[name])
+                p.colo_attr.data_payload_reset(state_dict[name].to(dtype=p.colo_attr.data_payload.dtype,
+                                                                   device=p.colo_attr.data_payload.device))
                 # Force re-shard
                 p.colo_attr.sharded_data_tensor.is_sharded = False
                 self.shard_strategy.shard([p.colo_attr.sharded_data_tensor])
