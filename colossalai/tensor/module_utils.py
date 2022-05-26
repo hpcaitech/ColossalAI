@@ -18,7 +18,6 @@ def get_colo_module(module: torch.nn.Module):
     global _COLOSSAL_MODULES
     if is_colo_module(module):
         colo_module = _COLOSSAL_MODULES[type(module)]
-        colo_module.register()
         return colo_module
     else:
         return None
@@ -46,6 +45,7 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
             if not colo_module.has_compute_pattern(compute_pattern):
                 raise Exception(f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
 
+            colo_module.register(compute_pattern)
             match_specs = False
             allowed_specs = colo_module.get_dist_specs(compute_pattern)
             for _, param_specs in allowed_specs.items():
@@ -65,20 +65,20 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
                     break
             if match_specs == False:
                 raise Exception(f'Invalid ColoParameter spec: Params in {module} are incorrectly sharded.')
-    
     if recursive == True:
         for submodule in module.children():
             check_colo_module(submodule, recursive=True)
 
-def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, recursive=True, label='default'):
+def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, recursive=True, mode='default'):
     compute_pattern = parallel_action.compute_pattern
     if is_colo_module(module):
         # for each param
         # set DistSpec and ParallelAction
         colo_module = get_colo_module(module)
-        if not colo_module.has_compute_pattern_with_label(compute_pattern, label=label):
+        colo_module.register(compute_pattern)
+        if not colo_module.has_compute_pattern_with_mode(compute_pattern, mode=mode):
             raise NotImplementedError
-        for param_name, dist_spec in colo_module.get_dist_specs_with_label(compute_pattern, label=label).items():
+        for param_name, dist_spec in colo_module.get_dist_specs_with_mode(compute_pattern, mode=mode).items():
             if dist_spec is None:
                 continue
             param = module.get_parameter(param_name)
@@ -88,5 +88,5 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
         check_colo_module(module, recursive=False)
     if recursive == True:
         for submodule in module.children():
-            init_colo_module(submodule, parallel_action, recursive=True, label=label)
+            init_colo_module(submodule, parallel_action, recursive=True, mode=mode)
     

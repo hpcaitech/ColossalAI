@@ -15,11 +15,11 @@ import torch.nn.functional as F
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, register_colo_module, init_colo_module, ColoLinear
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, register_colo_module, init_colo_module
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 
-def run_simplenet_with_spec(label):
+def run_simplenet_with_spec(mode):
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -37,7 +37,7 @@ def run_simplenet_with_spec(label):
             p2.data.copy_(p1.data)
 
     parallel_action = ParallelAction(ComputePattern.TP1D)
-    init_colo_module(model, parallel_action, recursive=True, label=label)
+    init_colo_module(model, parallel_action, recursive=True, mode=mode)
 
     model = model.cuda()
     for i, (data, label) in enumerate(train_dataloader):
@@ -91,14 +91,14 @@ def run_simplenet_with_spec(label):
         if i > 3:
             break
 
-def run_linear_with_spec(label):
+def run_linear_with_spec(mode):
     with ColoInitContext(device=get_current_device()):
         model = torch.nn.Linear(4, 8)
 
     model_handy = copy(model)
     
     parallel_action = ParallelAction(ComputePattern.TP1D)
-    init_colo_module(model, parallel_action, recursive=True, label=label)
+    init_colo_module(model, parallel_action, recursive=True, mode=mode)
     
     x = torch.rand(2, 4).cuda()
     out = model(x)
