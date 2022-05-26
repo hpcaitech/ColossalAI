@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, register_colo_module, init_colo_module
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, register_colo_module, init_colo_module, check_colo_module
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 
@@ -122,6 +122,40 @@ def run_linear_with_spec(mode):
     assert tensor_shard_equal(model.weight.grad, model_handy.weight.grad)
     assert tensor_shard_equal(model.bias.grad, model_handy.bias.grad)
 
+def run_check_duplicated_param():
+    from transformers import BertForMaskedLM, BertConfig
+    hidden_dim = 8
+    num_head = 4
+    sequence_length = 12
+    num_layer = 2
+    vocab_size = 30524
+
+    config = BertConfig(vocab_size=vocab_size,
+                        hidden_size=hidden_dim,
+                        intermediate_size=hidden_dim * 4,
+                        num_attention_heads=num_head,
+                        max_position_embeddings=sequence_length,
+                        num_hidden_layers=num_layer,
+                        hidden_dropout_prob=0.,
+                        attention_probs_dropout_prob=0.)
+    with ColoInitContext(lazy_memory_allocate=False, device=get_current_device()):
+        model = BertForMaskedLM(config)
+
+    model = model.cuda()
+    parallel_action = ParallelAction(ComputePattern.TP1D)
+    # model.cls.predictions.decoder and model.cls.predictions share the bias, and they should have the same spec
+    assert len(model.cls.predictions.decoder.bias.get_linked_modules()) == 2
+    # They are all Linear, so both row is allowed. This should pass check.
+    init_colo_module(model, parallel_action, recursive=True, mode='row')
+    # This should be detected by check because model.cls.predictions.decoder is wrong now.
+    col_spec = TensorSpec(
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        ParallelAction(ComputePattern.TP1D))
+    model.cls.predictions.decoder.bias.set_spec(col_spec)
+    try:
+        check_colo_module(model.cls.predictions.decoder, recursive=False)
+    except Exception as e:
+        assert 'incorrectly sharded' in str(e)
 
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
@@ -136,6 +170,10 @@ def run_dist_model(rank, world_size, port):
         run_model_with_spec('col', model_name)
         run_model_with_spec('row', model_name)
 
+def run_dist_check(rank, world_size, port):
+    config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_check_duplicated_param()
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
@@ -151,11 +189,12 @@ def test_module_model(world_size):
     run_func = partial(run_dist_model, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
-def _test_check_module():
-    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
-    with ColoInitContext(device=get_current_device()):
-        model = model_builder(checkpoint=False)
+@pytest.mark.dist
+@pytest.mark.parametrize('world_size', [1, 2])
+@rerun_if_address_is_in_use()
+def test_module_check(world_size):
+    run_func = partial(run_dist_check, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
 
 if __name__ == '__main__':
-    test_module_model(4)
+    test_module_check(2)

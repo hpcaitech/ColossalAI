@@ -42,10 +42,10 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
                 continue
             
         if compute_pattern is not None:
+            colo_module.register(compute_pattern)
             if not colo_module.has_compute_pattern(compute_pattern):
                 raise Exception(f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
 
-            colo_module.register(compute_pattern)
             match_specs = False
             allowed_specs = colo_module.get_dist_specs(compute_pattern)
             for _, param_specs in allowed_specs.items():
