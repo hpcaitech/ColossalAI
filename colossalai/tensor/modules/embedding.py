@@ -3,10 +3,10 @@ from colossalai.tensor import ComputePattern, distspec
 from colossalai.core import global_context as gpc
 from colossalai.context.parallel_mode import ParallelMode
 
-class ColoLinear(ColoModule):
+class ColoEmbedding(ColoModule):
     def __init__(self):
-        super(ColoLinear, self).__init__()
-        self._register_shard_params(['weight', 'bias'])
+        super(ColoEmbedding, self).__init__()
+        self._register_shard_params(['weight'])
         
     def register(self, compute_pattern):
         if not compute_pattern in self._allowed_patterns:
@@ -19,8 +19,7 @@ class ColoLinear(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-                'bias': None
+                'weight': distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
             },
             mode='row',
         )
@@ -29,8 +28,7 @@ class ColoLinear(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-                'bias': distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)])
+                'weight': distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
             },
             mode='col',
         )

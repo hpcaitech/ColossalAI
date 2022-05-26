@@ -30,6 +30,12 @@ class _DistSpec:
                 return False
         return True
 
+    def __repr__(self) -> str:
+        res = "\nDistSpec:\n\t"
+        for attr in dir(self):
+            if not attr.startswith('__'):
+                res += f'{attr}: {str(getattr(self, attr))}\n\t'
+        return res
 
 def replicate(process_group: Optional[ProcessGroup] = None) -> _DistSpec:
     # process_group=None means global process group

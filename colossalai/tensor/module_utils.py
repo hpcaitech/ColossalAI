@@ -18,7 +18,6 @@ def get_colo_module(module: torch.nn.Module):
     global _COLOSSAL_MODULES
     if is_colo_module(module):
         colo_module = _COLOSSAL_MODULES[type(module)]
-        colo_module.register()
         return colo_module
     else:
         return None
@@ -43,6 +42,7 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
                 continue
             
         if compute_pattern is not None:
+            colo_module.register(compute_pattern)
             if not colo_module.has_compute_pattern(compute_pattern):
                 raise Exception(f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
 
@@ -65,28 +65,34 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
                     break
             if match_specs == False:
                 raise Exception(f'Invalid ColoParameter spec: Params in {module} are incorrectly sharded.')
-    
     if recursive == True:
         for submodule in module.children():
             check_colo_module(submodule, recursive=True)
 
-def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, recursive=True, label='default'):
+def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, recursive=True, mode='default'):
     compute_pattern = parallel_action.compute_pattern
     if is_colo_module(module):
         # for each param
         # set DistSpec and ParallelAction
         colo_module = get_colo_module(module)
-        if not colo_module.has_compute_pattern_with_label(compute_pattern, label=label):
+        colo_module.register(compute_pattern)
+        if not colo_module.has_compute_pattern_with_mode(compute_pattern, mode=mode):
             raise NotImplementedError
-        for param_name, dist_spec in colo_module.get_dist_specs_with_label(compute_pattern, label=label).items():
+        # a set for modules which update at least one param in the init process.
+        # these modules need to be checked whether all params still match one of the valid compute pattern.
+        modules_update_param = {module}
+        for param_name, dist_spec in colo_module.get_dist_specs_with_mode(compute_pattern, mode=mode).items():
             if dist_spec is None:
                 continue
             param = module.get_parameter(param_name)
             if isinstance(param, ColoParameter):
                 spec = TensorSpec(dist_spec, parallel_action)
                 param.set_spec(spec)
-        check_colo_module(module, recursive=False)
+                for mod in param.shared_param_modules:
+                    modules_update_param.add(mod)
+        for mod in modules_update_param:
+            check_colo_module(mod, recursive=False)
     if recursive == True:
         for submodule in module.children():
-            init_colo_module(submodule, parallel_action, recursive=True, label=label)
+            init_colo_module(submodule, parallel_action, recursive=True, mode=mode)
     
