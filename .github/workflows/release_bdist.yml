@@ -61,7 +61,7 @@ jobs:
           git_ref: ${{ github.event.inputs.github_ref }}
       - name: Build bdist wheel
         run: |
-          pip install beautifulsoup4 requests
+          pip install beautifulsoup4 requests packaging
           python ./build_colossalai_wheel.py
       - name: 🚀 Deploy
         uses: garygrossgarten/github-action-scp@release

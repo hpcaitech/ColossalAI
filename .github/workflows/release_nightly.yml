@@ -70,12 +70,15 @@ jobs:
     steps:
       - name: executing remote ssh commands using password
         uses: appleboy/ssh-action@master
+        env:
+          BUILD_DIR: ${{ secrets.PRIVATE_PYPI_NIGHTLY_DIR }}
         with:
           host: ${{ secrets.PRIVATE_PYPI_HOST }}
           username: ${{ secrets.PRIVATE_PYPI_USER }}
           password: ${{ secrets.PRIVATE_PYPI_PASSWD }}
+          envs: BUILD_DIR
           script: |
-            cd $build_dir
+            cd $BUILD_DIR
             find . -type f -mtime +0 -exec rm -f {} +
-        env:
-          build_dir: ${{ secrets.PRIVATE_PYPI_NIGHTLY_DIR }}
+          script_stop: true
+        
