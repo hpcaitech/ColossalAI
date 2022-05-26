@@ -78,6 +78,7 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
         colo_module.register(compute_pattern)
         if not colo_module.has_compute_pattern_with_mode(compute_pattern, mode=mode):
             raise NotImplementedError
+        updated_modules = {module}
         for param_name, dist_spec in colo_module.get_dist_specs_with_mode(compute_pattern, mode=mode).items():
             if dist_spec is None:
                 continue
@@ -85,7 +86,10 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
             if isinstance(param, ColoParameter):
                 spec = TensorSpec(dist_spec, parallel_action)
                 param.set_spec(spec)
-        check_colo_module(module, recursive=False)
+                for mod in param.get_linked_modules():
+                    updated_modules.add(mod)
+        for mod in updated_modules:
+            check_colo_module(mod, recursive=False)
     if recursive == True:
         for submodule in module.children():
             init_colo_module(submodule, parallel_action, recursive=True, mode=mode)

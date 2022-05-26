@@ -20,7 +20,6 @@ from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 def run_model_with_spec(mode, model_name):
-    print(f'model_name: {model_name} | mode: {mode}')
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -38,7 +37,19 @@ def run_model_with_spec(mode, model_name):
             p2.data.copy_(p1.data)
 
     parallel_action = ParallelAction(ComputePattern.TP1D)
-    init_colo_module(model, parallel_action, recursive=True, mode=mode)
+    # Not all layers in Bert can be mod by 4.
+    # e.g. row shard for all layers is invalid because the first dim of some layer is the classification type size 2.
+    if 'bert' == model_name:
+        if 'col' == mode:
+            init_colo_module(model.bert.embeddings, parallel_action, recursive=True, mode=mode)
+            init_colo_module(model.bert.encoder, parallel_action, recursive=True, mode=mode)
+            init_colo_module(model.classifier, parallel_action, recursive=True, mode='row')
+        elif 'row' == mode:
+            init_colo_module(model.bert.embeddings, parallel_action, recursive=True, mode='col')
+            init_colo_module(model.bert.encoder, parallel_action, recursive=True, mode=mode)
+            init_colo_module(model.classifier, parallel_action, recursive=True, mode=mode)
+    elif 'simple_net' == model_name:
+        init_colo_module(model, parallel_action, recursive=True, mode=mode)
 
     model = model.cuda()
     for i, (data, label) in enumerate(train_dataloader):
@@ -123,10 +134,7 @@ def run_dist_model(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     for model_name in ['simple_net', 'bert']:
         run_model_with_spec('col', model_name)
-        if 'simple_net' == model_name:
-            # Bert in our testcase is a classification model returning 0 or 1.
-            # row shard for all layers is invalid because the first dim of some layer is the classification type size 2.
-            run_model_with_spec('row', model_name)
+        run_model_with_spec('row', model_name)
 
 
 @pytest.mark.dist
@@ -142,6 +150,12 @@ def test_module_linear_1d(world_size):
 def test_module_model(world_size):
     run_func = partial(run_dist_model, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
+
+def _test_check_module():
+    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
+    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+    with ColoInitContext(device=get_current_device()):
+        model = model_builder(checkpoint=False)
 
 if __name__ == '__main__':
     test_module_model(4)

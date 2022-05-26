@@ -184,5 +184,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)
             setattr(submodule, param_name, colo_param)
+            colo_param.add_linked_modules(submodule)
 
         ColoModulize(module)

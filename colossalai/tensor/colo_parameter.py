@@ -26,6 +26,9 @@ class ColoParameter(ColoTensor):
         self._type = TensorType.MODEL
         self._graph_node = None
 
+        # add when ColoInitContext
+        self._linked_modules = []
+
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor,
                           requires_grad: bool = True,
@@ -34,5 +37,12 @@ class ColoParameter(ColoTensor):
         tensor.__init__(tensor, requires_grad=requires_grad, spec=spec)
         return tensor
 
+    def add_linked_modules(self, module: torch.nn.Module):
+        self._linked_modules.append(module)
+    
+    def get_linked_modules(self):
+        return self._linked_modules
+
     def __repr__(self):
         return f'ColoParameter: {torch.Tensor.__repr__(self)}'
+        
