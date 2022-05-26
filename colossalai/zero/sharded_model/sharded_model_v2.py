@@ -533,3 +533,15 @@ class ShardedModelV2(nn.Module):
                     input_name = input_name.split('.', 1)[0]    # get the name of param/buffer/child
                     if input_name not in self._modules and input_name not in local_state:
                         unexpected_keys.append(key)
+
+    def __getitem__(self, idx: int):
+        assert isinstance(self.module, nn.ModuleList)
+        return self.module[idx]
+
+    def __len__(self):
+        assert isinstance(self.module, nn.ModuleList)
+        return len(self.module)
+
+    def __iter__(self):
+        assert isinstance(self.module, nn.ModuleList)
+        return iter(self.module)
