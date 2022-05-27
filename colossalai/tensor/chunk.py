@@ -30,7 +30,6 @@ class TensorInfo:
     state: TensorState
     offset: int
     end: int
-    shape: torch.Size
 
 
 class ChunkFullError(Exception):
@@ -50,8 +49,9 @@ class Chunk:
         self.is_src_rank = gpc.get_local_rank(ParallelMode.DATA) == src_rank
         self.dtype = dtype
         self.device = init_device or get_current_device()
-        init_size = chunk_size if self.is_src_rank else 0
-        self.data = torch.empty(init_size, dtype=dtype, device=self.device)
+        self.data = torch.empty(chunk_size, dtype=dtype, device=self.device)
+        if not self.is_src_rank:
+            self.data.storage().resize_(0)
         self.tensors_info: Dict[torch.Tensor, TensorInfo] = {}
         self._idx = 0
 
@@ -61,35 +61,23 @@ class Chunk:
         if new_utilized_size > self.size:
             raise ChunkFullError
         tensor_state = TensorState.FREE
-        tensor_shape = tensor.shape
         if self.is_src_rank:
             self.data[self.utilized_size:new_utilized_size].copy_(tensor.view(-1))
             tensor_state = TensorState.HOLD
             tensor.data = self.data[self.utilized_size:new_utilized_size].view(tensor.shape)
         else:
-            tensor.data = torch.empty(0)
-        self.tensors_info[tensor] = TensorInfo(tensor_state, self.utilized_size, new_utilized_size, tensor_shape)
+            tensor.storage().resize_(0)
+        self.tensors_info[tensor] = TensorInfo(tensor_state, self.utilized_size, new_utilized_size)
         self.utilized_size = new_utilized_size
 
     def release(self) -> None:
-        print(f'Rank{gpc.get_global_rank()} start release')
         if not self.is_src_rank:
-            print(f'Rank{gpc.get_global_rank()} release chunk{self._idx}')
-            self.data = torch.empty(0, dtype=self.dtype, device=self.device)
-            for tensor in self.tensors_info.keys():
-                tensor.data = torch.empty(0)
-            # tensor.storage().resize_(0)
+            self.data.storage().resize_(0)
             self._update_tensors_state(TensorState.FREE)
-        print(f'Rank{gpc.get_global_rank()} end release')
 
     def _update_tensors_ptr(self) -> None:
-        print(f'Rank{gpc.get_global_rank()} start update ptr')
-        assert self.data.storage().size() > 0
         for tensor, tensor_info in self.tensors_info.items():
-            tensor.data = self.data[tensor_info.offset:tensor_info.end].view(tensor_info.shape)
-            with torch._C.DisableTorchFunction():
-                assert tensor.storage().size() > 0
-        print(f'Rank{gpc.get_global_rank()} end update ptr')
+            tensor.data = self.data[tensor_info.offset:tensor_info.end].view(tensor.shape)
 
     def _update_tensors_state(self, next_state: TensorState, prev_state: Optional[TensorState] = None):
         for tensor_info in self.tensors_info.values():
@@ -97,50 +85,47 @@ class Chunk:
                 tensor_info.state = next_state
 
     def access(self) -> None:
-        print(f'Rank{gpc.get_global_rank()} start access chunk{self._idx}')
         if not self.is_src_rank:
-            self.data = torch.empty(self.size, dtype=self.dtype, device=get_current_device())
+            self.data.storage().resize_(self.size)
         else:
-            assert self.data.storage().size() > 0
-            self.data = self.data.to(get_current_device())
-        assert self.data.storage().size() > 0
+            self.data.data = self.data.to(get_current_device())
         dist.broadcast(self.data, self.src_rank, group=gpc.get_group(ParallelMode.DATA))
-        assert self.data.storage().size() > 0
         self._update_tensors_ptr()
         if not self.is_src_rank:
             self._update_tensors_state(TensorState.HOLD, prev_state=TensorState.FREE)
-        print(f'Rank{gpc.get_global_rank()} end access chunk{self._idx}')
 
     def move_device(self, device: torch.device) -> None:
-        self.data = self.data.to(device)
+        self.data.data = self.data.to(device)
         self._update_tensors_ptr()
 
     def reduce(self, is_all_reduce: bool = False) -> None:
-        print(f'Rank{gpc.get_global_rank()} start reduce chunk{self._idx}')
-        self.data = self.data.to(get_current_device())
+        self.data.data = self.data.to(get_current_device())
         if is_all_reduce:
             dist.all_reduce(self.data, group=gpc.get_group(ParallelMode.DATA))
         else:
             dist.reduce(self.data, self.src_rank, group=gpc.get_group(ParallelMode.DATA))
         self._update_tensors_ptr()
         self._update_tensors_state(TensorState.HOLD)
-        print(f'Rank{gpc.get_global_rank()} reduce chunk{self._idx}')
 
     def tensor_trans_state(self, tensor: torch.Tensor, tensor_state: TensorState) -> None:
         assert tensor != TensorState.FREE, 'Can only set a chunk of tesors to FREE'
+        # As the gradient hook can be triggered either before or after post-backward
+        # tensor's state can be compute -> hold_after_bwd -> ready_for_reduce
+        # or compute -> ready_for_reduce -> hold_after_bwd
+        # the second one is invalid, we just ignore ready_for_reduce -> hold_after_bwd
+        # this function only apply valid state transformation
+        # invalid calls will be ignored and nothing changes
         if (self.tensors_info[tensor].state, tensor_state) not in STATE_TRANS:
-            print(
-                f'WARNING: Rank{gpc.get_global_rank()} apply invalid state trans: {self.tensors_info[tensor].state} to {tensor_state}'
-            )
+            # print(
+            #     f'WARNING: Rank{gpc.get_global_rank()} apply invalid state trans: {self.tensors_info[tensor].state} to {tensor_state}'
+            # )
             return
         self.tensors_info[tensor].state = tensor_state
 
     def update_tensor(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
-        print(f'Rank{gpc.get_global_rank()} start update tensor{self._idx}')
         tensor_info = self.tensors_info[tensor]
         self.data[tensor_info.offset:tensor_info.end].copy_(data_slice.view(-1))
-        tensor.data = self.data[tensor_info.offset:tensor_info.end].view(tensor_info.shape)
-        print(f'Rank{gpc.get_global_rank()} end update tensor {self._idx}')
+        tensor.data = self.data[tensor_info.offset:tensor_info.end].view(tensor.shape)
 
     @property
     def can_release(self) -> bool:
