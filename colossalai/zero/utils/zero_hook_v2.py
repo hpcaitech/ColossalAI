@@ -4,7 +4,6 @@ from enum import Enum
 from typing import List
 from contextlib import contextmanager
 from functools import partial
-import torch.distributed as dist
 
 
 class TrainingPhase(Enum):
@@ -34,23 +33,15 @@ class ZeROHookV2(ParamOpHook):
         self.chunk_manager.add_lazy_release_tensors(params)
 
     def pre_forward(self, params: List[torch.Tensor]) -> None:
-        # if self.training_phase == TrainingPhase.BACKWARD:
-        #     print(f'Rank{dist.get_rank()} pre fwd')
         self.pre_op(params)
 
     def post_forward(self, params: List[torch.Tensor]) -> None:
-        # if self.training_phase == TrainingPhase.BACKWARD:
-        #     print(f'Rank{dist.get_rank()} post fwd')
         self.post_op(params)
 
     def pre_backward(self, params: List[torch.Tensor]) -> None:
-        # if self.training_phase == TrainingPhase.BACKWARD:
-        #     print(f'Rank{dist.get_rank()} pre bwd')
         self.pre_op(params)
 
     def post_backward(self, params: List[torch.Tensor]) -> None:
-        # if self.training_phase == TrainingPhase.BACKWARD:
-        #     print(f'Rank{dist.get_rank()} post bwd')
         self.post_op(params)
 
     @contextmanager

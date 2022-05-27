@@ -87,7 +87,7 @@ class ColoDDPV2(ColoDDP):
         self.chunk_manager = chunk_manager
         self.param_op_hook = ZeROHookV2(chunk_manager)
         self.fp32_params = []
-        # TODO: get param order
+        # TODO: get param order and filter unused params
         for p in module.parameters():
             assert p.dtype == torch.half
             fp32_p = p.float()
@@ -103,7 +103,6 @@ class ColoDDPV2(ColoDDP):
         with use_param_op_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         self.chunk_manager.exec_lazy_release()
-        # print(self.chunk_manager.accessed_chunks)
         return outputs
 
     def backward(self, loss: torch.Tensor):
@@ -119,7 +118,6 @@ class ColoDDPV2(ColoDDP):
     def grad_handle(self, p, grad):
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
-        # print(f'grad hook {p._name}')
         with torch._C.DisableTorchFunction():
             self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
             if self.dp_world_size > 1:
