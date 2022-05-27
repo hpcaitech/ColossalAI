@@ -170,7 +170,7 @@ class ChunkManager:
         self.accessed_chunks: Set[Chunk] = set()
         self.lazy_release_tensors: List[torch.Tensor] = []
         if enable_distributed_storage and chunk_size is None:
-            self.rank_load = torch.zeros(gpc.get_world_size(ParallelMode.DATA), dtype=torch.int64)
+            self.rank_load: Dict[str, torch.Tensor] = {}
 
     def append_tensor(self, tensor: torch.Tensor, group_name: str) -> None:
         assert tensor not in self.tensor_chunk_map
@@ -186,7 +186,7 @@ class ChunkManager:
             src_rank = self._get_next_src_rank(group_name)
             chunk = Chunk(chunk_size, src_rank, tensor.dtype, self.device)
             if self.enable_distributed_storage and self.chunk_size is None:
-                self.rank_load[src_rank] += chunk_size
+                self.rank_load[group_name][src_rank] += chunk_size
             self.chunk_groups[group_name].append(chunk)
             chunk.append(tensor)
         self.tensor_chunk_map[tensor] = self.chunk_groups[group_name][-1]
@@ -197,7 +197,9 @@ class ChunkManager:
         if not self.enable_distributed_storage:
             return gpc.get_local_rank(ParallelMode.DATA)
         if self.chunk_size is None:
-            src_rank = torch.argmin(self.rank_load).item()
+            if group_name not in self.rank_load:
+                self.rank_load[group_name] = torch.zeros(gpc.get_world_size(ParallelMode.DATA), dtype=torch.int64)
+            src_rank = torch.argmin(self.rank_load[group_name]).item()
         else:
             chunk_idx = len(self.chunk_groups[group_name])
             src_rank = chunk_idx % gpc.get_world_size(ParallelMode.DATA)
