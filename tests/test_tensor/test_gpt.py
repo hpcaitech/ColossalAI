@@ -6,7 +6,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, distspec
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, distspec, ColoParameter, ColoTensor
 from colossalai.core import global_context as gpc
 from functools import partial
 from _utils import tensor_equal, tensor_shard_equal, set_seed
@@ -60,24 +60,30 @@ def run_gpt(init_spec_func, use_ddp):
                           process_group=gpc.get_group(ParallelMode.DATA))
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
+    for n, p in model.named_parameters():
+        p._name = n
     init_spec_func(model)
     check_param_equal(model, torch_model)
     model.train()
     torch_model.train()
     set_seed(gpc.get_local_rank(ParallelMode.DATA))
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
-        logits = model(input_ids, attn_mask)
+        print('==> fwd')
+        with ColoParameter.record_params():
+            logits = model(input_ids, attn_mask)
         torch_logits = torch_model(input_ids, attn_mask)
         assert tensor_equal(torch_logits, logits)
         loss = criterion(logits, input_ids)
         torch_loss = criterion(torch_logits, input_ids)
-        if use_ddp:
-            model.backward(loss)
-        else:
-            loss.backward()
+        print('==> bwd')
+        with ColoParameter.record_params():
+            if use_ddp:
+                model.backward(loss)
+            else:
+                loss.backward()
         torch_loss.backward()
         check_grad_equal(model, torch_model)
-        if i > 0:
+        if i >= 0:
             break
 
 
@@ -88,7 +94,7 @@ def run_dist(rank, world_size, port, use_ddp):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_gpt(init_1d_row_spec, use_ddp)
-    run_gpt(init_1d_col_spec, use_ddp)
+    # run_gpt(init_1d_col_spec, use_ddp)
 
 
 @pytest.mark.dist
@@ -101,4 +107,4 @@ def test_gpt(world_size, use_ddp):
 
 
 if __name__ == '__main__':
-    test_gpt(4)
+    test_gpt(1, False)

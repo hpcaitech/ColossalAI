@@ -101,11 +101,15 @@ class ColoDDPV2(ColoDDP):
             if not self.chunk_manager.is_chunk_free(p):
                 self.chunk_manager.update_tensor(p, fp32_p)
         with use_param_op_hooks(self.param_op_hook):
-            return self.module(*args, **kwargs)
+            outputs = self.module(*args, **kwargs)
+        self.chunk_manager.exec_lazy_release()
+        # print(self.chunk_manager.accessed_chunks)
+        return outputs
 
     def backward(self, loss: torch.Tensor):
         with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
             loss.backward()
+        self.chunk_manager.exec_lazy_release()
         for p in self.module.parameters():
             if self.chunk_manager.is_chunk_free(p):
                 p.grad = None
@@ -115,14 +119,14 @@ class ColoDDPV2(ColoDDP):
     def grad_handle(self, p, grad):
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
-        self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
-        if self.dp_world_size > 1:
-            grad = grad / self.dp_world_size
+        # print(f'grad hook {p._name}')
+        with torch._C.DisableTorchFunction():
+            self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
+            if self.dp_world_size > 1:
+                grad = grad / self.dp_world_size
             self.chunk_manager.update_tensor(p, grad)
             self.chunk_manager.reduce_chunk(p)
             self.chunk_manager.release_chunk(p)
-        else:
-            self.chunk_manager.update_tensor(p, grad)
         return empty_grad
 
     def zero_grad(self, set_to_none: bool = False) -> None:

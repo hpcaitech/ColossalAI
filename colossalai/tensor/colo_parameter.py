@@ -40,10 +40,14 @@ class ColoParameter(ColoTensor):
 
     @classmethod
     def __torch_function__(cls, func, types, args=..., kwargs=None):
+        # print(f'param torch func {func}')
         if len(_ParamOpHookWrapper.hooks) > 0:
             if not func.__name__.startswith('__'):
                 params = list(filter(lambda arg: isinstance(arg, ColoParameter), args))
+                if kwargs is not None:
+                    params.extend(list(filter(lambda arg: isinstance(arg, ColoParameter), kwargs.values())))
                 if len(params) > 0:
+                    # print(f'{func} register hook on {[p._name for p in params]}')
                     with torch._C.DisableTorchFunction():
                         args = PreFwdPostBwd.apply(params, *args)
                     ret = super().__torch_function__(func, types, args, kwargs)

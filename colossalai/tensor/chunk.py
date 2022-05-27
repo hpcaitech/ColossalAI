@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, Deque, Set
+from typing import Optional, Dict, Deque, Set, List
 from collections import deque
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
@@ -17,11 +17,20 @@ class TensorState(Enum):
     READY_FOR_REDUCE = 4
 
 
+STATE_TRANS = ((TensorState.FREE, TensorState.HOLD), (TensorState.FREE, TensorState.COMPUTE),
+               (TensorState.HOLD, TensorState.FREE), (TensorState.HOLD, TensorState.COMPUTE),
+               (TensorState.COMPUTE, TensorState.HOLD), (TensorState.COMPUTE, TensorState.HOLD_AFTER_BWD),
+               (TensorState.COMPUTE, TensorState.READY_FOR_REDUCE), (TensorState.HOLD_AFTER_BWD, TensorState.COMPUTE),
+               (TensorState.HOLD_AFTER_BWD, TensorState.READY_FOR_REDUCE), (TensorState.READY_FOR_REDUCE,
+                                                                            TensorState.HOLD))
+
+
 @dataclass
 class TensorInfo:
     state: TensorState
     offset: int
     end: int
+    shape: torch.Size
 
 
 class ChunkFullError(Exception):
@@ -44,6 +53,7 @@ class Chunk:
         init_size = chunk_size if self.is_src_rank else 0
         self.data = torch.empty(init_size, dtype=dtype, device=self.device)
         self.tensors_info: Dict[torch.Tensor, TensorInfo] = {}
+        self._idx = 0
 
     def append(self, tensor: torch.Tensor) -> None:
         assert tensor.dtype == self.dtype
@@ -51,57 +61,86 @@ class Chunk:
         if new_utilized_size > self.size:
             raise ChunkFullError
         tensor_state = TensorState.FREE
+        tensor_shape = tensor.shape
         if self.is_src_rank:
             self.data[self.utilized_size:new_utilized_size].copy_(tensor.view(-1))
             tensor_state = TensorState.HOLD
-            tensor.data = self.data[self.utilized_size:new_utilized_size].view_as(tensor)
+            tensor.data = self.data[self.utilized_size:new_utilized_size].view(tensor.shape)
         else:
-            tensor.storage().resize_(0)
-        self.tensors_info[tensor] = TensorInfo(tensor_state, self.utilized_size, new_utilized_size)
+            tensor.data = torch.empty(0)
+        self.tensors_info[tensor] = TensorInfo(tensor_state, self.utilized_size, new_utilized_size, tensor_shape)
         self.utilized_size = new_utilized_size
 
     def release(self) -> None:
+        print(f'Rank{gpc.get_global_rank()} start release')
         if not self.is_src_rank:
+            print(f'Rank{gpc.get_global_rank()} release chunk{self._idx}')
             self.data = torch.empty(0, dtype=self.dtype, device=self.device)
-            for tensor, tensor_info in self.tensors_info.items():
-                tensor_info.state = TensorState.FREE
-                tensor.storage().resize_(0)
+            for tensor in self.tensors_info.keys():
+                tensor.data = torch.empty(0)
+            # tensor.storage().resize_(0)
+            self._update_tensors_state(TensorState.FREE)
+        print(f'Rank{gpc.get_global_rank()} end release')
 
     def _update_tensors_ptr(self) -> None:
+        print(f'Rank{gpc.get_global_rank()} start update ptr')
+        assert self.data.storage().size() > 0
         for tensor, tensor_info in self.tensors_info.items():
-            tensor.data = self.data[tensor_info.offset:tensor_info.end].view_as(tensor)
+            tensor.data = self.data[tensor_info.offset:tensor_info.end].view(tensor_info.shape)
+            with torch._C.DisableTorchFunction():
+                assert tensor.storage().size() > 0
+        print(f'Rank{gpc.get_global_rank()} end update ptr')
+
+    def _update_tensors_state(self, next_state: TensorState, prev_state: Optional[TensorState] = None):
+        for tensor_info in self.tensors_info.values():
+            if prev_state is None or tensor_info.state == prev_state:
+                tensor_info.state = next_state
 
     def access(self) -> None:
+        print(f'Rank{gpc.get_global_rank()} start access chunk{self._idx}')
         if not self.is_src_rank:
             self.data = torch.empty(self.size, dtype=self.dtype, device=get_current_device())
         else:
+            assert self.data.storage().size() > 0
             self.data = self.data.to(get_current_device())
+        assert self.data.storage().size() > 0
         dist.broadcast(self.data, self.src_rank, group=gpc.get_group(ParallelMode.DATA))
+        assert self.data.storage().size() > 0
+        self._update_tensors_ptr()
         if not self.is_src_rank:
-            self._update_tensors_ptr()
+            self._update_tensors_state(TensorState.HOLD, prev_state=TensorState.FREE)
+        print(f'Rank{gpc.get_global_rank()} end access chunk{self._idx}')
 
     def move_device(self, device: torch.device) -> None:
         self.data = self.data.to(device)
         self._update_tensors_ptr()
 
     def reduce(self, is_all_reduce: bool = False) -> None:
+        print(f'Rank{gpc.get_global_rank()} start reduce chunk{self._idx}')
         self.data = self.data.to(get_current_device())
         if is_all_reduce:
             dist.all_reduce(self.data, group=gpc.get_group(ParallelMode.DATA))
         else:
             dist.reduce(self.data, self.src_rank, group=gpc.get_group(ParallelMode.DATA))
         self._update_tensors_ptr()
-        for tensor_info in self.tensors_info.values():
-            tensor_info.state = TensorState.HOLD
+        self._update_tensors_state(TensorState.HOLD)
+        print(f'Rank{gpc.get_global_rank()} reduce chunk{self._idx}')
 
     def tensor_trans_state(self, tensor: torch.Tensor, tensor_state: TensorState) -> None:
         assert tensor != TensorState.FREE, 'Can only set a chunk of tesors to FREE'
+        if (self.tensors_info[tensor].state, tensor_state) not in STATE_TRANS:
+            print(
+                f'WARNING: Rank{gpc.get_global_rank()} apply invalid state trans: {self.tensors_info[tensor].state} to {tensor_state}'
+            )
+            return
         self.tensors_info[tensor].state = tensor_state
 
     def update_tensor(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
+        print(f'Rank{gpc.get_global_rank()} start update tensor{self._idx}')
         tensor_info = self.tensors_info[tensor]
         self.data[tensor_info.offset:tensor_info.end].copy_(data_slice.view(-1))
-        tensor.data = self.data[tensor_info.offset:tensor_info.end].view_as(tensor)
+        tensor.data = self.data[tensor_info.offset:tensor_info.end].view(tensor_info.shape)
+        print(f'Rank{gpc.get_global_rank()} end update tensor {self._idx}')
 
     @property
     def can_release(self) -> bool:
@@ -126,7 +165,10 @@ class Chunk:
 
     @property
     def is_free(self) -> bool:
-        return self.data.numel() == 0
+        return self.data.storage().size() == 0
+
+    def tensor_states(self):
+        return f'Rank{gpc.get_global_rank()} {[f"{t._name}:{info.state}" for t, info in self.tensors_info.items()]}'
 
 
 class ChunkManager:
@@ -142,10 +184,12 @@ class ChunkManager:
         self.chunk_groups: Dict[str, Deque[Chunk]] = {}
         self.tensor_chunk_map: Dict[torch.Tensor, Chunk] = {}
         self.accessed_chunks: Set[Chunk] = set()
+        self.lazy_release_tensors: List[torch.Tensor] = []
         if enable_distributed_storage and chunk_size is None:
             self.rank_load = torch.zeros(gpc.get_world_size(ParallelMode.DATA), dtype=torch.int64)
 
     def append_tensor(self, tensor: torch.Tensor, group_name: str) -> None:
+        assert tensor not in self.tensor_chunk_map
         if self.chunk_size is not None and tensor.numel() > self.chunk_size:
             raise ValueError(
                 f'Cannot create chunk, got tensor numel ({tensor.numel()}) > chunk size ({self.chunk_size})')
@@ -153,10 +197,11 @@ class ChunkManager:
             self.chunk_groups[group_name] = deque()
         try:
             self.chunk_groups[group_name][-1].append(tensor)
-        except IndexError or ChunkFullError:
+        except (IndexError, ChunkFullError):
             chunk_size = self.chunk_size or tensor.numel()
             src_rank = self._get_next_src_rank(group_name)
             chunk = Chunk(chunk_size, src_rank, tensor.dtype, self.device)
+            chunk._idx = len(self.chunk_groups[group_name])
             if self.enable_distributed_storage and self.chunk_size is None:
                 self.rank_load[src_rank] += chunk_size
             self.chunk_groups[group_name].append(chunk)
@@ -186,6 +231,8 @@ class ChunkManager:
         if not self.enable_distributed_storage:
             return
         chunk = self.tensor_chunk_map[tensor]
+        if chunk not in self.accessed_chunks:
+            return
         if chunk.can_release:
             chunk.release()
             self.accessed_chunks.remove(chunk)
@@ -215,3 +262,18 @@ class ChunkManager:
 
     def get_chunk(self, tensor: torch.Tensor) -> Chunk:
         return self.tensor_chunk_map[tensor]
+
+    def print_chunk_info(self) -> None:
+        msg = f'\nRank{gpc.get_global_rank()}:\n'
+        group = self.chunk_groups['fp16_param']
+        for i, chunk in enumerate(group):
+            msg += f'[{i}] id={id(chunk)} size={chunk.size}, src_rank={chunk.src_rank}, util.={chunk.utilized_size/chunk.size*100:.2f}, params={[t._name + ":" + str(info.state) for t, info in chunk.tensors_info.items()]}\n'
+        print(msg)
+
+    def add_lazy_release_tensors(self, tensors: List[torch.Tensor]) -> None:
+        self.lazy_release_tensors.extend(tensors)
+
+    def exec_lazy_release(self) -> None:
+        for tensor in self.lazy_release_tensors:
+            self.release_chunk(tensor)
+        self.lazy_release_tensors.clear()

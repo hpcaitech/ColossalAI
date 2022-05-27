@@ -49,7 +49,7 @@ class PostFwdPreBwd(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, params, args):
-        ctx.parmas = params
+        ctx.params = params
         for hook in _ParamOpHookWrapper.hooks:
             hook.post_forward(params)
         return args
