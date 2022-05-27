@@ -6,7 +6,7 @@ from functools import partial
 from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
 from colossalai.tensor import ChunkManager, use_param_op_hooks, TensorState
 
-__all__ = ['ColoDDP']
+__all__ = ['ColoDDP', 'ColoDDPV2']
 
 
 def free_storage(data: torch.Tensor) -> None:
