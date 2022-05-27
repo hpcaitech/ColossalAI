@@ -53,7 +53,6 @@ class Chunk:
         if not self.is_src_rank:
             self.data.storage().resize_(0)
         self.tensors_info: Dict[torch.Tensor, TensorInfo] = {}
-        self._idx = 0
 
     def append(self, tensor: torch.Tensor) -> None:
         assert tensor.dtype == self.dtype
@@ -152,8 +151,8 @@ class Chunk:
     def is_free(self) -> bool:
         return self.data.storage().size() == 0
 
-    def tensor_states(self):
-        return f'Rank{gpc.get_global_rank()} {[f"{t._name}:{info.state}" for t, info in self.tensors_info.items()]}'
+    def __repr__(self) -> str:
+        return f'Chunk: src rank={self.src_rank} ,size={self.size}, utilization={self.utilized_size/self.size*100:.2f}%, freed={self.is_free}, tensor states={[info.state.name for info in self.tensors_info.values()]}'
 
 
 class ChunkManager:
@@ -186,7 +185,6 @@ class ChunkManager:
             chunk_size = self.chunk_size or tensor.numel()
             src_rank = self._get_next_src_rank(group_name)
             chunk = Chunk(chunk_size, src_rank, tensor.dtype, self.device)
-            chunk._idx = len(self.chunk_groups[group_name])
             if self.enable_distributed_storage and self.chunk_size is None:
                 self.rank_load[src_rank] += chunk_size
             self.chunk_groups[group_name].append(chunk)
@@ -248,13 +246,6 @@ class ChunkManager:
     def get_chunk(self, tensor: torch.Tensor) -> Chunk:
         return self.tensor_chunk_map[tensor]
 
-    def print_chunk_info(self) -> None:
-        msg = f'\nRank{gpc.get_global_rank()}:\n'
-        group = self.chunk_groups['fp16_param']
-        for i, chunk in enumerate(group):
-            msg += f'[{i}] id={id(chunk)} size={chunk.size}, src_rank={chunk.src_rank}, util.={chunk.utilized_size/chunk.size*100:.2f}, params={[t._name + ":" + str(info.state) for t, info in chunk.tensors_info.items()]}\n'
-        print(msg)
-
     def add_lazy_release_tensors(self, tensors: List[torch.Tensor]) -> None:
         self.lazy_release_tensors.extend(tensors)
 
@@ -262,3 +253,11 @@ class ChunkManager:
         for tensor in self.lazy_release_tensors:
             self.release_chunk(tensor)
         self.lazy_release_tensors.clear()
+
+    def __repr__(self) -> str:
+        msg = f'Rank {gpc.get_local_rank(ParallelMode.DATA)}:\n'
+        for group_name, group in self.chunk_groups.items():
+            msg += f'Group {group_name}:\n'
+            for i, chunk in enumerate(group):
+                msg += f'[{i}] {chunk}\n'
+        return msg
