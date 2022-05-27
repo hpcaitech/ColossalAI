@@ -107,7 +107,7 @@ class Chunk:
         self._update_tensors_state(TensorState.HOLD)
 
     def tensor_trans_state(self, tensor: torch.Tensor, tensor_state: TensorState) -> None:
-        assert tensor != TensorState.FREE, 'Can only set a chunk of tesors to FREE'
+        assert tensor != TensorState.FREE, 'Can only set a chunk of tensors to FREE'
         # As the gradient hook can be triggered either before or after post-backward
         # tensor's state can be compute -> hold_after_bwd -> ready_for_reduce
         # or compute -> ready_for_reduce -> hold_after_bwd
