@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-   一个整合高效并行技术的 AI 大模型训练系统。
+   Colossal-AI: 一个面向大模型时代的通用深度学习系统
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> | 
    <a href="https://www.colossalai.org/"> 文档 </a> | 
@@ -28,7 +28,7 @@
  <li><a href="#为何选择-Colossal-AI">为何选择 Colossal-AI</a> </li>
  <li><a href="#特点">特点</a> </li>
  <li>
-   <a href="#并行样例展示">并行样例展示</a> 
+   <a href="#并行训练样例展示">并行训练样例展示</a> 
    <ul>
      <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
@@ -38,13 +38,18 @@
    </ul>
  </li>
 <li>
-   <a href="#单GPU样例展示">单GPU样例展示</a> 
+   <a href="#单GPU训练样例展示">单GPU训练样例展示</a> 
    <ul>
      <li><a href="#GPT-2-Single">GPT-2</a></li>
      <li><a href="#PaLM-Single">PaLM</a></li>
    </ul>
  </li>
-
+<li>
+   <a href="#推理样例展示">推理样例展示</a> 
+   <ul>
+     <li><a href="#GPT-3-Inference">GPT-3</a></li>
+   </ul>
+ </li>
  <li>
    <a href="#安装">安装</a>
    <ul>
@@ -76,7 +81,7 @@
 
 ## 特点
 
-Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让您的分布式 AI 模型训练像普通的单 GPU 模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练。
+Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的分布式 AI 模型像构建普通的单 GPU 模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练和推理。
 
 - 并行化策略
   - 数据并行
@@ -88,9 +93,11 @@ Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让�
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
   - 基于参数文件的并行化
+- 推理
+  - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 并行样例展示
+## 并行训练样例展示
 ### ViT
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
@@ -112,7 +119,7 @@ Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让�
 
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/(updated)GPT-2.png" width=800>
 
-- 用相同的硬件条件训练24倍大的模型
+- 用相同的硬件训练24倍大的模型
 - 超3倍的吞吐量 
 
 ### BERT
@@ -127,23 +134,36 @@ Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让�
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 单GPU样例展示
+## 单GPU训练样例展示
 
 ### GPT-2
 <p id="GPT-2-Single" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2-GPU1.png" width=450/>
 </p>
 
-- 用相同的硬件条件训练20倍大的模型
+- 用相同的硬件训练20倍大的模型
 
 ### PaLM
 <p id="PaLM-Single" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/PaLM-GPU1.png" width=450/>
 </p>
 
-- 用相同的硬件条件训练34倍大的模型
+- 用相同的硬件训练34倍大的模型
 
 <p align="right">(<a href="#top">back to top</a>)</p>
+
+
+## 推理样例展示
+
+### GPT-3
+<p id="GPT-3-Inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
+</p>
+
+- [Energon-AI](https://github.com/hpcaitech/EnergonAI) ：用相同的硬件推理加速50%
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
 
 ## 安装
 
