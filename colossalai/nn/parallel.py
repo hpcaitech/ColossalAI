@@ -110,7 +110,7 @@ class ColoDDPV2(ColoDDP):
             loss.backward()
         self.chunk_manager.exec_lazy_release()
         for p in self.module.parameters():
-            if self.chunk_manager.is_chunk_free(p):
+            if self.chunk_manager.is_chunk_free(p) or not p.requires_grad:
                 p.grad = None
             else:
                 p.grad = p.data
