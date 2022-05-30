@@ -1,6 +1,7 @@
 from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter
+from colossalai.tensor import ColoTensor, ColoParameter, register_colo_module, init_colo_module, \
+    ColoLinear, ColoEmbedding
 import types
 
 from torch import nn
@@ -69,7 +70,7 @@ def _setattr_with_colotensor(self, name: str, value: Union[torch.Tensor, torch.n
                     d.discard(name)
 
     params = self.__dict__.get('_parameters')
-    if isinstance(value, (ColoTensor, torch.nn.Parameter)):
+    if isinstance(value, (ColoParameter, torch.nn.Parameter)):
         if params is None:
             raise AttributeError("cannot assign parameters before Module.__init__() call")
         remove_from(self.__dict__, self._buffers, self._modules, self._non_persistent_buffers_set)
@@ -101,6 +102,17 @@ def _setattr_with_colotensor(self, name: str, value: Union[torch.Tensor, torch.n
             else:
                 object.__setattr__(self, name, value)
 
+def _get_parameter_with_colotensor(self, target: str) -> Union[torch.nn.Parameter, ColoTensor]:
+    module_path, _, param_name = target.rpartition(".")
+
+    mod: torch.nn.Module = self.get_submodule(module_path)
+
+    if not hasattr(mod, param_name):
+        raise AttributeError(mod._get_name() + " has no attribute `"
+                            + param_name + "`")
+
+    param = getattr(mod, param_name)
+    return param
 
 def ColoModulize(module):
     """
@@ -124,6 +136,13 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
         torch.nn.Module.__setattr__ = _setattr_with_colotensor
         torch.nn.Module.register_parameter = _register_parameter_with_colotensor
+        torch.nn.Module.get_parameter = _get_parameter_with_colotensor
+
+        self._register_colo_modules()
+
+    def _register_colo_modules(self):
+        register_colo_module(torch.nn.Linear, ColoLinear())
+        register_colo_module(torch.nn.Embedding, ColoEmbedding())
 
     def _post_init_method(self, module: torch.nn.Module, *args, **kwargs):
         """
@@ -165,5 +184,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)
             setattr(submodule, param_name, colo_param)
+            colo_param.shared_param_modules.append(submodule)
 
         ColoModulize(module)
