@@ -46,3 +46,4 @@ def test_operand():
     t_ref_res = t_ref + t_ref
     t_res = t + t
     assert torch.allclose(t_ref_res, t_res)
+
