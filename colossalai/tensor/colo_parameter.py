@@ -3,7 +3,6 @@ from .const import TensorType
 import torch
 from colossalai.tensor import TensorSpec, distspec
 from copy import copy
-from collections import OrderedDict
 
 class ColoParameter(ColoTensor, torch.nn.Parameter):
     r"""A kind of ColoTensor to be considered as a module parameter.
