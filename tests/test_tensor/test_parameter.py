@@ -18,5 +18,9 @@ def test_multiinheritance():
     # __repr__ overload
     assert 'ColoParameter' in str(colo_param)
 
+    # __torch_function__
+    clone_param = torch.clone(colo_param)
+    assert isinstance(clone_param, ColoTensor)
+
 if __name__ == '__main__':
     test_multiinheritance()
