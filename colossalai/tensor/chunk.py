@@ -86,8 +86,7 @@ class Chunk:
     def access(self) -> None:
         if not self.is_src_rank:
             self.data.storage().resize_(self.size)
-        else:
-            self.data.data = self.data.to(get_current_device())
+        self.data.data = self.data.to(get_current_device())
         dist.broadcast(self.data, self.src_rank, group=gpc.get_group(ParallelMode.DATA))
         self._update_tensors_ptr()
         if not self.is_src_rank:
