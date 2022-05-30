@@ -353,5 +353,5 @@ def _test_pretrain_load(world_size):
 if __name__ == '__main__':
     # test_model_parameters()
     # test_colo_optimizer()
-    test_model(4)
-    # _test_pretrain_load(4)
+    # test_model(4)
+    _test_pretrain_load(4)
