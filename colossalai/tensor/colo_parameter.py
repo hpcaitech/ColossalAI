@@ -3,6 +3,7 @@ from .const import TensorType
 import torch
 from colossalai.tensor import TensorSpec, distspec
 from copy import copy
+from typing import Optional
 
 class ColoParameter(ColoTensor, torch.nn.Parameter):
     r"""A kind of ColoTensor to be considered as a module parameter.
@@ -10,7 +11,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
     """
 
     def __new__(cls,
-                data: torch.Tensor = None,
+                data: Optional[torch.Tensor] = None,
                 requires_grad: bool = True,
                 spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoParameter':
         if data is None:
@@ -18,7 +19,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
         return torch.Tensor._make_subclass(cls, data, requires_grad)
 
     def __init__(self,
-                 data: torch.Tensor = None,
+                 data: Optional[torch.Tensor] = None,
                  requires_grad: bool = True,
                  spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
         self._spec = copy(spec)
