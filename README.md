@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-   An integrated large-scale model training system with efficient parallelization techniques.
+   Colossal-AI: A Unified Deep Learning System for Big Model Era
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
    <a href="https://www.colossalai.org/"> Documentation </a> | 
@@ -28,7 +28,7 @@
  <li><a href="#Why-Colossal-AI">Why Colossal-AI</a> </li>
  <li><a href="#Features">Features</a> </li>
  <li>
-   <a href="#Parallel-Demo">Parallel Demo</a> 
+   <a href="#Parallel-Training-Demo">Parallel Training Demo</a> 
    <ul>
      <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
@@ -38,13 +38,18 @@
    </ul>
  </li>
  <li>
-   <a href="#Single-GPU-Demo">Single GPU Demo</a> 
+   <a href="#Single-GPU-Training-Demo">Single GPU Training Demo</a> 
    <ul>
      <li><a href="#GPT-2-Single">GPT-2</a></li>
      <li><a href="#PaLM-Single">PaLM</a></li>
    </ul>
  </li>
-
+ <li>
+   <a href="#Inference-Demo">Inference Demo</a> 
+   <ul>
+     <li><a href="#GPT-3-Inference">GPT-3</a></li>
+   </ul>
+ </li>
  <li>
    <a href="#Installation">Installation</a>
    <ul>
@@ -76,9 +81,9 @@
 
 ## Features
 
-Colossal-AI provides a collection of parallel training components for you. We aim to support you to write your
+Colossal-AI provides a collection of parallel components for you. We aim to support you to write your
 distributed deep learning models just like how you write your model on your laptop. We provide user-friendly tools to kickstart
-distributed training in a few lines.
+distributed training and inference in a few lines.
 
 - Parallelism strategies
   - Data Parallelism
@@ -93,9 +98,12 @@ distributed training in a few lines.
 - Friendly Usage
   - Parallelism based on configuration file
 
+- Inference
+  - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Parallel Demo
+## Parallel Training Demo
 ### ViT
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
@@ -131,7 +139,7 @@ Please visit our [documentation and tutorials](https://www.colossalai.org/) for 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Single GPU Demo
+## Single GPU Training Demo
 
 ### GPT-2
 <p id="GPT-2-Single" align="center">
@@ -146,6 +154,18 @@ Please visit our [documentation and tutorials](https://www.colossalai.org/) for 
 </p>
 
 - 34x larger model size on the same hardware
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+
+## Inference Demo
+
+### GPT-3
+<p id="GPT-3-Inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
+</p>
+
+- [Energon-AI](https://github.com/hpcaitech/EnergonAI): 50% inference acceleration on the same hardware
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
