@@ -26,12 +26,6 @@ def check_param_equal(model, torch_model):
             assert tensor_equal(torch_p, p), f'{torch_p} vs {p}'
 
 
-def check_grad_equal(model, torch_model):
-    for p, torch_p in zip(model.parameters(), torch_model.parameters()):
-        if p.grad is not None:
-            assert tensor_equal(torch_p.grad, p.grad.float())
-
-
 def run_step(model, criterion, optimizer, input_ids, attn_mask):
     optimizer.zero_grad()
     logits = model(input_ids, attn_mask)
@@ -42,8 +36,6 @@ def run_step(model, criterion, optimizer, input_ids, attn_mask):
     return logits
 
 
-# @parameterize('use_chunk', [True, False])
-# @parameterize('use_zero', [True, False])
 def run_gpt(use_chunk, use_zero):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
@@ -59,7 +51,7 @@ def run_gpt(use_chunk, use_zero):
     chunk_size = 38 * 1024**2 if use_chunk else None
     chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
     model = ColoDDPV2(model, chunk_manager)
-    optim = CPUAdam(model.parameters(), lr=1e-3)
+    optim = HybridAdam(model.parameters(), lr=1e-3)
     optim = ZeroOptimizer(optim, model, initial_scale=32)
 
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=32)
@@ -73,14 +65,12 @@ def run_gpt(use_chunk, use_zero):
     torch_model.train()
     set_seed(gpc.get_local_rank(ParallelMode.DATA))
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
-        if i > 2:
+        if i > 1:
             break
         logits = run_step(model, criterion, optim, input_ids, attn_mask)
         torch_logits = run_step(torch_model, criterion, torch_optim, input_ids, attn_mask)
         assert tensor_equal(logits, torch_logits)
         check_param_equal(model, torch_model)
-        print(i)
-        # break
 
 
 def run_dist(rank, world_size, port, use_chunk, use_zero):
