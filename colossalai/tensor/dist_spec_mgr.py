@@ -34,7 +34,7 @@ class DistSpecManager:
             chunk_size = divide(tensor.size(dim), dist_spec.num_partitions[i])
             chunk = chunk.narrow(dim, idx // num_parts * chunk_size, chunk_size)
             idx %= num_parts
-        return chunk.detach().contiguous()
+        return chunk.clone().detach().contiguous()
 
     @staticmethod
     def _gather(tensor: torch.Tensor, old_dist_spec: _DistSpec) -> torch.Tensor:
