@@ -4,7 +4,8 @@ from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 from functools import partial
 from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
-from colossalai.tensor import ChunkManager, use_param_op_hooks, TensorState
+from colossalai.tensor.chunk import ChunkManager, TensorState
+from colossalai.tensor.param_op_hook import use_param_op_hooks
 
 __all__ = ['ColoDDP', 'ColoDDPV2']
 
@@ -87,19 +88,17 @@ class ColoDDPV2(ColoDDP):
         self.chunk_manager = chunk_manager
         self.param_op_hook = ZeROHookV2(chunk_manager)
         self.fp32_params = []
+        self.overflow_counter = 0
         # TODO: get param order and filter unused params
         for p in module.parameters():
             assert p.dtype == torch.half
-            fp32_p = p.float()
+            fp32_p = p.float().detach()
             self.chunk_manager.append_tensor(p, 'fp16_param')
             self.chunk_manager.append_tensor(fp32_p, 'fp32_param')
             self.fp32_params.append(fp32_p)
 
     def forward(self, *args, **kwargs):
         self.module.zero_grad(set_to_none=True)
-        for p, fp32_p in zip(self.module.parameters(), self.fp32_params):
-            if not self.chunk_manager.is_chunk_free(p):
-                self.chunk_manager.copy_tensor_to_chunk_slice(p, fp32_p)
         with use_param_op_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         self.chunk_manager.exec_lazy_release()
@@ -115,6 +114,16 @@ class ColoDDPV2(ColoDDP):
             else:
                 p.grad = p.data
 
+    def backward_by_grad(self, tensor, grad):
+        with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
+            torch.autograd.backward(tensor, grad)
+        self.chunk_manager.exec_lazy_release()
+        for p in self.module.parameters():
+            if self.chunk_manager.is_chunk_free(p) or not p.requires_grad:
+                p.grad = None
+            else:
+                p.grad = p.data
+
     def grad_handle(self, p, grad):
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
@@ -123,8 +132,13 @@ class ColoDDPV2(ColoDDP):
             if self.dp_world_size > 1:
                 grad = grad / self.dp_world_size
             self.chunk_manager.copy_tensor_to_chunk_slice(p, grad)
+            chunk = self.chunk_manager.get_chunk(p)
+            can_reduce = chunk.can_reduce
             self.chunk_manager.reduce_chunk(p)
             self.chunk_manager.release_chunk(p)
+            if can_reduce and not chunk.is_free:
+                self.overflow_counter += torch.isinf(chunk.data).any().item()
+                self.overflow_counter += torch.isnan(chunk.data).any().item()
         return empty_grad
 
     def zero_grad(self, set_to_none: bool = False) -> None:
