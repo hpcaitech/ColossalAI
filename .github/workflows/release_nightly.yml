@@ -9,10 +9,10 @@ on:
       cuda_version:
         type: choice
         description: CUDA Version
-        default: 'all'
+        default: "all"
         required: true
         options:
-        - all
+        - "all"
         - "11.3"
         - "10.2"
 jobs:
@@ -25,7 +25,7 @@ jobs:
     - id: set-matrix
       run: |
         [ "${{github.event.inputs.cuda_version}}" != "all" ] && matrix="[\"hpcaitech/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
-        [ "${{github.event.inputs.cuda_version}}" == "all" ] && matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
+        [ "${{github.event.inputs.cuda_version}}" == "all" || "${{github.event.inputs.cuda_version}}" == "" ] && matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
         echo $matrix
         echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
 

@@ -1,4 +1,5 @@
 import os
+
 from functools import partial
 from pathlib import Path
 
@@ -6,19 +7,21 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.amp.amp_type import AMP_TYPE
-from colossalai.builder import build_pipeline_model
-from colossalai.engine.schedule import PipelineSchedule
-from colossalai.logging import get_dist_logger
-from colossalai.nn import LinearWarmupLR
-from colossalai.nn.loss import CrossEntropyLoss
+from colossalai.amp import AMP_TYPE
 from colossalai.trainer import Trainer, hooks
-from colossalai.utils import free_port, get_dataloader
-from colossalai.engine.gradient_accumulation import GradAccumLrSchedulerByStep
+from colossalai.context import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use
-from model_zoo.vit import vit_tiny_patch4_32
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
+from colossalai.utils import free_port
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+from colossalai.nn import CrossEntropyLoss
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
+from colossalai.utils import is_using_pp, get_dataloader
+from colossalai.utils.model.pipelinable import PipelinableContext
+from tqdm import tqdm
+
+from titans.dataloader.cifar10 import build_cifar
+from titans.model.vit import vit_tiny_patch4_32
 
 BATCH_SIZE = 4
 NUM_EPOCHS = 60
@@ -34,35 +37,35 @@ def run_trainer(rank, world_size, port):
 
     logger = get_dist_logger()
 
-    model = vit_tiny_patch4_32()
-    pipe_model = build_pipeline_model(model.layers, num_chunks=1)
+    # get logger
+    logger = get_dist_logger()
 
-    # build dataloaders
-    transform_train = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-    ])
+    pipelinable = PipelinableContext()
+    with pipelinable:
+        model = vit_tiny_patch4_32()
+    pipelinable.to_layer_list()
+    pipelinable.load_policy("uniform")
+    model = pipelinable.partition(1, gpc.pipeline_parallel_size, gpc.get_local_rank(ParallelMode.PIPELINE))
 
-    train_dataset = CIFAR10(root=Path(os.environ['DATA']), train=True, download=True, transform=transform_train)
-    train_dataloader = get_dataloader(dataset=train_dataset, shuffle=True, batch_size=BATCH_SIZE, pin_memory=True)
+    # craete dataloaders
+    root = Path(os.environ['DATA'])
+    train_dataloader, test_dataloader = build_cifar(BATCH_SIZE, root, pad_if_needed=True, crop=32, resize=32)
 
-    # build criterion
-    criterion = CrossEntropyLoss()
+    # create loss function
+    criterion = CrossEntropyLoss(label_smoothing=0.1)
 
-    # optimizer
-    optimizer = torch.optim.Adam(pipe_model.parameters(), lr=0.001, weight_decay=0)
+    # create optimizer
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0)
 
-    # lr_scheduler
-    steps_per_epoch = GradAccumLrSchedulerByStep.compute_effective_steps_per_epoch(train_dataloader, accumulate_size=2)
-    total_steps = steps_per_epoch * NUM_EPOCHS
-    warmup_steps = steps_per_epoch * WARMUP_EPOCHS
-    lr_scheduler = LinearWarmupLR(optimizer, total_steps=total_steps, warmup_steps=warmup_steps)
+    # create lr scheduler
+    lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer, total_steps=NUM_EPOCHS, warmup_steps=WARMUP_EPOCHS)
 
-    engine, train_dataloader, _, lr_scheduler = colossalai.initialize(pipe_model,
-                                                                      optimizer,
-                                                                      criterion,
-                                                                      train_dataloader,
-                                                                      lr_scheduler=lr_scheduler)
+    # intiailize
+    engine, train_dataloader, test_dataloader, _ = colossalai.initialize(model=model,
+                                                                         optimizer=optimizer,
+                                                                         criterion=criterion,
+                                                                         train_dataloader=train_dataloader,
+                                                                         test_dataloader=test_dataloader)
 
     logger = get_dist_logger()
 

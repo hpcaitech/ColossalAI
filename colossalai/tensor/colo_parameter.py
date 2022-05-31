@@ -4,15 +4,16 @@ import torch
 from colossalai.tensor import TensorSpec, distspec
 from copy import copy
 from .param_op_hook import _ParamOpHookWrapper, PreFwdPostBwd, PostFwdPreBwd
+from typing import Optional
 
 
-class ColoParameter(ColoTensor):
+class ColoParameter(ColoTensor, torch.nn.Parameter):
     r"""A kind of ColoTensor to be considered as a module parameter.
 
     """
 
     def __new__(cls,
-                data: torch.Tensor,
+                data: Optional[torch.Tensor] = None,
                 requires_grad: bool = True,
                 spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoParameter':
         if data is None:
@@ -20,7 +21,7 @@ class ColoParameter(ColoTensor):
         return torch.Tensor._make_subclass(cls, data, requires_grad)
 
     def __init__(self,
-                 data: torch.Tensor,
+                 data: Optional[torch.Tensor] = None,
                  requires_grad: bool = True,
                  spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
         self._spec = copy(spec)
@@ -60,3 +61,29 @@ class ColoParameter(ColoTensor):
                         ret = PostFwdPreBwd.apply(params, ret)
                     return ret
         return super().__torch_function__(func, types, args, kwargs)
+
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        else:
+            with torch._C.DisableTorchFunction():
+                data = self.data.clone()
+            tensor = ColoParameter(data, self.requires_grad, spec=copy(self.spec))
+            memo[id(self)] = tensor
+            return tensor
+
+    def __reduce_ex__(self, proto):
+        # Adapted from torch._utils._rebuild_parameter
+        # def _rebuild_colo_parameter(data, requires_grad, backward_hooks):
+        #     colo_param = ColoParameter(data, requires_grad)
+        #     colo_param._backward_hooks = backward_hooks
+        #     return colo_param
+
+        # return (
+        #     _rebuild_colo_parameter,
+        #     (self.data, self.requires_grad, OrderedDict())
+        # )
+
+        # TODO(jzy) we don't support object reflection now.
+        # distspec cannot be pickled or rebuilt because it's tightly connected to runtime attribute `process_group`.
+        raise NotImplementedError
