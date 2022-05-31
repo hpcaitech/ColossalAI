@@ -45,7 +45,7 @@
    </ul>
  </li>
 <li>
-   <a href="#推理样例展示">推理样例展示</a> 
+   <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a> 
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
    </ul>
@@ -153,7 +153,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 
-## 推理样例展示
+## 推理 (Energon-AI) 样例展示
 
 ### GPT-3
 <p id="GPT-3-Inference" align="center">

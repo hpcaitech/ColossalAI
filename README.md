@@ -45,7 +45,7 @@
    </ul>
  </li>
  <li>
-   <a href="#Inference-Demo">Inference Demo</a> 
+   <a href="#Inference-Energon-AI-Demo">Inference (Energon-AI) Demo</a> 
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
    </ul>
@@ -158,7 +158,7 @@ Please visit our [documentation and tutorials](https://www.colossalai.org/) for 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 
-## Inference Demo
+## Inference (Energon-AI) Demo
 
 ### GPT-3
 <p id="GPT-3-Inference" align="center">
