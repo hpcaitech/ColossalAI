@@ -120,7 +120,7 @@ class Chunk:
             return
         self.tensors_info[tensor].state = tensor_state
 
-    def update_tensor(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
+    def copy_tensor_to_chunk_slice(self, tensor: torch.Tensor, data_slice: torch.Tensor) -> None:
         tensor_info = self.tensors_info[tensor]
         self.data[tensor_info.offset:tensor_info.end].copy_(data_slice.view(-1))
         tensor.data = self.data[tensor_info.offset:tensor_info.end].view(tensor.shape)
@@ -236,9 +236,9 @@ class ChunkManager:
             return
         chunk.reduce(is_all_reduce=not self.enable_distributed_storage)
 
-    def update_tensor(self, tensor: torch.Tensor, data: torch.Tensor) -> None:
+    def copy_tensor_to_chunk_slice(self, tensor: torch.Tensor, data: torch.Tensor) -> None:
         chunk = self.tensor_chunk_map[tensor]
-        chunk.update_tensor(tensor, data)
+        chunk.copy_tensor_to_chunk_slice(tensor, data)
 
     def is_chunk_free(self, tensor: torch.Tensor) -> bool:
         chunk = self.tensor_chunk_map[tensor]

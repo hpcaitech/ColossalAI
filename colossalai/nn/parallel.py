@@ -99,7 +99,7 @@ class ColoDDPV2(ColoDDP):
         self.module.zero_grad(set_to_none=True)
         for p, fp32_p in zip(self.module.parameters(), self.fp32_params):
             if not self.chunk_manager.is_chunk_free(p):
-                self.chunk_manager.update_tensor(p, fp32_p)
+                self.chunk_manager.copy_tensor_to_chunk_slice(p, fp32_p)
         with use_param_op_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         self.chunk_manager.exec_lazy_release()
@@ -122,7 +122,7 @@ class ColoDDPV2(ColoDDP):
             self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
             if self.dp_world_size > 1:
                 grad = grad / self.dp_world_size
-            self.chunk_manager.update_tensor(p, grad)
+            self.chunk_manager.copy_tensor_to_chunk_slice(p, grad)
             self.chunk_manager.reduce_chunk(p)
             self.chunk_manager.release_chunk(p)
         return empty_grad
