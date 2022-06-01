@@ -9,6 +9,13 @@ from typing import Union, List, Tuple
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 
 
+def send_meta_helper(obj, next_rank, tensor_kwargs):
+    send_shape = torch.tensor(obj.size(), **tensor_kwargs)
+    send_ndims = torch.tensor(len(obj.size()), **tensor_kwargs)
+    dist.send(send_ndims, next_rank)
+    dist.send(send_shape, next_rank)
+
+
 def send_obj_meta(obj, need_meta=True, next_rank=None) -> bool:
     """Sends obj meta information before sending a specific obj.
     Since the recipient must know the shape of the obj in p2p communications,
@@ -29,22 +36,24 @@ def send_obj_meta(obj, need_meta=True, next_rank=None) -> bool:
 
         tensor_kwargs = {'dtype': torch.long, 'device': get_current_device()}
         if isinstance(obj, torch.Tensor):
-            send_shape = torch.tensor(obj.size(), **tensor_kwargs)
-            send_ndims = torch.tensor(len(obj.size()), **tensor_kwargs)
             send_obj_nums = torch.tensor(1, **tensor_kwargs)
             dist.send(send_obj_nums, next_rank)
-            dist.send(send_ndims, next_rank)
-            dist.send(send_shape, next_rank)
+            send_meta_helper(obj, next_rank, tensor_kwargs)
         else:
             send_obj_nums = torch.tensor(len(obj), **tensor_kwargs)
             dist.send(send_obj_nums, next_rank)
             for tensor_to_send in obj:
-                send_shape = torch.tensor(tensor_to_send.size(), **tensor_kwargs)
-                send_ndims = torch.tensor(len(tensor_to_send.size()), **tensor_kwargs)
-                dist.send(send_ndims, next_rank)
-                dist.send(send_shape, next_rank)
+                send_meta_helper(tensor_to_send, next_rank, tensor_kwargs)
 
     return False
+
+
+def recv_meta_helper(prev_rank, tensor_kwargs):
+    recv_ndims = torch.empty((), **tensor_kwargs)
+    dist.recv(recv_ndims, prev_rank)
+    recv_shape = torch.empty(recv_ndims, **tensor_kwargs)
+    dist.recv(recv_shape, prev_rank)
+    return recv_shape
 
 
 def recv_obj_meta(obj_shape, prev_rank=None) -> torch.Size:
@@ -68,18 +77,12 @@ def recv_obj_meta(obj_shape, prev_rank=None) -> torch.Size:
         recv_obj_nums = torch.empty((), **tensor_kwargs)
         dist.recv(recv_obj_nums, prev_rank)
         if recv_obj_nums.item() == 1:
-            recv_ndims = torch.empty((), **tensor_kwargs)
-            dist.recv(recv_ndims, prev_rank)
-            recv_shape = torch.empty(recv_ndims, **tensor_kwargs)
-            dist.recv(recv_shape, prev_rank)
+            recv_shape = recv_meta_helper(prev_rank, tensor_kwargs)
             obj_shape = torch.Size(recv_shape)
         else:
             obj_shape = []
             for i in range(recv_obj_nums.item()):
-                recv_ndims = torch.empty((), **tensor_kwargs)
-                dist.recv(recv_ndims, prev_rank)
-                recv_shape = torch.empty(recv_ndims, **tensor_kwargs)
-                dist.recv(recv_shape, prev_rank)
+                recv_shape = recv_meta_helper(prev_rank, tensor_kwargs)
                 obj_shape.append(torch.Size(recv_shape))
 
     return obj_shape
