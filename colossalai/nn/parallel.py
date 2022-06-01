@@ -104,9 +104,7 @@ class ColoDDPV2(ColoDDP):
         self.chunk_manager.exec_lazy_release()
         return outputs
 
-    def backward(self, loss: torch.Tensor):
-        with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
-            loss.backward()
+    def _post_backward(self):
         self.chunk_manager.exec_lazy_release()
         for p in self.module.parameters():
             if self.chunk_manager.is_chunk_free(p) or not p.requires_grad:
@@ -114,15 +112,15 @@ class ColoDDPV2(ColoDDP):
             else:
                 p.grad = p.data
 
+    def backward(self, loss: torch.Tensor):
+        with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
+            loss.backward()
+        self._post_backward()
+
     def backward_by_grad(self, tensor, grad):
         with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
             torch.autograd.backward(tensor, grad)
-        self.chunk_manager.exec_lazy_release()
-        for p in self.module.parameters():
-            if self.chunk_manager.is_chunk_free(p) or not p.requires_grad:
-                p.grad = None
-            else:
-                p.grad = p.data
+        self._post_backward()
 
     def grad_handle(self, p, grad):
         empty_grad = torch.empty_like(grad)
