@@ -61,6 +61,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         for group in self.optim.param_groups:
             for p in group['params']:
                 if not self.module.chunk_manager.is_chunk_free(p):
+                    # TODO(ver217): copy chunk
                     fp32_p = self.fp16_param_to_fp32_param[p]
                     self.module.chunk_manager.copy_tensor_to_chunk_slice(p, fp32_p)
 
