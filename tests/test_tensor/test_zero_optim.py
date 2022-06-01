@@ -68,7 +68,7 @@ def run_gpt(use_chunk, use_zero):
     torch_model.train()
     set_seed(gpc.get_local_rank(ParallelMode.DATA))
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
-        if i > 1:
+        if i > 2:
             break
         logits = run_step(model, criterion, optim, input_ids, attn_mask)
         torch_logits = run_step(torch_model, criterion, torch_optim, input_ids, attn_mask)
