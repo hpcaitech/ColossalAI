@@ -133,12 +133,10 @@ class ColoDDPV2(ColoDDP):
                 grad = grad / self.dp_world_size
             self.chunk_manager.copy_tensor_to_chunk_slice(p, grad)
             chunk = self.chunk_manager.get_chunk(p)
-            can_reduce = chunk.can_reduce
-            self.chunk_manager.reduce_chunk(p)
+            reduced = self.chunk_manager.reduce_chunk(p)
             self.chunk_manager.release_chunk(p)
-            if can_reduce and not chunk.is_free:
-                self.overflow_counter += torch.isinf(chunk.data).any().item()
-                self.overflow_counter += torch.isnan(chunk.data).any().item()
+            if reduced and not chunk.is_free:
+                self.overflow_counter += chunk.has_inf_or_nan
         return empty_grad
 
     def zero_grad(self, set_to_none: bool = False) -> None:
