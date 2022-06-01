@@ -54,7 +54,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
             for p in group['params']:
                 if not self.module.chunk_manager.is_chunk_free(p):
                     p.data = self.fp16_param_to_fp32_param[p]
-                    assert p.dtype == torch.float
                 else:
                     assert p.grad is None
 
@@ -120,4 +119,4 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.module.backward(loss)
 
     def backward_by_grad(self, tensor: torch.Tensor, grad: torch.Tensor):
-        raise NotImplementedError
+        self.module.backward_by_grad(tensor, grad)
