@@ -13,8 +13,8 @@ from functools import partial
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
-from colossalai.nn.parallel import ColoDDP, ColoDDPV2
-from colossalai.nn.optimizer import ZeroOptimizer, HybridAdam, CPUAdam
+from colossalai.nn.parallel import ColoDDPV2
+from colossalai.nn.optimizer import ZeroOptimizer, HybridAdam
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
 
@@ -36,6 +36,8 @@ def run_step(model, criterion, optimizer, input_ids, attn_mask):
     return logits
 
 
+@parameterize('use_chunk', [False, True])
+@parameterize('use_zero', [False, True])
 def run_gpt(use_chunk, use_zero):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
@@ -73,20 +75,18 @@ def run_gpt(use_chunk, use_zero):
         check_param_equal(model, torch_model)
 
 
-def run_dist(rank, world_size, port, use_chunk, use_zero):
+def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_gpt(use_chunk, use_zero)
+    run_gpt()
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
-@pytest.mark.parametrize('use_chunk', [False, True])
-@pytest.mark.parametrize('use_zero', [False, True])
 @rerun_if_address_is_in_use()
-def test_gpt(world_size, use_chunk, use_zero):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), use_chunk=use_chunk, use_zero=use_zero)
+def test_gpt(world_size):
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_gpt(4, True, True)
+    test_gpt(4)
