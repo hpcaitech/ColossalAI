@@ -1,6 +1,5 @@
 import torch
 import torch.distributed as dist
-from .colossalai_optimizer import ColossalaiOptimizer
 from enum import Enum
 from torch.optim import Optimizer
 from colossalai.nn.parallel import ColoDDPV2
@@ -9,6 +8,7 @@ from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 from colossalai.logging import get_dist_logger
+from colossalai.nn.optimizer import ColossalaiOptimizer
 
 
 class OptimState(Enum):

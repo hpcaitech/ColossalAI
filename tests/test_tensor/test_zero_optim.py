@@ -14,7 +14,8 @@ from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ColoDDPV2
-from colossalai.nn.optimizer import ZeroOptimizer, HybridAdam
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
 

@@ -7,9 +7,7 @@ from .lamb import Lamb
 from .lars import Lars
 from .cpu_adam import CPUAdam
 from .hybrid_adam import HybridAdam
-from .zero_optimizer import ZeroOptimizer
 
 __all__ = [
-    'ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam', 'HybridAdam',
-    'CPU_ADAM_CNT', 'ZeroOptimizer'
+    'ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam', 'HybridAdam', 'CPU_ADAM_CNT'
 ]
