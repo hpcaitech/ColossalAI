@@ -45,8 +45,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
                                              hysteresis=hysteresis,
                                              max_scale=max_scale)
         self._found_overflow: torch.Tensor = torch.zeros(1, dtype=torch.int64, device=torch.cuda.current_device())
-        self.dp_process_group = gpc.get_group(ParallelMode.DATA)
-        self.mp_process_group = gpc.get_group(ParallelMode.MODEL)
         self._logger = get_dist_logger()
 
     def _update_params_ptr(self):
@@ -69,11 +67,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
         # clear previous overflow record
         self._found_overflow.fill_(self.module.overflow_counter)
 
-        # all-reduce across dp group
-        dist.all_reduce(self._found_overflow, group=self.dp_process_group)
-
-        # all-reduce over model parallel group
-        dist.all_reduce(self._found_overflow, group=self.mp_process_group)
+        # all-reduce across global group
+        dist.all_reduce(self._found_overflow)
 
         return self._found_overflow.item() > 0
 
