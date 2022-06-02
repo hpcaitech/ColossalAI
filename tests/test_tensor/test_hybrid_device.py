@@ -27,7 +27,7 @@ class Net(torch.nn.Module):
         x = self.proj(x)
         return x
 
-def run_gloo(use_ddp):
+def run_hybrid_device(use_ddp):
     with ColoInitContext(device=get_current_device()):
         model = Net()
 
@@ -60,15 +60,15 @@ def run_dist(rank, world_size, port, use_ddp):
     tp_world_size = world_size // 2 if use_ddp else world_size
     config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_gloo(use_ddp)
+    run_hybrid_device(use_ddp)
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @pytest.mark.parametrize('use_ddp', [False, True])
 @rerun_if_address_is_in_use()
-def test_gloo(world_size, use_ddp):
+def test_hybrid_device(world_size, use_ddp):
     run_func = partial(run_dist, world_size=world_size, port=free_port(), use_ddp=use_ddp)
     mp.spawn(run_func, nprocs=world_size)
 
 if __name__ == '__main__':
-    test_gloo(4, True)
+    test_hybrid_device(1, False)
