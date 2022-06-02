@@ -1,5 +1,6 @@
 import torch
-from colossalai.tensor import ParamOpHook, ChunkManager, TensorState
+from colossalai.tensor.param_op_hook import ParamOpHook
+from colossalai.tensor.chunk import ChunkManager, TensorState
 from enum import Enum
 from typing import List
 from contextlib import contextmanager

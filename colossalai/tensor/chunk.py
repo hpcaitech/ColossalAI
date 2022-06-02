@@ -153,6 +153,11 @@ class Chunk:
     def __repr__(self) -> str:
         return f'Chunk: src rank={self.src_rank} ,size={self.size}, utilization={self.utilized_size/self.size*100:.2f}%, freed={self.is_free}, tensor states={[info.state.name for info in self.tensors_info.values()]}'
 
+    @property
+    def has_inf_or_nan(self) -> bool:
+        return torch.isinf(self.data[:self.utilized_size]).any().item() or \
+            torch.isnan(self.data[:self.utilized_size]).any().item()
+
 
 class ChunkManager:
 
@@ -230,11 +235,12 @@ class ChunkManager:
         chunk = self.tensor_chunk_map[tensor]
         chunk.tensor_trans_state(tensor, state)
 
-    def reduce_chunk(self, tensor: torch.Tensor) -> None:
+    def reduce_chunk(self, tensor: torch.Tensor) -> bool:
         chunk = self.tensor_chunk_map[tensor]
         if not chunk.can_reduce:
-            return
+            return False
         chunk.reduce(is_all_reduce=not self.enable_distributed_storage)
+        return True
 
     def copy_tensor_to_chunk_slice(self, tensor: torch.Tensor, data: torch.Tensor) -> None:
         chunk = self.tensor_chunk_map[tensor]
