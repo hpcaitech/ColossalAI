@@ -7,9 +7,9 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from colossalai.communication import (recv_backward, recv_forward, recv_tensor_meta, send_backward,
+from colossalai.communication import (recv_backward, recv_forward, recv_obj_meta, send_backward,
                                       send_backward_recv_forward, send_forward, send_forward_recv_backward,
-                                      send_tensor_meta)
+                                      send_obj_meta)
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.initialize import launch

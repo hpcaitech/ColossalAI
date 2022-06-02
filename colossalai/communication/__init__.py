@@ -3,7 +3,7 @@ from .p2p import (send_forward, send_forward_recv_forward, send_backward_recv_fo
                   send_backward_recv_backward, send_forward_recv_backward, send_forward_backward_recv_forward_backward,
                   recv_forward, recv_backward)
 from .ring import ring_forward
-from .utils import send_tensor_meta, recv_tensor_meta
+from .utils import send_obj_meta, recv_obj_meta
 
 __all__ = [
     'all_gather',
@@ -21,6 +21,6 @@ __all__ = [
     'recv_backward',
     'recv_forward',
     'ring_forward',
-    'send_tensor_meta',
-    'recv_tensor_meta',
+    'send_obj_meta',
+    'recv_obj_meta',
 ]
