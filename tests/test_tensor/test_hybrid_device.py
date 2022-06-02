@@ -66,9 +66,10 @@ def run_dist(rank, world_size, port, use_ddp):
 @pytest.mark.parametrize('world_size', [1, 4])
 @pytest.mark.parametrize('use_ddp', [False, True])
 @rerun_if_address_is_in_use()
-def test_hybrid_device(world_size, use_ddp):
+# Working for simulate the embedding(CPU DP+TP) -> nn(GPU DP+TP)
+def _test_hybrid_device(world_size, use_ddp):
     run_func = partial(run_dist, world_size=world_size, port=free_port(), use_ddp=use_ddp)
     mp.spawn(run_func, nprocs=world_size)
 
 if __name__ == '__main__':
-    test_hybrid_device(1, False)
+    _test_hybrid_device(1, False)

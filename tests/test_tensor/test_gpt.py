@@ -101,4 +101,4 @@ def test_gpt(world_size, use_ddp):
 
 
 if __name__ == '__main__':
-    test_gpt(4)
+    test_gpt(4, False)
