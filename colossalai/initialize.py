@@ -270,7 +270,7 @@ def initialize(model: nn.Module,
             ranks=[0])
 
     # cudnn
-    cudnn_benchmark = config.get('cudnn_benchmark', True)
+    cudnn_benchmark = config.get('cudnn_benchmark', False)
     cudnn_deterministic = config.get('cudnn_deterministic', False)
     torch.backends.cudnn.benchmark = cudnn_benchmark
     torch.backends.cudnn.deterministic = cudnn_deterministic
