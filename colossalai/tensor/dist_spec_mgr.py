@@ -1,9 +1,27 @@
 from colossalai.tensor.distspec import _DistSpec
-from colossalai.nn.layer.utils import divide
+# from colossalai.nn.layer.utils import divide
 from numpy import prod
 from contextlib import contextmanager
 import torch
 import torch.distributed as dist
+
+
+# TODO(jiaruifang) circle import, move the divide to colossalai.commons.
+# colossalai.tensor shall not import any submodule from colossal.nn
+def divide(numerator, denominator):
+    """Only allow exact division.
+
+    Args:
+        numerator (int): Numerator of the division.
+        denominator (int): Denominator of the division.
+
+    Returns:
+        int: the result of exact division.
+    """
+    assert denominator != 0, 'denominator can not be zero'
+    assert numerator % denominator == 0, \
+        '{} is not divisible by {}'.format(numerator, denominator)
+    return numerator // denominator
 
 
 class TransformDistSpec(torch.autograd.Function):

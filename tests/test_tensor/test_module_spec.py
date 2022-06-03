@@ -1,23 +1,27 @@
 from copy import copy
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-import torch
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor import ColoTensor, distspec
-
+import pytest
 from functools import partial
 
-import colossalai
-import pytest
 import torch
 import torch.multiprocessing as mp
-import torch.nn.functional as F
+
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.nn import init_colo_module, check_colo_module
+from _utils import tensor_equal, tensor_shard_equal, set_seed
+
+import colossalai
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
+
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.tensor import distspec
+
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, register_colo_module, init_colo_module, check_colo_module
-from _utils import tensor_equal, tensor_shard_equal, set_seed
+
 from tests.components_to_test.registry import non_distributed_component_funcs
+
 
 def run_model_with_spec(mode, model_name):
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
@@ -27,7 +31,7 @@ def run_model_with_spec(mode, model_name):
     set_seed(1)
     with ColoInitContext(device=get_current_device()):
         model = model_builder(checkpoint=False)
-    
+
     if rank == 0:
         model_seq = model_builder(checkpoint=False)
         model_seq = model_seq.cuda()
@@ -103,15 +107,16 @@ def run_model_with_spec(mode, model_name):
         if i > 3:
             break
 
+
 def run_linear_with_spec(mode):
     with ColoInitContext(device=get_current_device()):
         model = torch.nn.Linear(4, 8)
 
     model_handy = copy(model)
-    
+
     parallel_action = ParallelAction(ComputePattern.TP1D)
     init_colo_module(model, parallel_action, recursive=True, mode=mode)
-    
+
     x = torch.rand(2, 4).cuda()
     out = model(x)
     colo_out = model_handy(x)
@@ -121,6 +126,7 @@ def run_linear_with_spec(mode):
     colo_out.backward(grad)
     assert tensor_shard_equal(model.weight.grad, model_handy.weight.grad)
     assert tensor_shard_equal(model.bias.grad, model_handy.bias.grad)
+
 
 def run_check_shared_param():
     from transformers import BertForMaskedLM, BertConfig
@@ -157,11 +163,13 @@ def run_check_shared_param():
     except Exception as e:
         assert 'incorrectly sharded' in str(e)
 
+
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_linear_with_spec('col')
     run_linear_with_spec('row')
+
 
 def run_dist_model(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
@@ -170,10 +178,12 @@ def run_dist_model(rank, world_size, port):
         run_model_with_spec('col', model_name)
         run_model_with_spec('row', model_name)
 
+
 def run_dist_check(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_check_shared_param()
+
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
@@ -182,6 +192,7 @@ def test_module_linear_1d(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
+
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
@@ -189,12 +200,14 @@ def test_module_model(world_size):
     run_func = partial(run_dist_model, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
+
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_module_check(world_size):
     run_func = partial(run_dist_check, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
+
 
 if __name__ == '__main__':
     test_module_check(2)
