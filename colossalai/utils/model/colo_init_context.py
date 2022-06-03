@@ -92,4 +92,5 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
             setattr(submodule, param_name, colo_param)
             colo_param.shared_param_modules.append(submodule)
 
+        module.to(self._device)
         ColoModulize(module)
