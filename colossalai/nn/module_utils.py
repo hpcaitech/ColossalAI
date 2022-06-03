@@ -10,12 +10,14 @@ def register_colo_module(module_type: type, colo_module: ColoModule):
     global _COLOSSAL_MODULES
     _COLOSSAL_MODULES[module_type] = colo_module
 
+
 def is_colo_module(module: torch.nn.Module):
     global _COLOSSAL_MODULES
     for module_type in _COLOSSAL_MODULES.keys():
         if isinstance(type(module), module_type):
             return True
     return False
+
 
 def get_colo_module(module: torch.nn.Module):
     global _COLOSSAL_MODULES
@@ -26,6 +28,7 @@ def get_colo_module(module: torch.nn.Module):
     else:
         return None
 
+
 def check_colo_module(module: torch.nn.Module, recursive=True):
     if is_colo_module(module):
         colo_module = get_colo_module(module)
@@ -35,20 +38,22 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
             param = module.get_parameter(param_name)
             if not isinstance(param, ColoParameter):
                 raise Exception(f'Invalid ColoParameter spec: {param} in {module} is not a ColoParameter.')
-            if param.has_spec():  
+            if param.has_spec():
                 cur_compute_pattern = param.spec.parallel_action.compute_pattern
                 if compute_pattern is None:
                     compute_pattern = cur_compute_pattern
                 else:
                     if cur_compute_pattern != compute_pattern:
-                        raise Exception(f'Invalid ColoParameter spec: Params in {module} have different compute_pattern.')
+                        raise Exception(
+                            f'Invalid ColoParameter spec: Params in {module} have different compute_pattern.')
             else:
                 continue
-            
+
         if compute_pattern is not None:
             colo_module.register(compute_pattern)
             if not colo_module.has_compute_pattern(compute_pattern):
-                raise Exception(f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
+                raise Exception(
+                    f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
 
             match_specs = False
             allowed_specs = colo_module.get_dist_specs(compute_pattern)
@@ -72,6 +77,7 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
     if recursive == True:
         for submodule in module.children():
             check_colo_module(submodule, recursive=True)
+
 
 def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, recursive=True, mode='default'):
     compute_pattern = parallel_action.compute_pattern
@@ -99,4 +105,3 @@ def init_colo_module(module: torch.nn.Module, parallel_action: ParallelAction, r
     if recursive == True:
         for submodule in module.children():
             init_colo_module(submodule, parallel_action, recursive=True, mode=mode)
-    

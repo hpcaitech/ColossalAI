@@ -1,11 +1,12 @@
 from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter, register_colo_module, init_colo_module, \
+from colossalai.tensor import ColoTensor, ColoParameter
+
+from colossalai.nn import register_colo_module, init_colo_module, \
     ColoLinear, ColoEmbedding
-import types
 
 from torch import nn
-from typing import Iterator, Tuple, Union, Optional
+from typing import Iterator, Tuple, Union
 
 # find named_params includes replica
 
@@ -23,6 +24,7 @@ def _named_params_with_replica(
                 continue
             name = mod_prefix + ('.' if mod_prefix else '') + name
             yield name, val
+
 
 def ColoModulize(module):
     """

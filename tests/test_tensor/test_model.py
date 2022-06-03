@@ -10,9 +10,10 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils import ColoInitContext
 from colossalai.tensor import distspec, named_params_with_colotensor, TensorSpec, ComputePattern, \
-    ParallelAction, ColoTensor, ColoOptimizer, DistSpecManager
+    ParallelAction, ColoTensor, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.nn.optimizer import ColoOptimizer
 from functools import partial
 from _utils import set_seed
 

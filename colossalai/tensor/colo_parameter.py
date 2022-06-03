@@ -1,9 +1,9 @@
-from .colo_tensor import ColoTensor
-from .const import TensorType
+from colossalai.tensor.colo_tensor import ColoTensor
+from colossalai.tensor.const import TensorType
 import torch
 from colossalai.tensor import TensorSpec, distspec
 from copy import copy
-from .param_op_hook import _ParamOpHookWrapper, PreFwdPostBwd, PostFwdPreBwd
+from colossalai.tensor.param_op_hook import _ParamOpHookWrapper, PreFwdPostBwd, PostFwdPreBwd
 from typing import Optional
 
 

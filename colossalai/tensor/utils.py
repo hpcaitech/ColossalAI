@@ -1,10 +1,8 @@
 import torch
 
-from colossalai.tensor.colo_tensor import ColoTensor
-
 from typing import Iterator, Tuple, Union
 import torch.nn as nn
-from colossalai.tensor import ColoTensor
+from colossalai.tensor.colo_tensor import ColoTensor
 
 
 # The function is credited to PyTorch Team
