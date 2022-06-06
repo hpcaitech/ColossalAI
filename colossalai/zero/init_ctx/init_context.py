@@ -1,9 +1,12 @@
 import contextlib
 import functools
 from typing import Optional
+from contextlib import AbstractContextManager
+
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.context.singleton_meta import SingletonMeta
@@ -12,8 +15,7 @@ from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 from colossalai.zero.sharded_param import ShardedParamV2
-from contextlib import AbstractContextManager
-from colossalai.utils import InsertPostInitMethodToModuleSubClasses
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
 
 class ZeroContextConfig(object):

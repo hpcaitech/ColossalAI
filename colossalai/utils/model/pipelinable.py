@@ -1,10 +1,7 @@
 import torch
-import functools
 import inspect
-from colossalai.amp.naive_amp import NaiveAMPModel
-from colossalai.utils.model.utils import _substitute_init_recursively, InsertPostInitMethodToModuleSubClasses, call_to_str
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses, call_to_str
 from colossalai.builder.pipeline import partition_uniform, partition_balanced
-from colossalai.core import global_context as gpc
 from colossalai.nn.layer.utils import CheckpointModule
 from colossalai.tensor import ColoTensor
 

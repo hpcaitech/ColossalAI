@@ -1,13 +1,14 @@
-from colossalai.utils import free_port, ColoInitContext, get_current_device
+from colossalai.utils import free_port, get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import ComputePattern, ParallelAction
 
 from functools import partial
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 
-from colossalai.nn import init_colo_module
-from colossalai.nn.parallel import ColoDDP
+from colossalai.nn.parallel.layers import init_colo_module
+from colossalai.nn.parallel.data_parallel import ColoDDP
 
 import colossalai
 import torch

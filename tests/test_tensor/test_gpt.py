@@ -5,14 +5,14 @@ import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.utils import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, distspec
 from colossalai.core import global_context as gpc
 from functools import partial
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
-from colossalai.nn.parallel import ColoDDP
+from colossalai.nn.parallel.data_parallel import ColoDDP
 
 
 def init_1d_row_spec(model):

@@ -5,11 +5,11 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.utils import ColoInitContext
-from colossalai.tensor import distspec, named_params_with_colotensor, TensorSpec, ComputePattern, \
+from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.tensor import distspec, TensorSpec, ComputePattern, \
     ParallelAction, ColoTensor, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc

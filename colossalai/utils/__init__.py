@@ -11,8 +11,6 @@ from .memory import (report_memory_usage, colo_device_memory_used, colo_set_proc
                      colo_device_memory_capacity, colo_set_cpu_memory_capacity, colo_get_cpu_memory_capacity)
 from .timer import MultiTimer, Timer
 from .tensor_detector import TensorDetector
-from .model.utils import InsertPostInitMethodToModuleSubClasses
-from .model.colo_init_context import ColoInitContext
 
 __all__ = [
     'checkpoint',
@@ -52,6 +50,4 @@ __all__ = [
     'disposable',
     'colo_set_cpu_memory_capacity',
     'colo_get_cpu_memory_capacity',
-    'InsertPostInitMethodToModuleSubClasses',
-    'ColoInitContext',
 ]

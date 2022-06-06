@@ -1,13 +1,8 @@
-import os.path as osp
-
-import pytest
 import torch
 import torch.multiprocessing as mp
 
 from colossalai.utils.model.pipelinable import PipelinableContext
 
-from functools import partial
-from colossalai.utils import free_port
 from colossalai.testing import rerun_on_exception
 
 NUM_CHUNKS = 1

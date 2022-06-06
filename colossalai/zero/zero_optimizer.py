@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from enum import Enum
 from torch.optim import Optimizer
-from colossalai.nn.parallel import ColoDDPV2
+from colossalai.nn.parallel.data_parallel import ColoDDPV2
 from typing import Dict
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.core import global_context as gpc
