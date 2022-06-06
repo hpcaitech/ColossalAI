@@ -1,6 +1,6 @@
 from typing import Dict
 from colossalai.tensor import ColoParameter, ParallelAction, TensorSpec
-from .modules import ColoModule
+from . import ColoModule
 import torch
 
 _COLOSSAL_MODULES: Dict[type, ColoModule] = {}
