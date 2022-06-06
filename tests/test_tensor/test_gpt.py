@@ -12,7 +12,7 @@ from functools import partial
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
-from colossalai.nn.parallel import ColoDDP
+from colossalai.nn.parallel.data_parallel import ColoDDP
 
 
 def init_1d_row_spec(model):

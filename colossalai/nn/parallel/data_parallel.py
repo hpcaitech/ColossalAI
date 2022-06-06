@@ -7,8 +7,6 @@ from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
 from colossalai.tensor.chunk import ChunkManager, TensorState
 from colossalai.tensor.param_op_hook import use_param_op_hooks
 
-__all__ = ['ColoDDP', 'ColoDDPV2']
-
 
 def free_storage(data: torch.Tensor) -> None:
     """Free underlying storage of a Tensor."""

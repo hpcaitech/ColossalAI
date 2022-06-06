@@ -2,7 +2,7 @@ from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
 from colossalai.tensor import ColoTensor, ColoParameter
 
-from colossalai.nn.modules import register_colo_module, \
+from colossalai.nn.parallel import register_colo_module, \
     ColoLinear, ColoEmbedding
 
 from torch import nn

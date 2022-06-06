@@ -7,8 +7,8 @@ from functools import partial
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 
-from colossalai.nn.modules import init_colo_module
-from colossalai.nn.parallel import ColoDDP
+from colossalai.nn.parallel import init_colo_module
+from colossalai.nn.parallel.data_parallel import ColoDDP
 
 import colossalai
 import torch
