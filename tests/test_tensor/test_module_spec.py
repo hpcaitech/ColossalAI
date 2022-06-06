@@ -11,7 +11,7 @@ from _utils import tensor_equal, tensor_shard_equal, set_seed
 
 import colossalai
 from colossalai.utils.cuda import get_current_device
-from colossalai.context_manager.colo_init_context import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.tensor import distspec

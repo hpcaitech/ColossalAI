@@ -1,5 +1,5 @@
 import pytest
-from colossalai.context_manager.colo_init_context import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext
 
 import torch
 

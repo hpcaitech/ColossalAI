@@ -6,7 +6,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.context_manager.colo_init_context import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ChunkManager
 from colossalai.core import global_context as gpc
 from functools import partial

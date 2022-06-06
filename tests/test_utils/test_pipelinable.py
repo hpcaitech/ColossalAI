@@ -1,7 +1,7 @@
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.context_manager.pipelinable import PipelinableContext
+from colossalai.utils.model.pipelinable import PipelinableContext
 
 from colossalai.testing import rerun_on_exception
 

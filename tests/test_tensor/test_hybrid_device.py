@@ -1,5 +1,5 @@
 from colossalai.utils import free_port, get_current_device
-from colossalai.context_manager.colo_init_context import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.tensor import ComputePattern, ParallelAction
 

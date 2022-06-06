@@ -8,7 +8,7 @@ import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.context_manager.colo_init_context import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import distspec, TensorSpec, ComputePattern, \
     ParallelAction, ColoTensor, DistSpecManager
 from colossalai.context import ParallelMode
