@@ -15,7 +15,7 @@ from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 from colossalai.zero.sharded_param import ShardedParamV2
-from colossalai.context_manager.utils import InsertPostInitMethodToModuleSubClasses
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
 
 class ZeroContextConfig(object):

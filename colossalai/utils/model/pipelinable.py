@@ -1,6 +1,6 @@
 import torch
 import inspect
-from colossalai.context_manager.utils import InsertPostInitMethodToModuleSubClasses, call_to_str
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses, call_to_str
 from colossalai.builder.pipeline import partition_uniform, partition_balanced
 from colossalai.nn.layer.utils import CheckpointModule
 from colossalai.tensor import ColoTensor

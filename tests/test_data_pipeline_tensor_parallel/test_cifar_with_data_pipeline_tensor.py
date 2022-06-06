@@ -17,7 +17,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn import CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.utils import is_using_pp, get_dataloader
-from colossalai.context_manager.pipelinable import PipelinableContext
+from colossalai.utils.model.pipelinable import PipelinableContext
 from tqdm import tqdm
 
 from titans.dataloader.cifar10 import build_cifar
