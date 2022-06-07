@@ -345,4 +345,5 @@ class ChunkManager:
         Args:
             tensor (torch.Tensor): An extern static tensor. E.g. optimizer state.
         """
+        assert tensor not in self.tensor_chunk_map
         self.total_mem[tensor.device.type] += tensor.numel() * tensor.element_size()
