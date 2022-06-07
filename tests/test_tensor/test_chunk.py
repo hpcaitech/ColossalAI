@@ -32,6 +32,8 @@ HAS_TENSORS = {
     }
 }
 
+TOTAL_MEM = {True: {True: [8192, 8192], False: [16384, 16384]}, False: {True: [8192, 4096], False: [12288, 12288]}}
+
 
 @parameterize('use_chunk', [False, True])
 @parameterize('use_zero', [False, True])
@@ -42,15 +44,27 @@ def run_chunk_zero(use_chunk, use_zero):
     params = [torch.rand(32, 32) for _ in range(3)]
     chunk_size = 2048 if use_chunk else None
     chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
+    assert chunk_manager.total_mem['cpu'] == 0
+    assert chunk_manager.total_mem['cuda'] == 0
     for p in params:
         chunk_manager.append_tensor(p, 'param')
     check_has_params(params, HAS_TENSORS[use_chunk][use_zero][rank])
+    assert chunk_manager.total_mem['cpu'] == 0
+    assert chunk_manager.total_mem['cuda'] == TOTAL_MEM[use_chunk][use_zero][rank]
     for p in params:
         chunk_manager.access_chunk(p)
     check_has_params(params, [True, True, True])
+    assert chunk_manager.total_mem['cpu'] == 0
+    assert chunk_manager.total_mem['cuda'] == TOTAL_MEM[use_chunk][False][rank]
     for p in params:
         chunk_manager.release_chunk(p)
     check_has_params(params, HAS_TENSORS[use_chunk][use_zero][rank])
+    assert chunk_manager.total_mem['cpu'] == 0
+    assert chunk_manager.total_mem['cuda'] == TOTAL_MEM[use_chunk][use_zero][rank], chunk_manager.total_mem['cuda']
+    for p in params:
+        chunk_manager.move_chunk(p, torch.device('cpu'))
+    assert chunk_manager.total_mem['cpu'] == TOTAL_MEM[use_chunk][use_zero][rank], chunk_manager.total_mem['cuda']
+    assert chunk_manager.total_mem['cuda'] == 0
 
 
 def run_dist(rank, world_size, port):
