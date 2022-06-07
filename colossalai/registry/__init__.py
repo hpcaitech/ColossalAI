@@ -5,7 +5,6 @@ import torch.optim as optim
 from .registry import Registry
 
 LAYERS = Registry("layers", third_party_library=[nn])
-LOSSES = Registry("losses")
 MODELS = Registry("models")
 OPTIMIZERS = Registry("optimizers", third_party_library=[optim, dist_optim])
 DATASETS = Registry("datasets")
