@@ -335,3 +335,14 @@ class ChunkManager:
 
     def get_chunks(self, tensors: Iterable[torch.Tensor]) -> FrozenSet[Chunk]:
         return frozenset([self.get_chunk(tensor) for tensor in tensors])
+
+    def add_extern_static_tensor(self, tensor: torch.Tensor) -> None:
+        """Add extern static tensor to chunk manager. 
+        Those tensors won't be managed by chunk manager, but we want to monitor memory usage of them.
+        They are "static", which means their shape, dtype, device never change.
+        Thus, their memory usage never changes.
+
+        Args:
+            tensor (torch.Tensor): An extern static tensor. E.g. optimizer state.
+        """
+        self.total_mem[tensor.device.type] += tensor.numel() * tensor.element_size()
