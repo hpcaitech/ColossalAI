@@ -20,12 +20,13 @@ class ZeROHookV2(ParamOpHook):
         self._training_phase = TrainingPhase.FORWARD
 
     def pre_op(self, params):
+        chunks = self._chunk_manager.get_chunks(params)
         for p in params:
             self._chunk_manager.trans_tensor_state(p, TensorState.COMPUTE)
         self._chunk_manager.exec_lazy_release()
         # TODO: evict chunks
-        for p in params:
-            self._chunk_manager.access_chunk(p)
+        for chunk in chunks:
+            self._chunk_manager.access_chunk(chunk)
 
     def post_op(self, params):
         for p in params:

@@ -48,7 +48,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
     def _update_params_ptr(self):
         for group in self.optim.param_groups:
             for p in group['params']:
-                if not self.module.chunk_manager.is_chunk_free(p):
+                if not self.module.chunk_manager.get_chunk(p).is_free:
                     p.data = self.fp16_param_to_fp32_param[p]
                 else:
                     assert p.grad is None

@@ -60,7 +60,7 @@ class ColoDDP(torch.nn.Module):
             else:
                 ColoDDP._save_grad(p, grad)
             return empty_grad
-            
+
         else:
             group = gpc.get_cpu_group(ParallelMode.DATA)
             dist.all_reduce(grad, group=group)
@@ -113,7 +113,7 @@ class ColoDDPV2(ColoDDP):
     def _post_backward(self):
         self.chunk_manager.exec_lazy_release()
         for p in self.module.parameters():
-            if self.chunk_manager.is_chunk_free(p) or not p.requires_grad:
+            if self.chunk_manager.get_chunk(p).is_free or not p.requires_grad:
                 p.grad = None
             else:
                 p.grad = p.data
@@ -137,8 +137,8 @@ class ColoDDPV2(ColoDDP):
                 grad = grad / self.dp_world_size
             self.chunk_manager.copy_tensor_to_chunk_slice(p, grad)
             chunk = self.chunk_manager.get_chunk(p)
-            reduced = self.chunk_manager.reduce_chunk(p)
-            self.chunk_manager.release_chunk(p)
+            reduced = self.chunk_manager.reduce_chunk(chunk)
+            self.chunk_manager.release_chunk(chunk)
             if reduced and not chunk.is_free:
                 self.overflow_counter += chunk.has_inf_or_nan
         return empty_grad
