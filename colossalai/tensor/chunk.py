@@ -158,6 +158,14 @@ class Chunk:
         return torch.isinf(self.data[:self.utilized_size]).any().item() or \
             torch.isnan(self.data[:self.utilized_size]).any().item()
 
+    def copy_(self, dest_chunk: 'Chunk'):
+        assert not self.is_free
+        assert not dest_chunk.is_free
+        assert self.size == dest_chunk.size
+        assert self.utilized_size == dest_chunk.utilized_size
+        self.data.copy_(dest_chunk.data)
+        self._update_tensors_ptr()
+
 
 class ChunkManager:
 
@@ -306,3 +314,8 @@ class ChunkManager:
                 max_chunk_util = chunk_util
                 best_chunk_size = chunk_size
         return best_chunk_size
+
+    def copy_chunk_group(self, dest_group_name: str, src_group_name: str):
+        for dest_chunk, src_chunk in zip(self.chunk_groups[dest_group_name], self.chunk_groups[src_group_name]):
+            if not dest_chunk.is_free:
+                dest_chunk.copy_(src_chunk)
