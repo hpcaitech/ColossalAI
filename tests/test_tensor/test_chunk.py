@@ -51,18 +51,19 @@ def run_chunk_zero(use_chunk, use_zero):
     check_has_params(params, HAS_TENSORS[use_chunk][use_zero][rank])
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == TOTAL_MEM[use_chunk][use_zero][rank]
-    for p in params:
-        chunk_manager.access_chunk(p)
+    chunks = chunk_manager.get_chunks(params)
+    for chunk in chunks:
+        chunk_manager.access_chunk(chunk)
     check_has_params(params, [True, True, True])
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == TOTAL_MEM[use_chunk][False][rank]
-    for p in params:
-        chunk_manager.release_chunk(p)
+    for chunk in chunks:
+        chunk_manager.release_chunk(chunk)
     check_has_params(params, HAS_TENSORS[use_chunk][use_zero][rank])
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == TOTAL_MEM[use_chunk][use_zero][rank], chunk_manager.total_mem['cuda']
-    for p in params:
-        chunk_manager.move_chunk(p, torch.device('cpu'))
+    for chunk in chunks:
+        chunk_manager.move_chunk(chunk, torch.device('cpu'))
     assert chunk_manager.total_mem['cpu'] == TOTAL_MEM[use_chunk][use_zero][rank], chunk_manager.total_mem['cuda']
     assert chunk_manager.total_mem['cuda'] == 0
 
