@@ -1,25 +1,33 @@
 import torch
 import inspect
-from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses, call_to_str
-from colossalai.builder.pipeline import partition_uniform, partition_balanced
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
+from .utils import partition_uniform, partition_balanced, build_kwargs_for_function, build_kwargs_for_module, exec_func_with_kwargs, exec_funcs_with_kwargs
 from colossalai.nn.layer.utils import CheckpointModule
-from colossalai.tensor import ColoTensor
+from colossalai.tensor import ColoParameter
+from .layer_sepc import LayerSpec
 
 
 class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
+    """
+    A context manager to split the model into pipeline stages.
+    """
 
-    def __init__(self):
+    def __init__(self, policy: str="balanced"):
         super().__init__()
         self._layer_spec_dict = {}
         self._root_children = None
         self._model = None
         self._layer_spec_list = []
         self._func_dict = {}
-        self._policy = "balanced"
+        self._policy = policy
 
     @property
     def policy(self):
         return self._policy
+
+    @policy.setter
+    def policy(self, policy: str):
+        self._policy = policy
 
     @property
     def layers_count(self):
@@ -30,10 +38,9 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         return len(self._func_dict)
 
     def _pre_context_exec(self):
-        """ 
+        """
         The Callback function when entering the context
         """
-
         # reserve rng states
         self.cpu_rng_state = torch.get_rng_state()
         self.cuda_rng_state = torch.cuda.get_rng_state()
@@ -52,35 +59,50 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         The function to call at the end of the constructor of each module.
         NOTE() The module may be passed to this function multiple times.
         """
-        module_id = id(module)
+        # iterate over the positional arguments
+        # to check if an argument is a torch Module
+        # if found any torch Module, replace it with its layer spec 
+        # for storage purpose
         modified_args = []
-        for obj in args:
-            if issubclass(obj.__class__, torch.nn.modules.module.Module):
-                obj = self._layer_spec_dict[id(obj)]
-            modified_args.append(obj)
+        for arg in args:
+            if isinstance(arg, torch.nn.Module):
+                arg = self._layer_spec_dict[id(arg)]
+            modified_args.append(arg)
 
+        # to the same for the keyword arguments
         modified_kwargs = {}
         for k, v in kwargs.items():
-            if issubclass(v.__class__, torch.nn.modules.module.Module):
+            if isinstance(v, torch.nn.Module):
                 v = self._layer_spec_dict[id(v)]
             # (lyl)TODO: analyse ColoTensor as well
             modified_kwargs[k] = v
 
-        modified_args = tuple(modified_args)
+        # keep track of the module children
+        # as torch.nn.Module.__init__ is called from inner module to outer module,
+        # the final value of self._model will be the outermost model
+        # e.g. if the model is torchvision.models.resnet18, then the final value of self._model
+        # will be the ``ResNet`` object.
         self._root_children = list(module.children())
         self._model = module
+
+        # store the children to keep the module hierarchy
         layer_spec = LayerSpec(module.__class__, *modified_args, **modified_kwargs)
         layer_spec.set_children(module.children())
+
+        # store the layer spec in this context
+        module_id = id(module)
         self._layer_spec_dict[module_id] = layer_spec
+
+        # convert all torch.nn.Parameter to colossalai.tensor.ColoParameter
         name_list = []
         for name, param in module.named_parameters():
-            if isinstance(param, ColoTensor):
+            if isinstance(param, ColoParameter):
                 continue
             name_list.append((name, param))
 
         for name, param in name_list:
             delattr(module, name)
-            setattr(module, name, ColoTensor.from_torch_tensor(param))
+            setattr(module, name, ColoParameter.from_torch_tensor(tensor=param.data, requires_grad=param.requires_grad))
 
     def to_layer_list(self, exec_seq=None):
         """
@@ -100,7 +122,6 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                             if id(module) == id(child_in_container):
                                 children_name.append(name)
                                 break
-
                 else:
                     self._layer_spec_list.append(layer_spec)
                     for name, module in self._model.named_modules():
@@ -110,10 +131,16 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
 
         else:
             front_funcs_list = []
+            named_modules = dict(self._model.named_modules())
             for index, element in enumerate(exec_seq):
                 if isinstance(element, str):
-                    module = dict(self._model.named_modules())[element]
+                    assert element in named_modules, f'Found invalid module name {element}, please check if you spell the module name correctly.'
+
+                    # get the layer spec based on the module ID
+                    module = named_modules[element]
                     layer_spec = self._layer_spec_dict[id(module)]
+
+                    # check whether there are functions which should be executed before this module
                     if len(front_funcs_list) != 0:
                         func_key = (layer_spec, "front")
                         if func_key not in self._func_dict:
@@ -121,6 +148,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                         for f in front_funcs_list:
                             self._func_dict[func_key].append(f)
                         front_funcs_list = []
+
                     func_key = (layer_spec, "behind")
                     self._layer_spec_list.append(layer_spec)
                 elif isinstance(element, tuple) and element[1] == "front":
@@ -172,70 +200,6 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
 
         return pipeline_model
 
-    def load_policy(self, policy):
-        self._policy = policy
-
-
-def _build_kwargs_for_module(function, kw_dict):
-    """
-    Generally, the first argument of module.forward is an input tensor come from the previous layer.
-    Therefore, we just filter the kwargs from second element of the dictionary.
-    """
-    sig = inspect.signature(function)
-    if len(sig.parameters) <= 1:
-        return None
-    args_name_list = list(sig.parameters.keys())
-    kw_dict = {k: v for k, v in kw_dict.items() if k in args_name_list[1:]}
-    return kw_dict
-
-
-def _build_kwargs_for_function(function, kw_dict):
-    sig = inspect.signature(function)
-    kw_dict = {k: v for k, v in kw_dict.items() if k in sig.parameters}
-    if len(kw_dict) == 0:
-        return None
-    return kw_dict
-
-
-def _exec_func_with_kwargs(func, kw_dict, input_tensor, kwargs):
-    """
-    We suppose the callable object passed to to_layer_list method in two purpose:
-        a. use the callable object to modify input tensor, such as \
-            lambda x: torch.flatten(x, 1)
-        b. use the callable object to modify kwargs value, such as \
-            def foo(attention_mask=None):
-                if attention_mask is not None:
-                    batch_size = input_ids.shape[0]
-                    attention_mask = attention_mask.view(batch_size, -1)
-                return attention_mask
-    """
-
-    if kw_dict is not None:
-        rst = func(**kw_dict)
-        if isinstance(rst, tuple):
-            for i, k in enumerate(kw_dict.keys()):
-                kwargs[k] = rst[i]
-        else:
-            for k in kw_dict.keys():
-                kwargs[k] = rst
-        return input_tensor
-    return func(input_tensor)
-
-
-def _exec_funcs_with_kwargs(func_dict, func_key, input_tensor, kwargs):
-
-    assert func_key in func_dict, f"{func_key} is not in the function_dict."
-    funcs_to_exec = func_dict[func_key]
-    if isinstance(funcs_to_exec, list):
-        for f in funcs_to_exec:
-            f_kwargs = _build_kwargs_for_function(f, kwargs)
-            input_tensor = _exec_func_with_kwargs(f, f_kwargs, input_tensor, kwargs)
-    else:
-        f_kwargs = _build_kwargs_for_function(funcs_to_exec, kwargs)
-        input_tensor = _exec_func_with_kwargs(funcs_to_exec, f_kwargs, input_tensor, kwargs)
-
-    return input_tensor
-
 
 class PipelinableModel(torch.nn.Module):
 
@@ -250,16 +214,16 @@ class PipelinableModel(torch.nn.Module):
         for module in self._module_list:
 
             if id(module) in self._front_func_dict:
-                input_tensor = _exec_funcs_with_kwargs(self._front_func_dict, id(module), input_tensor, kwargs)
+                input_tensor = exec_funcs_with_kwargs(self._front_func_dict, id(module), input_tensor, kwargs)
 
             if isinstance(module, CheckpointModule):
                 forward_func = module._forward
             else:
                 forward_func = module.forward
             if input_tensor is None:
-                module_kwargs = _build_kwargs_for_function(forward_func, kwargs)
+                module_kwargs = build_kwargs_for_function(forward_func, kwargs)
             else:
-                module_kwargs = _build_kwargs_for_module(forward_func, kwargs)
+                module_kwargs = build_kwargs_for_module(forward_func, kwargs)
             if module_kwargs is not None and input_tensor is not None:
                 if isinstance(module, CheckpointModule):
                     convert_kwargs_to_args = []
@@ -288,57 +252,9 @@ class PipelinableModel(torch.nn.Module):
                 input_tensor = module(input_tensor)
 
             if id(module) in self._behind_func_dict:
-                input_tensor = _exec_funcs_with_kwargs(self._behind_func_dict, id(module), input_tensor, kwargs)
+                input_tensor = exec_funcs_with_kwargs(self._behind_func_dict, id(module), input_tensor, kwargs)
 
         return input_tensor
 
 
-class LayerSpec:
 
-    def __init__(self, typename, *module_args, **module_kwargs):
-        self.typename = typename
-        self.module_args = module_args
-        self.module_kwargs = module_kwargs
-        self.children = None
-        self._param_count = 0
-
-        if not issubclass(typename, torch.nn.Module):
-            raise RuntimeError('LayerSpec only supports torch.nn.Module types.')
-
-    def __repr__(self):
-        return call_to_str(self.typename.__name__, self.module_args, self.module_kwargs)
-
-    @property
-    def param_count(self):
-        return self._param_count
-
-    def build(self):
-        """Build the stored specification."""
-
-        recovered_args = []
-        for obj in self.module_args:
-            if isinstance(obj, LayerSpec):
-                obj = obj.build()
-            recovered_args.append(obj)
-        recovered_args = tuple(recovered_args)
-
-        recovered_kwargs = {}
-        for k, v in self.module_kwargs.items():
-            if isinstance(v, LayerSpec):
-                v = v.build()
-            recovered_kwargs[k] = v
-
-        return self.typename(*recovered_args, **recovered_kwargs)
-
-    def set_children(self, children):
-        self.children = children
-
-    def count_params(self):
-        self._param_count = 0
-        layer = self.build()
-        for param in layer.parameters():
-            self._param_count += param.numel()
-        return self._param_count
-
-    def reset_param_count(self):
-        self._param_count = 0
