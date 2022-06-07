@@ -243,13 +243,16 @@ class ChunkManager:
         if chunk not in self.accessed_chunks:
             return
         if chunk.can_release:
-            self.total_mem[chunk.device_type] -= chunk.mem
             chunk.release()
             self.accessed_chunks.remove(chunk)
+            if chunk.is_free:
+                self.total_mem[chunk.device_type] -= chunk.mem
 
     def move_chunk(self, tensor: torch.Tensor, device: torch.device) -> None:
         chunk = self.tensor_chunk_map[tensor]
-        if chunk.can_move_device:
+        if chunk.data.device == device:
+            return
+        if chunk.can_move_device and not chunk.is_free:
             self.total_mem[chunk.device_type] -= chunk.mem
             chunk.move_device(device)
             self.total_mem[chunk.device_type] += chunk.mem
