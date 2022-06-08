@@ -85,7 +85,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [4, 5])
+@pytest.mark.parametrize("world_size", [2, 4])
 @rerun_if_address_is_in_use()
 def test_zero_tensor_utils(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())

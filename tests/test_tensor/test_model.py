@@ -328,7 +328,6 @@ def run_model_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
-# @parameterize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_model(world_size):
     run_func = partial(run_model_dist, world_size=world_size, port=free_port())

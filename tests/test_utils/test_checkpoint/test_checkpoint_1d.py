@@ -67,9 +67,10 @@ def check_checkpoint_1d(rank, world_size, port):
 
 
 @pytest.mark.dist
+@pytest.mark.skip("This test should be invoked with 8 GPUs")
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_checkpoint_1d():
-    world_size = 4
+    world_size = 8
     run_func = partial(check_checkpoint_1d, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
