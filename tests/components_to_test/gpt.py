@@ -7,9 +7,9 @@ from colossalai.utils.cuda import get_current_device
 
 
 class DummyDataLoader(DummyDataGenerator):
-    vocab_size = 50304
+    vocab_size = 128
     batch_size = 4
-    seq_len = 1024
+    seq_len = 64
 
     def generate(self):
         input_ids = torch.randint(0,
@@ -47,6 +47,8 @@ class GPTLMModel(nn.Module):
         # Only return lm_logits
         return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=not self.checkpoint)[0]
 
+def gpt2_micro(checkpoint=True):
+    return GPTLMModel(checkpoint=checkpoint, hidden_size=32, num_layers=2, num_attention_heads=4, max_seq_len=64, vocab_size=128)
 
 def gpt2_s(checkpoint=True):
     return GPTLMModel(checkpoint=checkpoint)
@@ -76,4 +78,4 @@ def get_training_components():
     testloader = DummyDataLoader()
 
     criterion = GPTLMLoss()
-    return gpt2_s, trainloader, testloader, torch.optim.Adam, criterion
+    return gpt2_micro, trainloader, testloader, torch.optim.Adam, criterion
