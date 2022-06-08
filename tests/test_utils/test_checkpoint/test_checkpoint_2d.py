@@ -69,7 +69,7 @@ def check_checkpoint_2d(rank, world_size, port):
 @pytest.mark.dist
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_checkpoint_2d():
-    world_size = 8
+    world_size = 4
     run_func = partial(check_checkpoint_2d, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 

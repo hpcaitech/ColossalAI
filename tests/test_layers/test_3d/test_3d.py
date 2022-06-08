@@ -52,6 +52,7 @@ def check_layer_and_operation(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
+@pytest.mark.skip("This test requires 8 GPUs to execute")
 def test_3d():
     world_size = 8
     run_func = partial(check_layer_and_operation, world_size=world_size, port=free_port())
