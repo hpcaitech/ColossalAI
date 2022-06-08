@@ -35,7 +35,7 @@ class Net(torch.nn.Module):
         return x
 
 
-def run_hybrid_device(use_ddp):
+def run_hybrid_device(use_ddp, mode):
     with ColoInitContext(device=get_current_device()):
         model = Net()
 
@@ -47,7 +47,7 @@ def run_hybrid_device(use_ddp):
     print(f'embedding weight size: {real_model.embed.weight.size()} | device: {real_model.embed.weight.device}')
     #print(f'linear weight size: {real_model.proj.weight.size()} | device: {real_model.proj.weight.device}')
     parallel_action = ParallelAction(ComputePattern.TP1D)
-    init_colo_module(model, parallel_action, recursive=True, mode='col')
+    init_colo_module(model, parallel_action, recursive=True, mode=mode)
 
     # use cpu gloo to handle embedding
     real_model.embed.to('cpu')
@@ -63,24 +63,24 @@ def run_hybrid_device(use_ddp):
     out.sum().backward()
     optimizer.step()
 
-def run_dist(rank, world_size, port, use_ddp):
+def run_dist(rank, world_size, port, use_ddp, mode):
     if use_ddp and world_size == 1:
         return
     tp_world_size = world_size // 2 if use_ddp else world_size
     config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_hybrid_device(use_ddp)
-
+    run_hybrid_device(use_ddp, mode)
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @pytest.mark.parametrize('use_ddp', [False, True])
+@pytest.mark.parametrize('mode', ['col', 'row'])
 @rerun_if_address_is_in_use()
 # Working for simulate the embedding(CPU DP+TP) -> nn(GPU DP+TP)
-def _test_hybrid_device(world_size, use_ddp):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), use_ddp=use_ddp)
+def _test_hybrid_device(world_size, use_ddp, mode):
+    run_func = partial(run_dist, world_size=world_size, port=free_port(), use_ddp=use_ddp ,mode=mode)
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    _test_hybrid_device(4, True)
+    _test_hybrid_device(4, True, 'row')
