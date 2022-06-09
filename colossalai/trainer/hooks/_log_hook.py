@@ -4,9 +4,7 @@
 import os
 import os.path as osp
 
-import torch
 from typing import List
-from decimal import Decimal
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.registry import HOOKS
@@ -15,6 +13,7 @@ from colossalai.utils import report_memory_usage, is_dp_rank_0, \
     is_tp_rank_0, is_no_pp_or_last_stage, MultiTimer
 from ._base_hook import BaseHook
 from ._commons_ import _format_number
+from colossalai.trainer.hooks._metric_hook import ThroughputMetric
 
 
 class LogByEpochHook(BaseHook):
@@ -53,12 +52,18 @@ class LogMetricByStepHook(BaseHook):
     def after_train_iter(self, trainer, *args):
         trainer.states['step_metrics'] = dict()
         for metric_name, metric_calculator in trainer.states['metrics']['train'].items():
-            trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_value()
+            if isinstance(metric_calculator, ThroughputMetric):
+                trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_info()
+            else:
+                trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_value()
 
     def after_test_iter(self, trainer, *args):
         trainer.states['step_metrics'] = dict()
         for metric_name, metric_calculator in trainer.states['metrics']['test'].items():
-            trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_value()
+            if isinstance(metric_calculator, ThroughputMetric):
+                trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_info()
+            else:
+                trainer.states['step_metrics'][metric_name.lower()] = metric_calculator.get_last_step_value()
 
 
 @HOOKS.register_module

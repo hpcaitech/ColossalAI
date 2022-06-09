@@ -67,6 +67,7 @@ def check_checkpoint_2p5d(rank, world_size, port):
 
 
 @pytest.mark.dist
+@pytest.mark.skip("This test should be invoked with 8 GPUs")
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_checkpoint_2p5d():
     world_size = 8
