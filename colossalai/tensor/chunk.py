@@ -172,6 +172,12 @@ class Chunk:
     def device_type(self) -> str:
         return self.data.device.type
 
+    def __hash__(self) -> int:
+        return hash(id(self))
+
+    def __eq__(self, __o: object) -> bool:
+        return self is __o
+
 
 class ChunkManager:
 
