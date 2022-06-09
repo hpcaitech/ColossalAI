@@ -15,7 +15,7 @@ from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.utils import free_port, get_current_device, is_using_pp
 from colossalai.utils.checkpointing import gather_pipeline_parallel_state_dict, load_checkpoint, save_checkpoint
-from colossalai.testing import rerun_on_exception
+from colossalai.testing import rerun_on_exception, skip_if_not_enough_gpus
 
 
 def build_pipeline(model):
@@ -67,7 +67,7 @@ def check_checkpoint_2d(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.skip("This test should be invoked with 8 GPUs")
+@skip_if_not_enough_gpus(min_gpus=8)
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_checkpoint_2d():
     world_size = 8
