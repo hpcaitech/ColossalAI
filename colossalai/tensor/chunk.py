@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, Deque, Set, List, FrozenSet, Iterable
+from typing import Optional, Dict, Deque, Set, List, Tuple, Iterable
 from collections import deque
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
@@ -339,8 +339,13 @@ class ChunkManager:
             if not dest_chunk.is_free:
                 dest_chunk.copy_(src_chunk)
 
-    def get_chunks(self, tensors: Iterable[torch.Tensor]) -> FrozenSet[Chunk]:
-        return frozenset([self.get_chunk(tensor) for tensor in tensors])
+    def get_chunks(self, tensors: Iterable[torch.Tensor]) -> Tuple[Chunk, ...]:
+        chunks = []
+        for tensor in tensors:
+            chunk = self.get_chunk(tensor)
+            if chunk not in chunks:
+                chunks.append(chunk)
+        return tuple(chunks)
 
     def add_extern_static_tensor(self, tensor: torch.Tensor) -> None:
         """Add extern static tensor to chunk manager. 
