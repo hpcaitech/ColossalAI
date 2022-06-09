@@ -26,7 +26,7 @@ class LazyInitContext():
         assert model.weight.is_meta
         
         # initialize weights
-        ctx.reset_parameters(model)
+        ctx.lazy_init_parameters(model)
         
         # make sure the weight is not a meta tensor 
         # and initialized correctly
@@ -156,7 +156,7 @@ class LazyInitContext():
         self._unpatch_torch_tensor_funcs()
         self._unpatch_nn_init_funcs()
     
-    def reset_parameters(self, model: torch.nn.Module, device='cpu', call_back: Callable = None):
+    def lazy_init_parameters(self, model: torch.nn.Module, device='cpu', call_back: Callable = None):
         """
         Initialize the weights of the meta-tensor model.
         

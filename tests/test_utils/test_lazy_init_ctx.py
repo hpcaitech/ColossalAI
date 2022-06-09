@@ -12,7 +12,7 @@ def test_lazy_init_ctx():
     assert model.weight.is_meta
     
     # initialize weights
-    ctx.reset_parameters(model)
+    ctx.lazy_init_parameters(model)
     
     # make sure the weight is not a meta tensor 
     # and initialized correctly
