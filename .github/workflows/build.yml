@@ -15,7 +15,7 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.10.1-11.3.0
-      options: --shm-size=2gb --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v2
@@ -34,3 +34,4 @@ jobs:
           PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10
+          NCCL_SHM_DISABLE: 1
