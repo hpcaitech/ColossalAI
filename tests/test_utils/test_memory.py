@@ -4,6 +4,7 @@ import colossalai
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory import colo_set_process_memory_fraction, colo_device_memory_capacity
 from colossalai.utils import free_port
+from colossalai.testing import skip_if_not_enough_gpus
 
 from functools import partial
 import torch.multiprocessing as mp
@@ -16,13 +17,14 @@ def _run_colo_set_process_memory_fraction_and_colo_device_memory_capacity():
     assert frac2 * 2 == frac1
 
 
+@skip_if_not_enough_gpus
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     _run_colo_set_process_memory_fraction_and_colo_device_memory_capacity()
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [3, 4])
+@pytest.mark.parametrize("world_size", [4, 5])
 def test_memory_utils(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

@@ -172,3 +172,31 @@ def rerun_if_address_is_in_use():
 
     func_wrapper = rerun_on_exception(exception_type=exception, pattern=".*Address already in use.*")
     return func_wrapper
+
+
+def skip_if_not_enough_gpus(func: Callable):
+    """
+    This function is used to check the number of available GPUs on the system and
+    automatically skip the test cases which require more GPUs.
+
+    Note:
+        The wrapped function must have `world_size` in its keyword argument.
+
+    Usage:
+        @skip_if_not_enough_gpus
+        def run_dist(rank, world_size):
+            do_something()
+
+    Arg:
+        func (Callable): a function to execute
+    """
+
+    num_avai_gpus = torch.cuda.device_count()
+
+    def execute_by_num_gpus(*args, **kwargs):
+        assert 'world_size' in kwargs, 'world_size is not found in the keyword arguments'
+        world_size = kwargs['world_size']
+
+        if world_size <= num_avai_gpus:
+            func(*args, **kwargs)
+    return execute_by_num_gpus

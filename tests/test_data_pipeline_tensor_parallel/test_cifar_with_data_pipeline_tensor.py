@@ -10,7 +10,7 @@ import torch.multiprocessing as mp
 from colossalai.amp import AMP_TYPE
 from colossalai.trainer import Trainer, hooks
 from colossalai.context import ParallelMode
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
@@ -32,6 +32,7 @@ CONFIG = dict(NUM_MICRO_BATCHES=2,
               gradient_accumulation=2)
 
 
+@skip_if_not_enough_gpus
 def run_trainer(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
@@ -83,7 +84,6 @@ def run_trainer(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.skip("This test requires 8 GPUs to execute")
 @rerun_if_address_is_in_use()
 def test_hybrid_parallel():
     world_size = 8
