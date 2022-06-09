@@ -7,7 +7,7 @@ from colossalai.gemini.tensor_utils import (colo_tensor_mem_usage, colo_model_da
                                             colo_model_tensor_clone)
 from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus
 
 import torch
 
@@ -74,6 +74,7 @@ def _run_colo_model_tensor_clone():
                     assert t[i][j] == p[i][j]
 
 
+@skip_if_not_enough_gpus
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
@@ -85,7 +86,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.parametrize("world_size", [3, 4])
 @rerun_if_address_is_in_use()
 def test_zero_tensor_utils(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())

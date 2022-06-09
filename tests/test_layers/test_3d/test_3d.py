@@ -9,7 +9,7 @@ from colossalai.core import global_context as gpc
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use, skip_if_not_enough_gpus
 from checks_3d.check_layer_3d import (check_classifier_given_embed_weight, check_classifier_no_given_weight,
                                       check_embed, check_layernorm, check_linear, check_loss, check_patch_embed,
                                       check_vocab_parallel_classifier_given_embed_weight,
@@ -38,7 +38,6 @@ def check_layer():
     check_loss()
     check_vocab_parallel_loss()
 
-
 def check_layer_and_operation(rank, world_size, port):
     disable_existing_loggers()
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
@@ -51,7 +50,7 @@ def check_layer_and_operation(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.skip("This test requires 8 GPUs to execute")
+@skip_if_not_enough_gpus(min_gpus=8)
 @rerun_if_address_is_in_use()
 def test_3d():
     world_size = 8

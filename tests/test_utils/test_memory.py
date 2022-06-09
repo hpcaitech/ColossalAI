@@ -4,6 +4,7 @@ import colossalai
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory import colo_set_process_memory_fraction, colo_device_memory_capacity
 from colossalai.utils import free_port
+from colossalai.testing import skip_if_world_size_not_satisfied
 
 from functools import partial
 import torch.multiprocessing as mp
