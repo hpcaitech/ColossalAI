@@ -17,11 +17,14 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn import CrossEntropyLoss
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.utils import is_using_pp, get_dataloader
-from colossalai.utils.model.pipelinable import PipelinableContext
+from colossalai.pipeline.pipelinable import PipelinableContext
 from tqdm import tqdm
-
-from titans.dataloader.cifar10 import build_cifar
-from titans.model.vit import vit_tiny_patch4_32
+from torchvision.datasets import CIFAR10
+from torchvision.transforms import transforms
+try:
+    from titans.model.vit import vit_tiny_patch4_32
+except:
+    pass
 
 BATCH_SIZE = 4
 NUM_EPOCHS = 60
@@ -49,7 +52,14 @@ def run_trainer(rank, world_size, port):
 
     # craete dataloaders
     root = Path(os.environ['DATA'])
-    train_dataloader, test_dataloader = build_cifar(BATCH_SIZE, root, pad_if_needed=True, crop=32, resize=32)
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(224, padding=4, pad_if_needed=True),
+        transforms.AutoAugment(policy=transforms.AutoAugmentPolicy.CIFAR10),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    train_dataset = CIFAR10(root=root, train=True, download=True, transform=transform_train)
+    train_dataloader = get_dataloader(dataset=train_dataset, shuffle=True, batch_size=BATCH_SIZE, pin_memory=True)
 
     # create loss function
     criterion = CrossEntropyLoss(label_smoothing=0.1)

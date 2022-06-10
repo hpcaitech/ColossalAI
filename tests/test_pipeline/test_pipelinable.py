@@ -1,7 +1,7 @@
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.utils.model.pipelinable import PipelinableContext
+from colossalai.pipeline.pipelinable import PipelinableContext
 
 from colossalai.testing import rerun_on_exception
 
@@ -33,7 +33,7 @@ def run_pipelinable(rank):
         model = MLP()
 
     assert pipelinable.policy == "balanced"
-    pipelinable.load_policy("uniform")
+    pipelinable.policy = "uniform"
     assert pipelinable.policy == "uniform"
     pipelinable.to_layer_list()
 
