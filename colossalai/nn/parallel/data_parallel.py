@@ -4,8 +4,8 @@ from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 from functools import partial
 from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
-from colossalai.tensor.chunk import ChunkManager, TensorState, Chunk
-from colossalai.tensor.param_op_hook import use_param_op_hooks
+from colossalai.tensor.chunk import TensorState, Chunk
+from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Dict
 from colossalai.logging import get_dist_logger
@@ -113,7 +113,7 @@ class ColoDDPV2(ColoDDP):
     def forward(self, *args, **kwargs):
         self.module.zero_grad(set_to_none=True)
         self.gemini_manager.pre_iter()
-        with use_param_op_hooks(self.param_op_hook):
+        with ParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         self.chunk_manager.exec_lazy_release()
         return outputs
@@ -134,12 +134,12 @@ class ColoDDPV2(ColoDDP):
         self.gemini_manager.post_iter()
 
     def backward(self, loss: torch.Tensor):
-        with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
+        with self.param_op_hook.switch_to_backward(), ParamOpHookManager.use_hooks(self.param_op_hook):
             loss.backward()
         self._post_backward()
 
     def backward_by_grad(self, tensor, grad):
-        with self.param_op_hook.switch_to_backward(), use_param_op_hooks(self.param_op_hook):
+        with self.param_op_hook.switch_to_backward(), ParamOpHookManager.use_hooks(self.param_op_hook):
             torch.autograd.backward(tensor, grad)
         self._post_backward()
 
