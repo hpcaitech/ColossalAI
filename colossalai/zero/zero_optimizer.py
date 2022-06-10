@@ -7,7 +7,7 @@ from typing import Dict
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.utils import get_current_device
+from colossalai.utils import get_current_device, disposable
 
 
 class OptimState(Enum):
@@ -59,6 +59,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
         if self.gpu_margin_mem_ratio > 0.0 and not self.gemini_manager.is_cuda_margin_mem_avail:
             self._logger.warning(f'gpu_margin_mem_ratio is meaningless when placement_policy is not "auto"', ranks=[0])
 
+        self._register_states = disposable(self._register_states_)
+
     def _update_params_ptr(self):
         for group in self.optim.param_groups:
             for p in group['params']:
@@ -109,7 +111,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
             return
         self._update_params_ptr()
         ret = self.optim.step(*args, **kwargs)
-        # TODO: register os
+        self._register_states()
         self._update_fp16_params()
         return ret
 
@@ -143,3 +145,11 @@ class ZeroOptimizer(ColossalaiOptimizer):
                     self.module._set_chunk_grad_device(fp16_param_chunk, get_current_device())
                     fp32_params_used_cuda_margin_mem += fp32_param_chunk.mem
             self.module._setup_grads_ptr()
+
+    def _register_states_(self):
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                state = self.optim.state[p]
+                for val in state.values():
+                    if isinstance(val, torch.Tensor):
+                        self.chunk_manager.add_extern_static_tensor(val)
