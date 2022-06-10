@@ -18,6 +18,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
+from colossalai.gemini.gemini_mgr import GeminiManager
 
 
 def check_param_equal(model, torch_model):
@@ -53,7 +54,8 @@ def run_gpt(use_chunk, use_zero):
 
     chunk_size = 38 * 1024**2 if use_chunk else None
     chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
-    model = ColoDDPV2(model, chunk_manager)
+    gemini_manager = GeminiManager('cuda', chunk_manager)
+    model = ColoDDPV2(model, gemini_manager)
     optim = HybridAdam(model.parameters(), lr=1e-3)
     optim = ZeroOptimizer(optim, model, initial_scale=32)
 
