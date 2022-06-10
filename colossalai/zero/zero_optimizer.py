@@ -136,7 +136,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
             fp32_params_used_cuda_margin_mem = 0
             for fp16_param_chunk, fp32_param_chunk in zip(self.chunk_manager.chunk_groups['fp16_param'],
                                                           self.chunk_manager.chunk_groups['fp32_param']):
-                if fp32_param_chunk.is_free:
+                if fp32_param_chunk.is_empty:
                     continue
                 if fp32_params_used_cuda_margin_mem + fp32_param_chunk.mem < fp32_params_available_cuda_margin_mem:
                     self.chunk_manager.move_chunk(fp32_param_chunk, get_current_device())

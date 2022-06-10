@@ -73,11 +73,11 @@ class GeminiManager:
     def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...], group_name: str):
         cuda_demand = 0
         for chunk in chunks:
-            if chunk.device_type == 'cpu' or chunk.is_free:
+            if chunk.device_type == 'cpu' or chunk.is_empty:
                 cuda_demand += chunk.mem
         can_evict_chunks = []
         for chunk in self._chunk_manager.chunk_groups[group_name]:
-            if not chunk.is_free and chunk.device_type == 'cuda' and chunk.can_move_device:
+            if not chunk.is_empty and chunk.device_type == 'cuda' and chunk.can_move_device:
                 can_evict_chunks.append(chunk)
         return cuda_demand, can_evict_chunks
 
