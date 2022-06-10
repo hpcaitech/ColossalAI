@@ -113,7 +113,7 @@ class ColoDDPV2(ColoDDP):
     def _post_backward(self):
         self.chunk_manager.exec_lazy_release()
         for p in self.module.parameters():
-            if self.chunk_manager.get_chunk(p).is_free or not p.requires_grad:
+            if self.chunk_manager.get_chunk(p).is_empty or not p.requires_grad:
                 p.grad = None
             else:
                 p.grad = p.data
@@ -139,7 +139,7 @@ class ColoDDPV2(ColoDDP):
             chunk = self.chunk_manager.get_chunk(p)
             reduced = self.chunk_manager.reduce_chunk(chunk)
             self.chunk_manager.release_chunk(chunk)
-            if reduced and not chunk.is_free:
+            if reduced and not chunk.is_empty:
                 self.overflow_counter += chunk.has_inf_or_nan
         return empty_grad
 
