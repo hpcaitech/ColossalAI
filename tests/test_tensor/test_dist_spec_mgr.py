@@ -33,8 +33,25 @@ def run():
     assert torch.equal(x, DistSpecManager._gather(mat_shard, mat_spec))
 
 
+def check_mem():
+    group = _get_default_group()
+    size = dist.get_world_size()
+    assert torch.cuda.memory_allocated() == 0
+    x = torch.rand(32, 32).cuda()
+    orig_mem = x.numel() * x.element_size()
+    assert torch.cuda.memory_allocated() == orig_mem
+    old_dist_spec = distspec.replicate()
+    row_spec = distspec.shard(group, [0], [size])
+    x.data = DistSpecManager._shard_as(x, old_dist_spec, row_spec)
+    assert x.size(0) == 32 // size and x.size(1) == 32
+    assert torch.cuda.memory_allocated() == orig_mem // size
+    x.data = DistSpecManager._gather(x, row_spec)
+    assert torch.cuda.memory_allocated() == orig_mem
+
+
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    check_mem()
     run()
 
 

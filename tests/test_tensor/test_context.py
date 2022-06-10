@@ -1,10 +1,7 @@
 import pytest
-from colossalai.utils import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext
 
-from numpy import allclose, require
 import torch
-from colossalai.tensor import ColoTensor
-from copy import deepcopy
 
 from colossalai.utils.cuda import get_current_device
 

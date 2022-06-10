@@ -1,0 +1,37 @@
+name: Build on 8 GPUs
+
+on:
+  schedule:
+    # run at 00:00 of every Sunday 
+    - cron:  '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and Test Colossal-AI
+    if: |
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, 8-gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.10.1-11.3.0
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+      - name: Install Colossal-AI      
+        run: |
+          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+          pip install -r requirements/requirements.txt
+          pip install -v -e .
+          cp -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+          cp /__w/ColossalAI/ColossalAI/*.so /github/home/cuda_ext_cache/
+          pip install -r requirements/requirements-test.txt
+      - name: Unit Testing
+        run: |
+          gpu_used=$(nvidia-smi -i 0 --query-gpu=memory.used --format=csv,noheader,nounits)
+          [ "$gpu_used" -gt "100" ] && PYTHONPATH=$PWD pytest tests
+        env:
+          DATA: /data/scratch/cifar-10
+          

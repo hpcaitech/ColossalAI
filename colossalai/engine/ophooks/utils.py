@@ -85,11 +85,15 @@ class PostBackwardFunction(torch.autograd.Function):
 
 
 def register_ophooks_recursively(module: torch.nn.Module,
-                                 ophook_list: List[BaseOpHook] = None,
+                                 ophook_list: List[BaseOpHook],
                                  name: str = "",
                                  filter_fn: Optional[Callable] = None):
     r"""Recursilvely register pre/post hooks for all submodules in the module in FWD and BWD."""
     assert isinstance(module, torch.nn.Module)
+    assert isinstance(ophook_list, (list, tuple))
+    assert len(ophook_list) > 0, 'expected at least 1 hook in the argument ophook_list but found 0'
+    for hook in ophook_list:
+            assert (isinstance(hook, BaseOpHook))
 
     # Add hooks for submodules
     for child_name, child in module.named_children():
@@ -102,10 +106,6 @@ def register_ophooks_recursively(module: torch.nn.Module,
     # return from flitered module
     if filter_fn is not None and filter_fn(module):
         return
-
-    if ophook_list is not None:
-        for hook in ophook_list:
-            assert (isinstance(hook, BaseOpHook))
 
     def _pre_forward_module_hook(submodule, *args):
         for hook in ophook_list:

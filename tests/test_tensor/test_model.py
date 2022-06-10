@@ -5,16 +5,17 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.utils import ColoInitContext
-from colossalai.tensor import distspec, named_params_with_colotensor, TensorSpec, ComputePattern, \
-    ParallelAction, ColoTensor, ColoOptimizer, DistSpecManager
+from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.tensor import distspec, TensorSpec, ComputePattern, \
+    ParallelAction, ColoTensor, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.nn.optimizer import ColoOptimizer
 from functools import partial
-from _utils import set_seed
+from _utils import tensor_equal, tensor_shard_equal, set_seed
 
 
 def init_1d_row_linear(weight):
@@ -143,20 +144,8 @@ def run_1d_hybrid_tp(model_name):
 
             with torch.no_grad():
                 # check param
-                for p1, p2 in zip(model.parameters(), model_torch.parameters()):
-                    if p1.size() == p2.size():
-                        assert torch.allclose(p1, p2)
-                    else:
-                        # TODO(jzy) Only check 1D spec. Need to be replaced by new DistSpec.
-                        if p1.size(-1) < p2.size(-1):    # col
-                            world_size = p2.size(-1) // p1.size(-1)
-                            split_p2 = torch.chunk(p2, world_size, dim=-1)[0]
-
-                        elif p1.size(0) < p2.size(0):    # row
-                            world_size = p2.size(0) // p1.size(0)
-                            split_p2 = torch.chunk(p2, world_size, dim=0)[0]
-
-                        assert torch.allclose(p1, split_p2)
+                for p, torch_p in zip(model.parameters(), model_torch.parameters()):
+                    assert tensor_shard_equal(torch_p, p)
 
         if i > 5:
             break
@@ -327,7 +316,6 @@ def run_model_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
-# @parameterize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_model(world_size):
     run_func = partial(run_model_dist, world_size=world_size, port=free_port())
@@ -353,5 +341,5 @@ def _test_pretrain_load(world_size):
 if __name__ == '__main__':
     # test_model_parameters()
     # test_colo_optimizer()
-    test_model(4)
-    # _test_pretrain_load(4)
+    # test_model(4)
+    _test_pretrain_load(4)
