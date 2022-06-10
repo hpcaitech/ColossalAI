@@ -13,7 +13,6 @@ from colossalai.tensor.chunk import Chunk, ChunkManager
 
 class PlacementPolicy(ABC):
     need_mem_stats: bool = False
-    default_device: torch.device = torch.device('cpu')
 
     def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
         self.chunk_manager = chunk_manager
@@ -22,6 +21,10 @@ class PlacementPolicy(ABC):
     @abstractmethod
     def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> None:
         raise NotImplementedError
+
+    @staticmethod
+    def get_default_device() -> torch.device:
+        return torch.device('cpu')
 
 
 class CPUPlacementPolicy(PlacementPolicy):
@@ -39,14 +42,16 @@ class CPUPlacementPolicy(PlacementPolicy):
 
 class CUDAPlacementPolicy(PlacementPolicy):
 
-    default_device: torch.device = get_current_device()
-
     def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
         assert torch.cuda.is_available(), 'Cannot use CUDATensorPlacementPolicy when CUDA is not available'
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> int:
         return 0, 0
+
+    @staticmethod
+    def get_default_device() -> torch.device:
+        return get_current_device()
 
 
 class AutoPlacementPolicy(PlacementPolicy):
@@ -142,12 +147,11 @@ class PlacementPolicyFactory:
             raise TypeError(f"Unknown tensor placement policy {policy_name}")
         return PlacementPolicyFactory.policies[policy_name]
 
-    @property
     @staticmethod
-    def polocy_names():
+    def get_polocy_names():
         return tuple(PlacementPolicyFactory.policies.keys())
 
     @staticmethod
     def get_default_device(policy_name: str) -> torch.device:
         policy_cls = PlacementPolicyFactory.create(policy_name)
-        return policy_cls.default_device
+        return policy_cls.get_default_device()

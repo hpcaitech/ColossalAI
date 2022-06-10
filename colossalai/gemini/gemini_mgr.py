@@ -15,7 +15,7 @@ class GeminiManager:
     """
 
     def __init__(self, placement_policy: str, chunk_manager: ChunkManager) -> None:
-        assert placement_policy in PlacementPolicyFactory.polocy_names
+        assert placement_policy in PlacementPolicyFactory.get_polocy_names()
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
         self._mem_stats_collector = MemStatsCollectorV2(chunk_manager) if policy_cls.need_mem_stats else None
@@ -86,7 +86,7 @@ class GeminiManager:
 
     @property
     def default_device(self):
-        return self._placement_policy.default_device
+        return self._placement_policy.get_default_device()
 
     def sample_overall_data(self):
         if self._mem_stats_collector:
