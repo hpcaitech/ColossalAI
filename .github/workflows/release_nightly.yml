@@ -5,16 +5,7 @@ on:
     # run at 00:00 of every Sunday 
     - cron:  '0 0 * * 6'
   workflow_dispatch:
-    inputs:
-      cuda_version:
-        type: choice
-        description: CUDA Version
-        default: "all"
-        required: true
-        options:
-        - "all"
-        - "11.3"
-        - "10.2"
+  
 jobs:
   matrix_preparation:
     name: Prepare Container List
@@ -24,8 +15,7 @@ jobs:
     steps:
     - id: set-matrix
       run: |
-        [ "${{github.event.inputs.cuda_version}}" != "all" ] && matrix="[\"hpcaitech/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
-        [ "${{github.event.inputs.cuda_version}}" == "all" || "${{github.event.inputs.cuda_version}}" == "" ] && matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
+        matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:10.2\"]"
         echo $matrix
         echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
 
