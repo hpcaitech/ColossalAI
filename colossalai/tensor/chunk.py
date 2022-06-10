@@ -178,6 +178,9 @@ class Chunk:
     def __eq__(self, __o: object) -> bool:
         return self is __o
 
+    def get_tensors(self) -> List[torch.Tensor]:
+        return list(self.tensors_info.keys())
+
 
 class ChunkManager:
 
@@ -234,6 +237,10 @@ class ChunkManager:
 
     def access_chunk(self, chunk: Chunk) -> None:
         if chunk in self.accessed_chunks:
+            if chunk.device_type != 'cuda':
+                self.total_mem[chunk.device_type] -= chunk.mem
+                chunk.move_device(get_current_device())
+                self.total_mem[chunk.device_type] += chunk.mem
             return
         if not chunk.is_free:
             self.total_mem[chunk.device_type] -= chunk.mem

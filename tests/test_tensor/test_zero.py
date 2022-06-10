@@ -14,6 +14,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ColoDDPV2
 from colossalai.testing import parameterize
+from colossalai.gemini.gemini_mgr import GeminiManager
 
 
 def check_param_equal(model, torch_model):
@@ -44,7 +45,8 @@ def run_gpt(use_chunk, use_zero):
     model = model.half()
     chunk_size = 38 * 1024**2 if use_chunk else None
     chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
-    model = ColoDDPV2(model, chunk_manager)
+    gemini_manager = GeminiManager('cuda', chunk_manager)
+    model = ColoDDPV2(model, gemini_manager)
     torch_model = DDP(torch_model, device_ids=[gpc.get_global_rank()], process_group=gpc.get_group(ParallelMode.DATA))
     print(chunk_manager)
     check_param_equal(model, torch_model)

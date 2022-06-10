@@ -1,5 +1,6 @@
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
-from colossalai.utils.memory import colo_device_memory_used
+from colossalai.utils.memory import colo_device_memory_used, colo_device_memory_capacity
+from colossalai.utils import get_current_device
 from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.tensor import ChunkManager
 
@@ -145,3 +146,7 @@ class MemStatsCollectorV2(MemStatsCollector):
             cpu_mem = self._chunk_manager.total_mem['cpu']
             self._model_data_cuda_list.append(cuda_mem)
             self._model_data_cpu_list.append(cpu_mem)
+
+    @property
+    def cuda_margin_mem(self) -> float:
+        return colo_device_memory_capacity(get_current_device()) - max(self.overall_mem_stats('cuda'))
