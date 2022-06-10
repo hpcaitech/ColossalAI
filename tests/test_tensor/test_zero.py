@@ -26,7 +26,7 @@ def check_param_equal(model, torch_model):
 def check_grad_equal(model, torch_model):
     for p, torch_p in zip(model.parameters(), torch_model.parameters()):
         if p.grad is not None:
-            assert tensor_equal(torch_p.grad, p.grad.float().cuda())
+            assert tensor_equal(torch_p.grad, p.grad.float())
 
 
 @parameterize('use_chunk', [False, True])
