@@ -221,14 +221,14 @@ class Chunk:
         return True
 
     @property
-    def is_free(self) -> bool:
+    def is_empty(self) -> bool:
         """
         Check whether the chunk is empty.
         """
         return self.data.storage().size() == 0
 
     def __repr__(self) -> str:
-        return f'Chunk: src rank={self.src_rank} ,size={self.size}, utilization={self.utilized_size/self.size*100:.2f}%, freed={self.is_free}, tensor states={[info.state.name for info in self.tensors_info.values()]}'
+        return f'Chunk: src rank={self.src_rank} ,size={self.size}, utilization={self.utilized_size/self.size*100:.2f}%, freed={self.is_empty}, tensor states={[info.state.name for info in self.tensors_info.values()]}'
 
     @property
     def has_inf_or_nan(self) -> bool:
@@ -242,8 +242,8 @@ class Chunk:
         """
         Copy the data of this chunk to a destination chunk.
         """
-        assert not self.is_free
-        assert not dest_chunk.is_free
+        assert not self.is_empty
+        assert not dest_chunk.is_empty
         assert self.size == dest_chunk.size
         assert self.utilized_size == dest_chunk.utilized_size
         self.data.copy_(dest_chunk.data)
@@ -320,7 +320,7 @@ class ChunkManager:
 
             self.chunk_groups[group_name].append(chunk)
             chunk.append(tensor)
-            if not chunk.is_free:
+            if not chunk.is_empty:
                 self.total_mem[chunk.device_type] += chunk.mem
         self.tensor_chunk_map[tensor] = self.chunk_groups[group_name][-1]
         if not self.enable_distributed_storage:
@@ -353,7 +353,7 @@ class ChunkManager:
         """
         if chunk in self.accessed_chunks:
             return
-        if not chunk.is_free:
+        if not chunk.is_empty:
             # as tensor is moved to the target device
             # the memory consumption of the original device is reduced
             self.total_mem[chunk.device_type] -= chunk.mem
@@ -376,7 +376,7 @@ class ChunkManager:
         if chunk.can_release:
             chunk.release()
             self.accessed_chunks.remove(chunk)
-            if chunk.is_free:
+            if chunk.is_empty:
                 # update the memory consumption after releasing
                 self.total_mem[chunk.device_type] -= chunk.mem
 
@@ -390,7 +390,7 @@ class ChunkManager:
         """
         if chunk.data.device == device:
             return
-        if chunk.can_move_device and not chunk.is_free:
+        if chunk.can_move_device and not chunk.is_empty:
             self.total_mem[chunk.device_type] -= chunk.mem
             chunk.move_device(device)
             self.total_mem[chunk.device_type] += chunk.mem
@@ -533,7 +533,7 @@ class ChunkManager:
             src_group_name (str): the source group which provides the data to copy
         """
         for dest_chunk, src_chunk in zip(self.chunk_groups[dest_group_name], self.chunk_groups[src_group_name]):
-            if not dest_chunk.is_free:
+            if not dest_chunk.is_empty:
                 dest_chunk.copy_(src_chunk)
 
     def get_chunks(self, tensors: Iterable[torch.Tensor]) -> Tuple[Chunk, ...]:
