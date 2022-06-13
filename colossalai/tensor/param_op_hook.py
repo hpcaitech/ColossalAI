@@ -5,6 +5,11 @@ from typing import List, Tuple, Any
 
 
 class ParamOpHook(ABC):
+    """Hook which is triggered by each operation when operands contain ColoParameter.
+    To customize it, you must inherit this abstract class, and implement ``pre_forward``,
+    ``post_forward``, ``pre_backward`` and ``post_backward``. These four methods take a list
+    of ColoParameter.
+    """
 
     @abstractmethod
     def pre_forward(self, params: List[torch.Tensor]) -> None:
@@ -24,11 +29,23 @@ class ParamOpHook(ABC):
 
 
 class ParamOpHookManager:
+    """Manage your param op hooks. It only has static methods.
+    The only static method you should call is ``use_hooks(*hooks)``.
+    """
     hooks: Tuple[ParamOpHook, ...] = tuple()
 
     @staticmethod
     @contextmanager
     def use_hooks(*hooks: ParamOpHook):
+        """Change the param op hooks you use. Nested calling is allowed.
+
+        Example::
+            >>> with ParamOpHookManager.use_hooks(*hooks):
+            >>>     do_something()
+            >>>     with ParamOpHookManager.use_hooks():
+            >>>         // clear hooks
+            >>>         do_something()
+        """
         try:
             old_param_op_hooks = ParamOpHookManager.hooks
             ParamOpHookManager.hooks = hooks
