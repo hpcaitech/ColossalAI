@@ -86,6 +86,8 @@ class PipelineSchedule(BaseSchedule):
 
         self.num_microbatches = num_microbatches
         self.dtype = torch.float
+        assert not isinstance(tensor_shape,
+                              int), "tensor_shape type should be one of Union[torch.Size, List[int], Tuple[int]]."
         if isinstance(tensor_shape, torch.Size):
             self.tensor_shape = tensor_shape
         else:
