@@ -80,7 +80,7 @@ class ParamOpHookManager:
 
     @staticmethod
     def post_op(params: List[torch.Tensor], args: Any) -> Any:
-        ParamOpHookManager._trigger_post_backward(params)
+        ParamOpHookManager._trigger_post_forward(params)
         return PostFwdPreBwd.apply(params, args)
 
     @staticmethod
