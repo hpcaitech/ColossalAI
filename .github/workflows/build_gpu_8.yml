@@ -9,8 +9,7 @@ on:
 jobs:
   build:
     name: Build and Test Colossal-AI
-    if: |
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    if: github.repository == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, 8-gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.10.1-11.3.0
