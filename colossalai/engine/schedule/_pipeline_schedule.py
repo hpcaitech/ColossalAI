@@ -484,10 +484,18 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         micro_batch_data = self.load_micro_batch(model_chunk_id)
 
         if self.data_process_func:
+            # use customized function to get data and label
             data, label = self.data_process_func(input_obj, micro_batch_data)
         else:
-            data = input_obj
-            _, label = micro_batch_data
+            if gpc.is_first_rank(ParallelMode.PIPELINE):
+                # for the first stage, we use the data from the
+                # dataloader output by default
+                data, label = micro_batch_data
+            else:
+                # for non-first stage, we use the output passed
+                # by the previous as the model input
+                data = input_obj
+                _, label = micro_batch_data
 
         output_obj = self._call_engine(engine.model[model_chunk_id], data)
 
