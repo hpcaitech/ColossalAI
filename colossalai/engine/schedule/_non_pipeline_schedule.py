@@ -17,7 +17,7 @@ class NonPipelineSchedule(BaseSchedule):
     to update the parameters if it is in training mode.
 
     Args:
-        batch_data_process_func (Callable, optional): The preprocessing function which receives a batch of data
+        data_process_func (Callable, optional): The preprocessing function which receives a batch of data
              and returns a tuple in the form of (data, label).
         and it will be executed in load_batch.
 
