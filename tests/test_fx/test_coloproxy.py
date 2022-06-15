@@ -1,14 +1,14 @@
-from colossalai.fx.proxy import ColoProxy
 import torch
-from tests.components_to_test.registry import non_distributed_component_funcs
+from colossalai.fx.proxy import ColoProxy
 
 
 def test_coloproxy():
-    model_builder, *_ = non_distributed_component_funcs.get_callable('simple_net')()
-    model = model_builder()
-
+    # create a dummy node only for testing purpose
+    model = torch.nn.Linear(10, 10)
     gm = torch.fx.symbolic_trace(model)
     node = list(gm.graph.nodes)[0]
+
+    # create proxy
     proxy = ColoProxy(node=node)
     proxy.meta_tensor = torch.empty(4, 2, device='meta')
 
