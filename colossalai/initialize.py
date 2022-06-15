@@ -380,7 +380,7 @@ def initialize(model: nn.Module,
             model = DDP(model,
                         process_group=gpc.get_group(ParallelMode.DATA),
                         device_ids=[torch.cuda.current_device()],
-                        **torch)
+                        **torch_ddp_cfg)
             if verbose:
                 logger.info('Model is using torch.nn.parallel.DistributedDataParallel for Data Parallelism', ranks=[0])
         elif is_using_ddp():
