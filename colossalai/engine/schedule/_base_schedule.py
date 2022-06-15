@@ -48,9 +48,11 @@ class BaseSchedule(ABC):
         if isinstance(data, torch.Tensor):
             return data.size(0)
         elif isinstance(data, (list, tuple)):
+            if isinstance(data[0], dict):
+                return data[0][list(data[0].keys())[0]].size(0)
             return data[0].size(0)
         elif isinstance(data, dict):
-            return data[next(data.keys())].size(0)
+            return data[list(data.keys())[0]].size(0)
 
     def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are
