@@ -44,6 +44,7 @@ def run_chunk_zero(use_chunk, use_zero):
     params = [torch.rand(8, 8) for _ in range(3)]
     chunk_size = 128 if use_chunk else None
     chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
+    chunk_manager.create_group('param')
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == 0
     for p in params:
