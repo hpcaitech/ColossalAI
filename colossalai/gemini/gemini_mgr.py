@@ -15,8 +15,6 @@ class GeminiManager:
     """
 
     def __init__(self, placement_policy: str, chunk_manager: ChunkManager) -> None:
-        # TODO: remove assert
-        assert placement_policy == 'cuda', 'placement_policy can only be "cuda" now'
         assert placement_policy in PlacementPolicyFactory.get_polocy_names()
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
