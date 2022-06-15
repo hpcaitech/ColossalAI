@@ -106,6 +106,7 @@ class ColoDDP(torch.nn.Module):
     @staticmethod
     def set_params_to_ignore(params_to_ignore: Iterable[torch.Tensor]) -> None:
         """Sets parameters to be ignored by DDP.
+        This method must be called before initializing ColoDDP.
 
         Example::
             >>> params_to_ignore = []
@@ -113,6 +114,7 @@ class ColoDDP(torch.nn.Module):
             >>>     if should_ignore(p):
             >>>         params_to_ignore.append(p)
             >>> ColoDDP.set_params_to_ignore(params_to_ignore)
+            >>> module = ColoDDP(module)
 
         Args:
             params_to_ignore (Iterable[torch.Tensor]): A list of parameters to be ignored.
