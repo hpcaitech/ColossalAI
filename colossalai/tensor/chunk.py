@@ -59,6 +59,7 @@ class Chunk:
         src_rank (int): the process which owns the chunk
         dtype (torch.dtype): the data type of the chunk
         init_device (torch.device): optional, the device where the tensor is initialized. The default value is None, which is the current GPU.
+        force_data_on_cuda (bool): optional, if True, chunk.data is always on cuda. Defaults to False.
     """
 
     def __init__(self,
@@ -340,6 +341,12 @@ class ChunkManager:
         self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
 
     def create_group(self, group_name: str, force_data_on_cuda: bool = False) -> None:
+        """Create a chunk group.
+
+        Args:
+            group_name (str): group name
+            force_data_on_cuda (bool, optional): If True, the data of chunks in this group is always on cuda.. Defaults to False.
+        """
         assert group_name not in self.chunk_groups
         self.chunk_groups[group_name] = deque()
         self.groups_force_data_on_cuda[group_name] = force_data_on_cuda
