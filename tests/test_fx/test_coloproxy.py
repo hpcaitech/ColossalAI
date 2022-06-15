@@ -17,3 +17,7 @@ def test_coloproxy():
     assert proxy.dim() == 2
     assert proxy.dtype == torch.float32
     assert proxy.size(0) == 4
+
+
+if __name__ == '__main__':
+    test_coloproxy()
