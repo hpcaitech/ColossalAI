@@ -9,7 +9,7 @@ def pipe_split():
     pass
 
 
-def balanced_split_node(gm: torch.fx.GraphModule, pp_size: int):
+def balanced_split_pass(gm: torch.fx.GraphModule, pp_size: int):
     mod_graph = gm.graph
     total_param_amount = 0
     for param in mod_graph.owning_module.parameters():
@@ -32,7 +32,7 @@ def balanced_split_node(gm: torch.fx.GraphModule, pp_size: int):
     return gm
 
 
-def split_module_with_split_nodes(annotated_gm: torch.fx.GraphModule):
+def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule):
     part_idx = 0
 
     def split_callback(n: torch.fx.Node):
