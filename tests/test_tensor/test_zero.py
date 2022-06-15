@@ -15,7 +15,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ColoDDPV2
 from colossalai.testing import parameterize
 from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.gemini.placement_policy import PlacementPolicyFactory
 
 
 def check_param_equal(model, torch_model):
@@ -48,7 +47,7 @@ def run_gpt(use_chunk, use_zero, placement_policy):
     chunk_size = ChunkManager.search_chunk_size(model, 128 * 1024**2, 8) if use_chunk else None
     chunk_manager = ChunkManager(chunk_size,
                                  enable_distributed_storage=use_zero,
-                                 init_device=PlacementPolicyFactory.get_default_device(placement_policy))
+                                 init_device=GeminiManager.get_default_device(placement_policy))
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ColoDDPV2(model, gemini_manager)
     torch_model = DDP(torch_model, device_ids=[gpc.get_global_rank()], process_group=gpc.get_group(ParallelMode.DATA))

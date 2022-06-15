@@ -1,4 +1,4 @@
-import functools
+import torch
 from .memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import List, Optional, Tuple
 from time import time
@@ -109,3 +109,7 @@ class GeminiManager:
     @property
     def is_cuda_margin_mem_avail(self) -> bool:
         return self._placement_policy.need_mem_stats
+
+    @staticmethod
+    def get_default_device(policy_name: str) -> torch.device:
+        return PlacementPolicyFactory.get_default_device(policy_name)
