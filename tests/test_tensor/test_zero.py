@@ -15,23 +15,25 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ColoDDPV2
 from colossalai.testing import parameterize
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.gemini.placement_policy import PlacementPolicyFactory
 
 
 def check_param_equal(model, torch_model):
     for p, torch_p in zip(model.parameters(), torch_model.parameters()):
         if p.storage().size() > 0:
-            assert tensor_equal(torch_p, p.float()), f'{torch_p} vs {p}'
+            assert tensor_equal(torch_p.to(p.device), p.float()), f'{torch_p} vs {p}'
 
 
 def check_grad_equal(model, torch_model):
     for p, torch_p in zip(model.parameters(), torch_model.parameters()):
         if p.grad is not None:
-            assert tensor_equal(torch_p.grad, p.grad.float())
+            assert tensor_equal(torch_p.grad.to(p.grad.device), p.grad.float())
 
 
 @parameterize('use_chunk', [False, True])
 @parameterize('use_zero', [False, True])
-def run_gpt(use_chunk, use_zero):
+@parameterize('placement_policy', ['cuda', 'cpu'])
+def run_gpt(use_chunk, use_zero, placement_policy):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -43,9 +45,11 @@ def run_gpt(use_chunk, use_zero):
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
     model = model.half()
-    chunk_size = 38 * 1024**2 if use_chunk else None
-    chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
-    gemini_manager = GeminiManager('cuda', chunk_manager)
+    chunk_size = ChunkManager.search_chunk_size(model, 128 * 1024**2, 8) if use_chunk else None
+    chunk_manager = ChunkManager(chunk_size,
+                                 enable_distributed_storage=use_zero,
+                                 init_device=PlacementPolicyFactory.get_default_device(placement_policy))
+    gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ColoDDPV2(model, gemini_manager)
     torch_model = DDP(torch_model, device_ids=[gpc.get_global_rank()], process_group=gpc.get_group(ParallelMode.DATA))
     print(chunk_manager)
