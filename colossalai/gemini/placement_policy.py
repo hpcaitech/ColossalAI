@@ -34,10 +34,11 @@ class CPUPlacementPolicy(PlacementPolicy):
 
     def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> int:
         volume = 0
+        start = time()
         for chunk in can_evict_chunks:
             self.chunk_manager.move_chunk(chunk, torch.device('cpu'), update_ptr=False)
             volume += chunk.mem
-        return volume, 0
+        return volume, time() - start
 
 
 class CUDAPlacementPolicy(PlacementPolicy):
