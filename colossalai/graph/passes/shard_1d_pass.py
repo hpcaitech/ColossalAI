@@ -36,7 +36,7 @@ def weight_split(weight, dim):
     return sharded_weight_list[gpc.get_local_rank(ParallelMode.PARALLEL_1D)]
 
 
-def replace_all_uses_except(node, replace_node):
+def replace_all_uses_except_replaced(node, replace_node):
     to_process = list(node.users)
     for use_node in to_process:
         if use_node == replace_node:
@@ -90,9 +90,9 @@ def row_shard_linear_pass(gm: torch.fx.GraphModule):
                     assert len(input_node_list) == 1, 'linear forward must have and only have one input tensor.'
                     input_node = input_node_list[0]
                     new_input_node = mod_graph.create_node('call_function', weight_split, args=(input_node, -1))
-                    replace_all_uses_except(input_node, new_input_node)
+                    replace_all_uses_except_replaced(input_node, new_input_node)
                 with mod_graph.inserting_after(node):
                     new_node = mod_graph.create_node('call_function', all_reduce_function, args=(node,))
-                    replace_all_uses_except(node, new_node)
+                    replace_all_uses_except_replaced(node, new_node)
     gm.recompile()
     return gm
