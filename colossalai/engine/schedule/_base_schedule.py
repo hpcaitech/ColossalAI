@@ -18,13 +18,12 @@ class BaseSchedule(ABC):
     control of FP16 in class schedule.
 
     Args:
-        batch_data_process_func (Callable, optional): The preprocessing function which receives a batch of data,
-        and it will be executed in load_batch.
+        data_process_func (Callable, optional): The preprocessing function which receives a batch of data and arranges them into data and label.
     """
 
-    def __init__(self, batch_data_process_func: Callable = None):
+    def __init__(self, data_process_func: Callable = None):
         self.logger = get_dist_logger()
-        self.batch_data_process_func = batch_data_process_func
+        self.data_process_func = data_process_func
 
     @staticmethod
     def _move_tensor(element):
@@ -34,16 +33,24 @@ class BaseSchedule(ABC):
         return element
 
     def _move_to_device(self, data):
-        if isinstance(data, dict):
+        if isinstance(data, torch.Tensor):
+            data = data.to(get_current_device())
+        elif isinstance(data, (list, tuple)):
+            data = [self._move_tensor(v) for v in data]
+        elif isinstance(data, dict):
             data = {k: self._move_tensor(v) for k, v in data.items()}
         else:
-            data = self._move_tensor(data)
+            raise TypeError(
+                f"Expected batch data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
         return data
 
-    @staticmethod
-    def _check_sanity(data, tag: str):
-        assert isinstance(data, (torch.Tensor, dict)), \
-            f'{tag} must be torch.Tensor or dict'
+    def _get_batch_size(self, data):
+        if isinstance(data, torch.Tensor):
+            return data.size(0)
+        elif isinstance(data, (list, tuple)):
+            return data[0].size(0)
+        elif isinstance(data, dict):
+            return data[next(data.keys())].size(0)
 
     def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are
@@ -60,19 +67,10 @@ class BaseSchedule(ABC):
             raise RuntimeError('Dataloader is not defined.')
         batch_data = next(data_iter)
 
-        if self.batch_data_process_func:
-            data, label = self.batch_data_process_func(batch_data)
-        else:
-            data, label = batch_data
-        self._check_sanity(data, 'data')
-        self._check_sanity(label, 'label')
-        if isinstance(data, torch.Tensor):
-            self.batch_size = data.size(0)
-        else:
-            self.batch_size = next(iter(data.values())).size(0)
         if to_gpu:
-            return self._move_to_device(data), self._move_to_device(label)
-        return data, label
+            batch_data = self._move_to_device(batch_data)
+        self.batch_size = self._get_batch_size(batch_data)
+        return batch_data
 
     def pre_processing(self, engine):
         """To perform actions before running the schedule.
@@ -101,8 +99,13 @@ class BaseSchedule(ABC):
     def _call_engine(engine, inputs):
         if isinstance(inputs, torch.Tensor):
             return engine(inputs)
-        else:
+        elif isinstance(inputs, (list, tuple)):
+            return engine(*inputs)
+        elif isinstance(inputs, dict):
             return engine(**inputs)
+        else:
+            TypeError(
+                f"Expected engine inputs to be of type torch.Tensor, list, tuple, or dict, but got {type(inputs)}")
 
     @staticmethod
     def _call_engine_criterion(engine, outputs, labels):
@@ -112,6 +115,17 @@ class BaseSchedule(ABC):
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)
         if isinstance(labels, torch.Tensor):
-            return engine.criterion(*outputs, labels)
-        else:
+            labels = (labels,)
+
+        if isinstance(outputs, (tuple, list)) and isinstance(labels, (tuple, list)):
+            return engine.criterion(*outputs, *labels)
+        elif isinstance(outputs, (tuple, list)) and isinstance(labels, dict):
             return engine.criterion(*outputs, **labels)
+        elif isinstance(outputs, dict) and isinstance(labels, dict):
+            return engine.criterion(**outputs, **labels)
+        elif isinstance(outputs, dict) and isinstance(labels, (list, tuple)):
+            raise ValueError(f"Expected labels to be a dict when the model outputs are dict, but got {type(labels)}")
+        else:
+            raise TypeError(f"Expected model outputs and labels to be of type torch.Tensor ' \
+                '(which is auto-converted to tuple), list, tuple, or dict, ' \
+                'but got {type(outputs)} (model outputs) and {type(labels)} (labels)")
