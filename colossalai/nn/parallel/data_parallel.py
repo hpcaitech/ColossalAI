@@ -7,7 +7,7 @@ from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
 from colossalai.tensor.chunk import TensorState, Chunk
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Dict
+from typing import Dict, Iterable
 from colossalai.logging import get_dist_logger
 
 
@@ -38,6 +38,8 @@ class ColoDDP(torch.nn.Module):
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
         self.dp_world_size = gpc.get_world_size(ParallelMode.DATA)
         for p in module.parameters():
+            if hasattr(module, '_ddp_params_to_ignore') and p in module._ddp_params_to_ignore:
+                continue
             if p.requires_grad:
                 p.register_hook(partial(self.grad_handle, p))
 
@@ -99,6 +101,23 @@ class ColoDDP(torch.nn.Module):
                         p._saved_grad.requires_grad_(False)
                     p._saved_grad.zero_()
 
+    @staticmethod
+    def set_params_to_ignore(module: torch.nn.Module, params_to_ignore: Iterable[torch.Tensor]) -> None:
+        """Sets parameters to be ignored by DDP.
+
+        Example::
+            >>> params_to_ignore = []
+            >>> for p in module.parameters():
+            >>>     if should_ignore(p):
+            >>>         params_to_ignore.append(p)
+            >>> ColoDDP.set_params_to_ignore(module, params_to_ignore)
+
+        Args:
+            module (torch.nn.Module): Top module which ColoDDP receives.
+            params_to_ignore (Iterable[torch.Tensor]): A list of parameters to be ignored.
+        """
+        module._ddp_params_to_ignore = frozenset(params_to_ignore)
+
 
 class ColoDDPV2(ColoDDP):
 
@@ -114,6 +133,8 @@ class ColoDDPV2(ColoDDP):
         self.chunk_manager.create_group('fp32_param')
         # TODO: get param order and filter unused params
         for p in module.parameters():
+            if hasattr(module, '_ddp_params_to_ignore') and p in module._ddp_params_to_ignore:
+                continue
             assert p.dtype == torch.half
             fp32_p = p.float().detach()
             self.chunk_manager.append_tensor(p, 'fp16_param')
