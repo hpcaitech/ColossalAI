@@ -100,6 +100,8 @@ class ColoDDPV2(ColoDDP):
         self.fp32_params = []
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
+        self.chunk_manager.create_group('fp16_param', force_data_on_cuda=True)
+        self.chunk_manager.create_group('fp32_param')
         # TODO: get param order and filter unused params
         for p in module.parameters():
             assert p.dtype == torch.half
