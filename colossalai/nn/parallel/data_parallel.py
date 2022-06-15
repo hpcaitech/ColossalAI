@@ -38,7 +38,7 @@ class ColoDDP(torch.nn.Module):
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
         self.dp_world_size = gpc.get_world_size(ParallelMode.DATA)
         for p in module.parameters():
-            if hasattr(module, '_ddp_params_to_ignore') and p in module._ddp_params_to_ignore:
+            if getattr(p, '_ddp_to_ignore', False):
                 continue
             if p.requires_grad:
                 p.register_hook(partial(self.grad_handle, p))
@@ -57,6 +57,8 @@ class ColoDDP(torch.nn.Module):
         loss.backward()
         torch.cuda.current_stream().wait_stream(self.comm_stream)
         for p in self.module.parameters():
+            if getattr(p, '_ddp_to_ignore', False):
+                continue
             if p.grad.device.type != "cpu":
                 p.grad = p._saved_grad
 
@@ -102,7 +104,7 @@ class ColoDDP(torch.nn.Module):
                     p._saved_grad.zero_()
 
     @staticmethod
-    def set_params_to_ignore(module: torch.nn.Module, params_to_ignore: Iterable[torch.Tensor]) -> None:
+    def set_params_to_ignore(params_to_ignore: Iterable[torch.Tensor]) -> None:
         """Sets parameters to be ignored by DDP.
 
         Example::
@@ -110,13 +112,13 @@ class ColoDDP(torch.nn.Module):
             >>> for p in module.parameters():
             >>>     if should_ignore(p):
             >>>         params_to_ignore.append(p)
-            >>> ColoDDP.set_params_to_ignore(module, params_to_ignore)
+            >>> ColoDDP.set_params_to_ignore(params_to_ignore)
 
         Args:
-            module (torch.nn.Module): Top module which ColoDDP receives.
             params_to_ignore (Iterable[torch.Tensor]): A list of parameters to be ignored.
         """
-        module._ddp_params_to_ignore = frozenset(params_to_ignore)
+        for p in params_to_ignore:
+            p._ddp_to_ignore = True
 
 
 class ColoDDPV2(ColoDDP):
@@ -133,7 +135,7 @@ class ColoDDPV2(ColoDDP):
         self.chunk_manager.create_group('fp32_param')
         # TODO: get param order and filter unused params
         for p in module.parameters():
-            if hasattr(module, '_ddp_params_to_ignore') and p in module._ddp_params_to_ignore:
+            if getattr(p, '_ddp_to_ignore', False):
                 continue
             assert p.dtype == torch.half
             fp32_p = p.float().detach()
@@ -154,6 +156,8 @@ class ColoDDPV2(ColoDDP):
 
     def _setup_grads_ptr(self):
         for p in self.module.parameters():
+            if getattr(p, '_ddp_to_ignore', False):
+                continue
             if self.chunk_manager.get_chunk(p).is_empty or not p.requires_grad:
                 p.grad = None
             else:
