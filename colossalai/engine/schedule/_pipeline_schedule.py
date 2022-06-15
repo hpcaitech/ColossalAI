@@ -173,6 +173,68 @@ class PipelineSchedule(BaseSchedule):
             else:
                 raise TypeError(f"Expected data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
 
+    def _get_actual_forward_func(self, module):
+        if isinstance(module, NaiveAMPModel):
+            sig = inspect.signature(module.model.forward)
+        elif hasattr(module, 'colo_attr'):
+            sig = inspect.signature(module.module.forward)
+        else:
+            sig = inspect.signature(module.forward)
+        return sig
+
+    def _get_data_label_for_current_step(self, stage_output, micro_batch_data, criterion, model):
+        if self.data_process_func:
+            # use customized function to get data and label
+            data, label = self.data_process_func(stage_output, micro_batch_data)
+        else:
+            if isinstance(micro_batch_data, (tuple, list)):
+                if gpc.is_first_rank(ParallelMode.PIPELINE):
+                    # for the first stage, we use the data from the
+                    # dataloader output by default
+                    data, label = micro_batch_data
+                else:
+                    # for non-first stage, we use the output passed
+                    # by the previous as the model input
+                    data = stage_output
+                    _, label = micro_batch_data
+            elif isinstance(micro_batch_data, dict):
+                args = []
+                data = {}
+                label = {}
+
+                # we feed the stage output to args first
+                # then map each arg in args to its param name
+                if stage_output is not None:
+                    if isinstance(stage_output, torch.Tensor):
+                        args.append(stage_output)
+                    elif isinstance(stage_output, (list, tuple)):
+                        args.extend(stage_output)
+                    else:
+                        raise TypeError(
+                            f"Expected the values passed from previous pipeline stage to be torch.Tensor, list or tuple, but got {type(input_obj)}"
+                        )
+
+                # get all parameter names for the forward function of the model
+                fwd_sig = self._get_actual_forward_func(model)
+                fwd_sig_param_name = [p.name for p in fwd_sig.values()]
+
+                # build the kwargs for the forward function
+                for idx, param_name in enumerate(fwd_sig_param_name):
+                    if idx < len(args):
+                        data[param_name] = args[idx]
+                    else:
+                        if param_name in micro_batch_data:
+                            data[param_name] = micro_batch_data[param_name]
+
+                # get the tensors for loss
+                loss_sig = inspect.signature(criterion)
+                loss_sig_param_name = [p.name for p in loss_sig.values()]
+
+                for param_name in loss_sig_param_name:
+                    if param_name in micro_batch_data:
+                        label[param_name] = micro_batch_data[param_name]
+        return data, label
+
     def _forward_step(self, engine, input_obj, return_tensors, return_output_label=True, accum_loss=None):
         """Forward step for passed-in model. If it is the first stage, the input tensor 
         is obtained from data_iterator, otherwise the passed-in input_obj is used.
@@ -189,19 +251,7 @@ class PipelineSchedule(BaseSchedule):
         """
         micro_batch_data = self.load_micro_batch()
 
-        if self.data_process_func:
-            # use customized function to get data and label
-            data, label = self.data_process_func(input_obj, micro_batch_data)
-        else:
-            if gpc.is_first_rank(ParallelMode.PIPELINE):
-                # for the first stage, we use the data from the
-                # dataloader output by default
-                data, label = micro_batch_data
-            else:
-                # for non-first stage, we use the output passed
-                # by the previous as the model input
-                data = input_obj
-                _, label = micro_batch_data
+        data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data, engine.criterion, engine.model)
 
         output_obj = self._call_engine(engine.model, data)
 
@@ -482,20 +532,8 @@ class InterleavedPipelineSchedule(PipelineSchedule):
             Union[:class:`torch.Tensor`, List[:class:`torch.Tensor`]]: output or the loss value of the current pipeline stage.
         """
         micro_batch_data = self.load_micro_batch(model_chunk_id)
-
-        if self.data_process_func:
-            # use customized function to get data and label
-            data, label = self.data_process_func(input_obj, micro_batch_data)
-        else:
-            if gpc.is_first_rank(ParallelMode.PIPELINE):
-                # for the first stage, we use the data from the
-                # dataloader output by default
-                data, label = micro_batch_data
-            else:
-                # for non-first stage, we use the output passed
-                # by the previous as the model input
-                data = input_obj
-                _, label = micro_batch_data
+        data, label = self._get_data_label_for_current_step(input_obj, micro_batch_data, engine.criterion,
+                                                            engine.model[model_chunk_id])
 
         output_obj = self._call_engine(engine.model[model_chunk_id], data)
 
