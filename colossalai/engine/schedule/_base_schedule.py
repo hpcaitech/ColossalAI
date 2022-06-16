@@ -181,3 +181,4 @@ class BaseSchedule(ABC):
             raise TypeError(f"Expected model outputs and labels to be of type torch.Tensor ' \
                 '(which is auto-converted to tuple), list, tuple, or dict, ' \
                 'but got {type(outputs)} (model outputs) and {type(labels)} (labels)")
+                

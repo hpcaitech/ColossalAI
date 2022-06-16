@@ -87,3 +87,4 @@ class NonPipelineSchedule(BaseSchedule):
                 return None, None, loss
             else:
                 return None, None, None
+                
