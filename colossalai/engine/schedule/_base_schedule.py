@@ -151,8 +151,13 @@ class BaseSchedule(ABC):
     def _call_engine(engine, inputs):
         if isinstance(inputs, torch.Tensor):
             return engine(inputs)
-        else:
+        elif isinstance(inputs, (list, tuple)):
+            return engine(*inputs)
+        elif isinstance(inputs, dict):
             return engine(**inputs)
+        else:
+            TypeError(
+                f"Expected engine inputs to be of type torch.Tensor, list, tuple, or dict, but got {type(inputs)}")
 
     @staticmethod
     def _call_engine_criterion(engine, outputs, labels):
@@ -162,6 +167,17 @@ class BaseSchedule(ABC):
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)
         if isinstance(labels, torch.Tensor):
-            return engine.criterion(*outputs, labels)
-        else:
+            labels = (labels,)
+
+        if isinstance(outputs, (tuple, list)) and isinstance(labels, (tuple, list)):
+            return engine.criterion(*outputs, *labels)
+        elif isinstance(outputs, (tuple, list)) and isinstance(labels, dict):
             return engine.criterion(*outputs, **labels)
+        elif isinstance(outputs, dict) and isinstance(labels, dict):
+            return engine.criterion(**outputs, **labels)
+        elif isinstance(outputs, dict) and isinstance(labels, (list, tuple)):
+            raise ValueError(f"Expected labels to be a dict when the model outputs are dict, but got {type(labels)}")
+        else:
+            raise TypeError(f"Expected model outputs and labels to be of type torch.Tensor ' \
+                '(which is auto-converted to tuple), list, tuple, or dict, ' \
+                'but got {type(outputs)} (model outputs) and {type(labels)} (labels)")
