@@ -78,7 +78,6 @@ class BaseSchedule(ABC):
         else:
             raise TypeError(
                 f"Expected batch data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
-        # batch.record_stream(cur_stream)
 
     def _get_batch_size(self, data):
         if isinstance(data, torch.Tensor):
@@ -87,16 +86,6 @@ class BaseSchedule(ABC):
             return data[0].size(0)
         elif isinstance(data, dict):
             return data[next(data.keys())].size(0)
-    
-    # def load_batch(self, data_iter, to_gpu=True):
-    #     if data_iter is None:
-    #         raise RuntimeError('Dataloader is not defined.')
-    #     batch_data = next(data_iter)
-
-    #     if to_gpu:
-    #         batch_data = self._move_to_device(batch_data)
-    #     self.batch_size = self._get_batch_size(batch_data)
-    #     return batch_data
 
     def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are
@@ -119,6 +108,7 @@ class BaseSchedule(ABC):
             next_batch = next(data_iter)
         except StopIteration:
             next_batch = self._cur_batch
+            self._connected = False 
 
         self.batch_size = self._get_batch_size(next_batch)
         

@@ -5,7 +5,6 @@ from typing import Iterable, Callable
 
 import torch
 import inspect
-from torch.profiler import record_function
 
 from ._base_schedule import BaseSchedule
 from colossalai.utils import conditional_context
