@@ -52,7 +52,7 @@ class BaseSchedule(ABC):
                 f"Expected batch data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
         return data
 
-    def _connect(self, dataloader_iter: Iterable, to_gpu: bool):
+    def _batch_connect(self, dataloader_iter: Iterable, to_gpu: bool):
         batch_data = next(dataloader_iter)
 
         with torch.cuda.stream(self._memcpy_stream):
@@ -77,7 +77,7 @@ class BaseSchedule(ABC):
                 v.record_stream(cur_stream)
         else:
             raise TypeError(
-                f"Expected batch data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
+                f"Expected batch data to be of type torch.Tensor, list, tuple, or dict, but got {type(batch)}")
 
     def _get_batch_size(self, data):
         if isinstance(data, torch.Tensor):
@@ -102,7 +102,7 @@ class BaseSchedule(ABC):
             raise RuntimeError('Dataloader is not defined.')
         
         if not self._connected:
-            self._connect(data_iter, to_gpu)
+            self._batch_connect(data_iter, to_gpu)
 
         try:
             next_batch = next(data_iter)
@@ -121,7 +121,6 @@ class BaseSchedule(ABC):
 
         with torch.cuda.stream(self._memcpy_stream):
             self._cur_batch = self._move_to_device(self._cur_batch) if to_gpu else self._cur_batch
-            self._label = self._move_to_device(self._cur_batch) if to_gpu else self._cur_batch
         
     def pre_processing(self, engine):
         """To perform actions before running the schedule.
