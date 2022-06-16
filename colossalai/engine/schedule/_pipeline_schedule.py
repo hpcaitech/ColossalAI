@@ -137,6 +137,12 @@ class PipelineSchedule(BaseSchedule):
         if isinstance(data, torch.Tensor):
             return data[offset:offset + self.microbatch_size]
         elif isinstance(data, (list, tuple)):
+            data_dict = {}
+            for element in data:
+                if isinstance(element, dict):
+                    data_dict.update({k: v[offset:offset + self.microbatch_size] for k, v in element.items()})
+            if data_dict:
+                return data_dict
             return [val[offset:offset + self.microbatch_size] for val in data]
         elif isinstance(data, dict):
             return {k: v[offset:offset + self.microbatch_size] for k, v in data.items()}
@@ -216,7 +222,7 @@ class PipelineSchedule(BaseSchedule):
 
                 # get all parameter names for the forward function of the model
                 fwd_sig = self._get_actual_forward_func(model)
-                fwd_sig_param_name = [p.name for p in fwd_sig.values()]
+                fwd_sig_param_name = [p.name for p in fwd_sig.parameters.values()]
 
                 # build the kwargs for the forward function
                 for idx, param_name in enumerate(fwd_sig_param_name):
@@ -228,7 +234,7 @@ class PipelineSchedule(BaseSchedule):
 
                 # get the tensors for loss
                 loss_sig = inspect.signature(criterion)
-                loss_sig_param_name = [p.name for p in loss_sig.values()]
+                loss_sig_param_name = [p.name for p in loss_sig.parameters.values()]
 
                 for param_name in loss_sig_param_name:
                     if param_name in micro_batch_data:
