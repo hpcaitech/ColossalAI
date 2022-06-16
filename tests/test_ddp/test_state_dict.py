@@ -12,19 +12,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.nn.parallel import ColoDDPV2, ColoDDP
 from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Callable
-import os
-import random
-import numpy as np
 from collections import OrderedDict
-
-
-def set_seed(seed):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
 
 
 def check_state_dict_equal(state_dict: OrderedDict, other_state_dict: OrderedDict):
