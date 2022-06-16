@@ -7,7 +7,7 @@ from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
 from colossalai.tensor.chunk import TensorState, Chunk
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Dict
+from typing import Dict, Iterable
 from colossalai.logging import get_dist_logger
 
 
@@ -20,6 +20,16 @@ def free_storage(data: torch.Tensor) -> None:
         data.storage().resize_(0)
 
 
+def _cast_float(args, dtype: torch.dtype):
+    if isinstance(args, torch.Tensor) and torch.is_floating_point(args):
+        args = args.to(dtype)
+    elif isinstance(args, (list, tuple)):
+        args = type(args)(_cast_float(t, dtype) for t in args)
+    elif isinstance(args, dict):
+        args = {k: _cast_float(v, dtype) for k, v in args.items()}
+    return args
+
+
 class ColoDDP(torch.nn.Module):
 
     def __init__(self, module: torch.nn.Module) -> None:
@@ -28,6 +38,8 @@ class ColoDDP(torch.nn.Module):
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
         self.dp_world_size = gpc.get_world_size(ParallelMode.DATA)
         for p in module.parameters():
+            if getattr(p, '_ddp_to_ignore', False):
+                continue
             if p.requires_grad:
                 p.register_hook(partial(self.grad_handle, p))
 
@@ -45,6 +57,8 @@ class ColoDDP(torch.nn.Module):
         loss.backward()
         torch.cuda.current_stream().wait_stream(self.comm_stream)
         for p in self.module.parameters():
+            if getattr(p, '_ddp_to_ignore', False):
+                continue
             if p.grad.device.type != "cpu":
                 p.grad = p._saved_grad
 
@@ -89,19 +103,42 @@ class ColoDDP(torch.nn.Module):
                         p._saved_grad.requires_grad_(False)
                     p._saved_grad.zero_()
 
+    @staticmethod
+    def set_params_to_ignore(params_to_ignore: Iterable[torch.Tensor]) -> None:
+        """Sets parameters to be ignored by DDP.
+        This method must be called before initializing ColoDDP.
+
+        Example::
+            >>> params_to_ignore = []
+            >>> for p in module.parameters():
+            >>>     if should_ignore(p):
+            >>>         params_to_ignore.append(p)
+            >>> ColoDDP.set_params_to_ignore(params_to_ignore)
+            >>> module = ColoDDP(module)
+
+        Args:
+            params_to_ignore (Iterable[torch.Tensor]): A list of parameters to be ignored.
+        """
+        for p in params_to_ignore:
+            p._ddp_to_ignore = True
+
 
 class ColoDDPV2(ColoDDP):
 
     def __init__(self, module: torch.nn.Module, gemini_manager: GeminiManager) -> None:
-        super().__init__(module)
+        super().__init__(module.half())
         self.gemini_manager = gemini_manager
         self.chunk_manager = gemini_manager.chunk_manager
         self.param_op_hook = ZeROHookV2(gemini_manager)
         self.fp32_params = []
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
+        self.chunk_manager.create_group('fp16_param', force_data_on_cuda=True)
+        self.chunk_manager.create_group('fp32_param')
         # TODO: get param order and filter unused params
         for p in module.parameters():
+            if getattr(p, '_ddp_to_ignore', False):
+                continue
             assert p.dtype == torch.half
             fp32_p = p.float().detach()
             self.chunk_manager.append_tensor(p, 'fp16_param')
@@ -111,15 +148,18 @@ class ColoDDPV2(ColoDDP):
         self._logger = get_dist_logger()
 
     def forward(self, *args, **kwargs):
+        args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)
         self.gemini_manager.pre_iter()
         with ParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         self.chunk_manager.exec_lazy_release()
-        return outputs
+        return _cast_float(outputs, torch.float)
 
     def _setup_grads_ptr(self):
         for p in self.module.parameters():
+            if getattr(p, '_ddp_to_ignore', False):
+                continue
             if self.chunk_manager.get_chunk(p).is_empty or not p.requires_grad:
                 p.grad = None
             else:
