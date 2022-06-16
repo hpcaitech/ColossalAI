@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import Iterable
+from typing import Iterable, Callable
 
 import torch
+import inspect
+from torch.profiler import record_function
 
 from ._base_schedule import BaseSchedule
 from colossalai.utils import conditional_context
@@ -16,9 +18,21 @@ class NonPipelineSchedule(BaseSchedule):
     to update the parameters if it is in training mode.
 
     Args:
-        batch_data_process_func (Callable, optional): The preprocessing function which receives a batch of data,
+        data_process_func  (Callable, optional): The preprocessing function which receives a batch of data,
         and it will be executed in load_batch.
     """
+    def __init__(self, data_process_func: Callable = None):
+        # check that non-pipeline schedule data process func only takes in one parameter
+        # which is the batch data
+
+        if data_process_func:
+            sig = inspect.signature(data_process_func)
+            assert len(sig.parameters) == 1, \
+                'The data_process_func only takes in one parameter for NonPipelineSchedule, ' \
+                'which is a tuple of tensors for the current batch, ' \
+                'i.e. data_process_func(dataloader_output).'
+
+        super().__init__(data_process_func)
 
     def forward_backward_step(self,
                               engine,
@@ -42,7 +56,16 @@ class NonPipelineSchedule(BaseSchedule):
         """
         assert forward_only or return_loss, \
             "The argument 'return_loss' has to be True when 'forward_only' is False, but got False."
-        data, label = self.load_batch(data_iter)
+        batch_data = self.load_batch(data_iter)
+
+        self._wait_for_batch(batch_data, self._memcpy_stream)
+
+        if self.batch_data_process_func:
+            data, label = self.batch_data_process_func(batch_data)
+        else:
+            # if not batch data process func is given,
+            # then we regard the batch data as a simple tuple of (data, label)
+            data, label = batch_data
 
         # forward
         with conditional_context(torch.no_grad(), enable=forward_only):
@@ -52,6 +75,8 @@ class NonPipelineSchedule(BaseSchedule):
 
         if not forward_only:
             engine.backward(loss)
+
+        self.preload_batch()
 
         if return_output_label:
             if return_loss:

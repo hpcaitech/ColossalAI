@@ -1,7 +1,8 @@
-from typing import Union, List, Any
+from typing import Union, List, Any, Optional
 
 import torch
 from torch.utils.data import DataLoader
+from torch.profiler import profile, record_function, ProfilerActivity, schedule, tensorboard_trace_handler
 from tqdm import tqdm
 
 from colossalai.engine import Engine
@@ -159,6 +160,7 @@ class Trainer:
         epoch: int = None,
         display_progress: bool = False,
         return_output_label: bool = True,
+        prof = None,
     ):
         # set training state
         self._engine.train()
@@ -177,14 +179,19 @@ class Trainer:
             self._call_timer(action="start", item="Train-step")
 
             # run 1 training step
-            self.engine.zero_grad()
+            with record_function("## zero_grad ##"):
+                self.engine.zero_grad()
+            
             logits, label, loss = self.engine.execute_schedule(
                 data_iter,
                 forward_only=False,
                 return_loss=True,
                 return_output_label=return_output_label,
             )
-            self.engine.step()
+            
+            with record_function("## engine_step ##"):
+                self.engine.step()
+            
             self._call_timer(action="stop", item="Train-step", keep_in_history=True)
             self._call_hooks("after_train_iter", output=(logits, label, loss))
 
@@ -197,6 +204,8 @@ class Trainer:
             # stop when max iter is reached
             if self._exceed_max_step():
                 break
+            
+            prof.step()
 
         self._call_timer(action="stop", item="Train-epoch", keep_in_history=True)
         self._call_hooks("after_train_epoch")
@@ -316,33 +325,42 @@ class Trainer:
         if self.cur_epoch != 0:
             self._set_current_step(last_epoch)
 
-        for epoch in range(last_epoch, epochs):
-            # train for one epoch
-            self._train_epoch(
-                train_dataloader=train_dataloader,
-                epoch=epoch,
-                display_progress=display_progress,
-                return_output_label=return_output_label,
-            )
-
-            # start eval
-            if should_test and epoch % test_interval == 0:
-                self._eval(
-                    test_dataloader=test_dataloader,
-                    display_progress=display_progress,
+        with profile(
+                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                profile_memory=True, 
+                record_shapes=True,
+                schedule=schedule(wait=0, warmup=30, active=2, repeat=1),
+                # on_trace_ready=trace_handler, 
+                on_trace_ready=tensorboard_trace_handler('./log/vstran'),
+        ) as prof:
+            for epoch in range(last_epoch, epochs):
+                # train for one epoch
+                self._train_epoch(
+                    train_dataloader=train_dataloader,
                     epoch=epoch,
+                    display_progress=display_progress,
                     return_output_label=return_output_label,
+                    prof=prof,
                 )
 
-            self._cur_epoch += 1
+                # start eval
+                if should_test and epoch % test_interval == 0:
+                    self._eval(
+                        test_dataloader=test_dataloader,
+                        display_progress=display_progress,
+                        epoch=epoch,
+                        return_output_label=return_output_label,
+                    )
 
-            # check for termination
-            if self._exceed_max_step():
-                self._logger.info(
-                    f"Max number of steps {max_steps} has been reached, training is stopped automatically",
-                    ranks=[0],
-                )
-                break
+                self._cur_epoch += 1
+
+                # check for termination
+                if self._exceed_max_step():
+                    self._logger.info(
+                        f"Max number of steps {max_steps} has been reached, training is stopped automatically",
+                        ranks=[0],
+                    )
+                    break
         self._call_hooks("after_train")
         self._call_timer("reset", "Train-epoch")
 

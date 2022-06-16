@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+from typing import Optional
 from abc import ABC, abstractmethod
 
 import torch
@@ -25,6 +26,12 @@ class BaseSchedule(ABC):
     def __init__(self, batch_data_process_func: Callable = None):
         self.logger = get_dist_logger()
         self.batch_data_process_func = batch_data_process_func
+        device = get_current_device()
+        self._memcpy_stream: Optional[torch.cuda.streams.Stream] = (
+            torch.cuda.Stream() if device.type == "cuda" else None
+        )
+        self._cur_batch = None
+        self._connected = False
 
     @staticmethod
     def _move_tensor(element):
@@ -34,16 +41,62 @@ class BaseSchedule(ABC):
         return element
 
     def _move_to_device(self, data):
-        if isinstance(data, dict):
+        if isinstance(data, torch.Tensor):
+            data = data.to(get_current_device())
+        elif isinstance(data, (list, tuple)):
+            data = [self._move_tensor(v) for v in data]
+        elif isinstance(data, dict):
             data = {k: self._move_tensor(v) for k, v in data.items()}
         else:
-            data = self._move_tensor(data)
+            raise TypeError(
+                f"Expected batch data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
         return data
 
-    @staticmethod
-    def _check_sanity(data, tag: str):
-        assert isinstance(data, (torch.Tensor, dict)), \
-            f'{tag} must be torch.Tensor or dict'
+    def _connect(self, dataloader_iter: Iterable, to_gpu: bool):
+        batch_data = next(dataloader_iter)
+
+        with torch.cuda.stream(self._memcpy_stream):
+            self._cur_batch = self._move_to_device(batch_data) if to_gpu else batch_data
+
+        self._connected = True
+
+    def _wait_for_batch(self, batch, stream: Optional[torch.cuda.streams.Stream]):
+        if stream is None:
+            return
+        
+        torch.cuda.current_stream().wait_stream(stream)
+        cur_stream = torch.cuda.current_stream()
+        
+        if isinstance(batch, torch.Tensor):
+            batch = batch.record_stream(cur_stream)
+        elif isinstance(batch, (list, tuple)):
+            for v in batch:
+                v.record_stream(cur_stream)
+        elif isinstance(batch, dict):
+            for _, v in batch.items():
+                v.record_stream(cur_stream)
+        else:
+            raise TypeError(
+                f"Expected batch data to be of type torch.Tensor, list, tuple, or dict, but got {type(data)}")
+        # batch.record_stream(cur_stream)
+
+    def _get_batch_size(self, data):
+        if isinstance(data, torch.Tensor):
+            return data.size(0)
+        elif isinstance(data, (list, tuple)):
+            return data[0].size(0)
+        elif isinstance(data, dict):
+            return data[next(data.keys())].size(0)
+    
+    # def load_batch(self, data_iter, to_gpu=True):
+    #     if data_iter is None:
+    #         raise RuntimeError('Dataloader is not defined.')
+    #     batch_data = next(data_iter)
+
+    #     if to_gpu:
+    #         batch_data = self._move_to_device(batch_data)
+    #     self.batch_size = self._get_batch_size(batch_data)
+    #     return batch_data
 
     def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are
@@ -58,22 +111,28 @@ class BaseSchedule(ABC):
         """
         if data_iter is None:
             raise RuntimeError('Dataloader is not defined.')
-        batch_data = next(data_iter)
+        
+        if not self._connected:
+            self._connect(data_iter, to_gpu)
 
-        if self.batch_data_process_func:
-            data, label = self.batch_data_process_func(batch_data)
-        else:
-            data, label = batch_data
-        self._check_sanity(data, 'data')
-        self._check_sanity(label, 'label')
-        if isinstance(data, torch.Tensor):
-            self.batch_size = data.size(0)
-        else:
-            self.batch_size = next(iter(data.values())).size(0)
-        if to_gpu:
-            return self._move_to_device(data), self._move_to_device(label)
-        return data, label
+        try:
+            next_batch = next(data_iter)
+        except StopIteration:
+            next_batch = self._cur_batch
 
+        self.batch_size = self._get_batch_size(next_batch)
+        
+        cur_batch = self._cur_batch
+        self._cur_batch = next_batch
+
+        return cur_batch
+
+    def preload_batch(self, to_gpu: bool = True) -> None:
+
+        with torch.cuda.stream(self._memcpy_stream):
+            self._cur_batch = self._move_to_device(self._cur_batch) if to_gpu else self._cur_batch
+            self._label = self._move_to_device(self._cur_batch) if to_gpu else self._cur_batch
+        
     def pre_processing(self, engine):
         """To perform actions before running the schedule.
         """
