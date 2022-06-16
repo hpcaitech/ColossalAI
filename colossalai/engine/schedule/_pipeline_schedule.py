@@ -141,7 +141,7 @@ class PipelineSchedule(BaseSchedule):
             for element in data:
                 if isinstance(element, dict):
                     data_dict.update({k: v[offset:offset + self.microbatch_size] for k, v in element.items()})
-            if data_dict is not None:
+            if data_dict:
                 return data_dict
             return [val[offset:offset + self.microbatch_size] for val in data]
         elif isinstance(data, dict):
