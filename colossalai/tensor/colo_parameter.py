@@ -11,7 +11,7 @@ def filter_args(func, *args):
     return [arg for arg in args if func(arg)]
 
 
-def unpack_args(*args):
+def unpack_args(args):
     if len(args) == 1:
         return args[0]
     return args
