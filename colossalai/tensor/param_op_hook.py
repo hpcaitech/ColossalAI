@@ -75,7 +75,7 @@ class ParamOpHookManager:
             hook.post_backward(params)
 
     @staticmethod
-    def pre_op(params: List[torch.Tensor], *args: Any) -> Any:
+    def pre_op(params: List[torch.Tensor], *args: Any) -> list:
         ParamOpHookManager._trigger_pre_forward(params)
         args_info = _get_colo_tensors_info(*args)
         rets = PreFwdPostBwd.apply(params, *args)
@@ -86,7 +86,7 @@ class ParamOpHookManager:
         ParamOpHookManager._trigger_post_forward(params)
         arg_info = _get_colo_tensors_info(arg)
         ret = PostFwdPreBwd.apply(params, arg)
-        return _update_colo_tensors(arg_info, ret)
+        return _unpack_args(_update_colo_tensors(arg_info, ret))
 
     @staticmethod
     def has_hook() -> bool:
@@ -125,7 +125,7 @@ def _unpack_args(args):
     return args
 
 
-def _get_colo_tensors_info(*args):
+def _get_colo_tensors_info(*args) -> list:
     info = []
     for arg in args:
         if isinstance(arg, ColoTensor):
@@ -135,11 +135,11 @@ def _get_colo_tensors_info(*args):
     return info
 
 
-def _update_colo_tensors(info, *args):
+def _update_colo_tensors(info, *args) -> list:
     ret = []
     for t_info, arg in zip(info, args):
         if t_info is not None:
             t_cls, spec = t_info
             arg = t_cls.from_torch_tensor(arg, spec=spec)
         ret.append(arg)
-    return _unpack_args(ret)
+    return ret
