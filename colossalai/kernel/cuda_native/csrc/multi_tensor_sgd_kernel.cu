@@ -28,10 +28,10 @@
  * first run : necessary for proper momentum handling & init
  * wd_after_momentum : apply weight decay _after_ momentum instead of before
  **/
-template <int N, typename T_grad, typename T_weight>
+template <typename T_grad, typename T_weight>
 struct SGDFunctor {
   __device__ __forceinline__ void operator()(
-      int chunk_size, volatile int *noop_gmem, TensorListMetadata<N> &tl,
+      int chunk_size, volatile int *noop_gmem, TensorListMetadata<3> &tl,
       float wd, float momentum, float dampening, float lr, bool nesterov,
       bool first_run, bool wd_after_momentum, float scale) {
     // Early exit if we don't need to do anything
@@ -49,12 +49,6 @@ struct SGDFunctor {
 
     T_weight *mom_in = (T_weight *)tl.addresses[2][tensor_loc];
     mom_in += chunk_idx * chunk_size;
-
-    at::Half *model_weights_out = nullptr;
-    if (N == 4) {
-      model_weights_out = (at::Half *)tl.addresses[3][tensor_loc];
-      model_weights_out += chunk_idx * chunk_size;
-    }
 
     n -= chunk_idx * chunk_size;
 
@@ -110,10 +104,6 @@ struct SGDFunctor {
           // adjust the weight and write out
           weight_in[i] += (-lr * incoming_grads[ii]);
 
-          // if necessary, write out an fp16 copy of the weights
-          if (N == 4)
-            model_weights_out[i] = static_cast<at::Half>(weight_in[i]);
-
           // also write out the new momentum
           if (momentum != 0.f) mom_in[i] = incoming_moms[ii];
         }
@@ -131,20 +121,14 @@ void multi_tensor_sgd_cuda(int chunk_size, at::Tensor noop_flag,
   auto grad_type = tensor_lists[0][0].scalar_type();
   auto weight_type = tensor_lists[1][0].scalar_type();
 
-  if (num_tensors == 4)
-    for (int i = 0; i < tensor_lists[3].size(); i++)
-      TORCH_CHECK(tensor_lists[3][i].scalar_type() == at::ScalarType::Half,
-                  "Additional output tensors should always be fp16.");
-
   TORCH_CHECK(noop_flag.device() == tensor_lists[0][0].device(),
               "expected noop flag to be on the same device as tensors");
 
   // We have 3 possibilities to handle here, in terms of
-  // grad_type, param_type, momentum_type, requires_fp16_copy
-  // 1. fp16, fp16, fp16, No
-  // 2. fp32, fp32, fp32, No
-  // 3. fp16, fp32, fp32, Yes
-  // 4. fp32, fp32, fp32, Yes // this is the materialize_master_grads=True case
+  // grad_type, param_type, momentum_type
+  // 1. fp16, fp16, fp16
+  // 2. fp32, fp32, fp32
+  // 3. fp16, fp32, fp32
   // It's easier to hardcode these possibilities than to use
   // switches etc. to handle the cross-product of cases where
   // we don't want the majority of them.
@@ -153,49 +137,22 @@ void multi_tensor_sgd_cuda(int chunk_size, at::Tensor noop_flag,
   if (grad_type == at::ScalarType::Half &&
       weight_type == at::ScalarType::Half && num_tensors == 3) {
     multi_tensor_apply<3>(BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-                          SGDFunctor<3, at::Half, at::Half>(), wd, momentum,
+                          SGDFunctor<at::Half, at::Half>(), wd, momentum,
                           dampening, lr, nesterov, first_run, wd_after_momentum,
                           scale);
   }
-  // Case 2. fp16, fp32, fp32, No
-  // else if (grad_type == at::ScalarType::Half &&
-  //          weight_type == at::ScalarType::Float &&
-  //          num_tensors == 3) {
-  //   multi_tensor_apply<3>(
-  //       BLOCK_SIZE,
-  //       chunk_size,
-  //       noop_flag,
-  //       tensor_lists,
-  //       SGDFunctor<3, at::Half, float>(),
-  //       wd,
-  //       momentum,
-  //       dampening,
-  //       lr,
-  //       nesterov,
-  //       first_run,
-  //       wd_after_momentum);
-  // }
-  // Case 2. fp32, fp32, fp32, No
+  // Case 2. fp32, fp32, fp32
   else if (grad_type == at::ScalarType::Float &&
            weight_type == at::ScalarType::Float && num_tensors == 3) {
     multi_tensor_apply<3>(BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-                          SGDFunctor<3, float, float>(), wd, momentum,
-                          dampening, lr, nesterov, first_run, wd_after_momentum,
-                          scale);
+                          SGDFunctor<float, float>(), wd, momentum, dampening,
+                          lr, nesterov, first_run, wd_after_momentum, scale);
   }
-  // Case 3. fp16, fp32, fp32, Yes
+  // Case 3. fp16, fp32, fp32
   else if (grad_type == at::ScalarType::Half &&
-           weight_type == at::ScalarType::Float && num_tensors == 4) {
-    multi_tensor_apply<4>(BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-                          SGDFunctor<4, at::Half, float>(), wd, momentum,
-                          dampening, lr, nesterov, first_run, wd_after_momentum,
-                          scale);
-  }
-  // Case 4. fp32, fp32, fp32, Yes
-  else if (grad_type == at::ScalarType::Float &&
-           weight_type == at::ScalarType::Float && num_tensors == 4) {
-    multi_tensor_apply<4>(BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
-                          SGDFunctor<4, float, float>(), wd, momentum,
+           weight_type == at::ScalarType::Float && num_tensors == 3) {
+    multi_tensor_apply<3>(BLOCK_SIZE, chunk_size, noop_flag, tensor_lists,
+                          SGDFunctor<at::Half, float>(), wd, momentum,
                           dampening, lr, nesterov, first_run, wd_after_momentum,
                           scale);
   } else {
