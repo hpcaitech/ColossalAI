@@ -75,7 +75,7 @@ class NonPipelineSchedule(BaseSchedule):
         if not forward_only:
             engine.backward(loss)
 
-        self.preload_batch()
+        self._preload_batch()
 
         if return_output_label:
             if return_loss:

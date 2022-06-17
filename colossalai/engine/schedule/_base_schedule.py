@@ -19,7 +19,7 @@ class BaseSchedule(ABC):
     control of FP16 in class schedule.
 
     Args:
-        batch_data_process_func (Callable, optional): The preprocessing function which receives a batch of data,
+        data_process_func (Callable, optional): The preprocessing function which receives a batch of data,
         and it will be executed in load_batch.
     """
 
@@ -89,6 +89,11 @@ class BaseSchedule(ABC):
         elif isinstance(data, dict):
             return data[list(data.keys())[0]].size(0)
 
+    def _preload_batch(self, to_gpu: bool = True) -> None:
+
+        with torch.cuda.stream(self._memcpy_stream):
+            self._cur_batch = self._move_to_device(self._cur_batch) if to_gpu else self._cur_batch
+
     def load_batch(self, data_iter, to_gpu=True):
         """Loads a batch from data iterator. It returns the data and labels which are
         already in the same GPU as where the model's.
@@ -118,11 +123,6 @@ class BaseSchedule(ABC):
         self._cur_batch = next_batch
 
         return cur_batch
-
-    def preload_batch(self, to_gpu: bool = True) -> None:
-
-        with torch.cuda.stream(self._memcpy_stream):
-            self._cur_batch = self._move_to_device(self._cur_batch) if to_gpu else self._cur_batch
         
     def pre_processing(self, engine):
         """To perform actions before running the schedule.
