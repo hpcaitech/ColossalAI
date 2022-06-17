@@ -10,7 +10,7 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ChunkManager
 from colossalai.core import global_context as gpc
 from functools import partial
-from _utils import tensor_equal, set_seed
+from _utils import tensor_equal, set_seed, tensor_shard_equal
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ColoDDPV2
@@ -19,19 +19,20 @@ from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, distspec
 
 
 def check_param_equal(model, torch_model):
     for p, torch_p in zip(model.parameters(), torch_model.parameters()):
         if p.storage().size() > 0:
             assert p.dtype == torch.half
-            assert tensor_equal(torch_p.to(dtype=p.dtype, device=p.device), p), f'{torch_p} vs {p}'
+            assert tensor_shard_equal(torch_p.to(dtype=p.dtype, device=p.device), p), f'{torch_p} vs {p}'
 
 
 def check_grad_equal(model, torch_model):
     for p, torch_p in zip(model.parameters(), torch_model.parameters()):
         if p.grad is not None:
-            assert tensor_equal(torch_p.grad.to(dtype=p.grad.dtype, device=p.grad.device), p.grad)
+            assert tensor_shard_equal(torch_p.grad.to(dtype=p.grad.dtype, device=p.grad.device), p.grad)
 
 
 def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
@@ -43,10 +44,30 @@ def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
     return logits
 
 
+def init_1d_row_spec(model):
+    spec = TensorSpec(
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        ParallelAction(ComputePattern.TP1D))
+    with DistSpecManager.no_grad():
+        for n, p in model.named_parameters():
+            if 'weight' in n and 'ln' not in n:
+                p.set_spec(spec)
+
+
+def init_1d_col_spec(model):
+    spec = TensorSpec(
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        ParallelAction(ComputePattern.TP1D))
+    with DistSpecManager.no_grad():
+        for n, p in model.named_parameters():
+            if 'ln' not in n and ('weight' in n or 'bias' in n):
+                p.set_spec(spec)
+
+
 @parameterize('use_chunk', [False, True])
 @parameterize('use_zero', [False, True])
 @parameterize('placement_policy', ['cuda', 'cpu'])
-def run_gpt(use_chunk, use_zero, placement_policy):
+def run_gpt(use_chunk, use_zero, placement_policy, tp_init_spec_func=None):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -57,6 +78,9 @@ def run_gpt(use_chunk, use_zero, placement_policy):
     torch_model = model_builder().cuda()
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
+
+    if tp_init_spec_func:
+        tp_init_spec_func(model)
 
     chunk_size = ChunkManager.search_chunk_size(model, 8192, 8) if use_chunk else None
     chunk_manager = ChunkManager(chunk_size,
@@ -90,8 +114,15 @@ def run_gpt(use_chunk, use_zero, placement_policy):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_gpt()
+    config = {}
+    if world_size == 4:
+        config['parallel'] = {'tensor': {'mode': '1d', 'size': 2}}
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    if world_size == 4:
+        run_gpt(tp_init_spec_func=init_1d_col_spec)
+        run_gpt(tp_init_spec_func=init_1d_row_spec)
+    else:
+        run_gpt()
 
 
 @pytest.mark.dist
