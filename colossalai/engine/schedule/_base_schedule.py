@@ -23,9 +23,9 @@ class BaseSchedule(ABC):
         and it will be executed in load_batch.
     """
 
-    def __init__(self, batch_data_process_func: Callable = None):
+    def __init__(self, data_process_func: Callable = None):
         self.logger = get_dist_logger()
-        self.batch_data_process_func = batch_data_process_func
+        self.data_process_func = data_process_func
         device = get_current_device()
         self._memcpy_stream: Optional[torch.cuda.streams.Stream] = (
             torch.cuda.Stream() if device.type == "cuda" else None
