@@ -66,8 +66,11 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         modified_args = []
         for arg in args:
             if isinstance(arg, torch.nn.Module):
-                # (lyl)TODO: if nn.Module is an argument of the root module, then we should just record the module instance itself.
-                arg = self._layer_spec_dict[id(arg)]
+                # if nn.Module is an argument of a non-root module, then we should convert it to layer spec, which make sure the correct init method used in the real build.
+                # if nn.Module is an argument of the root module, then we should just record the module instance itself, because those instance has been built outside of the context.
+                if id(arg) in self._layer_spec_dict:
+                    arg = self._layer_spec_dict[id(arg)]
+
             modified_args.append(arg)
 
         # to the same for the keyword arguments
