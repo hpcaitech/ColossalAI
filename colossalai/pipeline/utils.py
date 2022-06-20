@@ -4,6 +4,7 @@ import inspect
 from colossalai.logging import get_dist_logger
 from typing import List
 
+
 def _binary_partition(weights: List, start: int, end: int):
     """Returns the binary partition position of `weights`, given the start
     position `st` and the end position `ed`.
@@ -205,3 +206,47 @@ def exec_funcs_with_kwargs(func_dict, func_key, input_tensor, kwargs):
         input_tensor = exec_func_with_kwargs(funcs_to_exec, f_kwargs, input_tensor, kwargs)
 
     return input_tensor
+
+
+def call_module(module, args=None, kwargs=None):
+    if args is None:
+        args = ()
+    if kwargs is None:
+        kwargs = {}
+    if isinstance(module, CheckpointModule):
+        forward_func = module._forward
+    else:
+        forward_func = module.forward
+    sig = inspect.signature(forward_func)
+    param_nums = len(sig.parameters)
+    feed_nums = len(args) + len(kwargs)
+    args_needed_nums = param_nums - len(kwargs)
+    args_needed = args[:args_needed_nums]
+    if isinstance(module, CheckpointModule):
+        convert_kwargs_to_args = []
+        for v in kwargs.values():
+            convert_kwargs_to_args.append(v)
+        return module(*args_needed, *convert_kwargs_to_args)
+    else:
+        return module(*args_needed, **kwargs)
+
+
+def customized_partition(exec_seq):
+    '''
+    This function will analyze the exec_seq. In the exec_seq, users will use 'SPLIT_NODE' as an 
+    annotation to note the partition point.
+    '''
+    customized_parts = {}
+    start = 0
+    stop = 0
+    rank = 0
+    for element in exec_seq:
+        if isinstance(element, str):
+            if element == 'SPLIT_NODE':
+                customized_parts[rank] = [(start, stop)]
+                start = stop
+                rank += 1
+            else:
+                stop += 1
+    customized_parts[rank] = [(start, stop)]
+    return customized_parts
