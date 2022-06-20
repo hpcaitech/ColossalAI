@@ -82,7 +82,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         def _disable_class(cls):
             if not hasattr(cls, '_old_init'):
                 raise AttributeError(
-                    f"_old_init is not found in the {cls.__name__}, please make sure that you have this class imported before entering the context."
+                    f"_old_init is not found in the {cls.__name__}, please make sure that you have imported {cls.__name__} before entering the context."
                 )
             cls.__init__ = cls._old_init
 
