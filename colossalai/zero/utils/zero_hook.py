@@ -113,7 +113,7 @@ class ZeroHook(BaseOpHook):
 
     def post_iter(self):
         if self._stateful_tensor_mgr:
-            self.logger.info(
+            self.logger.debug(
                 f"CPU-GPU data moving this iteration {self._stateful_tensor_mgr.cpu_gpu_move_volume/1e9} GB, get layout info time: {self._stateful_tensor_mgr._layout_time}, evict cpu time: {self._stateful_tensor_mgr._evict_time}",
                 ranks=[0])
             self._stateful_tensor_mgr.finish_iter()
