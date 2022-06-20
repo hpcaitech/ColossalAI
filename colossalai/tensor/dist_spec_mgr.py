@@ -69,6 +69,22 @@ class DistSpecManager:
         return buffer[0]
 
     @staticmethod
+    def _all_to_all(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
+        world_size = old_dist_spec.process_group.size()
+        if world_size == 1:
+            return tensor
+        gather_dim = old_dist_spec.dims[0]
+        scatter_dim = dist_spec.dims[0]
+        shapes = list(tensor.shape)
+        shapes[scatter_dim] = shapes[scatter_dim] // world_size
+
+        scatter_list = [t.contiguous() for t in torch.tensor_split(tensor, world_size, scatter_dim)]
+        gather_list = [torch.empty(*shapes, dtype=tensor.dtype, device=tensor.device) for _ in range(world_size)]
+        dist.all_to_all(gather_list, scatter_list, group=old_dist_spec.process_group)
+
+        return torch.cat(gather_list, dim=gather_dim).contiguous()
+
+    @staticmethod
     def _r2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
         if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group \
                 and dist_spec.process_group is not None:
@@ -94,6 +110,9 @@ class DistSpecManager:
             raise NotImplementedError
         if old_dist_spec == dist_spec:
             return tensor
+        if len(old_dist_spec.dims) == 1 and len(dist_spec.dims) == 1:
+            # use all-to-all to save memory
+            return DistSpecManager._all_to_all(tensor, old_dist_spec, dist_spec)
         tensor = DistSpecManager._gather(tensor, old_dist_spec)
         return DistSpecManager._shard_as(tensor, old_dist_spec, dist_spec)
 
