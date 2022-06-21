@@ -249,3 +249,24 @@ def call_module(module, args=None, kwargs=None):
         return module(*args_needed, *convert_kwargs_to_args)
     else:
         return module(*args_needed, **kwargs)
+
+def customized_partition(exec_seq):
+    '''
+    This function will analyze the exec_seq. In the exec_seq, users will use 'SPLIT_NODE' as an 
+    annotation to note the partition point.
+    '''
+    customized_parts = {}
+    start = 0
+    stop = 0
+    rank = 0
+    for element in exec_seq:
+        if isinstance(element, str):
+            if element == 'SPLIT_NODE':
+                customized_parts[rank] = [(start, stop)]
+                start = stop
+                rank += 1
+            else:
+                stop += 1
+    customized_parts[rank] = [(start, stop)]
+    return customized_parts
+
