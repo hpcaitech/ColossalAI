@@ -36,7 +36,13 @@ class BaseSchedule(ABC):
         if isinstance(data, torch.Tensor):
             data = data.to(get_current_device())
         elif isinstance(data, (list, tuple)):
-            data = [self._move_tensor(v) for v in data]
+            data_to_return = []
+            for element in data:
+                if isinstance(element, dict):
+                    data_to_return.append({k: self._move_tensor(v) for k, v in element.items()})
+                else:
+                    data_to_return.append(self._move_tensor(element))
+            data = data_to_return
         elif isinstance(data, dict):
             data = {k: self._move_tensor(v) for k, v in data.items()}
         else:
