@@ -36,8 +36,6 @@ def test_wrapped_tensor_func():
     # non-func attr
     assert t.is_cuda == t_ref.is_cuda
 
-    # TODO I don't find out a tensor function which returns None.
-
     # return 1 torch.Tensor
     t_abs = t.abs()
     assert isinstance(t_abs, ColoTensor) and torch.equal(t_abs, t_ref.abs())
@@ -94,4 +92,5 @@ def _test_dist_init(world_size):
 
 
 if __name__ == '__main__':
-    _test_dist_init(4)
+    # _test_dist_init(4)
+    test_new()

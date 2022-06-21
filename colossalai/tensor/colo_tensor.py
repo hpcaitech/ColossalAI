@@ -19,11 +19,16 @@ def _convert_output(output):
 
 
 class ColoTensor(torch.Tensor):
-    """ Data Structure for Tensor in Colossal-AI.
-    It is a subclass of torch.Tensor and can be initialized with a torch tensor in the following ways.
+    """ Data Structure for Tensor in Colossal-AI. It is a subclass of torch.Tensor.
+    Args:
+        data (torch.Tensor): a torch tensor used as the payload the colotensor.
+        spec (TensorSpec, optional): the tensor spec of initialization. Defaults to TensorSpec(distspec.replicate()).
+    
+    The signature of the function has to be consistent with the __new__ except for the 1st arg.
+    The class should be initialized with a torch tensor in the following ways.
     1. directly init.
     >>> colo_t1 = ColoTensor(torch.randn(2,3), spec = TensorSpec(distspec.replicate())
-    >>> If initializaed in shard model, the tensor passed in is one shard of the global tensor.
+    >>> # If initializaed in a shard model, the tensor passed in is one shard of the global tensor.
     >>> shard_spec = distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), 
     >>>                 dims=[0], 
     >>>                 num_partitions=[world_size])
@@ -34,17 +39,19 @@ class ColoTensor(torch.Tensor):
     """
 
     def __new__(cls, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
+        """__new__ 
+        The signature of the __new__ has to be consistent with the torch.Tensor.
+        Args:
+            data (torch.Tensor): a torch tensor used as the payload the colotensor.
+            spec (TensorSpec, optional): the tensor spec of initialization. Defaults to TensorSpec(distspec.replicate())
+        Returns:
+            ColoTensor: a ColoTensor wrappers the data.
+        """
         if data is None:
             data = torch.empty(0)
         return torch.Tensor._make_subclass(cls, data, data.requires_grad)
 
     def __init__(self, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
-        """__init__ of the tensor. It worth noting that the class's base class torch.Tensor 
-        dose not have a __init__ function. We first set the spec.
-        Args:
-            data (torch.Tensor): a torch tensor used as the payload of the tensor.
-            spec (TensorSpec, optional): the tensor spec of initialization. Defaults to TensorSpec(distspec.replicate()).
-        """
         self._tensor_spec = copy(spec)
         self._type = TensorType.NONMODEL
         self._graph_node = None
