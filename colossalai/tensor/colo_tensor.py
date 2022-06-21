@@ -25,6 +25,7 @@ class ColoTensor(torch.Tensor):
     It is a subclass of torch.Tensor and can be initialized with a torch tensor in the following ways.
     1. directly init.
     >>> colo_t1 = ColoTensor(torch.randn(2,3), spec = TensorSpec(distspec.replicate())
+    >>> If initializaed in shard model, the tensor passed in is one shard of the global tensor.
     >>> shard_spec = distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), 
     >>>                 dims=[0], 
     >>>                 num_partitions=[world_size])
@@ -48,8 +49,6 @@ class ColoTensor(torch.Tensor):
         """
         self._tensor_spec = copy(spec)
         self._type = TensorType.NONMODEL
-        self._tensor_spec = TensorSpec(distspec.replicate())
-        self._convert_to_dist_spec(spec.dist_spec)
         self._graph_node = None
 
     @property
@@ -92,10 +91,8 @@ class ColoTensor(torch.Tensor):
         return self._type == TensorType.MODEL
 
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
-        print(f'data shape {self.data.shape} before handle_trans_spec')
         with DistSpecManager.no_grad():
             self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
-        print(f'data shape {self.data.shape} after handle_trans_spec')
         self._tensor_spec.dist_spec = dist_spec
 
     def convert_to_dist_spec(self, dist_spec: _DistSpec) -> 'ColoTensor':
@@ -105,9 +102,7 @@ class ColoTensor(torch.Tensor):
         return ColoTensor.from_torch_tensor(ret, tensor_spec)
 
     @staticmethod
-    def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = None) -> 'ColoTensor':
-        if spec is None:
-            spec = TensorSpec(distspec.replicate())
+    def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
         tensor = tensor.as_subclass(ColoTensor)
         tensor.__init__(tensor, spec=spec)
         return tensor

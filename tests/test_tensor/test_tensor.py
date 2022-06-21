@@ -66,16 +66,16 @@ def test_operand():
 
 
 def _run_tensor_shard_init(world_size):
-    t_ref = torch.randn(4 * world_size, 5)
+    t_ref = torch.randn(4, 5)
     print(gpc.get_group(ParallelMode.DATA).size())
     shard_spec = distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), dims=[0], num_partitions=[world_size])
     tensor_spec = TensorSpec(shard_spec)
     t = ColoTensor.from_torch_tensor(t_ref.clone(), tensor_spec)
-    assert t.shape == torch.Size((4, 5))
+    t.set_spec(TensorSpec(dist_spec=distspec.replicate()))
+    assert t.shape == torch.Size((4 * world_size, 5))
 
 
 def _run_tensor_replicated_init(world_size):
-    print('haha')
     t_ref = torch.randn(4 * world_size, 5)
     t = ColoTensor.from_torch_tensor(t_ref.clone())
 
