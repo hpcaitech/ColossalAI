@@ -73,16 +73,26 @@ class DistSpecManager:
         world_size = old_dist_spec.process_group.size()
         if world_size == 1:
             return tensor
+
+        assert tensor.device.type == "cuda" and dist.get_backend(old_dist_spec.process_group) == "nccl", \
+            "Currently, only CUDA Tensor with NCCL backend is supported for the requested AlltoAll " \
+            f"collective function, however, we got {tensor.device.type} device and " \
+            f"{dist.get_backend(old_dist_spec.process_group)} backend"
+
         gather_dim = old_dist_spec.dims[0]
         scatter_dim = dist_spec.dims[0]
         shapes = list(tensor.shape)
-        shapes[scatter_dim] = shapes[scatter_dim] // world_size
+        scattered_dim_size = shapes[scatter_dim] // world_size
+        gathered_dim_size = shapes[gather_dim] * world_size
+        shapes[scatter_dim] = scattered_dim_size
 
         scatter_list = [t.contiguous() for t in torch.tensor_split(tensor, world_size, scatter_dim)]
         gather_list = [torch.empty(*shapes, dtype=tensor.dtype, device=tensor.device) for _ in range(world_size)]
         dist.all_to_all(gather_list, scatter_list, group=old_dist_spec.process_group)
 
-        return torch.cat(gather_list, dim=gather_dim).contiguous()
+        output_ = torch.cat(gather_list, dim=gather_dim).contiguous()
+        assert output_.shape[scatter_dim] == scattered_dim_size and output_.shape[gather_dim] == gathered_dim_size
+        return output_
 
     @staticmethod
     def _r2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
