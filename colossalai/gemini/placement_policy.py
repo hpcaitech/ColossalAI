@@ -102,7 +102,7 @@ class AutoPlacementPolicy(PlacementPolicy):
         total_cuda_model_data = cuda_capacity - max_cuda_non_model_data_per_period
         avail_cuda_model_data = total_cuda_model_data - used_cuda_model_data
         freed_cuda_model_data = 0
-        end = time()
+
         if avail_cuda_model_data < cuda_demand:
             # Move cuda_demand - avail_cuda_model_data volume of tensors
             # to_free_cuda_model_data = cuda_demand - avail_cuda_model_data
@@ -111,7 +111,6 @@ class AutoPlacementPolicy(PlacementPolicy):
             if not warmup:
                 to_free_chunks = self._sort_can_evict_chunks(tuple(to_free_chunks), compute_idx, tuple(compute_list))
                 # print(self._sort_can_evict_chunks.cache_info())
-            end = time()
             for chunk in to_free_chunks:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
@@ -121,7 +120,7 @@ class AutoPlacementPolicy(PlacementPolicy):
                 raise RuntimeError(
                     f"Adjust layout failed! No enough CUDA memory! Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
                 )
-        return freed_cuda_model_data, end - start
+        return freed_cuda_model_data, time() - start
 
     @staticmethod
     @functools.lru_cache(maxsize=None)
