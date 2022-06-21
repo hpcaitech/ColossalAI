@@ -171,6 +171,9 @@ class ZeroDDP(ColoDDP):
         >>> chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero, init_device=GeminiManager.get_default_device(placement_policy))
         >>> gemini_manager = GeminiManager(placement_policy, chunk_manager)
         >>> model = ZeroDDP(model, gemini_manager)
+        >>> logits = model(x)
+        >>> loss = criterion(logits, labels)
+        >>> model.backward(loss)
 
     Args:
         module (torch.nn.Module): Module to apply ZeRO-DP.
