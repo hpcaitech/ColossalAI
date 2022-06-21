@@ -1,12 +1,15 @@
 from .op_wrapper import _COLOSSAL_OPS
-from copy import copy
-import torch
-from colossalai.tensor import TensorSpec
 from .const import TensorType
+
+from copy import copy, deepcopy
+
+import torch
+from torch.overrides import get_default_nowrap_functions
+
+from colossalai.tensor import TensorSpec
 from colossalai.tensor import distspec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
 from colossalai.tensor.distspec import _DistSpec
-from torch.overrides import get_default_nowrap_functions
 
 
 def _convert_output(output):
@@ -18,11 +21,17 @@ def _convert_output(output):
 
 
 class ColoTensor(torch.Tensor):
-    """ Data Structure for Tensor in Colossal-AI
-    1. It contains a torch.Tensor as an attribute.
-    2. It supports lazy init the tensor's payload.
-    3. It can hijack the torch functions which using ColoTensors as args to our customized functions.
-    4. It supports distributing the tensor's payload to the shards among processes. (TODO)
+    """ Data Structure for Tensor in Colossal-AI.
+    It is a subclass of torch.Tensor and can be initialized with a torch tensor in the following ways.
+    1. directly init.
+    >>> colo_t1 = ColoTensor(torch.randn(2,3), spec = TensorSpec(distspec.replicate())
+    >>> shard_spec = distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), 
+    >>>                 dims=[0], 
+    >>>                 num_partitions=[world_size])
+    >>> tensor_spec = TensorSpec(shard_spec)
+    >>> colo_t2 = ColoTensor.from_torch_tensor(t_ref.clone(), tensor_spec)
+    2. use static method from_torch_tensor
+    >>> colo_t = ColoTensor.from_torch_tensor(torch.randn(2,3), spec = TensorSpec(distspec.replicate())
     """
 
     def __new__(cls, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
@@ -31,21 +40,29 @@ class ColoTensor(torch.Tensor):
         return torch.Tensor._make_subclass(cls, data, data.requires_grad)
 
     def __init__(self, data: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
-        self._spec = copy(spec)
+        """__init__ of the tensor. It worth noting that the class's base class torch.Tensor 
+        dose not have a __init__ function. We first set the spec.
+        Args:
+            data (torch.Tensor): a torch tensor used as the payload of the tensor.
+            spec (TensorSpec, optional): the tensor spec of initialization. Defaults to TensorSpec(distspec.replicate()).
+        """
+        self._tensor_spec = copy(spec)
         self._type = TensorType.NONMODEL
+        self._tensor_spec = TensorSpec(distspec.replicate())
+        self._convert_to_dist_spec(spec.dist_spec)
         self._graph_node = None
 
     @property
     def spec(self) -> TensorSpec:
-        return self._spec
+        return self._tensor_spec
 
     def set_spec(self, spec: TensorSpec) -> None:
         spec = copy(spec)
-        self.convert_to_dist_spec_(spec.dist_spec)
-        self._spec = spec
+        self._convert_to_dist_spec(spec.dist_spec)
+        self._tensor_spec = spec
 
     def has_spec(self) -> bool:
-        return self._spec.parallel_action is not None
+        return self._tensor_spec.parallel_action is not None
 
     def is_model_data(self) -> bool:
         return self._type == TensorType.MODEL
@@ -74,19 +91,23 @@ class ColoTensor(torch.Tensor):
     def is_model_data(self) -> bool:
         return self._type == TensorType.MODEL
 
-    def convert_to_dist_spec_(self, dist_spec: _DistSpec) -> None:
+    def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
+        print(f'data shape {self.data.shape} before handle_trans_spec')
         with DistSpecManager.no_grad():
             self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
-        self._spec.dist_spec = dist_spec
+        print(f'data shape {self.data.shape} after handle_trans_spec')
+        self._tensor_spec.dist_spec = dist_spec
 
     def convert_to_dist_spec(self, dist_spec: _DistSpec) -> 'ColoTensor':
-        spec = copy(self._spec)
-        spec.dist_spec = dist_spec
+        tensor_spec = copy(self._tensor_spec)
+        tensor_spec.dist_spec = dist_spec
         ret = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
-        return ColoTensor.from_torch_tensor(ret, spec)
+        return ColoTensor.from_torch_tensor(ret, tensor_spec)
 
     @staticmethod
-    def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
+    def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = None) -> 'ColoTensor':
+        if spec is None:
+            spec = TensorSpec(distspec.replicate())
         tensor = tensor.as_subclass(ColoTensor)
         tensor.__init__(tensor, spec=spec)
         return tensor
