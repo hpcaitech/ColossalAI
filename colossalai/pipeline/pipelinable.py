@@ -1,9 +1,14 @@
 import torch
 import inspect
 from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
-from .utils import partition_uniform, partition_balanced, build_kwargs_for_function, build_kwargs_for_module, exec_func_with_kwargs, exec_funcs_with_kwargs
+
+from .utils import partition_uniform, partition_balanced, build_kwargs_for_function, \
+                build_kwargs_for_module, exec_func_with_kwargs, exec_funcs_with_kwargs, \
+                call_module, customized_partition
 from colossalai.nn.layer.utils import CheckpointModule
 from colossalai.tensor import ColoParameter
+from colossalai.core import global_context as gpc
+from colossalai.context import ParallelMode
 from .layer_sepc import LayerSpec
 
 
@@ -113,6 +118,8 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         Create a layer spec list and func list with execution sequence given by user.
         If exec_seq is None, we will take the module initizing order as execution order.
         """
+
+        self._exec_seq = exec_seq
         if exec_seq is None:
             # if user do not provide the model executing sequence, we use the initialization order as the executing order.
             children_name = []
@@ -138,6 +145,8 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
             named_modules = dict(self._model.named_modules())
             for index, element in enumerate(exec_seq):
                 if isinstance(element, str):
+                    if element == 'SPLIT_NODE':
+                        continue
                     assert element in named_modules, f'Found invalid module name {element}, please check if you spell the module name correctly.'
 
                     # get the layer spec based on the module ID
@@ -178,8 +187,15 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                 for layer_spec in self._layer_spec_list:
                     param_counts.append(layer_spec.count_params())
                 parts = partition_balanced(param_counts, pipeline_size, num_chunks)[rank]
+            elif self._policy == "customized":
+                assert self._exec_seq is not None, f'An explicit exec_seq must be defined by user in customized policy mode.'
+                self.customized_parts = customized_partition(self._exec_seq)
+                assert len(self.customized_parts) == gpc.get_world_size(
+                    ParallelMode.PIPELINE
+                ), f'World size is {gpc.get_world_size(ParallelMode.PIPELINE)}, but the number of partions is {len(self.customized_parts)}'
+                parts = self.customized_parts[rank]
             else:
-                raise ValueError("A string partition policy should be one of ['uniform', 'balanced'].")
+                raise ValueError("A string partition policy should be one of ['uniform', 'balanced', 'customized'].")
         elif isinstance(self._policy, dict):
             parts = self._policy[rank]
         else:
@@ -213,8 +229,7 @@ class PipelinableModel(torch.nn.Module):
         self._front_func_dict = front_func_dict
         self._behind_func_dict = behind_func_dict
 
-    def forward(self, input_tensor, **kwargs):
-
+    def forward(self, *input_tensor, **kwargs):
         for module in self._module_list:
 
             if id(module) in self._front_func_dict:
@@ -224,36 +239,13 @@ class PipelinableModel(torch.nn.Module):
                 forward_func = module._forward
             else:
                 forward_func = module.forward
+            module_kwargs = build_kwargs_for_module(forward_func, input_tensor, kwargs)
             if input_tensor is None:
-                module_kwargs = build_kwargs_for_function(forward_func, kwargs)
+                input_tensor = call_module(module, kwargs=module_kwargs)
+            elif isinstance(input_tensor, torch.Tensor):
+                input_tensor = call_module(module, args=(input_tensor,), kwargs=module_kwargs)
             else:
-                module_kwargs = build_kwargs_for_module(forward_func, kwargs)
-            if module_kwargs is not None and input_tensor is not None:
-                if isinstance(module, CheckpointModule):
-                    convert_kwargs_to_args = []
-                    for v in module_kwargs.values():
-                        convert_kwargs_to_args.append(v)
-                    rst = module(input_tensor, *convert_kwargs_to_args)
-                else:
-                    rst = module(input_tensor, **module_kwargs)
-                if isinstance(rst, tuple):
-                    input_tensor = rst[0]
-                else:
-                    input_tensor = rst
-            elif module_kwargs is not None and input_tensor is None:
-                if isinstance(module, CheckpointModule):
-                    convert_kwargs_to_args = []
-                    for v in module_kwargs.values():
-                        convert_kwargs_to_args.append(v)
-                    rst = module(input_tensor, *convert_kwargs_to_args)
-                else:
-                    rst = module(**module_kwargs)
-                if isinstance(rst, tuple):
-                    input_tensor = rst[0]
-                else:
-                    input_tensor = rst
-            else:
-                input_tensor = module(input_tensor)
+                input_tensor = call_module(module, args=input_tensor, kwargs=module_kwargs)
 
             if id(module) in self._behind_func_dict:
                 input_tensor = exec_funcs_with_kwargs(self._behind_func_dict, id(module), input_tensor, kwargs)
