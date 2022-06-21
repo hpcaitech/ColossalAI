@@ -13,6 +13,7 @@ TAGS_API = 'https://api.github.com/repos/hpcaitech/ColossalAI/tags'
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=str, help='output path for the release draft', required=True)
+    parser.add_argument('--version', type=str, help='current version to release', required=True)
     return parser.parse_args()
 
 
@@ -97,6 +98,7 @@ def generate_release_post_markdown(current_version, last_version, release_info):
 
 
 if __name__ == '__main__':
+    args = parse_args()
     token = os.environ['GITHUB_API_TOKEN']
     headers = {'Authorization': token}
 
@@ -111,10 +113,9 @@ if __name__ == '__main__':
 
     # collate into markdown
     release_info = collate_release_info(commit_info)
-    markdown_text = generate_release_post_markdown('v0.1.7', last_version, release_info)
+    markdown_text = generate_release_post_markdown(args.version, last_version, release_info)
 
     # write into a file
-    args = parse_args()
     with open(args.out, 'w') as f:
         for line in markdown_text:
             f.write(line)

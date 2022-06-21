@@ -1,0 +1,42 @@
+name: Draft GitHub Release Post
+
+on:
+  workflow_dispatch:
+  pull_requests:
+    paths:
+      - 'version.txt'
+    types:
+      - closed
+
+
+jobs:
+  release:
+    name: Draft Release Post
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v2
+      with:
+        python-version: '3.7.12'
+      - name: generate draft
+        id: generate_draft
+        run: |
+          version=v$(cat version.txt)
+          pip install requests
+          python ./.github/workflows/scripts/generate_release_draft.py --out $PWD/release_draft.md --version $version
+          echo "::set-output name=version::$version"
+          echo "::set-output name=path::$PWD/release_draft.md"
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          tag_name: ${{ steps.generate_draft.outputs.version }}
+          release_name: Version ${{ steps.generate_draft.outputs.version }} Release Today!
+          body_path: ${{ steps.generate_draft.outputs.path }}
+          draft: True
+          prerelease: false
+        
