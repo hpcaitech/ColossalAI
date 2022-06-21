@@ -1,3 +1,3 @@
-from .data_parallel import ColoDDP, ColoDDPV2
+from .data_parallel import ColoDDP, ZeroDDP
 
-__all__ = ['ColoDDP', 'ColoDDPV2']
+__all__ = ['ColoDDP', 'ZeroDDP']

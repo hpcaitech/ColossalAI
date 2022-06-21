@@ -8,7 +8,7 @@ from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
 from colossalai.tensor.chunk import TensorState, Chunk
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 from colossalai.logging import get_dist_logger
 from collections import OrderedDict
 from colossalai.tensor.colo_parameter import ColoParameter
@@ -38,12 +38,37 @@ def _cast_float(args, dtype: torch.dtype):
 
 
 class ColoDDP(torch.nn.Module):
+    """Distributed data parallel for ColoTensor. Nested ColoDDP is not supported now.
 
-    def __init__(self, module: torch.nn.Module) -> None:
+    Example::
+        >>> from colossalai.core import global_context as gpc
+        >>> from colossalai.context import ParallelMode
+        >>> model = torch.nn.Linear(20, 1)
+        >>> model = ColoDDP(model)
+        >>> // model = ColoDDP(model, process_group=gpc.get_group(ParallelMode.DATA), cpu_process_group=gpc.get_cpu_group(ParallelMode.DATA))
+        >>> logits = model(x)
+        >>> loss = criterion(logits, labels)
+        >>> model.backward(loss)
+
+    Args:
+        module (torch.nn.Module): Module to apply DDP.
+        process_group (Optional[dist.ProcessGroup], optional): The process group which DDP uses.
+            If it's None, the default data parallel group will be used. Defaults to None.
+        process_group (Optional[dist.ProcessGroup], optional): The process group which DDP uses for those parameters on CPU.
+            If it's None, the default CPU data parallel group will be used. Defaults to None.
+    """
+
+    def __init__(self,
+                 module: torch.nn.Module,
+                 process_group: Optional[dist.ProcessGroup] = None,
+                 cpu_process_group: Optional[dist.ProcessGroup] = None) -> None:
+        assert not isinstance(module, ColoDDP)
         super().__init__()
         self.module = module
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
-        self.dp_world_size = gpc.get_world_size(ParallelMode.DATA)
+        self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
+        self.cpu_process_group = cpu_process_group or gpc.get_cpu_group(ParallelMode.DATA)
+        self.dp_world_size = self.process_group.size()
         for p in module.parameters():
             if getattr(p, '_ddp_to_ignore', False):
                 continue
@@ -77,8 +102,7 @@ class ColoDDP(torch.nn.Module):
                 grad = grad / self.dp_world_size
                 self.comm_stream.wait_stream(torch.cuda.current_stream())
                 with torch.cuda.stream(self.comm_stream):
-                    group = gpc.get_group(ParallelMode.DATA)
-                    dist.all_reduce(grad, group=group)
+                    dist.all_reduce(grad, group=self.process_group)
                     ColoDDP._save_grad(p, grad)
                 grad.record_stream(self.comm_stream)
             else:
@@ -86,8 +110,7 @@ class ColoDDP(torch.nn.Module):
             return empty_grad
 
         else:
-            group = gpc.get_cpu_group(ParallelMode.DATA)
-            dist.all_reduce(grad, group=group)
+            dist.all_reduce(grad, group=self.cpu_process_group)
             return grad
 
     @staticmethod
@@ -136,7 +159,27 @@ class ColoDDP(torch.nn.Module):
         return self.module.load_state_dict(state_dict, strict)
 
 
-class ColoDDPV2(ColoDDP):
+class ZeroDDP(ColoDDP):
+    """ZeRO-DP for ColoTensor. Nested ZeroDDP is not supported now.
+    We can configure chunk and gemini via ChunkManager and GeminiManager respectively.
+    For more details, see the API reference of ``ChunkManager`` and ``GeminiManager``.
+
+    Example::
+        >>> model = torch.nn.Linear(20, 1)
+        >>> placement_policy = 'cuda'
+        >>> chunk_size = ChunkManager.search_chunk_size(model, search_range, n_grids) if use_chunk else None
+        >>> chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero, init_device=GeminiManager.get_default_device(placement_policy))
+        >>> gemini_manager = GeminiManager(placement_policy, chunk_manager)
+        >>> model = ZeroDDP(model, gemini_manager)
+        >>> logits = model(x)
+        >>> loss = criterion(logits, labels)
+        >>> model.backward(loss)
+
+    Args:
+        module (torch.nn.Module): Module to apply ZeRO-DP.
+        gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous momery space.
+            For more details, see the API reference of ``GeminiManager``.
+    """
 
     def __init__(self, module: torch.nn.Module, gemini_manager: GeminiManager) -> None:
         super().__init__(module.half())
