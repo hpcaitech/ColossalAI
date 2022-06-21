@@ -1,7 +1,9 @@
 import heapq
 import inspect
+import torch
 
 from colossalai.logging import get_dist_logger
+from colossalai.nn.layer.utils import CheckpointModule
 from typing import List
 
 
@@ -147,16 +149,23 @@ def partition_balanced(weights, pipeline_parallel_size, num_chunks):
     return parts
 
 
-def build_kwargs_for_module(function, kw_dict):
+def build_kwargs_for_module(function, input_tensor, kw_dict):
     """
     Generally, the first argument of module.forward is an input tensor come from the previous layer.
     Therefore, we just filter the kwargs from second element of the dictionary.
     """
     sig = inspect.signature(function)
-    if len(sig.parameters) <= 1:
-        return None
+    if input_tensor is None:
+        kwargs_offset = 0
+    elif isinstance(input_tensor, torch.Tensor):
+        kwargs_offset = 1
+    else:
+        assert isinstance(input_tensor, tuple), f'input_tensor should be a torch.Tensor or a tuple object.'
+        kwargs_offset = len(input_tensor)
     args_name_list = list(sig.parameters.keys())
-    kw_dict = {k: v for k, v in kw_dict.items() if k in args_name_list[1:]}
+    kw_dict = {k: v for k, v in kw_dict.items() if k in args_name_list[kwargs_offset:]}
+    if len(kw_dict) == 0:
+        return None
     return kw_dict
 
 
@@ -190,6 +199,17 @@ def exec_func_with_kwargs(func, kw_dict, input_tensor, kwargs):
             for k in kw_dict.keys():
                 kwargs[k] = rst
         return input_tensor
+    if isinstance(input_tensor, tuple):
+        assert len(input_tensor) > 0, f'input_tensor should not be empty, when kw_dict is None.'
+        sig = inspect.signature(func)
+        func_args_num = len(sig.parameters)
+        assert func_args_num <= len(
+            input_tensor), f'func requires {func_args_num} arguments, but input_tensors only have {len(input_tensor)}.'
+        if func_args_num < len(input_tensor):
+            return func(*input_tensor[:func_args_num])
+        else:
+            return func(*input_tensor)
+    assert isinstance(input_tensor, torch.Tensor), 'input_tensor should be a type of torch.Tensor or tuple.'
     return func(input_tensor)
 
 
@@ -230,7 +250,6 @@ def call_module(module, args=None, kwargs=None):
     else:
         return module(*args_needed, **kwargs)
 
-
 def customized_partition(exec_seq):
     '''
     This function will analyze the exec_seq. In the exec_seq, users will use 'SPLIT_NODE' as an 
@@ -250,3 +269,4 @@ def customized_partition(exec_seq):
                 stop += 1
     customized_parts[rank] = [(start, stop)]
     return customized_parts
+
