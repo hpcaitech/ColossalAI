@@ -66,7 +66,6 @@ class NonPipelineSchedule(BaseSchedule):
         assert forward_only or return_loss, \
             "The argument 'return_loss' has to be True when 'forward_only' is False, but got False."
         batch_data = self.load_batch(data_iter)
-
         if self.data_process_func:
             data, label = self.data_process_func(batch_data)
         else:
