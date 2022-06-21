@@ -24,27 +24,12 @@ class ParallelAction(object):
 
 class TensorSpec(object):
     """
-    It contains two aspects of information: 
-    First, How are tensors distributed in Heterougenous memory space.
-    Second, if the tensor is a model parameter, the Spec contains the 
-    parallel computation pattern of the Operator (Layer).
-    We have to consider the hybrid parallel mode.
+    The specification of the ColoTensor.
+    Args:
+        dist_spec (_DistSpec): descriping the layout among processes.
+        parallel_action (Optional[ParallelAction], optional): actions conducted on the tensor after initialization if it's a model data tensor. 
+        Defaults to None.
     """
-
-    # a list of parallel actions.
-    # For example: On 8 GPUs, a hybrid parallel strategy is applied using
-    # using ZeRO with DP-degree = 4 and 1DRowTP with TP-degree = 2.
-    # parallel_action_list = [
-    # ParallelAction(10, ComputePattern.ZeRO, gpc.get_group(ParallelMode.DATA)),
-    # ParallelAction(1, ComputePattern.TP1D_Linear, gpc.get_group(ParallelMode.PARALLEL_1D))
-    # ]
-    # When the ColoTensor is initialized,
-    # we first splitting tensor according to ParallelAction of ZeRO,
-    # then splitting tensor according to ParallelAction of TP1D_Linear.
-    # During Linear computation
-    # Before Linear Op, we gather the tensors according to ZeRO.
-    # We perform Linear Op according to compute pattern of TP1D_Linear.
-    # After Linear Op, we split the tensors according to ZeRO.
 
     def __init__(self, dist_spec: _DistSpec, parallel_action: Optional[ParallelAction] = None):
         self.parallel_action = parallel_action

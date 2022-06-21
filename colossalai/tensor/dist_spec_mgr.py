@@ -4,6 +4,7 @@ from numpy import prod
 from contextlib import contextmanager
 import torch
 import torch.distributed as dist
+from packaging import version
 
 
 # TODO(jiaruifang) circle import, move the divide to colossalai.commons.
@@ -56,6 +57,12 @@ class DistSpecManager:
 
     @staticmethod
     def _gather(tensor: torch.Tensor, old_dist_spec: _DistSpec) -> torch.Tensor:
+        if version.parse(torch.__version__) < version.parse("1.11.0"):
+            # pytorch lower than 1.11 dose not support gather a cpu tensor.
+            # Therefore, we transfer tensor to GPU before gather.
+            saved_dev = tensor.device
+            tensor.data = tensor.data.cuda()
+
         buffer = [torch.empty_like(tensor) for _ in range(old_dist_spec.process_group.size())]
         dist.all_gather(buffer, tensor, group=old_dist_spec.process_group)
         for i in range(len(old_dist_spec.dims) - 1, -1, -1):
@@ -66,6 +73,9 @@ class DistSpecManager:
                 new_buffer.append(torch.cat(buffer[start:start + num_parts], dim))
             buffer = new_buffer
         assert len(buffer) == 1
+
+        if version.parse(torch.__version__) < version.parse("1.11.0"):
+            buffer[0].data = buffer[0].data.to(saved_dev)
         return buffer[0]
 
     @staticmethod

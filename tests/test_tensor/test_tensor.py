@@ -3,6 +3,17 @@ import pytest
 from colossalai.tensor import ColoTensor
 from numpy import allclose
 
+import colossalai
+from colossalai.utils import free_port
+from colossalai.tensor import distspec, TensorSpec
+from colossalai.core import global_context as gpc
+import torch.multiprocessing as mp
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.tensor import distspec, TensorSpec, ColoTensor
+from colossalai.context import ParallelMode
+from functools import partial
+
 
 def test_tensor_indexing():
     torch_t = torch.randn(2, 3)
@@ -25,8 +36,6 @@ def test_wrapped_tensor_func():
     # non-func attr
     assert t.is_cuda == t_ref.is_cuda
 
-    # TODO I don't find out a tensor function which returns None.
-
     # return 1 torch.Tensor
     t_abs = t.abs()
     assert isinstance(t_abs, ColoTensor) and torch.equal(t_abs, t_ref.abs())
@@ -47,3 +56,41 @@ def test_operand():
     t_res = t + t
     assert torch.allclose(t_ref_res, t_res)
 
+
+#### Test Distributed init a Colotensor
+
+
+def _run_tensor_shard_init(world_size):
+    t_ref = torch.randn(4, 5)
+    print(gpc.get_group(ParallelMode.DATA).size())
+    shard_spec = distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), dims=[0], num_partitions=[world_size])
+    tensor_spec = TensorSpec(shard_spec)
+    t = ColoTensor.from_torch_tensor(t_ref.clone(), tensor_spec)
+    t.set_spec(TensorSpec(dist_spec=distspec.replicate()))
+    assert t.shape == torch.Size((4 * world_size, 5))
+
+
+def _run_tensor_replicated_init(world_size):
+    t_ref = torch.randn(4 * world_size, 5)
+    t = ColoTensor.from_torch_tensor(t_ref.clone())
+
+    assert t.shape == torch.Size((4 * world_size, 5)), f"{t.shape}"
+
+
+def run_tensor_init(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    _run_tensor_shard_init(world_size)
+    _run_tensor_replicated_init(world_size)
+
+
+@pytest.mark.dist
+@pytest.mark.parametrize('world_size', [1, 2])
+@rerun_if_address_is_in_use()
+def _test_dist_init(world_size):
+    run_func = partial(run_tensor_init, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
+
+
+if __name__ == '__main__':
+    # _test_dist_init(4)
+    test_new()
