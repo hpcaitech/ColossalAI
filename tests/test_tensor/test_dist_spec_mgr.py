@@ -25,7 +25,7 @@ def run():
     row_shard = DistSpecManager._shard_as(x, old_dist_spec, row_spec)
     assert torch.equal(x.chunk(size, 0)[rank], row_shard)
     assert torch.equal(x, DistSpecManager._gather(row_shard, row_spec))
-    col_shard = DistSpecManager._shard_as(x, old_dist_spec, col_spec)
+    col_shard = DistSpecManager._all_to_all(row_shard, row_spec, col_spec)
     assert torch.equal(x.chunk(size, -1)[rank], col_shard)
     assert torch.equal(x, DistSpecManager._gather(col_shard, col_spec))
     mat_shard = DistSpecManager._shard_as(x, old_dist_spec, mat_spec)
