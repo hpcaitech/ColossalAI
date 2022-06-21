@@ -22,16 +22,13 @@ class ParallelAction(object):
 class TensorSpec(object):
     """
     The specification of the ColoTensor.
+    Args:
+        dist_spec (_DistSpec): descriping the layout among processes.
+        parallel_action (Optional[ParallelAction], optional): actions conducted on the tensor after initialization if it's a model data tensor. 
+        Defaults to None.
     """
 
     def __init__(self, dist_spec: _DistSpec, parallel_action: Optional[ParallelAction] = None):
-        r"""__init__ initialize a Tensor Spec.
-        Args:
-            dist_spec (_DistSpec): descriping the layout among processes.
-            parallel_action (Optional[ParallelAction], optional): 
-            actions conducted on the tensor after initialization if it's a model data tensor. 
-            Defaults to None.
-        """
         self.parallel_action = parallel_action
         self.dist_spec = dist_spec
 
