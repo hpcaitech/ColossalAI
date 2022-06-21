@@ -35,7 +35,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
                  data: Optional[torch.Tensor] = None,
                  requires_grad: bool = True,
                  spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
-        self._spec = copy(spec)
+        self._tensor_spec = copy(spec)
         self._type = TensorType.MODEL
         self._graph_node = None
 
