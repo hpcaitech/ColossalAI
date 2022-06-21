@@ -159,7 +159,7 @@ class ColoDDP(torch.nn.Module):
         return self.module.load_state_dict(state_dict, strict)
 
 
-class ColoDDPV2(ColoDDP):
+class ZeroDDP(ColoDDP):
 
     def __init__(self, module: torch.nn.Module, gemini_manager: GeminiManager) -> None:
         super().__init__(module.half())

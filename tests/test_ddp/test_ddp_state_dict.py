@@ -9,7 +9,7 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ChunkManager
 from functools import partial
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.nn.parallel import ColoDDPV2, ColoDDP
+from colossalai.nn.parallel import ZeroDDP, ColoDDP
 from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Callable
 from collections import OrderedDict
@@ -25,11 +25,11 @@ def init_ddp(module: torch.nn.Module) -> ColoDDP:
     return ColoDDP(module)
 
 
-def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False, use_zero: bool = False) -> ColoDDPV2:
+def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False, use_zero: bool = False) -> ZeroDDP:
     chunk_size = ChunkManager.search_chunk_size(module, 64, 4) if use_chunk else None
     chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
     gemini_manager = GeminiManager('cuda', chunk_manager)
-    return ColoDDPV2(module, gemini_manager)
+    return ZeroDDP(module, gemini_manager)
 
 
 def run_state_dict(ddp_init_func: Callable[[torch.nn.Module], ColoDDP]):

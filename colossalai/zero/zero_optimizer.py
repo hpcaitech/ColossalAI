@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from enum import Enum
 from torch.optim import Optimizer
-from colossalai.nn.parallel.data_parallel import ColoDDPV2
+from colossalai.nn.parallel.data_parallel import ZeroDDP
 from typing import Dict
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
@@ -19,7 +19,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
     def __init__(self,
                  optim: Optimizer,
-                 module: ColoDDPV2,
+                 module: ZeroDDP,
                  gpu_margin_mem_ratio: float = 0.0,
                  initial_scale: float = 2**32,
                  min_scale: float = 1,
@@ -29,7 +29,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  hysteresis: int = 2,
                  max_scale: float = 2**32):
         super().__init__(optim)
-        assert isinstance(module, ColoDDPV2)
+        assert isinstance(module, ZeroDDP)
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager = self.gemini_manager.chunk_manager
