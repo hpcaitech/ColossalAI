@@ -1,8 +1,6 @@
 from .op_wrapper import _COLOSSAL_OPS
 from .const import TensorType
-
-from copy import copy, deepcopy
-
+from copy import copy
 import torch
 from torch.overrides import get_default_nowrap_functions
 

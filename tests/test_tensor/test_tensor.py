@@ -9,11 +9,8 @@ from colossalai.tensor import distspec, TensorSpec
 from colossalai.core import global_context as gpc
 import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import distspec, TensorSpec, ComputePattern, \
-    ParallelAction, ColoTensor, DistSpecManager
+from colossalai.tensor import distspec, TensorSpec, ColoTensor
 from colossalai.context import ParallelMode
 from functools import partial
 
@@ -89,7 +86,7 @@ def run_tensor_init(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [4])
+@pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def _test_dist_init(world_size):
     run_func = partial(run_tensor_init, world_size=world_size, port=free_port())
