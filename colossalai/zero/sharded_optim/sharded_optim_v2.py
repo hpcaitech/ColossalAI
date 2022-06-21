@@ -87,6 +87,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  mp_process_group: Optional[ProcessGroup] = None,
                  verbose: bool = False) -> None:
         assert isinstance(sharded_model, ShardedModelV2), 'model must be wrapped with ShardedModel'
+        assert not isinstance(optimizer, ShardedOptimizerV2), 'Nested ShardedOptimizerV2 is not supported.'
 
         super().__init__(optimizer)
         self.shard_strategy = sharded_model.shard_strategy
