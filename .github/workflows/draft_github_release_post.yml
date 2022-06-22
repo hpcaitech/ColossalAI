@@ -28,11 +28,13 @@ jobs:
           python ./.github/workflows/scripts/generate_release_draft.py --out $PWD/release_draft.md --version $version
           echo "::set-output name=version::$version"
           echo "::set-output name=path::$PWD/release_draft.md"
+        env:
+          GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.generate_draft.outputs.version }}
           release_name: Version ${{ steps.generate_draft.outputs.version }} Release Today!
