@@ -17,6 +17,13 @@ class _DistSpec:
                  dist_placement_pattern: DistPlacementPattern,
                  process_group: Optional[ProcessGroup] = None,
                  **meta_info):
+        """_DistSpec, Distributed Specification
+
+        Args:
+            dist_placement_pattern (DistPlacementPattern): the pattern describing how tensors are distributed among processes.
+                                                    The dist_placement_pattern is picked from a limited set, now including two patterns: replicate and shard.
+            process_group (Optional[ProcessGroup], optional): the process group contains processes. Defaults to None.
+        """
         self.placement = dist_placement_pattern
         self.process_group = process_group
         for k, v in meta_info.items():
@@ -36,6 +43,7 @@ class _DistSpec:
             if not attr.startswith('__'):
                 res += f'{attr}: {str(getattr(self, attr))}\n\t'
         return res
+
 
 def replicate(process_group: Optional[ProcessGroup] = None) -> _DistSpec:
     # process_group=None means global process group
