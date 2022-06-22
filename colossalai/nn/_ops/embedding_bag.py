@@ -17,7 +17,7 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
                              per_sample_weights: Optional[Tensor] = None,
                              include_last_offset: bool = False,
                              padding_idx: Optional[int] = None) -> ColoTensor:
-    # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
+    # embedding_bag_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
     input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
 
@@ -80,7 +80,7 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
                        per_sample_weights: Optional[Tensor] = None,
                        include_last_offset: bool = False,
                        padding_idx: Optional[int] = None):
-    """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.embedding``.
+    """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.embedding_bag``.
     This method looks up an embedding table.
     """
     input_tensor, weight = tuple(map(convert_to_colo_tensor, (input_tensor, weight)))
