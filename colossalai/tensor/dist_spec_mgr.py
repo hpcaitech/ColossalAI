@@ -82,7 +82,7 @@ class DistSpecManager:
         Returns:
             torch.Tensor: a replicated tensor.
         """
-        assert old_dist_spec.placement.value == 's', f"The old_dist_spec of DistSpecManager._s2r must be SHARD!"
+        assert old_dist_spec.placement.value == 's', f"The old_dist_spec of DistSpecManager._gather must be SHARD!"
         if version.parse(torch.__version__) < version.parse("1.11.0"):
             # pytorch lower than 1.11 dose not support gather a cpu tensor.
             # Therefore, we transfer tensor to GPU before gather.
@@ -143,8 +143,6 @@ class DistSpecManager:
     @staticmethod
     def _s2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
         DistSpecManager._sanity_check(old_dist_spec, dist_spec)
-        assert dist_spec.placement.value == 'r', f"The old_dist_spec of DistSpecManager._s2r must be REPLICATE!"
-
         return DistSpecManager._gather(tensor, old_dist_spec)
 
     @staticmethod
