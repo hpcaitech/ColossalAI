@@ -74,7 +74,6 @@ class GraphOpNode(GraphNode):
             assert isinstance(colo_tensor, ColoTensor)
             if colo_tensor._graph_node is None:
                 colo_tensor._graph_node = GraphNode()
-
             prev_ops = colo_tensor._graph_node.prev_nodes
             for op_node in prev_ops:
                 self.add_prev_node(op_node)
@@ -85,7 +84,7 @@ class GraphOpNode(GraphNode):
         Op <- Activation (colo_tensor)
         """
         if GraphGlobalEnv().graph_building:
-            assert isinstance(colo_tensor, ColoTensor)
+            assert isinstance(colo_tensor, ColoTensor), f'type {type(colo_tensor)}'
             if colo_tensor._graph_node is None:
                 colo_tensor._graph_node = GraphNode()
 
