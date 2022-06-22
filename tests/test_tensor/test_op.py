@@ -44,10 +44,14 @@ def check_spec_eq(tensor, other):
 
 def check_element_wise_ops():
     pg = _get_default_group()
-    x = ColoTensor(torch.rand(2, 2), spec=TensorSpec(distspec.shard(pg, [0], [pg.size()])))
+    t = torch.rand(2, 2)
+    x = ColoTensor(t, spec=TensorSpec(distspec.shard(pg, [0], [pg.size()])))
     check_spec_eq(x, x.cuda())
+    assert torch.equal(x.cuda(), t.cuda())
     check_spec_eq(x, torch.abs(x))
+    assert torch.equal(torch.abs(x), torch.abs(t))
     check_spec_eq(x, F.sigmoid(x))
+    assert torch.equal(F.sigmoid(x), F.sigmoid(t))
 
 
 def run_dist(rank, world_size, port):
