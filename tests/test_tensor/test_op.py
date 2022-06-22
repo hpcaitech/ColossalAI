@@ -1,8 +1,16 @@
 import torch
+import pytest
+import colossalai
+import torch.nn.functional as F
+import torch.multiprocessing as mp
+from functools import partial
 from colossalai.tensor import ColoTensor, ColoParameter
 from colossalai.utils import get_current_device
 from torch.nn import Parameter
-import torch.nn.functional as F
+from torch.distributed.distributed_c10d import _get_default_group
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.tensor import distspec, TensorSpec
 
 
 def test_layernorm():
@@ -26,8 +34,42 @@ def test_layernorm():
     assert torch.allclose(ln_op.weight.grad, weight.grad)
 
 
+def check_spec_eq(tensor, other):
+    assert isinstance(tensor, ColoTensor) and isinstance(other, ColoTensor)
+    for k in dir(tensor.spec.dist_spec):
+        if not k.startswith('__'):
+            assert hasattr(other.spec.dist_spec, k)
+            assert getattr(tensor.spec.dist_spec, k) == getattr(other.spec.dist_spec, k)
+
+
+def check_element_wise_ops():
+    pg = _get_default_group()
+    t = torch.rand(2, 2)
+    x = ColoTensor(t, spec=TensorSpec(distspec.shard(pg, [0], [pg.size()])))
+    check_spec_eq(x, x.cuda())
+    assert torch.equal(x.cuda(), t.cuda())
+    check_spec_eq(x, torch.abs(x))
+    assert torch.equal(torch.abs(x), torch.abs(t))
+    check_spec_eq(x, F.sigmoid(x))
+    assert torch.equal(F.sigmoid(x), F.sigmoid(t))
+
+
+def run_dist(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    check_element_wise_ops()
+
+
+@pytest.mark.dist
+@pytest.mark.parametrize('world_size', [2])
+@rerun_if_address_is_in_use()
+def test_element_wise_ops(world_size):
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
+
+
 def check_all():
     test_layernorm()
+    test_element_wise_ops(2)
 
 
 if __name__ == '__main__':
