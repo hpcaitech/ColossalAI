@@ -225,7 +225,7 @@ class ZeroDDP(ColoDDP):
         self.chunk_manager.exec_lazy_release()
         self._setup_grads_ptr()
         self._logger.debug(
-            f'layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, PCIE move vol: {self.gemini_manager._cpu_gpu_move_volume}B'
+            f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'
         )
         self.gemini_manager.post_iter()
 

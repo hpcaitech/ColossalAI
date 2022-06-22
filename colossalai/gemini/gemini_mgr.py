@@ -1,4 +1,5 @@
 import torch
+import functools
 from .memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import List, Optional, Tuple
 from time import time
@@ -23,10 +24,12 @@ class GeminiManager:
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
 
-        self._cpu_gpu_move_volume = 0
+        self._h2d_volume = 0
+        self._d2h_volume = 0
         self._layout_time = 0
         self._evict_time = 0
         self._warmup = True
+        self._comp_cuda_demand_time = 0
 
     def pre_iter(self):
         if self._mem_stats_collector and self._warmup:
@@ -39,9 +42,11 @@ class GeminiManager:
             self._mem_stats_collector.finish_collection()
         self._warmup = False
         self._compute_idx = -1
-        self._cpu_gpu_move_volume = 0
+        self._h2d_volume = 0
+        self._d2h_volume = 0
         self._layout_time = 0
         self._evict_time = 0
+        self._comp_cuda_demand_time = 0
 
     def adjust_layout(self, chunks: Tuple[Chunk, ...], group_name: str) -> None:
         """ Adjust the layout of statefuil tensor according to the information provided
@@ -57,22 +62,19 @@ class GeminiManager:
                                                                warmup=self._warmup,
                                                                compute_list=self._compute_list,
                                                                compute_idx=self._compute_idx)
-        self._cpu_gpu_move_volume += vol
+        self._d2h_volume += vol
         self._evict_time += evict_time
         # move COMPUTE tensors to CUDA
-        self._cpu_gpu_move_volume += cuda_demand
+        self._h2d_volume += cuda_demand
 
-    @property
-    def cpu_gpu_move_volume(self):
-        return self._cpu_gpu_move_volume
-
-    # @functools.lru_cache(maxsize=None)
-    # TODO: test lru
+    @functools.lru_cache(maxsize=None)
     def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...], group_name: str):
+        start = time()
         cuda_demand = 0
         for chunk in chunks:
             if chunk.device_type == 'cpu' or chunk.is_empty:
                 cuda_demand += chunk.mem
+        self._comp_cuda_demand_time += time() - start
         can_evict_chunks = []
         for chunk in self._chunk_manager.chunk_groups[group_name]:
             if not chunk.is_empty and chunk.device_type == 'cuda' and chunk.can_move_device:
