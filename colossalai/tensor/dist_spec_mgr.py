@@ -105,6 +105,32 @@ class DistSpecManager:
         return buffer[0]
 
     @staticmethod
+    def _all_to_all(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
+        world_size = old_dist_spec.process_group.size()
+        if world_size == 1:
+            return tensor
+
+        assert tensor.device.type == "cuda" and dist.get_backend(old_dist_spec.process_group) == "nccl", \
+            "Currently, only CUDA Tensor with NCCL backend is supported for the requested AlltoAll " \
+            f"collective function, however, we got {tensor.device.type} device and " \
+            f"{dist.get_backend(old_dist_spec.process_group)} backend"
+
+        gather_dim = old_dist_spec.dims[0]
+        scatter_dim = dist_spec.dims[0]
+        shapes = list(tensor.shape)
+        scattered_dim_size = shapes[scatter_dim] // world_size
+        gathered_dim_size = shapes[gather_dim] * world_size
+        shapes[scatter_dim] = scattered_dim_size
+
+        scatter_list = [t.contiguous() for t in torch.tensor_split(tensor, world_size, scatter_dim)]
+        gather_list = [torch.empty(*shapes, dtype=tensor.dtype, device=tensor.device) for _ in range(world_size)]
+        dist.all_to_all(gather_list, scatter_list, group=old_dist_spec.process_group)
+
+        output_ = torch.cat(gather_list, dim=gather_dim).contiguous()
+        assert output_.shape[scatter_dim] == scattered_dim_size and output_.shape[gather_dim] == gathered_dim_size
+        return output_
+
+    @staticmethod
     def _r2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
         DistSpecManager._sanity_check(old_dist_spec, dist_spec)
         return tensor
@@ -126,6 +152,9 @@ class DistSpecManager:
         DistSpecManager._sanity_check(old_dist_spec, dist_spec)
         if old_dist_spec == dist_spec:
             return tensor
+        if len(old_dist_spec.dims) == 1 and len(dist_spec.dims) == 1:
+            # use all-to-all to save memory
+            return DistSpecManager._all_to_all(tensor, old_dist_spec, dist_spec)
         tensor = DistSpecManager._gather(tensor, old_dist_spec)
         return DistSpecManager._shard_as(tensor, old_dist_spec, dist_spec)
 
