@@ -2,7 +2,7 @@ name: Draft GitHub Release Post
 
 on:
   workflow_dispatch:
-  pull_requests:
+  pull_request:
     paths:
       - 'version.txt'
     types:
@@ -18,8 +18,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v2
-      with:
-        python-version: '3.7.12'
+        with:
+          python-version: '3.7.12'
       - name: generate draft
         id: generate_draft
         run: |
