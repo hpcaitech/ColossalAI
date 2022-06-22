@@ -43,8 +43,25 @@ class DistSpecManager:
 
     _use_autograd_function: bool = True
 
+    def _sanity_check(old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> None:
+        if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group \
+                and dist_spec.process_group is not None:
+            raise NotImplementedError
+
     @staticmethod
     def _shard_as(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
+        """_shard_as: shard the tensor w.r.t a distributed specification.
+        Assuming the tensor passed in is a global (replicated) tensor.
+        Args:
+            tensor (torch.Tensor): a global (replicated) tensor before shard
+            dist_spec (_DistSpec): the distributed spec. to be sharded as.
+
+        Returns:
+            torch.Tensor: a torch tensor after sharded.
+        """
+        assert old_dist_spec.placement.value == 'r', f"The old_dist_spec of DistSpecManager._shard_as must be REPLICATE!"
+        DistSpecManager._sanity_check(old_dist_spec, dist_spec)
+
         chunk = tensor
         idx = dist_spec.process_group.rank()
         num_parts = prod(dist_spec.num_partitions)
@@ -57,6 +74,15 @@ class DistSpecManager:
 
     @staticmethod
     def _gather(tensor: torch.Tensor, old_dist_spec: _DistSpec) -> torch.Tensor:
+        """_gather gather sharded tensors to a replicated one.
+        Args:
+            tensor (torch.Tensor): a shared torch tensor
+            old_dist_spec (_DistSpec): the distributed spec. of the tensor.
+
+        Returns:
+            torch.Tensor: a replicated tensor.
+        """
+        assert old_dist_spec.placement.value == 's', f"The old_dist_spec of DistSpecManager._s2r must be SHARD!"
         if version.parse(torch.__version__) < version.parse("1.11.0"):
             # pytorch lower than 1.11 dose not support gather a cpu tensor.
             # Therefore, we transfer tensor to GPU before gather.
@@ -80,28 +106,24 @@ class DistSpecManager:
 
     @staticmethod
     def _r2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group \
-                and dist_spec.process_group is not None:
-            raise NotImplementedError
+        DistSpecManager._sanity_check(old_dist_spec, dist_spec)
         return tensor
 
     @staticmethod
     def _r2s(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group:
-            raise NotImplementedError
+        DistSpecManager._sanity_check(old_dist_spec, dist_spec)
         return DistSpecManager._shard_as(tensor, old_dist_spec, dist_spec)
 
     @staticmethod
     def _s2r(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        if old_dist_spec.process_group != dist_spec.process_group \
-                and dist_spec.process_group is not None:
-            raise NotImplementedError
+        DistSpecManager._sanity_check(old_dist_spec, dist_spec)
+        assert dist_spec.placement.value == 'r', f"The old_dist_spec of DistSpecManager._s2r must be REPLICATE!"
+
         return DistSpecManager._gather(tensor, old_dist_spec)
 
     @staticmethod
     def _s2s(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        if old_dist_spec.process_group != dist_spec.process_group:
-            raise NotImplementedError
+        DistSpecManager._sanity_check(old_dist_spec, dist_spec)
         if old_dist_spec == dist_spec:
             return tensor
         tensor = DistSpecManager._gather(tensor, old_dist_spec)
