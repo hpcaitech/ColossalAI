@@ -68,8 +68,7 @@ def run_gpt(init_spec_func, use_ddp):
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
         logits = model(input_ids, attn_mask)
         torch_logits = torch_model(input_ids, attn_mask)
-        # logits = logits.to_replicate()
-        # assert tensor_equal(torch_logits, logits)
+        assert tensor_equal(torch_logits, logits)
         loss = criterion(logits, input_ids)
         torch_loss = criterion(torch_logits, input_ids)
         if use_ddp:
