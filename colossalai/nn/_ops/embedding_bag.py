@@ -37,7 +37,7 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
         ParallelAction(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
-    return output.replicate()
+    return output.to_replicate()
 
 
 def colo_embedding_bag_1d(tp_mode: str,
