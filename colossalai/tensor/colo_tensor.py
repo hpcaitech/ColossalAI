@@ -106,6 +106,12 @@ class ColoTensor(torch.Tensor):
         ret = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
         return ColoTensor.from_torch_tensor(ret, tensor_spec)
 
+    def to_replicate_(self):
+        """to_replicate_ 
+        an inline member function, converting dist spec of the tensor to REPLICATE
+        """
+        self._convert_to_dist_spec(distspec.replicate())
+
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
         tensor = tensor.as_subclass(ColoTensor)
@@ -121,3 +127,9 @@ class ColoTensor(torch.Tensor):
             tensor = ColoTensor(data, spec=copy(self.spec))
             memo[id(self)] = tensor
             return tensor
+
+    # TODO(jiaruifang) a patch for gpt test.
+    # We need to
+    def view(self, *args, **kwargs):
+        self.to_replicate_()
+        return super().view(*args, **kwargs)
