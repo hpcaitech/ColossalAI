@@ -3,7 +3,7 @@ from typing import Optional
 from ._utils import GeneralTensor, convert_to_colo_tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
-from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor, distspec
+from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
 from colossalai.context import ParallelMode
 from colossalai.nn.graph import register_colo_graph, GraphOpNode, GraphGlobalEnv
 
@@ -32,7 +32,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
     # All-Gather(Output)
     # Input:B
-    parallel_action = weight.spec.parallel_action
+    parallel_action = weight.spec.compute_spec
     input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
     input_parallel = reduce_grad(input_tensor, ParallelMode.PARALLEL_1D)
 
@@ -41,7 +41,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
                                           spec=TensorSpec(
                                               distspec.shard(weight.spec.get_process_group(), [-1],
                                                              [weight.spec.get_process_group_size()]),
-                                              ParallelAction(ComputePattern.TP1D)))
+                                              ComputeSpec(ComputePattern.TP1D)))
     return output.to_replicate()
 
 

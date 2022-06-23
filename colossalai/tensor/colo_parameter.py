@@ -1,10 +1,12 @@
+import torch
+
+from typing import Optional
+from copy import copy
+
 from colossalai.tensor.colo_tensor import ColoTensor
 from colossalai.tensor.const import TensorType
-import torch
 from colossalai.tensor import TensorSpec, distspec
-from copy import copy
 from colossalai.tensor.param_op_hook import ParamOpHookManager
-from typing import Optional
 
 
 def filter_args(func, *args):
