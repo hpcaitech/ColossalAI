@@ -96,6 +96,12 @@ class ColoTensor(torch.Tensor):
         return self._type == TensorType.MODEL
 
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
+        """_convert_to_dist_spec 
+        Only works for model tensor initializations.
+        Note the function will not handle backward propagation!
+        Args:
+            dist_spec (_DistSpec): _description_
+        """
         with DistSpecManager.no_grad():
             self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
         self._tensor_spec.dist_spec = dist_spec
@@ -110,7 +116,14 @@ class ColoTensor(torch.Tensor):
         """to_replicate_ 
         an inline member function, converting dist spec of the tensor to REPLICATE
         """
-        self._convert_to_dist_spec(distspec.replicate())
+        self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, distspec.replicate())
+        self._tensor_spec.dist_spec = distspec.replicate()
+
+    def to_replicate(self) -> 'ColoTensor':
+        """to_replicate
+        converting dist spec of the tensor to REPLICATE
+        """
+        return self.convert_to_dist_spec(distspec.replicate(self.spec.get_process_group()))
 
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
@@ -130,6 +143,10 @@ class ColoTensor(torch.Tensor):
 
     # TODO(jiaruifang) a patch for gpt test.
     # We need to override the member function must operate on a replicated tensor
-    def view(self, *args, **kwargs):
-        self.to_replicate_()
-        return super().view(*args, **kwargs)
+    # def view(self, *args, **kwargs):
+    #     self.data = DistSpecManager.handle_trans_spec(self,
+    #                 self.spec.dist_spec,
+    #                 distspec.replicate(self.spec.get_process_group()))
+    #     # self._tensor_spec.dist_spec = distspec.replicate(self.spec.get_process_group())
+    #     self.data.view(*args, **kwargs)
+    #     return ColoTensor.from_torch_tensor(self.data)

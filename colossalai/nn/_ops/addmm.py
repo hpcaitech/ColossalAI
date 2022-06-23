@@ -40,6 +40,9 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # if parallel_action.gather_out:
     #     # All-Gather(Output)
     #     output = output.convert_to_dist_spec(distspec.replicate(mat2.spec.get_process_group()))
+    # TODO(jiaruifang) addam is special case
+    # since gpt call view after the Op.
+    output.to_replicate_()
     return output
 
 

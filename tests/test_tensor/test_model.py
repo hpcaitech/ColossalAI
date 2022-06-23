@@ -98,7 +98,7 @@ def run_1d_hybrid_tp(model_name):
             if 'proj2' in name and 'weight' in name:
                 init_1d_row_linear(p)
             if 'classifier' in name and ('weight' in name or 'bias' in name):
-                init_1d_col_linear(p, gather_out=False)
+                init_1d_col_linear(p)
 
     model = model.cuda()
     colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)

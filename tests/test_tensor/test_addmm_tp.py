@@ -63,7 +63,6 @@ def run_with_spec(spec_init_func):
     x = torch.rand(2, 16).cuda()
     out = model(x)
     colo_out = torch.addmm(bias, x, weight)
-    colo_out.to_replicate_()
     assert tensor_equal(out, colo_out)
     grad = torch.rand_like(out)
     out.backward(grad)
