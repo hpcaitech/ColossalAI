@@ -12,3 +12,6 @@ RUN git clone https://github.com/NVIDIA/apex && \
 RUN git clone https://github.com/hpcaitech/ColossalAI.git \
  && cd ./ColossalAI \
  && pip install -v --no-cache-dir .
+
+# install titans
+RUN pip install -no-cache-dir titans
