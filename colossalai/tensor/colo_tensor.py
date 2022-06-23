@@ -66,7 +66,7 @@ class ColoTensor(torch.Tensor):
         self._tensor_spec = spec
 
     def has_spec(self) -> bool:
-        return self._tensor_spec.parallel_action is not None
+        return self._tensor_spec.compute_spec is not None
 
     def is_model_data(self) -> bool:
         return self._type == TensorType.MODEL

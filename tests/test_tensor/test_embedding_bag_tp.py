@@ -11,14 +11,14 @@ import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager
+from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager
 from _utils import tensor_equal, tensor_shard_equal
 
 
 def init_1d_col(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_spec(spec)
 

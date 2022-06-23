@@ -1,7 +1,7 @@
 from colossalai.utils import free_port, get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.tensor import ComputePattern, ParallelAction
+from colossalai.tensor import ComputePattern, ComputeSpec
 
 from functools import partial
 from colossalai.core import global_context as gpc
@@ -46,7 +46,7 @@ def run_hybrid_device(use_ddp, mode):
 
     print(f'embedding weight size: {real_model.embed.weight.size()} | device: {real_model.embed.weight.device}')
     #print(f'linear weight size: {real_model.proj.weight.size()} | device: {real_model.proj.weight.device}')
-    parallel_action = ParallelAction(ComputePattern.TP1D)
+    parallel_action = ComputeSpec(ComputePattern.TP1D)
     init_colo_module(model, parallel_action, recursive=True, mode=mode)
 
     # use cpu gloo to handle embedding
@@ -63,6 +63,7 @@ def run_hybrid_device(use_ddp, mode):
     out.sum().backward()
     optimizer.step()
 
+
 def run_dist(rank, world_size, port, use_ddp, mode):
     if use_ddp and world_size == 1:
         return
@@ -71,6 +72,7 @@ def run_dist(rank, world_size, port, use_ddp, mode):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_hybrid_device(use_ddp, mode)
 
+
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @pytest.mark.parametrize('use_ddp', [False, True])
@@ -78,7 +80,7 @@ def run_dist(rank, world_size, port, use_ddp, mode):
 @rerun_if_address_is_in_use()
 # Working for simulate the embedding(CPU DP+TP) -> nn(GPU DP+TP)
 def _test_hybrid_device(world_size, use_ddp, mode):
-    run_func = partial(run_dist, world_size=world_size, port=free_port(), use_ddp=use_ddp ,mode=mode)
+    run_func = partial(run_dist, world_size=world_size, port=free_port(), use_ddp=use_ddp, mode=mode)
     mp.spawn(run_func, nprocs=world_size)
 
 

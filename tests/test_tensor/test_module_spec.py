@@ -5,7 +5,7 @@ from functools import partial
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction
+from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec
 from colossalai.nn.parallel.layers import init_colo_module, check_colo_module
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 
@@ -40,7 +40,7 @@ def run_model_with_spec(mode, model_name):
         for p1, p2 in zip(model.parameters(), model_seq.parameters()):
             p2.data.copy_(p1.data)
 
-    parallel_action = ParallelAction(ComputePattern.TP1D)
+    parallel_action = ComputeSpec(ComputePattern.TP1D)
     # Not all layers in Bert can be mod by 4.
     # e.g. row shard for all layers is invalid because the first dim of some layer is the classification type size 2.
     if 'bert' == model_name:
@@ -114,7 +114,7 @@ def run_linear_with_spec(mode):
 
     model_handy = copy(model)
 
-    parallel_action = ParallelAction(ComputePattern.TP1D)
+    parallel_action = ComputeSpec(ComputePattern.TP1D)
     init_colo_module(model, parallel_action, recursive=True, mode=mode)
 
     x = torch.rand(2, 4).cuda()
@@ -148,7 +148,7 @@ def run_check_shared_param():
         model = BertForMaskedLM(config)
 
     model = model.cuda()
-    parallel_action = ParallelAction(ComputePattern.TP1D)
+    parallel_action = ComputeSpec(ComputePattern.TP1D)
     # model.cls.predictions.decoder and model.cls.predictions share the bias, so they should have the same spec
     assert len(model.cls.predictions.decoder.bias.shared_param_modules) == 2
     # They are all Linear, so both row is allowed. This should pass check.
@@ -156,7 +156,7 @@ def run_check_shared_param():
     # This should be detected by check because you can not set weight as row while set bias as col.
     col_spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     model.cls.predictions.bias.set_spec(col_spec)
     try:
         check_colo_module(model.cls.predictions.decoder, recursive=False)

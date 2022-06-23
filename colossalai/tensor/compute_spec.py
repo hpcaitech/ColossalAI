@@ -1,0 +1,23 @@
+from enum import Enum
+
+
+class ComputePattern(Enum):
+    TP1D = 0
+    TP2D = 1
+    TP2P5D = 2
+    TP3D = 3
+
+
+class ComputeSpec(object):
+    """ComputeSpec 
+    The Specification for compuattion pattern
+    Args:
+        compute_pattern (ComputePattern): an Enum instance for compute pattern.
+    """
+
+    def __init__(self, compute_pattern: ComputePattern) -> None:
+        assert isinstance(compute_pattern, ComputePattern)
+        self.compute_pattern = compute_pattern
+
+    def __repr__(self):
+        return f'compute pattern: {self.compute_pattern}'

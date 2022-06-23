@@ -1,7 +1,7 @@
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
-from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ParallelAction, ColoTensor
+from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor
 from colossalai.tensor import distspec
 from colossalai.context import ParallelMode
 from ._utils import GeneralTensor, Number, convert_to_colo_tensor
@@ -29,13 +29,13 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
 def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
                      alpha: Number) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
-    parallel_action = mat2.spec.parallel_action
+    parallel_action = mat2.spec.compute_spec
     mat1 = mat1.convert_to_dist_spec(distspec.replicate(mat2.spec.get_process_group()))
     mat1 = reduce_grad(mat1, ParallelMode.PARALLEL_1D)
 
     output_parallel = torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha)
     output_spec = TensorSpec(distspec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group_size()]),
-                             ParallelAction(ComputePattern.TP1D))
+                             ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
     # TODO(jiaruifang) addam is special case
