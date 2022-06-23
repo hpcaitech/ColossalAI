@@ -42,10 +42,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
                                               distspec.shard(weight.spec.get_process_group(), [-1],
                                                              [weight.spec.get_process_group_size()]),
                                               ParallelAction(ComputePattern.TP1D)))
-    if parallel_action.gather_out:
-        # All-Gather(Output)
-        output = output.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
-    return output
+    return output.to_replicate()
 
 
 def colo_linear_1d(mode: str, input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':

@@ -92,10 +92,13 @@ class ColoTensor(torch.Tensor):
     def __repr__(self):
         return f'ColoTensor: {super().__repr__()}'
 
-    def is_model_data(self) -> bool:
-        return self._type == TensorType.MODEL
-
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
+        """_convert_to_dist_spec 
+        Note the function will not handle the logic of backward propagation!
+        It is used during model tensor initializations as an internal function.
+        Args:
+            dist_spec (_DistSpec): the target dist. spec.
+        """
         with DistSpecManager.no_grad():
             self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
         self._tensor_spec.dist_spec = dist_spec
@@ -105,6 +108,19 @@ class ColoTensor(torch.Tensor):
         tensor_spec.dist_spec = dist_spec
         ret = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
         return ColoTensor.from_torch_tensor(ret, tensor_spec)
+
+    def to_replicate_(self):
+        """to_replicate_ 
+        an inline member function, converting dist spec of the tensor to REPLICATE
+        """
+        self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, distspec.replicate())
+        self._tensor_spec.dist_spec = distspec.replicate()
+
+    def to_replicate(self) -> 'ColoTensor':
+        """to_replicate
+        converting dist spec of the tensor to REPLICATE
+        """
+        return self.convert_to_dist_spec(distspec.replicate(self.spec.get_process_group()))
 
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
@@ -121,3 +137,13 @@ class ColoTensor(torch.Tensor):
             tensor = ColoTensor(data, spec=copy(self.spec))
             memo[id(self)] = tensor
             return tensor
+
+    # TODO(jiaruifang) a patch for gpt test.
+    # We need to override the member function must operate on a replicated tensor
+    # def view(self, *args, **kwargs):
+    #     self.data = DistSpecManager.handle_trans_spec(self,
+    #                 self.spec.dist_spec,
+    #                 distspec.replicate(self.spec.get_process_group()))
+    #     # self._tensor_spec.dist_spec = distspec.replicate(self.spec.get_process_group())
+    #     self.data.view(*args, **kwargs)
+    #     return ColoTensor.from_torch_tensor(self.data)

@@ -13,13 +13,12 @@ class ComputePattern(Enum):
 
 class ParallelAction(object):
 
-    def __init__(self, compute_pattern: ComputePattern, gather_out: bool = True) -> None:
+    def __init__(self, compute_pattern: ComputePattern) -> None:
         assert isinstance(compute_pattern, ComputePattern)
         self.compute_pattern = compute_pattern
-        self.gather_out = gather_out
 
     def __repr__(self):
-        return f'compute pattern: {self.compute_pattern}, gather out: {self.gather_out}'
+        return f'compute pattern: {self.compute_pattern}'
 
 
 class TensorSpec(object):
