@@ -28,7 +28,6 @@ def register_colo_graph(input_pos: List[int], param_pos: List[int]) -> Callable:
                     input_list.append(convert_to_colo_tensor(arg))
                 if isinstance(arg, torch.Tensor) and idx in param_pos:
                     param_list.append(convert_to_colo_tensor(arg))
-            print(f'Op {func}')
             # building the computing graph, inputs -> op
             if GraphGlobalEnv().graph_building:
                 cur_op_node = GraphOpNode('linear', param_list)
