@@ -196,6 +196,12 @@ NO_CUDA_EXT=1 pip install .
 
 ## 使用 Docker
 
+### 从DockerHub获取镜像
+
+您可以直接从我们的[DockerHub主页](https://hub.docker.com/r/hpcaitech/colossalai)获取最新的镜像，每一次发布我们都会自动上传最新的镜像。
+
+### 本地构建镜像
+
 运行以下命令从我们提供的 docker 文件中建立 docker 镜像。
 
 > 在Dockerfile里编译Colossal-AI需要有GPU支持，您需要将Nvidia Docker Runtime设置为默认的Runtime。更多信息可以点击[这里](https://stackoverflow.com/questions/59691207/docker-build-with-nvidia-runtime)。
