@@ -37,6 +37,7 @@ from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 
 from colossalai.zero import convert_to_zero_v2
 from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
+from colossalai.context import DISTMGR
 
 
 def get_default_parser():
@@ -470,3 +471,18 @@ def initialize(model: nn.Module,
                     schedule=schedule)
 
     return engine, train_dataloader, test_dataloader, lr_scheduler
+
+
+def colo_launch(rank, world_size, host, port, backend, local_rank=None, seed=47):
+    DISTMGR.init_default_process_group(rank, world_size, host, port, backend)
+    DISTMGR.set_device(local_rank)
+    DISTMGR.set_seed(seed)
+
+
+def colo_launch_from_torch(backend='nccl'):
+    rank = int(os.environ['RANK'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    world_size = int(os.environ['WORLD_SIZE'])
+    host = os.environ['MASTER_ADDR']
+    port = int(os.environ['MASTER_PORT'])
+    colo_launch(rank=rank, local_rank=local_rank, world_size=world_size, host=host, port=port, backend=backend)
