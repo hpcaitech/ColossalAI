@@ -37,13 +37,10 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     output_spec = TensorSpec(distspec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group_size()]),
                              ParallelAction(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
-    # if parallel_action.gather_out:
-    #     # All-Gather(Output)
-    #     output = output.convert_to_dist_spec(distspec.replicate(mat2.spec.get_process_group()))
+
     # TODO(jiaruifang) addam is special case
     # since gpt call view after the Op.
-    output.to_replicate_()
-    return output
+    return output.to_replicate()
 
 
 def colo_addmm_1d(mode: str, input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
