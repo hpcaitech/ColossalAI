@@ -12,6 +12,7 @@ on:
 jobs:
   release:
     name: Draft Release Post
+    if: github.repository == 'hpcaitech/ColossalAI'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
