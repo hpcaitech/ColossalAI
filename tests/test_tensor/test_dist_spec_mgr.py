@@ -9,6 +9,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.tensor import DistSpecManager, distspec
 from functools import partial
+from colossalai.context import colo_launch
 
 
 def run():
@@ -50,7 +51,7 @@ def check_mem():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colo_launch(rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     check_mem()
     run()
 
