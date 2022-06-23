@@ -43,6 +43,7 @@ class DistSpecManager:
 
     _use_autograd_function: bool = True
 
+    @staticmethod
     def _sanity_check(old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> None:
         if old_dist_spec.process_group is not None and old_dist_spec.process_group != dist_spec.process_group \
                 and dist_spec.process_group is not None:
