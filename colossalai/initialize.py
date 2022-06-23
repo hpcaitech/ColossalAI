@@ -37,7 +37,6 @@ from colossalai.nn.optimizer.colossalai_optimizer import ColossalaiOptimizer
 
 from colossalai.zero import convert_to_zero_v2
 from colossalai.zero.sharded_optim.sharded_optim_v2 import ShardedOptimizerV2
-from colossalai.context import DISTMGR
 
 
 def get_default_parser():
