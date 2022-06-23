@@ -92,13 +92,10 @@ class ColoTensor(torch.Tensor):
     def __repr__(self):
         return f'ColoTensor: {super().__repr__()}'
 
-    def is_model_data(self) -> bool:
-        return self._type == TensorType.MODEL
-
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
         """_convert_to_dist_spec 
         Note the function will not handle the logic of backward propagation!
-        It is used during model tensor initializations.
+        It is used during model tensor initializations as an internal function.
         Args:
             dist_spec (_DistSpec): the target dist. spec.
         """
