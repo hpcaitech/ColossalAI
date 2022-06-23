@@ -97,10 +97,10 @@ class ColoTensor(torch.Tensor):
 
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
         """_convert_to_dist_spec 
-        Only works for model tensor initializations.
-        Note the function will not handle backward propagation!
+        Note the function will not handle the logic of backward propagation!
+        It is used during model tensor initializations.
         Args:
-            dist_spec (_DistSpec): _description_
+            dist_spec (_DistSpec): the target dist. spec.
         """
         with DistSpecManager.no_grad():
             self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
