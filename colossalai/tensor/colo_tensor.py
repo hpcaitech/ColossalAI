@@ -129,7 +129,7 @@ class ColoTensor(torch.Tensor):
             return tensor
 
     # TODO(jiaruifang) a patch for gpt test.
-    # We need to override all memfunction and add to_replicate_
+    # We need to override the member function must operate on a replicated tensor
     def view(self, *args, **kwargs):
         self.to_replicate_()
         return super().view(*args, **kwargs)
