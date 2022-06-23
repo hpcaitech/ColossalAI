@@ -201,10 +201,18 @@ NO_CUDA_EXT=1 pip install .
 
 ## Use Docker
 
+### Pull from DockerHub
+
+You can directly pull the docker image from our [DockerHub page](https://hub.docker.com/r/hpcaitech/colossalai). The image is automatically uploaded upon release.
+
+
+### Build On Your Own
+
 Run the following command to build a docker image from Dockerfile provided.
 
 > Building Colossal-AI from scratch requires GPU support, you need to use Nvidia Docker Runtime as the default when doing `docker build`. More details can be found [here](https://stackoverflow.com/questions/59691207/docker-build-with-nvidia-runtime).
 > We recommend you install Colossal-AI from our [project page](https://www.colossalai.org) directly.
+
 
 ```bash
 cd ColossalAI
