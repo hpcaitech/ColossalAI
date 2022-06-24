@@ -67,9 +67,10 @@ def colo_linear_imp(input_tensor: GeneralTensor,
         assert bias is None or bias.spec.is_gathered(), 'Invalid bias spec for native Linear op'
         ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.spec.is_1D_col() and (bias is None or bias.spec.is_gathered()):
+        if weight.spec.is_shard_1Dcol() and (bias is None or bias.spec.is_gathered()):
             mode = 'row'
-        elif weight.spec.is_1D_row() and (bias is None or bias.spec.is_1D_row() or bias.spec.is_1D_col()):
+        elif weight.spec.is_shard_1Drow() and (bias is None or bias.spec.is_shard_1Drow()
+                                               or bias.spec.is_shard_1Dcol()):
             mode = 'col'
         else:
             raise NotImplementedError

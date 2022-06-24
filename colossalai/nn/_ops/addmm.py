@@ -69,9 +69,9 @@ def colo_addmm(input_tensor: GeneralTensor,
         assert input_tensor.spec.is_gathered(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.from_torch_tensor(torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha))
     elif mat2.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if mat2.spec.is_1D_row() and input_tensor.spec.is_gathered():
+        if mat2.spec.is_shard_1Drow() and input_tensor.spec.is_gathered():
             mode = 'row'
-        elif mat2.spec.is_1D_col() and (input_tensor.spec.is_1D_col() or input_tensor.spec.is_1D_row()):
+        elif mat2.spec.is_shard_1Dcol() and (input_tensor.spec.is_shard_1Dcol() or input_tensor.spec.is_shard_1Drow()):
             mode = 'col'
         else:
             raise NotImplementedError

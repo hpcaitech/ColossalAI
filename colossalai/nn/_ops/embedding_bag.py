@@ -101,7 +101,7 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
                             include_last_offset=include_last_offset,
                             padding_idx=padding_idx))
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.spec.is_1D_col():
+        if weight.spec.is_shard_1Dcol():
             tp_mode = 'col'
         else:
             raise NotImplementedError

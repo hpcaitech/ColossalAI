@@ -119,9 +119,9 @@ def colo_embedding(input_tensor: GeneralTensor,
                         scale_grad_by_freq=scale_grad_by_freq,
                         sparse=sparse))
     elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.spec.is_1D_row():
+        if weight.spec.is_shard_1Drow():
             mode = 'row'
-        elif weight.spec.is_1D_col():
+        elif weight.spec.is_shard_1Dcol():
             mode = 'col'
         else:
             raise NotImplementedError
