@@ -166,15 +166,25 @@ class ColoTensor(torch.Tensor):
         self._tensor_spec.dist_spec = distspec.replicate()
         return super().view(*args)
 
-    def size(self, *args, **kwargs) -> torch.Size:
+    def size(self, args=None) -> torch.Size:
         """override the torch buildin size()
         the shape passed in must be in a replicate placement.
         Returns:
             ColoTensor: a tensor after viewed.
         """
         if self.tensor_spec.is_replicate():
-            return super().size(*args, **kwargs)
-        # self.data = self.to_replicate()
-        self.data = DistSpecManager.handle_trans_spec(self, self.tensor_spec.dist_spec, distspec.replicate())
-        self._tensor_spec.dist_spec = distspec.replicate()
-        return super().size(*args, **kwargs)
+            if args:
+                return super().size(args)
+            else:
+                return super().size()
+        spec = self.tensor_spec.dist_spec
+        dims = spec.dims
+        num_partitions = spec.num_partitions
+
+        arg_list = list(super().size())
+        for dim, num_partition in zip(dims, num_partitions):
+            arg_list[dim] *= num_partition
+        if args:
+            return torch.Size(arg_list)[args]
+        else:
+            return torch.Size(arg_list)

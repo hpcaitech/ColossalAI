@@ -108,4 +108,6 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
         return super().view_base(*args)
 
     def size(self, *args, **kwargs) -> torch.Size:
+        # import inspect
+        # print(*['{:40}| {}:{}\n'.format(x.function, x.filename, x.lineno) for x in inspect.stack()])
         return super().size_base(*args, **kwargs)
