@@ -20,7 +20,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # Reduce(Output)
     output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
     # input
-    assert not input_tensor.has_spec(), 'Invalid input spec for 1Drow addmm op'
+    assert not input_tensor.has_compute_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor + alpha * output
     output = ColoTensor.from_torch_tensor(output,
                                           spec=TensorSpec(distspec.replicate(mat2.tensor_spec.get_process_group())))
@@ -67,7 +67,7 @@ def colo_addmm(input_tensor: GeneralTensor,
 
     # Add communication logic before and after linear call.
     ret_tensor = None
-    if not mat2.has_spec():    # No Model Parallel Applied
+    if not mat2.has_compute_spec():    # No Model Parallel Applied
         assert mat2.tensor_spec.is_gathered(), 'Invalid mat2 spec for native addmm op'
         assert input_tensor.tensor_spec.is_gathered(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.from_torch_tensor(torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha))

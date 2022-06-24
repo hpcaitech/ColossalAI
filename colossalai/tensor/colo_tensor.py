@@ -65,7 +65,7 @@ class ColoTensor(torch.Tensor):
         self._convert_to_dist_spec(spec.dist_spec)
         self._tensor_spec = spec
 
-    def has_spec(self) -> bool:
+    def has_compute_spec(self) -> bool:
         return self._tensor_spec.compute_spec is not None
 
     def is_model_data(self) -> bool:

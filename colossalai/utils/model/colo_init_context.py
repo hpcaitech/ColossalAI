@@ -42,7 +42,7 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
     has_dist_parameter = False
     with torch.no_grad():
         for param in self.parameters():
-            if isinstance(param, ColoParameter) and param.has_spec():
+            if isinstance(param, ColoParameter) and param.has_compute_spec():
                 has_dist_parameter = True
                 mapping[id(param)] = copy(param.tensor_spec)
                 param.set_tensor_spec(TensorSpec(distspec.replicate()))

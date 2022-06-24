@@ -21,7 +21,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
     # Bias
     if bias is not None:
-        assert not bias.has_spec(), 'Invalid bias spec for 1Drow Linear op'
+        assert not bias.has_compute_spec(), 'Invalid bias spec for 1Drow Linear op'
         output = output + bias
 
     output = ColoTensor.from_torch_tensor(output,
@@ -66,7 +66,7 @@ def colo_linear_imp(input_tensor: GeneralTensor,
 
     # Add communication logic before and after linear call.
     ret_tensor = None
-    if not weight.has_spec():    # No Model Parallel Applied
+    if not weight.has_compute_spec():    # No Model Parallel Applied
         assert weight.tensor_spec.is_gathered(), 'Invalid weight spec for native Linear op'
         assert bias is None or bias.tensor_spec.is_gathered(), 'Invalid bias spec for native Linear op'
         ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
