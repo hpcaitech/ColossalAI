@@ -19,6 +19,7 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from colossalai.gemini.stateful_tensor import (StatefulTensor, TensorState)
 from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
+from colossalai.utils import disposable
 
 
 class OptimState(Enum):
@@ -128,6 +129,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory!", ranks=[0])
 
         self._use_memory_tracer = self.model.use_memory_tracer
+        self._process_loaded_states = disposable(self._process_loaded_states_)
 
     @property
     def loss_scale(self):
@@ -199,7 +201,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self._logger.debug(
                 f"Before step ShardedOptimizerV2 consumes {gpu_mem / 1e6} MB CUDA Memory, {cpu_mem / 1e6} MB CUDA Memory!",
                 ranks=[0])
-
+        self._process_loaded_states()
         ret = self.optim.step(*args, **kwargs)
 
         if self._verbose:
@@ -289,6 +291,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                         colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
                         p.colo_attr.offload_grad = False
                         fp32_shards_used_cuda_margin_mem += shard_mem
+                        state = self.optim.state[p]
+                        for k, v in state.items():
+                            if isinstance(v, Tensor):
+                                state[k] = v.cuda()
 
     def _prepare_grads(self):
         for group in self.optim.param_groups:
@@ -353,3 +359,11 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
 
         self.master_params[p].trans_state(TensorState.HOLD)
+
+    def _process_loaded_states_(self):
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                state = self.optim.state[p]
+                for k, v in state.items():
+                    if isinstance(v, Tensor):
+                        state[k] = v.to(dtype=self.master_params[p].dtype, device=self.master_params[p].device)
