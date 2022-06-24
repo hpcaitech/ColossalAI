@@ -178,14 +178,16 @@ class ColoTensor(torch.Tensor):
                 return super().size(args)
             else:
                 return super().size()
+
         spec = self.tensor_spec.dist_spec
         dims = spec.dims
         num_partitions = spec.num_partitions
-
         size_list = list(super().size())
+        print(size_list)
         for dim, num_partition in zip(dims, num_partitions):
             size_list[dim] *= num_partition
         if args is not None:
             return size_list[args]
         else:
+            print(f'size_list {size_list}')
             return torch.Size(size_list)
