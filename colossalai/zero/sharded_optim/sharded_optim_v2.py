@@ -19,7 +19,6 @@ from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 from colossalai.gemini.stateful_tensor import (StatefulTensor, TensorState)
 from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
-from colossalai.utils import disposable
 
 
 class OptimState(Enum):
@@ -129,7 +128,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 f"After init ShardedOptimizerV2 consumes {self.get_memory_usage()[0] / 1e6} MB CUDA Memory!", ranks=[0])
 
         self._use_memory_tracer = self.model.use_memory_tracer
-        self._process_loaded_states = disposable(self._process_loaded_states_)
 
     @property
     def loss_scale(self):
@@ -201,7 +199,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self._logger.debug(
                 f"Before step ShardedOptimizerV2 consumes {gpu_mem / 1e6} MB CUDA Memory, {cpu_mem / 1e6} MB CUDA Memory!",
                 ranks=[0])
-        self._process_loaded_states()
         ret = self.optim.step(*args, **kwargs)
 
         if self._verbose:
@@ -360,7 +357,8 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         self.master_params[p].trans_state(TensorState.HOLD)
 
-    def _process_loaded_states_(self):
+    def load_state_dict(self, *args, **kwargs):
+        super().load_state_dict(*args, **kwargs)
         for group in self.optim.param_groups:
             for p in group['params']:
                 state = self.optim.state[p]
