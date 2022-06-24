@@ -51,7 +51,7 @@ def init_1d_row_spec(model):
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n and 'ln' not in n:
-                p.set_spec(spec)
+                p.set_tensor_spec(spec)
 
 
 def init_1d_col_spec(model):
@@ -61,7 +61,7 @@ def init_1d_col_spec(model):
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):
-                p.set_spec(spec)
+                p.set_tensor_spec(spec)
 
 
 @parameterize('use_chunk', [False, True])

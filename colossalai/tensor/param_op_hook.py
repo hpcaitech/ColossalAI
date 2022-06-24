@@ -129,7 +129,7 @@ def _get_colo_tensors_info(*args) -> list:
     info = []
     for arg in args:
         if isinstance(arg, ColoTensor):
-            info.append((arg.__class__, arg.spec))
+            info.append((arg.__class__, arg.tensor_spec))
         else:
             info.append(None)
     return info

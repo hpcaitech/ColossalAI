@@ -18,7 +18,7 @@ def colo_cross_entropy(input_tensor: GeneralTensor,
                        label_smoothing: float = 0.0):
     input_tensor, target, weight = tuple(map(convert_to_colo_tensor, (input_tensor, target, weight)))
 
-    if input_tensor.spec.is_gathered():    # Input is gathered
+    if input_tensor.tensor_spec.is_gathered():    # Input is gathered
         output = F.cross_entropy(input_tensor,
                                  target,
                                  weight=weight,
@@ -28,8 +28,8 @@ def colo_cross_entropy(input_tensor: GeneralTensor,
                                  reduction=reduction,
                                  label_smoothing=label_smoothing)
         return ColoTensor.from_torch_tensor(output)
-    elif input_tensor.has_spec():    # Single Model Parallel Applied
-        if input_tensor.spec.is_1D_col():
+    elif input_tensor.has_compute_spec():    # Single Model Parallel Applied
+        if input_tensor.tensor_spec.is_1D_col():
             output = VocabParallelCrossEntropyLoss1D()(input_tensor, target)
             return ColoTensor.from_torch_tensor(output)
         else:
