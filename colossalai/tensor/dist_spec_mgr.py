@@ -68,7 +68,6 @@ class DistSpecManager:
         num_parts = prod(dist_spec.num_partitions)
         for i, dim in enumerate(dist_spec.dims):
             num_parts //= dist_spec.num_partitions[i]
-            print(tensor.size(dim), dist_spec.num_partitions[i])
             chunk_size = divide(tensor.size(dim), dist_spec.num_partitions[i])
             chunk = chunk.narrow(dim, idx // num_parts * chunk_size, chunk_size)
             idx %= num_parts
