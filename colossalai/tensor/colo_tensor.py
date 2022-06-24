@@ -23,7 +23,7 @@ class ColoTensor(torch.Tensor):
     Args:
         data (torch.Tensor): a torch tensor used as the payload the colotensor.
         spec (TensorSpec, optional): the tensor spec of initialization. Defaults to TensorSpec(distspec.replicate()).
-    
+
     The signature of the function has to be consistent with the __new__ except for the 1st arg.
     The class should be initialized with a torch tensor in the following ways.
     1. directly init.
@@ -137,3 +137,9 @@ class ColoTensor(torch.Tensor):
             tensor = ColoTensor(data, spec=copy(self.tensor_spec))
             memo[id(self)] = tensor
             return tensor
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['_tensor_spec']
+        del state['_graph_node']
+        return state
