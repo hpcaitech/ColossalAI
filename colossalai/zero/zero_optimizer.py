@@ -8,6 +8,7 @@ from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, disposable
+from colossalai.tensor import ColoTensor
 
 
 class OptimState(Enum):
@@ -159,6 +160,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
                 for val in state.values():
                     if isinstance(val, torch.Tensor):
                         self.chunk_manager.add_extern_static_tensor(val)
+                    if isinstance(val, ColoTensor) and not hasattr(val, '_tensor_spec'):
+                        val.__init__(val)
 
     def load_state_dict(self, *args, **kwargs):
         super().load_state_dict(*args, **kwargs)
