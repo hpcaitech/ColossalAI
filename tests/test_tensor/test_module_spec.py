@@ -157,7 +157,7 @@ def run_check_shared_param():
     col_spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
-    model.cls.predictions.bias.set_spec(col_spec)
+    model.cls.predictions.bias.set_tensor_spec(col_spec)
     try:
         check_colo_module(model.cls.predictions.decoder, recursive=False)
     except Exception as e:

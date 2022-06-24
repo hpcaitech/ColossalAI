@@ -18,7 +18,7 @@ def register_elementwise_op(op):
         """
         output = op(input_tensor, *args, **kwargs)
         if isinstance(input_tensor, ColoTensor):
-            spec = copy(input_tensor.spec)
+            spec = copy(input_tensor.tensor_spec)
             return ColoTensor.from_torch_tensor(output, spec=spec)
         return ColoTensor.from_torch_tensor(output)
 

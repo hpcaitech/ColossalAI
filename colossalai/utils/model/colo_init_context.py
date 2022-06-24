@@ -42,10 +42,10 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
     has_dist_parameter = False
     with torch.no_grad():
         for param in self.parameters():
-            if isinstance(param, ColoParameter) and param.has_spec():
+            if isinstance(param, ColoParameter) and param.has_compute_spec():
                 has_dist_parameter = True
-                mapping[id(param)] = copy(param.spec)
-                param.set_spec(TensorSpec(distspec.replicate()))
+                mapping[id(param)] = copy(param.tensor_spec)
+                param.set_tensor_spec(TensorSpec(distspec.replicate()))
 
     # TODO: fix when keep_vars = True
     # when keep_vars = False, the state_dict_func will call detach to create
@@ -62,7 +62,7 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
             param_id = id(param)
             if param_id in mapping:
                 spec = mapping[id(param)]
-                param.set_spec(spec)
+                param.set_tensor_spec(spec)
     return ret
 
 

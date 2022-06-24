@@ -19,7 +19,7 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
                              padding_idx: Optional[int] = None) -> ColoTensor:
     # embedding_bag_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.spec.get_process_group()))
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
 
     output_parallel = F.embedding_bag(input_tensor,
                                       weight,
@@ -33,11 +33,14 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
                                       include_last_offset=include_last_offset,
                                       padding_idx=padding_idx)
     output_spec = TensorSpec(
-        distspec.shard(weight.spec.get_process_group(), [-1], [weight.spec.get_process_group_size()]),
+        distspec.shard(weight.tensor_spec.get_process_group(), [-1], [weight.tensor_spec.get_process_group_size()]),
         ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
-    return output.to_replicate()
+    if weight.tensor_spec.compute_spec.output_replicate:
+        return output.to_replicate()
+    else:
+        return output
 
 
 def colo_embedding_bag_1d(tp_mode: str,
@@ -86,8 +89,8 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
 
     # Handle differen parallel actions.
 
-    if not weight.has_spec():    # No Model Parallel Applied
-        assert weight.spec.is_gathered(), 'Invalid weight spec for native embedding op'
+    if not weight.has_compute_spec():    # No Model Parallel Applied
+        assert weight.tensor_spec.is_gathered(), 'Invalid weight spec for native embedding op'
         return ColoTensor.from_torch_tensor(
             F.embedding_bag(input_tensor,
                             weight,
@@ -100,8 +103,8 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
                             per_sample_weights=per_sample_weights,
                             include_last_offset=include_last_offset,
                             padding_idx=padding_idx))
-    elif weight.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.spec.is_1D_col():
+    elif weight.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+        if weight.tensor_spec.is_1D_col():
             tp_mode = 'col'
         else:
             raise NotImplementedError

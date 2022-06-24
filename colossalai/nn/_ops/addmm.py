@@ -13,34 +13,37 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # beta * input + alpha * All-Reduce(Output) = res
 
     mat1 = mat1.convert_to_dist_spec(
-        distspec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group_size()]))
+        distspec.shard(mat2.tensor_spec.get_process_group(), [-1], [mat2.tensor_spec.get_process_group_size()]))
 
     # Output:P
     partial_output = torch.mm(mat1, mat2)
     # Reduce(Output)
     output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
     # input
-    assert not input_tensor.has_spec(), 'Invalid input spec for 1Drow addmm op'
+    assert not input_tensor.has_compute_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor + alpha * output
-    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(distspec.replicate(mat2.spec.get_process_group())))
+    output = ColoTensor.from_torch_tensor(output,
+                                          spec=TensorSpec(distspec.replicate(mat2.tensor_spec.get_process_group())))
     return output
 
 
 def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
                      alpha: Number) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
-    parallel_action = mat2.spec.compute_spec
-    mat1 = mat1.convert_to_dist_spec(distspec.replicate(mat2.spec.get_process_group()))
+    compute_spec = mat2.tensor_spec.compute_spec
+    mat1 = mat1.convert_to_dist_spec(distspec.replicate(mat2.tensor_spec.get_process_group()))
     mat1 = reduce_grad(mat1, ParallelMode.PARALLEL_1D)
 
     output_parallel = torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha)
-    output_spec = TensorSpec(distspec.shard(mat2.spec.get_process_group(), [-1], [mat2.spec.get_process_group_size()]),
-                             ComputeSpec(ComputePattern.TP1D))
+    output_spec = TensorSpec(
+        distspec.shard(mat2.tensor_spec.get_process_group(), [-1], [mat2.tensor_spec.get_process_group_size()]),
+        ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
-    # TODO(jiaruifang) addam is special case
-    # since gpt call view after the Op.
-    return output.to_replicate()
+    if compute_spec.output_replicate:
+        return output.to_replicate()
+    else:
+        return output
 
 
 def colo_addmm_1d(mode: str, input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
@@ -64,14 +67,15 @@ def colo_addmm(input_tensor: GeneralTensor,
 
     # Add communication logic before and after linear call.
     ret_tensor = None
-    if not mat2.has_spec():    # No Model Parallel Applied
-        assert mat2.spec.is_gathered(), 'Invalid mat2 spec for native addmm op'
-        assert input_tensor.spec.is_gathered(), 'Invalid input spec for native addmm op'
+    if not mat2.has_compute_spec():    # No Model Parallel Applied
+        assert mat2.tensor_spec.is_gathered(), 'Invalid mat2 spec for native addmm op'
+        assert input_tensor.tensor_spec.is_gathered(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.from_torch_tensor(torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha))
-    elif mat2.spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if mat2.spec.is_1D_row() and input_tensor.spec.is_gathered():
+    elif mat2.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+        if mat2.tensor_spec.is_1D_row() and input_tensor.tensor_spec.is_gathered():
             mode = 'row'
-        elif mat2.spec.is_1D_col() and (input_tensor.spec.is_1D_col() or input_tensor.spec.is_1D_row()):
+        elif mat2.tensor_spec.is_1D_col() and (input_tensor.tensor_spec.is_1D_col()
+                                               or input_tensor.tensor_spec.is_1D_row()):
             mode = 'col'
         else:
             raise NotImplementedError

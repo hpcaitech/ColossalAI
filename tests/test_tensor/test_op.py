@@ -36,10 +36,10 @@ def test_layernorm():
 
 def check_spec_eq(tensor, other):
     assert isinstance(tensor, ColoTensor) and isinstance(other, ColoTensor)
-    for k in dir(tensor.spec.dist_spec):
+    for k in dir(tensor.tensor_spec.dist_spec):
         if not k.startswith('__'):
-            assert hasattr(other.spec.dist_spec, k)
-            assert getattr(tensor.spec.dist_spec, k) == getattr(other.spec.dist_spec, k)
+            assert hasattr(other.tensor_spec.dist_spec, k)
+            assert getattr(tensor.tensor_spec.dist_spec, k) == getattr(other.tensor_spec.dist_spec, k)
 
 
 def check_element_wise_ops():
