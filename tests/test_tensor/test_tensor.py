@@ -66,7 +66,7 @@ def _run_tensor_shard_init(world_size):
     shard_spec = distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), dims=[0], num_partitions=[world_size])
     tensor_spec = TensorSpec(shard_spec)
     t = ColoTensor.from_torch_tensor(t_ref.clone(), tensor_spec)
-    t.set_spec(TensorSpec(dist_spec=distspec.replicate()))
+    t.set_tensor_spec(TensorSpec(dist_spec=distspec.replicate()))
     assert t.shape == torch.Size((4 * world_size, 5))
 
 

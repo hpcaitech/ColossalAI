@@ -23,7 +23,7 @@ def init_1d_row_linear(weight):
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def init_1d_col_linear(weight):
@@ -31,7 +31,7 @@ def init_1d_col_linear(weight):
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def init_1d_row_embedding(weight):
@@ -39,7 +39,7 @@ def init_1d_row_embedding(weight):
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def init_1d_col_embedding(weight):
@@ -47,7 +47,7 @@ def init_1d_col_embedding(weight):
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def run_1d_hybrid_tp(model_name):

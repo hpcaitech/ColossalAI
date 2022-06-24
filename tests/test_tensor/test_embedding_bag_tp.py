@@ -20,7 +20,7 @@ def init_1d_col(weight):
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def run_with_spec(spec_init_func):
