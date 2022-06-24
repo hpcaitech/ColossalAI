@@ -143,3 +143,7 @@ class ColoTensor(torch.Tensor):
         del state['_tensor_spec']
         del state['_graph_node']
         return state
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        self.__init__(self)
