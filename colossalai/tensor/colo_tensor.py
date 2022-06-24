@@ -138,12 +138,17 @@ class ColoTensor(torch.Tensor):
             memo[id(self)] = tensor
             return tensor
 
-    # TODO(jiaruifang) a patch for gpt test.
-    # We need to override the member function must operate on a replicated tensor
-    # def view(self, *args, **kwargs):
-    #     self.data = DistSpecManager.handle_trans_spec(self,
-    #                 self.spec.dist_spec,
-    #                 distspec.replicate(self.spec.get_process_group()))
-    #     # self._tensor_spec.dist_spec = distspec.replicate(self.spec.get_process_group())
-    #     self.data.view(*args, **kwargs)
-    #     return ColoTensor.from_torch_tensor(self.data)
+    ##### override builtin functions which must use tensor in replicate placement ####
+
+    def view(self, *args) -> 'ColoTensor':
+        """override the torch buildin view()
+        the shape passed in must be in a replicate placement.
+        Returns:
+            ColoTensor: a tensor after viewed.
+        """
+        self.data = self.to_replicate()
+        return super().view(*args)
+
+    def size(self, *args, **kwargs):
+        self.data = self.to_replicate()
+        return super().size(*args, **kwargs)
