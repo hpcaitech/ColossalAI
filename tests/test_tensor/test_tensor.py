@@ -66,6 +66,7 @@ def _run_view(world_size):
         t_ref, TensorSpec(distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), dims=[0], num_partitions=[2])))
 
     assert t.size()[0] == 4 * world_size
+    assert t.size(1) == 5
     assert t.size() == torch.Size([4 * world_size, 5])
 
     t = t.view(4 * 5 * world_size)

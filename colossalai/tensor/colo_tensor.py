@@ -8,6 +8,7 @@ from colossalai.tensor import TensorSpec
 from colossalai.tensor import distspec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
 from colossalai.tensor.distspec import _DistSpec
+from typing import Optional
 
 
 def _convert_output(output):
@@ -166,14 +167,14 @@ class ColoTensor(torch.Tensor):
         self._tensor_spec.dist_spec = distspec.replicate()
         return super().view(*args)
 
-    def size(self, args=None) -> torch.Size:
+    def size(self, args: Optional[int] = None):
         """override the torch buildin size()
         the shape passed in must be in a replicate placement.
         Returns:
             ColoTensor: a tensor after viewed.
         """
         if self.tensor_spec.is_replicate():
-            if args:
+            if args is not None:
                 return super().size(args)
             else:
                 return super().size()
@@ -181,10 +182,10 @@ class ColoTensor(torch.Tensor):
         dims = spec.dims
         num_partitions = spec.num_partitions
 
-        arg_list = list(super().size())
+        size_list = list(super().size())
         for dim, num_partition in zip(dims, num_partitions):
-            arg_list[dim] *= num_partition
-        if args:
-            return torch.Size(arg_list)[args]
+            size_list[dim] *= num_partition
+        if args is not None:
+            return size_list[args]
         else:
-            return torch.Size(arg_list)
+            return torch.Size(size_list)
