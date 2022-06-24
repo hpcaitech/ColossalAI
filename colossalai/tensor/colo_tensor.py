@@ -167,30 +167,28 @@ class ColoTensor(torch.Tensor):
         self._tensor_spec.dist_spec = distspec.replicate()
         return super().view(*args)
 
-    # def size(self, args: Optional[int] = None):
-    #     """override the torch buildin size()
-    #     the shape passed in must be in a replicate placement.
-    #     Returns:
-    #         ColoTensor: a tensor after viewed.
-    #     """
-    #     if self.tensor_spec.is_replicate():
-    #         if args is not None:
-    #             return super().size(args)
-    #         else:
-    #             return super().size()
+    def size(self, args: Optional[int] = None):
+        """override the torch buildin size()
+        the shape passed in must be in a replicate placement.
+        Returns:
+            ColoTensor: a tensor after viewed.
+        """
+        if self.tensor_spec.is_replicate():
+            if args is not None:
+                return super().size(args)
+            else:
+                return super().size()
 
-    #     spec = self.tensor_spec.dist_spec
-    #     dims = spec.dims
-    #     num_partitions = spec.num_partitions
-    #     import inspect
-    #     print(*['{:40}| {}:{}\n'.format(x.function, x.filename, x.lineno) for x in inspect.stack()])
+        spec = self.tensor_spec.dist_spec
+        dims = spec.dims
+        num_partitions = spec.num_partitions
+        # import inspect
+        # print(*['{:40}| {}:{}\n'.format(x.function, x.filename, x.lineno) for x in inspect.stack()])
 
-    #     size_list = list(super().size())
-    #     print(size_list)
-    #     for dim, num_partition in zip(dims, num_partitions):
-    #         size_list[dim] *= num_partition
-    #     if args is not None:
-    #         return size_list[args]
-    #     else:
-    #         print(f'size_list {size_list}')
-    #         return torch.Size(size_list)
+        size_list = list(super().size())
+        for dim, num_partition in zip(dims, num_partitions):
+            size_list[dim] *= num_partition
+        if args is not None:
+            return size_list[args]
+        else:
+            return torch.Size(size_list)
