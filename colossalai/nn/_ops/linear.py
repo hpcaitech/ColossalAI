@@ -77,7 +77,7 @@ def colo_linear_imp(input_tensor: GeneralTensor,
                                                  or bias.tensor_spec.is_1D_col()):
             mode = 'col'
         else:
-            raise NotImplementedError
+            raise RuntimeError(f"the weight or bias tensor spec is not valid, weight {weight.tensor_spec}, bias {bias}")
         ret_tensor = colo_linear_1d(mode, input_tensor, weight, bias)
     else:
         raise NotImplementedError

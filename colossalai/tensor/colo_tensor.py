@@ -60,6 +60,12 @@ class ColoTensor(torch.Tensor):
     def tensor_spec(self) -> TensorSpec:
         return self._tensor_spec
 
+    @tensor_spec.setter
+    def tensor_spec(self, tenseor_spec: TensorSpec):
+        spec = copy(spec)
+        self._convert_to_dist_spec(spec.dist_spec)
+        self._tensor_spec = spec
+
     def set_tensor_spec(self, spec: TensorSpec) -> None:
         spec = copy(spec)
         self._convert_to_dist_spec(spec.dist_spec)
@@ -140,6 +146,12 @@ class ColoTensor(torch.Tensor):
 
     ##### override builtin functions which must use tensor in replicate placement ####
 
+    def view_base(self, *args) -> 'ColoTensor':
+        return super().view(*args)
+
+    def size_base(self, *args, **kwargs) -> torch.Size:
+        return super().size(*args, **kwargs)
+
     def view(self, *args) -> 'ColoTensor':
         """override the torch buildin view()
         the args passed in must be in a replicate placement.
@@ -148,7 +160,10 @@ class ColoTensor(torch.Tensor):
         """
         if self.tensor_spec.dist_spec.placement.value == 'r':
             return super().view(*args)
-        self.data = self.to_replicate()
+        # TODO(jiaruifang) check why this not work
+        # self.data = self.to_replicate()
+        self.data = DistSpecManager.handle_trans_spec(self.data, self.tensor_spec.dist_spec, distspec.replicate())
+        self._tensor_spec.dist_spec = distspec.replicate()
         return super().view(*args)
 
     def size(self, *args, **kwargs) -> torch.Size:
@@ -159,5 +174,7 @@ class ColoTensor(torch.Tensor):
         """
         if self.tensor_spec.dist_spec.placement.value == 'r':
             return super().size(*args, **kwargs)
-        self.data = self.to_replicate()
+        # self.data = self.to_replicate()
+        self.data = DistSpecManager.handle_trans_spec(self, self.tensor_spec.dist_spec, distspec.replicate())
+        self._tensor_spec.dist_spec = distspec.replicate()
         return super().size(*args, **kwargs)
