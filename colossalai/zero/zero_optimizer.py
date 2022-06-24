@@ -60,6 +60,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
             self._logger.warning(f'gpu_margin_mem_ratio is meaningless when placement_policy is not "auto"', ranks=[0])
 
         self._register_states = disposable(self._register_states_)
+        self._process_loaded_states = disposable(self._process_loaded_states_)
 
     def _update_params_ptr(self):
         for group in self.optim.param_groups:
@@ -110,6 +111,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
             self._update_fp16_params()
             return
         self._update_params_ptr()
+        self._process_loaded_states()
         ret = self.optim.step(*args, **kwargs)
         self._register_states()
         self._update_fp16_params()
@@ -144,6 +146,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
                     self.chunk_manager.move_chunk(fp16_param_chunk, get_current_device())
                     self.module._set_chunk_grad_device(fp16_param_chunk, get_current_device())
                     fp32_params_used_cuda_margin_mem += fp32_param_chunk.mem
+                    for p in fp16_param_chunk.get_tensors():
+                        state = self.optim.state[p]
+                        for k, v in state.items():
+                            if isinstance(v, torch.Tensor):
+                                state[k] = v.to(get_current_device())
+
             self.module._setup_grads_ptr()
 
     def _register_states_(self):
@@ -153,3 +161,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
                 for val in state.values():
                     if isinstance(val, torch.Tensor):
                         self.chunk_manager.add_extern_static_tensor(val)
+
+    def _process_loaded_states_(self):
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                state = self.optim.state[p]
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(dtype=self.fp16_param_to_fp32_param[p].dtype,
+                                        device=self.fp16_param_to_fp32_param[p].device)
