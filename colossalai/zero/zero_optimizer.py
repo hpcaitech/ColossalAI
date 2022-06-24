@@ -8,7 +8,6 @@ from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, disposable
-from colossalai.tensor import ColoTensor
 
 
 class OptimState(Enum):
