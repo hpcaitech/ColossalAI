@@ -9,7 +9,7 @@ class TensorSpec(object):
     The specification of the ColoTensor.
     Args:
         dist_spec (_DistSpec): descriping the layout among processes.
-        parallel_action (Optional[ComputeSpec], optional): actions conducted on the tensor after initialization if it's a model data tensor. 
+        compute_spec (Optional[ComputeSpec], optional): actions conducted on the tensor after initialization if it's a model data tensor. 
         Defaults to None.
     """
 
