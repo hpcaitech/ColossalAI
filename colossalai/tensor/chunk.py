@@ -114,7 +114,7 @@ class Chunk:
         # if the process owns the rank, then copy the tensor to its chunk buffer
         # otherwise set its storage size to 0 to reduce memory consumption
         if self.is_src_rank:
-            self._payload[self.utilized_size:new_utilized_size].copy_(tensor.view(-1))
+            self._payload[self.utilized_size:new_utilized_size].copy_(tensor.flatten())
             tensor_state = TensorState.HOLD
             tensor.data = self._payload[self.utilized_size:new_utilized_size].view(tensor.shape)
         else:
