@@ -90,7 +90,7 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
     # Handle differen parallel actions.
 
     if not weight.has_compute_spec():    # No Model Parallel Applied
-        assert weight.tensor_spec.is_gathered(), 'Invalid weight spec for native embedding op'
+        assert weight.tensor_spec.is_replicate(), 'Invalid weight spec for native embedding op'
         return ColoTensor.from_torch_tensor(
             F.embedding_bag(input_tensor,
                             weight,

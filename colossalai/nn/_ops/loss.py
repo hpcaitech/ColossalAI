@@ -18,7 +18,7 @@ def colo_cross_entropy(input_tensor: GeneralTensor,
                        label_smoothing: float = 0.0):
     input_tensor, target, weight = tuple(map(convert_to_colo_tensor, (input_tensor, target, weight)))
 
-    if input_tensor.tensor_spec.is_gathered():    # Input is gathered
+    if input_tensor.tensor_spec.is_replicate():    # Input is gathered
         output = F.cross_entropy(input_tensor,
                                  target,
                                  weight=weight,

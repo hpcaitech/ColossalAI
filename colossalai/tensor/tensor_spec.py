@@ -26,7 +26,7 @@ class TensorSpec(object):
     def get_placement(self):
         return self.dist_spec.placement
 
-    def is_gathered(self):
+    def is_replicate(self):
         return self.dist_spec.placement == DistPlacementPattern.REPLICATE \
             or (len(self.dist_spec.num_partitions) == 1
                 and self.dist_spec.num_partitions[0] == 1) \

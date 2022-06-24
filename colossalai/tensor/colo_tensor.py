@@ -158,7 +158,7 @@ class ColoTensor(torch.Tensor):
         Returns:
             ColoTensor: a tensor after viewed.
         """
-        if self.tensor_spec.dist_spec.placement.value == 'r':
+        if self.tensor_spec.is_replicate():
             return super().view(*args)
         # TODO(jiaruifang) check why this not work
         # self.data = self.to_replicate()
@@ -172,7 +172,7 @@ class ColoTensor(torch.Tensor):
         Returns:
             ColoTensor: a tensor after viewed.
         """
-        if self.tensor_spec.dist_spec.placement.value == 'r':
+        if self.tensor_spec.is_replicate():
             return super().size(*args, **kwargs)
         # self.data = self.to_replicate()
         self.data = DistSpecManager.handle_trans_spec(self, self.tensor_spec.dist_spec, distspec.replicate())
