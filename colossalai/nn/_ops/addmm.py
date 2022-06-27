@@ -72,10 +72,10 @@ def colo_addmm(input_tensor: GeneralTensor,
         assert input_tensor.tensor_spec.is_replicate(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.from_torch_tensor(torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha))
     elif mat2.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if mat2.tensor_spec.is_1D_row() and input_tensor.tensor_spec.is_replicate():
+        if mat2.tensor_spec.is_shard_1drow() and input_tensor.tensor_spec.is_replicate():
             mode = 'row'
-        elif mat2.tensor_spec.is_1D_col() and (input_tensor.tensor_spec.is_1D_col()
-                                               or input_tensor.tensor_spec.is_1D_row()):
+        elif mat2.tensor_spec.is_shard_1dcol() and (input_tensor.tensor_spec.is_shard_1dcol()
+                                                    or input_tensor.tensor_spec.is_shard_1drow()):
             mode = 'col'
         else:
             raise NotImplementedError

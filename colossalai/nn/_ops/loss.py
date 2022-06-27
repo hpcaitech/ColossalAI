@@ -29,7 +29,7 @@ def colo_cross_entropy(input_tensor: GeneralTensor,
                                  label_smoothing=label_smoothing)
         return ColoTensor.from_torch_tensor(output)
     elif input_tensor.has_compute_spec():    # Single Model Parallel Applied
-        if input_tensor.tensor_spec.is_1D_col():
+        if input_tensor.tensor_spec.is_shard_1dcol():
             output = VocabParallelCrossEntropyLoss1D()(input_tensor, target)
             return ColoTensor.from_torch_tensor(output)
         else:

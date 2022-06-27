@@ -69,7 +69,11 @@ def _run_view(world_size):
     assert t.size(1) == 5
     assert t.size() == torch.Size([4 * world_size, 5])
 
+    t.view_base(4 * 5)
+    assert t.tensor_spec.dist_spec.placement.value == 's'
+
     t = t.view(4 * 5 * world_size)
+    assert t.tensor_spec.dist_spec.placement.value == 'r'
     assert t.shape == torch.Size([4 * 5 * world_size])
 
 
@@ -92,19 +96,18 @@ def _run_tensor_replicated_init(world_size):
 
 def run_dist_tests(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    _run_tensor_shard_init(world_size)
-    _run_tensor_replicated_init(world_size)
+    # _run_tensor_shard_init(world_size)
+    # _run_tensor_replicated_init(world_size)
     _run_view(world_size)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
-def _test_dist_cases(world_size):
+def test_dist_cases(world_size):
     run_func = partial(run_dist_tests, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    # _test_dist_init(4)
-    _test_dist_cases(2)
+    test_dist_cases(2)
