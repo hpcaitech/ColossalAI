@@ -230,8 +230,7 @@ class Chunk:
             data_slice (torch.Tensor): the tensor to be copied to the chunk
         """
         tensor_info = self.tensors_info[tensor]
-        assert type(data_slice) == torch.Tensor, "copy_tensor_to_chunk_slice must use a torch tensor"
-        self._payload[tensor_info.offset:tensor_info.end].copy_(data_slice.view(-1))
+        self._payload[tensor_info.offset:tensor_info.end].copy_(data_slice.flatten())
         tensor.data = self._payload[tensor_info.offset:tensor_info.end].view(tensor.shape)
 
     @property
