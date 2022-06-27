@@ -54,5 +54,5 @@ def shard(process_group: ProcessGroup, dims: List[int], num_partitions: List[int
     assert process_group is not None
     assert isinstance(dims, list) and isinstance(num_partitions, list)
     assert len(dims) == len(num_partitions)
-    assert prod(num_partitions) == process_group.size()
+    assert prod(num_partitions) == process_group.size(), f"{num_partitions} {process_group.size()}"
     return _DistSpec(DistPlacementPattern.SHARD, process_group, dims=tuple(dims), num_partitions=tuple(num_partitions))

@@ -116,6 +116,7 @@ class Chunk:
         if self.is_src_rank:
             self._payload[self.utilized_size:new_utilized_size].copy_(tensor.flatten())
             tensor_state = TensorState.HOLD
+            assert type(self._payload) == torch.Tensor, "copy_tensor_to_chunk_slice must use a torch tensor"
             tensor.data = self._payload[self.utilized_size:new_utilized_size].view(tensor.shape)
         else:
             tensor.storage().resize_(0)
@@ -131,6 +132,7 @@ class Chunk:
             self._update_tensors_state(TensorState.FREE)
 
     def _update_tensors_ptr(self) -> None:
+        assert type(self._payload) == torch.Tensor
         for tensor, tensor_info in self.tensors_info.items():
             tensor.data = self._payload[tensor_info.offset:tensor_info.end].view(tensor.shape)
 
@@ -228,7 +230,7 @@ class Chunk:
             data_slice (torch.Tensor): the tensor to be copied to the chunk
         """
         tensor_info = self.tensors_info[tensor]
-        self._payload[tensor_info.offset:tensor_info.end].copy_(data_slice.view(-1))
+        self._payload[tensor_info.offset:tensor_info.end].copy_(data_slice.flatten())
         tensor.data = self._payload[tensor_info.offset:tensor_info.end].view(tensor.shape)
 
     @property

@@ -32,6 +32,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
     compute_spec = weight.tensor_spec.compute_spec
+
     if compute_spec.output_replicate:
         return output.to_replicate()
     else:
@@ -125,9 +126,9 @@ def colo_embedding(input_tensor: GeneralTensor,
                         scale_grad_by_freq=scale_grad_by_freq,
                         sparse=sparse))
     elif weight.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.tensor_spec.is_1D_row():
+        if weight.tensor_spec.is_shard_1drow():
             mode = 'row'
-        elif weight.tensor_spec.is_1D_col():
+        elif weight.tensor_spec.is_shard_1dcol():
             mode = 'col'
         else:
             raise NotImplementedError

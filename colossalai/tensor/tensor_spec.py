@@ -32,11 +32,11 @@ class TensorSpec(object):
                 and self.dist_spec.num_partitions[0] == 1) \
             or (self.dist_spec.process_group.size() == 1)
 
-    def is_1D_col(self):
+    def is_shard_1dcol(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
             and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == -1
 
-    def is_1D_row(self):
+    def is_shard_1drow(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
             and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
 
