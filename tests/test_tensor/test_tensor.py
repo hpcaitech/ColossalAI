@@ -63,7 +63,9 @@ def test_operand():
 def _run_view(world_size):
     t_ref = torch.randn(4, 5)
     t = ColoTensor.from_torch_tensor(
-        t_ref, TensorSpec(distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), dims=[0], num_partitions=[2])))
+        t_ref,
+        TensorSpec(distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), dims=[0],
+                                  num_partitions=[world_size])))
 
     assert t.size()[0] == 4 * world_size
     assert t.size(1) == 5
@@ -96,8 +98,8 @@ def _run_tensor_replicated_init(world_size):
 
 def run_dist_tests(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    # _run_tensor_shard_init(world_size)
-    # _run_tensor_replicated_init(world_size)
+    _run_tensor_shard_init(world_size)
+    _run_tensor_replicated_init(world_size)
     _run_view(world_size)
 
 
