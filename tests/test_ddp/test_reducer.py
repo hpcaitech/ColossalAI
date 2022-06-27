@@ -34,7 +34,7 @@ def run_reducer():
         dist.all_reduce(g)
     reducer = Reducer(bucket_size_mb=1)
     for g, g_clone in zip(grads, grads_clone):
-        reducer.allreduce_async(g_clone, _get_default_group(), partial(check_eq, g))
+        reducer.all_reduce_async(g_clone, _get_default_group(), partial(check_eq, g))
     reducer.flush()
 
 
