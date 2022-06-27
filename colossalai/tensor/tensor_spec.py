@@ -9,7 +9,7 @@ class TensorSpec(object):
     The specification of the ColoTensor.
     Args:
         dist_spec (_DistSpec): descriping the layout among processes.
-        parallel_action (Optional[ComputeSpec], optional): actions conducted on the tensor after initialization if it's a model data tensor. 
+        compute_spec (Optional[ComputeSpec], optional): actions conducted on the tensor after initialization if it's a model data tensor. 
         Defaults to None.
     """
 
@@ -26,7 +26,7 @@ class TensorSpec(object):
     def get_placement(self):
         return self.dist_spec.placement
 
-    def is_gathered(self):
+    def is_replicate(self):
         return self.dist_spec.placement == DistPlacementPattern.REPLICATE \
             or (len(self.dist_spec.num_partitions) == 1
                 and self.dist_spec.num_partitions[0] == 1) \

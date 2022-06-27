@@ -8,6 +8,7 @@ from colossalai.tensor import TensorSpec
 from colossalai.tensor import distspec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
 from colossalai.tensor.distspec import _DistSpec
+from typing import Optional
 
 
 def _convert_output(output):
@@ -57,15 +58,21 @@ class ColoTensor(torch.Tensor):
         self._graph_node = None
 
     @property
-    def spec(self) -> TensorSpec:
+    def tensor_spec(self) -> TensorSpec:
         return self._tensor_spec
 
-    def set_spec(self, spec: TensorSpec) -> None:
+    @tensor_spec.setter
+    def tensor_spec(self, tenseor_spec: TensorSpec):
         spec = copy(spec)
         self._convert_to_dist_spec(spec.dist_spec)
         self._tensor_spec = spec
 
-    def has_spec(self) -> bool:
+    def set_tensor_spec(self, spec: TensorSpec) -> None:
+        spec = copy(spec)
+        self._convert_to_dist_spec(spec.dist_spec)
+        self._tensor_spec = spec
+
+    def has_compute_spec(self) -> bool:
         return self._tensor_spec.compute_spec is not None
 
     def is_model_data(self) -> bool:
@@ -100,27 +107,27 @@ class ColoTensor(torch.Tensor):
             dist_spec (_DistSpec): the target dist. spec.
         """
         with DistSpecManager.no_grad():
-            self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
+            self.data = DistSpecManager.handle_trans_spec(self, self.tensor_spec.dist_spec, dist_spec)
         self._tensor_spec.dist_spec = dist_spec
 
     def convert_to_dist_spec(self, dist_spec: _DistSpec) -> 'ColoTensor':
         tensor_spec = copy(self._tensor_spec)
         tensor_spec.dist_spec = dist_spec
-        ret = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, dist_spec)
+        ret = DistSpecManager.handle_trans_spec(self, self.tensor_spec.dist_spec, dist_spec)
         return ColoTensor.from_torch_tensor(ret, tensor_spec)
 
     def to_replicate_(self):
         """to_replicate_ 
         an inline member function, converting dist spec of the tensor to REPLICATE
         """
-        self.data = DistSpecManager.handle_trans_spec(self, self.spec.dist_spec, distspec.replicate())
+        self.data = DistSpecManager.handle_trans_spec(self, self.tensor_spec.dist_spec, distspec.replicate())
         self._tensor_spec.dist_spec = distspec.replicate()
 
     def to_replicate(self) -> 'ColoTensor':
         """to_replicate
         converting dist spec of the tensor to REPLICATE
         """
-        return self.convert_to_dist_spec(distspec.replicate(self.spec.get_process_group()))
+        return self.convert_to_dist_spec(distspec.replicate(self.tensor_spec.get_process_group()))
 
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor, spec: TensorSpec = TensorSpec(distspec.replicate())) -> 'ColoTensor':
@@ -134,16 +141,54 @@ class ColoTensor(torch.Tensor):
         else:
             with torch._C.DisableTorchFunction():
                 data = self.data.clone()
-            tensor = ColoTensor(data, spec=copy(self.spec))
+            tensor = ColoTensor(data, spec=copy(self.tensor_spec))
             memo[id(self)] = tensor
             return tensor
 
-    # TODO(jiaruifang) a patch for gpt test.
-    # We need to override the member function must operate on a replicated tensor
-    # def view(self, *args, **kwargs):
-    #     self.data = DistSpecManager.handle_trans_spec(self,
-    #                 self.spec.dist_spec,
-    #                 distspec.replicate(self.spec.get_process_group()))
-    #     # self._tensor_spec.dist_spec = distspec.replicate(self.spec.get_process_group())
-    #     self.data.view(*args, **kwargs)
-    #     return ColoTensor.from_torch_tensor(self.data)
+    ##### override builtin functions which must use tensor in replicate placement ####
+
+    def view_base(self, *args) -> 'ColoTensor':
+        return super().view(*args)
+
+    def size_base(self, *args, **kwargs) -> torch.Size:
+        return super().size(*args, **kwargs)
+
+    def view(self, *args) -> 'ColoTensor':
+        """override the torch buildin view()
+        the args passed in must be in a replicate placement.
+        Returns:
+            ColoTensor: a tensor after viewed.
+        """
+        if self.tensor_spec.is_replicate():
+            return super().view(*args)
+        # TODO(jiaruifang) check why this not work
+        # self.data = self.to_replicate()
+        self.data = DistSpecManager.handle_trans_spec(self.data, self.tensor_spec.dist_spec, distspec.replicate())
+        self._tensor_spec.dist_spec = distspec.replicate()
+        return super().view(*args)
+
+    def size(self, args: Optional[int] = None):
+        """override the torch buildin size()
+        the shape passed in must be in a replicate placement.
+        Returns:
+            ColoTensor: a tensor after viewed.
+        """
+        if self.tensor_spec.is_replicate():
+            if args is not None:
+                return super().size(args)
+            else:
+                return super().size()
+
+        spec = self.tensor_spec.dist_spec
+        dims = spec.dims
+        num_partitions = spec.num_partitions
+        # import inspect
+        # print(*['{:40}| {}:{}\n'.format(x.function, x.filename, x.lineno) for x in inspect.stack()])
+
+        size_list = list(super().size())
+        for dim, num_partition in zip(dims, num_partitions):
+            size_list[dim] *= num_partition
+        if args is not None:
+            return size_list[args]
+        else:
+            return torch.Size(size_list)

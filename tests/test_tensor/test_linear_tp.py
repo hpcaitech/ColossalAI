@@ -21,7 +21,7 @@ def init_1d_row(weight, bias):
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def init_1d_col(weight, bias):
@@ -29,8 +29,8 @@ def init_1d_col(weight, bias):
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
         ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
-        bias.set_spec(spec)
+        weight.set_tensor_spec(spec)
+        bias.set_tensor_spec(spec)
 
 
 def run_with_spec(spec_init_func):

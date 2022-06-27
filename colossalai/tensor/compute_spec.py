@@ -18,6 +18,8 @@ class ComputeSpec(object):
     def __init__(self, compute_pattern: ComputePattern) -> None:
         assert isinstance(compute_pattern, ComputePattern)
         self.compute_pattern = compute_pattern
+        # Make sure output tensors are replicate
+        self.output_replicate = True
 
     def __repr__(self):
         return f'compute pattern: {self.compute_pattern}'
