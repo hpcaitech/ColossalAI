@@ -40,10 +40,12 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
         ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
-    if compute_spec.output_replicate:
-        return output.to_replicate()
-    else:
-        return output
+    return output
+
+    # if compute_spec.output_replicate:
+    #     return output.to_replicate()
+    # else:
+    #     return output
 
 
 def colo_addmm_1d(mode: str, input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,

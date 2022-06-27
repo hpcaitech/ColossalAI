@@ -71,10 +71,10 @@ def _run_view(world_size):
     assert t.size(1) == 5
     assert t.size() == torch.Size([4 * world_size, 5])
 
-    t.view_base(4 * 5)
+    t.view_local(4 * 5)
     assert t.tensor_spec.dist_spec.placement.value == 's'
 
-    t = t.view(4 * 5 * world_size)
+    t = t.view_global(4 * 5 * world_size)
     assert t.tensor_spec.dist_spec.placement.value == 'r'
     assert t.shape == torch.Size([4 * 5 * world_size])
 

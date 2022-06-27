@@ -105,9 +105,9 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
     #### the ColoParameter should use the torch.Tensor's builtin methodes ###
 
     def view(self, *args) -> 'ColoTensor':
-        return super().view_base(*args)
+        return super().view_local(*args)
 
     def size(self, *args, **kwargs) -> torch.Size:
         # import inspect
         # print(*['{:40}| {}:{}\n'.format(x.function, x.filename, x.lineno) for x in inspect.stack()])
-        return super().size_base(*args, **kwargs)
+        return super().size_local(*args, **kwargs)
