@@ -145,5 +145,12 @@ class ColoTensor(torch.Tensor):
         return state
 
     def __setstate__(self, state):
-        super().__setstate__(state)
         self.__init__(self)
+
+    def reset_dist_spec(self, dist_spec: _DistSpec) -> None:
+        """Reset ``dist_spec`` without changing the shape of tensor.
+
+        Args:
+            dist_spec (_DistSpec): dist spec
+        """
+        self._tensor_spec.dist_spec = dist_spec
