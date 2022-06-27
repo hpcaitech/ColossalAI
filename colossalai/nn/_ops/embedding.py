@@ -33,7 +33,6 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
 
     compute_spec = weight.tensor_spec.compute_spec
 
-    return output
     if compute_spec.output_replicate:
         return output.to_replicate()
     else:
