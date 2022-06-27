@@ -51,7 +51,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
 
     tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-    num_embeddings_per_partition = weight.size(0)
+    num_embeddings_per_partition = weight.size_base(0)
     vocab_start_index = tensor_parallel_rank * num_embeddings_per_partition
     vocab_end_index = vocab_start_index + num_embeddings_per_partition
 
@@ -115,7 +115,7 @@ def colo_embedding(input_tensor: GeneralTensor,
     # Handle differen parallel actions.
 
     if not weight.has_compute_spec():    # No Model Parallel Applied
-        assert weight.tensor_spec.is_gathered(), 'Invalid weight spec for native embedding op'
+        assert weight.tensor_spec.is_replicate(), 'Invalid weight spec for native embedding op'
         return ColoTensor.from_torch_tensor(
             F.embedding(input_tensor,
                         weight,

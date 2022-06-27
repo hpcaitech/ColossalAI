@@ -101,3 +101,13 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
         # TODO(jzy) we don't support object reflection now.
         # distspec cannot be pickled or rebuilt because it's tightly connected to runtime attribute `process_group`.
         raise NotImplementedError
+
+    #### the ColoParameter should use the torch.Tensor's builtin methodes ###
+
+    def view(self, *args) -> 'ColoTensor':
+        return super().view_base(*args)
+
+    def size(self, *args, **kwargs) -> torch.Size:
+        # import inspect
+        # print(*['{:40}| {}:{}\n'.format(x.function, x.filename, x.lineno) for x in inspect.stack()])
+        return super().size_base(*args, **kwargs)

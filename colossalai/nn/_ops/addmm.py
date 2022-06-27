@@ -68,11 +68,11 @@ def colo_addmm(input_tensor: GeneralTensor,
     # Add communication logic before and after linear call.
     ret_tensor = None
     if not mat2.has_compute_spec():    # No Model Parallel Applied
-        assert mat2.tensor_spec.is_gathered(), 'Invalid mat2 spec for native addmm op'
-        assert input_tensor.tensor_spec.is_gathered(), 'Invalid input spec for native addmm op'
+        assert mat2.tensor_spec.is_replicate(), 'Invalid mat2 spec for native addmm op'
+        assert input_tensor.tensor_spec.is_replicate(), 'Invalid input spec for native addmm op'
         ret_tensor = ColoTensor.from_torch_tensor(torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha))
     elif mat2.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if mat2.tensor_spec.is_1D_row() and input_tensor.tensor_spec.is_gathered():
+        if mat2.tensor_spec.is_1D_row() and input_tensor.tensor_spec.is_replicate():
             mode = 'row'
         elif mat2.tensor_spec.is_1D_col() and (input_tensor.tensor_spec.is_1D_col()
                                                or input_tensor.tensor_spec.is_1D_row()):

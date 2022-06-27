@@ -67,17 +67,17 @@ def colo_linear_imp(input_tensor: GeneralTensor,
     # Add communication logic before and after linear call.
     ret_tensor = None
     if not weight.has_compute_spec():    # No Model Parallel Applied
-        assert weight.tensor_spec.is_gathered(), 'Invalid weight spec for native Linear op'
-        assert bias is None or bias.tensor_spec.is_gathered(), 'Invalid bias spec for native Linear op'
+        assert weight.tensor_spec.is_replicate(), 'Invalid weight spec for native Linear op'
+        assert bias is None or bias.tensor_spec.is_replicate(), 'Invalid bias spec for native Linear op'
         ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
     elif weight.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.tensor_spec.is_1D_col() and (bias is None or bias.tensor_spec.is_gathered()):
+        if weight.tensor_spec.is_1D_col() and (bias is None or bias.tensor_spec.is_replicate()):
             mode = 'row'
         elif weight.tensor_spec.is_1D_row() and (bias is None or bias.tensor_spec.is_1D_row()
                                                  or bias.tensor_spec.is_1D_col()):
             mode = 'col'
         else:
-            raise NotImplementedError
+            raise RuntimeError(f"the weight or bias tensor spec is not valid, weight {weight.tensor_spec}, bias {bias}")
         ret_tensor = colo_linear_1d(mode, input_tensor, weight, bias)
     else:
         raise NotImplementedError

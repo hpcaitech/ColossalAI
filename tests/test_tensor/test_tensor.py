@@ -60,6 +60,19 @@ def test_operand():
 #### Test Distributed init a Colotensor
 
 
+def _run_view(world_size):
+    t_ref = torch.randn(4, 5)
+    t = ColoTensor.from_torch_tensor(
+        t_ref, TensorSpec(distspec.shard(process_group=gpc.get_group(ParallelMode.DATA), dims=[0], num_partitions=[2])))
+
+    assert t.size()[0] == 4 * world_size
+    assert t.size(1) == 5
+    assert t.size() == torch.Size([4 * world_size, 5])
+
+    t = t.view(4 * 5 * world_size)
+    assert t.shape == torch.Size([4 * 5 * world_size])
+
+
 def _run_tensor_shard_init(world_size):
     t_ref = torch.randn(4, 5)
     print(gpc.get_group(ParallelMode.DATA).size())
@@ -77,20 +90,21 @@ def _run_tensor_replicated_init(world_size):
     assert t.shape == torch.Size((4 * world_size, 5)), f"{t.shape}"
 
 
-def run_tensor_init(rank, world_size, port):
+def run_dist_tests(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     _run_tensor_shard_init(world_size)
     _run_tensor_replicated_init(world_size)
+    _run_view(world_size)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
-def _test_dist_init(world_size):
-    run_func = partial(run_tensor_init, world_size=world_size, port=free_port())
+def _test_dist_cases(world_size):
+    run_func = partial(run_dist_tests, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
     # _test_dist_init(4)
-    test_new()
+    _test_dist_cases(2)
