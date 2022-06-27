@@ -258,24 +258,25 @@ class FP16Optimizer(Optimizer):
 
         overflow = self._check_overflow()
         self._grad_scaler.update(overflow)
-
         if overflow:
             self.zero_grad()
-            return False, None
 
         # Clip the main gradients.
         grad_norm = None
         if self._clip_grad_max_norm > 0.0:
             grad_norm = self.clip_grad_norm(self._clip_grad_max_norm)
 
-        # Step the optimizer.
-        self._optimizer.step()
+        if not overflow:
+            # Step the optimizer.
+            self._optimizer.step()
 
-        # Update params from main params.
-        self._update_fp16_param_from_fp32_param()
+            # Update params from main params.
+            self._update_fp16_param_from_fp32_param()
 
-        # Successful update.
-        return True, grad_norm
+            # Successful update.
+            return True, grad_norm
+        else:
+            return False, None
 
     def backward(self, loss):
         """Execute backward pass.
