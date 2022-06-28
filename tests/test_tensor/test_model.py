@@ -66,7 +66,8 @@ def run_1d_hybrid_tp(model_name):
             p2.data.copy_(p1.data)
 
     rank = gpc.get_local_rank(ParallelMode.GLOBAL)
-    pg = ProcessGroup(rank, list(range(gpc.get_world_size())), tp_degree=gpc.get_world_size())
+    world_size = gpc.get_world_size(ParallelMode.GLOBAL)
+    pg = ProcessGroup(rank, list(range(world_size)), tp_degree=world_size)
     if 'bert' == model_name:
         for name, p in model.named_parameters():
             if not isinstance(p, ColoTensor):
