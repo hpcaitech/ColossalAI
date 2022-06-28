@@ -11,7 +11,7 @@ class ProcessGroup:
         ranks: List[int], a list of rank id belongings to this process group.
         backend: str, the backend of the process group.
         tp_degree: Optional[int], tensor parallelism degree, default None means 1
-        dp_degree: Optional[int], tensor parallelism degree, default None means len(ranks)
+        dp_degree: Optional[int], data parallelism degree, default None means len(ranks)
     """
 
     def __init__(self,
