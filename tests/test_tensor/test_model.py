@@ -66,7 +66,7 @@ def run_1d_hybrid_tp(model_name):
             p2.data.copy_(p1.data)
 
     rank = gpc.get_local_rank(ParallelMode.GLOBAL)
-    pg = ProcessGroup(rank, list(range(gpc.world_size())), tp_degree=gpc.world_size())
+    pg = ProcessGroup(rank, list(range(gpc.get_world_size())), tp_degree=gpc.get_world_size())
     if 'bert' == model_name:
         for name, p in model.named_parameters():
             if not isinstance(p, ColoTensor):
@@ -219,6 +219,10 @@ def run_1d_row_tp(model_name: str):
     with ColoInitContext(device=get_current_device()):
         model = model_builder(checkpoint=True)
 
+    rank = gpc.get_local_rank(ParallelMode.GLOBAL)
+    world_size = gpc.get_world_size(ParallelMode.GLOBAL)
+    pg = ProcessGroup(rank, list(range(world_size)), tp_degree=world_size)
+
     set_seed(1)
     if rank == 0:
         model_torch = model_builder(checkpoint=True)
@@ -228,9 +232,9 @@ def run_1d_row_tp(model_name: str):
         if not isinstance(p, ColoTensor):
             continue
         if 'weight' in name and 'LayerNorm' not in name and 'ln' not in name and 'embed' not in name:
-            init_1d_row_linear(p)
+            init_1d_row_linear(p, pg)
         if 'embed' in name and 'weight' in name:
-            init_1d_row_embedding(p)
+            init_1d_row_embedding(p, pg)
 
     model = model.cuda()
 

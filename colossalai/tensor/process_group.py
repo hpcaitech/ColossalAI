@@ -30,14 +30,14 @@ class ProcessGroup:
             self._dp_degree = self._world_size
             self._tp_degree = 1
 
-        if dp_degree is None and tp_degree:
+        if dp_degree and not tp_degree:
             self._dp_degree = dp_degree
-            assert self._world_size % dp_degree == 0, f"DP degree {dp_degree} should be divisible by {self._world_size} hen DP degree is None"
+            assert self._world_size % self._dp_degree == 0, f"DP degree {dp_degree} should be divisible by {self._world_size} hen DP degree is None"
             self._tp_degree = self._world_size / dp_degree
 
-        if dp_degree and tp_degree is None:
+        if not dp_degree and tp_degree:
             self._tp_degree = tp_degree
-            assert self._world_size % tp_degree == 0, f"TP degree {tp_degree} should be divisible by {self._world_size} when DP degree is None"
+            assert self._world_size % self._tp_degree == 0, f"TP degree {tp_degree} should be divisible by {self._world_size} when DP degree is None"
             self._dp_degree = self._world_size / tp_degree
 
         self._tp_rank_list = []
