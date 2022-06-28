@@ -18,27 +18,30 @@ from functools import partial
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 
 
-def init_1d_row_linear(weight, pg):
-    spec = TensorSpec(distspec.shard(pg.group(ParallelMode.PARALLEL_1D), [-1], [pg.world_size()]),
+def init_1d_row_linear(weight, pg: ProcessGroup):
+    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [-1], [pg.tp_world_size()]),
                       ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_col_linear(weight, pg):
-    spec = TensorSpec(distspec.shard(pg.group(), [0], [pg.world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [0], [pg.tp_world_size()]),
+                      ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_row_embedding(weight, pg):
-    spec = TensorSpec(distspec.shard(pg.group(), [0], [pg.world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [0], [pg.tp_world_size()]),
+                      ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_col_embedding(weight, pg):
-    spec = TensorSpec(distspec.shard(pg.group(), [-1], [pg.world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [-1], [pg.tp_world_size()]),
+                      ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
@@ -62,7 +65,8 @@ def run_1d_hybrid_tp(model_name):
         for p1, p2 in zip(model.parameters(), model_torch.parameters()):
             p2.data.copy_(p1.data)
 
-    pg = ProcessGroup(list(range(gpc.world_size())))
+    rank = gpc.get_local_rank(ParallelMode.GLOBAL)
+    pg = ProcessGroup(rank, list(range(gpc.world_size())), tp_degree=gpc.world_size())
     if 'bert' == model_name:
         for name, p in model.named_parameters():
             if not isinstance(p, ColoTensor):
@@ -106,8 +110,8 @@ def run_1d_hybrid_tp(model_name):
         data = data.to(get_current_device())
         label = label.to(get_current_device())
 
-        torch.distributed.broadcast(data, 0, group=pg.group())
-        torch.distributed.broadcast(label, 0, group=pg.group())
+        torch.distributed.broadcast(data, 0, group=pg.dp_process_group())
+        torch.distributed.broadcast(label, 0, group=pg.dp_process_group())
         # Bcast rank0 data to all processes
         if criterion:
             output = model(data)
