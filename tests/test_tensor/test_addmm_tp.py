@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.multiprocessing as mp
 from colossalai.tensor import ColoTensor
 from colossalai.tensor import distspec
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager
+from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
@@ -41,18 +41,18 @@ class Conv1D(nn.Module):
 def init_1d_row(weight, bias):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def init_1d_col(weight, bias):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
-        bias.set_spec(spec)
+        weight.set_tensor_spec(spec)
+        bias.set_tensor_spec(spec)
 
 
 def run_with_spec(spec_init_func):
@@ -63,6 +63,7 @@ def run_with_spec(spec_init_func):
     x = torch.rand(2, 16).cuda()
     out = model(x)
     colo_out = torch.addmm(bias, x, weight)
+    colo_out = colo_out.to_replicate()
     assert tensor_equal(out, colo_out)
     grad = torch.rand_like(out)
     out.backward(grad)

@@ -17,6 +17,13 @@ class _DistSpec:
                  dist_placement_pattern: DistPlacementPattern,
                  process_group: Optional[ProcessGroup] = None,
                  **meta_info):
+        """_DistSpec, Distributed Specification
+
+        Args:
+            dist_placement_pattern (DistPlacementPattern): the pattern describing how tensors are distributed among processes.
+                                                    The dist_placement_pattern is picked from a limited set, now including two patterns: replicate and shard.
+            process_group (Optional[ProcessGroup], optional): the process group contains processes. Defaults to None.
+        """
         self.placement = dist_placement_pattern
         self.process_group = process_group
         for k, v in meta_info.items():
@@ -37,6 +44,7 @@ class _DistSpec:
                 res += f'{attr}: {str(getattr(self, attr))}\n\t'
         return res
 
+
 def replicate(process_group: Optional[ProcessGroup] = None) -> _DistSpec:
     # process_group=None means global process group
     return _DistSpec(DistPlacementPattern.REPLICATE, process_group)
@@ -46,5 +54,5 @@ def shard(process_group: ProcessGroup, dims: List[int], num_partitions: List[int
     assert process_group is not None
     assert isinstance(dims, list) and isinstance(num_partitions, list)
     assert len(dims) == len(num_partitions)
-    assert prod(num_partitions) == process_group.size()
+    assert prod(num_partitions) == process_group.size(), f"{num_partitions} {process_group.size()}"
     return _DistSpec(DistPlacementPattern.SHARD, process_group, dims=tuple(dims), num_partitions=tuple(num_partitions))

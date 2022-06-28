@@ -199,7 +199,6 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self._logger.debug(
                 f"Before step ShardedOptimizerV2 consumes {gpu_mem / 1e6} MB CUDA Memory, {cpu_mem / 1e6} MB CUDA Memory!",
                 ranks=[0])
-
         ret = self.optim.step(*args, **kwargs)
 
         if self._verbose:
@@ -289,6 +288,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                         colo_model_data_tensor_move_inline(p.colo_attr.saved_grad, torch.cuda.current_device())
                         p.colo_attr.offload_grad = False
                         fp32_shards_used_cuda_margin_mem += shard_mem
+                        state = self.optim.state[p]
+                        for k, v in state.items():
+                            if isinstance(v, Tensor):
+                                state[k] = v.cuda()
 
     def _prepare_grads(self):
         for group in self.optim.param_groups:
@@ -353,3 +356,12 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
             self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
 
         self.master_params[p].trans_state(TensorState.HOLD)
+
+    def load_state_dict(self, *args, **kwargs):
+        super().load_state_dict(*args, **kwargs)
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                state = self.optim.state[p]
+                for k, v in state.items():
+                    if isinstance(v, Tensor):
+                        state[k] = v.to(dtype=self.master_params[p].dtype, device=self.master_params[p].device)

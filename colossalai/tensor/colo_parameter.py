@@ -1,10 +1,12 @@
+import torch
+
+from typing import Optional
+from copy import copy
+
 from colossalai.tensor.colo_tensor import ColoTensor
 from colossalai.tensor.const import TensorType
-import torch
 from colossalai.tensor import TensorSpec, distspec
-from copy import copy
 from colossalai.tensor.param_op_hook import ParamOpHookManager
-from typing import Optional
 
 
 def filter_args(func, *args):
@@ -35,7 +37,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
                  data: Optional[torch.Tensor] = None,
                  requires_grad: bool = True,
                  spec: TensorSpec = TensorSpec(distspec.replicate())) -> None:
-        self._spec = copy(spec)
+        self._tensor_spec = copy(spec)
         self._type = TensorType.MODEL
         self._graph_node = None
 
@@ -80,7 +82,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
         else:
             with torch._C.DisableTorchFunction():
                 data = self.data.clone()
-            tensor = ColoParameter(data, self.requires_grad, spec=copy(self.spec))
+            tensor = ColoParameter(data, self.requires_grad, spec=copy(self.tensor_spec))
             memo[id(self)] = tensor
             return tensor
 

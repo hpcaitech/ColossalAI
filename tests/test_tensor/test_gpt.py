@@ -6,7 +6,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import TensorSpec, ComputePattern, ParallelAction, DistSpecManager, distspec
+from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec
 from colossalai.core import global_context as gpc
 from functools import partial
 from _utils import tensor_equal, tensor_shard_equal, set_seed
@@ -18,21 +18,21 @@ from colossalai.nn.parallel.data_parallel import ColoDDP
 def init_1d_row_spec(model):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n and 'ln' not in n:
-                p.set_spec(spec)
+                p.set_tensor_spec(spec)
 
 
 def init_1d_col_spec(model):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):
-                p.set_spec(spec)
+                p.set_tensor_spec(spec)
 
 
 def check_param_equal(model, torch_model):
@@ -101,4 +101,4 @@ def test_gpt(world_size, use_ddp):
 
 
 if __name__ == '__main__':
-    test_gpt(4, False)
+    test_gpt(4, True)

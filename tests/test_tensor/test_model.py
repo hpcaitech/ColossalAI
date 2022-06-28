@@ -10,7 +10,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import distspec, TensorSpec, ComputePattern, \
-    ParallelAction, ColoTensor, DistSpecManager
+    ComputeSpec, ColoTensor, DistSpecManager
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.nn.optimizer import ColoOptimizer
@@ -21,33 +21,33 @@ from _utils import tensor_equal, tensor_shard_equal, set_seed
 def init_1d_row_linear(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
-def init_1d_col_linear(weight, gather_out=True):
+def init_1d_col_linear(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D, gather_out=gather_out))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def init_1d_row_embedding(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def init_1d_col_embedding(weight):
     spec = TensorSpec(
         distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ParallelAction(ComputePattern.TP1D))
+        ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_spec(spec)
+        weight.set_tensor_spec(spec)
 
 
 def run_1d_hybrid_tp(model_name):
@@ -98,7 +98,7 @@ def run_1d_hybrid_tp(model_name):
             if 'proj2' in name and 'weight' in name:
                 init_1d_row_linear(p)
             if 'classifier' in name and ('weight' in name or 'bias' in name):
-                init_1d_col_linear(p, gather_out=False)
+                init_1d_col_linear(p)
 
     model = model.cuda()
     colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)

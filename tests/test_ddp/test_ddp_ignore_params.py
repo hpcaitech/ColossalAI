@@ -8,7 +8,7 @@ from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ChunkManager
 from functools import partial
-from colossalai.nn.parallel import ColoDDP, ColoDDPV2
+from colossalai.nn.parallel import ColoDDP, ZeroDDP
 from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Callable
 import torch.distributed as dist
@@ -30,11 +30,11 @@ def init_ddp(module: torch.nn.Module) -> ColoDDP:
     return ColoDDP(module)
 
 
-def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False) -> ColoDDPV2:
+def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False) -> ZeroDDP:
     chunk_size = ChunkManager.search_chunk_size(module, 64, 2) if use_chunk else None
     chunk_manager = ChunkManager(chunk_size)
     gemini_manager = GeminiManager('cuda', chunk_manager)
-    return ColoDDPV2(module, gemini_manager)
+    return ZeroDDP(module, gemini_manager)
 
 
 class Net(torch.nn.Module):
@@ -71,8 +71,8 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     set_seed(dist.get_rank())
     run_fwd_bwd(ColoDDP, init_ddp)
-    run_fwd_bwd(ColoDDPV2, partial(init_ddpv2, use_chunk=False))
-    run_fwd_bwd(ColoDDPV2, partial(init_ddpv2, use_chunk=True))
+    run_fwd_bwd(ZeroDDP, partial(init_ddpv2, use_chunk=False))
+    run_fwd_bwd(ZeroDDP, partial(init_ddpv2, use_chunk=True))
 
 
 @pytest.mark.dist

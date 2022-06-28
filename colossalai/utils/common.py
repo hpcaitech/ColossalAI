@@ -151,6 +151,14 @@ def _move_norm_to_cuda(norm: Union[float, torch.Tensor]) -> Union[float, torch.T
     return norm
 
 
+def _get_tensor_norm(norm: Union[float, torch.Tensor], move_to_cuda) -> torch.Tensor:
+    if isinstance(norm, float):
+        norm = torch.Tensor([norm])
+    if move_to_cuda:
+        norm = norm.to(torch.cuda.current_device())
+    return norm
+
+
 # ======== Gradient Clipping =========
 
 
@@ -192,14 +200,15 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
             params.append(param)
 
     if len(params) == 0:
-        return 0.0
+        enable_cuda_kernels = False
+    else:
+        enable_cuda_kernels = params[0].grad.device.type == 'cuda'
     # Norm parameters.
     max_norm = float(max_norm)
     norm_type = float(norm_type)
 
     # Parameters can be on CPU or CUDA
     # If parameters are on CPU, disable CUDA kernerls
-    enable_cuda_kernels = params[0].grad.device.type == 'cuda'
 
     # Calculate norm.
     if norm_type == inf:
@@ -238,7 +247,10 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
             tensor_parallel_norm = _calc_lp(tensor_parallel_grads, norm_type)
             no_tensor_parallel_norm = _calc_lp(no_tensor_parallel_grads, norm_type)
             zero_sharded_norm = _calc_lp(zero_sharded_grads, norm_type)
-
+        # If norm is type of float, then we convert them into torch.Tensor.
+        tensor_parallel_norm = _get_tensor_norm(tensor_parallel_norm, enable_cuda_kernels)
+        no_tensor_parallel_norm = _get_tensor_norm(no_tensor_parallel_norm, enable_cuda_kernels)
+        zero_sharded_norm = _get_tensor_norm(zero_sharded_norm, enable_cuda_kernels)
         # If grads are on CPU, the norms is also on CPU. Cast them to CUDA tensors
         if not enable_cuda_kernels:
             tensor_parallel_norm = _move_norm_to_cuda(tensor_parallel_norm)

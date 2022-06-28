@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from enum import Enum
 from torch.optim import Optimizer
-from colossalai.nn.parallel.data_parallel import ColoDDPV2
+from colossalai.nn.parallel.data_parallel import ZeroDDP
 from typing import Dict
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
@@ -19,7 +19,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
     def __init__(self,
                  optim: Optimizer,
-                 module: ColoDDPV2,
+                 module: ZeroDDP,
                  gpu_margin_mem_ratio: float = 0.0,
                  initial_scale: float = 2**32,
                  min_scale: float = 1,
@@ -29,7 +29,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  hysteresis: int = 2,
                  max_scale: float = 2**32):
         super().__init__(optim)
-        assert isinstance(module, ColoDDPV2)
+        assert isinstance(module, ZeroDDP)
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager = self.gemini_manager.chunk_manager
@@ -144,6 +144,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
                     self.chunk_manager.move_chunk(fp16_param_chunk, get_current_device())
                     self.module._set_chunk_grad_device(fp16_param_chunk, get_current_device())
                     fp32_params_used_cuda_margin_mem += fp32_param_chunk.mem
+                    for p in fp16_param_chunk.get_tensors():
+                        state = self.optim.state[p]
+                        for k, v in state.items():
+                            if isinstance(v, torch.Tensor):
+                                state[k] = v.to(get_current_device())
+
             self.module._setup_grads_ptr()
 
     def _register_states_(self):
@@ -153,3 +159,13 @@ class ZeroOptimizer(ColossalaiOptimizer):
                 for val in state.values():
                     if isinstance(val, torch.Tensor):
                         self.chunk_manager.add_extern_static_tensor(val)
+
+    def load_state_dict(self, *args, **kwargs):
+        super().load_state_dict(*args, **kwargs)
+        for group in self.optim.param_groups:
+            for p in group['params']:
+                state = self.optim.state[p]
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(dtype=self.fp16_param_to_fp32_param[p].dtype,
+                                        device=self.fp16_param_to_fp32_param[p].device)
