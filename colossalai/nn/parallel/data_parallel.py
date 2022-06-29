@@ -5,7 +5,7 @@ from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 from functools import partial
 from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
-from colossalai.tensor.chunk import TensorState, Chunk
+from colossalai.gemini.chunk import TensorState, Chunk
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Dict, Iterable, List, Optional

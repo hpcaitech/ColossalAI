@@ -4,7 +4,7 @@ import pytest
 import torch.multiprocessing as mp
 from typing import List
 from functools import partial
-from colossalai.tensor import ChunkManager
+from colossalai.gemini import ChunkManager
 from colossalai.testing import rerun_if_address_is_in_use, parameterize
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc

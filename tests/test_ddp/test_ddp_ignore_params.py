@@ -6,7 +6,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ChunkManager
+from colossalai.gemini import ChunkManager
 from functools import partial
 from colossalai.nn.parallel import ColoDDP, ZeroDDP
 from colossalai.gemini.gemini_mgr import GeminiManager
