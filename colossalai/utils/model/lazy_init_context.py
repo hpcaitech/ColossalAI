@@ -7,12 +7,7 @@ import types
 import inspect
 import typing
 from typing import List, Callable
-
-
-def _substitute_init_recursively(cls, func):
-    for subcls in cls.__subclasses__():
-        _substitute_init_recursively(subcls, func)
-        func(subcls)
+from colossalai.utils.model.utils import substitute_init_recursively
 
 
 class LazyInitContext():
@@ -135,14 +130,14 @@ class LazyInitContext():
             cls.__orig_init__ = cls.__init__
             cls.__init__ = self._wrap_module_init(cls.__init__)
 
-        _substitute_init_recursively(self._torch_mod_cls, _activate_wrap_init)
+        substitute_init_recursively(self._torch_mod_cls, _activate_wrap_init)
 
     def _unpatch_submodule_init(self):
 
         def _recover_orig_init(cls):
             cls.__init__ = cls.__orig_init__
 
-        _substitute_init_recursively(self._torch_mod_cls, _recover_orig_init)
+        substitute_init_recursively(self._torch_mod_cls, _recover_orig_init)
 
     def _patch_torch_tensor_funcs(self):
         # patch tensor value-setting functions
