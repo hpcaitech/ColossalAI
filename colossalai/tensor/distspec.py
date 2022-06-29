@@ -1,5 +1,5 @@
 from enum import Enum
-from torch.distributed import ProcessGroup
+from colossalai.tensor import ProcessGroup
 from typing import Optional, List
 from numpy import prod
 
@@ -51,8 +51,8 @@ def replicate(process_group: Optional[ProcessGroup] = None) -> _DistSpec:
 
 
 def shard(process_group: ProcessGroup, dims: List[int], num_partitions: List[int]) -> _DistSpec:
-    assert process_group is not None
+    assert process_group is not None and isinstance(process_group, ProcessGroup)
     assert isinstance(dims, list) and isinstance(num_partitions, list)
     assert len(dims) == len(num_partitions)
-    assert prod(num_partitions) == process_group.size(), f"{num_partitions} {process_group.size()}"
+    assert prod(num_partitions) == process_group.tp_world_size(), f"{num_partitions} {process_group.tp_world_size()}"
     return _DistSpec(DistPlacementPattern.SHARD, process_group, dims=tuple(dims), num_partitions=tuple(num_partitions))

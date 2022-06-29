@@ -2,9 +2,8 @@ import torch.nn.functional as F
 from typing import Optional
 from ._utils import GeneralTensor, convert_to_colo_tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.nn.layer.parallel_1d._utils import reduce_input, reduce_grad
+from ._utils import reduce_input, reduce_grad
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
-from colossalai.context import ParallelMode
 from colossalai.nn.graph import register_colo_graph, GraphOpNode, GraphGlobalEnv
 
 
@@ -18,7 +17,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # Output:P
     partial_output = F.linear(input_tensor, weight)
     # Reduce(Output)
-    output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
+    output = reduce_input(partial_output, weight.tensor_spec.dist_spec.process_group)
     # Bias
     if bias is not None:
         assert not bias.has_compute_spec(), 'Invalid bias spec for 1Drow Linear op'
@@ -35,7 +34,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # Input:B
     compute_spec = weight.tensor_spec.compute_spec
     input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
-    input_parallel = reduce_grad(input_tensor, ParallelMode.PARALLEL_1D)
+    input_parallel = reduce_grad(input_tensor, weight.tensor_spec.dist_spec.process_group)
 
     output_parallel = F.linear(input_parallel, weight, bias)
     output = ColoTensor.from_torch_tensor(output_parallel,

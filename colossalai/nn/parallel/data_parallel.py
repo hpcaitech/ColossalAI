@@ -69,9 +69,10 @@ class ColoDDP(torch.nn.Module):
         super().__init__()
         self.module = module
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
-        self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
-        self.cpu_process_group = cpu_process_group or gpc.get_cpu_group(ParallelMode.DATA)
+        self.process_group = process_group
+        assert self.process_group
         self.dp_world_size = self.process_group.size()
+        print('dp world size', self.dp_world_size)
         self.reducer = Reducer(bucket_cap_mb)
         self.rebuild_bucket = rebuild_bucket
         for p in module.parameters():
@@ -120,6 +121,8 @@ class ColoDDP(torch.nn.Module):
             return empty_grad
 
         else:
+            #TODO(jiaruifang) fixme
+            raise NotImplementedError
             dist.all_reduce(grad, group=self.cpu_process_group)
             return grad
 

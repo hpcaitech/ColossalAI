@@ -1,11 +1,8 @@
 import torch.nn.functional as F
 from typing import Optional
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.nn.layer.parallel_1d._utils import reduce_input
-from colossalai.core import global_context as gpc
 from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
-from colossalai.context import ParallelMode
-from ._utils import GeneralTensor, convert_to_colo_tensor
+from ._utils import GeneralTensor, convert_to_colo_tensor, reduce_input
 
 
 def colo_embedding_1Dcol(input_tensor: ColoTensor,
@@ -51,7 +48,8 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     # Reduce all
     input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
 
-    tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    # tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    tensor_parallel_rank = weight.tensor_spec.dist_spec.process_group.tp_local_rank()
     num_embeddings_per_partition = weight.size_local(0)
     vocab_start_index = tensor_parallel_rank * num_embeddings_per_partition
     vocab_end_index = vocab_start_index + num_embeddings_per_partition
@@ -75,7 +73,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     # Mask the output embedding.
     partial_output[input_mask, :] = 0.
     # Reduce across all the model parallel GPUs.
-    output = reduce_input(partial_output, ParallelMode.PARALLEL_1D)
+    output = reduce_input(partial_output, weight.tensor_spec.dist_spec.process_group)
     output = ColoTensor.from_torch_tensor(output,
                                           spec=TensorSpec(distspec.replicate(weight.tensor_spec.get_process_group())))
     return output
