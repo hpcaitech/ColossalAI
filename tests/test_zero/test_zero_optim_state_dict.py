@@ -7,13 +7,12 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ChunkManager
 from colossalai.core import global_context as gpc
 from functools import partial
 from tests.test_tensor._utils import set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.nn.parallel.data_parallel import ZeroDDP
-from colossalai.gemini import GeminiManager
+from colossalai.gemini import ChunkManager, GeminiManager
 from colossalai.testing import parameterize
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.zero import ZeroOptimizer

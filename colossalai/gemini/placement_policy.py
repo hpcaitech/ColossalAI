@@ -8,7 +8,7 @@ from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import Type
 import functools
-from colossalai.tensor.chunk import Chunk, ChunkManager
+from colossalai.gemini import Chunk, ChunkManager
 
 
 class PlacementPolicy(ABC):

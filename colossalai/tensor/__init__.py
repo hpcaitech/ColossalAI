@@ -5,7 +5,6 @@ from .colo_parameter import ColoParameter
 from .utils import convert_parameter, named_params_with_colotensor
 from .dist_spec_mgr import DistSpecManager
 from .param_op_hook import ParamOpHook, ParamOpHookManager
-from .chunk import ChunkManager, TensorState
 from . import distspec
 from .process_group import ProcessGroup
 

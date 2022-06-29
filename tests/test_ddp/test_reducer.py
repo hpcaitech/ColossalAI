@@ -5,14 +5,7 @@ import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ChunkManager
 from functools import partial
-from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.nn.parallel import ZeroDDP, ColoDDP
-from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Callable
-from collections import OrderedDict
 from colossalai.nn.parallel.reducer import Reducer
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import _get_default_group
