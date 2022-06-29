@@ -24,18 +24,33 @@ class ControlFlowModel(nn.Module):
 def test_control_flow():
     model = ControlFlowModel()
     tracer = Tracer()
-    graph = tracer.trace(model,
-                         meta_args={
-                             'x': torch.rand(4, 10, device='meta'),
-                             'y': torch.rand(4, 10, device='meta')
-                         })
-    gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
+    graph_branch_true = tracer.trace(model,
+                                     meta_args={
+                                         'x': torch.rand(4, 10, device='meta'),
+                                         'y': torch.rand(4, 10, device='meta')
+                                     })
+    graph_branch_false = tracer.trace(model,
+                                      meta_args={
+                                          'x': torch.rand(10, device='meta'),
+                                          'y': torch.rand(4, 10, device='meta')
+                                      })
 
+    gm_branch_true = GraphModule(model, graph_branch_true, model.__class__.__name__)
+    gm_branch_false = GraphModule(model, graph_branch_false, model.__class__.__name__)
+    gm_branch_true.recompile()
+    gm_branch_false.recompile()
+
+    # test the true branch
     x = torch.rand(4, 10)
     y = torch.rand(4, 10)
+    assert torch.all(model(x, y) == gm_branch_true(x, y))
+    assert torch.all(gm_branch_false(x, y) != gm_branch_true(x, y))
 
-    assert torch.all(model(x, y) == gm(x, y))
+    # test the true branch
+    x = torch.rand(10)
+    y = torch.rand(4, 10)
+    assert torch.all(model(x, y) == gm_branch_false(x, y))
+    assert torch.all(gm_branch_false(x, y) != gm_branch_true(x, y))
 
 
 if __name__ == '__main__':

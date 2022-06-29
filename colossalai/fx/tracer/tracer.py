@@ -54,7 +54,7 @@ class ColoTracer(Tracer):
 
     _TORCH_METHODS_TO_PATCH = ["arange", "zeros", "ones", "full", "full_like", "eye", "empty", "tensor"]
 
-    def create_proxy(self, kind, target, args, kwargs, name=None, type_expr=None, proxy_factory_fn=None):
+    def create_proxy(self, kind, target, args, kwargs, name=None, type_expr=None, proxy_factory_fn=None) -> ColoProxy:
         """
         Create a proxy for different kinds of operations.
         """
@@ -169,7 +169,7 @@ class ColoTracer(Tracer):
         self.orig_forward = forward
         return super().call_module(m, forward, args, kwargs)
 
-    def proxy(self, node):
+    def proxy(self, node) -> ColoProxy:
         """
         Returns a ColoProxy object.
         """
