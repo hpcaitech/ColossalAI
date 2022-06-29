@@ -12,6 +12,7 @@ from typing import Dict, Iterable, List, Optional
 from colossalai.logging import get_dist_logger
 from collections import OrderedDict
 from colossalai.tensor.colo_parameter import ColoParameter
+from .reducer import Reducer
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
 except ImportError:
@@ -61,7 +62,9 @@ class ColoDDP(torch.nn.Module):
     def __init__(self,
                  module: torch.nn.Module,
                  process_group: Optional[dist.ProcessGroup] = None,
-                 cpu_process_group: Optional[dist.ProcessGroup] = None) -> None:
+                 cpu_process_group: Optional[dist.ProcessGroup] = None,
+                 bucket_cap_mb: int = 25,
+                 rebuild_bucket: bool = True) -> None:
         assert not isinstance(module, ColoDDP)
         super().__init__()
         self.module = module
@@ -69,6 +72,8 @@ class ColoDDP(torch.nn.Module):
         self.process_group = process_group or gpc.get_group(ParallelMode.DATA)
         self.cpu_process_group = cpu_process_group or gpc.get_cpu_group(ParallelMode.DATA)
         self.dp_world_size = self.process_group.size()
+        self.reducer = Reducer(bucket_cap_mb)
+        self.rebuild_bucket = rebuild_bucket
         for p in module.parameters():
             if getattr(p, '_ddp_to_ignore', False):
                 continue
@@ -87,7 +92,11 @@ class ColoDDP(torch.nn.Module):
 
     def backward(self, loss: torch.Tensor):
         loss.backward()
+        with torch.cuda.stream(self.comm_stream):
+            self.reducer.flush()
         torch.cuda.current_stream().wait_stream(self.comm_stream)
+        if self.rebuild_bucket:
+            self.reducer.free()
         for p in self.module.parameters():
             if getattr(p, '_ddp_to_ignore', False):
                 continue
@@ -102,8 +111,9 @@ class ColoDDP(torch.nn.Module):
                 grad = grad / self.dp_world_size
                 self.comm_stream.wait_stream(torch.cuda.current_stream())
                 with torch.cuda.stream(self.comm_stream):
-                    dist.all_reduce(grad, group=self.process_group)
-                    ColoDDP._save_grad(p, grad)
+                    self.reducer.all_reduce_async(grad,
+                                                  group=self.process_group,
+                                                  callback_fn=partial(self._save_grad, p))
                 grad.record_stream(self.comm_stream)
             else:
                 ColoDDP._save_grad(p, grad)
