@@ -103,8 +103,11 @@ class LazyInitContext():
 
         def layer_lazy_init(module, *args, **kwargs):
             self._intercepted_init_func_cache.append(dict(func=func, module=module, args=args, kwargs=kwargs))
+            if has_device:
+                kwargs['device'] = 'meta'
             func(module, *args, **kwargs)
-            module.to('meta')
+            if not has_device:
+                module.to('meta')
 
         return layer_lazy_init
 
