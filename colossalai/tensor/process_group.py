@@ -5,7 +5,7 @@ from typing import List, Optional
 class ProcessGroup:
     """
     Process Group contains group partition for Tensor Parallel and Data Parallel.
-    WARNING, the ProcessGroup must be used after torch.distributed.initialize()
+    NOTE, the ProcessGroup must be used after torch.distributed.initialize()
     args:
         rank: the global rank of the current process.
         ranks: List[int], a list of rank id belongings to this process group.
@@ -15,16 +15,24 @@ class ProcessGroup:
     """
 
     def __init__(self,
-                 rank: int,
-                 ranks: List[int],
+                 rank: Optional[int] = None,
+                 ranks: Optional[List[int]] = None,
                  backend: str = 'nccl',
                  tp_degree: Optional[int] = None,
                  dp_degree: Optional[int] = None) -> None:
-        self._rank = rank
-        self._rank_list = ranks
+        assert torch.distributed.is_initialized(), f"ProcessGroup must be used after distributed initialized"
+        if rank is None:
+            self._rank = torch.distributed.get_rank()
+        else:
+            self._rank = rank
+
+        if ranks is None:
+            self._rank_list = list(range(torch.distributed.get_world_size()))
+        else:
+            self._rank_list = ranks
+
         self._backend = backend
         self._world_size = len(self._rank_list)
-        assert torch.distributed.is_initialized(), f"ProcessGroup must be used after distributed initialized"
 
         if dp_degree is None and tp_degree is None:
             self._dp_degree = self._world_size
