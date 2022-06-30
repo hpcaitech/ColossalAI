@@ -63,6 +63,8 @@ def process_object_to_send(object_send, scatter_gather_tensors):
         send_split = _get_tensor_shape(tensor_send.shape, scatter_gather_tensors)[1]
         if send_split:
             object_send_list.append(split_tensor_into_1d_equal_chunks(tensor_send))
+        else:
+            object_send_list.append(tensor_send)
     object_send = tuple(object_send_list)
 
     return object_send

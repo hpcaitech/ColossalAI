@@ -3,8 +3,8 @@ import functools
 from .memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import List, Optional, Tuple
 from time import time
-from colossalai.tensor.chunk import Chunk, ChunkManager
-from .placement_policy import PlacementPolicy, PlacementPolicyFactory
+from colossalai.gemini import Chunk, ChunkManager
+from .placement_policy import PlacementPolicyFactory
 
 
 class GeminiManager:
