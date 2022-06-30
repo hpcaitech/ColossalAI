@@ -1,6 +1,5 @@
 import torch
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor import ColoTensor, distspec, ColoParameter
+from colossalai.tensor import distspec, ColoParameter
 from torch.nn import functional as F
 from functools import partial
 

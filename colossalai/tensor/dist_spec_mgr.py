@@ -108,7 +108,7 @@ class DistSpecManager:
 
     @staticmethod
     def _all_to_all(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec) -> torch.Tensor:
-        world_size = old_dist_spec.process_group.world_size()
+        world_size = old_dist_spec.process_group.tp_world_size()
         if world_size == 1:
             return tensor
 
