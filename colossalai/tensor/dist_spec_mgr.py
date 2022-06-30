@@ -5,6 +5,7 @@ from contextlib import contextmanager
 import torch
 import torch.distributed as dist
 from packaging import version
+from colossalai.logging import get_dist_logger
 
 
 # TODO(jiaruifang) circle import, move the divide to colossalai.commons.
@@ -92,6 +93,7 @@ class DistSpecManager:
             tensor.data = tensor.data.cuda()
 
         buffer = [torch.empty_like(tensor) for _ in range(old_dist_spec.process_group.tp_world_size())]
+        assert tensor.device.type == 'cuda'
         dist.all_gather(buffer, tensor, group=old_dist_spec.process_group.tp_process_group())
         for i in range(len(old_dist_spec.dims) - 1, -1, -1):
             new_buffer = []

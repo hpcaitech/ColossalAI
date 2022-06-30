@@ -1,5 +1,6 @@
 import torch
 from typing import List, Optional
+from colossalai.logging import get_dist_logger
 
 
 class ProcessGroup:
@@ -61,6 +62,9 @@ class ProcessGroup:
         assert backend == 'nccl'
         self._tp_process_group = torch.distributed.new_group(ranks=self._tp_rank_list)
         self._dp_process_group = torch.distributed.new_group(ranks=self._dp_rank_list)
+
+        self.logger = get_dist_logger('ProcessGroup')
+        self.logger.info(f'{self._rank} initialize TP group on {self._tp_rank_list} DP group pn {self._dp_rank_list}')
 
     @property
     def backend(self):

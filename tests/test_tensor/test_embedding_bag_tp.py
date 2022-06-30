@@ -32,7 +32,7 @@ def run_with_spec(spec_init_func):
     grad = torch.rand_like(out)
     out.backward(grad)
     colo_out.backward(grad)
-    assert tensor_shard_equal(model.weight.grad, weight.grad, pg.rank(), pg.tp_world_size())
+    assert tensor_shard_equal(model.weight.grad, weight.grad, pg.tp_local_rank(), pg.tp_world_size())
 
 
 def run_dist(rank, world_size, port):
