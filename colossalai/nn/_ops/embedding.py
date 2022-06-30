@@ -14,7 +14,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                          sparse: bool = False) -> ColoTensor:
     # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.get_process_group()))
 
     output_parallel = F.embedding(input_tensor,
                                   weight,
@@ -23,9 +23,8 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                                   norm_type=norm_type,
                                   scale_grad_by_freq=scale_grad_by_freq,
                                   sparse=sparse)
-    output_spec = TensorSpec(
-        distspec.shard(weight.tensor_spec.get_process_group(), [-1], [weight.tensor_spec.get_process_group_size()]),
-        ComputeSpec(ComputePattern.TP1D))
+    output_spec = TensorSpec(distspec.shard(weight.get_process_group(), [-1], [weight.get_tp_world_size()]),
+                             ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
     compute_spec = weight.tensor_spec.compute_spec
@@ -46,7 +45,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     # embedding_1Drow split the weight(lookup table) to (num_embeddings/P, embedding_dim)
     # Find index in this shard and mask those not here
     # Reduce all
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.get_process_group()))
 
     # tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
     tensor_parallel_rank = weight.tensor_spec.dist_spec.process_group.tp_local_rank()
@@ -73,9 +72,8 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     # Mask the output embedding.
     partial_output[input_mask, :] = 0.
     # Reduce across all the model parallel GPUs.
-    output = reduce_input(partial_output, weight.tensor_spec.dist_spec.process_group)
-    output = ColoTensor.from_torch_tensor(output,
-                                          spec=TensorSpec(distspec.replicate(weight.tensor_spec.get_process_group())))
+    output = reduce_input(partial_output, weight.get_process_group())
+    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(distspec.replicate(weight.get_process_group())))
     return output
 
 

@@ -14,6 +14,8 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel.data_parallel import ColoDDP
+from colossalai.core import global_context as gpc
+from colossalai.context.parallel_mode import ParallelMode
 
 
 def init_1d_row_spec(model, pg: ProcessGroup):
@@ -56,8 +58,11 @@ def run_gpt(init_spec_func, use_ddp):
     torch_model = model_builder().cuda()
     if use_ddp:
         print('before DDP', pg.dp_process_group(), pg.rank(), pg._dp_rank_list)
-        torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
-        torch.distributed.barrier()
+        # torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
+        # torch.distributed.barrier()
+        torch_model = DDP(torch_model,
+                          device_ids=[gpc.get_global_rank()],
+                          process_group=gpc.get_group(ParallelMode.DATA))
         print('init finished')
 
         model = ColoDDP(model, process_group=pg.dp_process_group())
@@ -68,6 +73,7 @@ def run_gpt(init_spec_func, use_ddp):
     model.train()
     torch_model.train()
     set_seed(pg.tp_local_rank())
+
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
         logits = model(input_ids, attn_mask)
         torch_logits = torch_model(input_ids, attn_mask)
@@ -87,8 +93,10 @@ def run_gpt(init_spec_func, use_ddp):
 def run_dist(rank, world_size, port, use_ddp):
     if use_ddp and world_size == 1:
         return
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_gpt(init_1d_row_spec, use_ddp)
+    tp_world_size = world_size // 2 if use_ddp else world_size
+    config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
+    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    # run_gpt(init_1d_row_spec, use_ddp)
     run_gpt(init_1d_col_spec, use_ddp)
 
 

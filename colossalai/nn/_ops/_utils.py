@@ -39,7 +39,7 @@ def vocab_range_from_global_vocab_size(global_vocab_size, rank, world_size):
 
 def _reduce(input_, pg: ProcessGroup):
     # skip if only one rank involved
-    if pg.world_size() == 1:
+    if pg.tp_world_size() == 1:
         return input_
     assert input_.device.type == 'cuda'
     group = pg.tp_process_group()
@@ -50,7 +50,7 @@ def _reduce(input_, pg: ProcessGroup):
 
 def _split(input_, pg: ProcessGroup, dim=-1):
     # skip if only one rank involved
-    world_size = pg.world_size()
+    world_size = pg.tp_world_size()
     if world_size == 1:
         return input_
 
@@ -69,7 +69,7 @@ def _split(input_, pg: ProcessGroup, dim=-1):
 
 def _gather(input_, pg: ProcessGroup, dim=-1):
     # skip if only one rank involved
-    world_size = pg.world_size()
+    world_size = pg.tp_world_size()
     if world_size == 1:
         return input_
 
@@ -93,7 +93,7 @@ class _ReduceGrad(torch.autograd.Function):
 
     Args:
         input_: input matrix.
-        parallel_mode: parallel mode.
+        process_group: parallel mode.
     """
 
     @staticmethod
@@ -101,8 +101,8 @@ class _ReduceGrad(torch.autograd.Function):
         return input_
 
     @staticmethod
-    def forward(ctx, input_, parallel_mode):
-        ctx.mode = parallel_mode
+    def forward(ctx, input_, process_group):
+        ctx.mode = process_group
         return input_
 
     @staticmethod
@@ -116,7 +116,7 @@ class _ReduceInput(torch.autograd.Function):
 
     Args:
         input_: input matrix.
-        parallel_mode: parallel mode.
+        process_group: parallel mode.
     """
 
     @staticmethod
@@ -124,8 +124,8 @@ class _ReduceInput(torch.autograd.Function):
         return _reduce(input_)
 
     @staticmethod
-    def forward(ctx, input_, parallel_mode):
-        return _reduce(input_, parallel_mode)
+    def forward(ctx, input_, process_group):
+        return _reduce(input_, process_group)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -138,7 +138,7 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     
     Args:
         input_: input matrix.
-        parallel_mode: parallel mode.
+        process_group: parallel mode.
         dim: dimension
     """
 
@@ -147,10 +147,10 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
         return _split(input_)
 
     @staticmethod
-    def forward(ctx, input_, parallel_mode, dim):
-        ctx.mode = parallel_mode
+    def forward(ctx, input_, process_group, dim):
+        ctx.mode = process_group
         ctx.dim = dim
-        return _split(input_, parallel_mode, dim)
+        return _split(input_, process_group, dim)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -162,7 +162,7 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
 
     Args:
         input_: input matrix.
-        parallel_mode: parallel mode.
+        process_group: parallel mode.
         dim: dimension
     """
 
@@ -171,27 +171,27 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
         return _gather(input_)
 
     @staticmethod
-    def forward(ctx, input_, parallel_mode, dim):
-        ctx.mode = parallel_mode
+    def forward(ctx, input_, process_group, dim):
+        ctx.mode = process_group
         ctx.dim = dim
-        return _gather(input_, parallel_mode, dim)
+        return _gather(input_, process_group, dim)
 
     @staticmethod
     def backward(ctx, grad_output):
         return _split(grad_output, ctx.mode, ctx.dim), None, None
 
 
-def reduce_grad(input_, parallel_mode):
-    return _ReduceGrad.apply(input_, parallel_mode)
+def reduce_grad(input_, process_group):
+    return _ReduceGrad.apply(input_, process_group)
 
 
-def reduce_input(input_, parallel_mode):
-    return _ReduceInput.apply(input_, parallel_mode)
+def reduce_input(input_, process_group):
+    return _ReduceInput.apply(input_, process_group)
 
 
-def split_forward_gather_backward(input_, parallel_mode, dim):
-    return _SplitForwardGatherBackward.apply(input_, parallel_mode, dim)
+def split_forward_gather_backward(input_, process_group, dim):
+    return _SplitForwardGatherBackward.apply(input_, process_group, dim)
 
 
-def gather_forward_split_backward(input_, parallel_mode, dim):
-    return _GatherForwardSplitBackward.apply(input_, parallel_mode, dim)
+def gather_forward_split_backward(input_, process_group, dim):
+    return _GatherForwardSplitBackward.apply(input_, process_group, dim)
