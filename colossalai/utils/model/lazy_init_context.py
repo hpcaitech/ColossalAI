@@ -164,6 +164,12 @@ class LazyInitContext():
 
     def __exit__(self, *args, **kwargs):
         self._unpatch_submodule_init()
+        # build model_rebuild_dict in reverse order to make sure get correct init func for inherited class.
+        self.module_rebuild_dict = {}
+        self._intercepted_init_func_cache.reverse()
+        for cache in self._intercepted_init_func_cache:
+            self.module_rebuild_dict[cache['module']] = (cache['func'], cache['args'], cache['kwargs'])
+        self._intercepted_init_func_cache.reverse()
 
     def lazy_init_parameters(self, model: torch.nn.Module, device='cpu', call_back: Callable = None):
         """
@@ -181,12 +187,6 @@ class LazyInitContext():
         for name, buffer in model.named_buffers():
             param_id_to_name[id(buffer)] = name
 
-        self.module_rebuild_dict = {}
-        # build model_rebuild_dict in reverse order to make sure get correct init func for inherited class.
-        self._intercepted_init_func_cache.reverse()
-        for cache in self._intercepted_init_func_cache:
-            self.module_rebuild_dict[cache['module']] = (cache['func'], cache['args'], cache['kwargs'])
-        self._intercepted_init_func_cache.reverse()
         assert model in self.module_rebuild_dict, 'We only support rebuild modules which intercepted during initializing by us.'
 
         def _process_arg(arg):
@@ -253,3 +253,5 @@ class LazyInitContext():
         # build user specified model
         with torch.no_grad():
             func(model, *args, **kwargs)
+
+        return model
