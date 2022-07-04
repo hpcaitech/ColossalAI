@@ -1,12 +1,44 @@
 import torch
 import functools
 from typing import Optional
+import types
 
 
 def substitute_init_recursively(cls, func):
     for subcls in cls.__subclasses__():
         substitute_init_recursively(subcls, func)
         func(subcls)
+
+
+def get_nn_init_methods():
+    """
+    This method looks for all available functions in the ``torch.nn.init``
+    module.
+    """
+    nn_init_method_names = dir(torch.nn.init)
+    nn_init_methods = []
+
+    # look for all methods in ``torch.nn.init`` module
+    for name in nn_init_method_names:
+        nn_init_methods.append((name, getattr(torch.nn.init, name)))
+
+    def _has_tensor_in_arg(func):
+        hints = typing.get_type_hints(func)
+        for k, v in hints.items():
+            if v is torch.Tensor:
+                return True
+        return False
+
+    def _is_init_method(item):
+        name, func = item
+        if (not isinstance(func, types.FunctionType) or name.startswith('_') or not name.endswith('_')):
+            return False
+        else:
+            return True
+
+    # remove methods which are not init functions
+    nn_init_methods = list(filter(_is_init_method, nn_init_methods))
+    return nn_init_methods
 
 
 def call_to_str(base, *args, **kwargs):

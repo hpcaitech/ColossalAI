@@ -2,24 +2,80 @@
 # coding: utf-8
 
 import torch
-from colossalai.tensor import ColoParameter
 import types
 import inspect
 import typing
-from typing import List, Callable
-from colossalai.utils.model.utils import substitute_init_recursively
 import copy
+from typing import List, Callable
+from colossalai.utils.model.utils import substitute_init_recursively, get_nn_init_methods
+from colossalai.tensor import ColoTensor
+from colossalai.tensor import ColoParameter
+
+
+class MaterializationContext():
+    """
+    A context to materialize the meta tensor. It intercepts the nn.init 
+    method and only execute the last init method which is recorded during
+    lazy init. It will also add necessary communication op to get correct
+    weight distribution.
+    Note:
+        This API is only experimental and subject to future changes. 
+        It may inherit ColoInitContext to build module with ColoTensor.
+    """
+
+    def __init__(self, lazy_init_dict):
+        self._nn_init_dict = {}
+        self._last_init_dict = lazy_init_dict
+        self._nn_init_methods = get_nn_init_methods()
+
+    def _exec_func(self, func, tensor, args, kwargs):
+        if not isinstance(tensor, ColoTensor):
+            func(tensor, *args, **kwargs)
+        # TODO(lyl): add communication here if tensor is ColoTensor
+
+    def _process_nn_init_method(self, func):
+        """
+        This method wraps the ``torch.nn.init`` method so that only the last nn init call
+        is executed, other calls are cached. Necessary communication op will be added during
+        executing to get correct weight distribution.
+        """
+
+        def wrapped_nn_init_func(tensor, *args, **kwargs):
+            assert tensor in self._last_init_dict, f'We only support reinitializing tensors which intercepted during initializing by us.'
+            init_times = self._last_init_dict[tensor][-1]
+            if tensor not in self._intercepted_nn_init_dict:
+                self._intercepted_nn_init_dict[tensor] = 1
+            else:
+                self._intercepted_nn_init_dict[tensor] += 1
+            # exec func if it is the last init call
+            if self._intercepted_nn_init_dict[tensor] == init_times:
+                _exec_func(func, tensor, args, kwargs)
+
+        return wrapped_nn_init_func
+
+    def _patch_nn_init_funcs(self):
+        # patch nn.init functions
+        for name, func in self._nn_init_methods:
+            setattr(torch.nn.init, name, self._process_nn_init_method(func))
+
+    def _unpatch_nn_init_funcs(self):
+        # unpatch nn.init functions
+        for name, func in self._nn_init_methods:
+            setattr(torch.nn.init, name, func)
+
+    def __enter__(self):
+        self._patch_nn_init_funcs()
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self._unpatch_nn_init_funcs()
 
 
 class LazyInitContext():
     """
     A context to allow for lazy weight initialization of PyTorch modules. It intercepts the tensor 
     initialization functions for lazy initialization
-    
-    Note:
-        This API is only experimental and subject to future changes. 
-        It should be integrated with meta tensor initialization in the future.
-        
+      
     Usage:
         with LazyInitContext() as ctx:
             model = nn.Linear(10, 10)
@@ -44,7 +100,8 @@ class LazyInitContext():
 
     def __init__(self, extra_torch_tensor_func: List[str] = None):
         self._intercepted_init_func_cache = []
-        self._nn_init_methods = self._get_nn_init_methods()
+        self._intercepted_nn_init_dict = {}
+        self._nn_init_methods = get_nn_init_methods()
         self._torch_mod_cls = torch.nn.modules.module.Module
 
         if extra_torch_tensor_func:
@@ -53,47 +110,21 @@ class LazyInitContext():
         else:
             self._torch_tensor_funcs = self.tensor_set_value_func
 
-    def _cache_func(self, func):
+    def _cache_nn_init_method(self, func):
         """
         This method wraps the ``torch.nn.init`` method so that the function call
         is cached instead of being executed.
         """
 
-        def wrapped_init_func(*args, **kwargs):
-            self._intercepted_init_func_cache.append(dict(func=func, args=args, kwargs=kwargs))
-
-        return wrapped_init_func
-
-    def _get_nn_init_methods(self):
-        """
-        This method looks for all available functions in the ``torch.nn.init``
-        module.
-        """
-        nn_init_method_names = dir(torch.nn.init)
-        nn_init_methods = []
-
-        # look for all methods in ``torch.nn.init`` module
-        for name in nn_init_method_names:
-            nn_init_methods.append((name, getattr(torch.nn.init, name)))
-
-        def _has_tensor_in_arg(func):
-            hints = typing.get_type_hints(func)
-            for k, v in hints.items():
-                if v is torch.Tensor:
-                    return True
-            return False
-
-        def _is_init_method(item):
-            name, func = item
-            if (not isinstance(func, types.FunctionType) or name.startswith('_') or not name.endswith('_')
-                    or not _has_tensor_in_arg(func)):
-                return False
+        def wrapped_nn_init_func(tensor, *args, **kwargs):
+            if tensor not in self._intercepted_nn_init_dict:
+                self._intercepted_nn_init_dict[tensor] = [func, args, kwargs, 1]
             else:
-                return True
+                init_times = self._intercepted_nn_init_dict[tensor][-1]
+                init_times += 1
+                self._intercepted_nn_init_dict[tensor] = [func, args, kwargs, init_times]
 
-        # remove methods which are not init functions
-        nn_init_methods = list(filter(_is_init_method, nn_init_methods))
-        return nn_init_methods
+        return wrapped_nn_init_func
 
     def _wrap_module_init(self, func):
         """
@@ -122,7 +153,7 @@ class LazyInitContext():
     def _patch_nn_init_funcs(self):
         # patch nn.init functions
         for name, func in self._nn_init_methods:
-            setattr(torch.nn.init, name, self._cache_func(func))
+            setattr(torch.nn.init, name, self._cache_nn_init_method(func))
 
     def _unpatch_nn_init_funcs(self):
         # unpatch nn.init functions
@@ -159,11 +190,13 @@ class LazyInitContext():
             setattr(torch.Tensor, func_name, origin_func)
 
     def __enter__(self):
+        self._patch_nn_init_funcs()
         self._patch_submodule_init()
         return self
 
     def __exit__(self, *args, **kwargs):
         self._unpatch_submodule_init()
+        self._unpatch_nn_init_funcs()
         # build model_rebuild_dict in reverse order to make sure get correct init func for inherited class.
         self.module_rebuild_dict = {}
         self._intercepted_init_func_cache.reverse()
@@ -218,7 +251,7 @@ class LazyInitContext():
             tensor_id = id(meta_param)
             param_full_name = param_id_to_name[tensor_id]
             real_param = torch.empty_like(meta_param, dtype=meta_param.dtype, device=device)
-            real_param = ColoParameter(real_param, requires_grad=meta_param.requires_grad)
+            # real_param = ColoParameter(real_param, requires_grad=meta_param.requires_grad)
 
             if '.' in param_full_name:
                 submodule_name, param_name = param_full_name.rsplit('.', 1)
@@ -228,7 +261,7 @@ class LazyInitContext():
                 param_name = param_full_name
             setattr(submodule, param_name, real_param)
 
-            # execute call_back function on the materailized tensor
+            # execute call_back function on the materialized tensor
             # this can where sharding comes in
             if call_back:
                 call_back(real_param)
