@@ -57,15 +57,13 @@ def run_gpt(init_spec_func, use_ddp):
     model = model.cuda()
     torch_model = model_builder().cuda()
     if use_ddp:
-        print('before DDP', pg.dp_process_group(), pg.rank(), pg._dp_rank_list)
-        # torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
+        # torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg)
         # torch.distributed.barrier()
         torch_model = DDP(torch_model,
                           device_ids=[gpc.get_global_rank()],
                           process_group=gpc.get_group(ParallelMode.DATA))
-        print('init finished')
 
-        model = ColoDDP(model, process_group=pg.dp_process_group())
+        model = ColoDDP(model, process_group=pg)
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
     init_spec_func(model, pg)

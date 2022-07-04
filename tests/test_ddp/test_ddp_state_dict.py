@@ -24,7 +24,7 @@ def check_state_dict_equal(state_dict: OrderedDict, other_state_dict: OrderedDic
 
 def init_ddp(module: torch.nn.Module) -> ColoDDP:
     pg = ProcessGroup()
-    return ColoDDP(module, process_group=pg.dp_process_group())
+    return ColoDDP(module, process_group=pg)
 
 
 def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False, use_zero: bool = False) -> ZeroDDP:

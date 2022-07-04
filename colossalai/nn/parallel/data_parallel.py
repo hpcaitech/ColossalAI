@@ -10,12 +10,12 @@ from typing import Dict, Iterable, List, Optional
 from colossalai.logging import get_dist_logger
 from collections import OrderedDict
 from colossalai.tensor.colo_parameter import ColoParameter
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from .reducer import Reducer
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
 except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = '_extra_state'
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
 
 
 def free_storage(data: torch.Tensor) -> None:
@@ -44,8 +44,8 @@ class ColoDDP(torch.nn.Module):
         >>> from colossalai.core import global_context as gpc
         >>> from colossalai.context import ParallelMode
         >>> model = torch.nn.Linear(20, 1)
-        >>> model = ColoDDP(model)
-        >>> // model = ColoDDP(model, process_group=gpc.get_group(ParallelMode.DATA), cpu_process_group=gpc.get_cpu_group(ParallelMode.DATA))
+        >>> pg = ProcessGroup(tp_degree = world_size//2)
+        >>> model = ColoDDP(model, pg)
         >>> logits = model(x)
         >>> loss = criterion(logits, labels)
         >>> model.backward(loss)
@@ -60,7 +60,7 @@ class ColoDDP(torch.nn.Module):
 
     def __init__(self,
                  module: torch.nn.Module,
-                 process_group: Optional[dist.ProcessGroup] = None,
+                 process_group: ColoProcessGroup,
                  cpu_process_group: Optional[dist.ProcessGroup] = None,
                  bucket_cap_mb: int = 25,
                  rebuild_bucket: bool = True) -> None:
@@ -70,7 +70,7 @@ class ColoDDP(torch.nn.Module):
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
         assert process_group
 
-        self.process_group = process_group
+        self.process_group = process_group.dp_process_group()
         self.dp_world_size = self.process_group.size()
         self.reducer = Reducer(bucket_cap_mb)
         self.rebuild_bucket = rebuild_bucket
@@ -197,7 +197,7 @@ class ZeroDDP(ColoDDP):
                  module: torch.nn.Module,
                  gemini_manager: GeminiManager,
                  process_group: Optional[ColoProcessGroup] = None) -> None:
-        super().__init__(module.half(), process_group=process_group.dp_process_group())
+        super().__init__(module.half(), process_group=process_group)
         self.gemini_manager = gemini_manager
         self.chunk_manager = gemini_manager.chunk_manager
         self.param_op_hook = ZeROHookV2(gemini_manager)

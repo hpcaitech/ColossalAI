@@ -29,7 +29,7 @@ def set_seed(seed):
 
 def init_ddp(module: torch.nn.Module) -> ColoDDP:
     pg = ProcessGroup()
-    return ColoDDP(module, process_group=pg.dp_process_group())
+    return ColoDDP(module, process_group=pg)
 
 
 def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False) -> ZeroDDP:
