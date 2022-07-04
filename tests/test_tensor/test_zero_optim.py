@@ -109,8 +109,6 @@ def run_gpt(use_chunk, use_zero, placement_policy, tp_init_spec_func=None):
         if i > 2:
             break
 
-        torch.distributed.broadcast(input_ids, 0)
-
         logits = run_fwd_bwd(model, criterion, optim, input_ids, attn_mask)
         torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
         assert tensor_equal(logits, torch_logits)
