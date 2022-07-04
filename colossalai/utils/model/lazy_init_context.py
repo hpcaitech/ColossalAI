@@ -21,6 +21,11 @@ class MaterializationContext():
     Note:
         This API is only experimental and subject to future changes. 
         It may inherit ColoInitContext to build module with ColoTensor.
+
+    Usage:
+    ctx = MaterializationContext(lazy_init_dict)
+    with ctx:
+        model = nn.Linear(10, 10)
     """
 
     def __init__(self, lazy_init_dict):
