@@ -86,3 +86,33 @@ def torch_nn_conv3d(self, input):
         w_out,
     )
     return torch.empty(result_shape, device='meta')
+
+
+@meta_patched_module.register(torch.nn.MaxPool3d)
+def torch_nn_maxpool3d(self, input):
+    num_dim = input.dim()
+    assert num_dim in [4, 5], f'expected the input to have 4 or 5 dimensions, but got {num_dim} dimensions'
+
+    d_in, h_in, w_in = input.shape[-3:]
+
+    def _convert_int_to_list(item):
+        if isinstance(item, int):
+            return [item] * 3
+        else:
+            return item
+
+    padding = _convert_int_to_list(self.padding)
+    dilation = _convert_int_to_list(self.dilation)
+    kernel_size = _convert_int_to_list(self.kernel_size)
+    stride = _convert_int_to_list(self.stride)
+
+    d_out = math.floor((d_in + 2 * padding[0] - dilation[0] * (kernel_size[0] - 1) - 1) / stride[0] + 1)
+    h_out = math.floor((h_in + 2 * padding[1] - dilation[1] * (kernel_size[1] - 1) - 1) / stride[1] + 1)
+    w_out = math.floor((w_in + 2 * padding[2] - dilation[2] * (kernel_size[2] - 1) - 1) / stride[2] + 1)
+
+    result_shape = input.shape[:-3] + (
+        d_out,
+        h_out,
+        w_out,
+    )
+    return torch.empty(result_shape, device='meta')
