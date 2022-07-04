@@ -1,10 +1,12 @@
-from colossalai.tensor.colo_parameter import ColoParameter
-from tests.components_to_test.registry import non_distributed_component_funcs
-
-import colossalai
 import pytest
+from functools import partial
+from _utils import tensor_shard_equal, set_seed
+
 import torch
 import torch.multiprocessing as mp
+
+from colossalai.tensor.colo_parameter import ColoParameter
+import colossalai
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
@@ -12,34 +14,30 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import distspec, TensorSpec, ComputePattern, \
     ComputeSpec, ColoTensor, DistSpecManager, ProcessGroup
 from colossalai.nn.optimizer import ColoOptimizer
-from functools import partial
-from _utils import tensor_shard_equal, set_seed
+
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def init_1d_row_linear(weight, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [-1], [pg.tp_world_size()]),
-                      ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_col_linear(weight, pg):
-    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [0], [pg.tp_world_size()]),
-                      ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_row_embedding(weight, pg):
-    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [0], [pg.tp_world_size()]),
-                      ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_col_embedding(weight, pg):
-    spec = TensorSpec(distspec.shard(pg.tp_process_group(), [-1], [pg.tp_world_size()]),
-                      ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
@@ -142,7 +140,7 @@ def run_1d_hybrid_tp(model_name):
             with torch.no_grad():
                 # check param
                 for p, torch_p in zip(model.parameters(), model_torch.parameters()):
-                    assert tensor_shard_equal(torch_p, p)
+                    assert tensor_shard_equal(torch_p, p, pg.tp_local_rank(), pg.tp_world_size())
 
         if i > 5:
             break

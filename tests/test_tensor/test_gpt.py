@@ -101,6 +101,7 @@ def run_dist(rank, world_size, port, use_ddp):
 
 
 @pytest.mark.dist
+@pytest.mark.skip("under development")
 @pytest.mark.parametrize('world_size', [1, 4])
 @pytest.mark.parametrize('use_ddp', [False, True])
 @rerun_if_address_is_in_use()
