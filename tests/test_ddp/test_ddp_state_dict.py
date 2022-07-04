@@ -13,6 +13,7 @@ from colossalai.nn.parallel import ZeroDDP, ColoDDP
 from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Callable
 from collections import OrderedDict
+from colossalai.tensor import ProcessGroup
 
 
 def check_state_dict_equal(state_dict: OrderedDict, other_state_dict: OrderedDict):
@@ -22,14 +23,16 @@ def check_state_dict_equal(state_dict: OrderedDict, other_state_dict: OrderedDic
 
 
 def init_ddp(module: torch.nn.Module) -> ColoDDP:
-    return ColoDDP(module)
+    pg = ProcessGroup()
+    return ColoDDP(module, process_group=pg)
 
 
 def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False, use_zero: bool = False) -> ZeroDDP:
     chunk_size = ChunkManager.search_chunk_size(module, 64, 4) if use_chunk else None
     chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
     gemini_manager = GeminiManager('cuda', chunk_manager)
-    return ZeroDDP(module, gemini_manager)
+    pg = ProcessGroup()
+    return ZeroDDP(module, gemini_manager, process_group=pg)
 
 
 def run_state_dict(ddp_init_func: Callable[[torch.nn.Module], ColoDDP]):

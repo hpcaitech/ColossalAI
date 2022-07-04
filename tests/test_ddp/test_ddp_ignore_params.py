@@ -15,6 +15,7 @@ import torch.distributed as dist
 import os
 import random
 import numpy as np
+from colossalai.tensor import ProcessGroup
 
 
 def set_seed(seed):
@@ -27,14 +28,16 @@ def set_seed(seed):
 
 
 def init_ddp(module: torch.nn.Module) -> ColoDDP:
-    return ColoDDP(module)
+    pg = ProcessGroup()
+    return ColoDDP(module, process_group=pg)
 
 
 def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False) -> ZeroDDP:
     chunk_size = ChunkManager.search_chunk_size(module, 64, 2) if use_chunk else None
     chunk_manager = ChunkManager(chunk_size)
     gemini_manager = GeminiManager('cuda', chunk_manager)
-    return ZeroDDP(module, gemini_manager)
+    pg = ProcessGroup()
+    return ZeroDDP(module, gemini_manager, pg)
 
 
 class Net(torch.nn.Module):

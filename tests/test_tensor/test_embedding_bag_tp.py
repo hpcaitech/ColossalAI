@@ -1,6 +1,5 @@
 import torch
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor import ColoTensor, distspec, ColoParameter
+from colossalai.tensor import distspec, ColoParameter
 from torch.nn import functional as F
 from functools import partial
 
@@ -10,23 +9,21 @@ import torch
 import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
-from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager
+from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager, ProcessGroup
 from _utils import tensor_equal, tensor_shard_equal
 
 
-def init_1d_col(weight):
-    spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ComputeSpec(ComputePattern.TP1D))
+def init_1d_col(weight, pg: ProcessGroup):
+    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def run_with_spec(spec_init_func):
+    pg = ProcessGroup(tp_degree=torch.distributed.get_world_size())
     model = torch.nn.EmbeddingBag(10, 4).cuda()
     weight = ColoParameter(model.weight.clone())
-    spec_init_func(weight)
+    spec_init_func(weight, pg)
     inputs = torch.tensor([1, 2, 4, 5, 4, 3, 2, 9]).cuda()
     offsets = torch.tensor([0, 4]).cuda()
     out = model(inputs, offsets=offsets)
@@ -35,7 +32,7 @@ def run_with_spec(spec_init_func):
     grad = torch.rand_like(out)
     out.backward(grad)
     colo_out.backward(grad)
-    assert tensor_shard_equal(model.weight.grad, weight.grad)
+    assert tensor_shard_equal(model.weight.grad, weight.grad, pg.tp_local_rank(), pg.tp_world_size())
 
 
 def run_dist(rank, world_size, port):

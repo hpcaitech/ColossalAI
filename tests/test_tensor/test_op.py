@@ -4,10 +4,9 @@ import colossalai
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 from functools import partial
-from colossalai.tensor import ColoTensor, ColoParameter
+from colossalai.tensor import ColoTensor, ProcessGroup
 from colossalai.utils import get_current_device
 from torch.nn import Parameter
-from torch.distributed.distributed_c10d import _get_default_group
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.tensor import distspec, TensorSpec
@@ -43,9 +42,10 @@ def check_spec_eq(tensor, other):
 
 
 def check_element_wise_ops():
-    pg = _get_default_group()
+    world_size = torch.distributed.get_world_size()
+    pg = ProcessGroup(tp_degree=world_size)
     t = torch.rand(2, 2)
-    x = ColoTensor(t, spec=TensorSpec(distspec.shard(pg, [0], [pg.size()])))
+    x = ColoTensor(t, spec=TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()])))
     check_spec_eq(x, x.cuda())
     assert torch.equal(x.cuda(), t.cuda())
     check_spec_eq(x, torch.abs(x))

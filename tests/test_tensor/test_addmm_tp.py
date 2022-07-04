@@ -3,14 +3,12 @@ import torch
 import pytest
 import torch.nn as nn
 import torch.multiprocessing as mp
-from colossalai.tensor import ColoTensor
+from colossalai.tensor import ColoTensor, ProcessGroup
 from colossalai.tensor import distspec
 from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager
-from colossalai.context import ParallelMode
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from functools import partial
-from colossalai.core import global_context as gpc
 from _utils import tensor_shard_equal, tensor_equal
 
 
@@ -38,18 +36,14 @@ class Conv1D(nn.Module):
         return x
 
 
-def init_1d_row(weight, bias):
-    spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ComputeSpec(ComputePattern.TP1D))
+def init_1d_row(weight, bias, pg: ProcessGroup):
+    spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
-def init_1d_col(weight, bias):
-    spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ComputeSpec(ComputePattern.TP1D))
+def init_1d_col(weight, bias, pg: ProcessGroup):
+    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
         bias.set_tensor_spec(spec)
@@ -59,7 +53,9 @@ def run_with_spec(spec_init_func):
     model = Conv1D(4, 16).cuda()
     weight = ColoTensor(torch.nn.Parameter(model.weight.detach()))
     bias = ColoTensor(torch.nn.Parameter(model.bias.detach()))
-    spec_init_func(weight, bias)
+    world_size = torch.distributed.get_world_size()
+    pg = ProcessGroup(tp_degree=world_size)
+    spec_init_func(weight, bias, pg)
     x = torch.rand(2, 16).cuda()
     out = model(x)
     colo_out = torch.addmm(bias, x, weight)
@@ -68,13 +64,12 @@ def run_with_spec(spec_init_func):
     grad = torch.rand_like(out)
     out.backward(grad)
     colo_out.backward(grad)
-    tensor_shard_equal(model.weight.grad, weight.grad)
-    tensor_shard_equal(model.bias.grad, bias.grad)
+    tensor_shard_equal(model.weight.grad, weight.grad, pg.tp_local_rank(), pg.tp_world_size())
+    tensor_shard_equal(model.bias.grad, bias.grad, pg.tp_local_rank(), pg.tp_world_size())
 
 
 def run_dist(rank, world_size, port):
-    config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_with_spec(init_1d_row)
     run_with_spec(init_1d_col)
 

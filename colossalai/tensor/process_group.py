@@ -1,5 +1,6 @@
 import torch
 from typing import List, Optional
+from colossalai.logging import get_dist_logger
 
 
 class ProcessGroup:
@@ -41,12 +42,12 @@ class ProcessGroup:
         if dp_degree and not tp_degree:
             self._dp_degree = dp_degree
             assert self._world_size % self._dp_degree == 0, f"DP degree {dp_degree} should be divisible by {self._world_size} hen DP degree is None"
-            self._tp_degree = self._world_size / dp_degree
+            self._tp_degree = self._world_size // dp_degree
 
         if not dp_degree and tp_degree:
             self._tp_degree = tp_degree
             assert self._world_size % self._tp_degree == 0, f"TP degree {tp_degree} should be divisible by {self._world_size} when DP degree is None"
-            self._dp_degree = self._world_size / tp_degree
+            self._dp_degree = self._world_size // tp_degree
 
         self._tp_rank_list = []
         self._dp_rank_list = []
@@ -58,11 +59,47 @@ class ProcessGroup:
             if rank_id // self._tp_degree == self._rank // self._tp_degree:
                 self._tp_rank_list.append(rank_id)
 
-        self._tp_process_group = torch.distributed.new_group(ranks=self._tp_rank_list, backend=backend)
-        self._dp_process_group = torch.distributed.new_group(ranks=self._dp_rank_list, backend=backend)
+        assert backend == 'nccl'
+        self._tp_process_group = torch.distributed.new_group(ranks=self._tp_rank_list)
+        self._dp_process_group = torch.distributed.new_group(ranks=self._dp_rank_list)
+
+        self.logger = get_dist_logger('ProcessGroup')
+        self.logger.info(f'{self._rank} initialize TP group on {self._tp_rank_list} DP group pn {self._dp_rank_list}')
+
+    @property
+    def backend(self):
+        return self._backend
+
+    def __eq__(self, obj: 'ProcessGroup') -> bool:
+        if not isinstance(obj, ProcessGroup):
+            return False
+        if self._rank != obj._rank:
+            assert False
+        if self._rank_list != obj._rank_list:
+            assert False
+        if self._tp_rank_list != obj._tp_rank_list:
+            assert False
+        if self._dp_rank_list != obj._dp_rank_list:
+            assert False
+        if self._backend != obj._backend:
+            assert False
+        if self._tp_degree != obj._tp_degree:
+            return False
+        if self._dp_degree != obj._dp_degree:
+            return False
+        return True
+
+    def rank(self):
+        return self._rank
 
     def world_size(self):
         return self._world_size
+
+    def tp_local_rank(self):
+        return self._rank % self._tp_degree
+
+    def dp_local_rank(self):
+        return self._rank // self._tp_degree
 
     def dp_world_size(self):
         return len(self._dp_rank_list)

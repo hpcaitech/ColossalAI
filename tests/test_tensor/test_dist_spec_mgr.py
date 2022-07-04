@@ -7,12 +7,12 @@ import torch.multiprocessing as mp
 from torch.distributed.distributed_c10d import _get_default_group
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import DistSpecManager, distspec
+from colossalai.tensor import DistSpecManager, distspec, ProcessGroup
 from functools import partial
 
 
 def run():
-    group = _get_default_group()
+    group = ProcessGroup(tp_degree=dist.get_world_size())
     rank = dist.get_rank()
     size = dist.get_world_size()
     depth = int(math.sqrt(size))
@@ -34,7 +34,7 @@ def run():
 
 
 def check_mem():
-    group = _get_default_group()
+    group = ProcessGroup(tp_degree=dist.get_world_size())
     size = dist.get_world_size()
     assert torch.cuda.memory_allocated() == 0
     x = torch.rand(32, 32).cuda()
