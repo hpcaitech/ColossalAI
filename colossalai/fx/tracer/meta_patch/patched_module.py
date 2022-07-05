@@ -30,7 +30,7 @@ def torch_nn_normalize(self, input):
 
 @meta_patched_module.register(torch.nn.Embedding)
 def torch_nn_embedding(self, input):
-    result_shape = input.shape[:-1] + (self.embedding_dim,)
+    result_shape = input.shape + (self.embedding_dim,)
     return torch.empty(result_shape, device='meta')
 
 

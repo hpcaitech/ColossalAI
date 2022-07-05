@@ -59,7 +59,11 @@ class ColoProxy(Proxy):
 
     def size(self, dim: int = None):
         self._assert_has_meta()
-        return self.meta_tensor.size(dim=dim)
+        if dim:
+            return self.meta_tensor.size(dim=dim)
+        else:
+            # size(dim=None) will trigger runtime error for meta tensor
+            return self.meta_tensor.size()
 
     def __len__(self):
         self._assert_has_meta()
