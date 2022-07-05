@@ -34,11 +34,13 @@ class TransformDistSpec(torch.autograd.Function):
         ctx.old_dist_spec = old_dist_spec
         ctx.dist_spec = dist_spec
         ctx.backward_trans_func = backward_trans_func
+        ctx.pg = pg
         return forward_trans_func(tensor, old_dist_spec, dist_spec, pg)
 
     @staticmethod
     def backward(ctx, grad_outputs):
-        return ctx.backward_trans_func(grad_outputs, ctx.dist_spec, ctx.old_dist_spec), None, None, None, None, None
+        return ctx.backward_trans_func(grad_outputs, ctx.dist_spec, ctx.old_dist_spec,
+                                       ctx.pg), None, None, None, None, None
 
 
 class DistSpecManager:
@@ -163,6 +165,8 @@ class DistSpecManager:
     @staticmethod
     def handle_trans_spec(tensor: torch.Tensor, old_dist_spec: _DistSpec, dist_spec: _DistSpec,
                           pg: ProcessGroup) -> torch.Tensor:
+        assert isinstance(old_dist_spec, _DistSpec), f"{type(old_dist_spec)} should be _DistSpec"
+        assert isinstance(dist_spec, _DistSpec), f"{type(dist_spec)} should be _DistSpec"
         forward_trans_handle = getattr(DistSpecManager, f'_{old_dist_spec.placement.value}2{dist_spec.placement.value}')
         if not DistSpecManager._use_autograd_function:
             return forward_trans_handle(tensor, old_dist_spec, dist_spec, pg)

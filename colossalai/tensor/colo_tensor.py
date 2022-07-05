@@ -61,6 +61,7 @@ class ColoTensor(torch.Tensor):
 
         self._type = TensorType.NONMODEL
         self._graph_node = None
+        assert isinstance(self.dist_spec, _DistSpec)
 
     def has_compute_spec(self) -> bool:
         return self.compute_spec is not None
@@ -82,6 +83,16 @@ class ColoTensor(torch.Tensor):
         """
         assert isinstance(dist_spec, _DistSpec)
         self._convert_to_dist_spec(dist_spec)
+
+    def set_tensor_spec(self, dist_spec, compute_spec):
+        if dist_spec:
+            assert isinstance(dist_spec, _DistSpec), f"{type(dist_spec)}"
+            self.set_dist_spec(dist_spec)
+        if compute_spec:
+            self.compute_spec = compute_spec
+
+    def has_compute_pattern(self, compute_pattern):
+        return self.compute_spec.compute_pattern == compute_pattern
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
