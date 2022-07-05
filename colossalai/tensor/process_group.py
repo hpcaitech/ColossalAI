@@ -89,8 +89,6 @@ class ProcessGroup:
             assert False
         if self._dp_rank_list != obj._dp_rank_list:
             assert False
-        if self._backend != obj._backend:
-            assert False
         if self._tp_degree != obj._tp_degree:
             return False
         if self._dp_degree != obj._dp_degree:

@@ -54,8 +54,6 @@ class ColoDDP(torch.nn.Module):
         module (torch.nn.Module): Module to apply DDP.
         process_group (Optional[dist.ProcessGroup], optional): The process group which DDP uses.
             If it's None, the default data parallel group will be used. Defaults to None.
-        cpu_process_group (Optional[dist.ProcessGroup], optional): The process group which DDP uses for those parameters on CPU.
-            If it's None, the default CPU data parallel group will be used. Defaults to None.
     """
 
     def __init__(self,

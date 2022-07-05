@@ -114,10 +114,8 @@ class DistSpecManager:
         if world_size == 1:
             return tensor
 
-        assert tensor.device.type == "cuda" and old_dist_spec.process_group.backend == "nccl", \
-            "Currently, only CUDA Tensor with NCCL backend is supported for the requested AlltoAll " \
-            f"collective function, however, we got {tensor.device.type} device and " \
-            f"{old_dist_spec.process_group.backend} backend"
+        assert tensor.device.type == "cuda", "Currently, only CUDA Tensors are supported for the requested AlltoAll " \
+            f"collective function, however, we got {tensor.device.type} device"
 
         gather_dim = old_dist_spec.dims[0]
         scatter_dim = dist_spec.dims[0]
