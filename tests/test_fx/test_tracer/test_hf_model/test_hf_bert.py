@@ -26,12 +26,16 @@ def test_bert():
     input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
     token_type_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
     attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
+
+    # must turn on eval mode to ensure the output is consistent
+    gm.eval()
+    model.eval()
+
+    # run forward
     fx_out = gm(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
     non_fx_out = model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
     assert fx_out['last_hidden_state'].shape == non_fx_out['last_hidden_state'].shape
-
-    # TODO: debug this test
-    # assert torch.allclose(fx_out['last_hidden_state'], non_fx_out['last_hidden_state'])
+    assert torch.equal(fx_out['last_hidden_state'], non_fx_out['last_hidden_state'])
 
 
 if __name__ == '__main__':
