@@ -159,7 +159,7 @@ def run_check_shared_param():
     # They are all Linear, so both row is allowed. This should pass check.
     init_colo_module(model, compute_spec, pg=pg, recursive=True, mode='row')
     # This should be detected by check because you can not set weight as row while set bias as col.
-    col_spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    col_spec = TensorSpec(distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     model.cls.predictions.bias.set_tensor_spec(col_spec)
     try:
         check_colo_module(model.cls.predictions.decoder, pg=pg, recursive=False)

@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 from typing import Optional
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
+from colossalai.tensor import ComputePattern, ColoTensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
 from ._utils import GeneralTensor, convert_to_colo_tensor, reduce_input
 
 
@@ -23,8 +23,8 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                                   norm_type=norm_type,
                                   scale_grad_by_freq=scale_grad_by_freq,
                                   sparse=sparse)
-    output_spec = TensorSpec(distspec.shard(weight.get_process_group(), [-1], [weight.get_tp_world_size()]),
-                             ComputeSpec(ComputePattern.TP1D))
+    output_spec = ColoTensorSpec(weight.get_process_group(), distspec.shard([-1], [weight.get_tp_world_size()]),
+                                 ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
     compute_spec = weight.tensor_spec.compute_spec

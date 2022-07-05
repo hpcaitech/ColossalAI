@@ -1,7 +1,7 @@
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor
-from colossalai.tensor import distspec
+from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor
+from colossalai.tensor import distspec, ColoTensorSpec
 from ._utils import GeneralTensor, Number, convert_to_colo_tensor
 from ._utils import reduce_input, reduce_grad
 
@@ -20,7 +20,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # input
     assert not input_tensor.has_compute_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor + alpha * output
-    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(distspec.replicate(mat2.get_process_group())))
+    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(distspec.replicate(mat2.get_process_group())))
     return output
 
 
@@ -32,8 +32,8 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     mat1 = reduce_grad(mat1, mat1.get_process_group())
 
     output_parallel = torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha)
-    output_spec = TensorSpec(distspec.shard(mat2.get_process_group(), [-1], [mat2.get_tp_world_size()]),
-                             ComputeSpec(ComputePattern.TP1D))
+    output_spec = ColoTensorSpec(distspec.shard(mat2.get_process_group(), [-1], [mat2.get_tp_world_size()]),
+                                 ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
     if compute_spec.output_replicate:

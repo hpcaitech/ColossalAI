@@ -11,7 +11,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import distspec, TensorSpec, ComputePattern, \
+from colossalai.tensor import distspec, ColoTensorSpec, ComputePattern, \
     ComputeSpec, ColoTensor, DistSpecManager, ProcessGroup
 from colossalai.nn.optimizer import ColoOptimizer
 
@@ -19,25 +19,25 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def init_1d_row_linear(weight, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = ColoTensorSpec(pg, distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_col_linear(weight, pg):
-    spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = ColoTensorSpec(pg, distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_row_embedding(weight, pg):
-    spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 
 
 def init_1d_col_embedding(weight, pg):
-    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = ColoTensorSpec(pg, distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(spec)
 

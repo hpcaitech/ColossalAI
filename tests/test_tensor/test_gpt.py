@@ -19,7 +19,7 @@ from colossalai.context.parallel_mode import ParallelMode
 
 
 def init_1d_row_spec(model, pg: ProcessGroup):
-    tensor_spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    tensor_spec = TensorSpec(distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n and 'ln' not in n:
@@ -27,7 +27,7 @@ def init_1d_row_spec(model, pg: ProcessGroup):
 
 
 def init_1d_col_spec(model, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = TensorSpec(distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):

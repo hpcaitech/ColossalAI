@@ -45,7 +45,7 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
             if isinstance(param, ColoParameter) and param.has_compute_spec():
                 has_dist_parameter = True
                 mapping[id(param)] = copy(param.tensor_spec)
-                param.set_tensor_spec(TensorSpec(distspec.replicate()))
+                param.set_dist_spec(distspec.replicate())
 
     # TODO: fix when keep_vars = True
     # when keep_vars = False, the state_dict_func will call detach to create

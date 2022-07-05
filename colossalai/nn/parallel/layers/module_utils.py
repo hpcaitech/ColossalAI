@@ -100,8 +100,8 @@ def init_colo_module(module: torch.nn.Module,
                 continue
             param = module.get_parameter(param_name)
             if isinstance(param, ColoParameter):
-                spec = TensorSpec(dist_spec, compute_spec)
-                param.set_tensor_spec(spec)
+                param.set_dist_spec(dist_spec)
+                param.compute_spec = compute_spec
                 for mod in param.shared_param_modules:
                     modules_update_param.add(mod)
         for mod in modules_update_param:
