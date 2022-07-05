@@ -67,7 +67,6 @@ class ColoDDP(torch.nn.Module):
         self.comm_stream: torch.cuda.Stream = torch.cuda.Stream()
         assert process_group
 
-        # self.process_group = process_group.dp_process_group()
         self.process_group = process_group
         self.dp_world_size = self.process_group.dp_world_size()
 
