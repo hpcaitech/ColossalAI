@@ -80,7 +80,9 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
         else:
             with torch._C.DisableTorchFunction():
                 data = self.data.clone()
-            tensor = ColoParameter(data, self.requires_grad, spec=copy(self.tensor_spec))
+            tensor = ColoParameter(data,
+                                   self.requires_grad,
+                                   spec=ColoTensorSpec(self.get_process_group(), self.dist_spec, self.compute_spec))
             memo[id(self)] = tensor
             return tensor
 
