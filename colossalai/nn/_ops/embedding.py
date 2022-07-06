@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 from typing import Optional
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
+from colossalai.tensor import ComputePattern, ColoTensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
 from ._utils import GeneralTensor, convert_to_colo_tensor, reduce_input
 
 
@@ -14,7 +14,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                          sparse: bool = False) -> ColoTensor:
     # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.get_process_group()))
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
 
     output_parallel = F.embedding(input_tensor,
                                   weight,
@@ -23,11 +23,11 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                                   norm_type=norm_type,
                                   scale_grad_by_freq=scale_grad_by_freq,
                                   sparse=sparse)
-    output_spec = TensorSpec(distspec.shard(weight.get_process_group(), [-1], [weight.get_tp_world_size()]),
-                             ComputeSpec(ComputePattern.TP1D))
+    output_spec = ColoTensorSpec(weight.get_process_group(), distspec.shard([-1], [weight.get_tp_world_size()]),
+                                 ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
-    compute_spec = weight.tensor_spec.compute_spec
+    compute_spec = weight.compute_spec
 
     if compute_spec.output_replicate:
         return output.to_replicate()
@@ -45,10 +45,11 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     # embedding_1Drow split the weight(lookup table) to (num_embeddings/P, embedding_dim)
     # Find index in this shard and mask those not here
     # Reduce all
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.get_process_group()))
+    pg = weight.get_process_group()
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
 
     # tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-    tensor_parallel_rank = weight.tensor_spec.dist_spec.process_group.tp_local_rank()
+    tensor_parallel_rank = weight.get_process_group().tp_local_rank()
     num_embeddings_per_partition = weight.size_local(0)
     vocab_start_index = tensor_parallel_rank * num_embeddings_per_partition
     vocab_end_index = vocab_start_index + num_embeddings_per_partition
@@ -73,7 +74,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     partial_output[input_mask, :] = 0.
     # Reduce across all the model parallel GPUs.
     output = reduce_input(partial_output, weight.get_process_group())
-    output = ColoTensor.from_torch_tensor(output, spec=TensorSpec(distspec.replicate(weight.get_process_group())))
+    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(weight.get_process_group(), distspec.replicate()))
     return output
 
 
@@ -107,12 +108,11 @@ def colo_embedding(input_tensor: GeneralTensor,
     """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.embedding``.
     This method looks up an embedding table.
     """
-    input_tensor, weight = tuple(map(convert_to_colo_tensor, (input_tensor, weight)))
-
-    # Handle differen parallel actions.
+    assert isinstance(weight, ColoTensor)
+    input_tensor = convert_to_colo_tensor(input_tensor, weight.get_process_group())
 
     if not weight.has_compute_spec():    # No Model Parallel Applied
-        assert weight.tensor_spec.is_replicate(), 'Invalid weight spec for native embedding op'
+        assert weight.is_replicate(), 'Invalid weight spec for native embedding op'
         return ColoTensor.from_torch_tensor(
             F.embedding(input_tensor,
                         weight,
@@ -121,10 +121,10 @@ def colo_embedding(input_tensor: GeneralTensor,
                         norm_type=norm_type,
                         scale_grad_by_freq=scale_grad_by_freq,
                         sparse=sparse))
-    elif weight.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.tensor_spec.is_shard_1drow():
+    elif weight.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+        if weight.is_shard_1drow():
             mode = 'row'
-        elif weight.tensor_spec.is_shard_1dcol():
+        elif weight.is_shard_1dcol():
             mode = 'col'
         else:
             raise NotImplementedError

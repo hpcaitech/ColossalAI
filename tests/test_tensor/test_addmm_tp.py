@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.multiprocessing as mp
 from colossalai.tensor import ColoTensor, ProcessGroup
 from colossalai.tensor import distspec
-from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager
+from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec, DistSpecManager
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from functools import partial
@@ -37,24 +37,26 @@ class Conv1D(nn.Module):
 
 
 def init_1d_row(weight, bias, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_tensor_spec(spec)
+        weight.set_tensor_spec(*spec)
 
 
 def init_1d_col(weight, bias, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
-        weight.set_tensor_spec(spec)
-        bias.set_tensor_spec(spec)
+        weight.set_tensor_spec(*spec)
+        bias.set_tensor_spec(*spec)
 
 
 def run_with_spec(spec_init_func):
     model = Conv1D(4, 16).cuda()
-    weight = ColoTensor(torch.nn.Parameter(model.weight.detach()))
-    bias = ColoTensor(torch.nn.Parameter(model.bias.detach()))
     world_size = torch.distributed.get_world_size()
     pg = ProcessGroup(tp_degree=world_size)
+
+    weight = ColoTensor(torch.nn.Parameter(model.weight.detach()), ColoTensorSpec(pg))
+    bias = ColoTensor(torch.nn.Parameter(model.bias.detach()), ColoTensorSpec(pg))
+
     spec_init_func(weight, bias, pg)
     x = torch.rand(2, 16).cuda()
     out = model(x)

@@ -1,7 +1,5 @@
 from enum import Enum
-from colossalai.tensor import ProcessGroup
-from typing import Optional, List
-from numpy import prod
+from typing import List
 
 __all__ = ['replicate', 'shard']
 
@@ -13,10 +11,7 @@ class DistPlacementPattern(Enum):
 
 class _DistSpec:
 
-    def __init__(self,
-                 dist_placement_pattern: DistPlacementPattern,
-                 process_group: Optional[ProcessGroup] = None,
-                 **meta_info):
+    def __init__(self, dist_placement_pattern: DistPlacementPattern, **meta_info):
         """_DistSpec, Distributed Specification
 
         Args:
@@ -25,7 +20,6 @@ class _DistSpec:
             process_group (Optional[ProcessGroup], optional): the process group contains processes. Defaults to None.
         """
         self.placement = dist_placement_pattern
-        self.process_group = process_group
         for k, v in meta_info.items():
             setattr(self, k, v)
 
@@ -45,14 +39,11 @@ class _DistSpec:
         return res
 
 
-def replicate(process_group: Optional[ProcessGroup] = None) -> _DistSpec:
-    # process_group=None means global process group
-    return _DistSpec(DistPlacementPattern.REPLICATE, process_group)
+def replicate() -> _DistSpec:
+    return _DistSpec(DistPlacementPattern.REPLICATE)
 
 
-def shard(process_group: ProcessGroup, dims: List[int], num_partitions: List[int]) -> _DistSpec:
-    assert process_group is not None and isinstance(process_group, ProcessGroup)
+def shard(dims: List[int], num_partitions: List[int]) -> _DistSpec:
     assert isinstance(dims, list) and isinstance(num_partitions, list)
     assert len(dims) == len(num_partitions)
-    assert prod(num_partitions) == process_group.tp_world_size(), f"{num_partitions} {process_group.tp_world_size()}"
-    return _DistSpec(DistPlacementPattern.SHARD, process_group, dims=tuple(dims), num_partitions=tuple(num_partitions))
+    return _DistSpec(DistPlacementPattern.SHARD, dims=tuple(dims), num_partitions=tuple(num_partitions))

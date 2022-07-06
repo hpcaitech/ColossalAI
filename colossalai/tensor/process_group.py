@@ -20,6 +20,9 @@ class ProcessGroup:
                  ranks: Optional[List[int]] = None,
                  tp_degree: Optional[int] = None,
                  dp_degree: Optional[int] = None) -> None:
+        if not torch.distributed.is_initialized():
+            return
+
         assert torch.distributed.is_initialized(), f"ProcessGroup must be used after distributed initialized"
         if rank is None:
             self._rank = torch.distributed.get_rank()

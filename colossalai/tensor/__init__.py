@@ -1,5 +1,5 @@
 from .process_group import ProcessGroup
-from .tensor_spec import TensorSpec
+from .tensor_spec import ColoTensorSpec
 from .compute_spec import ComputeSpec, ComputePattern
 from .colo_tensor import ColoTensor
 from .colo_parameter import ColoParameter
@@ -9,7 +9,7 @@ from .param_op_hook import ParamOpHook, ParamOpHookManager
 from . import distspec
 
 __all__ = [
-    'ColoTensor', 'convert_parameter', 'ComputePattern', 'TensorSpec', 'ComputeSpec', 'named_params_with_colotensor',
-    'ColoParameter', 'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ChunkManager', 'TensorState',
-    'ProcessGroup'
+    'ColoTensor', 'convert_parameter', 'ComputePattern', 'ComputeSpec', 'named_params_with_colotensor', 'ColoParameter',
+    'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ChunkManager', 'TensorState', 'ProcessGroup',
+    'ColoTensorSpec', 'TensorSpec'
 ]
