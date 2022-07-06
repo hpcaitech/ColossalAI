@@ -23,6 +23,7 @@ def register_colo_graph(input_pos: List[int], param_pos: List[int]) -> Callable:
         def wrapper(*args, **kwargs):
             param_list = []
             input_list = []
+            # TODO(jiaruifang) find the pg
             for idx, arg in enumerate(args):
                 if isinstance(arg, torch.Tensor) and idx in input_pos:
                     input_list.append(convert_to_colo_tensor(arg))

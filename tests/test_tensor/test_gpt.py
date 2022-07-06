@@ -1,37 +1,38 @@
 import pytest
 
-import colossalai
+from functools import partial
+from _utils import tensor_equal, tensor_shard_equal, set_seed
+
+import torch
+from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec, ProcessGroup
-
-from functools import partial
-from _utils import tensor_equal, tensor_shard_equal, set_seed
-from tests.components_to_test.registry import non_distributed_component_funcs
-import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
+from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec, ProcessGroup
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.core import global_context as gpc
 from colossalai.context.parallel_mode import ParallelMode
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def init_1d_row_spec(model, pg: ProcessGroup):
-    tensor_spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    tensor_spec = (distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n and 'ln' not in n:
-                p.set_tensor_spec(tensor_spec)
+                p.set_tensor_spec(*tensor_spec)
 
 
 def init_1d_col_spec(model, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):
-                p.set_tensor_spec(spec)
+                p.set_tensor_spec(*spec)
 
 
 def check_param_equal(model, torch_model, pg: ProcessGroup):

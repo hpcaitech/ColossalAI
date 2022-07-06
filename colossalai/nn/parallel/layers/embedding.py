@@ -21,7 +21,7 @@ class ColoEmbedding(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard(pg, [0], [pg.tp_world_size()]),
+                'weight': distspec.shard([0], [pg.tp_world_size()]),
             },
             mode='row',
         )
@@ -30,7 +30,7 @@ class ColoEmbedding(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard(pg, [-1], [pg.tp_world_size()]),
+                'weight': distspec.shard([-1], [pg.tp_world_size()]),
             },
             mode='col',
         )
