@@ -61,7 +61,7 @@ class ColoTracer(Tracer):
         proxy: ColoProxy
 
         if kind == "placeholder" and target in self.meta_args and self.meta_args[target].is_meta:
-            proxy.meta_tensor = self.meta_args[target]
+            proxy.meta_data = self.meta_args[target]
             return proxy
 
         if target in self.orig_torch_tensor_methods:
@@ -127,7 +127,7 @@ class ColoTracer(Tracer):
 
             if not isinstance(proxy, Proxy):
                 raise ValueError("Don't support composite output yet")
-            proxy.meta_tensor = meta_out
+            proxy.meta_data = meta_out
         except Exception as e:
             raise RuntimeError(f"Could not compute metadata for {kind} target {target}: {e}")
         return proxy
