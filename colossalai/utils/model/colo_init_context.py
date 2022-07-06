@@ -38,15 +38,18 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
     # build param to spec mapping
     mapping1 = dict()
     mapping2 = dict()
+    mapping3 = dict()
     # gather all params
     has_dist_parameter = False
     with torch.no_grad():
         for param in self.parameters():
-            if isinstance(param, ColoParameter) and param.has_compute_spec():
+            if isinstance(param, ColoParameter):
                 has_dist_parameter = True
                 mapping1[id(param)] = copy(param.dist_spec)
                 mapping2[id(param)] = copy(param.compute_spec)
+                mapping3[id(param)] = param.get_process_group()
                 param.set_dist_spec(distspec.replicate())
+                param.process_group = None
 
     # TODO: fix when keep_vars = True
     # when keep_vars = False, the state_dict_func will call detach to create
@@ -64,6 +67,7 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
             if param_id in mapping1:
                 dist_spec = mapping1[id(param)]
                 compute_spec = mapping2[id(param)]
+                param.process_group = mapping3[id(param)]
                 param.set_tensor_spec(dist_spec, compute_spec)
     return ret
 

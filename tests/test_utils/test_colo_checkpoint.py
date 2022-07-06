@@ -159,7 +159,7 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch, pg):
             if epoch == test_epoch + 1:
                 load_checkpoint('./checkpoint', test_epoch, dist.get_rank(), model_reload, optimizer_reload,
                                 lr_scheduler_reload)
-                init_spec_func(model_reload)
+                init_spec_func(model_reload, pg)
             for i, image_dict in enumerate(train_dataloader):
                 if use_ddp:
                     model_ref.zero_grad()
