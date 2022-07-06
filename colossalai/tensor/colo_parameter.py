@@ -37,7 +37,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
                  data: Optional[torch.Tensor] = None,
                  requires_grad: bool = True,
                  spec: ColoTensorSpec = None) -> None:
-        super(ColoTensor).__init__(data, spec)
+        ColoTensor.__init__(self, data, spec)
         self._type = TensorType.MODEL
         # a list contains modules sharing this ColoParameter with others.
         self._shared_param_modules = []
