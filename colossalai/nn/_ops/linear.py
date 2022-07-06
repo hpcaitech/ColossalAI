@@ -22,7 +22,8 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
         assert not bias.has_compute_spec(), 'Invalid bias spec for 1Drow Linear op'
         output = output + bias
 
-    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(distspec.replicate()))
+    pg = input_tensor.get_process_group()
+    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(pg, distspec.replicate()))
     return output
 
 

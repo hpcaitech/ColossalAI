@@ -124,7 +124,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 save_torch_payload = True if not self._lazy_memory_allocate else False
                 # detaching tensor is necessary for optimizers.
                 requires_grad = param.requires_grad
-
+                # TODO(jiaruifang) we initialize a Default PG memory
                 colo_param = ColoParameter(param.to(self._device), requires_grad=requires_grad)
                 # add mapping record
                 replaced_tensors[param] = colo_param

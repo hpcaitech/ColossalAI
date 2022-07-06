@@ -112,7 +112,7 @@ def colo_embedding(input_tensor: GeneralTensor,
     input_tensor = convert_to_colo_tensor(input_tensor, weight.get_process_group())
 
     if not weight.has_compute_spec():    # No Model Parallel Applied
-        assert weight.tensor_spec.is_replicate(), 'Invalid weight spec for native embedding op'
+        assert weight.is_replicate(), 'Invalid weight spec for native embedding op'
         return ColoTensor.from_torch_tensor(
             F.embedding(input_tensor,
                         weight,

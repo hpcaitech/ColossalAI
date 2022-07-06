@@ -5,7 +5,7 @@ import torch
 from torch.overrides import get_default_nowrap_functions
 
 from colossalai.tensor import ColoTensorSpec
-from colossalai.tensor import distspec
+from colossalai.tensor import distspec, ProcessGroup
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
 from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
 from typing import Optional
@@ -53,15 +53,21 @@ class ColoTensor(torch.Tensor):
             data = torch.empty(0)
         return torch.Tensor._make_subclass(cls, data, data.requires_grad)
 
-    def __init__(self, data: torch.Tensor, spec: ColoTensorSpec) -> None:
-        assert isinstance(spec, ColoTensorSpec), f"{type(spec)} is wrong, should be ColoTensorSpec"
-        self.dist_spec = spec.dist_attr
-        self.compute_spec = spec.compute_attr
-        self.process_group = spec.pg
+    def __init__(self, data: torch.Tensor, spec: Optional[ColoTensorSpec] = None) -> None:
+        # If not set spec, use a DP process group and replicate dist spec
+        if not spec:
+            self.has_initialized = False
+            self.dist_spec = distspec.replicate()
+            self.compute_spec = None
+            self.process_group = ProcessGroup()
+        else:
+            self.has_initialized = True
+            self.dist_spec = spec.dist_attr
+            self.compute_spec = spec.compute_attr
+            self.process_group = spec.pg
 
         self._type = TensorType.NONMODEL
         self._graph_node = None
-        assert isinstance(self.dist_spec, _DistSpec)
 
     def has_compute_spec(self) -> bool:
         return self.compute_spec is not None
@@ -71,6 +77,26 @@ class ColoTensor(torch.Tensor):
 
     def get_process_group(self) -> 'ProcessGroup':
         return self.process_group
+
+    def set_process_group(self, pg: ProcessGroup):
+        """set_process_group 
+        change the pg of the ColoTensor. Note that the valid use cases is limited.
+        Only existing pg is DP and dist spec is REPLICaTE is valid.
+        Args:
+            pg (ProcessGroup): target pg
+
+        Raises:
+            RuntimeError: 
+            RuntimeError: 
+        """
+        assert isinstance(pg, ProcessGroup), f"pg as type {type(pg)} is invalid"
+        if self.process_group.tp_world_size() != 1:
+            raise RuntimeError("can not set_process_group on a ColoTensor whose process_group has tp world group")
+
+        if self.dist_spec.placement.value != 'r':
+            raise RuntimeError("can not set_process_group on a ColoTensor whose dist spec is not REPLICATE")
+
+        self.process_group = pg
 
     def get_tp_world_size(self) -> int:
         return self.process_group.tp_world_size()
@@ -146,7 +172,7 @@ class ColoTensor(torch.Tensor):
         return self.convert_to_dist_spec(distspec.replicate())
 
     @staticmethod
-    def from_torch_tensor(tensor: torch.Tensor, spec: ColoTensorSpec) -> 'ColoTensor':
+    def from_torch_tensor(tensor: torch.Tensor, spec: Optional[ColoTensorSpec] = None) -> 'ColoTensor':
         tensor = tensor.as_subclass(ColoTensor)
         tensor.__init__(tensor, spec=spec)
         return tensor

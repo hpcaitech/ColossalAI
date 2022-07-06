@@ -8,7 +8,8 @@ from colossalai.utils import free_port
 
 def test_multiinheritance():
     colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
-    colo_param = ColoParameter(None, requires_grad=True, spec=ColoTensorSpec(ProcessGroup()))
+    colo_param = ColoParameter(None, requires_grad=True)
+    assert colo_param.dist_spec.placement.value == 'r'
     assert isinstance(colo_param, ColoTensor)
     assert isinstance(colo_param, torch.nn.Parameter)
 
