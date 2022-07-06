@@ -1,5 +1,5 @@
-import torch.nn.functional as F
 from typing import List, Optional
+import torch.nn.functional as F
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ColoTensor, distspec, ColoTensorSpec
 from ._utils import GeneralTensor, convert_to_colo_tensor
