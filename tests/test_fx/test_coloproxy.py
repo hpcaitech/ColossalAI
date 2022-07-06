@@ -10,7 +10,7 @@ def test_coloproxy():
 
     # create proxy
     proxy = ColoProxy(node=node)
-    proxy.meta_tensor = torch.empty(4, 2, device='meta')
+    proxy.meta_data = torch.empty(4, 2, device='meta')
 
     assert len(proxy) == 4
     assert proxy.shape[0] == 4 and proxy.shape[1] == 2
