@@ -60,3 +60,32 @@ def torch_matmul(input, other, *, out=None):
     if shape is None:
         return torch.tensor(0.0, device="meta")
     return torch.empty(*shape, device="meta")
+
+
+@meta_patched_function.register(torch.arange)
+def torch_arange(*args, **kwargs):
+    n = len(args)
+    step = 1
+    if n == 1:
+        start = 0
+        end = args[0]
+    elif n == 2:
+        start, end = args
+    else:
+        start, end, step = args
+    if isinstance(start, float):
+        start = int(start)
+    if isinstance(end, float):
+        start = int(end)
+    if isinstance(step, float):
+        step = int(step)
+    step = kwargs.get("step", step)
+    dtype = kwargs.get("dtype")
+    return torch.empty((end - start) // step, dtype=dtype, device="meta")
+
+
+@meta_patched_function.register(torch.where)
+def torch_where(condition, x, y):
+    # torch.where returns the broadcasted tensor of condition, x, and y,
+    # so hack it by using addition
+    return condition.to(device="meta") + x.to(device="meta") + y.to(device="meta")

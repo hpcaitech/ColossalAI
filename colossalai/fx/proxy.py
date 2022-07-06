@@ -28,12 +28,7 @@ class ColoProxy(Proxy):
         return self._meta_tensor
 
     @meta_tensor.setter
-    def meta_tensor(self, tensor: Union[List[torch.Tensor], torch.Tensor]):
-
-        def _is_meta(item):
-            assert torch.is_tensor(item) and item.is_meta
-
-        torch.fx.node.map_aggregate(tensor, _is_meta)
+    def meta_tensor(self, tensor: torch.Tensor):
         self._meta_tensor = tensor
 
     @property
@@ -81,7 +76,7 @@ class ColoProxy(Proxy):
 
     def __getattr__(self, k):
         if k == "metadata":
-            return self.meta_tensor
+            return self.__getattribute__(k)
         # note: not added to the graph yet, if this is a method call
         # we peephole optimize to the method invocation
         return Attribute(self, k)

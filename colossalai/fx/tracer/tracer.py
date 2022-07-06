@@ -14,7 +14,6 @@ from torch import Tensor
 from torch.fx import Tracer
 from torch.fx.graph import Graph
 from torch.fx.proxy import Proxy, ParameterProxy
-from torch.utils import _pytree
 from ..proxy import ColoProxy
 from typing import Optional, Dict, Any
 from ._tracer_utils import is_element_in_list, extract_meta
