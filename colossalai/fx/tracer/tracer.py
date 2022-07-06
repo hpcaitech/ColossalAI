@@ -7,8 +7,6 @@ tracer.py:
 import enum
 import inspect
 import functools
-from multiprocessing.sharedctypes import Value
-from re import I
 import torch
 import torch.nn as nn
 from torch import Tensor

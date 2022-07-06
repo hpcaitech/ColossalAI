@@ -5,7 +5,7 @@ try:
 except:
     pass
 from colossalai.fx import ColoTracer
-from torch.fx import GraphModule, Tracer
+from torch.fx import GraphModule
 
 
 @pytest.mark.skip('skip as torchvision is required')
