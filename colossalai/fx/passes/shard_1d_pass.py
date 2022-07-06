@@ -4,39 +4,34 @@ from torch.fx.node import Node
 from torch.fx.passes.split_module import split_module
 
 import colossalai
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.tensor import TensorSpec, distspec, ProcessGroup
+from colossalai.tensor import ColoTensorSpec, distspec, ProcessGroup, ComputeSpec, ComputePattern
 
 
-def all_gather_function(input_):
-    world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
-    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
-    tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
-    tensor_list[rank] = input_
-    group = gpc.get_group(ParallelMode.PARALLEL_1D)
-    torch.distributed.all_gather(tensor_list, input_, group=group)
-    output = torch.cat(tensor_list, dim=-1).contiguous()
-    return output
+def weight_split(weight: torch.nn.parameter.Parameter, dim: int) -> torch.nn.parameter.Parameter:
+    """weight_split 
+    split a nn.Parameter
 
+    Args:
+        weight (torch.nn.parameter.Parameter): a torch Parameter instance
+        dim (int): the dimension to be sharded along with
 
-def all_reduce_function(input_):
-    if gpc.get_world_size(ParallelMode.PARALLEL_1D) == 1:
-        return input_
-    torch.distributed.all_reduce(input_, group=gpc.get_group(ParallelMode.PARALLEL_1D))
-    return input_
-
-
-def weight_split(weight, dim):
+    Returns:
+        _type_: _description_
+    """
     # Append a Tensor spec to target_module.weight.shard
     # Convert to ColoTensor: colo_tensor = ColoTensor.from_torch_tensor(tensor, spec)
     assert isinstance(weight, torch.nn.parameter.Parameter), \
         f'The type of the input tensor should be torch.nn.parameter' \
         f'Your Input tensor is {type(weight)}'
-    spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [dim], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ComputeSpec(ComputePattern.TP1D))
-    setattr(weight, "shard", spec)
+
+    # FIXME() I initialized a PG for this tensor. Only has TP comm group.
+    # we only consider the TP-only caes.
+    world_size = torch.distributed.get_world_size()
+    pg = ProcessGroup(tp_degree=world_size)
+
+    spec = ColoTensorSpec(pg, distspec.shard([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    # As you has constructed a Spec, why not directly convert the tensor to ColoTensor.
+    setattr(weight, "fx_attr", spec)
     return weight
 
 
@@ -88,10 +83,6 @@ def column_shard_linear_pass(gm: torch.fx.GraphModule):
                 if target_module.bias is not None:
                     target_module.bias.data = weight_split(target_module.bias.data, dim=0)
 
-                # inserting communication node after the sharded linear node
-                with mod_graph.inserting_after(node):
-                    new_node = mod_graph.create_node('call_function', all_gather_function, args=(node,))
-                    replace_all_uses_except_replaced(node, new_node)
     gm.recompile()
     return gm
 
@@ -111,11 +102,6 @@ def row_shard_linear_pass(gm: torch.fx.GraphModule):
                     input_node = input_node_list[0]
                     new_input_node = mod_graph.create_node('call_function', weight_split, args=(input_node, -1))
                     replace_all_uses_except_replaced(input_node, new_input_node)
-
-                # inserting communication node after the sharded linear node
-                with mod_graph.inserting_after(node):
-                    new_node = mod_graph.create_node('call_function', all_reduce_function, args=(node,))
-                    replace_all_uses_except_replaced(node, new_node)
     gm.recompile()
     return gm
 
