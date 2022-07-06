@@ -91,6 +91,9 @@ class ColoProxy(Proxy):
 
     def __contains__(self, key):
         if self.node.op == "placeholder":
+            # this is used to handle like
+            # if x in kwargs
+            # we don't handle this case for now
             return False
         return super().__contains__(key)
 
