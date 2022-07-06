@@ -6,6 +6,7 @@ from torch.fx.passes.split_module import split_module
 import colossalai
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.tensor import TensorSpec, distspec, ProcessGroup
 
 
 def all_gather_function(input_):
@@ -27,14 +28,16 @@ def all_reduce_function(input_):
 
 
 def weight_split(weight, dim):
-    #TODO: this function will be refactored by using ColoTensor dist_spec when a stable reshaper feature is ready to use.
-    num_partition = gpc.get_world_size(ParallelMode.TENSOR)
-    shape = weight.shape
-    length = shape[dim] // num_partition
-    sharded_weight_list = []
-    for i in range(num_partition):
-        sharded_weight_list.append(weight.narrow(dim, i * length, length))
-    return sharded_weight_list[gpc.get_local_rank(ParallelMode.PARALLEL_1D)]
+    # Append a Tensor spec to target_module.weight.shard
+    # Convert to ColoTensor: colo_tensor = ColoTensor.from_torch_tensor(tensor, spec)
+    assert isinstance(weight, torch.nn.parameter.Parameter), \
+        f'The type of the input tensor should be torch.nn.parameter' \
+        f'Your Input tensor is {type(weight)}'
+    spec = TensorSpec(
+        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [dim], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
+        ComputeSpec(ComputePattern.TP1D))
+    setattr(weight, "shard", spec)
+    return weight
 
 
 def replace_all_uses_except_replaced(node, replace_node):
@@ -81,7 +84,7 @@ def column_shard_linear_pass(gm: torch.fx.GraphModule):
         if node.op == "call_module":
             target_module = node.graph.owning_module.get_submodule(node.target)
             if isinstance(target_module, torch.nn.Linear):
-                target_module.weight.data = weight_split(target_module.weight.data, dim=0)
+                target_module.weight = weight_split(target_module.weight, dim=0)
                 if target_module.bias is not None:
                     target_module.bias.data = weight_split(target_module.bias.data, dim=0)
 
@@ -99,7 +102,7 @@ def row_shard_linear_pass(gm: torch.fx.GraphModule):
         if node.op == "call_module":
             target_module = node.graph.owning_module.get_submodule(node.target)
             if isinstance(target_module, torch.nn.Linear):
-                target_module.weight.data = weight_split(target_module.weight.data, dim=-1)
+                target_module.weight = weight_split(target_module.weight, dim=-1)
 
                 # insert input sharding node before the sharded linear node
                 with mod_graph.inserting_before(node):
