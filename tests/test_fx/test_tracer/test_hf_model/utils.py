@@ -30,4 +30,6 @@ def trace_model_and_compare_output(model, data_gen):
 
     for k in non_fx_out.keys():
         if torch.is_tensor(fx_out[k]):
-            assert torch.equal(fx_out[k], non_fx_out[k]), f'{model.__class__.__name__} has incorrect output {k}'
+            assert torch.equal(
+                fx_out[k], non_fx_out[k]
+            ), f'{model.__class__.__name__} has incorrect output {k}, expect {non_fx_out[k]}, but got {fx_out[k]}'
