@@ -13,12 +13,10 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.utils.model.colo_init_context import colo_state_dict
-from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec, ColoTensor, ColoParameter
+from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec, ProcessGroup, ColoTensor
 from colossalai.core import global_context as gpc
 from functools import partial
 from colossalai.nn.parallel.data_parallel import ColoDDP
-import collections
 from colossalai.utils.checkpoint import save_checkpoint, load_checkpoint
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 
@@ -79,14 +77,13 @@ class MLP(nn.Module):
         return x
 
 
-def init_1d_row_for_linear_weight_spec(model):
-    spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [-1], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ComputeSpec(ComputePattern.TP1D))
+def init_1d_row_for_linear_weight_spec(model, pg: ProcessGroup):
+    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n:
-                p.set_tensor_spec(spec)
+                p.set_process_group(pg)
+                p.set_tensor_spec(*spec)
 
 
 def check_param_equal(model, torch_model):
@@ -104,7 +101,7 @@ def remove(path):
         raise ValueError("file {} is not a file or dir.".format(path))
 
 
-def run_checkpoint(init_spec_func, use_ddp, test_epoch):
+def run_checkpoint(init_spec_func, use_ddp, test_epoch, pg):
     train_dataloader = DummyDataLoader(length=16)
     with ColoInitContext(device=get_current_device()):
         model = MLP(256, 16, 64)
@@ -114,9 +111,9 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch):
     model_reload = model_reload.cuda()
     model_ref = model_ref.cuda()
     if use_ddp:
-        model = ColoDDP(model)
-        model_reload = ColoDDP(model_reload)
-        model_ref = ColoDDP(model_ref)
+        model = ColoDDP(model, pg)
+        model_reload = ColoDDP(model_reload, pg)
+        model_ref = ColoDDP(model_ref, pg)
 
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
@@ -131,8 +128,8 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch):
     lr_scheduler_reload = CosineAnnealingWarmupLR(optimizer=optimizer_reload, total_steps=20, warmup_steps=5)
     lr_scheduler_ref = CosineAnnealingWarmupLR(optimizer=optimizer_ref, total_steps=20, warmup_steps=5)
 
-    init_spec_func(model)
-    init_spec_func(model_ref)
+    init_spec_func(model, pg)
+    init_spec_func(model_ref, pg)
 
     for epoch in range(0, 20):
         if epoch <= test_epoch:
@@ -193,13 +190,14 @@ def run_dist(rank, world_size, port, use_ddp, test_epoch):
     tp_world_size = world_size // 2 if use_ddp else world_size
     config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_checkpoint(init_1d_row_for_linear_weight_spec, use_ddp, test_epoch)
+    pg = ProcessGroup(tp_degree=world_size)
+    run_checkpoint(init_1d_row_for_linear_weight_spec, use_ddp, test_epoch, pg)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [4])
 @pytest.mark.parametrize('use_ddp', [True])
-@pytest.mark.parametrize('test_epoch', [3, 5, 15])
+@pytest.mark.parametrize('test_epoch', [1, 2, 3])
 @rerun_if_address_is_in_use()
 def test_checkpoint(world_size, use_ddp, test_epoch):
     if not os.path.isdir('./checkpoint'):
@@ -210,4 +208,4 @@ def test_checkpoint(world_size, use_ddp, test_epoch):
 
 
 if __name__ == '__main__':
-    test_checkpoint(4, True)
+    test_checkpoint(4, True, 1)
