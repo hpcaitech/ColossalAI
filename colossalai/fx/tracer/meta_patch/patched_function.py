@@ -1,3 +1,4 @@
+from curses import meta
 import operator
 import torch
 from .registry import meta_patched_function
@@ -89,3 +90,55 @@ def torch_where(condition, x, y):
     # torch.where returns the broadcasted tensor of condition, x, and y,
     # so hack it by using addition
     return condition.to(device="meta") + x.to(device="meta") + y.to(device="meta")
+
+
+@meta_patched_function.register(torch.abs)
+def torch_abs(input, *, out=None):
+    assert out is None, 'out is not supported yet'
+    return torch.empty(input.shape, device='meta')
+
+
+@meta_patched_function.register(torch.nn.functional.relu)
+def torch_nn_func_relu(input, inplace=False):
+    assert not inplace, 'inplace is not supported yet'
+    return torch.empty(input.shape, device='meta')
+
+
+@meta_patched_function.register(torch.Tensor.repeat)
+def torch_tensor_repeat(self, *sizes):
+    shape = list(self.shape)
+    for i, x in enumerate(sizes):
+        shape[i] *= x
+    return torch.empty(shape, device="meta")
+
+
+@meta_patched_function.register(torch.index_select)
+def torch_index_select(input, dim, index, *, out=None):
+    shape = list(input.shape)
+    shape[dim] = len(index)
+    return torch.empty(*shape, device="meta")
+
+
+@meta_patched_function.register(torch.Tensor.index_select)
+def torch_tensor_index_select(self, dim, index):
+    return torch_index_select(self, dim, index)
+
+
+@meta_patched_function.register(torch.nn.functional.embedding)
+def torch_nn_functional_embedding(input,
+                                  weight,
+                                  padding_idx=None,
+                                  max_norm=None,
+                                  norm_type=2.0,
+                                  scale_grad_by_freq=False,
+                                  sparse=False):
+    return torch.empty(*input.shape, weight.shape[-1], device="meta")
+
+
+@meta_patched_function.register(torch.bmm)
+def torch_bmm(input, mat2, *, out=None):
+    if out is not None:
+        raise ValueError("Don't support in-place abs for MetaTensor analysis")
+    batch_size, n, m = input.shape
+    _, _, p = mat2.shape
+    return torch.empty(batch_size, n, p, device="meta")
