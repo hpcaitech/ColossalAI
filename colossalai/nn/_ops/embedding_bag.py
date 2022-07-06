@@ -19,7 +19,8 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
                              padding_idx: Optional[int] = None) -> ColoTensor:
     # embedding_bag_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
+    pg = weight.get_process_group()
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
 
     output_parallel = F.embedding_bag(input_tensor,
                                       weight,
