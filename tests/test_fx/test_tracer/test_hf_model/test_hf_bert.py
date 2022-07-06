@@ -1,37 +1,9 @@
 import transformers
 import torch
-from colossalai.fx import ColoTracer
-from torch.fx import GraphModule
+from utils import trace_model_and_compare_output
 
 BATCH_SIZE = 2
 SEQ_LENGHT = 16
-
-
-def trace_bert_and_compare_output(model, data_gen):
-    tracer = ColoTracer()
-    # make sure that the model is traceable
-    try:
-        kwargs = data_gen()
-        meta_args = {k: v.to('meta') for k, v in kwargs.items()}
-        graph = tracer.trace(root=model, meta_args=meta_args)
-    except Exception as e:
-        raise RuntimeError(f"Failed to trace {model.__class__.__name__}, error: {e}")
-    gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
-
-    # check output
-    inputs = data_gen()
-
-    # must turn on eval mode to ensure the output is consistent
-    gm.eval()
-    model.eval()
-
-    # run forward
-    non_fx_out = model(**inputs)
-    fx_out = gm(**inputs)
-
-    for k in non_fx_out.keys():
-        assert torch.equal(fx_out[k], non_fx_out[k]), f'{model.__class__.__name__} has incorrect output {k}'
 
 
 def test_single_sentence_bert():
@@ -55,7 +27,7 @@ def test_single_sentence_bert():
 
     for model_cls in MODEL_LIST:
         model = model_cls(config=config)
-        trace_bert_and_compare_output(model, data_gen)
+        trace_model_and_compare_output(model, data_gen)
 
 
 def test_multi_sentence_bert():
@@ -69,7 +41,7 @@ def test_multi_sentence_bert():
         return encoding
 
     model = transformers.BertForNextSentencePrediction(config)
-    trace_bert_and_compare_output(model, data_gen_for_next_sentence)
+    trace_model_and_compare_output(model, data_gen_for_next_sentence)
 
     def data_gen_for_qa():
         question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
@@ -77,7 +49,7 @@ def test_multi_sentence_bert():
         return inputs
 
     model = transformers.BertForQuestionAnswering(config)
-    trace_bert_and_compare_output(model, data_gen_for_qa)
+    trace_model_and_compare_output(model, data_gen_for_qa)
 
     def data_gen_for_mcq():
         prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
@@ -88,7 +60,7 @@ def test_multi_sentence_bert():
         return encoding
 
     model = transformers.BertForMultipleChoice(config)
-    trace_bert_and_compare_output(model, data_gen_for_mcq)
+    trace_model_and_compare_output(model, data_gen_for_mcq)
 
 
 if __name__ == '__main__':
