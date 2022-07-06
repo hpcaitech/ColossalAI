@@ -1,9 +1,8 @@
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from copy import copy
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ColoTensor
+from colossalai.tensor import ColoTensor, ColoTensorSpec
 from ._utils import GeneralTensor
 
 
@@ -16,11 +15,16 @@ def register_elementwise_op(op):
         as ``torch.nn.functional.gelu`` or ``torch.nn.functional.relu``.
         This method computes on either a normal tensor or a sharded tensor.
         """
+
         output = op(input_tensor, *args, **kwargs)
+
         if isinstance(input_tensor, ColoTensor):
-            spec = copy(input_tensor.tensor_spec)
-            return ColoTensor.from_torch_tensor(output, spec=spec)
-        return ColoTensor.from_torch_tensor(output)
+            if not isinstance(output, torch.Tensor):
+                raise NotImplementedError
+            return ColoTensor.from_torch_tensor(output,
+                                                spec=ColoTensorSpec(input_tensor.process_group,
+                                                                    dist_attr=input_tensor.dist_spec,
+                                                                    compute_attr=input_tensor.compute_spec))
 
 
 # Tensor op

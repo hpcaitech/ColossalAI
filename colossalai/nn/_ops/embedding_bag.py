@@ -2,7 +2,7 @@ import torch.nn.functional as F
 from typing import Optional
 from torch import Tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, TensorSpec, ComputePattern, ComputeSpec, ColoTensor, distspec
+from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, distspec, ColoTensorSpec
 from ._utils import GeneralTensor, convert_to_colo_tensor
 
 
@@ -19,7 +19,8 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
                              padding_idx: Optional[int] = None) -> ColoTensor:
     # embedding_bag_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(weight.tensor_spec.get_process_group()))
+    pg = weight.get_process_group()
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
 
     output_parallel = F.embedding_bag(input_tensor,
                                       weight,
@@ -32,11 +33,11 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
                                       per_sample_weights=per_sample_weights,
                                       include_last_offset=include_last_offset,
                                       padding_idx=padding_idx)
-    output_spec = TensorSpec(distspec.shard(weight.get_process_group(), [-1], [weight.get_tp_world_size()]),
-                             ComputeSpec(ComputePattern.TP1D))
+    output_spec = ColoTensorSpec(pg, distspec.shard([-1], [weight.get_tp_world_size()]),
+                                 ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
-    if weight.tensor_spec.compute_spec.output_replicate:
+    if weight.compute_spec.output_replicate:
         return output.to_replicate()
     else:
         return output
@@ -84,12 +85,13 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
     """Handles ``__torch_function__`` dispatch for ``torch.nn.functional.embedding_bag``.
     This method looks up an embedding table.
     """
-    input_tensor, weight = tuple(map(convert_to_colo_tensor, (input_tensor, weight)))
+    assert isinstance(weight, ColoTensor)
+    input_tensor = convert_to_colo_tensor(input_tensor, weight.get_process_group())
 
     # Handle differen parallel actions.
 
     if not weight.has_compute_spec():    # No Model Parallel Applied
-        assert weight.tensor_spec.is_replicate(), 'Invalid weight spec for native embedding op'
+        assert weight.is_replicate(), 'Invalid weight spec for native embedding op'
         return ColoTensor.from_torch_tensor(
             F.embedding_bag(input_tensor,
                             weight,
@@ -102,8 +104,8 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
                             per_sample_weights=per_sample_weights,
                             include_last_offset=include_last_offset,
                             padding_idx=padding_idx))
-    elif weight.tensor_spec.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
-        if weight.tensor_spec.is_shard_1dcol():
+    elif weight.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+        if weight.is_shard_1dcol():
             tp_mode = 'col'
         else:
             raise NotImplementedError

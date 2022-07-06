@@ -19,33 +19,33 @@ def run():
     assert depth == math.sqrt(size)
     x = torch.rand(8, 8).cuda()
     old_dist_spec = distspec.replicate()
-    row_spec = distspec.shard(group, [0], [size])
-    col_spec = distspec.shard(group, [-1], [size])
-    mat_spec = distspec.shard(group, [0, 1], [depth, depth])
-    row_shard = DistSpecManager._shard_as(x, old_dist_spec, row_spec)
+    row_spec = distspec.shard([0], [size])
+    col_spec = distspec.shard([-1], [size])
+    mat_spec = distspec.shard([0, 1], [depth, depth])
+    row_shard = DistSpecManager._shard_as(x, old_dist_spec, row_spec, group)
     assert torch.equal(x.chunk(size, 0)[rank], row_shard)
-    assert torch.equal(x, DistSpecManager._gather(row_shard, row_spec))
-    col_shard = DistSpecManager._all_to_all(row_shard, row_spec, col_spec)
+    assert torch.equal(x, DistSpecManager._gather(row_shard, row_spec, group))
+    col_shard = DistSpecManager._all_to_all(row_shard, row_spec, col_spec, group)
     assert torch.equal(x.chunk(size, -1)[rank], col_shard)
-    assert torch.equal(x, DistSpecManager._gather(col_shard, col_spec))
-    mat_shard = DistSpecManager._shard_as(x, old_dist_spec, mat_spec)
+    assert torch.equal(x, DistSpecManager._gather(col_shard, col_spec, group))
+    mat_shard = DistSpecManager._shard_as(x, old_dist_spec, mat_spec, group)
     assert torch.equal(x.chunk(depth, 0)[rank // depth].chunk(depth, 1)[rank % depth], mat_shard)
-    assert torch.equal(x, DistSpecManager._gather(mat_shard, mat_spec))
+    assert torch.equal(x, DistSpecManager._gather(mat_shard, mat_spec, group))
 
 
 def check_mem():
-    group = ProcessGroup(tp_degree=dist.get_world_size())
+    pg = ProcessGroup(tp_degree=dist.get_world_size())
     size = dist.get_world_size()
     assert torch.cuda.memory_allocated() == 0
     x = torch.rand(32, 32).cuda()
     orig_mem = x.numel() * x.element_size()
     assert torch.cuda.memory_allocated() == orig_mem
     old_dist_spec = distspec.replicate()
-    row_spec = distspec.shard(group, [0], [size])
-    x.data = DistSpecManager._shard_as(x, old_dist_spec, row_spec)
+    row_spec = distspec.shard([0], [size])
+    x.data = DistSpecManager._shard_as(x, old_dist_spec, row_spec, pg)
     assert x.size(0) == 32 // size and x.size(1) == 32
     assert torch.cuda.memory_allocated() == orig_mem // size
-    x.data = DistSpecManager._gather(x, row_spec)
+    x.data = DistSpecManager._gather(x, row_spec, pg)
     assert torch.cuda.memory_allocated() == orig_mem
 
 

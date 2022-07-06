@@ -30,7 +30,7 @@ def torch_nn_normalize(self, input):
 
 @meta_patched_module.register(torch.nn.Embedding)
 def torch_nn_embedding(self, input):
-    result_shape = input.shape[:-1] + (self.embedding_dim,)
+    result_shape = input.shape + (self.embedding_dim,)
     return torch.empty(result_shape, device='meta')
 
 
@@ -116,3 +116,9 @@ def torch_nn_maxpool3d(self, input):
         w_out,
     )
     return torch.empty(result_shape, device='meta')
+
+
+@meta_patched_module.register(torch.nn.ReLU)
+def torch_nn_func_relu(self, input):
+    assert not self.inplace, 'inplace is not supported yet'
+    return input.clone()
