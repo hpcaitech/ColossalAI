@@ -41,7 +41,7 @@ def tensor_equal(A, B):
     return torch.allclose(A, B, rtol=1e-3, atol=1e-1)
 
 
-def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor):
+def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor, rank, world_size):
     assert tensor.ndim == shard.ndim
     if tensor.shape == shard.shape:
         return tensor_equal(tensor, shard)
@@ -50,8 +50,10 @@ def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor):
         if dims_not_eq.numel() == 1:
             # 1D shard
             dim = dims_not_eq.item()
-            world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
-            rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+            if world_size is None:
+                world_size = gpc.get_world_size(ParallelMode.PARALLEL_1D)
+            if rank is None:
+                rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
             return tensor_equal(tensor.chunk(world_size, dim)[rank], shard)
         else:
             raise NotImplementedError

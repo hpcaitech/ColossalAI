@@ -17,7 +17,7 @@ def colo_layernorm(
     input_tensor, weight, bias = tuple(map(convert_to_colo_tensor, (input_tensor, weight, bias)))
 
     # TODO (ver217): check dist spec
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(input_tensor.tensor_spec.get_process_group()))
+    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate(input_tensor.get_process_group()))
 
     output = F.layer_norm(input_tensor, normalized_shape, weight=weight, bias=bias, eps=eps)
     output = ColoTensor.from_torch_tensor(output, input_tensor.tensor_spec)

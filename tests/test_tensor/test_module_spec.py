@@ -13,12 +13,10 @@ import colossalai
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.tensor import distspec
+from colossalai.tensor import distspec, ProcessGroup
 
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
 
 from tests.components_to_test.registry import non_distributed_component_funcs
 
@@ -26,7 +24,9 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 def run_model_with_spec(mode, model_name):
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
-    rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+    world_size = torch.distributed.get_world_size()
+    pg = ProcessGroup(tp_degree=world_size)
+    rank = pg.rank()
 
     set_seed(1)
     with ColoInitContext(device=get_current_device()):
@@ -40,28 +40,28 @@ def run_model_with_spec(mode, model_name):
         for p1, p2 in zip(model.parameters(), model_seq.parameters()):
             p2.data.copy_(p1.data)
 
-    parallel_action = ComputeSpec(ComputePattern.TP1D)
+    compute_spec = ComputeSpec(ComputePattern.TP1D)
     # Not all layers in Bert can be mod by 4.
     # e.g. row shard for all layers is invalid because the first dim of some layer is the classification type size 2.
     if 'bert' == model_name:
         if 'col' == mode:
-            init_colo_module(model.bert.embeddings, parallel_action, recursive=True, mode=mode)
-            init_colo_module(model.bert.encoder, parallel_action, recursive=True, mode=mode)
-            init_colo_module(model.classifier, parallel_action, recursive=True, mode='row')
+            init_colo_module(model.bert.embeddings, compute_spec, pg=pg, recursive=True, mode=mode)
+            init_colo_module(model.bert.encoder, compute_spec, pg=pg, recursive=True, mode=mode)
+            init_colo_module(model.classifier, compute_spec, pg=pg, recursive=True, mode='row')
         elif 'row' == mode:
-            init_colo_module(model.bert.embeddings, parallel_action, recursive=True, mode='col')
-            init_colo_module(model.bert.encoder, parallel_action, recursive=True, mode=mode)
-            init_colo_module(model.classifier, parallel_action, recursive=True, mode=mode)
+            init_colo_module(model.bert.embeddings, compute_spec, pg=pg, recursive=True, mode='col')
+            init_colo_module(model.bert.encoder, compute_spec, pg=pg, recursive=True, mode=mode)
+            init_colo_module(model.classifier, compute_spec, pg=pg, recursive=True, mode=mode)
     elif 'simple_net' == model_name:
-        init_colo_module(model, parallel_action, recursive=True, mode=mode)
+        init_colo_module(model, compute_spec, pg=pg, recursive=True, mode=mode)
 
     model = model.cuda()
     for i, (data, label) in enumerate(train_dataloader):
         data = data.to(get_current_device())
         label = label.to(get_current_device())
 
-        torch.distributed.broadcast(data, 0, group=gpc.get_group(ParallelMode.PARALLEL_1D))
-        torch.distributed.broadcast(label, 0, group=gpc.get_group(ParallelMode.PARALLEL_1D))
+        torch.distributed.broadcast(data, 0, group=pg.tp_process_group())
+        torch.distributed.broadcast(label, 0, group=pg.tp_process_group())
 
         if criterion:
             output = model(data)
@@ -113,9 +113,10 @@ def run_linear_with_spec(mode):
         model = torch.nn.Linear(4, 8)
 
     model_handy = copy(model)
-
-    parallel_action = ComputeSpec(ComputePattern.TP1D)
-    init_colo_module(model, parallel_action, recursive=True, mode=mode)
+    world_size = torch.distributed.get_world_size()
+    pg = ProcessGroup(tp_degree=world_size)
+    compute_spec = ComputeSpec(ComputePattern.TP1D)
+    init_colo_module(model, compute_spec, pg=pg, recursive=True, mode=mode)
 
     x = torch.rand(2, 4).cuda()
     out = model(x)
@@ -124,8 +125,8 @@ def run_linear_with_spec(mode):
     grad = torch.rand_like(out)
     out.backward(grad)
     colo_out.backward(grad)
-    assert tensor_shard_equal(model.weight.grad, model_handy.weight.grad)
-    assert tensor_shard_equal(model.bias.grad, model_handy.bias.grad)
+    assert tensor_shard_equal(model.weight.grad, model_handy.weight.grad, pg.tp_local_rank(), pg.tp_world_size())
+    assert tensor_shard_equal(model.bias.grad, model_handy.bias.grad, pg.tp_local_rank(), pg.tp_world_size())
 
 
 def run_check_shared_param():
@@ -135,6 +136,10 @@ def run_check_shared_param():
     sequence_length = 12
     num_layer = 2
     vocab_size = 24
+
+    world_size = torch.distributed.get_world_size()
+    pg = ProcessGroup(tp_degree=world_size)
+    rank = pg.rank()
 
     config = BertConfig(vocab_size=vocab_size,
                         hidden_size=hidden_dim,
@@ -148,18 +153,16 @@ def run_check_shared_param():
         model = BertForMaskedLM(config)
 
     model = model.cuda()
-    parallel_action = ComputeSpec(ComputePattern.TP1D)
+    compute_spec = ComputeSpec(ComputePattern.TP1D)
     # model.cls.predictions.decoder and model.cls.predictions share the bias, so they should have the same spec
     assert len(model.cls.predictions.decoder.bias.shared_param_modules) == 2
     # They are all Linear, so both row is allowed. This should pass check.
-    init_colo_module(model, parallel_action, recursive=True, mode='row')
+    init_colo_module(model, compute_spec, pg=pg, recursive=True, mode='row')
     # This should be detected by check because you can not set weight as row while set bias as col.
-    col_spec = TensorSpec(
-        distspec.shard(gpc.get_group(ParallelMode.PARALLEL_1D), [0], [gpc.get_world_size(ParallelMode.PARALLEL_1D)]),
-        ComputeSpec(ComputePattern.TP1D))
+    col_spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     model.cls.predictions.bias.set_tensor_spec(col_spec)
     try:
-        check_colo_module(model.cls.predictions.decoder, recursive=False)
+        check_colo_module(model.cls.predictions.decoder, pg=pg, recursive=False)
     except Exception as e:
         assert 'incorrectly sharded' in str(e)
 

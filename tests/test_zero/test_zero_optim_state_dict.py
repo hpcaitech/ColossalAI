@@ -16,6 +16,7 @@ from colossalai.gemini import ChunkManager, GeminiManager
 from colossalai.testing import parameterize
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.zero import ZeroOptimizer
+from colossalai.tensor import ProcessGroup
 
 
 def init_zero(model, use_chunk, use_zero, placement_policy):
@@ -24,7 +25,8 @@ def init_zero(model, use_chunk, use_zero, placement_policy):
                                  enable_distributed_storage=use_zero,
                                  init_device=GeminiManager.get_default_device(placement_policy))
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    return ZeroDDP(model, gemini_manager)
+    pg = ProcessGroup()
+    return ZeroDDP(model, gemini_manager, pg)
 
 
 def run_step(model, optim, criterion, data, label):

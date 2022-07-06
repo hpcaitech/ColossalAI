@@ -78,6 +78,12 @@ class ColoTensor(torch.Tensor):
     def is_model_data(self) -> bool:
         return self._type == TensorType.MODEL
 
+    def get_process_group(self) -> 'ProcessGroup':
+        return self._tensor_spec.dist_spec.process_group
+
+    def get_tp_world_size(self) -> int:
+        return self._tensor_spec.dist_spec.process_group.tp_world_size()
+
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         if kwargs is None:

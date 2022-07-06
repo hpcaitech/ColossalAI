@@ -1,5 +1,5 @@
 from typing import Dict
-from colossalai.tensor import ColoParameter, ComputeSpec, TensorSpec
+from colossalai.tensor import ColoParameter, ComputeSpec, TensorSpec, ProcessGroup
 from . import ColoModule
 import torch
 
@@ -29,7 +29,7 @@ def get_colo_module(module: torch.nn.Module):
         return None
 
 
-def check_colo_module(module: torch.nn.Module, recursive=True):
+def check_colo_module(module: torch.nn.Module, pg: ProcessGroup, recursive=True):
     if is_colo_module(module):
         colo_module = get_colo_module(module)
         param_names = colo_module.get_param_names()
@@ -50,7 +50,7 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
                 continue
 
         if compute_pattern is not None:
-            colo_module.register(compute_pattern)
+            colo_module.register(compute_pattern, pg)
             if not colo_module.has_compute_pattern(compute_pattern):
                 raise Exception(
                     f'Invalid ColoParameter spec: ComputePattern {compute_pattern} in {module} is not allowed.')
@@ -76,16 +76,20 @@ def check_colo_module(module: torch.nn.Module, recursive=True):
                 raise Exception(f'Invalid ColoParameter spec: Params in {module} are incorrectly sharded.')
     if recursive == True:
         for submodule in module.children():
-            check_colo_module(submodule, recursive=True)
+            check_colo_module(submodule, pg=pg, recursive=True)
 
 
-def init_colo_module(module: torch.nn.Module, compute_spec: ComputeSpec, recursive=True, mode='default'):
+def init_colo_module(module: torch.nn.Module,
+                     compute_spec: ComputeSpec,
+                     pg: ProcessGroup,
+                     recursive=True,
+                     mode='default'):
     compute_pattern = compute_spec.compute_pattern
     if is_colo_module(module):
         # for each param
         # set DistSpec and ComputeSpec
         colo_module = get_colo_module(module)
-        colo_module.register(compute_pattern)
+        colo_module.register(compute_pattern, pg)
         if not colo_module.has_compute_pattern_with_mode(compute_pattern, mode=mode):
             raise NotImplementedError
         # a set for modules which update at least one param in the init process.
@@ -101,7 +105,7 @@ def init_colo_module(module: torch.nn.Module, compute_spec: ComputeSpec, recursi
                 for mod in param.shared_param_modules:
                     modules_update_param.add(mod)
         for mod in modules_update_param:
-            check_colo_module(mod, recursive=False)
+            check_colo_module(mod, pg, recursive=False)
     if recursive == True:
         for submodule in module.children():
-            init_colo_module(submodule, compute_spec, recursive=True, mode=mode)
+            init_colo_module(submodule, compute_spec, pg=pg, recursive=True, mode=mode)
