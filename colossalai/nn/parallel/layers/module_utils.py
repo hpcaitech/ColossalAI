@@ -1,5 +1,5 @@
 from typing import Dict
-from colossalai.tensor import ColoParameter, ComputeSpec, TensorSpec, ProcessGroup
+from colossalai.tensor import ColoParameter, ComputeSpec, ProcessGroup
 from . import ColoModule
 import torch
 
