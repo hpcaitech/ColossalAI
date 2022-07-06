@@ -1,6 +1,7 @@
 import operator
 import torch
 from torch.fx.proxy import Proxy, Attribute
+from typing import List, Union, Any
 
 __all__ = ['ColoProxy']
 
@@ -12,30 +13,33 @@ class ColoProxy(Proxy):
 
     Usage:
         proxy = tracer.create_proxy(...)
-        proxy.meta_tensor = torch.empty(4, 2, device='meta')
+        proxy.meta_data = torch.empty(4, 2, device='meta')
         print(len(proxy)) # expect output 4
 
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._meta_tensor = None
+        self._meta_data = None
 
     @property
-    def meta_tensor(self):
-        return self._meta_tensor
+    def meta_data(self):
+        return self._meta_data
 
-    @meta_tensor.setter
-    def meta_tensor(self, tensor: torch.Tensor):
-        assert tensor is None or tensor.is_meta, 'Expected to receive a meta tensor, but got a non-meta tensor'
-        self._meta_tensor = tensor
+    @meta_data.setter
+    def meta_data(self, data: Any):
+        self._meta_data = data
 
     @property
-    def has_meta_tensor(self):
-        return self.meta_tensor is not None
+    def has_meta_data(self):
+        return self._meta_data is not None
 
-    def _assert_has_meta(self):
-        assert self.has_meta_tensor, f'Meta tensor is not set for {self.node.name}'
+    def _assert_meta_data_is_tensor(self):
+        assert torch.is_tensor(
+            self._meta_data) and self._meta_data.is_meta, f'Meta data is not a meta tensor for {self.node.name}'
+
+    def _assert_has_meta_data(self):
+        assert self._meta_data is not None, f'Meta data is not set for {self.node.name}'
 
     @property
     def device(self):
@@ -45,39 +49,51 @@ class ColoProxy(Proxy):
 
     @property
     def dtype(self):
-        self._assert_has_meta()
-        return self.meta_tensor.dtype
+        self._assert_meta_data_is_tensor()
+        return self.meta_data.dtype
 
     @property
     def shape(self):
-        self._assert_has_meta()
-        return self.meta_tensor.shape
+        self._assert_meta_data_is_tensor()
+        return self.meta_data.shape
 
     def dim(self):
-        self._assert_has_meta()
-        return self.meta_tensor.dim()
+        self._assert_meta_data_is_tensor()
+        return self.meta_data.dim()
 
     def size(self, dim: int = None):
-        self._assert_has_meta()
-        return self.meta_tensor.size(dim=dim)
+        self._assert_meta_data_is_tensor()
+        if dim is not None:
+            return self.meta_data.size(dim=dim)
+        else:
+            # size(dim=None) will trigger runtime error for meta tensor
+            return self.meta_data.size()
 
     def __len__(self):
-        self._assert_has_meta()
-        return len(self.meta_tensor)
+        self._assert_has_meta_data()
+        return len(self.meta_data)
 
     def __bool__(self):
-        self._assert_has_meta()
-        return self.meta_tensor
+        self._assert_has_meta_data()
+        return self.meta_data
 
     def __getattr__(self, k):
-        if k == "metadata":
-            return self.meta_tensor
+        if k == "meta_data":
+            return self.__getattribute__(k)
         # note: not added to the graph yet, if this is a method call
         # we peephole optimize to the method invocation
         return Attribute(self, k)
 
     def __setitem__(self, indices, values):
         return self.tracer.create_proxy("call_function", operator.setitem, (self, indices, values), {})
+
+    def __contains__(self, key):
+        if self.node.op == "placeholder":
+            # this is used to handle like
+            # if x in kwargs
+            # we don't handle this case for now
+            return False
+        return super().__contains__(key)
 
 
 class ColoAttribute(ColoProxy):

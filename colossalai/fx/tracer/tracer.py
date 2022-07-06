@@ -14,7 +14,6 @@ from torch import Tensor
 from torch.fx import Tracer
 from torch.fx.graph import Graph
 from torch.fx.proxy import Proxy, ParameterProxy
-from torch.utils import _pytree
 from ..proxy import ColoProxy
 from typing import Optional, Dict, Any
 from ._tracer_utils import is_element_in_list, extract_meta
@@ -62,7 +61,7 @@ class ColoTracer(Tracer):
         proxy: ColoProxy
 
         if kind == "placeholder" and target in self.meta_args and self.meta_args[target].is_meta:
-            proxy.meta_tensor = self.meta_args[target]
+            proxy.meta_data = self.meta_args[target]
             return proxy
 
         if target in self.orig_torch_tensor_methods:
@@ -128,7 +127,7 @@ class ColoTracer(Tracer):
 
             if not isinstance(proxy, Proxy):
                 raise ValueError("Don't support composite output yet")
-            proxy.meta_tensor = meta_out
+            proxy.meta_data = meta_out
         except Exception as e:
             raise RuntimeError(f"Could not compute metadata for {kind} target {target}: {e}")
         return proxy
@@ -198,6 +197,16 @@ class ColoTracer(Tracer):
         sig = inspect.signature(root.forward)
         sig_names = set(sig.parameters.keys())
         meta_arg_names = set(meta_args.keys())
+
+        # update concrete args with default values
+        non_meta_arg_names = sig_names - meta_arg_names
+        for k, v in sig.parameters.items():
+            if k in non_meta_arg_names and \
+                k not in concrete_args and \
+                v.default is not inspect.Parameter.empty:
+                concrete_args[k] = v.default
+
+        # get non concrete arg names
         concrete_arg_names = set(concrete_args.keys())
         non_concrete_arg_names = sig_names - concrete_arg_names
 
@@ -213,8 +222,12 @@ class ColoTracer(Tracer):
         # assign as attributed for late reference
         def _check_kwargs(kwargs, should_be_meta: bool):
             for k, v in kwargs.items():
-                assert v.is_meta == should_be_meta, \
-                    f'expected the is_meta attribute of {k} to be {should_be_meta}, but got {v.is_meta}, please check the args passed to the tracer'
+                if not should_be_meta:
+                    assert not torch.is_tensor(v) or not v.is_meta, \
+                        f'Expected the {k} not to be a meta tensor, please check the args passed to the tracer'
+                else:
+                    assert v.is_meta == should_be_meta, \
+                        f'Expected the is_meta attribute of {k} to be {should_be_meta}, but got {v.is_meta}, please check the args passed to the tracer'
 
         _check_kwargs(concrete_args, should_be_meta=False)
         _check_kwargs(meta_args, should_be_meta=True)
