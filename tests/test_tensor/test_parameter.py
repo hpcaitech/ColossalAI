@@ -1,11 +1,12 @@
 from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec, ProcessGroup
 import torch
-from numpy import allclose
+import pytest
 from _utils import tensor_equal
 import colossalai
 from colossalai.utils import free_port
 
 
+@pytest.mark.skip
 def test_multiinheritance():
     colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
     colo_param = ColoParameter(None, requires_grad=True)

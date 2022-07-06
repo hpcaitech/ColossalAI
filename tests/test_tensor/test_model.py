@@ -151,6 +151,7 @@ def run_1d_hybrid_tp(model_name):
 
 
 # Test the overrided parameters() and named_parameters() member functions
+@pytest.mark.skip
 def test_model_parameters():
     colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
@@ -184,6 +185,7 @@ def test_model_parameters():
     assert param_cnt == 2
 
 
+@pytest.mark.skip
 def test_colo_optimizer():
     colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
