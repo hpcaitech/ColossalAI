@@ -39,7 +39,7 @@ class ColoProxy(Proxy):
             self._meta_data) and self._meta_data.is_meta, f'Meta data is not a meta tensor for {self.node.name}'
 
     def _assert_has_meta_data(self):
-        assert self._meta_data, f'Meta data is not set for {self.node.name}'
+        assert self._meta_data is not None, f'Meta data is not set for {self.node.name}'
 
     @property
     def device(self):
@@ -63,7 +63,7 @@ class ColoProxy(Proxy):
 
     def size(self, dim: int = None):
         self._assert_meta_data_is_tensor()
-        if dim:
+        if dim is not None:
             return self.meta_data.size(dim=dim)
         else:
             # size(dim=None) will trigger runtime error for meta tensor
