@@ -218,3 +218,8 @@ def torch_cat(tensors, dim=None, axis=None, *, out=None):
     concatenated_dim = sum(shape[dim] for shape in shapes)
     final_shape = shape[:dim] + [concatenated_dim] + shape[dim + 1:]
     return torch.empty(final_shape, device="meta")
+
+
+@meta_patched_function.register(torch.roll)
+def torch_roll(input, shifts, dims=None):
+    return torch.empty(input.shape, device='meta')
