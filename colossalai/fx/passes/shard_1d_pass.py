@@ -31,44 +31,6 @@ def weight_split(weight: torch.Tensor, dim: int) -> torch.nn.parameter.Parameter
     return weight
 
 
-def replace_all_uses_except_replaced(node, replace_node):
-    """
-        Replace all uses of ``node`` in the Graph with the Node ``replace_node``,
-        except the user of ``node`` is ``replace_node``.
-
-        Args:
-
-            replace_node (Node): The node to replace all uses of ``node`` with.
-
-        Returns:
-
-            The list of Nodes on which this change was made.
-    """
-    to_process = list(node.users)
-    for use_node in to_process:
-        if use_node == replace_node:
-            continue
-
-        def may_replace_node(n):
-            if n == node:
-                return replace_node
-            else:
-                return n
-
-        new_args = map_arg(use_node.args, may_replace_node)
-        new_kwargs = map_arg(use_node.kwargs, may_replace_node)
-        use_node._args = new_args
-        use_node._kwargs = new_kwargs
-        for old_use in use_node._input_nodes.keys():
-            old_use.users.pop(use_node)
-        use_node._input_nodes = {}
-        map_arg(use_node._args, lambda n: use_node._input_nodes.setdefault(n))
-        map_arg(use_node._kwargs, lambda n: use_node._input_nodes.setdefault(n))
-        for new_use in use_node._input_nodes.keys():
-            new_use.users.setdefault(use_node)
-    return to_process
-
-
 def column_shard_linear_pass(gm: torch.fx.GraphModule):
     mod_graph = gm.graph
     for node in mod_graph.nodes:
@@ -91,13 +53,6 @@ def row_shard_linear_pass(gm: torch.fx.GraphModule):
             if isinstance(target_module, torch.nn.Linear):
                 target_module.weight = weight_split(target_module.weight, dim=-1)
 
-                # insert input sharding node before the sharded linear node
-                with mod_graph.inserting_before(node):
-                    input_node_list = list(node._input_nodes.keys())
-                    assert len(input_node_list) == 1, 'linear forward must have and only have one input tensor.'
-                    input_node = input_node_list[0]
-                    new_input_node = mod_graph.create_node('call_function', weight_split, args=(input_node, -1))
-                    replace_all_uses_except_replaced(input_node, new_input_node)
     gm.recompile()
     return gm
 
