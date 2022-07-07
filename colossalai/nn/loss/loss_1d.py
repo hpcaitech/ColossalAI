@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.registry import LOSSES
@@ -10,19 +11,19 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, vocab_parallel_logits, targets):
+    def forward(ctx, vocab_parallel_logits, targets, process_group):
+        if process_group is None:
+            process_group = gpc.get_group(ParallelMode.PARALLEL_1D)
 
         # Maximum value along vocab dimension across all GPUs.
         logits_max = torch.max(vocab_parallel_logits, dim=-1)[0]
-        torch.distributed.all_reduce(logits_max,
-                                     op=torch.distributed.ReduceOp.MAX,
-                                     group=gpc.get_group(ParallelMode.PARALLEL_1D))
+        torch.distributed.all_reduce(logits_max, op=torch.distributed.ReduceOp.MAX, group=process_group)
         # Subtract the maximum value.
         vocab_parallel_logits.sub_(logits_max.unsqueeze(dim=-1))
 
         # Get the partition's vocab indecies
         partition_vocab_size = vocab_parallel_logits.size()[-1]
-        rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+        rank = dist.get_rank(process_group)
         vocab_start_index = partition_vocab_size * rank
         vocab_end_index = vocab_start_index + partition_vocab_size
 
@@ -42,17 +43,12 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
         predicted_logits = predicted_logits_1d.view_as(targets)
         predicted_logits[target_mask] = 0.0
         # All reduce is needed to get the chunks from other GPUs.
-        torch.distributed.all_reduce(predicted_logits,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=gpc.get_group(ParallelMode.PARALLEL_1D))
+        torch.distributed.all_reduce(predicted_logits, op=torch.distributed.ReduceOp.SUM, group=process_group)
 
         # Sum of exponential of logits along vocab dimension across all GPUs.
-        exp_logits = vocab_parallel_logits
-        torch.exp(vocab_parallel_logits, out=exp_logits)
+        exp_logits = torch.exp(vocab_parallel_logits)
         sum_exp_logits = exp_logits.sum(dim=-1)
-        torch.distributed.all_reduce(sum_exp_logits,
-                                     op=torch.distributed.ReduceOp.SUM,
-                                     group=gpc.get_group(ParallelMode.PARALLEL_1D))
+        torch.distributed.all_reduce(sum_exp_logits, op=torch.distributed.ReduceOp.SUM, group=process_group)
 
         # Loss = log(sum(exp(logits))) - predicted-logit.
         loss = torch.log(sum_exp_logits) - predicted_logits
@@ -81,7 +77,7 @@ class _VocabParallelCrossEntropy1D(torch.autograd.Function):
         # Finally elementwise multiplication with the output gradients.
         grad_input.mul_(grad_output.unsqueeze(dim=-1))
 
-        return grad_input, None
+        return grad_input, None, None
 
 
 @LOSSES.register_module
@@ -96,14 +92,14 @@ class VocabParallelCrossEntropyLoss1D(_Loss):
         super().__init__()
         self.reduction_mean = reduction
 
-    def forward(self, logits, targets):
+    def forward(self, logits, targets, process_group=None):
         """Calculate loss between logits and targets.
 
         Args:
             logits (:class:`torch.tensor`): Predicted unnormalized scores (often referred to as logits).
             targets (:class:`torch.tensor`): Ground truth class indices or class probabilities.
         """
-        loss = _VocabParallelCrossEntropy1D.apply(logits, targets)
+        loss = _VocabParallelCrossEntropy1D.apply(logits, targets, process_group)
         if self.reduction_mean:
             loss = loss.mean()
         return loss
