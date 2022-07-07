@@ -3,7 +3,7 @@ from typing import Dict, Set
 from torch.fx.node import Node, map_arg
 
 
-def get_comm_size(parent_partition, child_partition):
+def get_comm_size(prev_partition, next_partition):
     """Given two partitions (parent and child),
     calculate the communication size between the two.
     """
