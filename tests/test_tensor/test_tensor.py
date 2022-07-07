@@ -103,9 +103,9 @@ def run_dist_tests(rank, world_size, port):
     _run_view(world_size)
     _run_process_group(world_size)
     _run_tensor_indexing()
+    _run_operand()
     # TODO not passed
     # _run_wrapped_tensor_func()
-    _run_operand()
 
 
 @pytest.mark.dist
