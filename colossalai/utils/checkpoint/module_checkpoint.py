@@ -2,8 +2,18 @@ import torch
 import torch.nn as nn
 import torch.distributed as dist
 import collections
-from torch.optim.lr_scheduler import CosineAnnealingLR as _CosineAnnealingLR
+import inspect
 from colossalai.utils.model.colo_init_context import colo_state_dict
+
+
+def filter_dict(dict_to_filter, thing_with_kwargs):
+    sig = inspect.signature(thing_with_kwargs)
+    filter_keys = [param.name for param in sig.parameters.values() if param.kind == param.POSITIONAL_OR_KEYWORD]
+    filter_dict = {}
+    for filter_key in filter_keys:
+        if filter_key in dict_to_filter:
+            filter_dict[filter_key] = dict_to_filter[filter_key]
+    return filter_dict
 
 
 def save_checkpoint(dire: str,
@@ -25,9 +35,7 @@ def save_checkpoint(dire: str,
     model_state = {'epoch': epoch, 'model': colo_state_dict(model, state_dict_func=nn.Module.state_dict)}
     if dist.get_rank() == 0:
         torch.save(model_state, dire + '/epoch_{}_model.pth'.format(epoch))
-    lr_scheduler_dict = lr_scheduler.state_dict()
-    lr_scheduler_dict['after_scheduler'] = lr_scheduler_dict['after_scheduler'].state_dict()
-    optim_state = {'epoch': epoch, 'optimizer': optimizer.state_dict(), 'lr_scheduler': lr_scheduler_dict}
+    optim_state = {'epoch': epoch, 'optimizer': optimizer.state_dict(), 'lr_scheduler': lr_scheduler.state_dict()}
     torch.save(optim_state, dire + '/epoch_{}_optim_rank_{}.pth'.format(epoch, dist.get_rank()))
 
 
@@ -55,8 +63,13 @@ def load_checkpoint(dire,
     optim_state = torch.load(dire + '/epoch_{}_optim_rank_{}.pth'.format(epoch, rank))
     optimizer.load_state_dict(optim_state['optimizer'])
     lr_scheduler_dict = optim_state['lr_scheduler']
-    after_scheduler_dict = lr_scheduler_dict['after_scheduler']
-    lr_scheduler_dict['after_scheduler'] = _CosineAnnealingLR(optimizer, after_scheduler_dict['T_max'],
-                                                              after_scheduler_dict['eta_min'],
-                                                              after_scheduler_dict['last_epoch'])
+    if 'after_scheduler_type' in lr_scheduler_dict:
+        after_scheduler_type = lr_scheduler_dict.pop('after_scheduler_type')
+        after_scheduler_dict = lr_scheduler_dict.pop('after_scheduler_dict')
+        reload_scheduler = getattr(torch.optim.lr_scheduler, after_scheduler_type)
+        filtered_dict = filter_dict(after_scheduler_dict, reload_scheduler)
+        lr_scheduler_dict['after_scheduler'] = reload_scheduler(
+            optimizer,
+            **filtered_dict,
+        )
     lr_scheduler.load_state_dict(lr_scheduler_dict)
