@@ -5,14 +5,6 @@ from colossalai.context.singleton_meta import SingletonMeta
 
 
 class PyTorchProcessGroupDict(metaclass=SingletonMeta):
-    """This class provides interface functions for users to get the parallel context,
-    such as the global rank, the local rank, the world size, etc. of each device.
-
-    Note:
-        The parallel_mode used in this class should be concluded in ``ParallelMode``.
-        More details about ``ParallelMode`` could be found in
-        `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
-    """
 
     def __init__(self):
         # distributed settings
