@@ -39,7 +39,7 @@ def check_spec_eq(tensor, other):
     assert isinstance(tensor, ColoTensor) and isinstance(other, ColoTensor)
     for k in dir(tensor.dist_spec):
         if not k.startswith('__'):
-            assert hasattr(other.dist_spec, k)
+            assert hasattr(other.dist_spec, k), f"{k}"
             assert getattr(tensor.dist_spec, k) == getattr(other.dist_spec, k)
 
 
@@ -48,6 +48,7 @@ def check_element_wise_ops():
     pg = ProcessGroup(tp_degree=world_size)
     t = torch.rand(2, 2)
     x = ColoTensor(t, spec=ColoTensorSpec(pg, distspec.shard([0], [pg.tp_world_size()])))
+
     check_spec_eq(x, x.cuda())
     assert torch.equal(x.cuda(), t.cuda())
     check_spec_eq(x, torch.abs(x))

@@ -19,6 +19,10 @@ class PyTorchProcessGroupDict(metaclass=SingletonMeta):
         pg_key = (backend, rank_tuple)
 
         if pg_key not in self.dict:
+
+            self.logger = get_dist_logger('ProcessGroup')
+            self.logger.info(f'NCCL initialize TP group on {rank_list}', ranks=[0])
+
             self.dict[pg_key] = torch.distributed.new_group(ranks=rank_list, backend=backend)
         return self.dict[pg_key]
 
@@ -91,10 +95,6 @@ class ProcessGroup:
 
         self._tp_process_group = PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
         self._dp_process_group = PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
-
-        self.logger = get_dist_logger('ProcessGroup')
-        self.logger.info(
-            f'{self._rank} NCCL initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
 
         self._has_cpu_groups = False
         self._cpu_dp_process_group = None

@@ -22,7 +22,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
         assert not bias.has_compute_spec(), 'Invalid bias spec for 1Drow Linear op'
         output = output + bias
 
-    pg = input_tensor.get_process_group()
+    pg = weight.get_process_group()
     output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(pg, distspec.replicate()))
     return output
 
@@ -61,6 +61,7 @@ def colo_linear_imp(input_tensor: GeneralTensor,
     """
     assert isinstance(weight, ColoTensor)
     pg = weight.get_process_group()
+    assert pg
     input_tensor = convert_to_colo_tensor(input_tensor, pg)
     bias = convert_to_colo_tensor(bias, pg)
     # input_tensor, weight, bias = tuple(map(convert_to_colo_tensor, (input_tensor, weight, bias)))
@@ -70,7 +71,7 @@ def colo_linear_imp(input_tensor: GeneralTensor,
     if not weight.has_compute_spec():    # No Model Parallel Applied
         assert weight.is_replicate(), 'Invalid weight spec for native Linear op'
         assert bias is None or bias.is_replicate(), 'Invalid bias spec for native Linear op'
-        ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias))
+        ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias), spec=ColoTensorSpec(pg))
     elif weight.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if weight.is_shard_1dcol() and (bias is None or bias.is_replicate()):
             mode = 'row'

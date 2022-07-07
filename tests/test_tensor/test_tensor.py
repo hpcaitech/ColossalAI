@@ -49,6 +49,8 @@ def _run_operand():
 
     t_ref_res = t_ref + t_ref
     t_res = t + t
+
+    assert isinstance(t_res, ColoTensor)
     assert torch.allclose(t_ref_res, t_res)
 
 
