@@ -6,8 +6,12 @@ from torch.utils._pytree import tree_flatten
 
 
 def trace_model_and_compare_output(model, data_gen):
-    tracer = ColoTracer()
+    # must turn on eval mode to ensure the output is consistent
+    model.eval()
+
     # make sure that the model is traceable
+    tracer = ColoTracer()
+
     try:
         kwargs = data_gen()
         meta_args = {k: v.to('meta') for k, v in kwargs.items()}
@@ -17,17 +21,12 @@ def trace_model_and_compare_output(model, data_gen):
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
 
-    # check output
-    inputs = data_gen()
-
-    # must turn on eval mode to ensure the output is consistent
-    gm.eval()
-    model.eval()
-
     # run forward
+    inputs = data_gen()
     non_fx_out = model(**inputs)
     fx_out = gm(**inputs)
 
+    # check output
     for k in non_fx_out.keys():
         if torch.is_tensor(fx_out[k]):
             assert torch.equal(
