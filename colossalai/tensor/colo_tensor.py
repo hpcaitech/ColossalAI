@@ -29,7 +29,6 @@ def _scan_for_pg_from_args(args, kwargs) -> ProcessGroup:
             pg = _scan_for_pg_from_args(elem, {})
             if pg is not None:
                 return pg
-        print(type(elem), elem, isinstance(elem, (list, tuple)))
     for k, v in kwargs:
         if isinstance(v, ColoTensor):
             pg = v.get_process_group()
