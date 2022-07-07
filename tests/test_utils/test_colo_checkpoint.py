@@ -107,9 +107,11 @@ def remove(path):
 def run_checkpoint(init_spec_func, use_ddp, test_epoch, test_scheduler, pg):
     num_epoch = 5
     warmup_epoch = 2
+
     batch = 3
-    feature = 4
-    category = 5
+    feature = 32
+    category = 16
+
     train_dataloader = DummyDataLoader(batch, category, feature, length=16)
     with ColoInitContext(device=get_current_device()):
         model = MLP(feature, category)
@@ -138,18 +140,15 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch, test_scheduler, pg):
         lr_scheduler_reload = CosineAnnealingWarmupLR(optimizer=optimizer_reload,
                                                       total_steps=num_epoch,
                                                       warmup_steps=warmup_epoch)
-        lr_scheduler_ref = CosineAnnealingWarmupLR(optimizer=optimizer_ref,
-                                                   total_steps=num_epoch,
-                                                   warmup_steps=warmup_epoch)
+
     elif test_scheduler == 'torch_cosine':
         lr_scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=num_epoch)
         lr_scheduler_reload = CosineAnnealingLR(optimizer=optimizer_reload, T_max=num_epoch)
-        lr_scheduler_ref = CosineAnnealingLR(optimizer=optimizer_ref, T_max=num_epoch)
+
     elif test_scheduler == 'torch_lambda':
         lr_lambda = lambda epoch: 0.95
         lr_scheduler = MultiplicativeLR(optimizer=optimizer, lr_lambda=lr_lambda)
         lr_scheduler_reload = MultiplicativeLR(optimizer=optimizer_reload, lr_lambda=lr_lambda)
-        lr_scheduler_ref = MultiplicativeLR(optimizer=optimizer_reload, lr_lambda=lr_lambda)
 
     init_spec_func(model, pg)
     init_spec_func(model_ref, pg)
@@ -173,7 +172,6 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch, test_scheduler, pg):
                 for ref_p, p in zip(model_ref.parameters(), model.parameters()):
                     ref_p.data.copy_(p)
                 optimizer_ref = copy.deepcopy(optimizer)
-                lr_scheduler_ref = copy.deepcopy(lr_scheduler)
 
                 check_param_equal(model, model_ref)
                 save_checkpoint('./checkpoint', epoch, model, optimizer, lr_scheduler)
