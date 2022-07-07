@@ -1,4 +1,3 @@
-from curses import meta
 import operator
 import torch
 from .registry import meta_patched_function
@@ -142,3 +141,40 @@ def torch_bmm(input, mat2, *, out=None):
     batch_size, n, m = input.shape
     _, _, p = mat2.shape
     return torch.empty(batch_size, n, p, device="meta")
+
+
+@meta_patched_function.register(torch.squeeze)
+def torch_squeeze(input, dim=None):
+    shape = list(input.shape)
+    if dim is not None:
+        if dim < 0:
+            dim = input.dim() + dim
+        if shape[dim] == 1:
+            shape.pop(dim)
+    else:
+        new_shape = []
+        for dim_value in shape:
+            if dim_value == 1:
+                continue
+            new_shape.append(dim_value)
+        shape = new_shape
+    return torch.empty(shape, device="meta")
+
+
+@meta_patched_function.register(torch.Tensor.squeeze)
+def torch_tensor_squeeze(self, dim=None):
+    return torch_squeeze(self, dim)
+
+
+@meta_patched_function.register(torch.unsqueeze)
+def torch_unsqueeze(input, dim):
+    shape = list(input.shape)
+    if dim < 0:
+        dim = input.dim() + 1 + dim
+    shape.insert(dim, 1)
+    return torch.empty(shape, device="meta")
+
+
+@meta_patched_function.register(torch.Tensor.unsqueeze)
+def torch_tensor_unsqueeze(self, dim):
+    return torch_unsqueeze(self, dim)
