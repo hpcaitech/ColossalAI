@@ -113,6 +113,7 @@ def run_1d_hybrid_tp(model_name):
 
         torch.distributed.broadcast(data, 0, group=pg.tp_process_group())
         torch.distributed.broadcast(label, 0, group=pg.tp_process_group())
+
         # Bcast rank0 data to all processes
         if criterion:
             output = model(data)
