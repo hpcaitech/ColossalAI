@@ -1,6 +1,33 @@
 import torch
 from typing import List, Optional
 from colossalai.logging import get_dist_logger
+from colossalai.context.singleton_meta import SingletonMeta
+
+
+class PyTorchProcessGroupDict(metaclass=SingletonMeta):
+
+    def __init__(self):
+        # distributed settings
+        self.dict = {}
+
+    def get(self, rank_list: List[int], backend: str = 'nccl'):
+        """Reuse Pytorch ProcessGroup when such a group is initialized
+        """
+        rank_tuple = tuple(rank_list)
+        # we need to convert the passed list to a tuple
+        # since List is unhashable
+        pg_key = (backend, rank_tuple)
+
+        if pg_key not in self.dict:
+
+            self.logger = get_dist_logger('ProcessGroup')
+            self.logger.info(f'NCCL initialize TP group on {rank_list}', ranks=[0])
+
+            self.dict[pg_key] = torch.distributed.new_group(ranks=rank_list, backend=backend)
+        return self.dict[pg_key]
+
+
+PYTORCHPGDICT_ = PyTorchProcessGroupDict()
 
 
 class ProcessGroup:
@@ -33,49 +60,53 @@ class ProcessGroup:
             self._rank_list = list(range(torch.distributed.get_world_size()))
         else:
             self._rank_list = ranks
+            self._rank_list.sort()    # ensure that the list is in order
 
+        self._rank_idx = self._rank_list.index(self._rank)
         self._world_size = len(self._rank_list)
 
         if dp_degree is None and tp_degree is None:
             self._dp_degree = self._world_size
             self._tp_degree = 1
-
-        if dp_degree and not tp_degree:
+        elif dp_degree and not tp_degree:
             self._dp_degree = dp_degree
             assert self._world_size % self._dp_degree == 0, f"DP degree {dp_degree} should be divisible by {self._world_size} hen DP degree is None"
             self._tp_degree = self._world_size // dp_degree
-
-        if not dp_degree and tp_degree:
+        elif not dp_degree and tp_degree:
             self._tp_degree = tp_degree
             assert self._world_size % self._tp_degree == 0, f"TP degree {tp_degree} should be divisible by {self._world_size} when DP degree is None"
             self._dp_degree = self._world_size // tp_degree
+        else:
+            self._dp_degree = dp_degree
+            self._tp_degree = tp_degree
+            assert self._dp_degree * self._tp_degree == self._world_size, \
+                f"the world size {self._world_size} should equals to the product of DP degree {self._dp_degree}" \
+                f"and TP degree {self._tp_degree}"
 
         self._tp_rank_list = []
         self._dp_rank_list = []
 
-        for rank_id in range(self._world_size):
-            # rank_id and self._rank in the same tp group
-            if rank_id % self._tp_degree == self._rank % self._tp_degree:
+        for idx, rank_id in enumerate(self._rank_list):
+            # idx and self._rank_idx in the same tp group
+            if idx % self._tp_degree == self._rank_idx % self._tp_degree:
                 self._dp_rank_list.append(rank_id)
-            if rank_id // self._tp_degree == self._rank // self._tp_degree:
+            if idx // self._tp_degree == self._rank_idx // self._tp_degree:
                 self._tp_rank_list.append(rank_id)
 
-        self._tp_process_group = torch.distributed.new_group(ranks=self._tp_rank_list, backend='nccl')
-        self._dp_process_group = torch.distributed.new_group(ranks=self._dp_rank_list, backend='nccl')
-
-        self.logger = get_dist_logger('ProcessGroup')
-        self.logger.info(
-            f'{self._rank} NCCL initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
+        self._tp_process_group = PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
+        self._dp_process_group = PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
 
         self._has_cpu_groups = False
+        self._cpu_dp_process_group = None
+        self._cpu_tp_process_group = None
 
     def set_cpu_groups(self):
         if self.has_cpu_groups:
             return
         self.logger.info(
             f'{self._rank} Gloo initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
-        self._cpu_tp_process_group = torch.distributed.new_group(ranks=self._tp_rank_list, backend='gloo')
-        self._cpu_dp_process_group = torch.distributed.new_group(ranks=self._dp_rank_list, backend='gloo')
+        self._cpu_tp_process_group = PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
+        self._cpu_dp_process_group = PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
 
     @property
     def has_cpu_groups(self):
