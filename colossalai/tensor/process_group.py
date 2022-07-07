@@ -106,6 +106,9 @@ class ProcessGroup:
         self._cpu_tp_process_group = torch.distributed.new_group(ranks=self._tp_rank_list, backend='gloo')
         self._cpu_dp_process_group = torch.distributed.new_group(ranks=self._dp_rank_list, backend='gloo')
 
+        _, self._cpu_tp_process_group, _, self._cpu_dp_process_group = PYTORCHPGDICT_.get(
+            self._rank, self._world_size, self._tp_degree, self._dp_degree, 'gloo')
+
     @property
     def has_cpu_groups(self):
         return self._has_cpu_groups
