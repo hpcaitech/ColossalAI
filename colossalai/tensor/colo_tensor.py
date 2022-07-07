@@ -12,7 +12,7 @@ from typing import Optional
 
 
 def _convert_output(output, pg: ProcessGroup):
-    if isinstance(output, torch.Tensor):
+    if type(output) == torch.Tensor:
         return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg))
     elif isinstance(output, (list, tuple)):
         return type(output)(_convert_output(o, pg) for o in output)
