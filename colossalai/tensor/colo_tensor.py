@@ -11,12 +11,24 @@ from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
 from typing import Optional
 
 
-def _check_output(output):
-    if not isinstance(output, torch.Tensor):
-        raise RuntimeError
+def _convert_output(output, pg: ProcessGroup):
+    if isinstance(output, torch.Tensor):
+        return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg))
     elif isinstance(output, (list, tuple)):
-        output = type(output)(_check_output(o) for o in output)
-    return output
+        return type(output)(_convert_output(o, pg) for o in output)
+    else:
+        return output
+
+
+def _scan_for_pg_from_args(args, kwargs) -> ProcessGroup:
+    for elem in args:
+        if isinstance(elem, ColoTensor):
+            pg = elem.get_process_group()
+            return pg
+    for k, v in kwargs:
+        if isinstance(v, ColoTensor):
+            pg = v.get_process_group()
+            return pg
 
 
 class ColoTensor(torch.Tensor):
@@ -136,9 +148,9 @@ class ColoTensor(torch.Tensor):
             if func in get_default_nowrap_functions():
                 return ret
             else:
-                # TODO(jiaruifang) its parallel Op's duty to convert output activations
-                return ret
-                # return _check_output(ret)
+                pg = _scan_for_pg_from_args(args, kwargs)
+                assert pg, f"pg shall not be None, args {args} kwargs {kwargs}"
+                return _convert_output(ret, pg)
 
     def __repr__(self):
         return f'ColoTensor: {super().__repr__()}'

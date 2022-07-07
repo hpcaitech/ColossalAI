@@ -49,6 +49,8 @@ def _run_operand():
 
     t_ref_res = t_ref + t_ref
     t_res = t + t
+
+    assert isinstance(t_res, ColoTensor)
     assert torch.allclose(t_ref_res, t_res)
 
 
@@ -98,11 +100,7 @@ def _run_process_group(world_size):
 
 def run_dist_tests(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    _run_tensor_shard_init(world_size)
-    _run_tensor_replicated_init(world_size)
-    _run_view(world_size)
-    _run_process_group(world_size)
-    _run_tensor_indexing()
+    # _rul
     _run_operand()
     # TODO not passed
     # _run_wrapped_tensor_func()

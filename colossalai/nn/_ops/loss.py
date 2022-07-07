@@ -35,7 +35,7 @@ def colo_cross_entropy(input_tensor: GeneralTensor,
     elif input_tensor.has_compute_spec():    # Single Model Parallel Applied
         if input_tensor.is_shard_1dcol():
             output = VocabParallelCrossEntropyLoss1D()(input_tensor, target)
-            return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg))
+            return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg)).to_replicate()
         else:
             raise NotImplementedError
     else:

@@ -113,6 +113,7 @@ def run_1d_hybrid_tp(model_name):
 
         torch.distributed.broadcast(data, 0, group=pg.tp_process_group())
         torch.distributed.broadcast(label, 0, group=pg.tp_process_group())
+
         # Bcast rank0 data to all processes
         if criterion:
             output = model(data)
@@ -314,10 +315,11 @@ def _run_pretrain_load():
 
 def run_model_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    for name in ['simple_net']:
-        run_1d_row_tp(name)
-    for name in ['bert', 'simple_net']:
-        run_1d_hybrid_tp(name)
+    # for name in ['simple_net']:
+    #     run_1d_row_tp(name)
+    # for name in ['bert', 'simple_net']:
+    #     run_1d_hybrid_tp(name)
+    run_1d_hybrid_tp('bert')
 
 
 @pytest.mark.dist
