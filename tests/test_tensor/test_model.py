@@ -188,7 +188,6 @@ def test_model_parameters():
 
 # @pytest.mark.skip
 def test_colo_optimizer():
-    # colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     set_seed(1)
@@ -347,6 +346,6 @@ def test_pretrain_load(world_size):
 
 if __name__ == '__main__':
     # test_model_parameters()
-    test_colo_optimizer()
-    # test_model(4)
+    # test_colo_optimizer()
+    test_model(4)
     # test_pretrain_load(4)
