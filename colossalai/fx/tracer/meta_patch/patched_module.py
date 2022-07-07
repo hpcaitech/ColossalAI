@@ -250,6 +250,6 @@ def torch_nn_maxpool3d(self, input):
 
 
 @meta_patched_module.register(torch.nn.ReLU)
+@meta_patched_module.register(torch.nn.ReLU6)
 def torch_nn_func_relu(self, input):
-    assert not self.inplace, 'inplace is not supported yet'
-    return input.clone()
+    return torch.empty(input.shape, device='meta')
