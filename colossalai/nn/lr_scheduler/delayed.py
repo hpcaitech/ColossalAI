@@ -2,6 +2,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 
 class _enable_get_lr_call:
+
     def __init__(self, o):
         self.o = o
 
@@ -32,6 +33,16 @@ class DelayerScheduler(_LRScheduler):
         self.after_scheduler = after_scheduler
         self.finished = False
         super().__init__(optimizer, last_epoch)
+
+    def state_dict(self):
+        state_dict = {key: value for key, value in self.__dict__.items() if key not in 'optimizer'}
+        if isinstance(state_dict['after_scheduler'], _LRScheduler):
+            state_dict['after_scheduler_type'] = type(state_dict['after_scheduler']).__name__
+            state_dict['after_scheduler_dict'] = state_dict['after_scheduler'].state_dict()
+            del state_dict['after_scheduler']
+        else:
+            raise NotImplementedError()
+        return state_dict
 
     def get_lr(self):
         if self.last_epoch >= self.delay_epochs:
@@ -72,6 +83,16 @@ class WarmupScheduler(_LRScheduler):
         self.after_scheduler = after_scheduler
         self.finished = False
         super().__init__(optimizer, last_epoch)
+
+    def state_dict(self):
+        state_dict = {key: value for key, value in self.__dict__.items() if key not in 'optimizer'}
+        if isinstance(state_dict['after_scheduler'], _LRScheduler):
+            state_dict['after_scheduler_type'] = type(state_dict['after_scheduler']).__name__
+            state_dict['after_scheduler_dict'] = state_dict['after_scheduler'].state_dict()
+            del state_dict['after_scheduler']
+        else:
+            raise NotImplementedError()
+        return state_dict
 
     def get_lr(self):
         if self.last_epoch >= self.warmup_epochs:
@@ -117,6 +138,16 @@ class WarmupDelayerScheduler(_LRScheduler):
         self.after_scheduler = after_scheduler
         self.finished = False
         super().__init__(optimizer, last_epoch)
+
+    def state_dict(self):
+        state_dict = {key: value for key, value in self.__dict__.items() if key not in 'optimizer'}
+        if isinstance(state_dict['after_scheduler'], _LRScheduler):
+            state_dict['after_scheduler_type'] = type(state_dict['after_scheduler']).__name__
+            state_dict['after_scheduler_dict'] = state_dict['after_scheduler'].state_dict()
+            del state_dict['after_scheduler']
+        else:
+            raise NotImplementedError()
+        return state_dict
 
     def get_lr(self):
         if self.last_epoch >= self.warmup_epochs + self.delay_epochs:

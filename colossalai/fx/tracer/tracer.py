@@ -4,9 +4,8 @@ tracer.py:
     Implemented a tracer which supports control flow and user-defined meta arguments.
     The implementation is partly inspired HuggingFace's fx tracer
 """
-
+import enum
 import inspect
-import math
 import functools
 import torch
 import torch.nn as nn
@@ -20,6 +19,11 @@ from ._tracer_utils import is_element_in_list, extract_meta
 from .meta_patch import meta_patched_function, meta_patched_module
 
 __all__ = ['ColoTracer']
+
+
+class TracerType(enum.Enum):
+    DEFAULT = 1
+    META = 2
 
 
 class ColoTracer(Tracer):
@@ -48,6 +52,11 @@ class ColoTracer(Tracer):
         graph = tracer.trace(model, concrete_args={'y': torch.rand(4, 10)}, meta_args={'x': torch.rand(4, 10, device='meta')})
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tracer_type = TracerType.META
+        self.proxy_cls = ColoProxy
+
     # Feature flag for proxying accesses to buffer values
     proxy_buffer_attributes: bool = True
 
@@ -58,6 +67,12 @@ class ColoTracer(Tracer):
         Create a proxy for different kinds of operations.
         """
         proxy = super().create_proxy(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
+
+        if self.tracer_type == TracerType.DEFAULT:
+            # since meta_args is not given
+            # we just fall back to the original torch.fx.Tracer
+            return proxy
+
         proxy: ColoProxy
 
         if kind == "placeholder" and target in self.meta_args and self.meta_args[target].is_meta:
@@ -168,11 +183,21 @@ class ColoTracer(Tracer):
         self.orig_forward = forward
         return super().call_module(m, forward, args, kwargs)
 
-    def proxy(self, node) -> ColoProxy:
+    def proxy(self, node) -> Proxy:
         """
         Returns a ColoProxy object.
         """
-        return ColoProxy(node, self)
+        return self.proxy_cls(node, self)
+
+    def _configure_tracer_type(self, tracer_type: TracerType):
+        if tracer_type == TracerType.DEFAULT:
+            self.proxy_cls = Proxy
+            self.tracer_type = TracerType.DEFAULT
+        elif tracer_type == TracerType.META:
+            self.proxy_cls = ColoProxy
+            self.tracer_type = TracerType.META
+        else:
+            raise ValueError(f"Unrecognised tracer type {tracer_type}")
 
     def trace(self,
               root: nn.Module,
@@ -192,6 +217,11 @@ class ColoTracer(Tracer):
 
         if concrete_args is None:
             concrete_args = {}
+
+        if len(meta_args) == 0:
+            self._configure_tracer_type(TracerType.DEFAULT)
+        else:
+            self._configure_tracer_type(TracerType.META)
 
         # check concrete and meta args have valid names
         sig = inspect.signature(root.forward)
@@ -235,18 +265,21 @@ class ColoTracer(Tracer):
         self.concrete_args = concrete_args
         self.meta_args = meta_args
 
-        # wrap the torch tensor constructing methods so that they are captured in the graph
-        self.patched_torch_tensor_methods = {
-            target: wrap_tensor_constructor_method(getattr(torch, target)) for target in self._TORCH_METHODS_TO_PATCH
-        }
+        self.patched_torch_tensor_methods = {}
+        if self.tracer_type == TracerType.META:
+            # wrap the torch tensor constructing methods so that they are captured in the graph
+            self.patched_torch_tensor_methods = {
+                target: wrap_tensor_constructor_method(getattr(torch, target))
+                for target in self._TORCH_METHODS_TO_PATCH
+            }
 
-        # patch these methods to replace their original use
-        for name, (wrapper, orig) in self.patched_torch_tensor_methods.items():
-            setattr(torch, name, wrapper)
+            # patch these methods to replace their original use
+            for name, (wrapper, orig) in self.patched_torch_tensor_methods.items():
+                setattr(torch, name, wrapper)
 
-        # cache these methods so that we can detect whether a method call
-        # should be patched during tracing
-        self.orig_torch_tensor_methods = [val[1] for val in self.patched_torch_tensor_methods.values()]
+            # cache these methods so that we can detect whether a method call
+            # should be patched during tracing
+            self.orig_torch_tensor_methods = [val[1] for val in self.patched_torch_tensor_methods.values()]
 
         try:
             self.graph = super().trace(root, concrete_args=concrete_args)
@@ -254,6 +287,9 @@ class ColoTracer(Tracer):
             # recover the patched methods
             for name, (_, orig) in self.patched_torch_tensor_methods.items():
                 setattr(torch, name, orig)
+
+        if self.tracer_type == TracerType.DEFAULT:
+            return self.graph
 
         # This is necessary because concrete args are added as input to the traced module since
         # https://github.com/pytorch/pytorch/pull/55888.
