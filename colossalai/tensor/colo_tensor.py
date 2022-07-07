@@ -25,10 +25,16 @@ def _scan_for_pg_from_args(args, kwargs) -> ProcessGroup:
         if isinstance(elem, ColoTensor):
             pg = elem.get_process_group()
             return pg
+        elif isinstance(elem, (list, tuple)):
+            pg = _scan_for_pg_from_args(elem, {})
+            if pg is not None:
+                return pg
+        print(type(elem), elem, isinstance(elem, (list, tuple)))
     for k, v in kwargs:
         if isinstance(v, ColoTensor):
             pg = v.get_process_group()
             return pg
+    return None
 
 
 class ColoTensor(torch.Tensor):
@@ -120,6 +126,7 @@ class ColoTensor(torch.Tensor):
             dist_spec (_DistSpec): target dist spec.
         """
         assert isinstance(dist_spec, _DistSpec)
+        assert self.process_group
         self._convert_to_dist_spec(dist_spec)
 
     def set_tensor_spec(self, dist_spec, compute_spec):
@@ -149,11 +156,10 @@ class ColoTensor(torch.Tensor):
                 return ret
             else:
                 pg = _scan_for_pg_from_args(args, kwargs)
-                assert pg, f"pg shall not be None, args {args} kwargs {kwargs}"
                 return _convert_output(ret, pg)
 
     def __repr__(self):
-        return f'ColoTensor: {super().__repr__()}'
+        return f'ColoTensor: {super().__repr__()}\n dist spec: {self.dist_spec}\n process group: {self.process_group}'
 
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
         """_convert_to_dist_spec 
