@@ -63,14 +63,8 @@ def test_timm_models_with_control_flow():
     torch.backends.cudnn.deterministic = True
 
     MODEL_LIST_WITH_CONTROL_FLOW = [
-        tm.convnext.convnext_base,
-        tm.vgg.vgg11,
-        tm.dpn.dpn68,
-        tm.densenet.densenet121,
-        tm.rexnet.rexnet_100,
-
-    # not traceable
-    # tm.swin_transformer.swin_base_patch4_window7_224
+        tm.convnext.convnext_base, tm.vgg.vgg11, tm.dpn.dpn68, tm.densenet.densenet121, tm.rexnet.rexnet_100,
+        tm.swin_transformer.swin_base_patch4_window7_224
     ]
 
     tracer = ColoTracer()

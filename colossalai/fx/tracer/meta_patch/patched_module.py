@@ -249,6 +249,34 @@ def torch_nn_maxpool3d(self, input):
     return torch.empty(result_shape, device='meta')
 
 
+@meta_patched_module.register(torch.nn.AdaptiveAvgPool1d)
+@meta_patched_module.register(torch.nn.AdaptiveMaxPool1d)
+def torch_nn_adapative_pooling_1d(self, input):
+    result_shape = input.shape[:-1] + (self.output_size,)
+    return torch.empty(result_shape, device='meta')
+
+
+@meta_patched_module.register(torch.nn.AdaptiveAvgPool2d)
+@meta_patched_module.register(torch.nn.AdaptiveMaxPool2d)
+def torch_nn_adapative_pooling_2d(self, input):
+    result_shape = input.shape[:-2] + (
+        self.output_size,
+        self.output_size,
+    )
+    return torch.empty(result_shape, device='meta')
+
+
+@meta_patched_module.register(torch.nn.AdaptiveAvgPool3d)
+@meta_patched_module.register(torch.nn.AdaptiveMaxPool3d)
+def torch_nn_adapative_pooling_3d(self, input):
+    result_shape = input.shape[:-3] + (
+        self.output_size,
+        self.output_size,
+        self.output_size,
+    )
+    return torch.empty(result_shape, device='meta')
+
+
 @meta_patched_module.register(torch.nn.ReLU)
 @meta_patched_module.register(torch.nn.ReLU6)
 def torch_nn_func_relu(self, input):
