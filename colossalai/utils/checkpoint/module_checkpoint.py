@@ -1,9 +1,8 @@
 import torch
-import torch.nn as nn
 import torch.distributed as dist
 import collections
 import inspect
-from colossalai.utils.model.colo_init_context import colo_state_dict
+from colossalai.tensor import ColoTensor
 
 
 def filter_dict(dict_to_filter, thing_with_kwargs):
@@ -33,15 +32,34 @@ def save_checkpoint(dire: str,
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): lr schedule. Defaults to None.
     """
     model_state = {'epoch': epoch, 'model': model.state_dict()}
+
+    mapping = dict()
+    for p in model.parameters():
+        if isinstance(p, ColoTensor):
+            mapping[id(p)] = (p.dist_spec, p.compute_spec)
+            p.to_replicate()
+
     if dist.get_rank() == 0:
         torch.save(model_state, dire + '/epoch_{}_model.pth'.format(epoch))
 
-    # TODO() If use tensor parallelism, optim_states contain SHARD ColoTensors.
-    # 1. convert SHARD ColoTensor to REPLICATE
-    # only rank 0 saves the REPLICATE tensors.
+    for p in model.parameters():
+        if isinstance(p, ColoTensor):
+            p.set_tensor_spec(*mapping[id(p)])
+
     optim_state = {'epoch': epoch, 'optimizer': optimizer.state_dict(), 'lr_scheduler': lr_scheduler.state_dict()}
 
-    torch.save(optim_state, dire + '/epoch_{}_optim_rank_{}.pth'.format(epoch, dist.get_rank()))
+    mapping = dict()
+    for p, v in optimizer.state.items():
+        if isinstance(p, ColoTensor):
+            mapping[id(p)] = (p.dist_spec, p.compute_spec)
+            p = p.to_replicate()
+
+    if dist.get_rank() == 0:
+        torch.save(optim_state, dire + '/epoch_{}_optim.pth'.format(epoch))
+
+    for p, v in optimizer.state.items():
+        if isinstance(p, ColoTensor):
+            p = p.set_tensor_spec(*mapping[id(p)])
 
 
 def load_checkpoint(dire,
@@ -64,9 +82,32 @@ def load_checkpoint(dire,
     """
     model_state = torch.load(dire + '/epoch_{}_model.pth'.format(epoch))
     model_state['model'] = collections.OrderedDict([(k.split('.', 1)[1], v) for k, v in model_state['model'].items()])
+
+    mapping = dict()
+    for p in model.parameters():
+        if isinstance(p, ColoTensor):
+            mapping[id(p)] = (p.dist_spec, p.compute_spec)
+            p.to_replicate()
+
     model.load_state_dict(model_state['model'])
-    optim_state = torch.load(dire + '/epoch_{}_optim_rank_{}.pth'.format(epoch, rank))
+
+    for p in model.parameters():
+        if isinstance(p, ColoTensor):
+            p.set_tensor_spec(*mapping[id(p)])
+
+    mapping = dict()
+    for p, v in optimizer.state.items():
+        if isinstance(p, ColoTensor):
+            mapping[id(p)] = (p.dist_spec, p.compute_spec)
+            p = p.to_replicate()
+
+    optim_state = torch.load(dire + '/epoch_{}_optim.pth'.format(epoch))
     optimizer.load_state_dict(optim_state['optimizer'])
+
+    for p, v in optimizer.state.items():
+        if isinstance(p, ColoTensor):
+            p = p.set_tensor_spec(*mapping[id(p)])
+
     lr_scheduler_dict = optim_state['lr_scheduler']
     if 'after_scheduler_type' in lr_scheduler_dict:
         after_scheduler_type = lr_scheduler_dict.pop('after_scheduler_type')
