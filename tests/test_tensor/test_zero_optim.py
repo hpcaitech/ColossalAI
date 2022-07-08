@@ -17,7 +17,7 @@ from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
 from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.tensor import TensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec, ProcessGroup
+from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec, ProcessGroup
 
 
 def check_param_equal(model, torch_model, pg: ProcessGroup):
@@ -45,19 +45,19 @@ def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
 
 
 def init_1d_row_spec(model, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg, [0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n and 'ln' not in n:
-                p.set_tensor_spec(spec)
+                p.set_tensor_spec(*spec)
 
 
 def init_1d_col_spec(model, pg: ProcessGroup):
-    spec = TensorSpec(distspec.shard(pg, [-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):
-                p.set_tensor_spec(spec)
+                p.set_tensor_spec(*spec)
 
 
 @parameterize('use_chunk', [False, True])

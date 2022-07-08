@@ -227,31 +227,88 @@ def test_conv3d():
                          output_shape=materialized_output.shape)
 
 
-def test_maxpool3d():
-    pooler = torch.nn.MaxPool3d(kernel_size=3)
+def test_pool1d():
+    combinations = [[torch.nn.MaxPool1d, patched_module.torch_nn_maxpool1d],
+                    [torch.nn.AvgPool1d, patched_module.torch_nn_avgpool1d]]
 
-    # test max pool 3d
-    data = torch.rand(2, 3, 4, 4, 4)
-    materialized_output = pooler(data)
-    _assert_output_shape(data=data,
-                         module=pooler,
-                         patch_fn=patched_module.torch_nn_maxpool3d,
-                         expect_exception=False,
-                         output_shape=materialized_output.shape)
+    for (layer_cls, patch_func) in combinations:
+        pooler = layer_cls(kernel_size=3)
 
-    # test max pool 3d
-    data = torch.rand(2, 3, 4, 4)
-    materialized_output = pooler(data)
-    _assert_output_shape(data=data,
-                         module=pooler,
-                         patch_fn=patched_module.torch_nn_maxpool3d,
-                         expect_exception=False,
-                         output_shape=materialized_output.shape)
+        data = torch.rand(2, 3, 4)
+        materialized_output = pooler(data)
+        _assert_output_shape(data=data,
+                             module=pooler,
+                             patch_fn=patch_func,
+                             expect_exception=False,
+                             output_shape=materialized_output.shape)
 
-    # test max pool 3d
-    data = torch.rand(2, 3, 4)
-    _assert_output_shape(data=data,
-                         module=pooler,
-                         patch_fn=patched_module.torch_nn_maxpool3d,
-                         expect_exception=True,
-                         output_shape=None)
+        data = torch.rand(2, 4)
+        materialized_output = pooler(data)
+        _assert_output_shape(data=data,
+                             module=pooler,
+                             patch_fn=patch_func,
+                             expect_exception=False,
+                             output_shape=materialized_output.shape)
+
+        data = torch.rand(2, 3, 4, 4)
+        _assert_output_shape(data=data, module=pooler, patch_fn=patch_func, expect_exception=True, output_shape=None)
+
+
+def test_pool2d():
+    combinations = [[torch.nn.MaxPool2d, patched_module.torch_nn_maxpool2d],
+                    [torch.nn.AvgPool2d, patched_module.torch_nn_avgpool2d]]
+
+    for (layer_cls, patch_func) in combinations:
+        pooler = layer_cls(kernel_size=3)
+
+        # test max pool 3d
+        data = torch.rand(2, 3, 4, 4)
+        materialized_output = pooler(data)
+        _assert_output_shape(data=data,
+                             module=pooler,
+                             patch_fn=patch_func,
+                             expect_exception=False,
+                             output_shape=materialized_output.shape)
+
+        # test max pool 3d
+        data = torch.rand(2, 4, 4)
+        materialized_output = pooler(data)
+        _assert_output_shape(data=data,
+                             module=pooler,
+                             patch_fn=patch_func,
+                             expect_exception=False,
+                             output_shape=materialized_output.shape)
+
+        # test max pool 3d
+        data = torch.rand(2, 3, 4, 4, 4)
+        _assert_output_shape(data=data, module=pooler, patch_fn=patch_func, expect_exception=True, output_shape=None)
+
+
+def test_pool3d():
+    combinations = [[torch.nn.MaxPool3d, patched_module.torch_nn_maxpool3d],
+                    [torch.nn.AvgPool3d, patched_module.torch_nn_avgpool3d]]
+
+    for (layer_cls, patch_func) in combinations:
+        pooler = layer_cls(kernel_size=3)
+
+        # test max pool 3d
+        data = torch.rand(2, 3, 4, 4, 4)
+        materialized_output = pooler(data)
+        _assert_output_shape(data=data,
+                             module=pooler,
+                             patch_fn=patch_func,
+                             expect_exception=False,
+                             output_shape=materialized_output.shape)
+
+        # test max pool 3d
+        data = torch.rand(2, 4, 4, 4)
+        materialized_output = pooler(data)
+        _assert_output_shape(data=data,
+                             module=pooler,
+                             patch_fn=patch_func,
+                             expect_exception=False,
+                             output_shape=materialized_output.shape)
+
+        # test max pool 3d
+        data = torch.rand(2, 3, 4)
+        _assert_output_shape(data=data, module=pooler, patch_fn=patch_func, expect_exception=True, output_shape=None)

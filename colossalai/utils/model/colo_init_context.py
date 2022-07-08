@@ -1,6 +1,6 @@
 from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter, distspec, TensorSpec
+from colossalai.tensor import ColoTensor, ColoParameter, distspec
 
 from colossalai.nn.parallel.layers import register_colo_module, \
     ColoLinear, ColoEmbedding
@@ -36,16 +36,20 @@ def ColoModulize(module):
 
 def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_dict_func=None):
     # build param to spec mapping
-    mapping = dict()
-
+    mapping1 = dict()
+    mapping2 = dict()
+    mapping3 = dict()
     # gather all params
     has_dist_parameter = False
     with torch.no_grad():
         for param in self.parameters():
-            if isinstance(param, ColoParameter) and param.has_compute_spec():
+            if isinstance(param, ColoParameter):
                 has_dist_parameter = True
-                mapping[id(param)] = copy(param.tensor_spec)
-                param.set_tensor_spec(TensorSpec(distspec.replicate()))
+                mapping1[id(param)] = copy(param.dist_spec)
+                mapping2[id(param)] = copy(param.compute_spec)
+                mapping3[id(param)] = param.get_process_group()
+                param.set_dist_spec(distspec.replicate())
+                param.process_group = None
 
     # TODO: fix when keep_vars = True
     # when keep_vars = False, the state_dict_func will call detach to create
@@ -60,9 +64,11 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
     with torch.no_grad():
         for param in self.parameters():
             param_id = id(param)
-            if param_id in mapping:
-                spec = mapping[id(param)]
-                param.set_tensor_spec(spec)
+            if param_id in mapping1:
+                dist_spec = mapping1[id(param)]
+                compute_spec = mapping2[id(param)]
+                param.process_group = mapping3[id(param)]
+                param.set_tensor_spec(dist_spec, compute_spec)
     return ret
 
 
@@ -122,7 +128,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 save_torch_payload = True if not self._lazy_memory_allocate else False
                 # detaching tensor is necessary for optimizers.
                 requires_grad = param.requires_grad
-
+                # TODO(jiaruifang) we initialize a Default PG memory
                 colo_param = ColoParameter(param.to(self._device), requires_grad=requires_grad)
                 # add mapping record
                 replaced_tensors[param] = colo_param
