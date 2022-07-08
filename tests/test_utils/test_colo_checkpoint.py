@@ -215,6 +215,7 @@ def run_dist(rank, world_size, port, use_ddp, test_epoch, test_scheduler):
     run_checkpoint(init_1d_row_for_linear_weight_spec, use_ddp, test_epoch, test_scheduler, pg)
 
 
+@pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [4])
 @pytest.mark.parametrize('use_ddp', [True])
