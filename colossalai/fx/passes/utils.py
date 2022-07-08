@@ -15,8 +15,8 @@ def get_comm_size(prev_partition, next_partition):
     # If a node has input nodes from the parent partition,
     # the output size of those input nodes will be counted
     # and added to comm_size
-    parent_node_names = [n.name for n in parent_partition.graph.nodes]
-    for node in child_partition.graph.nodes:
+    parent_node_names = [n.name for n in prev_partition.graph.nodes]
+    for node in next_partition.graph.nodes:
         input_nodes: Dict[Node, None] = {}
         map_arg(node.args, lambda n: input_nodes.setdefault(n))
         map_arg(node.kwargs, lambda n: input_nodes.setdefault(n))

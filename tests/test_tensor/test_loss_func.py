@@ -41,7 +41,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [2])
+@pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_loss_func(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
@@ -49,4 +49,4 @@ def test_loss_func(world_size):
 
 
 if __name__ == '__main__':
-    test_loss_func(2)
+    test_loss_func(1)
