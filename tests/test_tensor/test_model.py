@@ -185,7 +185,6 @@ def test_model_parameters():
         param_cnt += 1
     assert param_cnt == 2
 
-
 def test_colo_optimizer():
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()

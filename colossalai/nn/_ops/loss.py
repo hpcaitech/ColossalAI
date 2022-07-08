@@ -23,6 +23,8 @@ def colo_cross_entropy(input_tensor: GeneralTensor,
     input_tensor = convert_to_colo_tensor(input_tensor, pg)
 
     if input_tensor.is_replicate():    # Input is gathered
+        assert target.is_replicate() and weight.is_replicate(), \
+            "Target tensor and weight tensor both should be complete"
         output = F.cross_entropy(input_tensor,
                                  target,
                                  weight=weight,
@@ -31,11 +33,15 @@ def colo_cross_entropy(input_tensor: GeneralTensor,
                                  reduce=reduce,
                                  reduction=reduction,
                                  label_smoothing=label_smoothing)
-        return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg)).to_replicate()
+        return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg))
     elif input_tensor.has_compute_spec():    # Single Model Parallel Applied
         if input_tensor.is_shard_1dcol():
-            output = VocabParallelCrossEntropyLoss1D()(input_tensor, target)
-            return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg)).to_replicate()
+            assert weight is None, "Current TP cross entropy loss function doesn't support passing weight tensor in"
+            assert target.is_replicate(), "Target tensor should be complete in TP cross entropy loss function"
+            output = VocabParallelCrossEntropyLoss1D()(input_tensor,
+                                                       target,
+                                                       process_group=input_tensor.process_group.tp_process_group())
+            return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg))
         else:
             raise NotImplementedError
     else:
