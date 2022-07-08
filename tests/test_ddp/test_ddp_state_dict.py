@@ -41,7 +41,7 @@ def run_state_dict(ddp_init_func: Callable[[torch.nn.Module], ColoDDP]):
     torch_model = model_builder().cuda()
     with ColoInitContext(device=get_current_device()):
         model = model_builder()
-    # model = ddp_init_func(model)
+    model = ddp_init_func(model)
     torch_state_dict = torch_model.state_dict()
     for param in model.parameters():
         if isinstance(param, ColoParameter):
