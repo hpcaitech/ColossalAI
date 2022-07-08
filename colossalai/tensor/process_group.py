@@ -97,19 +97,11 @@ class ProcessGroup:
         PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
         PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
 
-        # self._tp_process_group = PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
-        # self._dp_process_group = PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
-
-        # self._cpu_dp_process_group = None
-        # self._cpu_tp_process_group = None
-
     def set_cpu_groups(self):
         if self.has_cpu_groups:
             return
         self.logger.info(
             f'{self._rank} Gloo initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
-        # self._cpu_tp_process_group = PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
-        # self._cpu_dp_process_group = PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
         PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
         PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
 
