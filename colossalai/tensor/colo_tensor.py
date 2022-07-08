@@ -158,7 +158,7 @@ class ColoTensor(torch.Tensor):
                 return _convert_output(ret, pg)
 
     def __repr__(self):
-        return f'ColoTensor: {super().__repr__()}\n dist spec: {self.dist_spec}\n process group: {self.process_group}'
+        return f'ColoTensor:\n{super().__repr__()}\n{self.dist_spec}\n{self.process_group}'
 
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
         """_convert_to_dist_spec 
