@@ -112,6 +112,10 @@ class ProcessGroup:
     def has_cpu_groups(self):
         return self._has_cpu_groups
 
+    def __repr__(self):
+        return "ProcessGroup:\n\tRank: {}, World size: {}, DP degree: {}, TP degree: {}\n\tRanks in group: {}".\
+            format(self._rank, self._world_size, self._dp_degree, self._tp_degree, self._rank_list)
+
     def __eq__(self, obj: 'ProcessGroup') -> bool:
         if not isinstance(obj, ProcessGroup):
             return False
