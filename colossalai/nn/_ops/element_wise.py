@@ -195,6 +195,7 @@ register_elementwise_op(torch.tan)
 register_elementwise_op(torch.tanh)
 register_elementwise_op(torch.atanh)
 register_elementwise_op(torch.arctanh)
+register_elementwise_op(torch.zeros_like)
 
 # nn.functional OP
 register_elementwise_op(F.threshold)

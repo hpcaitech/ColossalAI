@@ -271,3 +271,6 @@ class ColoTensor(torch.Tensor):
     def is_shard_1drow(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
             and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
+
+    def is_sharded(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD
