@@ -31,7 +31,6 @@ def save_checkpoint(dire: str,
         optimizer (torch.optim.Optimizer, optional): optimizers. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): lr schedule. Defaults to None.
     """
-    model_state = {'epoch': epoch, 'model': model.state_dict()}
 
     mapping = dict()
     for p in model.parameters():
@@ -40,6 +39,7 @@ def save_checkpoint(dire: str,
             p.to_replicate()
 
     if dist.get_rank() == 0:
+        model_state = {'epoch': epoch, 'model': model.state_dict()}
         torch.save(model_state, dire + '/epoch_{}_model.pth'.format(epoch))
 
     for p in model.parameters():
@@ -80,8 +80,6 @@ def load_checkpoint(dire,
         optimizer (torch.optim.Optimizer, optional): _description_. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): _description_. Defaults to None.
     """
-    model_state = torch.load(dire + '/epoch_{}_model.pth'.format(epoch))
-    model_state['model'] = collections.OrderedDict([(k.split('.', 1)[1], v) for k, v in model_state['model'].items()])
 
     mapping = dict()
     for p in model.parameters():
@@ -89,6 +87,8 @@ def load_checkpoint(dire,
             mapping[id(p)] = (p.dist_spec, p.compute_spec)
             p.to_replicate()
 
+    model_state = torch.load(dire + '/epoch_{}_model.pth'.format(epoch))
+    model_state['model'] = collections.OrderedDict([(k.split('.', 1)[1], v) for k, v in model_state['model'].items()])
     model.load_state_dict(model_state['model'])
 
     for p in model.parameters():
