@@ -25,3 +25,8 @@ def get_comm_size(prev_partition, next_partition):
                 comm_size += n.meta['tensor_meta'].numel
                 visited_nodes.add(n)
     return comm_size
+
+
+def is_leaf(graph, node):
+    for node in graph.nodes:
+        print(node.next)
