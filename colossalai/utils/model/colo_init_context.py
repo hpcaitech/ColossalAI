@@ -1,6 +1,6 @@
 from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter, distspec
+from colossalai.tensor import ColoTensor, ColoParameter, distspec, ProcessGroup
 
 from colossalai.nn.parallel.layers import register_colo_module, \
     ColoLinear, ColoEmbedding
@@ -47,8 +47,11 @@ def colo_state_dict(self, destination=None, prefix='', keep_vars=False, state_di
                 has_dist_parameter = True
                 mapping1[id(param)] = copy(param.dist_spec)
                 mapping2[id(param)] = copy(param.compute_spec)
-                mapping3[id(param)] = param.get_process_group()
+                # TODO(jiaruifang) fixme, we should elegently handle the default PG in init context
+                if param.get_process_group() is None:
+                    param.process_group = ProcessGroup()
                 param.set_dist_spec(distspec.replicate())
+                mapping3[id(param)] = param.get_process_group()
                 param.process_group = None
 
     # TODO: fix when keep_vars = True

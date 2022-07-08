@@ -11,18 +11,19 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # Input:S[1] x Weight:S[0] = Output:P
     # All-Reduce(Output) + bias = res
     # Input:S[1]
+    pg = weight.get_process_group()
     input_tensor = input_tensor.convert_to_dist_spec(distspec.shard([-1], [weight.get_tp_world_size()]))
 
     # Output:P
     partial_output = F.linear(input_tensor, weight)
     # Reduce(Output)
-    output = reduce_input(partial_output, weight.get_process_group())
+
+    output = reduce_input(partial_output, pg)
     # Bias
     if bias is not None:
         assert not bias.has_compute_spec(), 'Invalid bias spec for 1Drow Linear op'
         output = output + bias
 
-    pg = weight.get_process_group()
     output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(pg, distspec.replicate()))
     return output
 

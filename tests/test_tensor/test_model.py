@@ -186,7 +186,6 @@ def test_model_parameters():
     assert param_cnt == 2
 
 
-# @pytest.mark.skip
 def test_colo_optimizer():
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -316,7 +315,7 @@ def run_model_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     for name in ['simple_net']:
         run_1d_row_tp(name)
-    for name in ['bert', 'simple_net']:
+    for name in ['simple_net']:
         run_1d_hybrid_tp(name)
 
 
@@ -346,6 +345,6 @@ def test_pretrain_load(world_size):
 
 if __name__ == '__main__':
     # test_model_parameters()
-    # test_colo_optimizer()
+    # test_colo_optgimizer()
     test_model(4)
     # test_pretrain_load(4)
