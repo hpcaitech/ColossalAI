@@ -121,6 +121,7 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch, test_scheduler, pg):
     model = model.cuda()
     model_reload = model_reload.cuda()
     model_ref = model_ref.cuda()
+
     if use_ddp:
         model = ColoDDP(model, pg)
         model_reload = ColoDDP(model_reload, pg)
@@ -241,4 +242,4 @@ def test_checkpoint(world_size, use_ddp, test_epoch, test_scheduler):
 
 
 if __name__ == '__main__':
-    test_checkpoint(4, True, 1, "colossalai_cosine_warmup")
+    test_checkpoint(1, False, 1, "torch_cosine")

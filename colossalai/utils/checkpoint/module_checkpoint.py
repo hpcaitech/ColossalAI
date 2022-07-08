@@ -36,7 +36,7 @@ def save_checkpoint(dire: str,
     for p in model.parameters():
         if isinstance(p, ColoTensor):
             mapping[id(p)] = (p.dist_spec, p.compute_spec)
-            p.to_replicate()
+            p = p.to_replicate()
 
     if dist.get_rank() == 0:
         model_state = {'epoch': epoch, 'model': model.state_dict()}
@@ -59,7 +59,8 @@ def save_checkpoint(dire: str,
 
     for p, v in optimizer.state.items():
         if isinstance(p, ColoTensor):
-            p = p.set_tensor_spec(*mapping[id(p)])
+            if id(p) in mapping:
+                p.set_tensor_spec(*mapping[id(p)])
 
 
 def load_checkpoint(dire,
@@ -85,10 +86,10 @@ def load_checkpoint(dire,
     for p in model.parameters():
         if isinstance(p, ColoTensor):
             mapping[id(p)] = (p.dist_spec, p.compute_spec)
-            p.to_replicate()
+            p = p.to_replicate()
 
     model_state = torch.load(dire + '/epoch_{}_model.pth'.format(epoch))
-    model_state['model'] = collections.OrderedDict([(k.split('.', 1)[1], v) for k, v in model_state['model'].items()])
+    # model_state['model'] = collections.OrderedDict([(k.split('.', 1)[1], v) for k, v in model_state['model'].items()])
     model.load_state_dict(model_state['model'])
 
     for p in model.parameters():
@@ -106,16 +107,5 @@ def load_checkpoint(dire,
 
     for p, v in optimizer.state.items():
         if isinstance(p, ColoTensor):
-            p = p.set_tensor_spec(*mapping[id(p)])
-
-    lr_scheduler_dict = optim_state['lr_scheduler']
-    if 'after_scheduler_type' in lr_scheduler_dict:
-        after_scheduler_type = lr_scheduler_dict.pop('after_scheduler_type')
-        after_scheduler_dict = lr_scheduler_dict.pop('after_scheduler_dict')
-        reload_scheduler = getattr(torch.optim.lr_scheduler, after_scheduler_type)
-        filtered_dict = filter_dict(after_scheduler_dict, reload_scheduler)
-        lr_scheduler_dict['after_scheduler'] = reload_scheduler(
-            optimizer,
-            **filtered_dict,
-        )
-    lr_scheduler.load_state_dict(lr_scheduler_dict)
+            if id(p) in mapping:
+                p.set_tensor_spec(*mapping[id(p)])

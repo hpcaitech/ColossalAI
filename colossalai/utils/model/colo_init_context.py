@@ -53,8 +53,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         register_colo_module(torch.nn.Embedding, ColoEmbedding())
 
     def _pre_context_exec(self):
-        self.state_dict_func = nn.Module.state_dict
-        nn.Module.state_dict = partialmethod(colo_state_dict, state_dict_func=self.state_dict_func)
+        pass
 
     def _post_init_method(self, module: torch.nn.Module, *args, **kwargs):
         """
