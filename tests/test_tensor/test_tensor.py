@@ -86,6 +86,7 @@ def _run_tensor_shard_init(world_size):
     tensor_spec = ColoTensorSpec(pg, dist_attr=shard_attr)
     t = ColoTensor.from_torch_tensor(t_ref.clone(), tensor_spec)
     t.set_dist_spec(distspec.replicate())
+
     assert t.shape == torch.Size((4 * world_size, 5)), f"{t.shape} vs ({4 * world_size, 5})"
 
 
