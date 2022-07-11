@@ -2,7 +2,7 @@ import torch.nn.functional as F
 from typing import Optional
 from torch import Tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, distspec, ColoTensorSpec
+from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, distspec, ColoTensorSpec, ShardSpec, ReplicaSpec
 from ._utils import GeneralTensor, convert_to_colo_tensor
 
 
@@ -20,7 +20,7 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
     # embedding_bag_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
     pg = weight.get_process_group()
-    input_tensor = input_tensor.redistribute(distspec.replicate())
+    input_tensor = input_tensor.redistribute(ReplicaSpec())
 
     output_parallel = F.embedding_bag(input_tensor,
                                       weight,
@@ -33,8 +33,7 @@ def colo_embedding_bag_1Dcol(input_tensor: ColoTensor,
                                       per_sample_weights=per_sample_weights,
                                       include_last_offset=include_last_offset,
                                       padding_idx=padding_idx)
-    output_spec = ColoTensorSpec(pg, distspec.shard([-1], [weight.get_tp_world_size()]),
-                                 ComputeSpec(ComputePattern.TP1D))
+    output_spec = ColoTensorSpec(pg, ShardSpec([-1], [weight.get_tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
     if weight.compute_spec.output_replicate:

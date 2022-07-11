@@ -10,7 +10,7 @@ from colossalai.core import global_context as gpc
 import torch.multiprocessing as mp
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import distspec, ColoTensor, ProcessGroup
+from colossalai.tensor import distspec, ColoTensor, ProcessGroup, ShardSpec, ReplicaSpec
 from functools import partial
 
 
@@ -55,7 +55,7 @@ def _run_operand(world_size):
 
     pg = ProcessGroup(tp_degree=world_size)
     t = ColoTensor.from_torch_tensor(t_ref.clone(), ColoTensorSpec(pg))
-    t.set_dist_spec(distspec.shard([0], [world_size]))
+    t.set_dist_spec(ShardSpec([0], [world_size]))
     t_new = torch.zeros_like(t)
     assert isinstance(t_new, ColoTensor)
     assert t_new.is_sharded()
@@ -69,7 +69,7 @@ def _run_view(world_size):
     rank = gpc.get_global_rank()
     pg = ProcessGroup(rank, list(range(world_size)), tp_degree=world_size)
     t = ColoTensor.from_torch_tensor(
-        t_ref, ColoTensorSpec(pg, dist_attr=distspec.shard(dims=[0], num_partitions=[pg.tp_world_size()])))
+        t_ref, ColoTensorSpec(pg, dist_attr=ShardSpec(dims=[0], num_partitions=[pg.tp_world_size()])))
 
     assert t.size_global()[0] == 4 * world_size
     assert t.size_global(1) == 5
@@ -82,7 +82,7 @@ def _run_view(world_size):
 def _run_tensor_shard_init(world_size):
     t_ref = torch.randn(4, 5)
     pg = ProcessGroup(tp_degree=world_size)
-    shard_attr = distspec.shard(dims=[0], num_partitions=[pg.tp_world_size()])
+    shard_attr = ShardSpec(dims=[0], num_partitions=[pg.tp_world_size()])
     tensor_spec = ColoTensorSpec(pg, dist_attr=shard_attr)
     t = ColoTensor.from_torch_tensor(t_ref.clone(), tensor_spec)
     t.set_dist_spec(distspec.replicate())

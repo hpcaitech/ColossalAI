@@ -1,7 +1,5 @@
 from .colo_module import ColoModule
-from colossalai.tensor import ComputePattern, distspec, ProcessGroup
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
+from colossalai.tensor import ComputePattern, distspec, ProcessGroup, ShardSpec
 
 
 class ColoEmbedding(ColoModule):
@@ -21,7 +19,7 @@ class ColoEmbedding(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard([0], [pg.tp_world_size()]),
+                'weight': ShardSpec([0], [pg.tp_world_size()]),
             },
             mode='row',
         )
@@ -30,7 +28,7 @@ class ColoEmbedding(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard([-1], [pg.tp_world_size()]),
+                'weight': ShardSpec([-1], [pg.tp_world_size()]),
             },
             mode='col',
         )
