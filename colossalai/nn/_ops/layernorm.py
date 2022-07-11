@@ -16,7 +16,7 @@ def colo_layernorm(
     assert isinstance(weight, ColoTensor)
     input_tensor = convert_to_colo_tensor(input_tensor, weight.get_process_group())
     bias = convert_to_colo_tensor(bias, weight.get_process_group())
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
+    input_tensor = input_tensor.redistribute(distspec.replicate())
 
     output = F.layer_norm(input_tensor, normalized_shape, weight=weight, bias=bias, eps=eps)
     output = ColoTensor.from_torch_tensor(output, ColoTensorSpec(input_tensor.get_process_group()))

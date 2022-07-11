@@ -14,7 +14,7 @@ def colo_embedding_1Dcol(input_tensor: ColoTensor,
                          sparse: bool = False) -> ColoTensor:
     # embedding_1Dcol split the weight(lookup table) to (num_embeddings, embedding_dim/P)
     # Gather splitted lookup table
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
+    input_tensor = input_tensor.redistribute(distspec.replicate())
 
     output_parallel = F.embedding(input_tensor,
                                   weight,
@@ -46,7 +46,7 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     # Find index in this shard and mask those not here
     # Reduce all
     pg = weight.get_process_group()
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
+    input_tensor = input_tensor.redistribute(distspec.replicate())
 
     # tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
     tensor_parallel_rank = weight.get_process_group().tp_local_rank()

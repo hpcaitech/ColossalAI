@@ -22,7 +22,7 @@ def check_cross_entropy():
     world_size = torch.distributed.get_world_size()
     pg = ProcessGroup(tp_degree=world_size)
     input_t_colo = ColoTensor.from_torch_tensor(tensor=input_ct, spec=ColoTensorSpec(pg))
-    input_shard = input_t_colo.convert_to_dist_spec(distspec.shard([-1], [pg.tp_world_size()]))
+    input_shard = input_t_colo.redistribute(distspec.shard([-1], [pg.tp_world_size()]))
     input_shard.set_tensor_spec(dist_spec=None, compute_spec=ComputeSpec(ComputePattern.TP1D))
 
     output = F.cross_entropy(input_t, target)

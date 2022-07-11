@@ -11,7 +11,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # mat1:S[1] x mat2:S[0] = Output:P
     # beta * input + alpha * All-Reduce(Output) = res
 
-    mat1 = mat1.convert_to_dist_spec(distspec.shard([-1], [mat2.get_tp_world_size()]))
+    mat1 = mat1.redistribute(distspec.shard([-1], [mat2.get_tp_world_size()]))
 
     # Output:P
     partial_output = torch.mm(mat1, mat2)
@@ -28,7 +28,7 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
                      alpha: Number) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
     compute_spec = mat2.compute_spec
-    mat1 = mat1.convert_to_dist_spec(distspec.replicate())
+    mat1 = mat1.redistribute(distspec.replicate())
     mat1 = reduce_grad(mat1, mat1.get_process_group())
 
     output_parallel = torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha)
