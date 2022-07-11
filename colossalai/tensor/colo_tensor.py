@@ -202,6 +202,7 @@ class ColoTensor(torch.Tensor):
         """
         return self.redistribute(ReplicaSpec())
 
+
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor, spec: Optional[ColoTensorSpec] = None) -> 'ColoTensor':
         tensor = tensor.as_subclass(ColoTensor)
