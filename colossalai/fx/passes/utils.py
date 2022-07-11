@@ -1,6 +1,7 @@
 import torch
 from typing import Dict, Set
 from torch.fx.node import Node, map_arg
+from torch.fx.graph import Graph
 
 
 def get_comm_size(prev_partition, next_partition):
@@ -27,6 +28,43 @@ def get_comm_size(prev_partition, next_partition):
     return comm_size
 
 
-def is_leaf(graph, node):
+def get_leaf(graph: Graph):
+    """Given a graph, get leaf node of this graph.
+
+    Note: This method will get the leaf nodes of given graph excluding `output` node.
+    """
+    input_nodes: Dict[Node, None] = {}
     for node in graph.nodes:
-        print(node.next)
+        if node.op == 'output':
+            map_arg(node.args, lambda n: input_nodes.setdefault(n))
+            map_arg(node.kwargs, lambda n: input_nodes.setdefault(n))
+    return list(input_nodes.keys())
+
+
+def is_leaf(graph: Graph, node: Node):
+    return node in get_leaf(graph)
+
+
+def get_top(graph: Graph):
+    """Given a graph, get top node of this graph.
+
+    Note: This method will get the top nodes of given graph excluding `output` node.
+    """
+    top_node_list = set()
+    for node in graph.nodes:
+        is_top = False
+
+        def _get_top(node):
+            nonlocal is_top
+            if node.op == 'placeholder':
+                is_top = True
+
+        map_arg(node.args, lambda n: _get_top(n))
+        map_arg(node.kwargs, lambda n: _get_top(n))
+        if is_top:
+            top_node_list.add(node)
+    return list(top_node_list)
+
+
+def is_top(graph: Graph, node: Node):
+    return node in get_top(graph)
