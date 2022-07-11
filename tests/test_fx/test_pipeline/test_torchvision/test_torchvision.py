@@ -20,17 +20,8 @@ torch.backends.cudnn.deterministic = True
 
 def test_torchvision_models():
     MODEL_LIST = [
-        tm.vgg11,
-        tm.resnet18,
-        tm.densenet121,
-        tm.mobilenet_v3_small,
-        tm.resnext50_32x4d,
-        tm.wide_resnet50_2,
-        tm.regnet_x_16gf,
-        tm.vit_b_16,
-        tm.convnext_small,
-        tm.efficientnet_b0,
-    # tm.mnasnet0_5 not support yet
+        tm.vgg11, tm.resnet18, tm.densenet121, tm.mobilenet_v3_small, tm.resnext50_32x4d, tm.wide_resnet50_2,
+        tm.regnet_x_16gf, tm.vit_b_16, tm.convnext_small, tm.efficientnet_b0, tm.mnasnet0_5
     ]
 
     tracer = ColoTracer()
