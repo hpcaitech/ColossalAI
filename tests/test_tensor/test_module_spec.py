@@ -164,7 +164,7 @@ def run_check_shared_param():
     # TODO(jiaruifang) optimize this line
     if not model.cls.predictions.bias.has_initialized:
         model.cls.predictions.bias.pg = pg
-        model.cls.predictions.bias.dist_spec = distspec.replicate()
+        model.cls.predictions.bias.dist_spec = ReplicaSpec()
         model.cls.predictions.bias.has_initialized = True
     model.cls.predictions.bias.set_tensor_spec(*col_spec)
     try:
