@@ -37,6 +37,7 @@ def build_pipeline(model):
 def check_equal(A, B):
     assert torch.allclose(A, B, rtol=1e-3, atol=1e-2)
 
+
 def check_checkpoint_2p5d(rank, world_size, port):
     config = dict(parallel=dict(pipeline=dict(size=2), tensor=dict(size=4, depth=1, mode="2.5d")),)
 

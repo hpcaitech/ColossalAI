@@ -17,7 +17,7 @@ def test_adam(adamw, device, p_dtype, g_dtype):
     rng_state = torch.get_rng_state()
     p = nn.Parameter(torch.rand(64).to(device, p_dtype))
     torch.set_rng_state(rng_state)
-    p_copy = nn.Parameter(torch.rand(64).to(device).float()) 
+    p_copy = nn.Parameter(torch.rand(64).to(device).float())
 
     if adamw:
         optim = HybridAdam([p], lr=1e-3, adamw_mode=True)

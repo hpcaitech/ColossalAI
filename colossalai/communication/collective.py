@@ -10,10 +10,7 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 
 
-def all_gather(tensor: Tensor,
-               dim: int,
-               parallel_mode: ParallelMode,
-               async_op: bool = False) -> Tensor:
+def all_gather(tensor: Tensor, dim: int, parallel_mode: ParallelMode, async_op: bool = False) -> Tensor:
     r"""Gathers all tensors from the parallel group and concatenates them in a
     specific dimension.
 
@@ -163,11 +160,7 @@ def broadcast(tensor: Tensor, src: int, parallel_mode: ParallelMode, async_op: b
         return out
 
 
-def reduce(tensor: Tensor,
-           dst: int,
-           parallel_mode: ParallelMode,
-           op: ReduceOp = ReduceOp.SUM,
-           async_op: bool = False):
+def reduce(tensor: Tensor, dst: int, parallel_mode: ParallelMode, op: ReduceOp = ReduceOp.SUM, async_op: bool = False):
     r"""Reduce tensors across whole parallel group. Only the process with
     rank ``dst`` is going to receive the final result.
 

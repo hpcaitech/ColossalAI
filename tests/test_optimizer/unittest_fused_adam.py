@@ -8,9 +8,11 @@ from colossalai.testing import parameterize
 
 
 class FC(nn.Module):
+
     def __init__(self) -> None:
         super().__init__()
         self.fc = nn.Sequential(nn.Linear(64, 64))
+
     def forward(self, x):
         return self.fc(x)
 
@@ -37,7 +39,7 @@ def test_adam(adamw, p_dtype, g_dtype):
 
     for d, l in zip(data, label):
         y = model(d)
-        loss = ((l - y) ** 2).sum()
+        loss = ((l - y)**2).sum()
         optim.zero_grad()
         loss.backward()
         if p_dtype != g_dtype:
@@ -47,13 +49,13 @@ def test_adam(adamw, p_dtype, g_dtype):
 
     for d, l in zip(data_copy, label):
         y = model_copy(d)
-        loss = ((l - y) ** 2).sum()
+        loss = ((l - y)**2).sum()
         torch_optim.zero_grad()
         loss.backward()
         torch_optim.step()
 
     assert len(optim.param_groups[0]['params']) == len(torch_optim.param_groups[0]['params'])
-    
+
     for i in range(len(optim.param_groups[0]['params'])):
         if torch.isnan(optim.param_groups[0]['params'][i]).any() \
            or torch.isnan(torch_optim.param_groups[0]['params'][i]).any():

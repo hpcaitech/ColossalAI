@@ -7,6 +7,7 @@ import math
 from colossalai.testing import parameterize
 from colossalai.utils import multi_tensor_applier
 
+
 def torch_adam_update(
     step,
     lr,
@@ -51,7 +52,7 @@ def test_adam(adamw, step, p_dtype, g_dtype):
         dummy_overflow_buf = torch.cuda.IntTensor([0])
     except:
         raise ImportError("No colossal_C kernel installed.")
-    
+
     count = 0
 
     for i in range(1024):
@@ -69,26 +70,26 @@ def test_adam(adamw, step, p_dtype, g_dtype):
         eps = 1e-8
         weight_decay = 0
 
-        multi_tensor_applier(fused_adam, dummy_overflow_buf, [[g], [p], [m], [v]],
-                                        lr, beta1, beta2, eps, step, adamw,
-                                        True, weight_decay)
+        multi_tensor_applier(fused_adam, dummy_overflow_buf, [[g], [p], [m], [v]], lr, beta1, beta2, eps, step, adamw,
+                             True, weight_decay)
 
         torch_adam_update(
-                step,
-                lr,
-                beta1,
-                beta2,
-                eps,
-                weight_decay,
-                p_copy,    # fp32 data
-                g_copy,    # fp32 grad
-                m_copy,
-                v_copy,
-                adamw,
-            )
-        
+            step,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            p_copy,    # fp32 data
+            g_copy,    # fp32 grad
+            m_copy,
+            v_copy,
+            adamw,
+        )
+
         if torch.isnan(p).any() or torch.isnan(p_copy).any():
             count += 1
             continue
         assert count < 200, "too many nans"
-        assert torch.allclose(p.to(torch.float), p_copy.to(torch.float), 1e-5, 1e-5), f"failed check, adamw {adamw}, p_dtype {p_dtype}, g_dtype {g_dtype}"
+        assert torch.allclose(p.to(torch.float), p_copy.to(torch.float), 1e-5,
+                              1e-5), f"failed check, adamw {adamw}, p_dtype {p_dtype}, g_dtype {g_dtype}"
