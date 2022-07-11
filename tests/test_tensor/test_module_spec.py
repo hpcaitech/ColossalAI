@@ -5,7 +5,7 @@ from functools import partial
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec
+from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec, ShardSpec, ReplicaSpec
 from colossalai.nn.parallel.layers import init_colo_module, check_colo_module
 from _utils import tensor_equal, tensor_shard_equal, set_seed
 
@@ -13,7 +13,7 @@ import colossalai
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
-from colossalai.tensor import distspec, ProcessGroup
+from colossalai.tensor import distspec, ProcessGroup, ReplicaSpec
 
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
@@ -159,7 +159,7 @@ def run_check_shared_param():
     # They are all Linear, so both row is allowed. This should pass check.
     init_colo_module(model, compute_spec, pg=pg, recursive=True, mode='row')
     # This should be detected by check because you can not set weight as row while set bias as col.
-    col_spec = (distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    col_spec = (ShardSpec([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
 
     # TODO(jiaruifang) optimize this line
     if not model.cls.predictions.bias.has_initialized:

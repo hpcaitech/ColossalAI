@@ -1,6 +1,6 @@
 from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter, distspec, ProcessGroup
+from colossalai.tensor import ColoTensor, ColoParameter, distspec, ProcessGroup, ReplicaSpec
 
 from colossalai.nn.parallel.layers import register_colo_module, \
     ColoLinear, ColoEmbedding

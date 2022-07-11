@@ -1,5 +1,5 @@
 from .colo_module import ColoModule
-from colossalai.tensor import ComputePattern, distspec, ProcessGroup
+from colossalai.tensor import ComputePattern, distspec, ProcessGroup, ShardSpec
 
 
 class ColoLinear(ColoModule):
@@ -19,7 +19,7 @@ class ColoLinear(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard([-1], [pg.tp_world_size()]),
+                'weight': ShardSpec([-1], [pg.tp_world_size()]),
                 'bias': None
             },
             mode='row',
@@ -29,8 +29,8 @@ class ColoLinear(ColoModule):
         self._register_allowed_patterns(
             compute_pattern=_compute_pattern,
             dist_specs={
-                'weight': distspec.shard([0], [pg.tp_world_size()]),
-                'bias': distspec.shard([0], [pg.tp_world_size()])
+                'weight': ShardSpec([0], [pg.tp_world_size()]),
+                'bias': ShardSpec([0], [pg.tp_world_size()])
             },
             mode='col',
         )

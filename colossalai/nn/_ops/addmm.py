@@ -1,7 +1,7 @@
 import torch
 from colossalai.tensor.op_wrapper import colo_op_impl
 from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor
-from colossalai.tensor import distspec, ColoTensorSpec
+from colossalai.tensor import distspec, ColoTensorSpec, ShardSpec, ReplicaSpec
 from ._utils import GeneralTensor, Number, convert_to_colo_tensor
 from ._utils import reduce_input, reduce_grad
 
@@ -11,7 +11,8 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # mat1:S[1] x mat2:S[0] = Output:P
     # beta * input + alpha * All-Reduce(Output) = res
 
-    mat1 = mat1.redistribute(distspec.shard([-1], [mat2.get_tp_world_size()]))
+    mat1 = mat1.redistribute(ShardSpec([-1], [mat2.get_tp_world_size()]))
+
 
     # Output:P
     partial_output = torch.mm(mat1, mat2)
@@ -20,7 +21,7 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # input
     assert not input_tensor.has_compute_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor + alpha * output
-    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(distspec.replicate()))
+    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(ReplicaSpec()))
     return output
 
 
@@ -28,11 +29,11 @@ def colo_addmm_1Dcol(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
                      alpha: Number) -> ColoTensor:
     # mat1:B x mat2:S[1] + input:S[1] = Output:S[1]
     compute_spec = mat2.compute_spec
-    mat1 = mat1.redistribute(distspec.replicate())
+    mat1 = mat1.redistribute(ReplicaSpec())
     mat1 = reduce_grad(mat1, mat1.get_process_group())
 
     output_parallel = torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha)
-    output_spec = ColoTensorSpec(input_tensor.get_process_group(), distspec.shard([-1], [mat2.get_tp_world_size()]),
+    output_spec = ColoTensorSpec(input_tensor.get_process_group(), ShardSpec([-1], [mat2.get_tp_world_size()]),
                                  ComputeSpec(ComputePattern.TP1D))
     output = ColoTensor.from_torch_tensor(output_parallel, spec=output_spec)
 
