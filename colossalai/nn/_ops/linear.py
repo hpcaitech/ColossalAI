@@ -12,7 +12,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # All-Reduce(Output) + bias = res
     # Input:S[1]
     pg = weight.get_process_group()
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.shard([-1], [weight.get_tp_world_size()]))
+    input_tensor = input_tensor.redistribute(distspec.shard([-1], [weight.get_tp_world_size()]))
 
     # Output:P
     partial_output = F.linear(input_tensor, weight)
@@ -33,7 +33,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # All-Gather(Output)
     # Input:B
     compute_spec = weight.compute_spec
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
+    input_tensor = input_tensor.redistribute(distspec.replicate())
     input_parallel = reduce_grad(input_tensor, weight.get_process_group())
 
     output_parallel = F.linear(input_parallel, weight, bias)
