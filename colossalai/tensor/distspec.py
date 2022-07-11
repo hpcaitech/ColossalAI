@@ -32,11 +32,11 @@ class _DistSpec:
         return True
 
     def __repr__(self) -> str:
-        res = "\nDistSpec:\n\t"
+        res_list = ["DistSpec:"]
         for attr in dir(self):
             if not attr.startswith('__'):
-                res += f'{attr}: {str(getattr(self, attr))}\n\t'
-        return res
+                res_list.append(f'\n\t{attr}: {str(getattr(self, attr))}')
+        return ''.join(res_list)
 
 
 def replicate() -> _DistSpec:

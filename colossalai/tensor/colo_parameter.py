@@ -55,7 +55,7 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
         return tensor
 
     def __repr__(self):
-        return f'ColoParameter: {torch.Tensor.__repr__(self)}'
+        return f'ColoParameter: {ColoTensor.__repr__(self)}'
 
     @classmethod
     def __torch_function__(cls, func, types, args=..., kwargs=None):

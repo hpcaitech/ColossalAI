@@ -2,21 +2,49 @@ from .op_wrapper import _COLOSSAL_OPS
 from .const import TensorType
 from copy import copy
 import torch
-from torch.overrides import get_default_nowrap_functions
+from functools import lru_cache
 
 from colossalai.tensor import ColoTensorSpec
 from colossalai.tensor import distspec, ProcessGroup
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
 from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
-from typing import Optional
+from typing import Optional, Set, Callable
 
 
-def _check_output(output):
-    if not isinstance(output, torch.Tensor):
-        raise RuntimeError
+@lru_cache(None)
+def _get_my_nowrap_functions() -> Set[Callable]:
+    Tensor = torch.Tensor
+    return {
+        Tensor._base.__get__,
+        Tensor.grad.__get__,
+        Tensor._grad.__get__,
+        Tensor.data.__get__,  # make .data returns torch.Tensor rather than ColoTensor
+    }
+
+
+def _convert_output(output, pg: ProcessGroup):
+    if type(output) == torch.Tensor:
+        return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg))
     elif isinstance(output, (list, tuple)):
-        output = type(output)(_check_output(o) for o in output)
-    return output
+        return type(output)(_convert_output(o, pg) for o in output)
+    else:
+        return output
+
+
+def _scan_for_pg_from_args(args, kwargs) -> ProcessGroup:
+    for elem in args:
+        if isinstance(elem, ColoTensor):
+            pg = elem.get_process_group()
+            return pg
+        elif isinstance(elem, (list, tuple)):
+            pg = _scan_for_pg_from_args(elem, {})
+            if pg is not None:
+                return pg
+    for k, v in kwargs:
+        if isinstance(v, ColoTensor):
+            pg = v.get_process_group()
+            return pg
+    return None
 
 
 class ColoTensor(torch.Tensor):
@@ -55,7 +83,7 @@ class ColoTensor(torch.Tensor):
 
     def __init__(self, data: torch.Tensor, spec: Optional[ColoTensorSpec] = None) -> None:
         # If not set spec, use a DP process group and replicate dist spec
-        if not spec:
+        if spec is None:
             self.has_initialized = False
             self.dist_spec = distspec.replicate()
             self.compute_spec = None
@@ -64,7 +92,10 @@ class ColoTensor(torch.Tensor):
             self.has_initialized = True
             self.dist_spec = spec.dist_attr
             self.compute_spec = spec.compute_attr
-            self.process_group = spec.pg
+            if spec.pg is None:
+                self.process_group = ProcessGroup()
+            else:
+                self.process_group = spec.pg
 
         self._type = TensorType.NONMODEL
         self._graph_node = None
@@ -108,6 +139,7 @@ class ColoTensor(torch.Tensor):
             dist_spec (_DistSpec): target dist spec.
         """
         assert isinstance(dist_spec, _DistSpec)
+        assert self.process_group is not None
         self._convert_to_dist_spec(dist_spec)
 
     def set_tensor_spec(self, dist_spec, compute_spec):
@@ -133,15 +165,14 @@ class ColoTensor(torch.Tensor):
 
         with torch._C.DisableTorchFunction():
             ret = func(*args, **kwargs)
-            if func in get_default_nowrap_functions():
+            if func in _get_my_nowrap_functions():
                 return ret
             else:
-                # TODO(jiaruifang) its parallel Op's duty to convert output activations
-                return ret
-                # return _check_output(ret)
+                pg = _scan_for_pg_from_args(args, kwargs)
+                return _convert_output(ret, pg)
 
     def __repr__(self):
-        return f'ColoTensor: {super().__repr__()}'
+        return f'ColoTensor:\n{super().__repr__()}\n{self.dist_spec}\n{self.process_group}'
 
     def _convert_to_dist_spec(self, dist_spec: _DistSpec) -> None:
         """_convert_to_dist_spec 
@@ -150,8 +181,9 @@ class ColoTensor(torch.Tensor):
         Args:
             dist_spec (_DistSpec): the target dist. spec.
         """
+        assert self.grad_fn is None, "Current tensor has grad_fn and it can't get converted"
         with DistSpecManager.no_grad():
-            self.data = DistSpecManager.handle_trans_spec(self, self.dist_spec, dist_spec, self.process_group)
+            self.data = DistSpecManager.handle_trans_spec(self.data, self.dist_spec, dist_spec, self.process_group)
         self.dist_spec = dist_spec
 
     def convert_to_dist_spec(self, dist_spec: _DistSpec) -> 'ColoTensor':
@@ -162,8 +194,7 @@ class ColoTensor(torch.Tensor):
         """to_replicate_ 
         an inline member function, converting dist spec of the tensor to REPLICATE
         """
-        self.data = DistSpecManager.handle_trans_spec(self, self.dist_spec, distspec.replicate(), self.process_group)
-        self.dist_spec = distspec.replicate()
+        self._convert_to_dist_spec(dist_spec=distspec.replicate())
 
     def to_replicate(self) -> 'ColoTensor':
         """to_replicate
@@ -203,12 +234,8 @@ class ColoTensor(torch.Tensor):
         """
         if self.is_replicate():
             return super().view(*args)
-        # TODO(jiaruifang) check why this not work
-        # self.data = self.to_replicate()
-        self.data = DistSpecManager.handle_trans_spec(self.data, self.dist_spec, distspec.replicate(),
-                                                      self.process_group)
-        self.dist_spec = distspec.replicate()
-        return super().view(*args)
+        replicated_t = self.convert_to_dist_spec(dist_spec=distspec.replicate())
+        return replicated_t.view(*args)
 
     def size_global(self, args: Optional[int] = None):
         """override the torch buildin size()
@@ -251,3 +278,6 @@ class ColoTensor(torch.Tensor):
     def is_shard_1drow(self):
         return self.dist_spec.placement == DistPlacementPattern.SHARD \
             and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
+
+    def is_sharded(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD

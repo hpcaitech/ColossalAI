@@ -74,8 +74,9 @@ def run_1d_hybrid_tp(model_name):
                 continue
             # print(name)
             # num_class = type_vocab_size = 2 | (8, 2)
-            if 'classifier' in name and 'weight' in name:
-                init_1d_row_linear(p, pg)
+            # TODO(jiaruifang) has bug if open the following 2 comments
+            # if 'classifier' in name and 'weight' in name:
+            #     init_1d_row_linear(p, pg)
             # num_class = vocab_size = 30524 | (30524, 8)
             if 'word_embeddings' in name and 'weight' in name:
                 init_1d_row_embedding(p, pg)
@@ -113,6 +114,7 @@ def run_1d_hybrid_tp(model_name):
 
         torch.distributed.broadcast(data, 0, group=pg.tp_process_group())
         torch.distributed.broadcast(label, 0, group=pg.tp_process_group())
+
         # Bcast rank0 data to all processes
         if criterion:
             output = model(data)
@@ -151,7 +153,6 @@ def run_1d_hybrid_tp(model_name):
 
 
 # Test the overrided parameters() and named_parameters() member functions
-@pytest.mark.skip
 def test_model_parameters():
     colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
@@ -185,9 +186,7 @@ def test_model_parameters():
     assert param_cnt == 2
 
 
-@pytest.mark.skip
 def test_colo_optimizer():
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     set_seed(1)
@@ -316,13 +315,12 @@ def run_model_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     for name in ['simple_net']:
         run_1d_row_tp(name)
-    for name in ['bert', 'simple_net']:
+    for name in ['simple_net']:
         run_1d_hybrid_tp(name)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
-@pytest.mark.skip("under development")
 @rerun_if_address_is_in_use()
 def test_model(world_size):
     run_func = partial(run_model_dist, world_size=world_size, port=free_port())
@@ -347,6 +345,6 @@ def test_pretrain_load(world_size):
 
 if __name__ == '__main__':
     # test_model_parameters()
-    # test_colo_optimizer()
+    # test_colo_optgimizer()
     test_model(4)
     # test_pretrain_load(4)

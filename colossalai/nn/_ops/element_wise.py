@@ -17,14 +17,12 @@ def register_elementwise_op(op):
         """
 
         output = op(input_tensor, *args, **kwargs)
-
         if isinstance(input_tensor, ColoTensor):
             if not isinstance(output, torch.Tensor):
                 raise NotImplementedError
             return ColoTensor.from_torch_tensor(output,
-                                                spec=ColoTensorSpec(input_tensor.process_group,
-                                                                    dist_attr=input_tensor.dist_spec,
-                                                                    compute_attr=input_tensor.compute_spec))
+                                                spec=ColoTensorSpec(input_tensor.get_process_group(),
+                                                                    dist_attr=input_tensor.dist_spec))
 
 
 # Tensor op
@@ -197,6 +195,7 @@ register_elementwise_op(torch.tan)
 register_elementwise_op(torch.tanh)
 register_elementwise_op(torch.atanh)
 register_elementwise_op(torch.arctanh)
+register_elementwise_op(torch.zeros_like)
 
 # nn.functional OP
 register_elementwise_op(F.threshold)
