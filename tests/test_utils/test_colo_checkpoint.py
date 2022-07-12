@@ -242,4 +242,4 @@ def test_checkpoint(world_size, use_ddp, test_epoch, test_scheduler):
 
 
 if __name__ == '__main__':
-    test_checkpoint(1, False, 1, "torch_cosine")
+    test_checkpoint(4, False, 3, "torch_cosine")
