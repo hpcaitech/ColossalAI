@@ -3,7 +3,6 @@ import os, shutil
 import torch
 import torch.nn as nn
 import pytest
-import copy
 from functools import partial
 
 import torch.multiprocessing as mp
@@ -104,7 +103,7 @@ def remove(path):
         raise ValueError("file {} is not a file or dir.".format(path))
 
 
-def run_checkpoint(init_spec_func, use_ddp, test_scheduler, pg):
+def run_checkpoint(init_spec_func, use_ddp, use_mp_reload, test_scheduler, pg):
     num_epoch = 5
     warmup_epoch = 2
 
@@ -125,7 +124,8 @@ def run_checkpoint(init_spec_func, use_ddp, test_scheduler, pg):
         model_reload = ColoDDP(model_reload, pg)
 
     init_spec_func(model, pg)
-    init_spec_func(model_reload, pg)
+    if use_mp_reload:
+        init_spec_func(model_reload, pg)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
     optimizer_reload = torch.optim.Adam(model_reload.parameters(),
@@ -164,32 +164,34 @@ def run_checkpoint(init_spec_func, use_ddp, test_scheduler, pg):
     check_param_equal(model, model_reload)
 
 
-def run_dist(rank, world_size, port, use_ddp, test_scheduler):
+def run_dist(rank, world_size, port, use_ddp, use_mp_reload, test_scheduler):
     if use_ddp and world_size == 1:
         return
     tp_world_size = world_size // 2 if use_ddp else world_size
     config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     pg = ProcessGroup(tp_degree=world_size)
-    run_checkpoint(init_1d_row_for_linear_weight_spec, use_ddp, test_scheduler=test_scheduler, pg=pg)
+    run_checkpoint(init_1d_row_for_linear_weight_spec, use_ddp, use_mp_reload, test_scheduler=test_scheduler, pg=pg)
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [4])
-@pytest.mark.parametrize('use_ddp', [True])
+@pytest.mark.parametrize('world_size', [1, 2])
+@pytest.mark.parametrize('use_ddp', [True, False])
+@pytest.mark.parametrize('use_mp_reload', [True, False])
 @pytest.mark.parametrize('test_scheduler', ['colossalai_cosine_warmup', 'torch_cosine', 'torch_lambda'])
 @rerun_if_address_is_in_use()
-def test_checkpoint(world_size, use_ddp, test_scheduler):
+def test_checkpoint(world_size, use_ddp, use_mp_reload, test_scheduler):
     if not os.path.isdir('./checkpoint'):
         os.mkdir('./checkpoint')
     run_func = partial(run_dist,
                        world_size=world_size,
                        port=free_port(),
                        use_ddp=use_ddp,
+                       use_mp_reload=use_mp_reload,
                        test_scheduler=test_scheduler)
     mp.spawn(run_func, nprocs=world_size)
     remove('./checkpoint')
 
 
 if __name__ == '__main__':
-    test_checkpoint(2, True, "torch_cosine")
+    test_checkpoint(2, True, False, "torch_cosine")
