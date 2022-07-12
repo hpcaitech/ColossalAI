@@ -1,4 +1,5 @@
 import torch
+import operator
 from torch.fx.node import map_arg
 from torch.fx.node import Node
 from torch.fx.passes.split_module import split_module
@@ -6,7 +7,17 @@ from torch.fx.passes.split_module import split_module
 import colossalai
 # from colossalai.tensor import ColoTensor, TensorSpec, distspec, ProcessGroup, ComputeSpec, ComputePattern
 
-ELEMENTWISE_OP = [torch.nn.Dropout, torch.nn.ReLU]
+ELEMENTWISE_MODULE_OP = [
+    torch.nn.Dropout, torch.nn.ReLU, torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d, torch.nn.MaxPool1d,
+    torch.nn.MaxPool2d, torch.nn.AvgPool1d, torch.nn.AvgPool2d
+]
+ELEMENTWISE_FUNC_OP = [
+    torch.add, torch.abs, torch.cos, torch.exp, torch.mul, torch.multiply, operator.add, operator.mul,
+    operator.floordiv, operator.truediv, operator.neg, torch.nn.functional.relu, torch.nn.functional.dropout,
+    torch.nn.functional.conv1d, torch.nn.functional.conv2d, torch.nn.functional.conv3d, torch.nn.functional.avg_pool1d,
+    torch.nn.functional.avg_pool2d, torch.nn.functional.avg_pool3d, torch.nn.functional.max_pool1d,
+    torch.nn.functional.max_pool2d, torch.nn.functional.max_pool3d
+]
 
 
 def weight_split(weight: torch.nn.parameter.Parameter, dim: int) -> torch.nn.parameter.Parameter:
@@ -70,7 +81,7 @@ def transform_mlp_pass(gm: torch.fx.GraphModule):
     element_op = []
     for name, func in gm.named_children():
         if not isinstance(func, torch.nn.Linear):
-            for i in ELEMENTWISE_OP:
+            for i in ELEMENTWISE_MODULE_OP:
                 if isinstance(func, i):
                     element_op.append(name)
                     break
@@ -82,7 +93,7 @@ def transform_mlp_pass(gm: torch.fx.GraphModule):
             target_module.weight = weight_split(target_module.weight, dim=dim)
             col_shard = not col_shard
         else:
-            if node.target not in element_op:
+            if node.target not in element_op and all(node.target != i for i in ELEMENTWISE_FUNC_OP):
                 col_shard = True
 
 
