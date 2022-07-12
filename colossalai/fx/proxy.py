@@ -57,6 +57,10 @@ class ColoProxy(Proxy):
         self._assert_meta_data_is_tensor()
         return self.meta_data.shape
 
+    @property
+    def ndim(self):
+        return self.dim()
+
     def dim(self):
         self._assert_meta_data_is_tensor()
         return self.meta_data.dim()
