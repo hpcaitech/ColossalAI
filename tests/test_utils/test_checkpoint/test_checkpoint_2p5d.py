@@ -37,6 +37,7 @@ def build_pipeline(model):
 def check_equal(A, B):
     assert torch.allclose(A, B, rtol=1e-3, atol=1e-2)
 
+
 def check_checkpoint_2p5d(rank, world_size, port):
     config = dict(parallel=dict(pipeline=dict(size=2), tensor=dict(size=4, depth=1, mode="2.5d")),)
 
@@ -66,6 +67,7 @@ def check_checkpoint_2p5d(rank, world_size, port):
 
 
 @pytest.mark.dist
+@pytest.mark.skip("takes too long")
 @skip_if_not_enough_gpus(min_gpus=8)
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_checkpoint_2p5d():
