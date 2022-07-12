@@ -16,7 +16,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ComputePattern, ComputeSpec, DistSpecManager, distspec, ProcessGroup
+from colossalai.tensor import ComputePattern, ComputeSpec, DistSpecManager, ShardSpec, ProcessGroup
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.utils.checkpoint import save_checkpoint, load_checkpoint
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -81,7 +81,7 @@ class MLP(nn.Module):
 
 
 def init_1d_row_for_linear_weight_spec(model, pg: ProcessGroup):
-    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n:
@@ -104,7 +104,7 @@ def remove(path):
         raise ValueError("file {} is not a file or dir.".format(path))
 
 
-def run_checkpoint(init_spec_func, use_ddp, test_epoch, test_scheduler, pg):
+def run_checkpoint(init_spec_func, use_ddp, test_scheduler, pg):
     num_epoch = 5
     warmup_epoch = 2
 
@@ -112,32 +112,27 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch, test_scheduler, pg):
     feature = 32
     category = 16
 
-    train_dataloader = DummyDataLoader(batch, category, feature, length=16)
     with ColoInitContext(device=get_current_device()):
         model = MLP(feature, category)
+
+    with ColoInitContext(device=get_current_device()):
         model_reload = MLP(feature, category)
-        model_ref = MLP(feature, category)
 
     model = model.cuda()
     model_reload = model_reload.cuda()
-    model_ref = model_ref.cuda()
-
     if use_ddp:
         model = ColoDDP(model, pg)
         model_reload = ColoDDP(model_reload, pg)
-        model_ref = ColoDDP(model_ref, pg)
 
     init_spec_func(model, pg)
-    init_spec_func(model_ref, pg)
+    init_spec_func(model_reload, pg)
 
-    criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
     optimizer_reload = torch.optim.Adam(model_reload.parameters(),
                                         lr=0.001,
                                         betas=(0.9, 0.999),
                                         eps=1e-08,
                                         weight_decay=0)
-    optimizer_ref = torch.optim.Adam(model_ref.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
 
     lr_scheduler = None
     if test_scheduler == 'colossalai_cosine_warmup':
@@ -155,91 +150,47 @@ def run_checkpoint(init_spec_func, use_ddp, test_epoch, test_scheduler, pg):
     else:
         raise TypeError(f"{test_scheduler} is invalid")
 
-    for epoch in range(0, num_epoch):
-        if epoch <= test_epoch:
-            for i, image_dict in enumerate(train_dataloader):
-                if use_ddp:
-                    model.zero_grad()
-                else:
-                    optimizer.zero_grad()
-                logits = model(image_dict['pixel_values'])
-                loss = criterion(logits, image_dict['label'])
-                if use_ddp:
-                    model.backward(loss)
-                else:
-                    loss.backward()
-                optimizer.step()
+    save_checkpoint('./checkpoint', 0, model, optimizer, lr_scheduler)
+    dist.barrier()
+    load_checkpoint('./checkpoint', 0, model_reload, optimizer_reload, lr_scheduler_reload)
 
-            if epoch == test_epoch:
-                for ref_p, p in zip(model_ref.parameters(), model.parameters()):
-                    ref_p.data.copy_(p)
-                optimizer_ref = copy.deepcopy(optimizer)
+    # Since model is sharded, we merge them before param checking.
+    for p in model.parameters():
+        p.to_replicate_()
 
-                check_param_equal(model, model_ref)
-                save_checkpoint('./checkpoint', epoch, model, optimizer, lr_scheduler)
-                dist.barrier()
-        else:
-            if epoch == test_epoch + 1:
-                load_checkpoint('./checkpoint', test_epoch, dist.get_rank(), model_reload, optimizer_reload,
-                                lr_scheduler_reload)
-                init_spec_func(model_reload, pg)
-            for i, image_dict in enumerate(train_dataloader):
-                if use_ddp:
-                    model_ref.zero_grad()
-                    model_reload.zero_grad()
-                else:
-                    optimizer_ref.zero_grad()
-                    optimizer_reload.zero_grad()
-                logits_ref = model_ref(image_dict['pixel_values'])
-                logits_reload = model_reload(image_dict['pixel_values'])
-                loss_ref = criterion(logits_ref, image_dict['label'])
-                loss_reload = criterion(logits_reload, image_dict['label'])
-                if use_ddp:
-                    model_ref.backward(loss_ref)
-                    model_reload.backward(loss_reload)
-                else:
-                    loss_ref.backward()
-                    loss_reload.backward()
-                optimizer_ref.step()
-                optimizer_reload.step()
-        lr_scheduler.step()
+    for p in model_reload.parameters():
+        p.to_replicate_()
 
-    check_param_equal(model_ref, model_reload)
+    check_param_equal(model, model_reload)
 
 
-def run_dist(rank, world_size, port, use_ddp, test_epoch, test_scheduler):
+def run_dist(rank, world_size, port, use_ddp, test_scheduler):
     if use_ddp and world_size == 1:
         return
     tp_world_size = world_size // 2 if use_ddp else world_size
     config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     pg = ProcessGroup(tp_degree=world_size)
-    run_checkpoint(init_1d_row_for_linear_weight_spec,
-                   use_ddp,
-                   test_epoch=test_epoch,
-                   test_scheduler=test_scheduler,
-                   pg=pg)
+    run_checkpoint(init_1d_row_for_linear_weight_spec, use_ddp, test_scheduler=test_scheduler, pg=pg)
 
 
 @pytest.mark.skip
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [4])
 @pytest.mark.parametrize('use_ddp', [True])
-@pytest.mark.parametrize('test_epoch', [1, 2, 3])
 @pytest.mark.parametrize('test_scheduler', ['colossalai_cosine_warmup', 'torch_cosine', 'torch_lambda'])
 @rerun_if_address_is_in_use()
-def test_checkpoint(world_size, use_ddp, test_epoch, test_scheduler):
+def test_checkpoint(world_size, use_ddp, test_scheduler):
     if not os.path.isdir('./checkpoint'):
         os.mkdir('./checkpoint')
     run_func = partial(run_dist,
                        world_size=world_size,
                        port=free_port(),
                        use_ddp=use_ddp,
-                       test_epoch=test_epoch,
                        test_scheduler=test_scheduler)
     mp.spawn(run_func, nprocs=world_size)
     remove('./checkpoint')
 
 
 if __name__ == '__main__':
-    test_checkpoint(4, False, 3, "torch_cosine")
+    test_checkpoint(2, True, "torch_cosine")

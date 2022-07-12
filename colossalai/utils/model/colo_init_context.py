@@ -1,13 +1,10 @@
 from .utils import InsertPostInitMethodToModuleSubClasses
 import torch
 from colossalai.tensor import ColoTensor, ColoParameter
-
 from colossalai.nn.parallel.layers import register_colo_module, \
     ColoLinear, ColoEmbedding
-from copy import copy
 from torch import nn
 from typing import Iterator, Tuple, Union
-from functools import partialmethod
 # find named_params includes replica
 
 
