@@ -135,9 +135,10 @@ __global__ void bias_add_transform_20314(T *output, const T *input,
                                          const T *bias, int dim_3, int dim_4);
 
 template <>
-__global__ void
-bias_add_transform_20314<float>(float *output, const float *input,
-                                const float *bias, int dim_3, int dim_4) {
+__global__ void bias_add_transform_20314<float>(float *output,
+                                                const float *input,
+                                                const float *bias, int dim_3,
+                                                int dim_4) {
   int id0 = blockIdx.x;
   int id1 = blockIdx.y;
   int id2 = blockIdx.z;
@@ -173,9 +174,10 @@ bias_add_transform_20314<float>(float *output, const float *input,
 }
 
 template <>
-__global__ void
-bias_add_transform_20314<__half>(__half *output, const __half *input,
-                                 const __half *bias, int dim_3, int dim_4) {
+__global__ void bias_add_transform_20314<__half>(__half *output,
+                                                 const __half *input,
+                                                 const __half *bias, int dim_3,
+                                                 int dim_4) {
   int id0 = blockIdx.x;
   int id1 = blockIdx.y;
   int id2 = blockIdx.z;
