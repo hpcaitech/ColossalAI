@@ -9,7 +9,6 @@ from colossalai.utils import get_current_device
 from torch.nn import Parameter
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import distspec
 
 
 def _run_layer_norm():

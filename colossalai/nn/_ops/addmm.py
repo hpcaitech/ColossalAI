@@ -13,7 +13,6 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
 
     mat1 = mat1.redistribute(ShardSpec([-1], [mat2.get_tp_world_size()]))
 
-
     # Output:P
     partial_output = torch.mm(mat1, mat2)
     # Reduce(Output)

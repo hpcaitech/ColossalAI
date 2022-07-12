@@ -32,9 +32,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # All-Gather(Output)
     # Input:B
     compute_spec = weight.compute_spec
-
     input_tensor = input_tensor.redistribute(ReplicaSpec())
-
     input_parallel = reduce_grad(input_tensor, weight.get_process_group())
 
     output_parallel = F.linear(input_parallel, weight, bias)

@@ -117,13 +117,13 @@ class ProcessGroup:
         if not isinstance(obj, ProcessGroup):
             return False
         if self._rank != obj._rank:
-            assert False
+            return False
         if self._rank_list != obj._rank_list:
-            assert False
+            return False
         if self._tp_rank_list != obj._tp_rank_list:
-            assert False
+            return False
         if self._dp_rank_list != obj._dp_rank_list:
-            assert False
+            return False
         if self._tp_degree != obj._tp_degree:
             return False
         if self._dp_degree != obj._dp_degree:
