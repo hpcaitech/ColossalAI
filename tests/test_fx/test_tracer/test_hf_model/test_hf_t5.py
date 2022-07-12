@@ -1,5 +1,3 @@
-from ast import Import
-import apex
 import pytest
 import transformers
 import torch
