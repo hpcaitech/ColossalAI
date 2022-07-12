@@ -12,7 +12,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec, DistSpecManager, distspec, ProcessGroup
+from colossalai.tensor import ShardSpec, ComputePattern, ComputeSpec, DistSpecManager, ProcessGroup
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.core import global_context as gpc
 from colossalai.context.parallel_mode import ParallelMode
@@ -20,7 +20,7 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def init_1d_row_spec(model, pg: ProcessGroup):
-    tensor_spec = (distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    tensor_spec = (ShardSpec([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'weight' in n and 'ln' not in n:
@@ -28,7 +28,7 @@ def init_1d_row_spec(model, pg: ProcessGroup):
 
 
 def init_1d_col_spec(model, pg: ProcessGroup):
-    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         for n, p in model.named_parameters():
             if 'ln' not in n and ('weight' in n or 'bias' in n):

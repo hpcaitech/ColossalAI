@@ -113,7 +113,7 @@ distributed training and inference in a few lines.
 
 ### GPT-3
 <p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3-v5.png" width=700/>
 </p>
 
 - Save 50% GPU resources, and 10.7% acceleration

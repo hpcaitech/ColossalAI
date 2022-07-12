@@ -117,9 +117,9 @@ class BaseSchedule(ABC):
 
     @staticmethod
     def _call_engine_criterion(engine, outputs, labels):
-        assert isinstance(
-            outputs,
-            (torch.Tensor, list, tuple)), f'Expect output of model is (torch.Tensor, list, tuple), got {type(outputs)}'
+        assert isinstance(outputs,
+                          (torch.Tensor, list, tuple,
+                           dict)), f'Expect output of model is (torch.Tensor, list, tuple), got {type(outputs)}'
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)
         if isinstance(labels, torch.Tensor):
