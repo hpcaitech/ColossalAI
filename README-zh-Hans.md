@@ -107,7 +107,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 ### GPT-3
 <p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3.png" width=700/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT3-v5.png" width=700/>
 </p>
 
 - 释放 50% GPU 资源占用, 或 10.7% 加速

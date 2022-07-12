@@ -143,10 +143,10 @@ class ColoTensor(torch.Tensor):
         self._redistribute(dist_spec)
 
     def set_tensor_spec(self, dist_spec, compute_spec):
-        if dist_spec:
+        if dist_spec is not None:
             assert isinstance(dist_spec, _DistSpec), f"{type(dist_spec)}"
             self.set_dist_spec(dist_spec)
-        if compute_spec:
+        if compute_spec is not None:
             self.compute_spec = compute_spec
 
     def has_compute_pattern(self, compute_pattern):
