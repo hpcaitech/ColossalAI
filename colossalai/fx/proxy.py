@@ -57,14 +57,6 @@ class ColoProxy(Proxy):
         self._assert_meta_data_is_tensor()
         return self.meta_data.shape
 
-    @property
-    def is_cuda(self):
-        # return True for cases like
-        # the model is on CUDA by default
-        # if inputs.is_cuda:
-        #   do_something()
-        return True
-
     def dim(self):
         self._assert_meta_data_is_tensor()
         return self.meta_data.dim()
