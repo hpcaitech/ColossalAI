@@ -63,7 +63,7 @@ def split_module(
             from torch.fx.symbolic_trace import symbolic_trace
             from torch.fx.graph_module import GraphModule
             from torch.fx.node import Node
-            from torch.fx.passes.split_module import split_module
+            from colossalai.fx.passes.split_module import split_module
 
             class MyModule(torch.nn.Module):
                 def __init__(self):

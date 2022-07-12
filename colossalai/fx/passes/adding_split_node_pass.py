@@ -27,7 +27,7 @@ def balanced_split_pass(gm: torch.fx.GraphModule, pp_size: int):
             accumulate_param_amount = 0
             pp_size -= 1
             # If the next node is output node, we will insert split annotation before
-            # node to make sure there is at least one node in last partitio.
+            # node to make sure there is at least one node in last partition.
             if node.next.op == 'output':
                 with mod_graph.inserting_before(node):
                     split_node = mod_graph.create_node('call_function', pipe_split)
