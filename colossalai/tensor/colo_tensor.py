@@ -1,298 +1,284 @@
 from .op_wrapper import _COLOSSAL_OPS
-
-import torch
-from typing import Tuple, Optional, Callable, Union
-from numpy import product
-from colossalai.core import global_context as gpc
-from colossalai.nn.layer.utils import divide
-from colossalai.tensor import TensorSpec, ComputePattern, ShardPattern
-from colossalai.nn.layer.parallel_1d._utils import split_forward_gather_backward, gather_forward_split_backward
 from .const import TensorType
+from copy import copy
+import torch
+from functools import lru_cache
+
+from colossalai.tensor import ColoTensorSpec
+from colossalai.tensor import ProcessGroup, ReplicaSpec
+from colossalai.tensor.dist_spec_mgr import DistSpecManager
+from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
+from typing import Optional, Set, Callable
 
 
-class ColoTensor(object):
-    """ Data Structure for Tensor in Colossal-AI
-    1. It contains a torch.Tensor as an attribute.
-    2. It supports lazy init the tensor's payload.
-    3. It can hijack the torch functions which using ColoTensors as args to our customized functions.
-    4. It supports distributing the tensor's payload to the shards among processes. (TODO)
+@lru_cache(None)
+def _get_my_nowrap_functions() -> Set[Callable]:
+    Tensor = torch.Tensor
+    return {
+        Tensor._base.__get__,
+        Tensor.grad.__get__,
+        Tensor._grad.__get__,
+        Tensor.data.__get__,    # make .data returns torch.Tensor rather than ColoTensor
+    }
+
+
+def _convert_output(output, pg: ProcessGroup):
+    if type(output) == torch.Tensor:
+        return ColoTensor.from_torch_tensor(output, ColoTensorSpec(pg))
+    elif isinstance(output, (list, tuple)):
+        return type(output)(_convert_output(o, pg) for o in output)
+    else:
+        return output
+
+
+def _scan_for_pg_from_args(args, kwargs) -> ProcessGroup:
+    for elem in args:
+        if isinstance(elem, ColoTensor):
+            pg = elem.get_process_group()
+            return pg
+        elif isinstance(elem, (list, tuple)):
+            pg = _scan_for_pg_from_args(elem, {})
+            if pg is not None:
+                return pg
+    for k, v in kwargs:
+        if isinstance(v, ColoTensor):
+            pg = v.get_process_group()
+            return pg
+    return None
+
+
+class ColoTensor(torch.Tensor):
+    """ Data Structure for Tensor in Colossal-AI. It is a subclass of torch.Tensor.
+    Args:
+        data (torch.Tensor): a torch tensor used as the payload the colotensor.
+        spec (ColoTensorSpec, optional): the tensor spec of initialization. Defaults to ColoTensorSpec(ReplicaSpec()).
+    
+    The signature of the function has to be consistent with the __new__ except for the 1st arg.
+    The class should be initialized with a torch tensor in the following ways.
+    1. directly init.
+    >>> pg = ProcessGroup()
+    >>> colo_t1 = ColoTensor(torch.randn(2,3), spec = ColoTensorSpec(pg, ReplicaSpec())
+    >>> # If initializaed in a shard model, the tensor passed in is one shard of the global tensor.
+    >>> shard_spec = ShardSpec(process_group=ProcessGroup(tp=world_size), 
+    >>>                 dims=[0], 
+    >>>                 num_partitions=[world_size])
+    >>> tensor_spec = ColoTensorSpec(pg, shard_spec)
+    >>> colo_t2 = ColoTensor.from_torch_tensor(t_ref.clone(), tensor_spec)
+    2. use static method from_torch_tensor
+    >>> colo_t = ColoTensor.from_torch_tensor(torch.randn(2,3), spec = ColoTensorSpec(pg, ReplicaSpec())
     """
 
-    def __new__(cls, *args, **kwargs):
-        return super(ColoTensor, cls).__new__(cls)
+    def __new__(cls, data: torch.Tensor, spec: ColoTensorSpec) -> 'ColoTensor':
+        """__new__ 
+        The signature of the __new__ has to be consistent with the torch.Tensor.
+        Args:
+            data (torch.Tensor): a torch tensor used as the payload the colotensor.
+            spec (TensorSpec, optional): the tensor spec of initialization.
+        Returns:
+            ColoTensor: a ColoTensor wrappers the data.
+        """
+        if data is None:
+            data = torch.empty(0)
+        return torch.Tensor._make_subclass(cls, data, data.requires_grad)
 
-    def __init__(self,
-                 *size: Tuple[int],
-                 dtype=None,
-                 requires_grad=False,
-                 pin_memory=False,
-                 device=None,
-                 torch_tensor=torch.empty(0),
-                 shard_spec: TensorSpec = TensorSpec()):
-        self._size = size
-        self._dtype = dtype
-        self._requires_grad = requires_grad
-        self._pin_memory = pin_memory
-        self._device = device
-        self._torch_tensor = torch_tensor
-        self._shard_spec = shard_spec
-        self._shard_pattern = ShardPattern.NA
+    def __init__(self, data: torch.Tensor, spec: Optional[ColoTensorSpec] = None) -> None:
+        # If not set spec, use a DP process group and replicate dist spec
+        if spec is None:
+            self.has_initialized = False
+            self.dist_spec = ReplicaSpec()
+            self.compute_spec = None
+            self.process_group = ProcessGroup()
+        else:
+            self.has_initialized = True
+            self.dist_spec = spec.dist_attr
+            self.compute_spec = spec.compute_attr
+            if spec.pg is None:
+                self.process_group = ProcessGroup()
+            else:
+                self.process_group = spec.pg
+
         self._type = TensorType.NONMODEL
         self._graph_node = None
 
-    def __getitem__(self, key):
-        return ColoTensor.init_from_torch_tensor(self.torch_tensor()[key])
-
-    @property
-    def shard_spec(self) -> TensorSpec:
-        return self._shard_spec
-
-    @property
-    def shard_pattern(self):
-        return self._shard_pattern
-
-    @property
-    def data(self):
-        return self._torch_tensor.data
-
-    @data.setter
-    def data(self, tensor: Union[torch.Tensor, "ColoTensor"]):
-        if isinstance(tensor, ColoTensor):
-            self._torch_tensor.data = tensor.data
-        elif isinstance(tensor, torch.Tensor):
-            self._torch_tensor.data = tensor
-        else:
-            raise NotImplementedError
-
-    @property
-    def grad(self):
-        return self._torch_tensor.grad
-
-    @property
-    def size(self):
-        return self._size
-
-    @property
-    def shape(self):
-        return torch.Size(self._size)
-
-    @property
-    def device(self):
-        return self._torch_tensor.device
-
-    def size(self, dim=None):
-        if dim is None:
-            return self.shape
-        return self._size[dim]
-
-    def dim(self):
-        return len(self._size)
-
-    def normal_(self, mean=0., std=1.):
-        torch_tensor = self.torch_tensor()
-        return torch_tensor.normal_(mean=mean, std=std)
-
-    def numel(self):
-        return product(self._size)
-
-    @staticmethod
-    def init_from_torch_tensor(tensor: torch.Tensor, save_payload=True) -> 'ColoTensor':
-        colo_t = ColoTensor(*tensor.size(),
-                            dtype=tensor.dtype,
-                            requires_grad=tensor.requires_grad,
-                            pin_memory=tensor.is_pinned(),
-                            device=tensor.device,
-                            torch_tensor=tensor if save_payload else torch.empty(0))
-        return colo_t
-
-    def del_torch_tensor(self, save_shape=False) -> None:
-        """
-        delete the payload of the torch tensor.
-
-        Args:
-            save_shape (bool, optional): if saving the shape of the torch_tensor. 
-            If saving the shape, the size of self._torch_tensor is inconsist with the self._size.
-            Defaults to False.
-        """
-        if not save_shape:
-            self._size = (0,)
-        self._torch_tensor = torch.empty((0,), device=self._device, dtype=self._dtype)
-
-    def torch_tensor(self) -> torch.Tensor:
-        if self._torch_tensor.numel() == 0:
-            self._torch_tensor = torch.empty(*self._size,
-                                             dtype=self._dtype,
-                                             pin_memory=self._pin_memory,
-                                             requires_grad=self._requires_grad,
-                                             device=self._device)
-        return self._torch_tensor
-
-    def set_spec(self, spec: TensorSpec, shard: bool = True) -> None:
-        self._shard_spec = spec
-        if shard == True:
-            self.shard()
-
-    def set_shard_pattern(self, shard_pattern: ShardPattern):
-        self._shard_pattern = shard_pattern
-
-    def shard(self):
-        assert self._shard_spec is not None, 'You should call set_spec() before _shard() ColoTensor.'
-        if self._shard_pattern is not ShardPattern.NA:    # reshard
-            self.gather()
-        # Model Parameters
-        if self._shard_spec.num_action == 1:
-            parallel_action = self._shard_spec.get_action_by_compute_pattern(self._shard_spec.compute_patterns[0])
-            if parallel_action.compute_pattern in [
-                    ComputePattern.TP1DRow_Linear, ComputePattern.TP1DCol_Embedding, ComputePattern.TP1DCol_mm
-            ]:
-                self._shard_1d(parallel_action=parallel_action, dim=-1)
-                # We bind our ComputePattern on weight, which has to be transposed when linear().
-                self._shard_pattern = ShardPattern.Col
-            elif parallel_action.compute_pattern in [
-                    ComputePattern.TP1DCol_Linear, ComputePattern.TP1DRow_Embedding, ComputePattern.TP1DRow_mm
-            ]:
-                self._shard_1d(parallel_action=parallel_action, dim=0)
-                self._shard_pattern = ShardPattern.Row
-            else:
-                raise NotImplementedError
-
-    def gather(self):
-        assert not self.is_model_data(), 'Currently we only support gather Activation ColoTensor.'
-        assert not self.is_gathered(), 'Only sharded ColoTensor can be gathered.'
-        parallel_action = self._shard_spec.get_action_by_compute_pattern(ComputePattern.DP)
-        dim = self._get_gather_dim()
-        self._torch_tensor = gather_forward_split_backward(self._torch_tensor, parallel_action.parallel_mode, dim=dim)
-        self._shard_pattern = ShardPattern.NA
-        self._size = self._torch_tensor.size()
-
-    def global_torch_tensor(self) -> torch.Tensor:
-        out_tensor = self.torch_tensor()
-        if self.is_gathered():
-            return out_tensor
-
-        parallel_action = self._shard_spec.get_action_by_compute_pattern(ComputePattern.DP)
-        world_size = gpc.get_world_size(parallel_action.parallel_mode)
-        if world_size == 1:
-            return out_tensor
-
-        rank = gpc.get_local_rank(parallel_action.parallel_mode)
-        tensor_list = [torch.empty_like(out_tensor) for _ in range(world_size)]
-        tensor_list[rank] = out_tensor
-        torch.distributed.all_gather(tensor_list, out_tensor, group=gpc.get_group(parallel_action.parallel_mode))
-
-        dim = self._get_gather_dim()
-        out_tensor = torch.cat(tensor_list, dim=dim).contiguous()
-
-        return out_tensor
-
-    def is_gathered(self) -> bool:
-        return self._shard_pattern == ShardPattern.NA
-
-    def has_spec(self) -> bool:
-        return self._shard_spec is not None and self._shard_spec.num_action > 0
+    def has_compute_spec(self) -> bool:
+        return self.compute_spec is not None
 
     def is_model_data(self) -> bool:
         return self._type == TensorType.MODEL
 
-    def _shard_1d(self, parallel_action, dim=-1):
-        num_partition = gpc.get_world_size(parallel_action.parallel_mode)
-        local_rank = gpc.get_local_rank(parallel_action.parallel_mode)
-        chunk_size = divide(self._size[dim], num_partition)
-        # Reshape to get shard for this rank and we don't want autograd
-        # recording here for the narrow op and 'local_shard' should be a
-        # leaf variable in the autograd graph.
-        self._torch_tensor = self._torch_tensor.narrow(dim, local_rank * chunk_size, chunk_size).detach().contiguous(
-        )    # TODO Shall we clone() here since detach() will point to the old tensor?
-        self._torch_tensor.requires_grad = self._requires_grad
-        self._size = self._torch_tensor.size()
+    def get_process_group(self) -> 'ProcessGroup':
+        return self.process_group
+
+    def set_process_group(self, pg: ProcessGroup):
+        """set_process_group 
+        change the pg of the ColoTensor. Note that the valid use cases is limited.
+        Only existing pg is DP and dist spec is REPLICaTE is valid.
+        Args:
+            pg (ProcessGroup): target pg
+
+        Raises:
+            RuntimeError: 
+            RuntimeError: 
+        """
+        assert isinstance(pg, ProcessGroup), f"pg as type {type(pg)} is invalid"
+        if self.process_group.tp_world_size() != 1:
+            raise RuntimeError("can not set_process_group on a ColoTensor whose process_group has tp world group")
+
+        if self.dist_spec.placement.value != 'r':
+            raise RuntimeError("can not set_process_group on a ColoTensor whose dist spec is not REPLICATE")
+
+        self.process_group = pg
+
+    def get_tp_world_size(self) -> int:
+        return self.process_group.tp_world_size()
+
+    def set_dist_spec(self, dist_spec: _DistSpec):
+        """set_dist_spec 
+        set dist spec and change the payloads.
+        Args:
+            dist_spec (_DistSpec): target dist spec.
+        """
+        assert isinstance(dist_spec, _DistSpec)
+        assert self.process_group is not None
+        self._redistribute(dist_spec)
+
+    def set_tensor_spec(self, dist_spec, compute_spec):
+        if dist_spec:
+            assert isinstance(dist_spec, _DistSpec), f"{type(dist_spec)}"
+            self.set_dist_spec(dist_spec)
+        if compute_spec:
+            self.compute_spec = compute_spec
+
+    def has_compute_pattern(self, compute_pattern):
+        return self.compute_spec.compute_pattern == compute_pattern
 
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+
+        if not all(issubclass(cls, t) for t in types):
+            return NotImplemented
         global _COLOSSAL_OPS
         if func in _COLOSSAL_OPS:
-            for arg in args:
-                if isinstance(arg, ColoTensor):
-                    return _COLOSSAL_OPS[func](types, args, kwargs, None)
+            func = _COLOSSAL_OPS[func]
 
-            for kwarg in kwargs.values():
-                if isinstance(kwarg, ColoTensor):
-                    return _COLOSSAL_OPS[func](types, args, kwargs, None)
+        with torch._C.DisableTorchFunction():
+            ret = func(*args, **kwargs)
+            if func in _get_my_nowrap_functions():
+                return ret
+            else:
+                pg = _scan_for_pg_from_args(args, kwargs)
+                return _convert_output(ret, pg)
+
+    def __repr__(self):
+        return f'ColoTensor:\n{super().__repr__()}\n{self.dist_spec}\n{self.process_group}'
+
+    def _redistribute(self, dist_spec: _DistSpec) -> None:
+        """_redistribute 
+        Note the function will not handle the logic of backward propagation!
+        It is used during model tensor initializations as an internal function.
+        Args:
+            dist_spec (_DistSpec): the target dist. spec.
+        """
+        assert self.grad_fn is None, "Current tensor has grad_fn and it can't get converted"
+        with DistSpecManager.no_grad():
+            self.data = DistSpecManager.handle_trans_spec(self.data, self.dist_spec, dist_spec, self.process_group)
+        self.dist_spec = dist_spec
+
+    def redistribute(self, dist_spec: _DistSpec) -> 'ColoTensor':
+        ret = DistSpecManager.handle_trans_spec(self, self.dist_spec, dist_spec, self.process_group)
+        return ColoTensor.from_torch_tensor(ret, ColoTensorSpec(self.process_group, dist_attr=dist_spec))
+
+    def to_replicate_(self):
+        """to_replicate_ 
+        an inline member function, converting dist spec of the tensor to REPLICATE
+        """
+        self._redistribute(dist_spec=ReplicaSpec())
+
+    def to_replicate(self) -> 'ColoTensor':
+        """to_replicate
+        converting dist spec of the tensor to REPLICATE
+        """
+        return self.redistribute(ReplicaSpec())
+
+
+    @staticmethod
+    def from_torch_tensor(tensor: torch.Tensor, spec: Optional[ColoTensorSpec] = None) -> 'ColoTensor':
+        tensor = tensor.as_subclass(ColoTensor)
+        tensor.__init__(tensor, spec=spec)
+        return tensor
+
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
         else:
-            # If we have not hijact the function, convert the ColoTensors in args and kwargs to torch tensors.
-            args = [arg.torch_tensor() if isinstance(arg, ColoTensor) else arg for arg in args]
-            if kwargs is None:
-                kwargs = {}
+            with torch._C.DisableTorchFunction():
+                data = self.data.clone()
+            tensor = ColoTensor(data, spec=copy(ColoTensorSpec(self.process_group, self.dist_spec, self.compute_spec)))
+            memo[id(self)] = tensor
+            return tensor
 
-            kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
-            return cls._filter_outputs_with_colo(func(*args, **kwargs))
+    ##### override builtin functions which must use tensor in replicate placement ####
 
-    def backward(self, gradient: Optional[torch.Tensor] = None, retain_graph: bool = False):
-        self._torch_tensor.backward(gradient=gradient, retain_graph=retain_graph)
+    def view_local(self, *args) -> 'ColoTensor':
+        return super().view(*args)
 
-    def __add__(self, o) -> "ColoTensor":
-        if isinstance(o, ColoTensor):
-            return ColoTensor.init_from_torch_tensor(self.torch_tensor() + o.torch_tensor())
-        elif isinstance(o, (torch.Tensor, int, float)):
-            return ColoTensor.init_from_torch_tensor(self.torch_tensor() + o)
+    def size_local(self, *args, **kwargs) -> torch.Size:
+        return super().size(*args, **kwargs)
+
+    def view_global(self, *args) -> 'ColoTensor':
+        """override the torch buildin view()
+        the args passed in must be in a replicate placement.
+        Returns:
+            ColoTensor: a tensor after viewed.
+        """
+        if self.is_replicate():
+            return super().view(*args)
+        replicated_t = self.redistribute(dist_spec=ReplicaSpec())
+        return replicated_t.view(*args)
+
+    def size_global(self, args: Optional[int] = None):
+        """override the torch buildin size()
+        the shape passed in must be in a replicate placement.
+        Returns:
+            ColoTensor: a tensor after viewed.
+        """
+        if self.is_replicate():
+            if args is not None:
+                return super().size(args)
+            else:
+                return super().size()
+
+        spec = self.dist_spec
+        dims = spec.dims
+        num_partitions = spec.num_partitions
+        # import inspect
+        # print(*['{:40}| {}:{}\n'.format(x.function, x.filename, x.lineno) for x in inspect.stack()])
+
+        size_list = list(super().size())
+        for dim, num_partition in zip(dims, num_partitions):
+            size_list[dim] *= num_partition
+        if args is not None:
+            return size_list[args]
         else:
-            raise TypeError(f'{type(o)} is not supported in ColoTensor __add__')
+            return torch.Size(size_list)
 
-    __radd__ = __add__
+    # Some API for dist spec check
 
-    def __truediv__(self, o) -> "ColoTensor":
-        return ColoTensor.init_from_torch_tensor(self.torch_tensor() / o)
+    def is_replicate(self):
+        return self.dist_spec.placement == DistPlacementPattern.REPLICATE \
+            or (len(self.dist_spec.num_partitions) == 1
+                and self.dist_spec.num_partitions[0] == 1) \
+            or (self.process_group.tp_world_size() == 1)
 
-    def __getattr__(self, name):
+    def is_shard_1dcol(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD \
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == -1
 
-        def replace_tensor_with_colo(func):
+    def is_shard_1drow(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD \
+            and len(self.dist_spec.dims) == 1 and self.dist_spec.dims[0] == 0
 
-            def execute_func(*args, **kwargs):
-                # transform the ColoTensor args to torch Tensor.
-                args = [arg.torch_tensor() if isinstance(arg, ColoTensor) else arg for arg in args]
-                if kwargs is None:
-                    kwargs = {}
-                kwargs = {k: v.torch_tensor() if isinstance(v, ColoTensor) else v for k, v in kwargs.items()}
-                return self._filter_outputs_with_colo(func(*args, **kwargs))
-
-            return execute_func
-
-        if hasattr(self._torch_tensor, name) == False:
-            raise AttributeError
-
-        attr = getattr(self._torch_tensor, name)
-
-        if isinstance(attr, Callable):
-            return replace_tensor_with_colo(attr)
-        else:
-            return attr
-
-    @classmethod
-    def _filter_outputs_with_colo(cls, outputs):
-        if outputs is None:    # return None
-            return None
-        elif type(outputs) is not tuple:    # num of return val = 1
-            return ColoTensor.init_from_torch_tensor(outputs) if type(outputs) is torch.Tensor else outputs
-        else:    # num of return val > 1
-            return tuple([
-                ColoTensor.init_from_torch_tensor(output) if type(output) is torch.Tensor else output
-                for output in outputs
-            ])
-
-    def _get_gather_dim(self):
-        if self._shard_pattern == ShardPattern.Row:
-            dim = 0
-        elif self._shard_pattern == ShardPattern.Col:
-            dim = -1
-        else:
-            raise NotImplementedError
-        return dim
-
-    def __mul__(self, other) -> "ColoTensor":
-        if isinstance(other, ColoTensor):
-            return ColoTensor.init_from_torch_tensor(self.torch_tensor() * other.torch_tensor())
-        elif isinstance(other, (torch.Tensor, int, float)):
-            return ColoTensor.init_from_torch_tensor(self.torch_tensor() * other)
-        else:
-            raise TypeError(f'{type(other)} is not supported in ColoTensor __mul__')
-
-    __rmul__ = __mul__
+    def is_sharded(self):
+        return self.dist_spec.placement == DistPlacementPattern.SHARD

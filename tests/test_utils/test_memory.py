@@ -22,7 +22,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [4, 5])
+@pytest.mark.parametrize("world_size", [3, 4])
 def test_memory_utils(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)

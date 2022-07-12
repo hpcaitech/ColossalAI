@@ -1,11 +1,17 @@
-FROM nvcr.io/nvidia/pytorch:21.07-py3
+FROM hpcaitech/cuda-conda:11.3
 
-# install dependencies
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple \
- && pip install -U pip setuptools wheel \
- && pip install pytest tensorboard deepspeed apex
+# install torch
+RUN conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
+
+# install apex
+RUN git clone https://github.com/NVIDIA/apex && \
+    cd apex && \
+    pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 
 # install colossalai
 RUN git clone https://github.com/hpcaitech/ColossalAI.git \
  && cd ./ColossalAI \
  && pip install -v --no-cache-dir .
+
+# install titans
+RUN pip install --no-cache-dir titans

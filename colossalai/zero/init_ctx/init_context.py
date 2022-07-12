@@ -1,19 +1,21 @@
 import contextlib
 import functools
 from typing import Optional
+from contextlib import AbstractContextManager
 
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.logging import get_dist_logger
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
+from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 from colossalai.zero.sharded_param import ShardedParamV2
-from contextlib import AbstractContextManager
-from colossalai.utils import InsertPostInitMethodToModuleSubClasses
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
 
 class ZeroContextConfig(object):
@@ -76,6 +78,9 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
 
         ZeroContextMgr().current_context = self
 
+        self.param_numel = {}
+        self.top_module = None
+
     @property
     def target_device(self):
         return self.config.target_device
@@ -128,6 +133,16 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         self.nn_fanin_fanout = nn.init._calculate_fan_in_and_fan_out
         nn.init._calculate_fan_in_and_fan_out = self.calc_fanin_fanout
 
+        self.module_load_from_state_dict = nn.Module._load_from_state_dict
+        shard_strategy = self.shard_strategy if self.config.shard_param else None
+        nn.Module._load_from_state_dict = functools.partialmethod(ShardedModelV2._colo_load_from_state_dict,
+                                                                  shard_strategy=shard_strategy)
+        self.module_state_dict = nn.Module.state_dict
+        nn.Module.state_dict = functools.partialmethod(ShardedModelV2._colo_state_dict,
+                                                       shard_strategy=shard_strategy,
+                                                       state_dict_func=self.module_state_dict,
+                                                       process_group=self.dp_process_group)
+
         # reserve rng states
         self.cpu_rng_state = torch.get_rng_state()
         self.cuda_rng_state = torch.cuda.get_rng_state()
@@ -152,14 +167,23 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         del self.param_list
 
         nn.init._calculate_fan_in_and_fan_out = self.nn_fanin_fanout
+        nn.Module.load_state_dict = self.module_load_from_state_dict
+        nn.Module.state_dict = self.module_state_dict
         torch.set_rng_state(self.cpu_rng_state)
         torch.cuda.set_rng_state(self.cuda_rng_state)
+
+        params = frozenset(self.top_module.parameters())
+        for param in self.param_numel.keys():
+            if param not in params:
+                self.param_numel[param] = 0
+        self.model_numel_tensor.fill_(sum(self.param_numel.values()))
 
     def _post_init_method(self, module: torch.nn.Module, *args, **kwargs):
         """
         The function to call at the end of the constructor of each module.
         NOTE() The module may be passed to this function multiple times.
         """
+        self.top_module = module
 
         def half_fn(t: torch.Tensor):
             return t.half() if t.is_floating_point() else t
@@ -169,7 +193,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if hasattr(param, 'colo_attr'):
                 continue
 
-            self.model_numel_tensor += param.numel()
+            self.param_numel[param] = param.numel()
 
             # convert parameters to half
             param_half = half_fn(param)

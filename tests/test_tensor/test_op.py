@@ -1,96 +1,91 @@
-from numpy import allclose
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter
-from copy import deepcopy
+import pytest
+import colossalai
+import torch.nn.functional as F
+import torch.multiprocessing as mp
+from functools import partial
+from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec, ShardSpec
 from colossalai.utils import get_current_device
+from torch.nn import Parameter
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.tensor import distspec
 
 
-def test_layernorm():
+def _run_layer_norm():
     ln_op = torch.nn.LayerNorm(2, 3, device=get_current_device())
-    ln_op_colo = deepcopy(ln_op)
 
     input_t = torch.randn(3, 2, device=get_current_device())
-    input_t_colo = ColoTensor.init_from_torch_tensor(tensor=input_t.clone().detach())
+
+    pg = ProcessGroup(tp_degree=torch.distributed.get_world_size())
+    input_t_colo = ColoTensor.from_torch_tensor(input_t.clone().detach(), ColoTensorSpec(pg))
 
     # prepare colossalai LN
-    delattr(ln_op_colo, 'weight')
-    weight_clone = ln_op.weight.clone().detach()
-    weight_clone.requires_grad = True
-    setattr(ln_op_colo, 'weight', ColoParameter.init_from_torch_tensor(tensor=weight_clone))
+    weight = ColoTensor(Parameter(ln_op.weight.detach()), ColoTensorSpec(pg))
+    bias = ColoTensor(Parameter(ln_op.bias.detach()), ColoTensorSpec(pg))
 
     output = ln_op(input_t)
-    output_colo = ln_op_colo(input_t_colo)
+    output_colo = F.layer_norm(input_t_colo, ln_op.normalized_shape, weight, bias, ln_op.eps)
 
-    assert allclose(output_colo.torch_tensor().detach().cpu(), output.detach().cpu())
+    assert torch.allclose(output_colo, output)
 
     torch.mean(output).backward()
     torch.mean(output_colo).backward()
 
-    assert allclose(ln_op.weight.grad.cpu(), ln_op_colo.weight.torch_tensor().grad.cpu())
+    assert torch.allclose(ln_op.weight.grad, weight.grad)
 
 
-def test_linear():
-    in_dim = 4
-    out_dim = 5
-
-    fc = torch.nn.Linear(in_dim, out_dim, bias=True)
-    fc_ref = deepcopy(fc)
-
-    input_ref = torch.randn(1, in_dim)
-    input_tensor = input_ref.clone()
-
-    sharded_weight = ColoParameter.init_from_torch_tensor(fc_ref.weight)
-    sharded_bias = ColoParameter.init_from_torch_tensor(fc_ref.bias)
-
-    # replace the torch nn.Parameters with ShardedTensor
-    delattr(fc, 'weight')
-    setattr(fc, 'weight', sharded_weight)
-    delattr(fc, 'bias')
-    setattr(fc, 'bias', sharded_bias)
-
-    fc.weight.requires_grad = True
-    fc.bias.requires_grad = True
-
-    # torch.nn.functional.linear(torch.randn(1, in_dim), sharded_weight, sharded_bias)
-    out = fc(input_tensor)
-    loss = torch.sum(out)
-    loss.backward()
-
-    out_ref = fc_ref(input_ref)
-    loss_ref = torch.sum(out_ref)
-    loss_ref.backward()
-
-    assert (loss_ref == loss)
-    assert allclose(fc_ref.weight.grad, fc.weight.torch_tensor().grad)
+def check_spec_eq(tensor, other):
+    assert isinstance(tensor, ColoTensor) and isinstance(other, ColoTensor)
+    for k in dir(tensor.dist_spec):
+        if not k.startswith('__'):
+            assert hasattr(other.dist_spec, k), f"{k}"
+            assert getattr(tensor.dist_spec, k) == getattr(other.dist_spec, k)
 
 
-# The test case failed
-# def test_uniform():
-#     t = ColoTensor(torch.zeros(3, 5))
-#     torch.nn.init.uniform_(t)
-#     print(t)
+def check_element_wise_ops():
+    world_size = torch.distributed.get_world_size()
+    pg = ProcessGroup(tp_degree=world_size)
+    t = torch.rand(2, 2)
+    x = ColoTensor(t, spec=ColoTensorSpec(pg, ShardSpec([0], [pg.tp_world_size()])))
+
+    check_spec_eq(x, x.cuda())
+    assert torch.equal(x.cuda(), t.cuda())
+    check_spec_eq(x, torch.abs(x))
+    assert torch.equal(torch.abs(x), torch.abs(t))
+    check_spec_eq(x, F.sigmoid(x))
+    assert torch.equal(F.sigmoid(x), F.sigmoid(t))
 
 
-def test_element_wise():
-    t_ref = torch.randn(3, 5)
-    t = ColoTensor.init_from_torch_tensor(t_ref.clone())
-    assert torch.mean(t) == torch.mean(t_ref)
-    assert allclose(torch.nn.functional.gelu(t).torch_tensor(), torch.nn.functional.gelu(t_ref))
-    assert allclose(torch.nn.functional.relu(t).torch_tensor(), torch.nn.functional.relu(t_ref))
+def run_dist(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    check_element_wise_ops()
+    _run_layer_norm()
 
 
-# Test a function not wrapped by
-def test_no_wrap_op():
-    t_ref = torch.randn(3, 5)
-    t = ColoTensor.init_from_torch_tensor(t_ref.clone())
-    assert torch.sum(t) == torch.sum(t_ref)
-    assert torch.sum(input=t) == torch.sum(input=t_ref)
+@pytest.mark.dist
+@pytest.mark.parametrize('world_size', [2])
+@rerun_if_address_is_in_use()
+def test_element_wise_ops(world_size):
+    run_func = partial(run_dist, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
+
+
+def run_dist2(rank, world_size, port):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    _run_layer_norm()
+
+
+@pytest.mark.dist
+@pytest.mark.parametrize('world_size', [1])
+@rerun_if_address_is_in_use()
+def test_ln(world_size):
+    run_func = partial(run_dist2, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
 
 
 def check_all():
-    test_linear()
-    test_element_wise()
-    test_no_wrap_op()
+    test_element_wise_ops(2)
 
 
 if __name__ == '__main__':

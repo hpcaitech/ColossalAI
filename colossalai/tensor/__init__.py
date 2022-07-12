@@ -1,13 +1,18 @@
-from .spec import ComputePattern, ParallelAction, TensorSpec, ShardPattern
-from .op_wrapper import (
-    colo_op_impl,)
+from .process_group import ProcessGroup
+from .tensor_spec import ColoTensorSpec
+from .distspec import shard as ShardSpec
+from .distspec import replicate as ReplicaSpec
+
+from .compute_spec import ComputeSpec, ComputePattern
 from .colo_tensor import ColoTensor
 from .colo_parameter import ColoParameter
 from .utils import convert_parameter, named_params_with_colotensor
-from ._ops import *
-from .optim.colo_optimizer import ColoOptimizer
+from .dist_spec_mgr import DistSpecManager
+from .param_op_hook import ParamOpHook, ParamOpHookManager
+from . import distspec
 
 __all__ = [
-    'ColoTensor', 'convert_parameter', 'colo_op_impl', 'ComputePattern', 'TensorSpec', 'ParallelAction',
-    'named_params_with_colotensor', 'ShardPattern', 'ColoOptimizer', 'ColoParameter'
+    'ColoTensor', 'convert_parameter', 'ComputePattern', 'ComputeSpec', 'named_params_with_colotensor', 'ColoParameter',
+    'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ChunkManager', 'TensorState', 'ProcessGroup',
+    'ColoTensorSpec', 'TensorSpec', 'ShardSpec', 'ReplicaSpec'
 ]

@@ -1,13 +1,23 @@
+from filecmp import cmp
 import requests
 from bs4 import BeautifulSoup
-import re
+import argparse
 import os
 import subprocess
+from packaging import version
+from functools import cmp_to_key
 
 
 WHEEL_TEXT_ROOT_URL = 'https://github.com/hpcaitech/public_assets/tree/main/colossalai/torch_build/torch_wheels'
 RAW_TEXT_FILE_PREFIX = 'https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/torch_build/torch_wheels'
 CUDA_HOME = os.environ['CUDA_HOME']
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--nightly', action='store_true', 
+        help='whether this build is for nightly release, if True, will only build on the latest PyTorch version and Python 3.8')
+    return parser.parse_args()
 
 def get_cuda_bare_metal_version():
     raw_output = subprocess.check_output([CUDA_HOME + "/bin/nvcc", "-V"], universal_newlines=True)
@@ -69,7 +79,32 @@ def build_colossalai(wheel_info):
                     os.system(cmd)
 
 def main():
+    args = parse_args()
     wheel_info = all_wheel_info()
+
+    if args.nightly:
+        latest_torch_version = list(wheel_info.keys())
+
+        def _compare_version(a, b):
+            if version.parse(a) > version.parse(b):
+                return 1
+            else:
+                return -1
+
+        latest_torch_version.sort(key=cmp_to_key(_compare_version))
+        
+        # only keep the latest version
+        for key in latest_torch_version[:-1]:
+            wheel_info.pop(key)
+        
+        # we only keep python 3.8 for nightly release
+        for torch_version, cuda_versioned_info in wheel_info.items():
+            for cuda_version, python_versioned_info in cuda_versioned_info.items():
+                python_versions = list(python_versioned_info.keys())
+
+                for key in python_versions:
+                    if key != '3.8':
+                        python_versioned_info.pop(key)
     build_colossalai(wheel_info)
 
 if __name__ == '__main__':

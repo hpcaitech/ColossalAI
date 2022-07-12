@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from colossalai.context.config import Config
-from colossalai.builder import build_ophooks
 
 
 @pytest.mark.cpu
