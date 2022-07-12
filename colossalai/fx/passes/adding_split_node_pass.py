@@ -10,6 +10,7 @@ def pipe_split():
 
 
 def balanced_split_pass(gm: torch.fx.GraphModule, pp_size: int):
+    # TODO(lyl): balanced policy V2, split module by node size(weight+bias+output)
     mod_graph = gm.graph
     total_param_amount = 0
     for param in mod_graph.owning_module.parameters():
@@ -68,6 +69,9 @@ def uniform_split_pass(gm: torch.fx.GraphModule, pp_size: int):
 
 
 def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule):
+    # TODO(lyl): use partition IR to assign partition ID to each node.
+    # Currently: analyzing graph -> annotate graph by inserting split node -> use split module pass to split graph
+    # In future: graph to partitions -> analyzing partition IR -> recombining partitions to get best performance -> assign partition ID to each node
     part_idx = 0
 
     def split_callback(n: torch.fx.Node):
