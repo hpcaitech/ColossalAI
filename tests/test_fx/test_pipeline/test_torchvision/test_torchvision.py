@@ -10,6 +10,7 @@ from torch.fx import GraphModule
 import random
 import numpy as np
 import inspect
+import pytest
 
 MANUAL_SEED = 0
 random.seed(MANUAL_SEED)
