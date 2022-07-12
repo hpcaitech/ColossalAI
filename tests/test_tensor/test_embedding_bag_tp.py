@@ -1,5 +1,5 @@
 import torch
-from colossalai.tensor import distspec, ColoParameter
+from colossalai.tensor import ShardSpec, ColoParameter
 from torch.nn import functional as F
 from functools import partial
 
@@ -14,7 +14,7 @@ from _utils import tensor_equal, tensor_shard_equal
 
 
 def init_1d_col(weight, pg: ProcessGroup):
-    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_tensor_spec(*spec)
 

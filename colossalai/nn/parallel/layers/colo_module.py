@@ -7,16 +7,6 @@ class ColoModule(object):
 
     def __init__(self):
         self._shard_params: List[str] = []
-        # Example:
-        # {ComputePattern.TP1D:
-        #    'default':
-        #      'weight':
-        #          distspec.shard(xxxxx)
-        #      'bias':
-        #          distspec.shard(xxxxx)
-        #    'row': ...
-        #    'col': ...
-        # }
         self._allowed_patterns: Dict[ComputePattern, Dict[str, Dict[str, _DistSpec]]] = {}
 
     def _register_shard_params(self, params: List[str]):

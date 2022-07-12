@@ -3,27 +3,27 @@ from typing import Optional
 from ._utils import GeneralTensor, convert_to_colo_tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
 from ._utils import reduce_input, reduce_grad
-from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, distspec, ColoTensorSpec
-from colossalai.nn.graph import register_colo_graph, GraphOpNode, GraphGlobalEnv
+from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ReplicaSpec, ColoTensorSpec
 
 
 def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
     # Input:S[1] x Weight:S[0] = Output:P
     # All-Reduce(Output) + bias = res
     # Input:S[1]
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.shard([-1], [weight.get_tp_world_size()]))
+    pg = weight.get_process_group()
+    input_tensor = input_tensor.redistribute(ShardSpec([-1], [weight.get_tp_world_size()]))
 
     # Output:P
     partial_output = F.linear(input_tensor, weight)
     # Reduce(Output)
-    output = reduce_input(partial_output, weight.get_process_group())
+
+    output = reduce_input(partial_output, pg)
     # Bias
     if bias is not None:
         assert not bias.has_compute_spec(), 'Invalid bias spec for 1Drow Linear op'
         output = output + bias
 
-    pg = weight.get_process_group()
-    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(pg, distspec.replicate()))
+    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(pg, ReplicaSpec()))
     return output
 
 
@@ -32,13 +32,13 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     # All-Gather(Output)
     # Input:B
     compute_spec = weight.compute_spec
-    input_tensor = input_tensor.convert_to_dist_spec(distspec.replicate())
+    input_tensor = input_tensor.redistribute(ReplicaSpec())
     input_parallel = reduce_grad(input_tensor, weight.get_process_group())
 
     output_parallel = F.linear(input_parallel, weight, bias)
     output = ColoTensor.from_torch_tensor(output_parallel,
                                           spec=ColoTensorSpec(weight.get_process_group(),
-                                                              distspec.shard([-1], [weight.get_tp_world_size()]),
+                                                              ShardSpec([-1], [weight.get_tp_world_size()]),
                                                               ComputeSpec(ComputePattern.TP1D)))
     if compute_spec.output_replicate:
         return output.to_replicate()

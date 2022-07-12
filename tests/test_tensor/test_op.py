@@ -4,12 +4,11 @@ import colossalai
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 from functools import partial
-from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec
+from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec, ShardSpec
 from colossalai.utils import get_current_device
 from torch.nn import Parameter
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import distspec
 
 
 def _run_layer_norm():
@@ -47,7 +46,7 @@ def check_element_wise_ops():
     world_size = torch.distributed.get_world_size()
     pg = ProcessGroup(tp_degree=world_size)
     t = torch.rand(2, 2)
-    x = ColoTensor(t, spec=ColoTensorSpec(pg, distspec.shard([0], [pg.tp_world_size()])))
+    x = ColoTensor(t, spec=ColoTensorSpec(pg, ShardSpec([0], [pg.tp_world_size()])))
 
     check_spec_eq(x, x.cuda())
     assert torch.equal(x.cuda(), t.cuda())

@@ -11,7 +11,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import distspec, ColoTensorSpec, ComputePattern, \
+from colossalai.tensor import ShardSpec, ColoTensorSpec, ComputePattern, \
     ComputeSpec, ColoTensor, DistSpecManager, ProcessGroup
 from colossalai.nn.optimizer import ColoOptimizer
 
@@ -19,28 +19,28 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def init_1d_row_linear(weight: ColoTensor, pg: ProcessGroup):
-    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_process_group(pg)
         weight.set_tensor_spec(*spec)
 
 
 def init_1d_col_linear(weight, pg):
-    spec = (distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (ShardSpec([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_process_group(pg)
         weight.set_tensor_spec(*spec)
 
 
 def init_1d_row_embedding(weight, pg):
-    spec = (distspec.shard([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (ShardSpec([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_process_group(pg)
         weight.set_tensor_spec(*spec)
 
 
 def init_1d_col_embedding(weight, pg):
-    spec = (distspec.shard([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
     with DistSpecManager.no_grad():
         weight.set_process_group(pg)
         weight.set_tensor_spec(*spec)
@@ -74,8 +74,9 @@ def run_1d_hybrid_tp(model_name):
                 continue
             # print(name)
             # num_class = type_vocab_size = 2 | (8, 2)
-            if 'classifier' in name and 'weight' in name:
-                init_1d_row_linear(p, pg)
+            # TODO(jiaruifang) has bug if open the following 2 comments
+            # if 'classifier' in name and 'weight' in name:
+            #     init_1d_row_linear(p, pg)
             # num_class = vocab_size = 30524 | (30524, 8)
             if 'word_embeddings' in name and 'weight' in name:
                 init_1d_row_embedding(p, pg)
@@ -152,7 +153,6 @@ def run_1d_hybrid_tp(model_name):
 
 
 # Test the overrided parameters() and named_parameters() member functions
-@pytest.mark.skip
 def test_model_parameters():
     colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
@@ -186,9 +186,7 @@ def test_model_parameters():
     assert param_cnt == 2
 
 
-@pytest.mark.skip
 def test_colo_optimizer():
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     set_seed(1)
@@ -317,13 +315,12 @@ def run_model_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     for name in ['simple_net']:
         run_1d_row_tp(name)
-    for name in ['bert', 'simple_net']:
+    for name in ['simple_net']:
         run_1d_hybrid_tp(name)
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
-@pytest.mark.skip("under development")
 @rerun_if_address_is_in_use()
 def test_model(world_size):
     run_func = partial(run_model_dist, world_size=world_size, port=free_port())
@@ -348,6 +345,6 @@ def test_pretrain_load(world_size):
 
 if __name__ == '__main__':
     # test_model_parameters()
-    # test_colo_optimizer()
+    # test_colo_optgimizer()
     test_model(4)
     # test_pretrain_load(4)

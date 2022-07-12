@@ -93,36 +93,37 @@ class ProcessGroup:
             if idx // self._tp_degree == self._rank_idx // self._tp_degree:
                 self._tp_rank_list.append(rank_id)
 
-        self._tp_process_group = PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
-        self._dp_process_group = PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
-
         self._has_cpu_groups = False
-        self._cpu_dp_process_group = None
-        self._cpu_tp_process_group = None
+        PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
+        PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
 
     def set_cpu_groups(self):
         if self.has_cpu_groups:
             return
         self.logger.info(
             f'{self._rank} Gloo initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
-        self._cpu_tp_process_group = PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
-        self._cpu_dp_process_group = PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
+        PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
+        PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
 
     @property
     def has_cpu_groups(self):
         return self._has_cpu_groups
 
+    def __repr__(self):
+        return "ProcessGroup:\n\tRank: {}, World size: {}, DP degree: {}, TP degree: {}\n\tRanks in group: {}".\
+            format(self._rank, self._world_size, self._dp_degree, self._tp_degree, self._rank_list)
+
     def __eq__(self, obj: 'ProcessGroup') -> bool:
         if not isinstance(obj, ProcessGroup):
             return False
         if self._rank != obj._rank:
-            assert False
+            return False
         if self._rank_list != obj._rank_list:
-            assert False
+            return False
         if self._tp_rank_list != obj._tp_rank_list:
-            assert False
+            return False
         if self._dp_rank_list != obj._dp_rank_list:
-            assert False
+            return False
         if self._tp_degree != obj._tp_degree:
             return False
         if self._dp_degree != obj._dp_degree:
@@ -148,13 +149,15 @@ class ProcessGroup:
         return len(self._tp_rank_list)
 
     def dp_process_group(self):
-        return self._dp_process_group
+        # return self._dp_process_group
+        return PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
 
     def tp_process_group(self):
-        return self._tp_process_group
+        # return self._tp_process_group
+        return PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
 
     def cpu_dp_process_group(self):
-        return self._cpu_dp_process_group
+        return PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
 
     def cpu_tp_process_group(self):
-        return self._cpu_tp_process_group
+        return PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')

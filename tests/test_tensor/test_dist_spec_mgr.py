@@ -4,10 +4,9 @@ import torch.distributed as dist
 import pytest
 import colossalai
 import torch.multiprocessing as mp
-from torch.distributed.distributed_c10d import _get_default_group
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import DistSpecManager, distspec, ProcessGroup
+from colossalai.tensor import DistSpecManager, ProcessGroup, ShardSpec, ReplicaSpec
 from functools import partial
 
 
@@ -18,10 +17,10 @@ def run():
     depth = int(math.sqrt(size))
     assert depth == math.sqrt(size)
     x = torch.rand(8, 8).cuda()
-    old_dist_spec = distspec.replicate()
-    row_spec = distspec.shard([0], [size])
-    col_spec = distspec.shard([-1], [size])
-    mat_spec = distspec.shard([0, 1], [depth, depth])
+    old_dist_spec = ReplicaSpec()
+    row_spec = ShardSpec([0], [size])
+    col_spec = ShardSpec([-1], [size])
+    mat_spec = ShardSpec([0, 1], [depth, depth])
     row_shard = DistSpecManager._shard_as(x, old_dist_spec, row_spec, group)
     assert torch.equal(x.chunk(size, 0)[rank], row_shard)
     assert torch.equal(x, DistSpecManager._gather(row_shard, row_spec, group))
@@ -40,8 +39,8 @@ def check_mem():
     x = torch.rand(32, 32).cuda()
     orig_mem = x.numel() * x.element_size()
     assert torch.cuda.memory_allocated() == orig_mem
-    old_dist_spec = distspec.replicate()
-    row_spec = distspec.shard([0], [size])
+    old_dist_spec = ReplicaSpec()
+    row_spec = ShardSpec([0], [size])
     x.data = DistSpecManager._shard_as(x, old_dist_spec, row_spec, pg)
     assert x.size(0) == 32 // size and x.size(1) == 32
     assert torch.cuda.memory_allocated() == orig_mem // size

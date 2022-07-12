@@ -8,7 +8,7 @@ from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec
 from colossalai.utils import get_current_device
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import distspec, ComputeSpec, ComputePattern
+from colossalai.tensor import ShardSpec, ComputeSpec, ComputePattern
 
 
 def check_cross_entropy():
@@ -22,7 +22,7 @@ def check_cross_entropy():
     world_size = torch.distributed.get_world_size()
     pg = ProcessGroup(tp_degree=world_size)
     input_t_colo = ColoTensor.from_torch_tensor(tensor=input_ct, spec=ColoTensorSpec(pg))
-    input_shard = input_t_colo.convert_to_dist_spec(distspec.shard([-1], [pg.tp_world_size()]))
+    input_shard = input_t_colo.redistribute(ShardSpec([-1], [pg.tp_world_size()]))
     input_shard.set_tensor_spec(dist_spec=None, compute_spec=ComputeSpec(ComputePattern.TP1D))
 
     output = F.cross_entropy(input_t, target)
@@ -41,7 +41,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [2])
+@pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
 def test_loss_func(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
@@ -49,4 +49,4 @@ def test_loss_func(world_size):
 
 
 if __name__ == '__main__':
-    test_loss_func(2)
+    test_loss_func(1)
