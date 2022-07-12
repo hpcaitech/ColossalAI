@@ -19,71 +19,17 @@ from colossalai.tensor import ComputePattern, ComputeSpec, DistSpecManager, Shar
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.utils.checkpoint import save_checkpoint, load_checkpoint
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
+from colossalai.nn.optimizer import ColoOptimizer
 
-
-class DummyDataGenerator(ABC):
-
-    def __init__(self, length=10):
-        self.length = length
-
-    @abstractmethod
-    def generate(self):
-        pass
-
-    def __iter__(self):
-        self.step = 0
-        return self
-
-    def __next__(self):
-        if self.step < self.length:
-            self.step += 1
-            return self.generate()
-        else:
-            raise StopIteration
-
-    def __len__(self):
-        return self.length
-
-
-class DummyDataLoader(DummyDataGenerator):
-
-    def __init__(self, batch_size, category, feature_size, length=10):
-        super().__init__(length)
-        self.batch_size = batch_size
-        self.category = category
-        self.feature_size = feature_size
-
-    def generate(self):
-        image_dict = {}
-        image_dict['pixel_values'] = torch.rand(self.batch_size, self.feature_size, device=get_current_device()) * 2 - 1
-        image_dict['label'] = torch.randint(self.category, (self.batch_size,),
-                                            dtype=torch.int64,
-                                            device=get_current_device())
-        return image_dict
-
-
-class MLP(nn.Module):
-
-    def __init__(self, in_features, out_features, hidden_features=None):
-        super().__init__()
-        if hidden_features is None:
-            hidden_features = out_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.activation = nn.ReLU()
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.activation(x)
-        x = self.fc2(x)
-        return x
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def init_1d_row_for_linear_weight_spec(model, pg: ProcessGroup):
     spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        for n, p in model.named_parameters():
-            if 'weight' in n:
+    for n, p in model.named_parameters():
+        print(n, p.shape)
+        if 'weight' in n and 'proj' in n:
+            with DistSpecManager.no_grad():
                 p.set_process_group(pg)
                 p.set_tensor_spec(*spec)
 
@@ -104,72 +50,77 @@ def remove(path):
 
 
 def run_checkpoint(init_spec_func, use_ddp, use_mp_reload, test_scheduler, pg):
-    num_epoch = 5
-    warmup_epoch = 2
-
-    batch = 3
-    feature = 32
-    category = 16
+    get_components_func = non_distributed_component_funcs.get_callable('simple_net')
+    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     with ColoInitContext(device=get_current_device()):
-        model = MLP(feature, category)
+        model = model_builder()
 
     with ColoInitContext(device=get_current_device()):
-        model_reload = MLP(feature, category)
+        model_reload = model_builder()
 
     model = model.cuda()
+    model.train()
+
     model_reload = model_reload.cuda()
+    model_reload.train()
+
+    init_spec_func(model, pg)
+
+    if use_mp_reload:
+        init_spec_func(model_reload, pg)
+
     if use_ddp:
         model = ColoDDP(model, pg)
         model_reload = ColoDDP(model_reload, pg)
 
-    init_spec_func(model, pg)
-    if use_mp_reload:
-        init_spec_func(model_reload, pg)
+    optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.Adam, lr=0.1)
+    optimizer_reload = ColoOptimizer(dict(model_reload.named_parameters()), torch.optim.Adam, lr=0.1)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
+    # optimizer_reload = torch.optim.Adam(model_reload.parameters(),
+    #                                     lr=0.001,
+    #                                     betas=(0.9, 0.999),
+    #                                     eps=1e-08,
+    #                                     weight_decay=0)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0)
-    optimizer_reload = torch.optim.Adam(model_reload.parameters(),
-                                        lr=0.001,
-                                        betas=(0.9, 0.999),
-                                        eps=1e-08,
-                                        weight_decay=0)
+    for i, (data, label) in enumerate(train_dataloader):
+        data = data.to(get_current_device())
+        label = label.to(get_current_device())
 
-    lr_scheduler = None
-    if test_scheduler == 'colossalai_cosine_warmup':
-        lr_scheduler = CosineAnnealingWarmupLR(optimizer=optimizer, total_steps=num_epoch, warmup_steps=warmup_epoch)
-        lr_scheduler_reload = CosineAnnealingWarmupLR(optimizer=optimizer_reload,
-                                                      total_steps=num_epoch,
-                                                      warmup_steps=warmup_epoch)
-    elif test_scheduler == 'torch_cosine':
-        lr_scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=num_epoch)
-        lr_scheduler_reload = CosineAnnealingLR(optimizer=optimizer_reload, T_max=num_epoch)
-    elif test_scheduler == 'torch_lambda':
-        lr_lambda = lambda epoch: 0.95
-        lr_scheduler = MultiplicativeLR(optimizer=optimizer, lr_lambda=lr_lambda)
-        lr_scheduler_reload = MultiplicativeLR(optimizer=optimizer_reload, lr_lambda=lr_lambda)
-    else:
-        raise TypeError(f"{test_scheduler} is invalid")
+        optimizer.zero_grad()
 
-    save_checkpoint('./checkpoint', 0, model, optimizer, lr_scheduler)
-    dist.barrier()
-    load_checkpoint('./checkpoint', 0, model_reload, optimizer_reload, lr_scheduler_reload)
+        if criterion:
+            output = model(data)
+            loss = criterion(output, label)
+        else:
+            output = model(data, label)
 
-    # Since model is sharded, we merge them before param checking.
-    for p in model.parameters():
-        p.to_replicate_()
+        loss.backward()
 
-    for p in model_reload.parameters():
-        p.to_replicate_()
+        for p in model.parameters():
+            print(p.grad)
+        optimizer.step()
+        break
 
-    check_param_equal(model, model_reload)
+    # for k, v in optimizer.state_dict().items():
+    #     print(k, v)
+
+    # save_checkpoint('./checkpoint', 0, model, None, None)
+    # dist.barrier()
+    # load_checkpoint('./checkpoint', 0, model_reload, None, None)
+
+    # # Since model is sharded, we merge them before param checking.
+    # for p in model.parameters():
+    #     p.to_replicate_()
+
+    # for p in model_reload.parameters():
+    #     p.to_replicate_()
+
+    # check_param_equal(model, model_reload)
 
 
 def run_dist(rank, world_size, port, use_ddp, use_mp_reload, test_scheduler):
-    if use_ddp and world_size == 1:
-        return
-    tp_world_size = world_size // 2 if use_ddp else world_size
-    config = dict(parallel=dict(tensor=dict(mode="1d", size=tp_world_size),))
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     pg = ProcessGroup(tp_degree=world_size)
     run_checkpoint(init_1d_row_for_linear_weight_spec, use_ddp, use_mp_reload, test_scheduler=test_scheduler, pg=pg)
 
@@ -194,4 +145,4 @@ def test_checkpoint(world_size, use_ddp, use_mp_reload, test_scheduler):
 
 
 if __name__ == '__main__':
-    test_checkpoint(2, True, False, "torch_cosine")
+    test_checkpoint(4, True, False, "torch_cosine")

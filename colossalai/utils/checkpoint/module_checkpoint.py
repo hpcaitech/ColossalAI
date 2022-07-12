@@ -37,8 +37,28 @@ def save_checkpoint(dire: str,
         model_state = {'epoch': epoch, 'model': new_dict}
         torch.save(model_state, dire + '/epoch_{}_model.pth'.format(epoch))
 
-    # delete the new dict
+    # delete the dicts
     del new_dict
+    del mapping
+
+    if optimizer is None:
+        return
+    mapping = dict()
+    new_opt_dict = dict()
+    print(optimizer.state_dict())
+    for k, v in optimizer.state_dict()['param_groups'][0]['params'].items():
+        if isinstance(v, ColoTensor):
+            mapping[k] = (v.dist_spec, v.compute_spec)
+            new_opt_dict[k] = v.to_replicate().detach()
+
+    optimizer['param_groups']['params'] = new_opt_dict
+    if dist.get_rank() == 0:
+        print('optimize state dict', optimizer.state_dict())
+        print('save new_opt_dict', new_opt_dict)
+        optimzer_state = {'epoch': epoch, 'optimizer_state_dict': new_opt_dict}
+        torch.save(optimzer_state, dire + '/epoch_{}_optim.pth'.format(epoch))
+
+    del new_opt_dict
 
 
 def load_checkpoint(dire,
@@ -71,5 +91,26 @@ def load_checkpoint(dire,
     # reset tensors to original dist spec.
     with DistSpecManager.no_grad():
         for k, v in model.named_parameters():
+            if isinstance(v, ColoTensor):
+                v.set_tensor_spec(*mapping[k])
+
+    del mapping
+
+    if optimizer is None:
+        return
+
+    mapping = dict()
+    for k, v in optimizer.state_dict().items():
+        if isinstance(v, ColoTensor):
+            mapping[k] = (v.dist_spec, v.compute_spec)
+            v.to_replicate_()
+
+    optim_state = torch.load(dire + '/epoch_{}_optim.pth'.format(epoch))
+    print(optim_state)
+    optimizer.load_state_dict(optim_state['optimizer_state_dict'])
+
+    # reset tensors to original dist spec.
+    with DistSpecManager.no_grad():
+        for k, v in optimizer.state_dict['param_groups']['params'].state_dict().items():
             if isinstance(v, ColoTensor):
                 v.set_tensor_spec(*mapping[k])

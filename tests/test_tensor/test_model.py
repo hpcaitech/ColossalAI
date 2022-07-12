@@ -75,16 +75,16 @@ def run_1d_hybrid_tp(model_name):
             # print(name)
             # num_class = type_vocab_size = 2 | (8, 2)
             # TODO(jiaruifang) has bug if open the following 2 comments
-            # if 'classifier' in name and 'weight' in name:
-            #     init_1d_row_linear(p, pg)
+            if 'classifier' in name and 'weight' in name:
+                init_1d_row_linear(p, pg)
             # num_class = vocab_size = 30524 | (30524, 8)
-            if 'word_embeddings' in name and 'weight' in name:
+            elif 'word_embeddings' in name and 'weight' in name:
                 init_1d_row_embedding(p, pg)
             # num_class = seq_len = 512 | (512, 8)
-            if 'position_embeddings' in name and 'weight' in name:
+            elif 'position_embeddings' in name and 'weight' in name:
                 init_1d_row_embedding(p, pg)
             # num_class = type_vocab_size = 2 | (2, 8)
-            if 'token_type_embeddings' in name and 'weight' in name:
+            elif 'token_type_embeddings' in name and 'weight' in name:
                 init_1d_col_embedding(p, pg)
     elif "simple_net" == model_name:
         # A naive way to set spec for all weights in Linear

@@ -69,7 +69,9 @@ class ColoOptimizer(optim.Optimizer):
         instead of parameter indices like torch.optim.Optimizer.
         """
         # TODO: implement state_dict
-        raise NotImplementedError("ColoOptimizer state_dict not implemented yet!")
+
+        return self._optim.state_dict()
+        # raise NotImplementedError("ColoOptimizer state_dict not implemented yet!")
 
     def load_state_dict(self, state_dict: Mapping[str, Any]):
         r"""Loads the ColoOptimizer state.
