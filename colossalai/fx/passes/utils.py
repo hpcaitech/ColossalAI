@@ -33,7 +33,8 @@ def get_leaf(graph: Graph):
     """
     Given a graph, return leaf nodes of this graph.
 
-    Note: This method will get the leaf nodes of given graph excluding ``output`` nodes.
+    Note: If we remove ``root`` nodes, ``placeholder`` nodes, and ``output`` nodes from fx graph,
+    we will get a normal DAG. Leaf nodes in this context means leaf nodes in that DAG.
     """
     input_nodes: Dict[Node, None] = {}
     for node in graph.nodes:
@@ -57,7 +58,8 @@ def get_top(graph: Graph):
     """
     Given a graph, return top nodes of this graph.
 
-    Note: This method will get the top nodes of given graph excluding ``placeholder`` nodes.
+    Note: If we remove ``root`` nodes, ``placeholder`` nodes, and ``output`` nodes from fx graph,
+    we will get a normal DAG. Top nodes in this context means nodes with BFS level 0 in that DAG.
     """
     top_node_list = set()
     for node in graph.nodes:
