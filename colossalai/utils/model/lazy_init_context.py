@@ -2,7 +2,7 @@
 # coding: utf-8
 
 import torch
-from colossalai.tensor import ColoParameter
+from colossalai.tensor import ColoParameter, ColoTensor
 import types
 import inspect
 import typing
@@ -40,10 +40,11 @@ class LazyInitContext():
             to value setting, such as `zero_` and `triu_`. `zero_` is pre-added by default.
     """
 
-    tensor_set_value_func = ['zero_']
+    tensor_set_value_func = ['zero_', 'fill_']
+    tensor_constructor = ['zeros', 'ones', 'rand']
 
     def __init__(self, extra_torch_tensor_func: List[str] = None):
-        self._intercepted_init_func_cache = []
+        self._intercepted_nn_init_func_cache = {}
         self._nn_init_methods = self._get_nn_init_methods()
         self._torch_mod_cls = torch.nn.modules.module.Module
 
@@ -53,14 +54,16 @@ class LazyInitContext():
         else:
             self._torch_tensor_funcs = self.tensor_set_value_func
 
-    def _cache_func(self, func):
+    def _cache_init_func(self, func):
         """
-        This method wraps the ``torch.nn.init`` method so that the function call
-        is cached instead of being executed.
+        This method wraps the ``torch.nn.init`` method and torch tensor value-setting functions
+        so that the function call is cached instead of being executed.
         """
 
-        def wrapped_init_func(*args, **kwargs):
-            self._intercepted_init_func_cache.append(dict(func=func, args=args, kwargs=kwargs))
+        def wrapped_init_func(tensor, *args, **kwargs):
+            if tensor not in self._intercepted_nn_init_func_cache:
+                self._intercepted_nn_init_func_cache[tensor] = []
+            self._intercepted_nn_init_func_cache[tensor].append((func, args, kwargs))
 
         return wrapped_init_func
 
@@ -85,8 +88,8 @@ class LazyInitContext():
 
         def _is_init_method(item):
             name, func = item
-            if (not isinstance(func, types.FunctionType) or name.startswith('_') or not name.endswith('_')
-                    or not _has_tensor_in_arg(func)):
+
+            if (not isinstance(func, types.FunctionType) or name.startswith('_') or not name.endswith('_')):
                 return False
             else:
                 return True
@@ -103,11 +106,13 @@ class LazyInitContext():
         has_device = 'device' in inspect.signature(func).parameters
 
         def layer_lazy_init(module, *args, **kwargs):
-            self._intercepted_init_func_cache.append(
-                dict(func=func, module=module, args=args, kwargs=copy.deepcopy(kwargs)))
+            # if this module contains device argument
+            # we set it to meta to initialize as meta backend
             if has_device:
                 kwargs['device'] = 'meta'
             func(module, *args, **kwargs)
+
+            # if device is not found, we intialize it and convert to meta
             if not has_device:
                 module.to('meta')
 
@@ -122,7 +127,7 @@ class LazyInitContext():
     def _patch_nn_init_funcs(self):
         # patch nn.init functions
         for name, func in self._nn_init_methods:
-            setattr(torch.nn.init, name, self._cache_func(func))
+            setattr(torch.nn.init, name, self._cache_init_func(func))
 
     def _unpatch_nn_init_funcs(self):
         # unpatch nn.init functions
@@ -150,26 +155,18 @@ class LazyInitContext():
             origin_func_name = self._get_tmp_origin_func_ref(func_name)
             origin_func = getattr(torch.Tensor, func_name)
             setattr(torch.Tensor, origin_func_name, origin_func)
-            setattr(torch.Tensor, func_name, self._cache_func(origin_func))
-
-    def _unpatch_torch_tensor_funcs(self):
-        for func_name in self._torch_tensor_funcs:
-            origin_func_name = self._get_tmp_origin_func_ref(func_name)
-            origin_func = getattr(torch.Tensor, origin_func_name)
-            setattr(torch.Tensor, func_name, origin_func)
+            setattr(torch.Tensor, func_name, self._cache_init_func(origin_func))
 
     def __enter__(self):
+        self._patch_torch_tensor_funcs()
+        self._patch_nn_init_funcs()
         self._patch_submodule_init()
         return self
 
     def __exit__(self, *args, **kwargs):
         self._unpatch_submodule_init()
-        # build model_rebuild_dict in reverse order to make sure get correct init func for inherited class.
-        self.module_rebuild_dict = {}
-        self._intercepted_init_func_cache.reverse()
-        for cache in self._intercepted_init_func_cache:
-            self.module_rebuild_dict[cache['module']] = (cache['func'], cache['args'], cache['kwargs'])
-        self._intercepted_init_func_cache.reverse()
+        self._unpatch_nn_init_funcs()
+        self._unpatch_torch_tensor_funcs()
 
     def lazy_init_parameters(self, model: torch.nn.Module, device='cpu', call_back: Callable = None):
         """
@@ -178,7 +175,7 @@ class LazyInitContext():
         Args:
             model (`torch.nn.Module`): the model instantiated under the context.
             device (str): the device on which weights are initialized
-            
+
         """
         # build param mapping
         param_id_to_name = dict()
@@ -187,71 +184,61 @@ class LazyInitContext():
         for name, buffer in model.named_buffers():
             param_id_to_name[id(buffer)] = name
 
-        assert model in self.module_rebuild_dict, 'We only support rebuild modules which intercepted during initializing by us.'
+        def _init_recurively(module):
+            for mod in module.children():
+                _init_recurively(mod)
 
-        def _process_arg(arg):
-            """
-            Process args recursively. If arg is a torch.nn.Module instance in module_rebuild_dict, 
-            we need to rebuild it with real parameters. If arg is a tuple or list, we will process
-            the element of arg with this function again.
-            """
-            if torch.is_tensor(arg):
-                tensor_id = id(arg)
-                if tensor_id in param_id_to_name:
-                    arg = _replace_meta_param_with_real_param(arg)
+            for param in module.parameters(recurse=False):
+                _convert_to_real_tensor(param, module, is_buffer=False)
 
-            elif isinstance(arg, torch.nn.Module):
-                if arg in self.module_rebuild_dict:
-                    arg = self.lazy_init_parameters(model=arg, device=device, call_back=call_back)
+            for buf in module.buffers(recurse=False):
+                _convert_to_real_tensor(buf, module, is_buffer=True)
 
-            elif isinstance(arg, (tuple, list)):
-                rst_list = []
-                for element in arg:
-                    processed_element = _process_arg(element)
-                    rst_list.append(processed_element)
-                arg = rst_list
-            return arg
-
-        def _replace_meta_param_with_real_param(meta_param):
-            if meta_param.device != 'meta':
-                return meta_param
-            tensor_id = id(meta_param)
+        def _convert_to_real_tensor(tensor, module, is_buffer):
+            if not tensor.is_meta:
+                return tensor
+            tensor_id = id(tensor)
             param_full_name = param_id_to_name[tensor_id]
-            real_param = torch.empty_like(meta_param, dtype=meta_param.dtype, device=device)
-            real_param = ColoParameter(real_param, requires_grad=meta_param.requires_grad)
+            real_tensor = torch.empty_like(tensor, dtype=tensor.dtype, device=device)
 
-            if '.' in param_full_name:
-                submodule_name, param_name = param_full_name.rsplit('.', 1)
-                submodule = model.get_submodule(submodule_name)
+            # look for initialization function
+            if tensor in self._intercepted_nn_init_func_cache:
+                init_func, args, kwargs = self._intercepted_nn_init_func_cache[tensor][-1]
             else:
-                submodule = model
+                raise RuntimeError(f"{param_full_name} is not associated with a initialization function")
+
+            # initialize
+            init_func(real_tensor, *args, **kwargs)
+
+            # convert to colotensor
+            # if this is a parameter, we should convert it to coloparameter
+            # if this is a buffer, we should convert it to colotensor
+            if is_buffer:
+                real_tensor = ColoTensor.from_torch_tensor(real_tensor)
+            else:
+                real_tensor = ColoParameter.from_torch_tensor(real_tensor, requires_grad=tensor.requires_grad)
+
+            # convert to distribted mode
+            if hasattr(tensor, 'dist_spec'):
+                with torch.no_grad():
+                    pg = getattr(tensor, 'pg', None)
+                    real_tensor = real_tensor.redistribute(tensor.dist_spec, pg)
+
+            # override the original tensor attribute
+            if '.' in param_full_name:
+                param_name = param_full_name.rsplit('.')[-1]
+            else:
                 param_name = param_full_name
-            setattr(submodule, param_name, real_param)
+            setattr(module, param_name, real_tensor)
 
             # execute call_back function on the materailized tensor
-            # this can where sharding comes in
+            # this can be used for possible extension
             if call_back:
-                call_back(real_param)
-            return real_param
-
-        func, args, kwargs = self.module_rebuild_dict[model]
-        args = list(args)
-
-        # check args for parameter replacement
-        for idx, arg in enumerate(args):
-            arg = _process_arg(arg)
-            args[idx] = arg
-
-        # check kwargs for parameter replacement
-        for arg_name, arg in kwargs.items():
-            if arg_name == 'device':
-                arg = device
-            else:
-                arg = _process_arg(arg)
-            kwargs[arg_name] = arg
+                call_back(real_tensor)
+            return real_tensor
 
         # build user specified model
         with torch.no_grad():
-            func(model, *args, **kwargs)
+            _init_recurively(model)
 
         return model
