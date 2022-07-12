@@ -17,7 +17,7 @@ BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('value is not aligned yet')
+@pytest.mark.skip("error with pytorch 1.10")
 def test_t5():
     MODEL_LIST = [
         transformers.T5Model,
