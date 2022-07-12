@@ -1,6 +1,3 @@
-import torch
-from colossalai.tensor import ColoTensor, ShardSpec
-
 from functools import partial
 
 import colossalai
@@ -10,29 +7,20 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import ColoTensorSpec, ComputePattern, ComputeSpec, DistSpecManager, ProcessGroup
-from _utils import tensor_equal, tensor_shard_equal
+from colossalai.tensor import ColoTensorSpec, ProcessGroup, ColoTensor
+from _utils import tensor_equal, tensor_shard_equal, split_param_col_tp1d, split_param_row_tp1d
 
 
-def init_1d_row(weight, bias, pg: ProcessGroup):
-    spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_tensor_spec(*spec)
-
-
-def init_1d_col(weight, bias, pg: ProcessGroup):
-    spec = (ShardSpec([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_tensor_spec(*spec)
-        bias.set_tensor_spec(*spec)
-
-
-def run_with_spec(spec_init_func):
+def run_with_spec(spec_init_func, split_bias):
     pg = ProcessGroup(tp_degree=torch.distributed.get_world_size())
     model = torch.nn.Linear(4, 8).cuda()
     weight = ColoTensor(torch.nn.Parameter(model.weight.detach()), ColoTensorSpec(pg))
     bias = ColoTensor(torch.nn.Parameter(model.bias.detach()), ColoTensorSpec(pg))
-    spec_init_func(weight, bias, pg)
+
+    spec_init_func(weight, pg)
+    if split_bias:
+        spec_init_func(bias, pg)
+
     x = torch.rand(2, 4).cuda()
     out = model(x)
     colo_out = F.linear(x, weight, bias)
@@ -48,8 +36,8 @@ def run_with_spec(spec_init_func):
 def run_dist(rank, world_size, port):
     config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_with_spec(init_1d_row)
-    run_with_spec(init_1d_col)
+    run_with_spec(spec_init_func=split_param_col_tp1d, split_bias=False)
+    run_with_spec(spec_init_func=split_param_row_tp1d, split_bias=True)
 
 
 @pytest.mark.dist
