@@ -1,11 +1,13 @@
 import transformers
 import torch
+import pytest
 from utils import trace_model_and_compare_output
 
 BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
+@pytest.mark.skip("error with pytorch 1.10")
 def test_gpt():
     MODEL_LIST = [
         transformers.GPT2Model,
