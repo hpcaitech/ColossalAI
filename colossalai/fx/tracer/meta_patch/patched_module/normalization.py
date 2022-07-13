@@ -1,4 +1,3 @@
-from ast import Import
 import torch
 from ..registry import meta_patched_module
 
