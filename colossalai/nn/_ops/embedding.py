@@ -42,10 +42,10 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
                          norm_type: float = 2.0,
                          scale_grad_by_freq: bool = False,
                          sparse: bool = False) -> ColoTensor:
-    # embedding_1Drow split the weight(lookup table) to (num_embeddings/P, embedding_dim)
-    # Find index in this shard and mask those not here
-    # Reduce all
-    pg = weight.get_process_group()
+    # embedding_1Drow splits the weight(lookup table) to the shape, [num_embeddings/P, embedding_dim]
+    # get the index of current segment and mask other segments with 0
+
+    # get complete input tensor through all-gather
     input_tensor = input_tensor.redistribute(ReplicaSpec())
 
     # tensor_parallel_rank = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
@@ -54,12 +54,11 @@ def colo_embedding_1Drow(input_tensor: ColoTensor,
     vocab_start_index = tensor_parallel_rank * num_embeddings_per_partition
     vocab_end_index = vocab_start_index + num_embeddings_per_partition
 
-    # Build the mask.
-    input_mask = (input_tensor < vocab_start_index) | \
-        (input_tensor >= vocab_end_index)
-    # Mask the input.
+    # build the mask.
+    input_mask = (input_tensor < vocab_start_index) | (input_tensor >= vocab_end_index)
+    # mask the input.
     # TODO(jzy) masked_input may be an activation managed by ColoTensor.
-    masked_input = input_tensor.clone() - vocab_start_index
+    masked_input = input_tensor - vocab_start_index
     masked_input[input_mask] = 0
 
     partial_output = F.embedding(masked_input,

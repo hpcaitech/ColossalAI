@@ -67,6 +67,7 @@ def check_checkpoint_2d(rank, world_size, port):
 
 
 @pytest.mark.dist
+@pytest.mark.skip("takes too long")
 @skip_if_not_enough_gpus(min_gpus=8)
 @rerun_on_exception(exception_type=mp.ProcessRaisedException, pattern=".*Address already in use.*")
 def test_checkpoint_2d():
