@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-   一个整合高效并行技术的 AI 大模型训练系统。
+   Colossal-AI: 一个面向大模型时代的通用深度学习系统
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> | 
    <a href="https://www.colossalai.org/"> 文档 </a> | 
@@ -28,7 +28,7 @@
  <li><a href="#为何选择-Colossal-AI">为何选择 Colossal-AI</a> </li>
  <li><a href="#特点">特点</a> </li>
  <li>
-   <a href="#展示样例">展示样例</a> 
+   <a href="#并行训练样例展示">并行训练样例展示</a> 
    <ul>
      <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
@@ -37,7 +37,19 @@
      <li><a href="#PaLM">PaLM</a></li>
    </ul>
  </li>
-
+<li>
+   <a href="#单GPU训练样例展示">单GPU训练样例展示</a> 
+   <ul>
+     <li><a href="#GPT-2-Single">GPT-2</a></li>
+     <li><a href="#PaLM-Single">PaLM</a></li>
+   </ul>
+ </li>
+<li>
+   <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a> 
+   <ul>
+     <li><a href="#GPT-3-Inference">GPT-3</a></li>
+   </ul>
+ </li>
  <li>
    <a href="#安装">安装</a>
    <ul>
@@ -69,21 +81,23 @@
 
 ## 特点
 
-Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让您的分布式 AI 模型训练像普通的单 GPU 模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练。
+Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的分布式 AI 模型像构建普通的单 GPU 模型一样简单。我们提供的友好工具可以让您在几行代码内快速开始分布式训练和推理。
 
 - 并行化策略
   - 数据并行
   - 流水线并行
   - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
   - [序列并行](https://arxiv.org/abs/2105.13120)
-  - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/2108.05818)
+  - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/1910.02054)
 - 异构内存管理
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
   - 基于参数文件的并行化
+- 推理
+  - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 展示样例
+## 并行训练样例展示
 ### ViT
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
@@ -105,7 +119,7 @@ Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让�
 
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/(updated)GPT-2.png" width=800>
 
-- 用相同的硬件条件训练24倍大的模型
+- 用相同的硬件训练24倍大的模型
 - 超3倍的吞吐量 
 
 ### BERT
@@ -120,50 +134,78 @@ Colossal-AI 为您提供了一系列并行训练组件。我们的目标是让�
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
+## 单GPU训练样例展示
+
+### GPT-2
+<p id="GPT-2-Single" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2-GPU1.png" width=450/>
+</p>
+
+- 用相同的硬件训练20倍大的模型
+
+### PaLM
+<p id="PaLM-Single" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/PaLM-GPU1.png" width=450/>
+</p>
+
+- 用相同的硬件训练34倍大的模型
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+
+## 推理 (Energon-AI) 样例展示
+
+### GPT-3
+<p id="GPT-3-Inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
+</p>
+
+- [Energon-AI](https://github.com/hpcaitech/EnergonAI) ：用相同的硬件推理加速50%
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
+
 ## 安装
 
-### PyPI
+### 从官方安装
 
-```bash
-pip install colossalai
-```
-该命令将会安装 CUDA extension, 如果你已安装 CUDA, NVCC 和 torch。 
+您可以访问我们[下载](https://www.colossalai.org/download)页面来安装Colossal-AI，在这个页面上发布的版本都预编译了CUDA扩展。
 
-如果你不想安装 CUDA extension, 可在命令中添加`--global-option="--no_cuda_ext"`, 例如:
-```bash
-pip install colossalai --global-option="--no_cuda_ext"
-```
+### 从源安装
 
-如果你想使用 `ZeRO`, 你可以使用:
-```bash
-pip install colossalai[zero]
-```
-
-### 从源代码安装
-
-> Colossal-AI 的版本将与该项目的主分支保持一致。欢迎通过 issue 反馈你遇到的任何问题 :)
+> 此文档将与版本库的主分支保持一致。如果您遇到任何问题，欢迎给我们提 issue :)
 
 ```shell
 git clone https://github.com/hpcaitech/ColossalAI.git
 cd ColossalAI
-# 安装依赖
+
+# install dependency
 pip install -r requirements/requirements.txt
 
-# 安装 colossalai
+# install colossalai
 pip install .
 ```
 
-如果你不想安装和使用 CUDA kernel fusion (使用 fused 优化器需安装):
+如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装）：
 
 ```shell
-pip install --global-option="--no_cuda_ext" .
+NO_CUDA_EXT=1 pip install .
 ```
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 使用 Docker
 
+### 从DockerHub获取镜像
+
+您可以直接从我们的[DockerHub主页](https://hub.docker.com/r/hpcaitech/colossalai)获取最新的镜像，每一次发布我们都会自动上传最新的镜像。
+
+### 本地构建镜像
+
 运行以下命令从我们提供的 docker 文件中建立 docker 镜像。
+
+> 在Dockerfile里编译Colossal-AI需要有GPU支持，您需要将Nvidia Docker Runtime设置为默认的Runtime。更多信息可以点击[这里](https://stackoverflow.com/questions/59691207/docker-build-with-nvidia-runtime)。
+> 我们推荐从[项目主页](https://www.colossalai.org)直接下载Colossal-AI.
 
 ```bash
 cd ColossalAI
@@ -201,78 +243,23 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 ### 几行代码开启分布式训练
 
 ```python
-import colossalai
-from colossalai.utils import get_dataloader
-
-
-# my_config 可以是 config 文件的路径或字典对象
-# 'localhost' 仅适用于单节点，在多节点时需指明节点名
-colossalai.launch(
-    config=my_config,
-    rank=rank,
-    world_size=world_size,
-    backend='nccl',
-    port=29500,
-    host='localhost'
+parallel = dict(
+    pipeline=2,
+    tensor=dict(mode='2.5d', depth = 1, size=4)
 )
-
-# 构建模型
-model = ...
-
-# 构建数据集, dataloader 会默认处理分布式数据 sampler
-train_dataset = ...
-train_dataloader = get_dataloader(dataset=dataset,
-                                shuffle=True
-                                )
-
-
-# 构建优化器
-optimizer = ...
-
-# 构建损失函数
-criterion = ...
-
-# 初始化 colossalai
-engine, train_dataloader, _, _ = colossalai.initialize(
-    model=model,
-    optimizer=optimizer,
-    criterion=criterion,
-    train_dataloader=train_dataloader
-)
-
-# 开始训练
-engine.train()
-for epoch in range(NUM_EPOCHS):
-    for data, label in train_dataloader:
-        engine.zero_grad()
-        output = engine(data)
-        loss = engine.criterion(output, label)
-        engine.backward(loss)
-        engine.step()
-
 ```
 
-### 构建一个简单的2维并行模型
-
-假设我们有一个非常巨大的 MLP 模型，它巨大的 hidden size 使得它难以被单个 GPU 容纳。我们可以将该模型的权重以二维网格的形式分配到多个 GPU 上，且保持你熟悉的模型构建方式。
+### 几行代码开启异构训练
 
 ```python
-from colossalai.nn import Linear2D
-import torch.nn as nn
-
-
-class MLP_2D(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-        self.linear_1 = Linear2D(in_features=1024, out_features=16384)
-        self.linear_2 = Linear2D(in_features=16384, out_features=1024)
-
-    def forward(self, x):
-        x = self.linear_1(x)
-        x = self.linear_2(x)
-        return x
-
+zero = dict(
+    model_config=dict(
+        tensor_placement_policy='auto',
+        shard_strategy=TensorShardStrategy(),
+        reuse_fp16_shard=True
+    ),
+    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
+)
 ```
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>

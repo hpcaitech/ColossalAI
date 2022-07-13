@@ -3,9 +3,9 @@ import functools
 from typing import Optional
 
 
-def _substitute_init_recursively(cls, func):
+def substitute_init_recursively(cls, func):
     for subcls in cls.__subclasses__():
-        _substitute_init_recursively(subcls, func)
+        substitute_init_recursively(subcls, func)
         func(subcls)
 
 
@@ -64,7 +64,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
         # Excution self._post_init_method after the default init function.
-        _substitute_init_recursively(torch.nn.modules.module.Module, _enable_class)
+        substitute_init_recursively(torch.nn.modules.module.Module, _enable_class)
 
         # holding on to the current __init__subclass__ for exit
         torch.nn.modules.module.Module._old_init_subclass = (torch.nn.modules.module.Module.__init_subclass__)
@@ -72,6 +72,7 @@ class InsertPostInitMethodToModuleSubClasses(object):
         torch.nn.modules.module.Module.__init_subclass__ = classmethod(_init_subclass)
 
         self._pre_context_exec()
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
 
@@ -79,10 +80,14 @@ class InsertPostInitMethodToModuleSubClasses(object):
             torch.set_default_dtype(self._old_default_dtype)
 
         def _disable_class(cls):
+            if not hasattr(cls, '_old_init'):
+                raise AttributeError(
+                    f"_old_init is not found in the {cls.__name__}, please make sure that you have imported {cls.__name__} before entering the context."
+                )
             cls.__init__ = cls._old_init
 
         # Replace .__init__() for all existing subclasses of torch.nn.Module
-        _substitute_init_recursively(torch.nn.modules.module.Module, _disable_class)
+        substitute_init_recursively(torch.nn.modules.module.Module, _disable_class)
 
         # Replace .__init__() for future subclasses of torch.nn.Module
         torch.nn.modules.module.Module.__init_subclass__ = (torch.nn.modules.module.Module._old_init_subclass)

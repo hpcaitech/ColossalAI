@@ -9,11 +9,6 @@ _COLOSSAL_OPS: Dict[str, Callable] = {}
 
 
 def _register_colo_op(op, func):
-    from inspect import signature
-    if len(signature(func).parameters) != 4:
-        raise TypeError(f'Custom stateful op function expects signature: '
-                        f'(types, args, kwargs, process_group), but received '
-                        f'signature: {signature(func)}')
     global _COLOSSAL_OPS
     _COLOSSAL_OPS[op] = func
 

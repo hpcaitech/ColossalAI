@@ -30,10 +30,10 @@ void multi_tensor_lamb_cuda(int chunk_size, at::Tensor noop_flag,
                             const float max_grad_norm,
                             at::optional<bool> use_nvlamb_python);
 
-std::tuple<at::Tensor, at::Tensor>
-multi_tensor_l2norm_cuda(int chunk_size, at::Tensor noop_flag,
-                         std::vector<std::vector<at::Tensor>> tensor_lists,
-                         at::optional<bool> per_tensor_python);
+std::tuple<at::Tensor, at::Tensor> multi_tensor_l2norm_cuda(
+    int chunk_size, at::Tensor noop_flag,
+    std::vector<std::vector<at::Tensor>> tensor_lists,
+    at::optional<bool> per_tensor_python);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("multi_tensor_scale", &multi_tensor_scale_cuda,
