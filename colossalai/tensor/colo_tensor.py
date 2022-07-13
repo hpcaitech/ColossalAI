@@ -204,7 +204,6 @@ class ColoTensor(torch.Tensor):
             ColoTensor: a redistributed colotensor
         """
         if pg is not None and pg != self.get_process_group():
-            print('here _redistribute')
             # if the pg is not equal, convert the current tensor to replicated
             self._redistribute(ReplicaSpec())
             self.process_group = pg
