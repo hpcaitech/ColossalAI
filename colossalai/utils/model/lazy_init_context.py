@@ -175,7 +175,6 @@ class LazyInitContext():
         Args:
             model (`torch.nn.Module`): the model instantiated under the context.
             device (str): the device on which weights are initialized
-
         """
         # build param mapping
         param_id_to_name = dict()
@@ -241,4 +240,4 @@ class LazyInitContext():
         with torch.no_grad():
             _init_recurively(model)
 
-        return model
+        return
