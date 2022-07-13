@@ -3,15 +3,15 @@ from typing import Optional
 from ._utils import GeneralTensor, convert_to_colo_tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
 from ._utils import reduce_input, reduce_grad
-from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ReplicaSpec, ColoTensorSpec
+from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ReplicaSpec, ColoTensorSpec
 
 
-def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
+def colo_linear_1drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
     # Input:S[1] x Weight:S[0] = Output:P
     # All-Reduce(Output) + bias = res
     # Input:S[1]
     pg = weight.get_process_group()
-    input_tensor = input_tensor.redistribute(ShardSpec([-1], [weight.get_tp_world_size()]))
+    input_tensor = input_tensor.redistribute(ShardSpec([-1], [weight.get_tp_world_size()]), pg)
 
     # Output:P
     partial_output = F.linear(input_tensor, weight)
@@ -27,7 +27,7 @@ def colo_linear_1Drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
     return output
 
 
-def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
+def colo_linear_1dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
     # Input:B x Weight:S[1] + Bias:S[1] = Output:S[1]
     # All-Gather(Output)
     # Input:B
@@ -48,7 +48,7 @@ def colo_linear_1Dcol(input_tensor: ColoTensor, weight: ColoTensor, bias: Option
 
 def colo_linear_1d(mode: str, input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
     assert mode in ('row', 'col')
-    funcs = {'row': colo_linear_1Drow, 'col': colo_linear_1Dcol}
+    funcs = {'row': colo_linear_1drow, 'col': colo_linear_1dcol}
     return funcs[mode](input_tensor, weight, bias)
 
 
