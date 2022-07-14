@@ -33,7 +33,7 @@ def run_1d_hybrid_tp(model_name):
     if rank == 0:
         model_torch = model_builder(checkpoint=True)
         model_torch = model_torch.cuda()
-        optimizer_torch = ColoOptimizer(dict(model_torch.named_parameters()), torch.optim.SGD, lr=0.1)
+        optimizer_torch = ColoOptimizer(model_torch.named_parameters(), torch.optim.SGD, lr=0.1)
 
         # Make two models have the same init params
         for p1, p2 in zip(model.parameters(), model_torch.parameters()):
@@ -80,7 +80,7 @@ def run_1d_hybrid_tp(model_name):
     if rank == 0:
         model_torch.train()
 
-    colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
+    colo_optimizer = ColoOptimizer(model.named_parameters(), torch.optim.SGD, lr=0.1)
 
     for i, (data, label) in enumerate(train_dataloader):
 
@@ -170,7 +170,7 @@ def test_colo_optimizer():
     with ColoInitContext(lazy_memory_allocate=False, device=get_current_device()):
         model = model_builder(checkpoint=True)
 
-    colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
+    colo_optimizer = ColoOptimizer(model.named_parameters(), torch.optim.SGD, lr=0.1)
     for i, (data, label) in enumerate(train_dataloader):
         colo_optimizer.zero_grad()
         data = data.to(get_current_device())
