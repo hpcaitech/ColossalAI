@@ -30,6 +30,8 @@ jobs:
         TORCH_VERSIONS: ${{ inputs.torch_version }}
         CUDA_VERSIONS: ${{ inputs.cuda_version }}
       run: |
+        echo $TORCH_VERSIONS
+        echo $CUDA_VERSIONS
         IFS=','
         DOCKER_IMAGE=()
 
