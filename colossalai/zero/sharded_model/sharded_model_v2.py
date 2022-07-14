@@ -8,9 +8,9 @@ import torch.distributed as dist
 import torch.nn as nn
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.engine.ophooks import register_ophooks_recursively
+from colossalai.gemini.ophooks import register_ophooks_recursively
 from colossalai.zero.utils import ZeroHook
-from colossalai.engine.paramhooks import BaseParamHookMgr
+from colossalai.gemini.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device, disposable
 from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollector

@@ -18,3 +18,13 @@ def torch_nn_normalize(self, input):
 
     # normalization maintain the same shape as the input
     return input.clone()
+
+
+try:
+    import apex
+    meta_patched_module.register(apex.normalization.FusedLayerNorm)(torch_nn_normalize)
+    meta_patched_module.register(apex.normalization.FusedRMSNorm)(torch_nn_normalize)
+    meta_patched_module.register(apex.normalization.MixedFusedLayerNorm)(torch_nn_normalize)
+    meta_patched_module.register(apex.normalization.MixedFusedRMSNorm)(torch_nn_normalize)
+except ImportError:
+    pass

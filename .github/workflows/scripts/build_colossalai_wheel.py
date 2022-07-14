@@ -62,7 +62,6 @@ def all_wheel_info():
                 wheel_info[torch_version][cuda_version][python_version] = dict(method=method, url=url, flags=flags)
     return wheel_info
 
-
 def build_colossalai(wheel_info):
     cuda_version_major, cuda_version_minor = get_cuda_bare_metal_version()
     cuda_version_on_host = f'{cuda_version_major}.{cuda_version_minor}'
