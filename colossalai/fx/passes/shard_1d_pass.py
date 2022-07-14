@@ -41,6 +41,30 @@ def weight_split(weight: torch.nn.parameter.Parameter, dim: int, col_normal: boo
         setattr(weight, "fx_attr", (dim, "SHARD", "TP", "col_needs_many_outputs"))
     # weight.data = ColoTensor(data=weight.data, spec=spec)
     return weight
+def column_shard_linear_pass(gm: torch.fx.GraphModule):
+    mod_graph = gm.graph
+    for node in mod_graph.nodes:
+        if node.op == "call_module":
+            target_module = node.graph.owning_module.get_submodule(node.target)
+            if isinstance(target_module, torch.nn.Linear):
+                target_module.weight = weight_split(target_module.weight, dim=0, col_normal=False)
+                if target_module.bias is not None:
+                    target_module.bias.data = weight_split(target_module.bias.data, dim=0, col_normal=False)
+
+    gm.recompile()
+    return gm
+
+
+def row_shard_linear_pass(gm: torch.fx.GraphModule):
+    mod_graph = gm.graph
+    for node in mod_graph.nodes:
+        if node.op == "call_module":
+            target_module = node.graph.owning_module.get_submodule(node.target)
+            if isinstance(target_module, torch.nn.Linear):
+                target_module.weight = weight_split(target_module.weight, dim=-1, col_normal=False)
+
+    gm.recompile()
+    return gm
 
 def transform_mlp_pass(gm: torch.fx.GraphModule):
     #TODO: Needs to handle special cases, like x = linear(x) + linear(x)
