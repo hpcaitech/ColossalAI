@@ -12,7 +12,6 @@ from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
 from colossalai.utils import switch_virtual_pipeline_parallel_rank
 from colossalai.utils.cuda import get_current_device
-from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 
 from ._base_schedule import BaseSchedule
 
@@ -157,6 +156,7 @@ class PipelineSchedule(BaseSchedule):
         return self._move_to_device(mciro_batch_data)
 
     def pre_processing(self, engine):
+        from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
         # TODO: remove this after testing new zero with pipeline parallelism
         model = engine.model
         if isinstance(model, NaiveAMPModel):
@@ -482,6 +482,7 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         self.num_model_chunks = num_model_chunks
 
     def pre_processing(self, engine):
+        from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
         if isinstance(engine.model, ShardedModelV2):
             self.dtype = torch.half
         elif isinstance(engine.model[0], NaiveAMPModel):

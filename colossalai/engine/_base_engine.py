@@ -7,7 +7,7 @@ from torch.nn.modules.loss import _Loss
 
 from colossalai.logging import get_dist_logger
 from torch import Tensor
-from colossalai.engine.ophooks import register_ophooks_recursively, BaseOpHook
+from colossalai.gemini.ophooks import register_ophooks_recursively, BaseOpHook
 from colossalai.engine.schedule import BaseSchedule, NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule
 from typing import Optional, Type
 from colossalai.engine.gradient_handler import BaseGradientHandler
