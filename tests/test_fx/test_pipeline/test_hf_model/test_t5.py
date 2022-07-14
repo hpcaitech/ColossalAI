@@ -2,15 +2,6 @@ import pytest
 import transformers
 import torch
 from hf_utils import split_model_and_compare_output
-from colossalai.fx.tracer.meta_patch import meta_patched_module
-try:
-    import apex
-
-    @meta_patched_module.register(apex.normalization.FusedRMSNorm)
-    def apex_fused_layernorm(self, input):
-        return torch.empty(input.shape, device='meta')
-except ImportError:
-    pass
 
 BATCH_SIZE = 1
 SEQ_LENGHT = 16
