@@ -48,6 +48,7 @@ class ProcessGroup:
                  tp_degree: Optional[int] = None,
                  dp_degree: Optional[int] = None) -> None:
         if not torch.distributed.is_initialized():
+            self.is_init = False
             return
 
         assert torch.distributed.is_initialized(), f"ProcessGroup must be used after distributed initialized"
@@ -96,6 +97,7 @@ class ProcessGroup:
         self._has_cpu_groups = False
         PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
         PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
+        self.is_init = True
 
     def set_cpu_groups(self):
         if self.has_cpu_groups:
@@ -110,8 +112,11 @@ class ProcessGroup:
         return self._has_cpu_groups
 
     def __repr__(self):
-        return "ProcessGroup:\n\tRank: {}, World size: {}, DP degree: {}, TP degree: {}\n\tRanks in group: {}".\
-            format(self._rank, self._world_size, self._dp_degree, self._tp_degree, self._rank_list)
+        if self.is_init:
+            return "ProcessGroup:\n\tRank: {}, World size: {}, DP degree: {}, TP degree: {}\n\tRanks in group: {}".\
+                format(self._rank, self._world_size, self._dp_degree, self._tp_degree, self._rank_list)
+        else:
+            return "ProcessGroup not initialized"
 
     def __eq__(self, obj: 'ProcessGroup') -> bool:
         if not isinstance(obj, ProcessGroup):
