@@ -25,30 +25,26 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 
 def init_1d_row_linear(weight: ColoTensor, pg: ProcessGroup):
     spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_process_group(pg)
-        weight.set_tensor_spec(*spec)
+    weight.set_process_group(pg)
+    weight.set_tensor_spec(*spec)
 
 
 def init_1d_col_linear(weight, pg):
     spec = (ShardSpec([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_process_group(pg)
-        weight.set_tensor_spec(*spec)
+    weight.set_process_group(pg)
+    weight.set_tensor_spec(*spec)
 
 
 def init_1d_row_embedding(weight, pg):
     spec = (ShardSpec([0], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_process_group(pg)
-        weight.set_tensor_spec(*spec)
+    weight.set_process_group(pg)
+    weight.set_tensor_spec(*spec)
 
 
 def init_1d_col_embedding(weight, pg):
     spec = (ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    with DistSpecManager.no_grad():
-        weight.set_process_group(pg)
-        weight.set_tensor_spec(*spec)
+    weight.set_process_group(pg)
+    weight.set_tensor_spec(*spec)
 
 
 def init_1d_row_for_linear_weight_spec(model, pg: ProcessGroup):
@@ -111,8 +107,7 @@ def _run_checkpoint(model_name, init_spec_func, use_ddp, use_mp_reload, test_sch
                 elif 'token_type_embeddings' in name and 'weight' in name:
                     init_1d_col_embedding(p, pg)
                 elif p.process_group.tp_world_size() == 1:
-                    with DistSpecManager.no_grad():
-                        p.redistribute(ReplicaSpec(), pg)
+                    p.redistribute(ReplicaSpec(), pg)
         elif "simple_net" == model_name:
             init_spec_func(model, pg)
 
