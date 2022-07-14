@@ -6,13 +6,6 @@ from copy import copy
 from typing import Optional
 
 
-def _print_optim_state(optimizer):
-    state = optimizer.state_dict()['state']
-    print('optimizer state ', type(state), len(state))
-    for k, v in state.items():
-        print(k, v)
-
-
 def save_checkpoint(dire: str,
                     epoch: int,
                     model: torch.nn.Module,
@@ -26,7 +19,7 @@ def save_checkpoint(dire: str,
         dire (str): directory to save the checkpoint files.
         epoch (int): the number of epoch
         model (torch.nn.Module): a torch module initialized by ColoInitContext
-        optimizer (torch.optim.Optimizer, optional): optimizers. Defaults to None.
+        optimizer (ColossalaiOptimizer, optional): optimizers. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): lr schedule. Defaults to None.
     """
 
@@ -76,7 +69,7 @@ def load_checkpoint(dire,
         epoch (int): _description_
         rank (int): _description_
         model (torch.nn.Module): _description_
-        optimizer (torch.optim.Optimizer, optional): _description_. Defaults to None.
+        optimizer (ColossalaiOptimizer, optional): _description_. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): _description_. Defaults to None.
     """
 
@@ -97,8 +90,6 @@ def load_checkpoint(dire,
 
     del mapping
     mapping = dict()
-
-    # _print_optim_state(optimizer)
 
     for k, v in optimizer.state_dict()['state'].items():
         for n, t in v.items():
