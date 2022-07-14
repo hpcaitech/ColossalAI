@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- encoding: utf-8 -*-
-
 import torch
 import torch.nn as nn
 from torch import Tensor

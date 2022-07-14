@@ -77,6 +77,18 @@ def remove(path):
         raise ValueError("file {} is not a file or dir.".format(path))
 
 
+def compare_optims(optim1, optim2):
+    state1 = optim1.state_dict()['state']
+    state2 = optim2.state_dict()['state']
+    for k, p1 in state1.items():
+        if k not in state2:
+            continue
+        p2 = state2[k]
+        if isinstance(p1, ColoTensor):
+            assert isinstance(p2, ColoTensor)
+            assert torch.allclose(p1.to_replicate_(), p2.to_replicate_(), rtol=1e-3, atol=1e-1)
+
+
 def _run_checkpoint(model_name, init_spec_func, use_ddp, use_mp_reload, test_scheduler, pg):
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -171,7 +183,7 @@ def _run_checkpoint(model_name, init_spec_func, use_ddp, use_mp_reload, test_sch
         p.to_replicate_()
 
     check_param_equal(model, model_reload)
-
+    compare_optims(colo_optimizer, colo_optimizer_reload)
     if rank == 0:
         remove('./checkpoint')
 
