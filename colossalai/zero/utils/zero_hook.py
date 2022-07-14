@@ -8,7 +8,7 @@ from colossalai.registry import OPHOOKS
 from colossalai.utils import get_current_device
 
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.engine.ophooks import BaseOpHook
+from colossalai.gemini.ophooks import BaseOpHook
 
 from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.gemini.memory_tracer import MemStatsCollector

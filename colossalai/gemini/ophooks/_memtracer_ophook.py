@@ -3,7 +3,7 @@ import pickle
 from pathlib import Path
 from colossalai.context.parallel_mode import ParallelMode
 import torch
-from colossalai.engine.ophooks import BaseOpHook
+from colossalai.gemini.ophooks import BaseOpHook
 from colossalai.registry import OPHOOKS
 from colossalai.logging import get_dist_logger
 from colossalai.core import global_context as gpc

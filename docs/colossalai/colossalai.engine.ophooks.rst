@@ -1,11 +1,11 @@
-colossalai.engine.ophooks
+colossalai.gemini.ophooks
 =========================
 
-.. automodule:: colossalai.engine.ophooks
+.. automodule:: colossalai.gemini.ophooks
    :members:
 
 
 .. toctree::
    :maxdepth: 2
 
-   colossalai.engine.ophooks.zero_hook
+   colossalai.gemini.ophooks.zero_hook

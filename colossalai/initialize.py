@@ -22,7 +22,7 @@ from colossalai.logging import get_dist_logger
 
 from colossalai.engine.schedule import NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule, get_tensor_shape
 from colossalai.engine import Engine
-from colossalai.engine.ophooks import BaseOpHook
+from colossalai.gemini.ophooks import BaseOpHook
 
 from colossalai.utils import (get_current_device, is_using_ddp, is_using_pp, is_using_sequence, sync_model_param)
 from colossalai.utils.moe import sync_moe_model_param
