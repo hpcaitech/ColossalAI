@@ -28,7 +28,8 @@ def save_checkpoint(dire: str,
         if isinstance(v, ColoTensor):
             mapping[k] = (v.dist_spec, v.compute_spec)
             new_dict[k] = v.to_replicate().detach()
-
+        else:
+            new_dict[k] = v
     if dist.get_rank() == 0:
         for k, v in new_dict.items():
             if isinstance(v, ColoTensor):
@@ -60,7 +61,7 @@ def load_checkpoint(dire,
     """
 
     mapping = dict()
-    for k, v in model.named_parameters():
+    for k, v in model.state_dict().items():
         if isinstance(v, ColoTensor):
             mapping[k] = (v.dist_spec, v.compute_spec)
             v.to_replicate_()
@@ -70,6 +71,6 @@ def load_checkpoint(dire,
 
     # reset tensors to original dist spec.
     with DistSpecManager.no_grad():
-        for k, v in model.named_parameters():
+        for k, v in model.state_dict().items():
             if isinstance(v, ColoTensor):
                 v.set_tensor_spec(*mapping[k])
