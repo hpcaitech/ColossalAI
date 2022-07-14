@@ -3,18 +3,14 @@ name: Compatibility Test
 on:
   workflow_dispatch:
     inputs:
-      version:
-        type: choice
-        description: version for testing
-        default: 'all'
+      torch_version:
+        type: string
+        description: torch version, separated by comma
         required: true
-        options:
-        - all
-        - pytorch-cuda:1.9.0-11.1.1 # python 3.8
-        - pytorch-cuda:1.8.1-11.1.1 # python 3.8
-        - pytorch-cuda:1.7.1-11.0.3 # python 3.8
-        - pytorch-cuda:1.6.0-10.2 # python 3.6
-        
+      cuda_version:
+        type: string
+        description: cuda version, separated by comma
+        required: true
 
 jobs:
   matrix_preparation:
@@ -24,12 +20,25 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
     - id: set-matrix
+      env:
+        TORCH_VERSIONS: ${{ inputs.torch_version }}
+        CUDA_VERSIONS: ${{ inputs.cuda_version }}
       run: |
-        [ "${{github.event.inputs.version}}" != "" ] && matrix="[\"frankleeeee/${{github.event.inputs.version}}\"]"
-        [ "${{github.event.inputs.version}}" == "" ] || [ "${{github.event.inputs.version}}" == "all" ] && \
-          matrix="[\"frankleeeee/pytorch-cuda:1.9.0-11.1.1\", \"frankleeeee/pytorch-cuda:1.8.1-11.1.1\", \"frankleeeee/pytorch-cuda:1.7.1-11.0.3\", \"frankleeeee/pytorch-cuda:1.6.0-10.2\"]"
-        echo $matrix
-        echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
+        IFS=','
+        DOCKER_IMAGE=()
+
+        for tv in $TORCH_VERSIONS
+        do
+            for cv in $CUDA_VERSIONS
+            do
+                DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tv}-${cv}\"")
+            done
+        done
+
+        container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
+        container="[${container}]"
+        echo "$container"
+        echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
 
   build:
     name: Test for PyTorch Compatibility
@@ -46,14 +55,13 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
           pip install -U pip setuptools wheel --user
       - uses: actions/checkout@v2
       - name: Install Colossal-AI      
         run: |
           pip install -r requirements/requirements.txt
-          pip install -r requirements/requirements-test.txt
           pip install -v --no-cache-dir .
+          pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
           PYTHONPATH=$PWD pytest tests
