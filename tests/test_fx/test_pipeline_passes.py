@@ -5,6 +5,7 @@ import colossalai.nn as col_nn
 from torch.fx import symbolic_trace
 from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass, \
                                                         uniform_split_pass
+import pytest
 
 MODEL_DIM = 16
 BATCH_SIZE = 8
