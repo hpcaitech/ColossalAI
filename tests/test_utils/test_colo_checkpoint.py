@@ -18,7 +18,7 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ProcessGroup, DistSpecManager, ReplicaSpec
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.utils.checkpoint import save_checkpoint, load_checkpoint
-from colossalai.nn.optimizer import ColoOptimizer
+from colossalai.nn.optimizer import ColossalaiOptimizer
 
 from tests.components_to_test.registry import non_distributed_component_funcs
 
@@ -117,7 +117,7 @@ def _run_checkpoint(model_name, init_spec_func, use_ddp, use_mp_reload, test_sch
     model_reload = model_reload.cuda()
     model_reload.train()
 
-    colo_optimizer = ColoOptimizer(model.named_parameters(), torch.optim.SGD, lr=0.1)
+    colo_optimizer = ColossalaiOptimizer(torch.optim.SGD(model.named_parameters(), r=0.1))
 
     for i, (data, label) in enumerate(train_dataloader):
 

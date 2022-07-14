@@ -7,9 +7,7 @@ from .lamb import Lamb
 from .lars import Lars
 from .cpu_adam import CPUAdam
 from .hybrid_adam import HybridAdam
-from .colo_optimizer import ColoOptimizer
 
 __all__ = [
-    'ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam', 'HybridAdam',
-    'CPU_ADAM_CNT', 'ColoOptimizer'
+    'ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam', 'HybridAdam', 'CPU_ADAM_CNT'
 ]
