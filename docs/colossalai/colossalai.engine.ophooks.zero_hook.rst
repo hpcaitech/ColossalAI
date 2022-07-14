@@ -1,5 +1,5 @@
-colossalai.engine.ophooks.zero\_hook
+colossalai.gemini.ophooks.zero\_hook
 ====================================
 
-.. automodule:: colossalai.engine.ophooks.zero_hook
+.. automodule:: colossalai.gemini.ophooks.zero_hook
    :members:

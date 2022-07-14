@@ -1,23 +1,13 @@
 import pytest
 import transformers
 import torch
-from colossalai.fx.tracer.meta_patch import meta_patched_module
 from utils import trace_model_and_compare_output
-
-try:
-    import apex
-
-    @meta_patched_module.register(apex.normalization.FusedRMSNorm)
-    def apex_fused_layernorm(self, input):
-        return torch.empty(input.shape, device='meta')
-except ImportError:
-    pass
 
 BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('value is not aligned yet')
+@pytest.mark.skip("error with pytorch 1.10")
 def test_t5():
     MODEL_LIST = [
         transformers.T5Model,

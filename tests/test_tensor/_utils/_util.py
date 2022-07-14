@@ -5,6 +5,7 @@ import torch
 import torch.distributed as dist
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
+from colossalai.tensor import ShardSpec, ComputeSpec, ComputePattern
 
 
 def set_seed(seed):
@@ -57,3 +58,18 @@ def tensor_shard_equal(tensor: torch.Tensor, shard: torch.Tensor, rank, world_si
             return tensor_equal(tensor.chunk(world_size, dim)[rank], shard)
         else:
             raise NotImplementedError
+
+
+def split_param_single_dim_tp1d(dim, param, pg):
+    spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
+    if param.process_group.tp_world_size() == 1:
+        param.set_process_group(pg)
+    param.set_tensor_spec(*spec)
+
+
+def split_param_row_tp1d(param, pg):
+    split_param_single_dim_tp1d(0, param, pg)
+
+
+def split_param_col_tp1d(param, pg):
+    split_param_single_dim_tp1d(-1, param, pg)

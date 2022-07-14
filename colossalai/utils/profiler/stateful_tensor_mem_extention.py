@@ -5,7 +5,7 @@ import torch
 from enum import Enum
 from typing import List
 from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.engine.ophooks import BaseOpHook
+from colossalai.gemini.ophooks import BaseOpHook
 from colossalai.engine import Engine
 from colossalai.utils.profiler.extention import ProfilerExtension
 

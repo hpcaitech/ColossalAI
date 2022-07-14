@@ -11,16 +11,16 @@ def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTenso
     # mat1:S[1] x mat2:S[0] = Output:P
     # beta * input + alpha * All-Reduce(Output) = res
 
-    mat1 = mat1.redistribute(ShardSpec([-1], [mat2.get_tp_world_size()]))
+    mat1 = mat1.redistribute(ShardSpec([-1], [mat2.get_tp_world_size()]), mat2.get_process_group())
 
     # Output:P
     partial_output = torch.mm(mat1, mat2)
     # Reduce(Output)
-    output = reduce_input(partial_output, mat1.get_process_group())
+    output = reduce_input(partial_output, mat2.get_process_group())
     # input
     assert not input_tensor.has_compute_spec(), 'Invalid input spec for 1Drow addmm op'
     output = beta * input_tensor + alpha * output
-    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(ReplicaSpec()))
+    output = ColoTensor.from_torch_tensor(output, spec=ColoTensorSpec(input_tensor.get_process_group()))
     return output
 
 
