@@ -67,3 +67,4 @@ jobs:
           PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10
+          NCCL_SHM_DISABLE: 1
