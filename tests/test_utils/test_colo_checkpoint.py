@@ -16,9 +16,9 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ProcessGroup, DistSpecManager, ReplicaSpec
+from colossalai.nn.parallel.data_parallel import ColoDDP
 from colossalai.utils.checkpoint import save_checkpoint, load_checkpoint
 from colossalai.nn.optimizer import ColoOptimizer
-from colossalai.nn.parallel.data_parallel import ColoDDP
 
 from tests.components_to_test.registry import non_distributed_component_funcs
 
