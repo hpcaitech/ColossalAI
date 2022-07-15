@@ -51,7 +51,8 @@ def run_gpt(init_spec_func, use_ddp):
 
     # build a PG with TP and DP hybrid
     pg = ProcessGroup(dp_degree=(2 if (use_ddp and world_size >= 2) else 1))
-    # pg = ProcessGroup(dp_degree=world_size)
+
+    # set seed make processes of the same tp group use the same seed
     set_seed(pg.dp_local_rank())
 
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
@@ -74,8 +75,11 @@ def run_gpt(init_spec_func, use_ddp):
     init_spec_func(model, pg)
 
     check_param_equal(model, torch_model, pg)
-    model.train()
-    torch_model.train()
+
+    # close the dropout in eval mode
+    model.eval()
+    torch_model.eval()
+
     torch.distributed.barrier()
 
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
