@@ -15,6 +15,7 @@ CUDA_HOME = os.environ['CUDA_HOME']
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--torch_version', type=str)
     parser.add_argument('--nightly', action='store_true', 
         help='whether this build is for nightly release, if True, will only build on the latest PyTorch version and Python 3.8')
     return parser.parse_args()
@@ -81,29 +82,27 @@ def main():
     args = parse_args()
     wheel_info = all_wheel_info()
 
+    # filter wheels on condition
+    all_torch_versions = list(wheel_info.keys())
+    def _compare_version(a, b):
+        if version.parse(a) > version.parse(b):
+            return 1
+        else:
+            return -1
+
+    all_torch_versions.sort(key=cmp_to_key(_compare_version))
+
     if args.nightly:
-        latest_torch_version = list(wheel_info.keys())
-
-        def _compare_version(a, b):
-            if version.parse(a) > version.parse(b):
-                return 1
-            else:
-                return -1
-
-        latest_torch_version.sort(key=cmp_to_key(_compare_version))
-        
         # only keep the latest version
-        for key in latest_torch_version[:-1]:
+        for key in all_torch_versions[:-1]:
             wheel_info.pop(key)
-        
-        # we only keep python 3.8 for nightly release
-        for torch_version, cuda_versioned_info in wheel_info.items():
-            for cuda_version, python_versioned_info in cuda_versioned_info.items():
-                python_versions = list(python_versioned_info.keys())
+    elif args.torch_version != 'all':
+        torch_versions = args.torch_version.split(',')
+        # only keep the torch versions specified
+        for key in all_torch_versions:
+            if key not in torch_versions:
+                wheel_info.pop(key)
 
-                for key in python_versions:
-                    if key != '3.8':
-                        python_versioned_info.pop(key)
     build_colossalai(wheel_info)
 
 if __name__ == '__main__':
