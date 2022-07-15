@@ -1,4 +1,5 @@
 pytest
 torchvision
 transformers
+timm
 titans

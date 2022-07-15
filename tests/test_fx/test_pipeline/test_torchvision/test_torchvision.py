@@ -19,7 +19,6 @@ torch.manual_seed(MANUAL_SEED)
 torch.backends.cudnn.deterministic = True
 
 
-@pytest.mark.skip('skip as torchvision is required')
 def test_torchvision_models():
     MODEL_LIST = [
         tm.vgg11, tm.resnet18, tm.densenet121, tm.mobilenet_v3_small, tm.resnext50_32x4d, tm.wide_resnet50_2,

@@ -36,7 +36,6 @@ def trace_and_compare(model_cls, tracer, data, meta_args=None):
             fx_out, non_fx_out), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
 
 
-@pytest.mark.skip('skip as timm is required')
 def test_timm_models_without_control_flow():
     torch.backends.cudnn.deterministic = True
 
@@ -58,7 +57,6 @@ def test_timm_models_without_control_flow():
         trace_and_compare(model_cls, tracer, data)
 
 
-@pytest.mark.skip('skip as timm is required')
 def test_timm_models_with_control_flow():
     torch.backends.cudnn.deterministic = True
 

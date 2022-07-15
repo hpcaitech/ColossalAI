@@ -40,7 +40,7 @@ def test_embedding():
     _assert_output_shape(data, ln, patched_module.torch_nn_normalize, False, data.shape)
 
     # test group norm
-    gn = torch.nn.GroupNorm(4, num_channels=2)
+    gn = torch.nn.GroupNorm(4, num_channels=8)
     _assert_output_shape(data, gn, patched_module.torch_nn_normalize, False, data.shape)
 
     # test batch norm 1d

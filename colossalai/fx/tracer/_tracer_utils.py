@@ -22,7 +22,6 @@ def extract_meta(*args, **kwargs):
         if isinstance(val, MetaDeviceAttribute):
             return 'meta'
         elif isinstance(val, ColoProxy):
-            assert val.meta_data is not None
             return val.meta_data
         return val
 
