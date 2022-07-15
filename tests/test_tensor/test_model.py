@@ -77,9 +77,9 @@ def run_1d_hybrid_tp(model_name):
                 split_param_row_tp1d(p, pg)
 
     model = model.cuda()
-    model.train()
+    model.eval()
     if rank == 0:
-        model_torch.train()
+        model_torch.eval()
 
     colo_optimizer = ColossalaiOptimizer(torch.optim.SGD(model.parameters(), lr=0.1))
 
@@ -89,6 +89,7 @@ def run_1d_hybrid_tp(model_name):
         colo_optimizer.zero_grad()
         if rank == 0:
             optimizer_torch.zero_grad()
+        torch.distributed.barrier()
 
         data = data.to(get_current_device())
         label = label.to(get_current_device())
@@ -113,6 +114,7 @@ def run_1d_hybrid_tp(model_name):
                 output_torch = model_torch(data, label)
                 loss_torch = output_torch
             assert torch.allclose(loss, loss_torch, rtol=1e-2)
+        torch.distributed.barrier()
 
         loss.backward()
         colo_optimizer.step()
@@ -125,7 +127,7 @@ def run_1d_hybrid_tp(model_name):
                 # check param
                 for p, torch_p in zip(model.parameters(), model_torch.parameters()):
                     assert tensor_shard_equal(torch_p, p, pg.tp_local_rank(), pg.tp_world_size())
-
+        torch.distributed.barrier()
         if i > 5:
             break
 
@@ -248,14 +250,15 @@ def run_1d_row_tp(model_name: str):
             else:
                 output_torch = model_torch(data, label)
                 loss_torch = output_torch
-
-        if rank == 0:
             assert torch.allclose(loss, loss_torch, rtol=1e-2)
+        torch.distributed.barrier()
 
         loss.backward()
 
         if rank == 0:
             loss_torch.backward()
+        torch.distributed.barrier()
+
         if i > 5:
             break
 
@@ -296,8 +299,9 @@ def _run_pretrain_load():
 
 def run_model_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    for name in ['bert', 'simple_net']:
-        run_1d_row_tp(name)
+    # Comment below test for speed consideration
+    # for name in ['bert', 'simple_net']:
+    #     run_1d_row_tp(name)
     for name in ['bert', 'simple_net']:
         run_1d_hybrid_tp(name)
 
