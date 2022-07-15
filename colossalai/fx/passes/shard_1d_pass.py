@@ -1,11 +1,6 @@
 import torch
 import operator
-from torch.fx.node import map_arg
-from torch.fx.node import Node
-from torch.fx.passes.split_module import split_module
-
 import colossalai
-# from colossalai.tensor import ColoTensor, TensorSpec, distspec, ProcessGroup, ComputeSpec, ComputePattern
 
 ELEMENTWISE_MODULE_OP = [torch.nn.Dropout, torch.nn.ReLU, torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d, torch.nn.MaxPool1d, torch.nn.MaxPool2d, torch.nn.AvgPool1d, torch.nn.AvgPool2d]
 ELEMENTWISE_FUNC_OP = [torch.add, operator.add, torch.abs, torch.cos, torch.exp, torch.mul, operator.mul, operator.floordiv, operator.truediv, operator.neg, torch.multiply, torch.nn.functional.relu, torch.nn.functional.dropout, torch.nn.functional.conv1d, torch.nn.functional.conv2d, torch.nn.functional.conv3d, torch.nn.functional.avg_pool1d, torch.nn.functional.avg_pool2d, torch.nn.functional.avg_pool3d, torch.nn.functional.max_pool1d, torch.nn.functional.max_pool2d, torch.nn.functional.max_pool3d]
@@ -17,31 +12,17 @@ def weight_split(weight: torch.nn.parameter.Parameter, dim: int, col_normal: boo
     Args:
         weight (torch.nn.parameter.Parameter): a torch Parameter instance
         dim (int): the dimension to be sharded along with
-
+        col_normal(bool): col shard with gather or not
     Returns:
         _type_: _description_
     """
-    #TODO: This func temporarily works with no materialization
-    # Append a Tensor spec to target_module.weight.shard
-    # Convert to ColoTensor: colo_tensor = ColoTensor.from_torch_tensor(tensor, spec)
-    # assert isinstance(weight, torch.nn.parameter.Parameter), \
-    #     f'The type of the input tensor should be torch.nn.parameter' \
-    #     f'Your Input tensor is {type(weight)}'
-
-    # FIXME() I initialized a PG for this tensor. Only has TP comm group.
-    # we only consider the TP-only caes.
-    # world_size = torch.distributed.get_world_size()
-    # pg = ProcessGroup(tp_degree=world_size)
-
-    # spec = TensorSpec(distspec.shard(pg, [dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    # # As you has constructed a Spec, why not directly convert the tensor to ColoTensor.
     if col_normal:
         setattr(weight, "fx_attr", (dim, "SHARD", "TP", "col_normal"))
     else:
         setattr(weight, "fx_attr", (dim, "SHARD", "TP", "col_needs_many_outputs"))
-    # weight.data = ColoTensor(data=weight.data, spec=spec)
     return weight
 def column_shard_linear_pass(gm: torch.fx.GraphModule):
+    # Split all the linear module with column shard. Currently for testing only.
     mod_graph = gm.graph
     for node in mod_graph.nodes:
         if node.op == "call_module":
@@ -56,6 +37,7 @@ def column_shard_linear_pass(gm: torch.fx.GraphModule):
 
 
 def row_shard_linear_pass(gm: torch.fx.GraphModule):
+    # Split all the linear module with row shard. Currently for testing only.
     mod_graph = gm.graph
     for node in mod_graph.nodes:
         if node.op == "call_module":
@@ -73,6 +55,8 @@ def transform_mlp_pass(gm: torch.fx.GraphModule):
     element_op = []
     all_linear_name = []
     linear_name = []
+    # Get the name of element wise module(torch.nn.ReLU)
+    # Get the name of all the linear modules and repeated linear modules
     for name, func in gm.named_children():
         if not isinstance(func, torch.nn.Linear):
             for i in ELEMENTWISE_MODULE_OP:
@@ -86,6 +70,8 @@ def transform_mlp_pass(gm: torch.fx.GraphModule):
             else:
                 all_linear_name.append(name)
                 linear_name.append(name)
+    # If the linear modules is called multiple times, set the dist spec as col shard
+    # If the module is element wise or the function/method is element wise, remains col_shard 
     for node in mod_graph.nodes:
         if node.target in linear_name:
             target_module = node.graph.owning_module.get_submodule(node.target)
@@ -102,7 +88,3 @@ def transform_mlp_pass(gm: torch.fx.GraphModule):
                 col_shard = True
     gm.recompile()
     return gm
-
-            
-
-#TODO: add elementwise op process pass, then we can try to use column and row mixed strategy.
