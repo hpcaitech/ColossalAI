@@ -18,7 +18,6 @@ class LazyInitContext():
     
     Note:
         This API is only experimental and subject to future changes. 
-        It should be integrated with meta tensor initialization in the future.
 
     Usage:
         with LazyInitContext() as ctx:
