@@ -19,7 +19,7 @@ class LazyInitContext():
     Note:
         This API is only experimental and subject to future changes. 
         It should be integrated with meta tensor initialization in the future.
-        
+
     Usage:
         with LazyInitContext() as ctx:
             model = nn.Linear(10, 10)
@@ -36,6 +36,7 @@ class LazyInitContext():
         assert not model.weight.is_meta and torch.all(model.weight == 0)
         
     Args:
+        to_meta (bool): optional, whether to initialize the model with meta tensors, default is False.
         extra_torch_tensor_func (List[str]): extra torch tensor functions related 
             to value setting, such as `zero_` and `triu_`. `zero_` is pre-added by default.
     """
