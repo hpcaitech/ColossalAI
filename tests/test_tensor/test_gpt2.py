@@ -51,7 +51,8 @@ def run_gpt(init_spec_func, use_ddp):
 
     # build a PG with TP and DP hybrid
     pg = ProcessGroup(dp_degree=(2 if (use_ddp and world_size >= 2) else 1))
-    # set_seed(pg.tp_local_rank())
+    # pg = ProcessGroup(dp_degree=world_size)
+    set_seed(pg.dp_local_rank())
 
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
