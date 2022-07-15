@@ -53,7 +53,7 @@ def run_gpt(init_spec_func, use_ddp):
     pg = ProcessGroup(dp_degree=(2 if (use_ddp and world_size >= 2) else 1))
 
     # set seed make processes of the same tp group use the same seed
-    set_seed(pg.dp_local_rank())
+    # set_seed(pg.tp_local_rank())
 
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -66,13 +66,12 @@ def run_gpt(init_spec_func, use_ddp):
 
     if use_ddp:
         torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
-
         model = ColoDDP(model, process_group=pg)
 
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
 
-    init_spec_func(model, pg)
+    # init_spec_func(model, pg)
 
     check_param_equal(model, torch_model, pg)
 

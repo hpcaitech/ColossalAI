@@ -17,7 +17,7 @@ from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
 from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.tensor import ColoTensorSpec, ShardSpec, ComputePattern, ComputeSpec, DistSpecManager, ProcessGroup
+from colossalai.tensor import ColoTensorSpec, ShardSpec, ComputePattern, ComputeSpec, DistSpecManager, ProcessGroup, ColoTensor
 
 
 def check_param_equal(model, torch_model, pg: ProcessGroup):
@@ -72,6 +72,7 @@ def run_gpt(use_chunk, use_zero, placement_policy, tp_init_spec_func=None):
         model = model_builder()
     model = model.cuda().half()
     torch_model = model_builder().cuda()
+
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
 
@@ -108,8 +109,8 @@ def run_gpt(use_chunk, use_zero, placement_policy, tp_init_spec_func=None):
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
         if i > 2:
             break
-
-        logits = run_fwd_bwd(model, criterion, optim, input_ids, attn_mask)
+        input_ids_colo = ColoTensor.from_torch_tensor(input_ids.clone(), ColoTensorSpec(pg))
+        logits = run_fwd_bwd(model, criterion, optim, input_ids_colo, attn_mask)
         torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
         assert tensor_equal(logits, torch_logits)
         check_grad_equal(model, torch_model, pg)
@@ -125,11 +126,10 @@ def run_dist(rank, world_size, port):
         run_gpt(tp_init_spec_func=init_1d_col_spec)
         run_gpt(tp_init_spec_func=init_1d_row_spec)
     else:
-        run_gpt()
+        run_gpt(tp_init_spec_func=init_1d_col_spec)
 
 
 @pytest.mark.dist
-@pytest.mark.skip("under development")
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
 def test_gpt(world_size):
