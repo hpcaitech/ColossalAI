@@ -7,7 +7,7 @@ from colossalai.tensor import ColoParameter, ColoTensor
 
 import types
 import inspect
-from typing import List, Callable, Tuple, Any, Dict, Optional
+from typing import List, Callable
 from colossalai.utils.model.utils import substitute_init_recursively
 
 
