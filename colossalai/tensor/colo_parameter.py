@@ -1,7 +1,6 @@
 import torch
 
 from typing import Optional
-from copy import copy
 
 from colossalai.tensor.colo_tensor import ColoTensor
 from colossalai.tensor.const import TensorType

@@ -3,16 +3,15 @@ name: Release bdist wheel
 on:
   workflow_dispatch:
     inputs:
-      cuda_version:
-        type: choice
-        description: CUDA Version
-        default: 'all'
+      torch_version:
+        type: string
+        description: torch version, separated by comma
         required: true
-        options:
-        - all
-        - "11.3"
-        - "11.1"
-        - "10.2"
+        default: "all"
+      cuda_version:
+        type: string
+        description: cuda version, separated by comma
+        required: true
       github_ref:
         type: string
         description: Branch or Tag
@@ -27,12 +26,24 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
     - id: set-matrix
+      env:
+        TORCH_VERSIONS: ${{ inputs.torch_version }}
+        CUDA_VERSIONS: ${{ inputs.cuda_version }}
       run: |
-        [ "${{github.event.inputs.cuda_version}}" != "" ] && matrix="[\"hpcaitech/cuda-conda:${{github.event.inputs.cuda_version}}\"]"
-        [ "${{github.event.inputs.cuda_version}}" == "" ] || [ "${{github.event.inputs.cuda_version}}" == "all" ] && \
-          matrix="[\"hpcaitech/cuda-conda:11.3\", \"hpcaitech/cuda-conda:11.1\", \"hpcaitech/cuda-conda:10.2\"]"
-        echo $matrix
-        echo "::set-output name=matrix::{\"container\":$(echo $matrix)}"
+        echo $TORCH_VERSIONS
+        echo $CUDA_VERSIONS
+        IFS=','
+        DOCKER_IMAGE=()
+
+        for cv in $CUDA_VERSIONS
+        do
+            DOCKER_IMAGE+=("\"hpcaitech/cuda-conda:${cv}\"")
+        done
+
+        container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
+        container="[${container}]"
+        echo "$container"
+        echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
 
   build:
     name: Release bdist wheels
@@ -62,7 +73,9 @@ jobs:
       - name: Build bdist wheel
         run: |
           pip install beautifulsoup4 requests packaging
-          python ./build_colossalai_wheel.py
+          python ./build_colossalai_wheel.py --torch_version $TORCH_VERSIONS
+        env:
+          TORCH_VERSIONS: ${{ inputs.torch_version }}
       - name: 🚀 Deploy
         uses: garygrossgarten/github-action-scp@release
         with:
