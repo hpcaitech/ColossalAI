@@ -1,25 +1,15 @@
 import torch
-import torch.nn as nn
 import torch.distributed as dist
-import collections
-import inspect
-from colossalai.utils.model.colo_init_context import colo_state_dict
-
-
-def filter_dict(dict_to_filter, thing_with_kwargs):
-    sig = inspect.signature(thing_with_kwargs)
-    filter_keys = [param.name for param in sig.parameters.values() if param.kind == param.POSITIONAL_OR_KEYWORD]
-    filter_dict = {}
-    for filter_key in filter_keys:
-        if filter_key in dict_to_filter:
-            filter_dict[filter_key] = dict_to_filter[filter_key]
-    return filter_dict
+from colossalai.tensor import ColoTensor, DistSpecManager
+from colossalai.nn.optimizer import ColossalaiOptimizer
+from copy import copy
+from typing import Optional
 
 
 def save_checkpoint(dire: str,
                     epoch: int,
                     model: torch.nn.Module,
-                    optimizer: torch.optim.Optimizer = None,
+                    optimizer: Optional[ColossalaiOptimizer] = None,
                     lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     *args,
                     **kwargs):
@@ -29,26 +19,46 @@ def save_checkpoint(dire: str,
         dire (str): directory to save the checkpoint files.
         epoch (int): the number of epoch
         model (torch.nn.Module): a torch module initialized by ColoInitContext
-        optimizer (torch.optim.Optimizer, optional): optimizers. Defaults to None.
+        optimizer (ColossalaiOptimizer, optional): optimizers. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): lr schedule. Defaults to None.
     """
-    model_state = {'epoch': epoch, 'model': model.state_dict()}
+
+    mapping = dict()
+    new_dict = dict()
+
+    # save the dist context about the tensors in a new dict, while still maintain the original dict.
+    for k, v in model.state_dict().items():
+        if isinstance(v, ColoTensor):
+            mapping[k] = (v.dist_spec, v.compute_spec)
+            new_dict[k] = v.to_replicate().detach()
+        else:
+            new_dict[k] = v
     if dist.get_rank() == 0:
+        for k, v in new_dict.items():
+            if isinstance(v, ColoTensor):
+                assert v.is_replicate()
+
+        model_state = {'epoch': epoch, 'model': new_dict}
         torch.save(model_state, dire + '/epoch_{}_model.pth'.format(epoch))
 
-    # TODO() If use tensor parallelism, optim_states contain SHARD ColoTensors.
-    # 1. convert SHARD ColoTensor to REPLICATE
-    # only rank 0 saves the REPLICATE tensors.
-    optim_state = {'epoch': epoch, 'optimizer': optimizer.state_dict(), 'lr_scheduler': lr_scheduler.state_dict()}
+    # delete the new dict
+    del new_dict
 
-    torch.save(optim_state, dire + '/epoch_{}_optim_rank_{}.pth'.format(epoch, dist.get_rank()))
+    optim_state_copy = copy(optimizer.state_dict())
+    for k, v in optim_state_copy['state'].items():
+        for n, t in v.items():
+            if isinstance(t, ColoTensor):
+                t.to_replicate_()
+    if dist.get_rank() == 0:
+        model_state = {'epoch': epoch, 'optim': optim_state_copy}
+        torch.save(model_state, dire + '/epoch_{}_optim.pth'.format(epoch))
+    del optim_state_copy
 
 
 def load_checkpoint(dire,
                     epoch: int,
-                    rank: int,
                     model: torch.nn.Module,
-                    optimizer: torch.optim.Optimizer = None,
+                    optimizer: Optional[ColossalaiOptimizer] = None,
                     lr_scheduler: torch.optim.lr_scheduler._LRScheduler = None,
                     *args,
                     **kwargs):
@@ -59,22 +69,42 @@ def load_checkpoint(dire,
         epoch (int): _description_
         rank (int): _description_
         model (torch.nn.Module): _description_
-        optimizer (torch.optim.Optimizer, optional): _description_. Defaults to None.
+        optimizer (ColossalaiOptimizer, optional): _description_. Defaults to None.
         lr_scheduler (torch.optim.lr_scheduler._LRScheduler, optional): _description_. Defaults to None.
     """
+
+    mapping = dict()
+    for k, v in model.state_dict().items():
+        if isinstance(v, ColoTensor):
+            mapping[k] = (v.dist_spec, v.compute_spec)
+            v.to_replicate_()
+
     model_state = torch.load(dire + '/epoch_{}_model.pth'.format(epoch))
-    model_state['model'] = collections.OrderedDict([(k.split('.', 1)[1], v) for k, v in model_state['model'].items()])
     model.load_state_dict(model_state['model'])
-    optim_state = torch.load(dire + '/epoch_{}_optim_rank_{}.pth'.format(epoch, rank))
-    optimizer.load_state_dict(optim_state['optimizer'])
-    lr_scheduler_dict = optim_state['lr_scheduler']
-    if 'after_scheduler_type' in lr_scheduler_dict:
-        after_scheduler_type = lr_scheduler_dict.pop('after_scheduler_type')
-        after_scheduler_dict = lr_scheduler_dict.pop('after_scheduler_dict')
-        reload_scheduler = getattr(torch.optim.lr_scheduler, after_scheduler_type)
-        filtered_dict = filter_dict(after_scheduler_dict, reload_scheduler)
-        lr_scheduler_dict['after_scheduler'] = reload_scheduler(
-            optimizer,
-            **filtered_dict,
-        )
-    lr_scheduler.load_state_dict(lr_scheduler_dict)
+
+    # reset tensors to original dist spec.
+    with DistSpecManager.no_grad():
+        for k, v in model.state_dict().items():
+            if isinstance(v, ColoTensor):
+                v.set_tensor_spec(*mapping[k])
+
+    del mapping
+    mapping = dict()
+
+    for k, v in optimizer.state_dict()['state'].items():
+        for n, t in v.items():
+            if isinstance(t, ColoTensor):
+                mapping[(k, n)] = (t.dist_spec, t.compute_spec)
+                t.to_replicate_()
+
+    colo_checkpoint = torch.load(dire + '/epoch_{}_optim.pth'.format(epoch))
+    optimizer.load_state_dict(colo_checkpoint['optim'])
+
+    for k, v in optimizer.state_dict()['state'].items():
+        for n, t in v.items():
+            if isinstance(t, ColoTensor):
+                # skip key not in mapping.
+                # For Adam, if it dose not execute step() once, there will be not exp_avg and exp_avg_sq in optimizer
+                if (k, n) not in mapping:
+                    continue
+                t.set_tensor_spec(*mapping[(k, n)])

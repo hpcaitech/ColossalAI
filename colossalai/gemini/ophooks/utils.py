@@ -93,7 +93,7 @@ def register_ophooks_recursively(module: torch.nn.Module,
     assert isinstance(ophook_list, (list, tuple))
     assert len(ophook_list) > 0, 'expected at least 1 hook in the argument ophook_list but found 0'
     for hook in ophook_list:
-            assert (isinstance(hook, BaseOpHook))
+        assert (isinstance(hook, BaseOpHook))
 
     # Add hooks for submodules
     for child_name, child in module.named_children():

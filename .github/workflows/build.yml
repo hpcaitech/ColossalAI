@@ -14,7 +14,7 @@ jobs:
         contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:1.10.1-11.3.0
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     timeout-minutes: 40
     steps:

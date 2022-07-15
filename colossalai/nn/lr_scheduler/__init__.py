@@ -8,6 +8,5 @@ from .torch import LambdaLR, MultiplicativeLR, StepLR, ExponentialLR
 __all__ = [
     'CosineAnnealingLR', 'CosineAnnealingWarmupLR', 'FlatAnnealingLR', 'FlatAnnealingWarmupLR', 'LinearWarmupLR',
     'MultiStepLR', 'MultiStepWarmupLR', 'OneCycleLR', 'PolynomialLR', 'PolynomialWarmupLR', 'LambdaLR',
-    'MultiplicativeLR', 'StepLR',
-    'ExponentialLR'
+    'MultiplicativeLR', 'StepLR', 'ExponentialLR'
 ]

@@ -7,7 +7,7 @@ BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('tracing failed')
+@pytest.mark.skip("error with pytorch 1.10")
 def test_t5():
     MODEL_LIST = [
         transformers.T5Model,
@@ -15,7 +15,7 @@ def test_t5():
         transformers.T5EncoderModel,
     ]
 
-    config = transformers.T5Config(d_model=128, num_layers=2)
+    config = transformers.T5Config(vocab_size=100, d_model=128, num_layers=2)
 
     def data_gen():
         input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)

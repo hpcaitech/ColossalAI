@@ -40,7 +40,7 @@ def _scan_for_pg_from_args(args, kwargs) -> ProcessGroup:
             pg = _scan_for_pg_from_args(elem, {})
             if pg is not None:
                 return pg
-    for k, v in kwargs:
+    for k, v in kwargs.items():
         if isinstance(v, ColoTensor):
             pg = v.get_process_group()
             return pg
@@ -52,7 +52,7 @@ class ColoTensor(torch.Tensor):
     Args:
         data (torch.Tensor): a torch tensor used as the payload the colotensor.
         spec (ColoTensorSpec, optional): the tensor spec of initialization. Defaults to ColoTensorSpec(ReplicaSpec()).
-    
+
     The signature of the function has to be consistent with the __new__ except for the 1st arg.
     The class should be initialized with a torch tensor in the following ways.
     1. directly init.
@@ -143,10 +143,10 @@ class ColoTensor(torch.Tensor):
         self._redistribute(dist_spec)
 
     def set_tensor_spec(self, dist_spec, compute_spec):
-        if dist_spec:
+        if dist_spec is not None:
             assert isinstance(dist_spec, _DistSpec), f"{type(dist_spec)}"
             self.set_dist_spec(dist_spec)
-        if compute_spec:
+        if compute_spec is not None:
             self.compute_spec = compute_spec
 
     def has_compute_pattern(self, compute_pattern):
@@ -204,12 +204,14 @@ class ColoTensor(torch.Tensor):
             ColoTensor: a redistributed colotensor
         """
         if pg is not None and pg != self.get_process_group():
-            print('here _redistribute')
             # if the pg is not equal, convert the current tensor to replicated
-            self._redistribute(ReplicaSpec())
-            self.process_group = pg
-        ret = DistSpecManager.handle_trans_spec(self, self.dist_spec, dist_spec, self.process_group)
-        return ColoTensor.from_torch_tensor(ret, ColoTensorSpec(self.process_group, dist_attr=dist_spec))
+            handled = self.redistribute(ReplicaSpec())
+        else:
+            handled = self
+            pg = self.process_group
+
+        ret = DistSpecManager.handle_trans_spec(handled, handled.dist_spec, dist_spec, pg)
+        return ColoTensor.from_torch_tensor(ret, ColoTensorSpec(pg=pg, dist_attr=dist_spec))
 
     def to_replicate_(self):
         """to_replicate_ 
