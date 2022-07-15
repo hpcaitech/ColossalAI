@@ -71,7 +71,7 @@ def run_gpt(init_spec_func, use_ddp):
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p)
 
-    # init_spec_func(model, pg)
+    init_spec_func(model, pg)
 
     check_param_equal(model, torch_model, pg)
 
