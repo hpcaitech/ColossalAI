@@ -171,3 +171,9 @@ class ProcessGroup:
     def cpu_tp_process_group(self):
         assert self._has_cpu_groups
         return PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
+
+    def get_ranks_in_dp(self):
+        return self._dp_rank_list
+
+    def get_ranks_in_tp(self):
+        return self._tp_rank_list

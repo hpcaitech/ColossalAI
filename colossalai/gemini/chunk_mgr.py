@@ -2,9 +2,8 @@ import torch
 from typing import Optional, Dict, Deque, Set, List, Tuple, Iterable
 from collections import deque
 
-from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from .chunk import Chunk, ChunkFullError, TensorState
 
 
@@ -20,10 +19,13 @@ class ChunkManager:
 
     def __init__(self,
                  chunk_size: Optional[int],
+                 process_group: ColoProcessGroup,
                  enable_distributed_storage: bool = False,
                  init_device: Optional[torch.device] = None) -> None:
         assert chunk_size is None or chunk_size > 0
+        assert isinstance(process_group, ColoProcessGroup)
         self.chunk_size = chunk_size
+        self.process_group = process_group
         self.enable_distributed_storage = enable_distributed_storage
         self.device = init_device or get_current_device()
         self.chunk_groups: Dict[str, Deque[Chunk]] = {}
@@ -69,6 +71,7 @@ class ChunkManager:
             src_rank = self._get_next_src_rank(group_name)
             chunk = Chunk(chunk_size,
                           src_rank,
+                          self.process_group,
                           tensor.dtype,
                           self.device,
                           force_data_on_cuda=self.groups_force_data_on_cuda[group_name])
@@ -89,17 +92,17 @@ class ChunkManager:
     def _get_next_src_rank(self, group_name: str) -> int:
         if not self.enable_distributed_storage:
             # the chunk is owned by the current rank if no distributed storage is enabled
-            return gpc.get_local_rank(ParallelMode.DATA)
+            return self.process_group.dp_local_rank()
         if self.chunk_size is None:
             if group_name not in self.rank_load:
-                self.rank_load[group_name] = torch.zeros(gpc.get_world_size(ParallelMode.DATA), dtype=torch.int64)
+                self.rank_load[group_name] = torch.zeros(self.process_group.dp_world_size(), dtype=torch.int64)
 
             # the process owning the tensor will be the process with the smallest number of elements
             src_rank = torch.argmin(self.rank_load[group_name]).item()
         else:
             # chunk is owned by processes in a round-robin fashion
             chunk_idx = len(self.chunk_groups[group_name])
-            src_rank = chunk_idx % gpc.get_world_size(ParallelMode.DATA)
+            src_rank = chunk_idx % self.process_group.dp_world_size()
         return src_rank
 
     def access_chunk(self, chunk: Chunk) -> None:
@@ -222,7 +225,7 @@ class ChunkManager:
         self.lazy_release_tensors.clear()
 
     def __repr__(self) -> str:
-        msg = f'Rank {gpc.get_local_rank(ParallelMode.DATA)}:\n'
+        msg = f'Rank {self.process_group.dp_local_rank()}:\n'
         msg += 'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n'
         for group_name, group in self.chunk_groups.items():
             msg += f'Group {group_name}:\n'
