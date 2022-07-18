@@ -19,9 +19,13 @@ class MLP(torch.nn.Module):
         super().__init__()
         self.linear1 = torch.nn.Linear(dim, dim)
         self.linear2 = torch.nn.Linear(dim, dim)
+        self.dropout = torch.nn.Dropout(0)
+        self.relu = torch.nn.ReLU()
 
     def forward(self, x):
         x = self.linear1(x)
+        x = self.dropout(x)
+        x = self.relu(x)
         x = self.linear2(x)
         return x
 
