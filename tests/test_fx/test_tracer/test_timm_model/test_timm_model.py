@@ -1,9 +1,5 @@
 import torch
-import pytest
-try:
-    import timm.models as tm
-except:
-    pass
+import timm.models as tm
 from colossalai.fx import ColoTracer
 from torch.fx import GraphModule
 

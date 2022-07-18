@@ -96,6 +96,9 @@ class ColoTracer(Tracer):
                 # fetch patched function
                 if meta_patched_function.has(target):
                     meta_target = meta_patched_function.get(target)
+                elif meta_patched_function.has(target.__name__):
+                    # use name for some builtin op like @ (matmul)
+                    meta_target = meta_patched_function.get(target.__name__)
                 else:
                     meta_target = target
 

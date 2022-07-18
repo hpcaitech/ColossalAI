@@ -1,9 +1,5 @@
 import torch
-import pytest
-try:
-    import timm.models as tm
-except:
-    pass
+import timm.models as tm
 from timm_utils import split_model_and_compare_output
 
 
