@@ -20,7 +20,7 @@ jobs:
       - name: Build Docker
         run: |
           version=$(cat version.txt)
-          docker build -t hpcaitech/colossalai:$version ./docker
+          docker build --build-arg http_proxy=http://172.17.0.1:7890 --build-arg https_proxy=http://172.17.0.1:7890 -t hpcaitech/colossalai:$version ./docker
       - name: Log in to Docker Hub
         uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
         with:
