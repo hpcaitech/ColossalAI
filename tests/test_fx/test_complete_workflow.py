@@ -8,7 +8,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from functools import partial
 from colossalai.fx import ColoTracer
 from colossalai.utils.model.lazy_init_context import LazyInitContext
-from colossalai.fx.passes.shard_1d_pass import transform_mlp_pass
+from colossalai.fx.passes.shard_1d_pass import transformer_mlp_pass
 from colossalai.utils import free_port
 from colossalai.tensor import ProcessGroup
 
@@ -37,7 +37,7 @@ def run_workflow(world_size):
     gm = torch.fx.GraphModule(model, graph, model.__class__.__name__)
 
     # annotate
-    annotated_gm = transform_mlp_pass(gm, process_group=ProcessGroup())
+    annotated_gm = transformer_mlp_pass(gm, process_group=ProcessGroup())
     annotated_gm.recompile()
 
     # materialization and sharding

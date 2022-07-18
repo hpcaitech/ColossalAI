@@ -61,9 +61,9 @@ def row_shard_linear_pass(gm: torch.fx.GraphModule):
     return gm
 
 
-def transform_mlp_pass(graph_module: torch.fx.GraphModule, process_group: ProcessGroup):
+def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: ProcessGroup):
     """
-    This IR pass checks for transformer MLP like structure and 
+    This IR pass checks for transformer MLP like structure and annotate column and row sharding to the linear layers. 
     """
     #TODO: Needs to handle special cases, like x = linear(x) + linear(x)
     graph = graph_module.graph
