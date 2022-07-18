@@ -9,7 +9,6 @@ NUM_EPOCHS = 2
 NUM_CHUNKS = 1
 
 
-@pytest.mark.skip("error with pytorch 1.10")
 def test_gpt():
     MODEL_LIST = [
         transformers.GPT2Model,

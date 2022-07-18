@@ -1,13 +1,8 @@
 import torch
-import pytest
-try:
-    import timm.models as tm
-except:
-    pass
+import timm.models as tm
 from timm_utils import split_model_and_compare_output
 
 
-@pytest.mark.skip('skip as timm is required')
 def test_timm_models_without_control_flow():
 
     MODEL_LIST = [
@@ -28,7 +23,6 @@ def test_timm_models_without_control_flow():
         split_model_and_compare_output(model, data)
 
 
-@pytest.mark.skip('skip as timm is required')
 def test_timm_models_with_control_flow():
     torch.backends.cudnn.deterministic = True
 

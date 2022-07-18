@@ -10,7 +10,9 @@ def pipe_split():
 
 
 def balanced_split_pass(gm: torch.fx.GraphModule, pp_size: int):
-    # TODO(lyl): balanced policy V2, split module by node size(weight+bias+output)
+    """
+    In balanced_split_pass, we split module by the size of parameters(weights+bias).
+    """
     mod_graph = gm.graph
     total_param_amount = 0
     for param in mod_graph.owning_module.parameters():
@@ -35,6 +37,36 @@ def balanced_split_pass(gm: torch.fx.GraphModule, pp_size: int):
             else:
                 with mod_graph.inserting_after(node):
                     split_node = mod_graph.create_node('call_function', pipe_split)
+    gm.recompile()
+    return gm
+
+
+def balanced_split_pass_v2(gm: torch.fx.GraphModule, pp_size: int):
+    """
+    In balanced_split_pass_v12, we split module by the size of nodes(weights+bias+outputs).
+    """
+    mod_graph = gm.graph
+    # To use balanced_split_pass_v2, we need run meta_info_prop interpreter first.
+    # If nodes don't have meta info, this pass will fall back to normal balanced split pass.
+    check_node = list(mod_graph.nodes)[0]
+    if 'tensor_meta' not in check_node.meta:
+        return balanced_split_pass(gm, pp_size)
+
+    total_element_size = 0
+    for node in mod_graph.nodes:
+        total_element_size += node.node_size
+
+    partition_size = total_element_size // pp_size
+    accumulate_node_size = 0
+    for node in mod_graph.nodes:
+        if pp_size <= 1:
+            break
+        accumulate_node_size += node.node_size
+        if accumulate_node_size >= partition_size:
+            accumulate_node_size = 0
+            pp_size -= 1
+            with mod_graph.inserting_after(node):
+                split_node = mod_graph.create_node('call_function', pipe_split)
     gm.recompile()
     return gm
 

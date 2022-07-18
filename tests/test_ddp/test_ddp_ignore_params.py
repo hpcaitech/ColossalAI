@@ -33,11 +33,11 @@ def init_ddp(module: torch.nn.Module) -> ColoDDP:
 
 
 def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False) -> ZeroDDP:
-    chunk_size = ChunkManager.search_chunk_size(module, 64, 2) if use_chunk else None
-    chunk_manager = ChunkManager(chunk_size)
-    gemini_manager = GeminiManager('cuda', chunk_manager)
     pg = ProcessGroup()
-    return ZeroDDP(module, gemini_manager, pg)
+    chunk_size = ChunkManager.search_chunk_size(module, 64, 2) if use_chunk else None
+    chunk_manager = ChunkManager(chunk_size, pg)
+    gemini_manager = GeminiManager('cuda', chunk_manager)
+    return ZeroDDP(module, gemini_manager)
 
 
 class Net(torch.nn.Module):

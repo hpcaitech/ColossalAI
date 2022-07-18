@@ -12,7 +12,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ColoTensor, ProcessGroup
-from colossalai.nn.optimizer import ColoOptimizer
+from colossalai.nn.optimizer import ColossalaiOptimizer
 
 from tests.components_to_test.registry import non_distributed_component_funcs
 from _utils import split_param_row_tp1d, split_param_col_tp1d
@@ -33,7 +33,8 @@ def run_1d_hybrid_tp(model_name):
     if rank == 0:
         model_torch = model_builder(checkpoint=True)
         model_torch = model_torch.cuda()
-        optimizer_torch = ColoOptimizer(dict(model_torch.named_parameters()), torch.optim.SGD, lr=0.1)
+
+        optimizer_torch = ColossalaiOptimizer(torch.optim.SGD(model_torch.parameters(), lr=0.1))
 
         # Make two models have the same init params
         for p1, p2 in zip(model.parameters(), model_torch.parameters()):
@@ -76,11 +77,11 @@ def run_1d_hybrid_tp(model_name):
                 split_param_row_tp1d(p, pg)
 
     model = model.cuda()
-    model.train()
+    model.eval()
     if rank == 0:
-        model_torch.train()
+        model_torch.eval()
 
-    colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
+    colo_optimizer = ColossalaiOptimizer(torch.optim.SGD(model.parameters(), lr=0.1))
 
     for i, (data, label) in enumerate(train_dataloader):
 
@@ -88,6 +89,7 @@ def run_1d_hybrid_tp(model_name):
         colo_optimizer.zero_grad()
         if rank == 0:
             optimizer_torch.zero_grad()
+        torch.distributed.barrier()
 
         data = data.to(get_current_device())
         label = label.to(get_current_device())
@@ -112,6 +114,7 @@ def run_1d_hybrid_tp(model_name):
                 output_torch = model_torch(data, label)
                 loss_torch = output_torch
             assert torch.allclose(loss, loss_torch, rtol=1e-2)
+        torch.distributed.barrier()
 
         loss.backward()
         colo_optimizer.step()
@@ -124,7 +127,7 @@ def run_1d_hybrid_tp(model_name):
                 # check param
                 for p, torch_p in zip(model.parameters(), model_torch.parameters()):
                     assert tensor_shard_equal(torch_p, p, pg.tp_local_rank(), pg.tp_world_size())
-
+        torch.distributed.barrier()
         if i > 5:
             break
 
@@ -170,7 +173,7 @@ def test_colo_optimizer():
     with ColoInitContext(lazy_memory_allocate=False, device=get_current_device()):
         model = model_builder(checkpoint=True)
 
-    colo_optimizer = ColoOptimizer(dict(model.named_parameters()), torch.optim.SGD, lr=0.1)
+    colo_optimizer = ColossalaiOptimizer(torch.optim.SGD(model.parameters(), lr=0.1))
     for i, (data, label) in enumerate(train_dataloader):
         colo_optimizer.zero_grad()
         data = data.to(get_current_device())
@@ -247,14 +250,15 @@ def run_1d_row_tp(model_name: str):
             else:
                 output_torch = model_torch(data, label)
                 loss_torch = output_torch
-
-        if rank == 0:
             assert torch.allclose(loss, loss_torch, rtol=1e-2)
+        torch.distributed.barrier()
 
         loss.backward()
 
         if rank == 0:
             loss_torch.backward()
+        torch.distributed.barrier()
+
         if i > 5:
             break
 
@@ -295,8 +299,9 @@ def _run_pretrain_load():
 
 def run_model_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    for name in ['bert', 'simple_net']:
-        run_1d_row_tp(name)
+    # Comment below test for speed consideration
+    # for name in ['bert', 'simple_net']:
+    #     run_1d_row_tp(name)
     for name in ['bert', 'simple_net']:
         run_1d_hybrid_tp(name)
 

@@ -7,7 +7,6 @@ BATCH_SIZE = 2
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip("error with pytorch 1.10")
 def test_single_sentence_bert():
     MODEL_LIST = [
         transformers.BertModel,
