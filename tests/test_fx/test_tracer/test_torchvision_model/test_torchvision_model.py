@@ -1,9 +1,7 @@
 import torch
-import pytest
-try:
-    import torchvision.models as tm
-except:
-    pass
+import torchvision
+import torchvision.models as tm
+from packaging import version
 from colossalai.fx import ColoTracer
 from torch.fx import GraphModule
 
@@ -11,8 +9,14 @@ from torch.fx import GraphModule
 def test_torchvision_models():
     MODEL_LIST = [
         tm.vgg11, tm.resnet18, tm.densenet121, tm.mobilenet_v3_small, tm.resnext50_32x4d, tm.wide_resnet50_2,
-        tm.regnet_x_16gf, tm.vit_b_16, tm.convnext_small, tm.mnasnet0_5, tm.efficientnet_b0
+        tm.regnet_x_16gf, tm.mnasnet0_5, tm.efficientnet_b0
     ]
+
+    RANDOMIZED_MODELS = [tm.efficientnet_b0]
+
+    if version.parse(torchvision.__version__) >= version.parse('0.12.0'):
+        MODEL_LIST.extend([tm.vit_b_16, tm.convnext_small])
+        RANDOMIZED_MODELS.append(tm.convnext_small)
 
     torch.backends.cudnn.deterministic = True
 
@@ -20,7 +24,7 @@ def test_torchvision_models():
     data = torch.rand(2, 3, 224, 224)
 
     for model_cls in MODEL_LIST:
-        if model_cls in [tm.convnext_small, tm.efficientnet_b0]:
+        if model_cls in RANDOMIZED_MODELS:
             # remove the impact of randomicity
             model = model_cls(stochastic_depth_prob=0)
         else:
