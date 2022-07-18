@@ -17,6 +17,7 @@ def register_elementwise_op(op):
         """
 
         output = op(input_tensor, *args, **kwargs)
+        print(op)
         if isinstance(input_tensor, ColoTensor):
             if not isinstance(output, torch.Tensor):
                 raise NotImplementedError
