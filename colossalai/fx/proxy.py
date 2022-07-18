@@ -20,15 +20,15 @@ class ColoProxy(Proxy):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._meta_data = None
+        self.node._meta_data = None
 
     @property
     def meta_data(self):
-        return self._meta_data
+        return self.node._meta_data
 
     @meta_data.setter
     def meta_data(self, data: Any):
-        self._meta_data = data
+        self.node._meta_data = data
 
     @property
     def has_meta_data(self):
@@ -41,38 +41,6 @@ class ColoProxy(Proxy):
     def _assert_has_meta_data(self):
         assert self._meta_data is not None, f'Meta data is not set for {self.node.name}'
 
-    @property
-    def device(self):
-        # Hack so we can track when devices are used. During meta-tensor propagation,
-        # replace these values with a constant 'meta'
-        return MetaDeviceAttribute(self, "device")
-
-    @property
-    def dtype(self):
-        self._assert_meta_data_is_tensor()
-        return self.meta_data.dtype
-
-    @property
-    def shape(self):
-        self._assert_meta_data_is_tensor()
-        return self.meta_data.shape
-
-    @property
-    def ndim(self):
-        return self.dim()
-
-    def dim(self):
-        self._assert_meta_data_is_tensor()
-        return self.meta_data.dim()
-
-    def size(self, dim: int = None):
-        self._assert_meta_data_is_tensor()
-        if dim is not None:
-            return self.meta_data.size(dim=dim)
-        else:
-            # size(dim=None) will trigger runtime error for meta tensor
-            return self.meta_data.size()
-
     def __len__(self):
         self._assert_has_meta_data()
         return len(self.meta_data)
@@ -82,11 +50,8 @@ class ColoProxy(Proxy):
         return self.meta_data
 
     def __getattr__(self, k):
-        if k == "meta_data":
-            return self.__getattribute__(k)
-        # note: not added to the graph yet, if this is a method call
-        # we peephole optimize to the method invocation
-        return Attribute(self, k)
+
+        return ColoAttribute(self, k)
 
     def __setitem__(self, indices, values):
         return self.tracer.create_proxy("call_function", operator.setitem, (self, indices, values), {})
@@ -118,7 +83,3 @@ class ColoAttribute(ColoProxy):
 
     def __call__(self, *args, **kwargs):
         return self.tracer.create_proxy("call_method", self.attr, (self.root,) + args, kwargs)
-
-
-class MetaDeviceAttribute(ColoAttribute):
-    pass
