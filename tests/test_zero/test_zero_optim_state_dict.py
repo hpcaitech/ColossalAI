@@ -20,13 +20,14 @@ from colossalai.tensor import ProcessGroup
 
 
 def init_zero(model, use_chunk, use_zero, placement_policy):
+    pg = ProcessGroup()
     chunk_size = ChunkManager.search_chunk_size(model, 8192, 8) if use_chunk else None
     chunk_manager = ChunkManager(chunk_size,
+                                 pg,
                                  enable_distributed_storage=use_zero,
                                  init_device=GeminiManager.get_default_device(placement_policy))
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    pg = ProcessGroup()
-    return ZeroDDP(model, gemini_manager, pg)
+    return ZeroDDP(model, gemini_manager)
 
 
 def run_step(model, optim, criterion, data, label):
