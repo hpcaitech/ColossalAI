@@ -8,10 +8,7 @@ from colossalai.tensor.compute_spec import ComputePattern, ComputeSpec
 ELEMENTWISE_MODULE_OP = [torch.nn.Dropout, torch.nn.ReLU]
 ELEMENTWISE_FUNC_OP = [
     torch.add, operator.add, torch.abs, torch.cos, torch.exp, torch.mul, operator.mul, operator.floordiv,
-    operator.truediv, operator.neg, torch.multiply, torch.nn.functional.relu, torch.nn.functional.dropout,
-    torch.nn.functional.conv1d, torch.nn.functional.conv2d, torch.nn.functional.conv3d, torch.nn.functional.avg_pool1d,
-    torch.nn.functional.avg_pool2d, torch.nn.functional.avg_pool3d, torch.nn.functional.max_pool1d,
-    torch.nn.functional.max_pool2d, torch.nn.functional.max_pool3d
+    operator.truediv, operator.neg, torch.multiply, torch.nn.functional.relu, torch.nn.functional.dropout
 ]
 
 
