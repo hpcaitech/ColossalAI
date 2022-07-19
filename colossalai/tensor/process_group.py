@@ -141,8 +141,17 @@ class ProcessGroup:
     def rank(self):
         return self._rank
 
+    def ranks_in_group(self):
+        return self._rank_list
+
     def world_size(self):
         return self._world_size
+
+    def tp_rank_list(self):
+        return self._tp_rank_list
+
+    def dp_rank_list(self):
+        return self._dp_rank_list
 
     def tp_local_rank(self):
         return self._rank % self._tp_degree
