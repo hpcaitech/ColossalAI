@@ -8,7 +8,7 @@ from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.gemini import ChunkManager
 from functools import partial
-from _utils import tensor_equal, set_seed, tensor_shard_equal
+from tests.test_tensor.common_utils import tensor_equal, set_seed, tensor_shard_equal
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ZeroDDP

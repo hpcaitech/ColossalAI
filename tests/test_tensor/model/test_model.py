@@ -1,7 +1,5 @@
 import pytest
 from functools import partial
-from _utils import tensor_shard_equal, set_seed
-
 import torch
 import torch.multiprocessing as mp
 
@@ -15,7 +13,8 @@ from colossalai.tensor import ColoTensor, ProcessGroup
 from colossalai.nn.optimizer import ColossalaiOptimizer
 
 from tests.components_to_test.registry import non_distributed_component_funcs
-from _utils import split_param_row_tp1d, split_param_col_tp1d
+from tests.test_tensor.common_utils import tensor_shard_equal, check_equal, set_seed, \
+    split_param_row_tp1d, split_param_col_tp1d
 
 
 def run_1d_hybrid_tp(model_name):
@@ -264,7 +263,6 @@ def run_1d_row_tp(model_name: str):
 
 
 def _run_pretrain_load():
-    from _utils import check_equal
     from transformers import BertForMaskedLM
     set_seed(1)
     model_pretrained = BertForMaskedLM.from_pretrained('bert-base-uncased')

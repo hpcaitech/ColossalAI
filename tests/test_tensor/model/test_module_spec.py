@@ -7,7 +7,7 @@ import torch.multiprocessing as mp
 
 from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ShardSpec, ColoTensorSpec
 from colossalai.nn.parallel.layers import init_colo_module, check_colo_module
-from _utils import tensor_equal, tensor_shard_equal, set_seed
+from tests.test_tensor.common_utils import tensor_equal, tensor_shard_equal, set_seed
 
 import colossalai
 from colossalai.utils.cuda import get_current_device

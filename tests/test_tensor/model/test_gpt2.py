@@ -1,7 +1,7 @@
 import pytest
 
 from functools import partial
-from _utils import tensor_equal, tensor_shard_equal, set_seed
+from tests.test_tensor.common_utils import tensor_equal, tensor_shard_equal, set_seed
 
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
