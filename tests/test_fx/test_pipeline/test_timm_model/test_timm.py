@@ -24,7 +24,6 @@ def test_timm_models_without_control_flow():
         split_model_and_compare_output(model, data)
 
 
-@pytest.mark.skip('skip due to tracer')
 def test_timm_models_with_control_flow():
     torch.backends.cudnn.deterministic = True
 
