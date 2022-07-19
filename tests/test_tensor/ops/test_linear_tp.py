@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.tensor import ColoTensorSpec, ProcessGroup, ColoTensor
-from _utils import tensor_equal, tensor_shard_equal, split_param_col_tp1d, split_param_row_tp1d
+from tests.test_tensor.common_utils import tensor_equal, tensor_shard_equal, split_param_col_tp1d, split_param_row_tp1d
 
 
 def run_with_spec(spec_init_func, split_bias):
