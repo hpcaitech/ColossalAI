@@ -262,7 +262,7 @@ class ColoTensor(torch.Tensor):
         replicated_t = self.redistribute(dist_spec=ReplicaSpec())
         return replicated_t.view(*args)
 
-    def size_global(self, args: Optional[int] = None):
+    def size_global(self, args: Optional[int] = None) -> torch.Size:
         """override the torch buildin size()
         the shape passed in must be in a replicate placement.
         Returns:
