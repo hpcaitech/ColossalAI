@@ -39,7 +39,6 @@ def pipeline_pass_test_helper(model, data, pass_func):
     assert output.equal(origin_output)
 
 
-@pytest.mark.skip('skip due to CI environment')
 def test_pipeline_passes():
     model = MLP(MODEL_DIM)
     data = torch.rand(BATCH_SIZE, MODEL_DIM)
