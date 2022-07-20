@@ -18,7 +18,7 @@ def _get_my_nowrap_functions() -> Set[Callable]:
         Tensor._base.__get__,
         Tensor.grad.__get__,
         Tensor._grad.__get__,
-        Tensor.data.__get__,  # make .data returns torch.Tensor rather than ColoTensor
+        Tensor.data.__get__,    # make .data returns torch.Tensor rather than ColoTensor
     }
 
 
@@ -96,6 +96,9 @@ class ColoTensor(torch.Tensor):
                 self.process_group = ProcessGroup()
             else:
                 self.process_group = spec.pg
+
+        # Init dist spec
+        self.set_dist_spec(self.dist_spec)
 
         self._type = TensorType.NONMODEL
         self._graph_node = None
