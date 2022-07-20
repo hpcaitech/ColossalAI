@@ -92,7 +92,7 @@ distributed training and inference in a few lines.
   - [Sequence Parallelism](https://arxiv.org/abs/2105.13120)
   - [Zero Redundancy Optimizer (ZeRO)](https://arxiv.org/abs/1910.02054)
 
-- Heterogeneous Memory Menagement 
+- Heterogeneous Memory Management 
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 
 - Friendly Usage

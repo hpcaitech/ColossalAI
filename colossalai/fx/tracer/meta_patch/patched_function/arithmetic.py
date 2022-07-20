@@ -3,6 +3,7 @@ from ..registry import meta_patched_function
 
 
 @meta_patched_function.register(torch.matmul)
+@meta_patched_function.register('matmul')    # for built-in op @
 def torch_matmul(input, other, *, out=None):
     # copied from huggingface.utils.fx
     d1 = input.dim()

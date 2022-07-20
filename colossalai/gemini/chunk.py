@@ -4,9 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Dict, List
 
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
 from colossalai.utils import get_current_device
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
 
 
 class TensorState(Enum):
@@ -65,14 +64,16 @@ class Chunk:
     def __init__(self,
                  chunk_size: int,
                  src_rank: int,
+                 process_group: ColoProcessGroup,
                  dtype: torch.dtype,
                  init_device: Optional[torch.device] = None,
                  force_data_on_cuda: bool = False) -> None:
         self.size = chunk_size
         self.utilized_size = 0
         self.src_rank = src_rank
-        self.is_src_rank = gpc.get_local_rank(ParallelMode.DATA) == src_rank
-        self.global_src_rank = gpc.get_ranks_in_group(ParallelMode.DATA)[src_rank]
+        self.process_group = process_group
+        self.is_src_rank = process_group.dp_local_rank() == src_rank
+        self.global_src_rank = process_group.get_ranks_in_dp()[src_rank]
         self.dtype = dtype
         device = init_device or get_current_device()
         if force_data_on_cuda:
@@ -150,7 +151,7 @@ class Chunk:
         if not self.is_src_rank:
             alloc_storage(self._payload)
         self.move_device(get_current_device(), update_ptr=False)
-        dist.broadcast(self.data, self.global_src_rank, group=gpc.get_group(ParallelMode.DATA))
+        dist.broadcast(self.data, self.global_src_rank, group=self.process_group.dp_process_group())
 
         # update tensor meta info
         self._update_tensors_ptr()
@@ -193,9 +194,9 @@ class Chunk:
         """
         self.move_device(get_current_device(), update_ptr=False)
         if is_all_reduce:
-            dist.all_reduce(self.data, group=gpc.get_group(ParallelMode.DATA))
+            dist.all_reduce(self.data, group=self.process_group.dp_process_group())
         else:
-            dist.reduce(self.data, self.global_src_rank, group=gpc.get_group(ParallelMode.DATA))
+            dist.reduce(self.data, self.global_src_rank, group=self.process_group.dp_process_group())
         self._update_tensors_ptr()
         self._update_tensors_state(TensorState.HOLD)
 
@@ -216,7 +217,7 @@ class Chunk:
         # invalid calls will be ignored and nothing changes
         if (self.tensors_info[tensor].state, tensor_state) not in STATE_TRANS:
             # print(
-            #     f'WARNING: Rank{gpc.get_global_rank()} apply invalid state trans: {self.tensors_info[tensor].state} to {tensor_state}'
+            #     f'WARNING: Rank{self.process_group.rank()} apply invalid state trans: {self.tensors_info[tensor].state} to {tensor_state}'
             # )
             return
         self.tensors_info[tensor].state = tensor_state

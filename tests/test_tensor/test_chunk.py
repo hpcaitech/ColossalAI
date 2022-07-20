@@ -7,8 +7,7 @@ from functools import partial
 from colossalai.gemini import ChunkManager
 from colossalai.testing import rerun_if_address_is_in_use, parameterize
 from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
 
 
 def check_has_params(params: List[torch.Tensor], has_tensors: List[bool]):
@@ -38,12 +37,13 @@ TOTAL_MEM = {True: {True: [512, 512], False: [1024, 1024]}, False: {True: [512, 
 @parameterize('use_chunk', [False, True])
 @parameterize('use_zero', [False, True])
 def run_chunk_zero(use_chunk, use_zero):
-    rank = gpc.get_local_rank(ParallelMode.DATA)
+    pg = ColoProcessGroup()
+    rank = pg.rank()
     if rank == 0:
         print(f'use_chunk={use_chunk}, use_zero={use_zero}')
     params = [torch.rand(8, 8) for _ in range(3)]
     chunk_size = 128 if use_chunk else None
-    chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero)
+    chunk_manager = ChunkManager(chunk_size, pg, enable_distributed_storage=use_zero)
     chunk_manager.create_group('param')
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == 0

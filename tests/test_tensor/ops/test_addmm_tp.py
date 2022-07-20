@@ -8,7 +8,7 @@ from colossalai.tensor import ColoTensorSpec
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from functools import partial
-from _utils import tensor_shard_equal, tensor_equal, split_param_row_tp1d, split_param_col_tp1d
+from tests.test_tensor.common_utils import tensor_shard_equal, tensor_equal, split_param_row_tp1d, split_param_col_tp1d
 
 
 class Conv1D(nn.Module):
