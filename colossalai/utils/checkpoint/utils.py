@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 from colossalai.tensor import ColoTensor, ColoTensorSpec
-from colossalai.tensor.distspec import _DistSpec
+from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
 
 
 def gather_tensor(colo_tensor: ColoTensor) -> None:
@@ -26,7 +26,7 @@ def gather_tensor(colo_tensor: ColoTensor) -> None:
 def scatter_tensor(colo_tensor: ColoTensor, dist_spec: _DistSpec) -> None:
     """Reversal operation of `gather_tensor`.
     """
-    if dist_spec.placement == 'r':
+    if dist_spec.placement == DistPlacementPattern.REPLICATE:
         dist.broadcast(colo_tensor.data, 0)
     else:
         global_size = colo_tensor.size_global()

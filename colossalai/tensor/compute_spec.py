@@ -22,4 +22,7 @@ class ComputeSpec(object):
         self.output_replicate = True
 
     def __repr__(self):
-        return f'compute pattern: {self.compute_pattern}'
+        return f'Compute pattern: {self.compute_pattern}'
+
+    def set_keeping_output(self):
+        self.output_replicate = False
