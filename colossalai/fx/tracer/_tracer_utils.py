@@ -39,6 +39,8 @@ def compute_meta_data_for_functions_proxy(target, args, kwargs):
     # fetch patched function
     if meta_patched_function.has(target):
         meta_target = meta_patched_function.get(target)
+    elif meta_patched_function.has(target.__name__):
+        meta_target = meta_patched_function.get(target.__name__)
     else:
         meta_target = target
     meta_out = meta_target(*args_metas, **kwargs_metas)

@@ -378,6 +378,8 @@ def wrap_tensor_constructor_method(target):
     return wrapper, target
 
 
+# Patched magic methods for ColoProxy, then tracer could record the magic_method like __sub__,
+# and add meta_data attribute to the created proxy.
 for method in magic_methods:
 
     def _scope(method):

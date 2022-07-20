@@ -25,7 +25,7 @@ def torch_arange(*args, **kwargs):
 
 
 @meta_patched_function.register(torch.finfo)
-def torch_finfo(*args, **kwargs):
+def torch_finfo(*args):
     return torch.finfo(*args)
 
 
