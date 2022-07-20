@@ -19,5 +19,9 @@ def colo_layernorm(
     input_tensor = input_tensor.redistribute(ReplicaSpec())
 
     output = F.layer_norm(input_tensor, normalized_shape, weight=weight, bias=bias, eps=eps)
-    output = ColoTensor.from_torch_tensor(output, ColoTensorSpec(input_tensor.get_process_group()))
+    output = ColoTensor.from_torch_tensor(
+        tensor=output,
+        spec=ColoTensorSpec(
+            pg=input_tensor.get_process_group(),
+            dist_attr=input_tensor.dist_spec))
     return output
