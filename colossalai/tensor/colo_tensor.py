@@ -174,7 +174,7 @@ class ColoTensor(torch.Tensor):
                 return _convert_output(ret, pg)
 
     def __repr__(self):
-        return f'ColoTensor:\n{super().__repr__()}\n{self.dist_spec}\n{self.process_group}'
+        return f'ColoTensor:\n{super().__repr__()}\n{self.dist_spec}\n{self.process_group}\n{self.compute_spec}'
 
     def _redistribute(self, dist_spec: _DistSpec) -> None:
         """_redistribute 

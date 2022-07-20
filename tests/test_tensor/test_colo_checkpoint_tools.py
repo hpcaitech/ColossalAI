@@ -11,7 +11,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ProcessGroup, ColoTensorSpec
 from colossalai.utils.checkpoint.utils import gather_tensor, scatter_tensor
-from tests.test_tensor._utils import tensor_shard_equal
+from tests.test_tensor.common_utils import tensor_shard_equal
 
 
 def run_dist(rank, world_size, port, dp_degree, tp_degree):
@@ -24,7 +24,7 @@ def run_dist(rank, world_size, port, dp_degree, tp_degree):
 
     gather_tensor(param)
     if dist.get_rank() == 0:
-        assert torch.allclose(x, param.data, rtol=0, atol=0)
+        assert torch.all(x == param)
     else:
         assert tensor_shard_equal(x, param.data, pg.tp_local_rank(), pg.tp_world_size())
     dist.barrier()
