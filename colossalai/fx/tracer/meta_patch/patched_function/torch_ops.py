@@ -24,6 +24,11 @@ def torch_arange(*args, **kwargs):
     return torch.empty((end - start) // step, dtype=dtype, device="meta")
 
 
+@meta_patched_function.register(torch.finfo)
+def torch_finfo(*args):
+    return torch.finfo(*args)
+
+
 @meta_patched_function.register(torch.where)
 def torch_where(condition, x, y):
     # torch.where returns the broadcasted tensor of condition, x, and y,

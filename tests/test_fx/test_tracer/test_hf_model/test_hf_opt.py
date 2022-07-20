@@ -7,7 +7,6 @@ BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
-@pytest.mark.skip('skip due to tracer')
 def test_opt():
     MODEL_LIST = [
         transformers.OPTModel,
