@@ -35,6 +35,7 @@
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
+     <li><a href="#OPT">OPT</a></li>
    </ul>
  </li>
  <li>
@@ -135,7 +136,13 @@ distributed training and inference in a few lines.
 ### PaLM
 - [PaLM-colossalai](https://github.com/hpcaitech/PaLM-colossalai): Scalable implementation of Google's Pathways Language Model ([PaLM](https://ai.googleblog.com/2022/04/pathways-language-model-palm-scaling-to.html)).
 
-Please visit our [documentation and tutorials](https://www.colossalai.org/) for more details.
+### OPT
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT.png" width=800/>
+
+- [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because public pretrained model weights.
+- 40% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt)
+
+Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
