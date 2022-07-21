@@ -73,3 +73,9 @@ def split_param_row_tp1d(param, pg):
 
 def split_param_col_tp1d(param, pg):
     split_param_single_dim_tp1d(-1, param, pg)
+
+
+def debug_print(ranks, *args):
+    if dist.get_rank() in ranks:
+        print(*args)
+    dist.barrier()

@@ -2,7 +2,8 @@ import torch.nn.functional as F
 from typing import Optional
 from torch import Tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, distspec, ColoTensorSpec, ShardSpec, ReplicaSpec
+from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor, distspec, ColoTensorSpec, \
+    ShardSpec, ReplicaSpec
 from ._utils import GeneralTensor, convert_to_colo_tensor
 
 
@@ -89,21 +90,22 @@ def colo_embedding_bag(input_tensor: GeneralTensor,
 
     # Handle differen parallel actions.
 
-    if not weight.has_compute_spec():    # No Model Parallel Applied
+    if not weight.has_compute_spec():  # No Model Parallel Applied
         assert weight.is_replicate(), 'Invalid weight spec for native embedding op'
         return ColoTensor.from_torch_tensor(
-            F.embedding_bag(input_tensor,
-                            weight,
-                            offsets=offsets,
-                            max_norm=max_norm,
-                            norm_type=norm_type,
-                            scale_grad_by_freq=scale_grad_by_freq,
-                            mode=mode,
-                            sparse=sparse,
-                            per_sample_weights=per_sample_weights,
-                            include_last_offset=include_last_offset,
-                            padding_idx=padding_idx))
-    elif weight.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+            tensor=F.embedding_bag(input_tensor,
+                                   weight,
+                                   offsets=offsets,
+                                   max_norm=max_norm,
+                                   norm_type=norm_type,
+                                   scale_grad_by_freq=scale_grad_by_freq,
+                                   mode=mode,
+                                   sparse=sparse,
+                                   per_sample_weights=per_sample_weights,
+                                   include_last_offset=include_last_offset,
+                                   padding_idx=padding_idx),
+            spec=ColoTensorSpec(weight.get_process_group()))
+    elif weight.has_compute_pattern(ComputePattern.TP1D):  # Single Model Parallel Applied
         if weight.is_shard_1dcol():
             tp_mode = 'col'
         else:

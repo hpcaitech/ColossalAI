@@ -69,7 +69,9 @@ def colo_addmm(input_tensor: GeneralTensor,
     if not mat2.has_compute_spec():    # No Model Parallel Applied
         assert mat2.is_replicate(), 'Invalid mat2 spec for native addmm op'
         assert input_tensor.is_replicate(), 'Invalid input spec for native addmm op'
-        ret_tensor = ColoTensor.from_torch_tensor(torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha))
+        ret_tensor = ColoTensor.from_torch_tensor(
+            tensor=torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha),
+            spec=ColoTensorSpec(mat2.get_process_group()))
     elif mat2.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
         if mat2.is_shard_1drow() and input_tensor.is_replicate():
             mode = 'row'

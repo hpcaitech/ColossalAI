@@ -15,6 +15,7 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.tensor import ShardSpec, ComputePattern, ComputeSpec, ProcessGroup, ColoTensor, ColoTensorSpec
 from colossalai.nn.parallel.data_parallel import ColoDDP
 from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.test_tensor.common_utils import split_param_col_tp1d, split_param_row_tp1d, debug_print
 
 
 def init_1d_row_spec(model, pg: ProcessGroup):
@@ -32,6 +33,32 @@ def init_1d_col_spec(model, pg: ProcessGroup):
         p.set_process_group(pg)
         if 'ln' not in n and ('weight' in n or 'bias' in n):
             p.set_tensor_spec(*spec)
+
+
+def init_megatron_spec(model, pg: ProcessGroup):
+    for mn, module in model.named_modules():
+        # debug_print([0], mn)
+        for pn, param in module.named_parameters(recurse=False):
+            # debug_print([0], '\t', pn, param.compute_spec, param.shape)
+            param.set_process_group(pg)
+
+            if 'mlp.c_fc' in mn:
+                if 'weight' in pn or 'bias' in pn:
+                    split_param_col_tp1d(param, pg)
+                    param.compute_spec.set_output_replicate(False)
+                else:
+                    raise RuntimeError
+            elif 'mlp.c_proj' in mn:
+                if 'weight' in pn:
+                    split_param_row_tp1d(param, pg)
+                else:
+                    assert 'bias' in pn
+            elif 'wte' in mn or 'wpe' in mn:
+                assert 'weight' in pn
+                split_param_col_tp1d(param, pg)
+            elif 'c_fc' in mn or 'c_proj' in mn:
+                split_param_col_tp1d(param, pg)
+            # debug_print([0], '\t', param.compute_spec, param.shape)
 
 
 def check_param_equal(model, torch_model, pg: ProcessGroup):
@@ -102,8 +129,10 @@ def run_dist(rank, world_size, port, use_ddp):
     if use_ddp and world_size == 1:
         return
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_gpt(init_1d_row_spec, use_ddp)
-    run_gpt(init_1d_col_spec, use_ddp)
+    # Comments below tests for speed concern
+    # run_gpt(init_1d_row_spec, use_ddp)
+    # run_gpt(init_1d_col_spec, use_ddp)
+    run_gpt(init_megatron_spec, use_ddp)
 
 
 @pytest.mark.dist
@@ -116,4 +145,4 @@ def test_gpt(world_size, use_ddp):
 
 
 if __name__ == '__main__':
-    test_gpt(4, use_ddp=True)
+    test_gpt(4, use_ddp=False)
