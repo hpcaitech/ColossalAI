@@ -35,7 +35,8 @@ class ColoTracer(Tracer):
     ColoTracer is a symbolic tracer designed to support dynamic control flow by using meta tensors for the `colossalai.fx` module.
     This tracer is initialized in the same way as the original torch.fx.Tracer.
 
-    Usage:
+    Usage::
+
         class Model(nn.Module):
             def __init__(self):
                 super().__init__()
@@ -254,8 +255,8 @@ class ColoTracer(Tracer):
         non_meta_arg_names = sig_names - meta_arg_names
         for k, v in sig.parameters.items():
             if k in non_meta_arg_names and \
-                k not in concrete_args and \
-                v.default is not inspect.Parameter.empty:
+                    k not in concrete_args and \
+                    v.default is not inspect.Parameter.empty:
                 concrete_args[k] = v.default
 
         # get non concrete arg names
