@@ -17,8 +17,8 @@ RUN git clone https://github.com/hpcaitech/ColossalAI.git \
 RUN pip install --no-cache-dir titans
 
 # install tensornvme
-RUN conda install -y cmake && \
+RUN conda install cmake && \
     git clone https://github.com/hpcaitech/TensorNVMe.git && \
     cd TensorNVMe && \
     pip install -r requirements.txt && \
-    pip install -v .
+    pip install -v --no-cache-dir .
