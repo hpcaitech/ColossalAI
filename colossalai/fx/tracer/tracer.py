@@ -10,7 +10,6 @@ import functools
 import operator
 from contextlib import contextmanager
 from colossalai.fx.tracer.meta_patch import meta_patched_module
-from pyparsing import original_text_for
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -66,6 +65,7 @@ class ColoTracer(Tracer):
         self.trace_act_ckpt = trace_act_ckpt
         # whether the current tracing occurs within the activation checkpoint functions
         self.inside_torch_checkpoint_func = False
+        self.act_ckpt_region_count = 0
 
     # Feature flag for proxying accesses to buffer values
     proxy_buffer_attributes: bool = True
@@ -357,9 +357,11 @@ class ColoTracer(Tracer):
 
                 @staticmethod
                 def forward(ctx, run_function, preserve_rng_state, *args):
+                    # signal that the current tracing occurs within activaton checkpoint part
                     self.inside_torch_checkpoint_func = True
                     out = run_function(*args)
                     self.inside_torch_checkpoint_func = False
+                    self.act_ckpt_region_count += 1
                     return out
 
                 @staticmethod
@@ -367,19 +369,20 @@ class ColoTracer(Tracer):
                     raise NotImplementedError(
                         "We do not implement the backward pass as we only trace the forward pass.")
 
-            # reimport is required to override the previous imported func in globals
+            # override the checkpoint function
             torch.utils.checkpoint.CheckpointFunction = PatchedCheckpointFunction
         yield
 
         if enabled:
-            # recover the checkpoint func upon exit
+            # recover the checkpoint function upon exit
             torch.utils.checkpoint.CheckpointFunction = orig_ckpt_func
 
     def create_node(self, *args, **kwargs) -> Node:
         node = super().create_node(*args, **kwargs)
 
         if self.inside_torch_checkpoint_func:
-            setattr(node, 'activation_checkpoint', True)
+            # annotate the activation checkpoint module
+            setattr(node, 'activation_checkpoint', self.act_ckpt_region_count)
         return node
 
 
@@ -411,7 +414,7 @@ def wrap_tensor_constructor_method(target):
             colo_proxy = proxy.tracer.create_proxy("call_function", target, args, kwargs)
             if not isinstance(colo_proxy, ColoProxy):
                 meta_out = compute_meta_data_for_functions_proxy(target, args, kwargs)
-                colo_proxy = ColoProxy(fx_proxy.node)
+                colo_proxy = ColoProxy(proxy.node)
                 colo_proxy.meta_data = meta_out
             return colo_proxy
         else:
