@@ -26,5 +26,5 @@ try:
     meta_patched_module.register(apex.normalization.FusedRMSNorm)(torch_nn_normalize)
     meta_patched_module.register(apex.normalization.MixedFusedLayerNorm)(torch_nn_normalize)
     meta_patched_module.register(apex.normalization.MixedFusedRMSNorm)(torch_nn_normalize)
-except ImportError:
+except (ImportError, AttributeError):
     pass
