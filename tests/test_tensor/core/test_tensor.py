@@ -75,7 +75,7 @@ def _run_view(world_size):
     assert t.size_global(1) == 5
     assert t.size_global() == torch.Size([4 * world_size, 5])
 
-    t = t.view_global(4 * 5 * world_size)
+    t = t.view(4 * 5 * world_size)
     assert t.shape == torch.Size([4 * 5 * world_size])
 
 
@@ -129,9 +129,9 @@ def _run_set_tensor_spec(world_size):
     spec1 = ColoTensorSpec(pg)
     t1 = ColoTensor.from_torch_tensor(torch.randn(2, 3, 4), spec1)
 
-    dist_spec2 = (ShardSpec([-1], [pg.tp_world_size()]), None)
+    dist_spec2 = ShardSpec([-1], [pg.tp_world_size()])
     assert t1.is_replicate()
-    t1.set_dist_spec(*dist_spec2)
+    t1.set_dist_spec(dist_spec2)
     assert t1.is_shard_1dcol()
 
 
