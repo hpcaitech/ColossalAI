@@ -42,8 +42,6 @@ def test_activation_checkpoint_annotation():
     graph = tracer.trace(module)
     gm = GraphModule(module, graph)
 
-    # print([f"{node.name} cktp = {getattr(node, 'ckpt', False)}" for node in gm.graph.nodes])
-
     for node in gm.graph.nodes:
         if node.name in ['mlp_1_linear1', 'mlp_1_linear2']:
             assert getattr(node, 'activation_checkpoint', -1) == 0
