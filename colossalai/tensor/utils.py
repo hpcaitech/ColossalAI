@@ -26,7 +26,7 @@ def named_params_with_colotensor(
         (string, Union[Tensor, ColoTensor]): Tuple containing
             the name and parameter (or ColoTensor parameter)
 
-    Example::
+    Example:
 
         >>> model = torch.nn.Linear(*linear_size)
         >>> delattr(model.weight)
