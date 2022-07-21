@@ -9,4 +9,3 @@ colossalai.builder
    :maxdepth: 2
 
    colossalai.builder.builder
-   colossalai.builder.pipeline
