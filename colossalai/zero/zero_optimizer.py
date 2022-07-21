@@ -30,7 +30,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         module (ZeroDDP): A ``ZeroDDP`` instance.
         gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
             which will be used when using hybrid CPU optimizer. 
-            This argument is meaningless when `tensor_placement_policy` of `ShardedModelV2` is not "auto".
+            This argument is meaningless when `placement_policy` of `GeminiManager` is not "auto".
             Defaults to 0.0.
         initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
         min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
