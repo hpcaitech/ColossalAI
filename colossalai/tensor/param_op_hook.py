@@ -41,7 +41,7 @@ class ParamOpHookManager:
     def use_hooks(*hooks: ParamOpHook):
         """Change the param op hooks you use. Nested calling is allowed.
 
-        Example::
+        Example:
             >>> with ParamOpHookManager.use_hooks(*hooks):
             >>>     do_something()
             >>>     with ParamOpHookManager.use_hooks():

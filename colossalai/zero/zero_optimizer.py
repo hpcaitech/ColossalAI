@@ -16,6 +16,30 @@ class OptimState(Enum):
 
 
 class ZeroOptimizer(ColossalaiOptimizer):
+    """A wrapper for optimizer. ``ZeroDDP`` and ``ZeroOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
+
+    Note:
+        You must use ``ZeroDDP`` with ``ZeroOptimizer``.
+
+    Note:
+        Make sure you set ``placement_policy`` of ``GeminiManager`` to `"auto"`,
+        if you set ``gpu_margin_mem_ratio > 0``.
+
+    Args:
+        optim (Optimizer): An Optimizer instance.
+        module (ZeroDDP): A ``ZeroDDP`` instance.
+        gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
+            which will be used when using hybrid CPU optimizer. 
+            This argument is meaningless when `placement_policy` of `GeminiManager` is not "auto".
+            Defaults to 0.0.
+        initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
+        min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
+        growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
+        backoff_factor (float, optional): backoff_factor used by DynamicGradScaler. Defaults to 0.5.
+        growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
+        hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
+        max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
+        """
 
     def __init__(self,
                  optim: Optimizer,

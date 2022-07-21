@@ -40,7 +40,7 @@ def _cast_float(args, dtype: torch.dtype):
 class ColoDDP(torch.nn.Module):
     """Distributed data parallel for ColoTensor. Nested ColoDDP is not supported now.
 
-    Example::
+    Example:
         >>> from colossalai.core import global_context as gpc
         >>> from colossalai.context import ParallelMode
         >>> model = torch.nn.Linear(20, 1)
@@ -148,7 +148,7 @@ class ColoDDP(torch.nn.Module):
         """Sets parameters to be ignored by DDP.
         This method must be called before initializing ColoDDP.
 
-        Example::
+        Example:
             >>> params_to_ignore = []
             >>> for p in module.parameters():
             >>>     if should_ignore(p):
@@ -174,7 +174,7 @@ class ZeroDDP(ColoDDP):
     We can configure chunk and gemini via ChunkManager and GeminiManager respectively.
     For more details, see the API reference of ``ChunkManager`` and ``GeminiManager``.
 
-    Example::
+    Example:
         >>> model = torch.nn.Linear(20, 1)
         >>> placement_policy = 'cuda'
         >>> chunk_size = ChunkManager.search_chunk_size(model, search_range, n_grids) if use_chunk else None
@@ -283,7 +283,7 @@ class ZeroDDP(ColoDDP):
             dict:
                 a dictionary containing a whole state of the module
 
-        Example::
+        Example:
 
             >>> module.state_dict().keys()
             ['bias', 'weight']

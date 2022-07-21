@@ -102,10 +102,10 @@ def sync_states():
 def seed(parallel_mode: ParallelMode):
     """ A context for seed switch
 
-    Examples::
+    Examples:
 
-        with seed(ParallelMode.DATA):
-            output = F.dropout(input)
+        >>> with seed(ParallelMode.DATA):
+        >>>     output = F.dropout(input)
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
@@ -124,18 +124,18 @@ def with_seed(func, parallel_mode: ParallelMode):
     """
     A function wrapper which executes the function with a specified seed.
 
-    Examples::
+    Examples:
 
-        # use with decorator
-        @with_seed(ParallelMode.DATA)
-        def forward(input):
-            return F.dropout(input)
-        out = forward(input)
-        # OR use it inline
-        def forward(input):
-            return F.dropout(input)
-        wrapper_forward = with_seed(forward, ParallelMode.DATA)
-        out = wrapped_forward(input)
+        >>> # use with decorator
+        >>> @with_seed(ParallelMode.DATA)
+        >>> def forward(input):
+        >>>     return F.dropout(input)
+        >>> out = forward(input)
+        >>> # OR use it inline
+        >>> def forward(input):
+        >>>     return F.dropout(input)
+        >>> wrapper_forward = with_seed(forward, ParallelMode.DATA)
+        >>> out = wrapped_forward(input)
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found

@@ -12,3 +12,10 @@ colossalai.zero
    colossalai.zero.sharded_model
    colossalai.zero.sharded_optim
    colossalai.zero.sharded_param
+   colossalai.zero.utils
+
+
+.. toctree::
+   :maxdepth: 2
+
+   colossalai.zero.zero_optimizer

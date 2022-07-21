@@ -8,5 +8,4 @@ colossalai.nn.layer.wrapper
 .. toctree::
    :maxdepth: 2
 
-   colossalai.nn.layer.wrapper.lambda_wrapper
    colossalai.nn.layer.wrapper.pipeline_wrapper
