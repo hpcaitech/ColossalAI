@@ -60,7 +60,7 @@ class GradScaler(object):
     * ``scaler.step(optimizer)`` safely unscales gradients and calls ``optimizer.step()``.
     * ``scaler.update()`` updates ``scaler``'s scale factor.
 
-    Example::
+    Example:
 
         # Creates a GradScaler once at the beginning of training.
         scaler = GradScaler()

@@ -21,7 +21,7 @@ def colo_op_impl(func):
     by ``__torch_function__`` dispatch and has a ColoTensor as any of its
     parameters, the function provided will be invoked for that operator.
 
-    Example::
+    Example:
         >>> @colo_op_impl(torch.nn.functional.linear)
         >>> def my_custom_linear(types, args, kwargs, process_group):
         >>>   ....
