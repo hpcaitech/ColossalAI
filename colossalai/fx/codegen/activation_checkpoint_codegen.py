@@ -1,6 +1,5 @@
 import torch
 from typing import List, Callable, Any, Tuple, Dict
-from packaging import version
 
 try:
     from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
