@@ -3,3 +3,4 @@ torchvision
 transformers
 timm
 titans
+torchrec
