@@ -137,10 +137,16 @@ class NVMeOptimizer(torch.optim.Optimizer):
         raise NotImplementedError
 
     def state_dict(self) -> dict:
-        raise NotImplementedError
+        # TODO(ver217): design a new method to save state_dict. When using NVMe offload, this method may lead to OOM.
+        if self.offloader is not None:
+            raise NotImplementedError
+        return super().state_dict()
 
     def load_state_dict(self, state_dict: dict) -> None:
-        raise NotImplementedError
+        # TODO(ver217): design a new method to load state_dict. When using NVMe offload, whole state_dict may not be able to fit in memory.
+        if self.offloader is not None:
+            raise NotImplementedError
+        super().load_state_dict(state_dict)
 
     def __del__(self) -> None:
         if self.offloader is not None:
