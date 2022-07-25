@@ -12,4 +12,3 @@ colossalai.zero.shard\_utils
    colossalai.zero.shard_utils.bucket_tensor_shard_strategy
    colossalai.zero.shard_utils.commons
    colossalai.zero.shard_utils.tensor_shard_strategy
-   colossalai.zero.shard_utils.tensor_utils

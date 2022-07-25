@@ -16,6 +16,30 @@ class OptimState(Enum):
 
 
 class ZeroOptimizer(ColossalaiOptimizer):
+    """A wrapper for optimizer. ``ZeroDDP`` and ``ZeroOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
+
+    Note:
+        You must use ``ZeroDDP`` with ``ZeroOptimizer``.
+
+    Note:
+        Make sure you set ``placement_policy`` of ``GeminiManager`` to `"auto"`,
+        if you set ``gpu_margin_mem_ratio > 0``.
+
+    Args:
+        optim (Optimizer): An Optimizer instance.
+        module (ZeroDDP): A ``ZeroDDP`` instance.
+        gpu_margin_mem_ratio (float, optional): The ratio of GPU remaining memory (after the first forward-backward) 
+            which will be used when using hybrid CPU optimizer. 
+            This argument is meaningless when `placement_policy` of `GeminiManager` is not "auto".
+            Defaults to 0.0.
+        initial_scale (float, optional): Initial scale used by DynamicGradScaler. Defaults to 2**32.
+        min_scale (float, optional): Min scale used by DynamicGradScaler. Defaults to 1.
+        growth_factor (float, optional): growth_factor used by DynamicGradScaler. Defaults to 2.
+        backoff_factor (float, optional): backoff_factor used by DynamicGradScaler. Defaults to 0.5.
+        growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
+        hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
+        max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
+        """
 
     def __init__(self,
                  optim: Optimizer,
@@ -118,6 +142,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
     def clip_grad_norm(self, model: torch.nn.Module, max_norm: float):
         if self.optim_state == OptimState.SCALED:
             self._unscale_grads()
+        # TODO(ver217): fix zero clip grad norm
         return super().clip_grad_norm(model, max_norm)
 
     def backward(self, loss: torch.Tensor):
@@ -126,6 +151,11 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.module.backward(loss)
 
     def backward_by_grad(self, tensor: torch.Tensor, grad: torch.Tensor):
+        # This function is called except the last stage of pipeline parallel
+        # It receives the scaled grad from the previous rank
+        # No need to scale the grad again
+        # Need to unscale when optimizing
+        self.optim_state = OptimState.SCALED
         self.module.backward_by_grad(tensor, grad)
 
     def _maybe_move_fp32_params(self):
@@ -160,7 +190,18 @@ class ZeroOptimizer(ColossalaiOptimizer):
                     if isinstance(val, torch.Tensor):
                         self.chunk_manager.add_extern_static_tensor(val)
 
+    def state_dict(self):
+        optim_state_dict = super().state_dict()
+        scaler_state_dict = self.grad_scaler.state_dict()
+        optim_state_dict['scaler'] = scaler_state_dict
+        return optim_state_dict
+
     def load_state_dict(self, *args, **kwargs):
+        if 'scaler' not in args[0]:
+            self._logger.warning('Missing scaler when loading optimizer state dict', ranks=[0])
+        else:
+            scaler_state_dict = args[0].pop('scaler')
+            self.grad_scaler.load_state_dict(scaler_state_dict)
         super().load_state_dict(*args, **kwargs)
         for group in self.optim.param_groups:
             for p in group['params']:

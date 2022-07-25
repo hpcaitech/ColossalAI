@@ -16,3 +16,4 @@ colossalai.nn.optimizer
    colossalai.nn.optimizer.hybrid_adam
    colossalai.nn.optimizer.lamb
    colossalai.nn.optimizer.lars
+   colossalai.nn.optimizer.utils

@@ -9,7 +9,7 @@ from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.core import global_context as gpc
 from functools import partial
-from tests.test_tensor._utils import set_seed
+from tests.test_tensor.common_utils import set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.nn.parallel.data_parallel import ZeroDDP
 from colossalai.gemini import ChunkManager, GeminiManager
