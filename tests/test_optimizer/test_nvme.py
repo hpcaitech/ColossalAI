@@ -1,7 +1,14 @@
 import pytest
 import torch
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.nn.optimizer import CPUAdam
+from colossalai.nn.optimizer import CPUAdam, HybridAdam
+
+
+def move_some_params_to_cuda(model, torch_model):
+    model.embed.weight.data = model.embed.weight.cuda()
+    torch_model.embed.weight.data = model.embed.weight.cuda()
+    model.ln1.weight.data = model.ln1.weight.cuda()
+    torch_model.ln1.weight.data = model.ln1.weight.cuda()
 
 
 def check_params_equal(model, torch_model):
@@ -11,15 +18,17 @@ def check_params_equal(model, torch_model):
 
 @pytest.mark.parametrize('nvme_offload_factor', [0.0, 0.5, 1.0])
 @pytest.mark.parametrize('nvme_offload_dir', ['./offload', None])
-def test_nvme_adam(nvme_offload_factor, nvme_offload_dir):
+@pytest.mark.parametrize('adam_cls', [CPUAdam, HybridAdam])
+def test_nvme_adam(nvme_offload_factor, nvme_offload_dir, adam_cls):
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     model = model_builder()
     torch_model = model_builder()
-    optimizer = CPUAdam(model.parameters(),
-                        lr=0.1,
-                        nvme_offload_factor=nvme_offload_factor,
-                        nvme_offload_dir=nvme_offload_dir)
+    move_some_params_to_cuda(model, torch_model)
+    optimizer = adam_cls(model.parameters(),
+                         lr=0.1,
+                         nvme_offload_factor=nvme_offload_factor,
+                         nvme_offload_dir=nvme_offload_dir)
     torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=0.1)
     with torch.no_grad():
         for p, torch_p in zip(model.parameters(), torch_model.parameters()):
@@ -34,4 +43,4 @@ def test_nvme_adam(nvme_offload_factor, nvme_offload_dir):
 
 
 if __name__ == '__main__':
-    test_nvme_adam(0.5, './offload')
+    test_nvme_adam(0.5, './offload', CPUAdam)
