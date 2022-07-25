@@ -47,6 +47,9 @@ class CPUAdam(NVMeOptimizer):
             True for decoupled weight decay(also known as AdamW) (default: True)
         simd_log (boolean, optional): whether to show if you are using SIMD to 
             accelerate. (default: False)
+        nvme_offload_fraction (float, optional): Fraction of params to be offloaded to NVMe. Defaults to 0.0.
+        offload_dir (Optional[str], optional): Directory to save NVMe offload files.
+            If it's ``None``, a random temporary directory will be used. Defaults to None.
 
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
@@ -67,11 +70,11 @@ class CPUAdam(NVMeOptimizer):
                  weight_decay=0,
                  adamw_mode=True,
                  simd_log=False,
-                 nvme_offload_factor: float = 0.0,
+                 nvme_offload_fraction: float = 0.0,
                  nvme_offload_dir: Optional[str] = None):
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
-        super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_factor, nvme_offload_dir)
+        super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.opt_id = CPU_ADAM_CNT()
         self.adamw_mode = adamw_mode
         try:

@@ -7,16 +7,28 @@ from typing import Optional, List, Dict, Callable
 
 
 class NVMeOptimizer(torch.optim.Optimizer):
+    """A base class for offloading optimizer states.
+
+    Args:
+        params: parameters
+        defaults (dict): default dict
+        nvme_offload_fraction (float, optional): Fraction of params to be offloaded to NVMe. Defaults to 0.0.
+        offload_dir (Optional[str], optional): Directory to save NVMe offload files.
+            If it's ``None``, a random temporary directory will be used. Defaults to None.
+
+    Raises:
+        ImportError: Raise if ``tensornvme`` is not installed.
+        """
 
     def __init__(self,
                  params,
                  defaults: dict,
-                 nvme_offload_factor: float = 0.0,
+                 nvme_offload_fraction: float = 0.0,
                  offload_dir: Optional[str] = None) -> None:
-        assert 0.0 <= nvme_offload_factor <= 1.0
+        assert 0.0 <= nvme_offload_fraction <= 1.0
         super().__init__(params, defaults)
-        self.nvme_offload_factor = float(nvme_offload_factor)
-        if self.nvme_offload_factor > 0.0:
+        self.nvme_offload_fraction = float(nvme_offload_fraction)
+        if self.nvme_offload_fraction > 0.0:
             try:
                 from tensornvme import DiskOffloader
                 from tensornvme._C import get_backends
@@ -31,7 +43,7 @@ class NVMeOptimizer(torch.optim.Optimizer):
         self.is_on_nvme: Dict[Parameter, bool] = {}
         self.offloaded_numel: int = 0
         self.total_numel: int = self._get_numel()
-        self.can_offload_numel = math.floor(self.total_numel * self.nvme_offload_factor)
+        self.can_offload_numel = math.floor(self.total_numel * self.nvme_offload_fraction)
 
         self.prefetch_params: List[Parameter] = []
         self.param_to_prefetch_idx: Dict[Parameter, int] = {}

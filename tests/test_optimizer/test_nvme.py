@@ -16,10 +16,10 @@ def check_params_equal(model, torch_model):
         assert torch.allclose(p, torch_p, atol=1e-3), f'diff: {torch.abs(p - torch_p)}'
 
 
-@pytest.mark.parametrize('nvme_offload_factor', [0.0, 0.5, 1.0])
+@pytest.mark.parametrize('nvme_offload_fraction', [0.0, 0.5, 1.0])
 @pytest.mark.parametrize('nvme_offload_dir', ['./offload', None])
 @pytest.mark.parametrize('adam_cls', [CPUAdam, HybridAdam])
-def test_nvme_adam(nvme_offload_factor, nvme_offload_dir, adam_cls):
+def test_nvme_adam(nvme_offload_fraction, nvme_offload_dir, adam_cls):
     get_components_func = non_distributed_component_funcs.get_callable('simple_net')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
     model = model_builder()
@@ -27,7 +27,7 @@ def test_nvme_adam(nvme_offload_factor, nvme_offload_dir, adam_cls):
     move_some_params_to_cuda(model, torch_model)
     optimizer = adam_cls(model.parameters(),
                          lr=0.1,
-                         nvme_offload_factor=nvme_offload_factor,
+                         nvme_offload_fraction=nvme_offload_fraction,
                          nvme_offload_dir=nvme_offload_dir)
     torch_optimizer = torch.optim.Adam(torch_model.parameters(), lr=0.1)
     with torch.no_grad():
