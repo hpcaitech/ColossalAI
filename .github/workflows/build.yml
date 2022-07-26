@@ -26,11 +26,10 @@ jobs:
       - name: Install tensornvme
         run: |
           conda install cmake
-          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe/
+          echo "pwd is $PWD"
+          ls .
           pip install -r requirements.txt
           pip install -v -e .
-          cp -r /__w/ColossalAI/ColossalAI/TensorNVMe/build /github/home/tensornvme_cache/
-          cp /__w/ColossalAI/ColossalAI/TensorNVMe/*.so /github/home/tensornvme_cache/
       - name: Test env
         run: echo "$LD_LIBRARY_PATH and my path is $MY_PATH"
         env:
