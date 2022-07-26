@@ -22,8 +22,10 @@ jobs:
         with:
           repository: hpcaitech/TensorNVMe
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: tensornvme
       - name: Install tensornvme
         run: |
+          conda install cmake
           [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -r /github/home/tensornvme_cache/* /__w/TensorNVMe/TensorNVMe/
           pip install -r requirements.txt
           pip install -v -e .
