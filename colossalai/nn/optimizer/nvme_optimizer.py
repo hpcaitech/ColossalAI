@@ -149,7 +149,7 @@ class NVMeOptimizer(torch.optim.Optimizer):
         super().load_state_dict(state_dict)
 
     def __del__(self) -> None:
-        if self.offloader is not None:
+        if getattr(self, 'offloader', None) is not None:
             del self.offloader
             if os.path.exists(self.offload_dir):
                 try:
