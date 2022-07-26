@@ -64,6 +64,8 @@ class NVMeOptimizer(torch.optim.Optimizer):
             self.is_on_nvme[param] = False
 
     def _setup_prefetch_params(self) -> List[Parameter]:
+        if self.offloader is None:
+            return
         assert len(self.prefetch_params) == 0 and len(self.param_to_prefetch_idx) == 0
         for group in self.param_groups:
             for p in group['params']:
