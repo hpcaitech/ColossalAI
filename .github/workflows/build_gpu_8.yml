@@ -20,15 +20,15 @@ jobs:
         with:
           repository: hpcaitech/TensorNVMe
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-          path: TensorNVMe
+          path: tensornvme
       - name: Install tensornvme
         run: |
           conda install cmake
-          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -r /github/home/tensornvme_cache/* /__w/ColossalAI/TensorNVMe/
+          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -r /github/home/tensornvme_cache/* /__w/ColossalAI/tensornvme/
           pip install -r requirements.txt
           pip install -v -e .
-          cp -r /__w/ColossalAI/TensorNVMe/build /github/home/tensornvme_cache/
-          cp /__w/ColossalAI/TensorNVMe/*.so /github/home/tensornvme_cache/
+          cp -r /__w/ColossalAI/tensornvme/build /github/home/tensornvme_cache/
+          cp /__w/ColossalAI/tensornvme/*.so /github/home/tensornvme_cache/
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
