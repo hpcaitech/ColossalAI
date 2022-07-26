@@ -23,12 +23,10 @@ jobs:
           path: TensorNVMe
       - name: Install tensornvme
         run: |
+          cd TensorNVMe
           conda install cmake
-          [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ] && cp -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe/
           pip install -r requirements.txt
           pip install -v -e .
-          cp -r /__w/ColossalAI/ColossalAI/TensorNVMe/build /github/home/tensornvme_cache/
-          cp /__w/ColossalAI/ColossalAI/TensorNVMe/*.so /github/home/tensornvme_cache/
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
@@ -42,6 +40,7 @@ jobs:
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
+          source /github/home/.bashrc
           gpu_used=$(nvidia-smi -i 0 --query-gpu=memory.used --format=csv,noheader,nounits)
           [ "$gpu_used" -le "100" ] && PYTHONPATH=$PWD pytest tests
         env:

@@ -29,12 +29,6 @@ jobs:
           conda install cmake
           pip install -r requirements.txt
           pip install -v -e .
-          source /github/home/.bashrc
-      - name: Test env
-        run: |
-          echo "old: $LD_LIBRARY_PATH "
-          source /github/home/.bashrc
-          echo "new: $LD_LIBRARY_PATH"
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
@@ -48,6 +42,7 @@ jobs:
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
+          source /github/home/.bashrc
           PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10
