@@ -13,6 +13,6 @@ from . import distspec
 
 __all__ = [
     'ColoTensor', 'convert_parameter', 'ComputePattern', 'ComputeSpec', 'named_params_with_colotensor', 'ColoParameter',
-    'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ChunkManager', 'TensorState', 'ProcessGroup',
-    'ColoTensorSpec', 'TensorSpec', 'ShardSpec', 'ReplicaSpec'
+    'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ProcessGroup', 'ColoTensorSpec',
+    'ShardSpec', 'ReplicaSpec'
 ]
