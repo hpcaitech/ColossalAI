@@ -32,10 +32,9 @@ jobs:
           source /github/home/.bashrc
       - name: Test env
         run: |
+          echo "old: $LD_LIBRARY_PATH "
           source /github/home/.bashrc
-          echo "$LD_LIBRARY_PATH and my path is $MY_PATH"
-        env:
-          MY_PATH: "MYPATH:$LD_LIBRARY_PATH"
+          echo "new: $LD_LIBRARY_PATH"
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
