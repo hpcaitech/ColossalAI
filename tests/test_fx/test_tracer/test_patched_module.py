@@ -51,7 +51,7 @@ def test_rnn():
 
     _assert_output_shape(meta_data, module, patched_module.torch_nn_rnn, False, (output.shape, hn.shape))
 
-    # Test if the linear patch can catch exception when dimension does not match
+    # test if the rnn patch can catch exception when dimension does not match
     data = (torch.randn(5, 3, 10), torch.randn(2, 3, 20))
     module = torch.nn.RNN(10, 20, 2)
     output, hn = module(*data)
