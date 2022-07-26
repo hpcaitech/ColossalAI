@@ -3,6 +3,7 @@ from torchaudio.models import Tacotron2
 from utils import trace_and_compare
 import pytest
 
+
 def _get_tacotron2_model(n_mels, decoder_max_step=2000, gate_threshold=0.5):
     return Tacotron2(
         mask_padding=False,
@@ -29,26 +30,27 @@ def _get_tacotron2_model(n_mels, decoder_max_step=2000, gate_threshold=0.5):
         gate_threshold=gate_threshold,
     )
 
+
 def test_tacotron_model():
     n_mels = 80
     n_batch = 3
     max_mel_specgram_length = 300
     max_text_length = 100
-    
+
     model = _get_tacotron2_model(n_mels)
-    
+
     def data_gen():
         text = torch.randint(0, 148, (n_batch, max_text_length))
         text_lengths = max_text_length * torch.ones((n_batch,))
         mel_specgram = torch.rand(n_batch, n_mels, max_mel_specgram_length)
         mel_specgram_lengths = max_mel_specgram_length * torch.ones((n_batch,))
         return dict(tokens=text,
-                    token_lengths=text_lengths, 
-                    mel_specgram=mel_specgram, 
-                    mel_specgram_lengths=mel_specgram_lengths
-                   )
-    
+                    token_lengths=text_lengths,
+                    mel_specgram=mel_specgram,
+                    mel_specgram_lengths=mel_specgram_lengths)
+
     trace_and_compare(model, data_gen, need_meta=True, need_concrete=False)
-    
+
+
 if __name__ == "__main__":
     test_tacotron_model()

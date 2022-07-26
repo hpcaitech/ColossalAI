@@ -50,7 +50,7 @@ def test_emformer():
 
 
 def test_torchaudio_transformers():
-    # test_conformer()
+    test_conformer()
     test_emformer()
 
 
