@@ -90,7 +90,7 @@ class HybridAdam(NVMeOptimizer):
 
     def __del__(self):
         super().__del__()
-        if self.cpu_adam_op:
+        if getattr(self, 'cpu_adam_op', None):
             self.cpu_adam_op.destroy_adam(self.opt_id)
 
     @torch.no_grad()
