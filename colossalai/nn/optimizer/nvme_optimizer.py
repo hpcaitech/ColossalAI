@@ -32,8 +32,8 @@ class NVMeOptimizer(torch.optim.Optimizer):
             try:
                 from tensornvme import DiskOffloader
                 from tensornvme._C import get_backends
-            except ImportError:
-                raise ImportError('Please install tensornvme to use NVMeOptimizer')
+            except ModuleNotFoundError:
+                raise ModuleNotFoundError('Please install tensornvme to use NVMeOptimizer')
             self.offload_dir = offload_dir or tempfile.mkdtemp()
             backend = 'uring' if 'uring' in get_backends() else 'aio'
             self.offloader = DiskOffloader(self.offload_dir, 8, backend=backend)
