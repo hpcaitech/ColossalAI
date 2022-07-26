@@ -28,12 +28,13 @@ jobs:
           conda install cmake
           echo "pwd is $PWD"
           ls .
+          ls TensorNVMe
           pip install -r requirements.txt
           pip install -v -e .
       - name: Test env
         run: echo "$LD_LIBRARY_PATH and my path is $MY_PATH"
         env:
-          MY_PATH: "MYPATH:${{ env.LD_LIBRARY_PATH }}"
+          MY_PATH: "MYPATH:$LD_LIBRARY_PATH"
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
