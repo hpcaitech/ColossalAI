@@ -29,6 +29,7 @@ jobs:
           conda install cmake
           pip install -r requirements.txt
           pip install -v -e .
+          source /github/home/.bashrc
       - name: Test env
         run: echo "$LD_LIBRARY_PATH and my path is $MY_PATH"
         env:
