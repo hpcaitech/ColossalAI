@@ -17,7 +17,7 @@ from tests.test_tensor.common_utils import tensor_shard_equal
 def run_dist(rank, world_size, port, dp_degree, tp_degree):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     pg = ProcessGroup(dp_degree=dp_degree, tp_degree=tp_degree)
-    x = torch.randn(4, 4, device=get_current_device())
+    x = torch.randn(4, 4)
     param = ColoTensor(torch.nn.Parameter(x), spec=ColoTensorSpec(pg))
     spec = ShardSpec([-1], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D)
     param.set_tensor_spec(*spec)
