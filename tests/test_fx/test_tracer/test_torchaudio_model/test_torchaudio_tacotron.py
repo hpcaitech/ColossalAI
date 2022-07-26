@@ -1,7 +1,7 @@
 import torch
 from torchaudio.models import Tacotron2
 from utils import trace_and_compare
-
+import pytest
 
 def _get_tacotron2_model(n_mels, decoder_max_step=2000, gate_threshold=0.5):
     return Tacotron2(

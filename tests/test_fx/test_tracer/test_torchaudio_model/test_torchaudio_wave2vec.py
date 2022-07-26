@@ -8,14 +8,15 @@ from torchaudio.models.wav2vec2 import (
     wav2vec2_large_lv60k,
 )
 from utils import trace_and_compare
+import pytest
 
 MODEL_LIST = [
     hubert_base,
     hubert_large,
     hubert_xlarge,
-    # wav2vec2_base,
-    # wav2vec2_large,
-    # wav2vec2_large_lv60k,
+    wav2vec2_base,
+    wav2vec2_large,
+    wav2vec2_large_lv60k,
 ]
 
 def _smoke_test(model, device):

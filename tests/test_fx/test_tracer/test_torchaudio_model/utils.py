@@ -11,7 +11,6 @@ def trace_and_compare(model, data_gen, need_meta=False, need_concrete=False):
     graph = tracer.trace(root=model, concrete_args=concrete_args, meta_args=meta_args)
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
-    # gm.graph.print_tabular()
     
     model.eval()
     gm.eval()
