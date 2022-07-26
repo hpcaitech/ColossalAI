@@ -108,22 +108,25 @@ def torch_cat(tensors, dim=None, axis=None, *, out=None):
     return torch.empty(final_shape, device="meta")
 
 
-@meta_patched_function.register(torch.Tensor.repeat_interleave)
-def torch_tensor_repeat_interleave(input, repeats, dim=None, *, output_size=None):
+@meta_patched_function.register(torch.repeat_interleave)
+def torch_repeat_interleave(input, repeats, dim=None, output_size=None):
+    assert isinstance(repeats, int) or isinstance(repeats, torch.Tensor), \
+    "Argument 'repeats' should be of type 'torch.Tensor' or 'int'"
+
+    shape = list(input.shape) if dim is not None else [input.numel()]
+    dim = dim if dim is not None else 0
+    dim = input.dim() + dim if dim < 0 else dim
+
     if isinstance(repeats, int):
-        repeats = torch.tensor(repeats)
-    if dim is None:
-        return torch.empty((input.numel() * repeats.sum(),), device="meta")
-    if dim < 0:
-        dim = input.dim() + dim
-    shape = list(input.shape)
-    shape[dim] = shape[dim] * repeats.sum()
+        shape[dim] = shape[dim] * repeats
+    elif isinstance(repeats, torch.Tensor):
+        shape[dim] = repeats.sum()
     return torch.empty(shape, device="meta")
 
 
 @meta_patched_function.register(torch.Tensor.repeat_interleave)
-def torch_tensor_repeat_interleave(self, dim):
-    return torch_repeat_interleave(self, dim)
+def torch_tensor_repeat_interleave(self, repeats, dim=None, *, output_size=None):
+    return torch_repeat_interleave(self, repeats, dim, output_size)
 
 
 @meta_patched_function.register(torch.roll)

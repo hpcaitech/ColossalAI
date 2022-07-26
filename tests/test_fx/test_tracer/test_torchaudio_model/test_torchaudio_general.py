@@ -77,17 +77,17 @@ def test_upsample_network_waveform():
 
 
 def test_wavernn_waveform():
-    upsample_scales = [5, 5, 8]
-    n_rnn = 32
-    n_fc = 32
+    upsample_scales = [2, 2, 5]
+    n_rnn = 16
+    n_fc = 16
     n_classes = 10
-    hop_length = 200
+    hop_length = 20
     n_batch = 2
-    n_time = 200
-    n_freq = 100
-    n_output = 64
-    n_res_block = 10
-    n_hidden = 32
+    n_time = 20
+    n_freq = 10
+    n_output = 16
+    n_res_block = 3
+    n_hidden = 16
     kernel_size = 5
 
     model = WaveRNN(upsample_scales, n_classes, hop_length, n_res_block, n_rnn, n_fc, kernel_size, n_freq, n_hidden,

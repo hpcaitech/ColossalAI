@@ -51,6 +51,7 @@ def test_emformer():
     trace_and_compare(model, data_gen, need_meta=True, need_concrete=False)
 
 
+@pytest.mark.skip
 def test_torchaudio_transformers():
     test_conformer()
     test_emformer()
