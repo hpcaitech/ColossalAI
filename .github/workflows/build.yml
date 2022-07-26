@@ -25,10 +25,8 @@ jobs:
           path: TensorNVMe
       - name: Install tensornvme
         run: |
+          cd TensorNVMe
           conda install cmake
-          echo "pwd is $PWD"
-          ls .
-          ls TensorNVMe
           pip install -r requirements.txt
           pip install -v -e .
       - name: Test env
