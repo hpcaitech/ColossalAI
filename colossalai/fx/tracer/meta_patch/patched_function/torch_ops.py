@@ -107,17 +107,23 @@ def torch_cat(tensors, dim=None, axis=None, *, out=None):
     final_shape = shape[:dim] + [concatenated_dim] + shape[dim + 1:]
     return torch.empty(final_shape, device="meta")
 
+
 @meta_patched_function.register(torch.Tensor.repeat_interleave)
 def torch_tensor_repeat_interleave(input, repeats, dim=None, *, output_size=None):
     if isinstance(repeats, int):
         repeats = torch.tensor(repeats)
     if dim is None:
-        return torch.empty((input.numel() * repeats.sum(), ), device="meta")
+        return torch.empty((input.numel() * repeats.sum(),), device="meta")
     if dim < 0:
         dim = input.dim() + dim
     shape = list(input.shape)
     shape[dim] = shape[dim] * repeats.sum()
     return torch.empty(shape, device="meta")
+
+
+@meta_patched_function.register(torch.Tensor.repeat_interleave)
+def torch_tensor_repeat_interleave(self, dim):
+    return torch_repeat_interleave(self, dim)
 
 
 @meta_patched_function.register(torch.roll)

@@ -19,7 +19,13 @@ from colossalai.tensor import ProcessGroup, ColoParameter
 def check_state_dict_equal(state_dict: OrderedDict, other_state_dict: OrderedDict):
     for (k1, t1), (k2, t2) in zip(state_dict.items(), other_state_dict.items()):
         assert k1 == k2
-        assert torch.allclose(t1, t2, atol=1e-3, rtol=1e-3)
+
+        if t1.device != t2.device:
+            temp_t2 = t2.to(t1.device)
+        else:
+            temp_t2 = t2
+
+        assert torch.allclose(t1, temp_t2, atol=1e-3, rtol=1e-3)
 
 
 def init_ddp(module: torch.nn.Module) -> ColoDDP:
