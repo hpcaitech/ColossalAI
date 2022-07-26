@@ -146,7 +146,7 @@ def test_conv1d():
 
 
 def test_conv2d():
-    # test conv 1d
+    # test conv 2d
     data = torch.rand(2, 3, 4, 4)
     conv2d = torch.nn.Conv2d(in_channels=3, out_channels=4, kernel_size=2)
     materialized_output = conv2d(data)
@@ -187,7 +187,7 @@ def test_conv2d():
 
 
 def test_conv3d():
-    # test conv 1d
+    # test conv 3d
     data = torch.rand(2, 3, 4, 4, 4)
     conv3d = torch.nn.Conv3d(in_channels=3, out_channels=4, kernel_size=2)
     materialized_output = conv3d(data)
@@ -223,6 +223,75 @@ def test_conv3d():
     _assert_output_shape(data=data,
                          module=conv3d,
                          patch_fn=patched_module.torch_nn_conv3d,
+                         expect_exception=False,
+                         output_shape=materialized_output.shape)
+
+
+def test_conv_transpose1d():
+    # test conv transpose1d
+    data = torch.rand(2, 3, 4)
+
+    convtrans1d = torch.nn.ConvTranspose1d(in_channels=3, out_channels=4, kernel_size=2)
+    materialized_output = convtrans1d(data)
+    meta_data = data.to('meta')
+    _assert_output_shape(data=meta_data,
+                         module=convtrans1d,
+                         patch_fn=patched_module.torch_nn_convtranspose1d,
+                         expect_exception=False,
+                         output_shape=materialized_output.shape)
+
+    convtrans1d = torch.nn.ConvTranspose1d(in_channels=3, out_channels=4, kernel_size=2, padding=1)
+    materialized_output = convtrans1d(data)
+    meta_data = data.to('meta')
+    _assert_output_shape(data=meta_data,
+                         module=convtrans1d,
+                         patch_fn=patched_module.torch_nn_convtranspose1d,
+                         expect_exception=False,
+                         output_shape=materialized_output.shape)
+
+
+def test_conv_transpose2d():
+    # test conv transpose2d
+    data = torch.rand(2, 3, 4, 4)
+
+    convtrans2d = torch.nn.ConvTranspose2d(in_channels=3, out_channels=4, kernel_size=2)
+    materialized_output = convtrans2d(data)
+    meta_data = data.to('meta')
+    _assert_output_shape(data=meta_data,
+                         module=convtrans2d,
+                         patch_fn=patched_module.torch_nn_convtranspose2d,
+                         expect_exception=False,
+                         output_shape=materialized_output.shape)
+
+    convtrans2d = torch.nn.ConvTranspose2d(in_channels=3, out_channels=4, kernel_size=2, padding=1)
+    materialized_output = convtrans2d(data)
+    meta_data = data.to('meta')
+    _assert_output_shape(data=meta_data,
+                         module=convtrans2d,
+                         patch_fn=patched_module.torch_nn_convtranspose2d,
+                         expect_exception=False,
+                         output_shape=materialized_output.shape)
+
+
+def test_conv_transpose3d():
+    # test conv transpose2d
+    data = torch.rand(2, 3, 4, 4, 4)
+
+    convtrans3d = torch.nn.ConvTranspose3d(in_channels=3, out_channels=4, kernel_size=2)
+    materialized_output = convtrans3d(data)
+    meta_data = data.to('meta')
+    _assert_output_shape(data=meta_data,
+                         module=convtrans3d,
+                         patch_fn=patched_module.torch_nn_convtranspose3d,
+                         expect_exception=False,
+                         output_shape=materialized_output.shape)
+
+    convtrans3d = torch.nn.ConvTranspose3d(in_channels=3, out_channels=4, kernel_size=2, padding=1)
+    materialized_output = convtrans3d(data)
+    meta_data = data.to('meta')
+    _assert_output_shape(data=meta_data,
+                         module=convtrans3d,
+                         patch_fn=patched_module.torch_nn_convtranspose3d,
                          expect_exception=False,
                          output_shape=materialized_output.shape)
 

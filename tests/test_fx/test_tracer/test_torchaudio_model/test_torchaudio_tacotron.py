@@ -8,22 +8,22 @@ def _get_tacotron2_model(n_mels, decoder_max_step=2000, gate_threshold=0.5):
     return Tacotron2(
         mask_padding=False,
         n_mels=n_mels,
-        n_symbol=148,
+        n_symbol=20,
         n_frames_per_step=1,
-        symbol_embedding_dim=512,
-        encoder_embedding_dim=512,
+        symbol_embedding_dim=32,
+        encoder_embedding_dim=32,
         encoder_n_convolution=3,
         encoder_kernel_size=5,
-        decoder_rnn_dim=1024,
+        decoder_rnn_dim=32,
         decoder_max_step=decoder_max_step,
         decoder_dropout=0.1,
         decoder_early_stopping=True,
-        attention_rnn_dim=1024,
-        attention_hidden_dim=128,
+        attention_rnn_dim=32,
+        attention_hidden_dim=32,
         attention_location_n_filter=32,
         attention_location_kernel_size=31,
         attention_dropout=0.1,
-        prenet_dim=256,
+        prenet_dim=32,
         postnet_n_convolution=5,
         postnet_kernel_size=5,
         postnet_embedding_dim=512,
@@ -31,6 +31,7 @@ def _get_tacotron2_model(n_mels, decoder_max_step=2000, gate_threshold=0.5):
     )
 
 
+@pytest.mark.skip
 def test_tacotron_model():
     n_mels = 80
     n_batch = 3

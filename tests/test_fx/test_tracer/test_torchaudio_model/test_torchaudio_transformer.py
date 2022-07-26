@@ -4,6 +4,7 @@ from torchaudio.models import Emformer, Conformer
 import pytest
 
 
+@pytest.mark.skip
 def test_conformer():
     input_dim = 80
     batch_size = 10
@@ -29,6 +30,7 @@ def test_conformer():
     trace_and_compare(model, data_gen, need_meta=False, need_concrete=True)
 
 
+@pytest.mark.skip
 def test_emformer():
     input_dim = 128
     batch_size = 10

@@ -40,9 +40,10 @@ def _smoke_test(model, device):
     trace_and_compare(model, data_gen, need_meta=True, need_concrete=False)
 
 
+@pytest.mark.skip
 def test_wav2vec():
     for model_fn in MODEL_LIST:
-        _smoke_test(model_fn(), 'cuda')
+        _smoke_test(model_fn(), 'cpu')
 
 
 if __name__ == "__main__":
