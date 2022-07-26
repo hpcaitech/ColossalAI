@@ -100,7 +100,7 @@ def get_version():
             version += f'+torch{torch_version}cu{cuda_version}'
         return version
 
-
+    
 if build_cuda_ext:
     try:
         import torch
@@ -115,7 +115,7 @@ if build_cuda_ext:
     except ImportError:
         print('torch is not found. CUDA extension will not be installed')
         build_cuda_ext = False
-
+        
 if build_cuda_ext:
     build_cuda_ext = check_cuda_availability(CUDA_HOME) and check_cuda_torch_binary_vs_bare_metal(CUDA_HOME)
 
