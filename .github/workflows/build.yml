@@ -42,7 +42,6 @@ jobs:
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
-          pip list
           PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10

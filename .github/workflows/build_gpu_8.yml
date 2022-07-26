@@ -26,7 +26,7 @@ jobs:
           cd TensorNVMe
           conda install cmake
           pip install -r requirements.txt
-          pip install -v -e .
+          pip install -v .
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
