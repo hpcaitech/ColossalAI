@@ -40,9 +40,9 @@ jobs:
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
-          source /github/home/.bashrc
           gpu_used=$(nvidia-smi -i 0 --query-gpu=memory.used --format=csv,noheader,nounits)
           [ "$gpu_used" -le "100" ] && PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           

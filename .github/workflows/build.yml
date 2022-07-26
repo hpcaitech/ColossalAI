@@ -42,8 +42,8 @@ jobs:
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing
         run: |
-          source /github/home/.bashrc
           PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
