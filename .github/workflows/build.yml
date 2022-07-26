@@ -31,7 +31,9 @@ jobs:
           pip install -v -e .
           source /github/home/.bashrc
       - name: Test env
-        run: echo "$LD_LIBRARY_PATH and my path is $MY_PATH"
+        run: |
+          source /github/home/.bashrc
+          echo "$LD_LIBRARY_PATH and my path is $MY_PATH"
         env:
           MY_PATH: "MYPATH:$LD_LIBRARY_PATH"
       - uses: actions/checkout@v2
