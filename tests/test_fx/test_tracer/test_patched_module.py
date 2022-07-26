@@ -4,7 +4,12 @@ from colossalai.fx.tracer.meta_patch import patched_module
 
 def _run(data, module, patch_fn):
     try:
-        output = patch_fn(module, data)
+        if isinstance(data, dict):
+            output = patch_fn(module, **data)
+        if isinstance(data, tuple) or isinstance(data, list):
+            output = patch_fn(module, *data)
+        else:
+            output = patch_fn(module, data)
         return output
     except Exception as e:
         return e
@@ -17,8 +22,13 @@ def _assert_output_shape(data, module, patch_fn, expect_exception, output_shape)
         assert isinstance(output, AssertionError)
     else:
         assert not isinstance(output, Exception)
-        assert output.is_meta
-        assert output.shape == output_shape
+        if isinstance(output, tuple):
+            for item, shape in zip(output, output_shape):
+                assert item.is_meta
+                assert item.shape == shape
+        else:
+            assert output.is_meta
+            assert output.shape == output_shape
 
 
 def test_linear():
@@ -27,9 +37,27 @@ def test_linear():
     module = torch.nn.Linear(4, 2)
     _assert_output_shape(data, module, patched_module.torch_nn_linear, False, torch.Size([2, 2]))
 
-    # Test if the linear patch can catch exception when dimension does not match
+    # test if the linear patch can catch exception when dimension does not match
     data = torch.rand(2, 2, device='meta')
     _assert_output_shape(data, module, patched_module.torch_nn_linear, True, None)
+
+
+def test_rnn():
+    # test rnn patch can produce the meta output with correct shape
+    data = (torch.randn(5, 3, 10), torch.randn(2, 3, 20))
+    module = torch.nn.RNN(10, 20, 2)
+    output, hn = module(*data)
+    meta_data = (torch.randn(5, 3, 10).to('meta'), torch.randn(2, 3, 20).to('meta'))
+
+    _assert_output_shape(meta_data, module, patched_module.torch_nn_rnn, False, (output.shape, hn.shape))
+
+    # Test if the linear patch can catch exception when dimension does not match
+    data = (torch.randn(5, 3, 10), torch.randn(2, 3, 20))
+    module = torch.nn.RNN(10, 20, 2)
+    output, hn = module(*data)
+    meta_data = (torch.randn(5, 3, 1).to('meta'), torch.randn(2, 3, 20).to('meta'))
+
+    _assert_output_shape(meta_data, module, patched_module.torch_nn_rnn, True, None)
 
 
 def test_embedding():
