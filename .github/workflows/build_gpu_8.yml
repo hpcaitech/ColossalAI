@@ -18,6 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
+          repository: hpcaitech/TensorNVMe
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: TensorNVMe
+      - name: Install tensornvme
+        run: |
+          cd TensorNVMe
+          conda install cmake
+          pip install -r requirements.txt
+          pip install -v .
+      - uses: actions/checkout@v2
+        with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
       - name: Install Colossal-AI      
         run: |
@@ -33,4 +44,5 @@ jobs:
           [ "$gpu_used" -le "100" ] && PYTHONPATH=$PWD pytest tests
         env:
           DATA: /data/scratch/cifar-10
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           

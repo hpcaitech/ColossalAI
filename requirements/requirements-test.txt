@@ -3,4 +3,8 @@ torchvision
 transformers
 timm
 titans
+<<<<<<< HEAD
 torchaudio
+=======
+torchrec
+>>>>>>> upstream/main
