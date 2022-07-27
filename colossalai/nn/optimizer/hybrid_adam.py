@@ -3,10 +3,12 @@ import torch
 from colossalai.utils import multi_tensor_applier
 from colossalai.registry import OPTIMIZERS
 from colossalai.nn.optimizer import CPU_ADAM_CNT
+from typing import Optional
+from .nvme_optimizer import NVMeOptimizer
 
 
 @OPTIMIZERS.register_module
-class HybridAdam(torch.optim.Optimizer):
+class HybridAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
     Supports parameters updating on both GPU and CPU, depanding on the device of paramters.
@@ -44,6 +46,9 @@ class HybridAdam(torch.optim.Optimizer):
             True for decoupled weight decay(also known as AdamW) (default: True)
         simd_log (boolean, optional): whether to show if you are using SIMD to 
             accelerate. (default: False)
+        nvme_offload_fraction (float, optional): Fraction of params to be offloaded to NVMe. Defaults to 0.0.
+        offload_dir (Optional[str], optional): Directory to save NVMe offload files.
+            If it's ``None``, a random temporary directory will be used. Defaults to None.
 
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
@@ -63,10 +68,12 @@ class HybridAdam(torch.optim.Optimizer):
                  eps=1e-8,
                  weight_decay=0,
                  adamw_mode=True,
-                 simd_log=False):
+                 simd_log=False,
+                 nvme_offload_fraction: float = 0.0,
+                 nvme_offload_dir: Optional[str] = None):
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
-        super(HybridAdam, self).__init__(model_params, default_args)
+        super(HybridAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.opt_id = CPU_ADAM_CNT()
         self.adamw_mode = adamw_mode
         try:
@@ -82,7 +89,8 @@ class HybridAdam(torch.optim.Optimizer):
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
     def __del__(self):
-        if self.cpu_adam_op:
+        super().__del__()
+        if getattr(self, 'cpu_adam_op', None):
             self.cpu_adam_op.destroy_adam(self.opt_id)
 
     @torch.no_grad()
@@ -92,6 +100,7 @@ class HybridAdam(torch.optim.Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
+        self._pre_step('exp_avg', 'exp_avg_sq')
         for _, group in enumerate(self.param_groups):
             g_l, p_l, m_l, v_l = [], [], [], []
             group_step = 0
@@ -110,6 +119,7 @@ class HybridAdam(torch.optim.Optimizer):
                     state['exp_avg'] = torch.zeros_like(p.data, dtype=torch.float, device=target_device)
                     # gradient variances
                     state['exp_avg_sq'] = torch.zeros_like(p.data, dtype=torch.float, device=target_device)
+                    self._post_state_init(p)
 
                 state['step'] += 1
                 group_step = state['step']
@@ -118,9 +128,11 @@ class HybridAdam(torch.optim.Optimizer):
                 if target_device.type == 'cpu':
                     assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
                     assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
+                    self._pre_update(p, 'exp_avg', 'exp_avg_sq')
                     self.cpu_adam_op.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
                                                  group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
                                                  state['exp_avg'], state['exp_avg_sq'], -1)
+                    self._post_update(p, 'exp_avg', 'exp_avg_sq')
 
                 elif target_device.type == 'cuda':
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
@@ -140,4 +152,5 @@ class HybridAdam(torch.optim.Optimizer):
                 multi_tensor_applier(self.gpu_adam_op, self._dummy_overflow_buf, [g_l, p_l, m_l, v_l], group['lr'],
                                      group['betas'][0], group['betas'][1], group['eps'], group_step, adamw_mode,
                                      bias_correction, group['weight_decay'])
+        self._post_step()
         return loss

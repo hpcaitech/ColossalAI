@@ -1,3 +1,1 @@
-from .activation_checkpoint_codegen import ActivationCheckpointCodeGen
-
-__all__ = ['ActivationCheckpointCodeGen']
+from .activation_checkpoint_codegen import *

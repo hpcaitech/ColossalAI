@@ -318,7 +318,8 @@ class ZeroDDP(ColoDDP):
             self.chunk_manager.access_chunk(chunk)
         for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
             if p is not None:
-                destination[prefix + name] = fp32_p.clone() if keep_vars else fp32_p.clone().detach()
+                rec_p = fp32_p.clone() if fp32_p.device.type == 'cpu' else fp32_p.cpu()
+                destination[prefix + name] = rec_p if keep_vars else rec_p.detach()
         for chunk in chunks:
             self.chunk_manager.release_chunk(chunk)
         for name, buf in self.named_buffers():

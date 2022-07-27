@@ -4,6 +4,7 @@ from torch.fx.node import Node, map_aggregate
 from typing import Any, Tuple, NamedTuple, Optional, Dict
 from functools import reduce
 from torch.fx._compatibility import compatibility
+from torch.fx.immutable_collections import immutable_dict, immutable_list
 
 
 @compatibility(is_backward_compatible=True)
@@ -16,6 +17,7 @@ class TensorMetadata(NamedTuple):
     requires_grad: bool
     stride: Tuple[int]
     numel: int
+    is_tensor: bool
     # TODO: we can add a list of sharding spec here, and record the sharding
     # behaviour by appending sharding spec into list.
 
@@ -29,8 +31,9 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
     requires_grad = result.requires_grad
     stride = result.stride()
     numel = result.numel()
+    is_tensor = True
 
-    return TensorMetadata(shape, dtype, requires_grad, stride, numel)
+    return TensorMetadata(shape, dtype, requires_grad, stride, numel, is_tensor)
 
 
 def _compute_node_numel(node_metadata: any) -> int:
@@ -49,6 +52,24 @@ def _compute_node_numel(node_metadata: any) -> int:
             node_numel += _compute_node_numel(element)
 
     return node_numel
+
+
+def _map_aggregate(arg, fn):
+    """
+    Apply fn to each Node appearing arg. arg may be a list, tuple, slice, or dict with string keys.
+    """
+    if isinstance(arg, torch.Size):
+        return fn(arg)
+    if isinstance(arg, tuple):
+        return tuple(map_aggregate(elem, fn) for elem in arg)
+    elif isinstance(arg, list):
+        return immutable_list(map_aggregate(elem, fn) for elem in arg)
+    elif isinstance(arg, dict):
+        return immutable_dict((k, map_aggregate(v, fn)) for k, v in arg.items())
+    elif isinstance(arg, slice):
+        return slice(map_aggregate(arg.start, fn), map_aggregate(arg.stop, fn), map_aggregate(arg.step, fn))
+    else:
+        return fn(arg)
 
 
 @compatibility(is_backward_compatible=True)
@@ -85,23 +106,16 @@ class MetaInfoProp(torch.fx.Interpreter):
 
     def run_node(self, n: Node) -> Any:
         result = super().run_node(n)
-        found_tensor = False
 
         def extract_tensor_meta(obj):
             if isinstance(obj, torch.Tensor):
-                nonlocal found_tensor
-                found_tensor = True
                 return _extract_tensor_metadata(obj)
             else:
-                return obj
+                return TensorMetadata(None, None, False, None, 0, False)
 
-        meta = map_aggregate(result, extract_tensor_meta)
+        meta = _map_aggregate(result, extract_tensor_meta)
 
-        if found_tensor:
-            n.meta['tensor_meta'] = meta
-        else:
-            n.meta['tensor_meta'] = TensorMetadata(None, None, False, None, 0)
-        # counting the total size of node outputs
+        n.meta['tensor_meta'] = meta
         total_node_size = _compute_node_numel(n.meta['tensor_meta'])
         # counting the total size of parameters
         total_param_size = 0
