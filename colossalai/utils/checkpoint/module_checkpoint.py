@@ -27,7 +27,7 @@ def save_checkpoint(dire: str,
     # save the dist context about the tensors in a new dict, while still maintain the original dict.
     for k, v in model_state.items():
         if isinstance(v, ColoTensor):
-            gather_tensor(v)  # gather shared tensors to rank0
+            gather_tensor(v)    # gather shared tensors to rank0
             # don't recover tensors in rank0, since the dict is only a copy of model
 
     if rank == 0:

@@ -22,7 +22,7 @@ def trace_and_compare(model_cls, tracer, data, meta_args=None):
     with torch.no_grad():
         fx_out = gm(data)
         non_fx_out = model(data)
-
+    
     # compare output
     if isinstance(fx_out, tuple):
         # some models produce tuple as output

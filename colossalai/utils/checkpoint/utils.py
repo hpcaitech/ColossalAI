@@ -34,7 +34,7 @@ def gather_tensor(colo_tensor: ColoTensor) -> None:
         dist.barrier()
 
     if dist.get_rank() == 0:
-        setattr(colo_tensor, 'save_ready', True)  # set saving signitrue
+        setattr(colo_tensor, 'save_ready', True)    # set saving signitrue
 
 
 def scatter_tensor(colo_tensor: ColoTensor, dist_spec: _DistSpec) -> None:
@@ -54,9 +54,8 @@ def scatter_tensor(colo_tensor: ColoTensor, dist_spec: _DistSpec) -> None:
         if dist.get_rank() == 0:
             colo_tensor.set_dist_spec(dist_spec)
         else:
-            rep_tensor = ColoTensor(entire_data, ColoTensorSpec(
-                pg=colo_tensor.get_process_group(),
-                compute_attr=colo_tensor.compute_spec))
+            rep_tensor = ColoTensor(
+                entire_data, ColoTensorSpec(pg=colo_tensor.get_process_group(), compute_attr=colo_tensor.compute_spec))
             rep_tensor.set_dist_spec(dist_spec)
             with torch.no_grad():
                 colo_tensor.data.copy_(rep_tensor.data)
