@@ -7,7 +7,7 @@ from torchaudio.models.wav2vec2 import (
     wav2vec2_large,
     wav2vec2_large_lv60k,
 )
-from utils import trace_and_compare
+from torchaudio_utils import trace_and_compare
 import pytest
 
 MODEL_LIST = [

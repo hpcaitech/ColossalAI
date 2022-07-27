@@ -1,5 +1,5 @@
 import torch
-from utils import trace_and_compare
+from torchaudio_utils import trace_and_compare
 from torchaudio.models import ConvTasNet, DeepSpeech, Wav2Letter, WaveRNN
 from torchaudio.models.wavernn import MelResNet, UpsampleNetwork
 import pytest
