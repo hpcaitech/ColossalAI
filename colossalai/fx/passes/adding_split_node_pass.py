@@ -61,6 +61,8 @@ def balanced_split_pass_v2(gm: torch.fx.GraphModule, pp_size: int):
     for node in mod_graph.nodes:
         if pp_size <= 1:
             break
+        if 'pipe_split' in node.name:
+            continue
         accumulate_node_size += node.node_size
         if accumulate_node_size >= partition_size:
             accumulate_node_size = 0
