@@ -204,6 +204,7 @@ class ZeroDDP(ColoDDP):
         # TODO: get param order and filter unused params
         for p in module.parameters():
             if getattr(p, '_ddp_to_ignore', False):
+                p.data = p.half()
                 continue
             fp32_p = p.float().detach()
             p.data = p.half()
