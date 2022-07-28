@@ -191,9 +191,27 @@ class ZeroOptimizer(ColossalaiOptimizer):
                         self.chunk_manager.add_extern_static_tensor(val)
 
     def state_dict(self):
+        is_rank_0 = self.chunk_manager.process_group.dp_local_rank() == 0
+        if not self.chunk_manager.enable_distributed_storage and not is_rank_0:
+            return
         optim_state_dict = super().state_dict()
         scaler_state_dict = self.grad_scaler.state_dict()
         optim_state_dict['scaler'] = scaler_state_dict
+        if not self.chunk_manager.enable_distributed_storage:
+            return optim_state_dict
+        local_state = {k: convert_state_dict_to_cpu(v) for k, v in optim_state_dict['state'].items() if len(v) > 0}
+        if not self.chunk_manager.process_group.has_cpu_groups:
+            self.chunk_manager.process_group.set_cpu_groups()
+        dst_rank = self.chunk_manager.process_group.dp_rank_list()[0]
+        output = [None for _ in range(self.chunk_manager.process_group.dp_world_size())]
+        dist.gather_object(local_state,
+                           output if self.chunk_manager.process_group.dp_local_rank() == 0 else None,
+                           dst=dst_rank,
+                           group=self.chunk_manager.process_group.cpu_dp_process_group())
+        if not is_rank_0:
+            return
+        for state in output:
+            optim_state_dict['state'].update(state)
         return optim_state_dict
 
     def load_state_dict(self, *args, **kwargs):
@@ -210,3 +228,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
                     if isinstance(v, torch.Tensor):
                         state[k] = v.to(dtype=self.fp16_param_to_fp32_param[p].dtype,
                                         device=self.fp16_param_to_fp32_param[p].device)
+
+
+def convert_state_dict_to_cpu(state: Dict[str, torch.Tensor]):
+    return {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in state.items()}

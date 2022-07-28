@@ -104,8 +104,8 @@ class ProcessGroup:
     def set_cpu_groups(self):
         if self.has_cpu_groups:
             return
-        self.logger.info(
-            f'{self._rank} Gloo initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
+        # self.logger.info(
+        #     f'{self._rank} Gloo initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
         PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
         PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
         self._has_cpu_groups = True
