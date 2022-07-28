@@ -194,6 +194,15 @@ class ZeroOptimizer(ColossalaiOptimizer):
                         self.chunk_manager.add_extern_static_tensor(val)
 
     def state_dict(self):
+        r"""Returns the state of the optimizer as a :class:`dict`. For DP rank != 0, this function returns None.
+
+        It contains two entries:
+
+        * state - a dict holding current optimization state. Its content
+            differs between optimizer classes.
+        * param_groups - a list containing all parameter groups where each
+            parameter group is a dict
+        """
         is_rank_0 = self.chunk_manager.process_group.dp_local_rank() == 0
         if not self.chunk_manager.enable_distributed_storage and not is_rank_0:
             return
