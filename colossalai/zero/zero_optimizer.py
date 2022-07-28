@@ -8,6 +8,9 @@ from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, disposable
+from collections import defaultdict, abc as container_abcs
+from copy import deepcopy
+from itertools import chain
 
 
 class OptimState(Enum):
@@ -214,20 +217,72 @@ class ZeroOptimizer(ColossalaiOptimizer):
             optim_state_dict['state'].update(state)
         return optim_state_dict
 
-    def load_state_dict(self, *args, **kwargs):
-        if 'scaler' not in args[0]:
+    def load_state_dict(self, state_dict):
+        r"""Loads the optimizer state.
+
+        Args:
+            state_dict (dict): optimizer state. Should be an object returned
+                from a call to :meth:`state_dict`.
+        """
+        if 'scaler' not in state_dict:
             self._logger.warning('Missing scaler when loading optimizer state dict', ranks=[0])
         else:
-            scaler_state_dict = args[0].pop('scaler')
-            self.grad_scaler.load_state_dict(scaler_state_dict)
-        super().load_state_dict(*args, **kwargs)
-        for group in self.optim.param_groups:
-            for p in group['params']:
-                state = self.optim.state[p]
-                for k, v in state.items():
-                    if isinstance(v, torch.Tensor):
-                        state[k] = v.to(dtype=self.fp16_param_to_fp32_param[p].dtype,
-                                        device=self.fp16_param_to_fp32_param[p].device)
+            self.grad_scaler.load_state_dict(deepcopy(state_dict['scaler']))
+
+        # Validate the state_dict
+        groups = self.param_groups
+        saved_groups = deepcopy(state_dict['param_groups'])
+
+        if len(groups) != len(saved_groups):
+            raise ValueError("loaded state dict has a different number of "
+                             "parameter groups")
+        param_lens = (len(g['params']) for g in groups)
+        saved_lens = (len(g['params']) for g in saved_groups)
+        if any(p_len != s_len for p_len, s_len in zip(param_lens, saved_lens)):
+            raise ValueError("loaded state dict contains a parameter group "
+                             "that doesn't match the size of optimizer's group")
+
+        # Update the state
+        id_map = {
+            old_id: p for old_id, p in zip(chain.from_iterable((g['params'] for g in saved_groups
+                                                               )), chain.from_iterable((g['params'] for g in groups)))
+        }
+
+        def cast(param, value):
+            r"""Make a deep copy of value, casting all tensors to device of param."""
+            if isinstance(value, torch.Tensor):
+                # Floating-point types are a bit special here. They are the only ones
+                # that are assumed to always match the type of params.
+                if param.is_floating_point():
+                    value = value.to(param.dtype)
+                value = value.to(param.device)
+                return value
+            elif isinstance(value, dict):
+                return {k: cast(param, v) for k, v in value.items()}
+            elif isinstance(value, container_abcs.Iterable):
+                return type(value)(cast(param, v) for v in value)
+            else:
+                return value
+
+        # Copy state assigned to params (and cast tensors to appropriate types).
+        # State that is not assigned to params is copied as is (needed for
+        # backward compatibility).
+        state = defaultdict(dict)
+        for k, v in state_dict['state'].items():
+            if k in id_map:
+                param = self.fp16_param_to_fp32_param[id_map[k]]
+                if param.storage().size() > 0:
+                    state[param] = cast(param, deepcopy(v))
+            else:
+                state[k] = deepcopy(v)
+
+        # Update parameter groups, setting their 'params' value
+        def update_group(group, new_group):
+            new_group['params'] = group['params']
+            return new_group
+
+        param_groups = [update_group(g, ng) for g, ng in zip(groups, saved_groups)]
+        self.__setstate__({'state': state, 'param_groups': param_groups})
 
 
 def convert_state_dict_to_cpu(state: Dict[str, torch.Tensor]):
