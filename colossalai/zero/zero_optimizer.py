@@ -8,6 +8,9 @@ from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
 from colossalai.utils import get_current_device, disposable
+from collections import defaultdict, abc as container_abcs
+from copy import deepcopy
+from itertools import chain
 
 
 class OptimState(Enum):
@@ -191,22 +194,105 @@ class ZeroOptimizer(ColossalaiOptimizer):
                         self.chunk_manager.add_extern_static_tensor(val)
 
     def state_dict(self):
+        r"""Returns the state of the optimizer as a :class:`dict`. For DP rank != 0, this function returns None.
+
+        It contains two entries:
+
+        * state - a dict holding current optimization state. Its content
+            differs between optimizer classes.
+        * param_groups - a list containing all parameter groups where each
+            parameter group is a dict
+        """
+        is_rank_0 = self.chunk_manager.process_group.dp_local_rank() == 0
+        if not self.chunk_manager.enable_distributed_storage and not is_rank_0:
+            return
         optim_state_dict = super().state_dict()
         scaler_state_dict = self.grad_scaler.state_dict()
         optim_state_dict['scaler'] = scaler_state_dict
+        if not self.chunk_manager.enable_distributed_storage:
+            return optim_state_dict
+        local_state = {k: convert_state_dict_to_cpu(v) for k, v in optim_state_dict['state'].items() if len(v) > 0}
+        if not self.chunk_manager.process_group.has_cpu_groups:
+            self.chunk_manager.process_group.set_cpu_groups()
+        dst_rank = self.chunk_manager.process_group.dp_rank_list()[0]
+        output = [None for _ in range(self.chunk_manager.process_group.dp_world_size())]
+        dist.gather_object(local_state,
+                           output if self.chunk_manager.process_group.dp_local_rank() == 0 else None,
+                           dst=dst_rank,
+                           group=self.chunk_manager.process_group.cpu_dp_process_group())
+        if not is_rank_0:
+            return
+        for state in output:
+            optim_state_dict['state'].update(state)
         return optim_state_dict
 
-    def load_state_dict(self, *args, **kwargs):
-        if 'scaler' not in args[0]:
+    def load_state_dict(self, state_dict):
+        r"""Loads the optimizer state.
+
+        Args:
+            state_dict (dict): optimizer state. Should be an object returned
+                from a call to :meth:`state_dict`.
+        """
+        if 'scaler' not in state_dict:
             self._logger.warning('Missing scaler when loading optimizer state dict', ranks=[0])
         else:
-            scaler_state_dict = args[0].pop('scaler')
-            self.grad_scaler.load_state_dict(scaler_state_dict)
-        super().load_state_dict(*args, **kwargs)
-        for group in self.optim.param_groups:
-            for p in group['params']:
-                state = self.optim.state[p]
-                for k, v in state.items():
-                    if isinstance(v, torch.Tensor):
-                        state[k] = v.to(dtype=self.fp16_param_to_fp32_param[p].dtype,
-                                        device=self.fp16_param_to_fp32_param[p].device)
+            self.grad_scaler.load_state_dict(deepcopy(state_dict['scaler']))
+
+        # Validate the state_dict
+        groups = self.param_groups
+        saved_groups = deepcopy(state_dict['param_groups'])
+
+        if len(groups) != len(saved_groups):
+            raise ValueError("loaded state dict has a different number of "
+                             "parameter groups")
+        param_lens = (len(g['params']) for g in groups)
+        saved_lens = (len(g['params']) for g in saved_groups)
+        if any(p_len != s_len for p_len, s_len in zip(param_lens, saved_lens)):
+            raise ValueError("loaded state dict contains a parameter group "
+                             "that doesn't match the size of optimizer's group")
+
+        # Update the state
+        id_map = {
+            old_id: p for old_id, p in zip(chain.from_iterable((g['params'] for g in saved_groups
+                                                               )), chain.from_iterable((g['params'] for g in groups)))
+        }
+
+        def cast(param, value):
+            r"""Make a deep copy of value, casting all tensors to device of param."""
+            if isinstance(value, torch.Tensor):
+                # Floating-point types are a bit special here. They are the only ones
+                # that are assumed to always match the type of params.
+                if param.is_floating_point():
+                    value = value.to(param.dtype)
+                value = value.to(param.device)
+                return value
+            elif isinstance(value, dict):
+                return {k: cast(param, v) for k, v in value.items()}
+            elif isinstance(value, container_abcs.Iterable):
+                return type(value)(cast(param, v) for v in value)
+            else:
+                return value
+
+        # Copy state assigned to params (and cast tensors to appropriate types).
+        # State that is not assigned to params is copied as is (needed for
+        # backward compatibility).
+        state = defaultdict(dict)
+        for k, v in state_dict['state'].items():
+            if k in id_map:
+                param = self.fp16_param_to_fp32_param[id_map[k]]
+                if param.storage().size() > 0:
+                    state[param] = cast(param, deepcopy(v))
+            else:
+                state[k] = deepcopy(v)
+
+        # Update parameter groups, setting their 'params' value
+        def update_group(group, new_group):
+            new_group['params'] = group['params']
+            return new_group
+
+        param_groups = [update_group(g, ng) for g, ng in zip(groups, saved_groups)]
+        self.__setstate__({'state': state, 'param_groups': param_groups})
+
+
+def convert_state_dict_to_cpu(state: Dict[str, torch.Tensor]):
+    return {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in state.items()}
