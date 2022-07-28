@@ -13,7 +13,7 @@ class ChunkManager:
 
     Args:
         chunk_size (int): the size of a chunk.
-        process_group (): process group of the chunk.
+        process_group (ColoProcessGroup): process group of the chunk.
         enable_distributed_storage (bool): optional, allow for distributed storage of a chunk. The default is false.
         init_device (torch.device): optional, the device on which the chunk is initialized. The default is None.
     """
