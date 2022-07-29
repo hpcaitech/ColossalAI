@@ -22,7 +22,6 @@ class PyTorchProcessGroupDict(metaclass=SingletonMeta):
 
             self.logger = get_dist_logger('ProcessGroup')
             self.logger.info(f'NCCL initialize ProcessGroup on {rank_list}', ranks=[0])
-
             self.dict[pg_key] = torch.distributed.new_group(ranks=rank_list, backend=backend)
         return self.dict[pg_key]
 
@@ -104,10 +103,15 @@ class ProcessGroup:
     def set_cpu_groups(self):
         if self.has_cpu_groups:
             return
-        # self.logger.info(
-        #     f'{self._rank} Gloo initialize TP group on {self._tp_rank_list}, DP group on {self._dp_rank_list}')
-        PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
-        PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
+
+        for i in range(self._dp_degree):
+            i_tp_list = [self._rank_list[i * self._tp_degree + j] for j in range(self._tp_degree)]
+            PYTORCHPGDICT_.get(i_tp_list, 'gloo')
+
+        for j in range(self._tp_degree):
+            j_dp_list = [self._rank_list[i * self._tp_degree + j] for i in range(self._dp_degree)]
+            PYTORCHPGDICT_.get(j_dp_list, 'gloo')
+
         self._has_cpu_groups = True
 
     @property
