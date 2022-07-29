@@ -162,9 +162,9 @@ class FusedLAMB(torch.optim.Optimizer):
                 # State initialization
                 if len(state) == 0:
                     # Exponential moving average of gradient values
-                    state['exp_avg'] = torch.zeros_like(p.data)
+                    state['exp_avg'] = torch.zeros_like(p)
                     # Exponential moving average of gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq'] = torch.zeros_like(p)
 
                 if p.dtype == torch.float16:
                     g_16.append(p.grad.data)

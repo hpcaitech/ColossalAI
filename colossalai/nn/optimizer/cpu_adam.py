@@ -143,9 +143,9 @@ class CPUAdam(NVMeOptimizer):
                     state['step'] = 0
 
                     # gradient momentums
-                    state['exp_avg'] = torch.zeros_like(p.data, dtype=torch.float, device=target_device)
+                    state['exp_avg'] = torch.zeros_like(p, dtype=torch.float, device=target_device)
                     # gradient variances
-                    state['exp_avg_sq'] = torch.zeros_like(p.data, dtype=torch.float, device=target_device)
+                    state['exp_avg_sq'] = torch.zeros_like(p, dtype=torch.float, device=target_device)
                     self._post_state_init(p)
 
                 state['step'] += 1
