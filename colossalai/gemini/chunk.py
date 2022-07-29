@@ -208,7 +208,7 @@ class Chunk:
             tensor (torch.Tensor): a torch Tensor object.
             tensor_state (TensorState): the target state for transition.
         """
-        assert tensor != TensorState.FREE, 'Can only set a chunk of tensors to FREE'
+
         # As the gradient hook can be triggered either before or after post-backward
         # tensor's state can be compute -> hold_after_bwd -> ready_for_reduce
         # or compute -> ready_for_reduce -> hold_after_bwd

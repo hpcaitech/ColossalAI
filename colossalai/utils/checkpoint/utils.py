@@ -24,7 +24,7 @@ def gather_tensor(colo_tensor: ColoTensor) -> None:
     if not colo_tensor.is_replicate():
         pg = colo_tensor.get_process_group()
         # for the group which contains rank 0
-        if pg.tp_rank_list()[0] == 0:
+        if pg.dp_local_rank() == 0:
             old_dist_spec = colo_tensor.dist_spec
             colo_tensor.to_replicate_()
             if dist.get_rank() != 0:

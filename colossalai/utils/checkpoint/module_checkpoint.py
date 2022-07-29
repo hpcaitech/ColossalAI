@@ -89,6 +89,12 @@ def load_checkpoint(path: str,
         torch_load_kwargs: (dict, optional): The kwargs of torch.load inside the function
         load_state_dict_kwargs (dict, optional): The kwargs of load_state_dict inside the function
     """
+    # initialize the default paramters
+    if not torch_load_kwargs:
+        torch_load_kwargs = dict()
+    if not load_state_dict_kwargs:
+        load_state_dict_kwargs = dict()
+
     rank = dist.get_rank()
     mapping = dict()
     for n, p in model.named_parameters():
