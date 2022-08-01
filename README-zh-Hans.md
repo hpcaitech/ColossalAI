@@ -90,8 +90,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
   - [序列并行](https://arxiv.org/abs/2105.13120)
   - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/1910.02054)
-- 异构内存管理
-  - [PatrickStar](https://arxiv.org/abs/2108.05818)
+- [异构内存管理](https://github.com/hpcaitech/ColossalAI/tree/main#single-gpu-training-demo)
 - 使用友好
   - 基于参数文件的并行化
 - 推理
@@ -149,6 +148,12 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </p>
 
 - 用相同的硬件训练20倍大的模型
+
+<p id="GPT-2-NVME" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2-NVME.png" width=800/>
+</p>
+
+- 用相同的硬件训练120倍大的模型 (RTX 3080)
 
 ### PaLM
 <p id="PaLM-Single" align="center">
