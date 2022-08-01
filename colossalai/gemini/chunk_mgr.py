@@ -59,9 +59,6 @@ class ChunkManager:
             group_name (str): the name of the chunk group.
         """
         assert tensor not in self.tensor_chunk_map
-        # if self.chunk_size is not None and tensor.numel() > self.chunk_size:
-        #     raise ValueError(
-        #         f'Cannot create chunk, got tensor numel ({tensor.numel()}) > chunk size ({self.chunk_size})')
         try:
             # append the tensor to the last chunk
             self.chunk_groups[group_name][-1].append(tensor)
