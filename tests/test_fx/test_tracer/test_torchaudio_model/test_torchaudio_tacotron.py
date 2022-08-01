@@ -31,7 +31,7 @@ def _get_tacotron2_model(n_mels, decoder_max_step=2000, gate_threshold=0.5):
     )
 
 
-@pytest.mark.skip
+@pytest.mark.skip("Tracing failed")
 def test_tacotron_model():
     n_mels = 80
     n_batch = 3
