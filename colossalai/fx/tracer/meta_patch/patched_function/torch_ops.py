@@ -144,15 +144,21 @@ def torch_full(size, fill_value, *, out=None, dtype=None, layout=torch.strided, 
 def torch_max(input, dim=None, keepdim=False, *, out=None):
     assert out is None, 'assigning value to out is not supported yet'
     if dim is not None:
-        assert isinstance(dim, int), f'expected dim to be a integer but got {type(dim)}'
-        shape = list(input.shape)
-        shape.pop(dim)
-
-        if keepdim:
-            shape.insert(dim, 1)
-        return torch.empty(shape, device='meta', dtype=input.dtype), torch.empty(shape,
-                                                                                 device='meta',
-                                                                                 dtype=input.dtype)
+        if isinstance(dim, int):
+            shape = list(input.shape)
+            shape.pop(dim)
+            if keepdim:
+                shape.insert(dim, 1)
+            return torch.empty(shape, device='meta', dtype=input.dtype), torch.empty(shape,
+                                                                                     device='meta',
+                                                                                     dtype=input.dtype)
+        elif isinstance(dim, torch.Tensor):
+            # when dim is a 0D or 1D tensor, it will maintain the same shape
+            num_dims = dim.dim()
+            if num_dims in [0, 1]:
+                return torch.empty_like(input, device='meta')
+            else:
+                raise ValueError(f"Expected dim to a 0D or 1D tensor but got {num_dims} dimensions")
     else:
         return torch.empty([], device='meta', dtype=input.dtype)
 
