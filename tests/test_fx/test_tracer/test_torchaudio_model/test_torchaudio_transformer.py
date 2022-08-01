@@ -4,7 +4,6 @@ from torchaudio.models import Emformer, Conformer
 import pytest
 
 
-@pytest.mark.skip
 def test_conformer():
     input_dim = 80
     batch_size = 10
@@ -27,10 +26,17 @@ def test_conformer():
         input = torch.rand(batch_size, int(lengths.max()), input_dim)
         return dict(input=input, lengths=lengths)
 
-    trace_and_compare(model, data_gen, need_meta=False, need_concrete=True)
+    def kwargs_transform(data):
+        new_data = {}
+
+        for k, v in data.items():
+            new_data[f'{k}_1'] = v
+        return new_data
+
+    trace_and_compare(model, data_gen, need_meta=False, need_concrete=True, kwargs_transform=kwargs_transform)
 
 
-@pytest.mark.skip
+@pytest.mark.skip("Tracing failed")
 def test_emformer():
     input_dim = 128
     batch_size = 10
