@@ -4,7 +4,7 @@ from typing import Optional, Dict, Deque, Set, List, Tuple, Iterable
 from collections import deque
 
 from colossalai.utils import get_current_device
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor import ProcessGroup as ColoProcessGroup, ColoTensor
 from .chunk import Chunk, ChunkFullError, TensorState
 
 
@@ -59,6 +59,9 @@ class ChunkManager:
             group_name (str): the name of the chunk group.
         """
         assert tensor not in self.tensor_chunk_map
+        if isinstance(tensor, ColoTensor):
+            assert tensor.get_process_group().dp_process_group() == self.process_group.dp_process_group(
+            ), f"Chunk Manager can only manage ColoTensor with the same DP process group"
         try:
             # append the tensor to the last chunk
             self.chunk_groups[group_name][-1].append(tensor)
