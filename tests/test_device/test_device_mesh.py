@@ -12,9 +12,9 @@ def test_device_mesh():
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     assert device_mesh.convert_map[5] == [1, 1]
     assert device_mesh.convert_map[11] == [2, 3]
-    assert device_mesh.global_rank_to_logical_process_groups(0)[0] == [[0, 0], [1, 0], [2, 0], [3, 0]]
-    assert device_mesh.global_rank_to_logical_process_groups(2)[1] == [[0, 0], [0, 1], [0, 2], [0, 3]]
-    assert device_mesh.global_rank_to_physical_process_groups(2)[1] == [0, 1, 2, 3]
+    assert device_mesh.global_rank_to_process_groups_with_logical_rank(0)[0] == [[0, 0], [1, 0], [2, 0], [3, 0]]
+    assert device_mesh.global_rank_to_process_groups_with_logical_rank(2)[1] == [[0, 0], [0, 1], [0, 2], [0, 3]]
+    assert device_mesh.global_rank_to_process_groups_with_global_rank(2)[1] == [0, 1, 2, 3]
 
 
 if __name__ == '__main__':

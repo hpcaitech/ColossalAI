@@ -40,6 +40,9 @@ class DeviceMesh:
         return self._logical_mesh_id
 
     def _global_rank_to_logical_rank_map(self, tensor, index_list):
+        '''
+        This method is a helper function to build convert_map recursively.
+        '''
         for index, inner_tensor in enumerate(tensor):
             if inner_tensor.numel() == 1:
                 self.convert_map[int(inner_tensor)] = index_list + [index]
@@ -49,7 +52,23 @@ class DeviceMesh:
     def global_rank_to_logical_rank(self, rank):
         return self.convert_map[rank]
 
-    def global_rank_to_logical_process_groups(self, rank):
+    def global_rank_to_process_groups_with_logical_rank(self, rank):
+        '''
+        Give a global rank and return all logical process groups of this rank.
+        for example:
+            physical_mesh_id = torch.arange(0, 16).reshape(2, 8)
+            mesh_shape = (4, 4)
+            # [[0, 1, 2, 3],
+            #  [4, 5, 6, 7],
+            #  [8, 9, 10,11],
+            #  [12,13,14,15]]
+            device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
+            print(device_mesh.global_rank_to_process_groups_with_logical_rank(0))
+        output:
+            # key is axis name
+            # value is a list of logical ranks in same axis with rank 0
+            {0: [[0, 0], [1, 0], [2, 0], [3, 0]], 1: [[0, 0], [0, 1], [0, 2], [0, 3]]}
+        '''
         process_groups = {}
         for d in range(self.logical_mesh_id.dim()):
             for replacer in range(self.logical_mesh_id.shape[d]):
@@ -60,16 +79,32 @@ class DeviceMesh:
                 process_groups[d].append(process_group_member)
         return process_groups
 
-    def global_rank_to_physical_process_groups(self, rank):
-        logical_process_groups = self.global_rank_to_logical_process_groups(rank)
-        physical_process_groups = {}
+    def global_rank_to_process_groups_with_global_rank(self, rank):
+        '''
+        Give a global rank and return all process groups of this rank.
+        for example:
+            physical_mesh_id = torch.arange(0, 16).reshape(2, 8)
+            mesh_shape = (4, 4)
+            # [[0, 1, 2, 3],
+            #  [4, 5, 6, 7],
+            #  [8, 9, 10,11],
+            #  [12,13,14,15]]
+            device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
+            print(device_mesh.global_rank_to_process_groups_with_global_rank(0))
+        output:
+            # key is axis name
+            # value is a list of global ranks in same axis with rank 0
+            {0: [0, 4, 8, 12], 1: [0, 1, 2, 3]}
+        '''
+        logical_process_groups = self.global_rank_to_process_groups_with_logical_rank(rank)
+        process_groups = {}
         for dim, logical_ranks in logical_process_groups.items():
-            physical_process_groups[dim] = []
+            process_groups[dim] = []
             for logical_rank in logical_ranks:
                 for g_rank, l_rank in self.convert_map.items():
                     if l_rank == logical_rank:
-                        physical_process_groups[dim].append(g_rank)
-        return physical_process_groups
+                        process_groups[dim].append(g_rank)
+        return process_groups
 
     def all_gather_cost(self, num_bytes, mesh_dim):
         num_devices = self.logical_mesh_id.shape[mesh_dim]
