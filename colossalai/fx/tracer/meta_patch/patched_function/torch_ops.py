@@ -138,3 +138,30 @@ def torch_roll(input, shifts, dims=None):
 def torch_full(size, fill_value, *, out=None, dtype=None, layout=torch.strided, device=None, requires_grad=False):
     assert out is None, 'assigning result to out is not supported yet'
     return torch.empty(size, device='meta', dtype=dtype, layout=layout, requires_grad=requires_grad)
+
+
+@meta_patched_function.register(torch.max)
+def torch_max(input, dim=None, keepdim=False, *, out=None):
+    assert out is None, 'assigning value to out is not supported yet'
+    if dim is not None:
+        assert isinstance(dim, int), f'expected dim to be a integer but got {type(dim)}'
+        shape = list(input.shape)
+        shape.pop(dim)
+
+        if keepdim:
+            shape.insert(dim, 1)
+        return torch.empty(shape, device='meta', dtype=input.dtype), torch.empty(shape,
+                                                                                 device='meta',
+                                                                                 dtype=input.dtype)
+    else:
+        return torch.empty([], device='meta', dtype=input.dtype)
+
+
+@meta_patched_function.register(torch.Tensor.cpu)
+def torch_tensor_cpu(input):
+    return input.clone()
+
+
+@meta_patched_function.register(torch.Tensor.cuda)
+def torch_tensor_cuda(input, *args, **kwargs):
+    return input.clone()
