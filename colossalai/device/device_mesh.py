@@ -10,6 +10,14 @@ class DeviceMesh:
     can be viewed as a 1x16 or a 4x4 logical mesh). Each mesh dimension has its
     own latency and bandwidth. We use alpha-beta model to model the
     communication cost.
+    
+    Arguments:
+        physical_mesh_id (torch.Tensor): physical view of the devices in global rank.
+        mesh_shape (torch.Size): shape of logical view.
+        mesh_alpha (List[float], optional): coefficients used for computing
+            communication cost (default: None)
+        mesh_beta (List[float], optional): coefficients used for computing
+            communication cost (default: None)
     """
 
     def __init__(self, physical_mesh_id, mesh_shape, mesh_alpha=None, mesh_beta=None):
