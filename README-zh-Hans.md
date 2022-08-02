@@ -150,6 +150,12 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - 用相同的硬件训练20倍大的模型
 
+<p id="GPT-2-NVME" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2-NVME.png" width=800/>
+</p>
+
+- 用相同的硬件训练120倍大的模型 (RTX 3080)
+
 ### PaLM
 <p id="PaLM-Single" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/PaLM-GPU1.png" width=450/>
