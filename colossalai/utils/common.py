@@ -25,6 +25,7 @@ from colossalai.global_variables import tensor_parallel_env as env
 
 from .multi_tensor_apply import multi_tensor_applier
 
+from colossalai.tensor import ColoTensor, ColoParameter
 
 def print_rank_0(msg: str, logger=None):
     """Print messages and save logs(optional). This is executed only if you are the rank-0 gpu.
@@ -161,8 +162,95 @@ def _get_tensor_norm(norm: Union[float, torch.Tensor], move_to_cuda) -> torch.Te
 
 # ======== Gradient Clipping =========
 
+def _norm_tensor_parallel_fp32(parameters, norm_type=2):
+    '''
+    Calculate norm.
+    Won't check if parameters are TP only
+    expect parameter grads on cuda
+    '''
+    if isinstance(parameters, ColoTensor):
+        parameters = [parameters]
+    params: List[ColoParameter] = []
+    for param in parameters:
+        if param.grad is not None:
+            assert param.grad.dtype == torch.float, \
+                f'expected gradient to be dtype torch.float, but got {param.grad.type()}'
+            assert param.grad.device.type == 'cuda', \
+                f'expected gradient to be on cuda, but got {param.grad.device.type}'
+            params.append(param)
+    norm_type = float(norm_type)
+    total_norm = 0.0
+    if norm_type == inf:
+        for p in params:
+            local_norm = p.grad.data.abs().max()
+            local_norm_cuda = torch.cuda.FloatTensor([float(local_norm)])
+            if p.is_sharded():
+                dist.all_reduce(local_norm_cuda,
+                                op=dist.ReduceOp.MAX,
+                                group=p.get_process_group().tp_process_group(),
+                                async_op=False)
+            total_norm = max(total_norm, local_norm_cuda[0].item())
+
+    else:
+        for p in params:
+            if norm_type == 2.0:
+                local_norm = _calc_l2_norm([p.grad.data])**norm_type
+            else:
+                local_norm = _calc_lp([p.grad.data], norm_type)
+            local_norm_cuda = torch.cuda.FloatTensor([float(local_norm)])
+            if p.is_sharded():
+                dist.all_reduce(local_norm_cuda,
+                                op=dist.ReduceOp.SUM,
+                                group=p.get_process_group().tp_process_group(),
+                                async_op=False)
+            total_norm = total_norm + local_norm_cuda[0].item()
+        total_norm = total_norm**(1.0 / norm_type)    
+    if torch.torch.is_tensor(total_norm):
+        total_norm = total_norm.item()
+    return total_norm
+    
+def _norm_pipeline_parallel_fp32(total_norm, norm_type):
+    '''
+        TODO
+        if norm_type == inf:
+            MAX
+        else:
+            x**norm_type, SUM, x**(1/norm_type)
+    '''
+    return total_norm
+
+def _norm_data_parallel_fp32(total_norm, norm_type):
+    '''
+        TODO
+        if norm_type == inf:
+            MAX
+        else:
+            x**norm_type, SUM, x**(1/norm_type)
+    '''
+    return total_norm
+
+def _clip_grad_fp32(parameters, max_norm, total_norm):
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    clip_coeff = max_norm / (total_norm + 1.0e-6)
+    if clip_coeff < 1.0:
+        grads = [p.grad.detach() for p in parameters]
+        dummy_overflow_buf = torch.cuda.IntTensor([0])
+        multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coeff)
+    return total_norm
 
 def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
+    enable_pipline_parallel = False
+    enable_zero = False
+    total_norm = _norm_tensor_parallel_fp32(parameters, norm_type)
+    if enable_pipline_parallel:
+        total_norm = _norm_pipeline_parallel_fp32(total_norm, norm_type)
+    if enable_zero:
+        total_norm = _norm_data_parallel_fp32(total_norm, norm_type)
+    _clip_grad_fp32(parameters, max_norm, total_norm)
+    return total_norm
+
+def _clip_grad_norm_fp32_old(parameters, max_norm, norm_type=2):
     """Clips gradient norm of an iterable of parameters whose gradients are in fp32.
 
     This is adapted from :func:`torch.nn.utils.clip_grad.clip_grad_norm_` and
