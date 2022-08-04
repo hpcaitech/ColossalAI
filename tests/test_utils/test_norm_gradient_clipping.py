@@ -25,10 +25,11 @@ def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> boo
         return torch.allclose(tensor_a, tensor_b, atol=1e-3, rtol=1e-3)
     return torch.allclose(tensor_a, tensor_b)
 
-
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+
+    #a, b, splitted to all ranks
     a = torch.tensor([2.,3.], dtype=torch.float,requires_grad=True, device="cuda")
     b = torch.tensor([6.,4.], dtype=torch.float,requires_grad=True, device="cuda")
     shard_spec = distspec.shard(dims=[0], num_partitions=[world_size])
@@ -37,22 +38,32 @@ def run_dist(rank, world_size, port):
     colo_a = ColoParameter(data=a, spec=tensor_spec)
     colo_b = ColoParameter(data=b, spec=tensor_spec)
 
-    colo_loss = 3*colo_a**3 - colo_b**2
+    #c, only on rank 0
+    c = torch.tensor([-2,-1], dtype=torch.float,requires_grad=True, device="cuda")
+    shard_spec2 = distspec.shard(dims=[0], num_partitions=[1])
+    pg2 = process_group.ProcessGroup(rank=0, ranks=[0], tp_degree=0)
+    tensor_spec2 = ColoTensorSpec(pg=pg2, dist_attr=shard_spec2)
+    colo_c = None
+    if rank==0:
+        colo_c = ColoParameter(data=c,spec=tensor_spec2)
+
+    colo_loss = 3*colo_a**3 - colo_b**2 + colo_c**4
     colo_loss.sum().backward()
-    loss = 3*a**3 - b**2
+    loss = 3*a**3 - b**2 + c**4
     loss.sum().backward()
     clip_grad_norm_([a,b],1.0)
     #print(colo_a.grad, colo_b.grad)
-    total_norm = clip_grad_norm_fp32([colo_a,colo_b],1.0,3.0)
-    #assert allclose(a.grad, colo_a.grad)
-    print(colo_a.grad, colo_b.grad)
+    params = [colo_a, colo_b, colo_c]
+    total_norm = clip_grad_norm_fp32(params,1.0,3.0)
+    print(colo_a.grad, colo_b.grad, colo_c.grad)
     print(total_norm)
     print(colo_a.get_tp_world_size(), colo_a.get_process_group().get_ranks_in_dp())
+
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_zero_clip_grad():
-    world_size = 2
+    world_size = 4
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
