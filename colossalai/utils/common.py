@@ -180,6 +180,7 @@ def _norm_tensor_parallel_fp32(parameters, norm_type=2):
             params.append(param)
     norm_type = float(norm_type)
     total_norm = 0.0
+    total_norm_buckets: List[torch.cuda.FloatTensor] = []
     if norm_type == inf:
         for p in params:
             local_norm = p.grad.data.abs().max()
@@ -190,7 +191,6 @@ def _norm_tensor_parallel_fp32(parameters, norm_type=2):
                                 group=p.get_process_group().tp_process_group(),
                                 async_op=False)
             total_norm = max(total_norm, local_norm_cuda[0].item())
-
     else:
         for p in params:
             if norm_type == 2.0:
@@ -239,7 +239,10 @@ def _clip_grad_fp32(parameters, max_norm, total_norm):
         multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coeff)
     return total_norm
 
-def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
+def clip_grad_norm_fp32_new(parameters, max_norm, norm_type=2):
+    """For ColoTensor parameters use this new function instead of clip_grad_norm_fp32().
+    Warning: still developing.
+    """
     enable_pipline_parallel = False
     enable_zero = False
     total_norm = _norm_tensor_parallel_fp32(parameters, norm_type)
@@ -248,6 +251,127 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     if enable_zero:
         total_norm = _norm_data_parallel_fp32(total_norm, norm_type)
     _clip_grad_fp32(parameters, max_norm, total_norm)
+    return total_norm
+
+def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
+    """Clips gradient norm of an iterable of parameters whose gradients are in fp32.
+
+    This is adapted from :func:`torch.nn.utils.clip_grad.clip_grad_norm_` and
+    added functionality to handle model parallel parameters.
+
+    Note:
+        the gradients are modified in place.
+
+    Args:
+        parameters (Iterable[:class:`torch.tensor`] or :class:`torch.tensor`):
+            An iterable of Tensors or a single Tensor that will have gradients normalized.
+        max_norm (Union[float, int]): Max norm of the gradients.
+        norm_type (Union[float, int, 'inf']): Type of the used p-norm. Can be ``'inf'`` for infinity norm.
+
+    Returns:
+        float: Total norm of the parameters.
+    """
+
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+
+    # Filter parameters based on:
+    #   - grad should not be none
+    #   - parameter should not be shared
+    #   - should not be a replica due to tensor model parallelism
+    params: List[Parameter] = []
+    has_zero_shared_param: bool = False
+    for param in parameters:
+        if param.grad is not None:
+            # Make sure the grads are in fp32
+            assert param.grad.dtype == torch.float, \
+                f'expected gradient to be dtype torch.float, but got {param.grad.type()}'
+            if hasattr(param, 'colo_attr') and param.colo_attr.sharded_data_tensor.is_sharded:
+                has_zero_shared_param = True
+            params.append(param)
+
+    if len(params) == 0:
+        enable_cuda_kernels = False
+    else:
+        enable_cuda_kernels = params[0].grad.device.type == 'cuda'
+    # Norm parameters.
+    max_norm = float(max_norm)
+    norm_type = float(norm_type)
+
+    # Parameters can be on CPU or CUDA
+    # If parameters are on CPU, disable CUDA kernerls
+
+    # Calculate norm.
+    if norm_type == inf:
+        total_norm = max(p.grad.data.abs().max() for p in params)
+        total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+        # Take max across all model-parallel GPUs.
+        if gpc.is_initialized(ParallelMode.MODEL) and gpc.get_world_size(ParallelMode.MODEL) > 1:
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=gpc.get_group(ParallelMode.MODEL),
+                            async_op=False)
+        if has_zero_shared_param:
+            dist.all_reduce(total_norm_cuda,
+                            op=dist.ReduceOp.MAX,
+                            group=gpc.get_group(ParallelMode.DATA),
+                            async_op=False)
+        total_norm = total_norm_cuda[0].item()
+    else:
+        tensor_parallel_grads = []
+        no_tensor_parallel_grads = []
+        zero_sharded_grads = []
+        for p in params:
+            if is_model_parallel_parameter(p):
+                reductor = (gpc.get_world_size(ParallelMode.TENSOR) / getattr(p, NUM_PARTITIONS))**(1 / norm_type)
+                tensor_parallel_grads.append(p.grad.data / reductor)
+            elif hasattr(p, 'colo_attr') and p.colo_attr.sharded_data_tensor.is_sharded:
+                zero_sharded_grads.append(p.grad.data)
+            else:
+                no_tensor_parallel_grads.append(p.grad.data)
+
+        if norm_type == 2.0 and enable_cuda_kernels:
+            tensor_parallel_norm = _calc_l2_norm(tensor_parallel_grads)**norm_type
+            no_tensor_parallel_norm = _calc_l2_norm(no_tensor_parallel_grads)**norm_type
+            zero_sharded_norm = _calc_l2_norm(zero_sharded_grads)**norm_type
+        else:
+            tensor_parallel_norm = _calc_lp(tensor_parallel_grads, norm_type)
+            no_tensor_parallel_norm = _calc_lp(no_tensor_parallel_grads, norm_type)
+            zero_sharded_norm = _calc_lp(zero_sharded_grads, norm_type)
+        # If norm is type of float, then we convert them into torch.Tensor.
+        tensor_parallel_norm = _get_tensor_norm(tensor_parallel_norm, enable_cuda_kernels)
+        no_tensor_parallel_norm = _get_tensor_norm(no_tensor_parallel_norm, enable_cuda_kernels)
+        zero_sharded_norm = _get_tensor_norm(zero_sharded_norm, enable_cuda_kernels)
+        # If grads are on CPU, the norms is also on CPU. Cast them to CUDA tensors
+        if not enable_cuda_kernels:
+            tensor_parallel_norm = _move_norm_to_cuda(tensor_parallel_norm)
+            no_tensor_parallel_norm = _move_norm_to_cuda(no_tensor_parallel_norm)
+            zero_sharded_norm = _move_norm_to_cuda(zero_sharded_norm)
+
+        # Sum across all model-parallel GPUs.
+        if gpc.is_initialized(ParallelMode.TENSOR) and len(tensor_parallel_grads) > 0:
+            dist.all_reduce(tensor_parallel_norm, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.TENSOR))
+        # Sum across all zero sharded GPUs
+        if len(zero_sharded_grads) > 0:
+            dist.all_reduce(zero_sharded_norm, group=gpc.get_group(ParallelMode.DATA))
+            no_tensor_parallel_norm += zero_sharded_norm
+        total_norm = tensor_parallel_norm + no_tensor_parallel_norm
+        if gpc.is_initialized(ParallelMode.PIPELINE) and gpc.get_world_size(ParallelMode.PIPELINE) > 1:
+            dist.all_reduce(total_norm, op=dist.ReduceOp.SUM, group=gpc.get_group(ParallelMode.PIPELINE))
+        total_norm = total_norm**(1.0 / norm_type)
+        if torch.is_tensor(total_norm):
+            total_norm = total_norm.item()
+
+    # Scale.
+    clip_coeff = max_norm / (total_norm + 1.0e-6)
+    if clip_coeff < 1.0:
+        if enable_cuda_kernels:
+            grads = [p.grad.detach() for p in params]
+            dummy_overflow_buf = torch.cuda.IntTensor([0])
+            multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coeff)
+        else:
+            for p in params:
+                p.grad.detach().mul_(clip_coeff)
     return total_norm
 
 
