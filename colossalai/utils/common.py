@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+from pprint import pp
 import random
 import socket
 from pathlib import Path
 from typing import Callable, List, Union
 import functools
+
+from sklearn.model_selection import ParameterSampler
 import torch
 from torch._six import inf
 from torch.nn.parameter import Parameter
@@ -162,11 +165,10 @@ def _get_tensor_norm(norm: Union[float, torch.Tensor], move_to_cuda) -> torch.Te
 
 # ======== Gradient Clipping =========
 
-def _norm_tensor_parallel_fp32(parameters, norm_type=2):
+def _norm_tensor_parallel_fp32(parameters, pp_group, norm_type=2):
     '''
-    Calculate norm.
-    Won't check if parameters are TP only
-    expect parameter grads on cuda
+    Calculate norm of parameters in the same pipeline parallel group. 
+    expect parameter grads on cuda.
     '''
     if isinstance(parameters, ColoTensor):
         parameters = [parameters]
@@ -180,36 +182,42 @@ def _norm_tensor_parallel_fp32(parameters, norm_type=2):
             params.append(param)
     norm_type = float(norm_type)
     total_norm = 0.0
-    total_norm_buckets: List[torch.cuda.FloatTensor] = []
+    # for parameters in the same PP group:
+    #   no need to check every parameter of its distribution to cuda devices. 
+    #   every cuda device only process part of parameters it got.
+    #   only all-reduce once
     if norm_type == inf:
         for p in params:
+            p.get_process_group().dp_process_group()
             local_norm = p.grad.data.abs().max()
-            local_norm_cuda = torch.cuda.FloatTensor([float(local_norm)])
-            if p.is_sharded():
-                dist.all_reduce(local_norm_cuda,
-                                op=dist.ReduceOp.MAX,
-                                group=p.get_process_group().tp_process_group(),
-                                async_op=False)
-            total_norm = max(total_norm, local_norm_cuda[0].item())
+            total_norm = max(total_norm, local_norm)
+        if dist.get_world_size() > 1:
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            dist.all_reduce(total_norm_cuda, 
+                            op=dist.ReduceOp.MAX,
+                            group=pp_group)
+            total_norm = total_norm_cuda[0].item()
     else:
         for p in params:
             if norm_type == 2.0:
                 local_norm = _calc_l2_norm([p.grad.data])**norm_type
             else:
                 local_norm = _calc_lp([p.grad.data], norm_type)
-            local_norm_cuda = torch.cuda.FloatTensor([float(local_norm)])
-            if p.is_sharded():
-                dist.all_reduce(local_norm_cuda,
-                                op=dist.ReduceOp.SUM,
-                                group=p.get_process_group().tp_process_group(),
-                                async_op=False)
-            total_norm = total_norm + local_norm_cuda[0].item()
+            total_norm = total_norm + local_norm
+        if dist.get_world_size() > 1:
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            dist.all_reduce(total_norm_cuda, 
+                            op=dist.ReduceOp.SUM,
+                            group=pp_group)
+            total_norm = total_norm_cuda[0].item()
         total_norm = total_norm**(1.0 / norm_type)    
+        
     if torch.torch.is_tensor(total_norm):
         total_norm = total_norm.item()
     return total_norm
     
 def _norm_pipeline_parallel_fp32(total_norm, norm_type):
+    # TODO: get the pp_group of this cuda device
     '''
         TODO
         if norm_type == inf:
@@ -220,6 +228,7 @@ def _norm_pipeline_parallel_fp32(total_norm, norm_type):
     return total_norm
 
 def _norm_data_parallel_fp32(total_norm, norm_type):
+    # TODO: get the dp_group of this cuda device
     '''
         TODO
         if norm_type == inf:
@@ -245,7 +254,10 @@ def clip_grad_norm_fp32_new(parameters, max_norm, norm_type=2):
     """
     enable_pipline_parallel = False
     enable_zero = False
-    total_norm = _norm_tensor_parallel_fp32(parameters, norm_type)
+    # TODO: get the pp_group of this cuda device, for now, dist.new_group()
+    # TODO: get the dp_group of this cuda device
+    pp_group = dist.new_group()
+    total_norm = _norm_tensor_parallel_fp32(parameters=parameters, pp_group = pp_group,norm_type=norm_type)
     if enable_pipline_parallel:
         total_norm = _norm_pipeline_parallel_fp32(total_norm, norm_type)
     if enable_zero:

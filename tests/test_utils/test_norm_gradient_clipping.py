@@ -12,7 +12,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
 from colossalai.logging import disable_existing_loggers
-from colossalai.utils import clip_grad_norm_fp32, free_port
+from colossalai.utils import clip_grad_norm_fp32_new, free_port
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.utils import clip_grad_norm_
 from colossalai.zero.shard_utils.tensor_shard_strategy import TensorShardStrategy
@@ -37,28 +37,32 @@ def run_dist(rank, world_size, port):
     tensor_spec = ColoTensorSpec(pg=pg,dist_attr=shard_spec)
     colo_a = ColoParameter(data=a, spec=tensor_spec)
     colo_b = ColoParameter(data=b, spec=tensor_spec)
-
     #c, only on rank 0
     c = torch.tensor([-2,-1], dtype=torch.float,requires_grad=True, device="cuda")
     shard_spec2 = distspec.shard(dims=[0], num_partitions=[1])
-    pg2 = process_group.ProcessGroup(rank=0, ranks=[0], tp_degree=0)
+    pg2 = process_group.ProcessGroup(rank=0, ranks=[0], tp_degree=1)
     tensor_spec2 = ColoTensorSpec(pg=pg2, dist_attr=shard_spec2)
     colo_c = None
     if rank==0:
         colo_c = ColoParameter(data=c,spec=tensor_spec2)
-
-    colo_loss = 3*colo_a**3 - colo_b**2 + colo_c**4
+    #generate some gradients
+    if rank==0:
+        colo_loss = 3*colo_a**3 - colo_b**2 + colo_c**4
+    else:
+        colo_loss = 3*colo_a**3 - colo_b**2
     colo_loss.sum().backward()
-    loss = 3*a**3 - b**2 + c**4
-    loss.sum().backward()
-    clip_grad_norm_([a,b],1.0)
     #print(colo_a.grad, colo_b.grad)
-    params = [colo_a, colo_b, colo_c]
-    total_norm = clip_grad_norm_fp32(params,1.0,3.0)
-    print(colo_a.grad, colo_b.grad, colo_c.grad)
+    if rank==0:
+        params = [colo_a, colo_b, colo_c]
+    else:
+        params = [colo_a, colo_b]
+    total_norm = clip_grad_norm_fp32_new(params,1.0,3.0)
+    if rank == 0:
+        print(colo_a.grad, colo_b.grad, colo_c.grad)
+    else:
+        print(colo_a.grad, colo_b.grad)
     print(total_norm)
-    print(colo_a.get_tp_world_size(), colo_a.get_process_group().get_ranks_in_dp())
-
+    #print(colo_a.get_tp_world_size(), colo_a.get_process_group().get_ranks_in_dp())
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
