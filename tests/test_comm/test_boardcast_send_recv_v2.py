@@ -22,32 +22,30 @@ torch.manual_seed(123)
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl', verbose=False)
-    rank = gpc.get_local_rank(ParallelMode.PIPELINE)    
+    rank = gpc.get_local_rank(ParallelMode.PIPELINE)
     # obj = [
-    #     rank, 
-    #     f"hello, I am rank {rank}", 
-    #     torch.randn((3, )), 
-    #     None, 
-    #     (1, 2, 3), 
-    #     [2, 3, 3], 
+    #     rank,
+    #     f"hello, I am rank {rank}",
+    #     torch.randn((3, )),
+    #     None,
+    #     (1, 2, 3),
+    #     [2, 3, 3],
     #     {1 : 1, 3 : 4}
     # ]
 
     if rank == 0:
-        obj = [torch.randn(3, )]
-        _send_object(obj, 1)    
-    
+        obj = [torch.randn(3,)]
+        _send_object(obj, 1)
+
     if rank == 1:
         _recv_object(0)
 
-    
     if rank == 2:
         _recv_object(3)
 
     if rank == 3:
-        obj = [torch.randn(3, )]
+        obj = [torch.randn(3,)]
         _send_object(obj, 2)
-    
 
     print(f"rank {rank} fin")
     gpc.destroy()
