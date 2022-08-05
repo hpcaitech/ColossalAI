@@ -428,8 +428,8 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
            grad_half_precision, loss_scale);
 }
 
-void Adam_Optimizer::step(int optimizer_id, size_t step, float lr, float beta1,
-                          float beta2, float epsilon, float weight_decay,
+void Adam_Optimizer::step(size_t step, float lr, float beta1, float beta2,
+                          float epsilon, float weight_decay,
                           bool bias_correction, torch::Tensor &params,
                           torch::Tensor &grads, torch::Tensor &exp_avg,
                           torch::Tensor &exp_avg_sq, float loss_scale) {
