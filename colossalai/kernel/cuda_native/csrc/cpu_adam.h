@@ -141,9 +141,9 @@ class Adam_Optimizer {
     }
   }
 
-  void step(int optimizer_id, size_t step, float lr, float beta1, float beta2,
-            float epsilon, float weight_decay, bool bias_correction,
-            torch::Tensor &params, torch::Tensor &grads, torch::Tensor &exp_avg,
+  void step(size_t step, float lr, float beta1, float beta2, float epsilon,
+            float weight_decay, bool bias_correction, torch::Tensor &params,
+            torch::Tensor &grads, torch::Tensor &exp_avg,
             torch::Tensor &exp_avg_sq, float loss_scale);
 
  private:
