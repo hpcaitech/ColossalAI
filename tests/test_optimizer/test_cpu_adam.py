@@ -54,7 +54,7 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
     beta1, beta2 = 0.9, 0.999
     eps = 1e-8
     weight_decay = 0
-    
+
     for i in range(1024):
         p_data = torch.rand(64, dtype=p_dtype)
         p_data_copy = p_data.clone().float()
@@ -67,13 +67,11 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
 
         try:
             import cpu_adam
-            cpu_adam_op = cpu_adam
+            cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, adamw)
         except:
             raise ImportError("Import cpu adam error, please install colossal from source code")
 
-        cpu_adam_op.create_adam(0, lr, beta1, beta2, eps, weight_decay, adamw, False)
-        cpu_adam_op.adam_update(
-            0,
+        cpu_adam_op.step(
             step,
             lr,
             beta1,
