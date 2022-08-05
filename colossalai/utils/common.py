@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Callable, List, Union
 import functools
 
-from sklearn.model_selection import ParameterSampler
 import torch
 from torch._six import inf
 from torch.nn.parameter import Parameter
