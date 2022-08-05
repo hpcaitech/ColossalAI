@@ -563,18 +563,11 @@ class InterleavedPipelineSchedule(PipelineSchedule):
         if forward_only:
             num_warmup_microbatches = num_microbatches
         else:
-            # Run all forward passes and then all backward passes if number of
-            # microbatches is just the number of pipeline stages.
-            # Otherwise, perform (num_model_chunks-1)*pipeline_parallel_size on
-            # all workers, followed by more microbatches after depending on
-            # stage ID (more forward passes for earlier stages, later stages can
-            # immediately start with 1F1B).
             if self.num_microbatches == pipeline_parallel_size:
                 num_warmup_microbatches = num_microbatches
                 all_warmup_microbatches = True
             else:
-                num_warmup_microbatches = \
-                    (pipeline_parallel_size - pipeline_parallel_rank - 1) * 2
+                num_warmup_microbatches = (pipeline_parallel_size - pipeline_parallel_rank - 1) * 2
                 num_warmup_microbatches += (num_model_chunks - 1) * pipeline_parallel_size
                 num_warmup_microbatches = min(num_warmup_microbatches, num_microbatches)
         num_microbatches_remaining = \

@@ -17,6 +17,7 @@ from colossalai.core import global_context as gpc
 
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 _pg_manager = {}
+_unpickler = pickle.Unpickler
 
 
 def init_process_group():
@@ -70,7 +71,7 @@ def _cuda_safe_tensor_to_object(tensor: torch.Tensor, tensor_size: torch.Size) -
         buf = bytes(buf_array)
 
     io_bytes = io.BytesIO(buf)
-    byte_pickler = pickle.Unpickler(io_bytes)
+    byte_pickler = _unpickler(io_bytes)
     unpickle = byte_pickler.load()
 
     return unpickle
