@@ -20,7 +20,6 @@ CONFIG = dict(parallel=dict(pipeline=4))
 torch.manual_seed(123)
 use_scatter_gather_tensors = False
 
-
 # data
 torch.manual_seed(123)
 LIST_LENGTH = 3
@@ -96,6 +95,7 @@ def check_send_recv_backward():
         send_backward(grad_list_to_send)
         print("[backward] rank 1, send")
 
+
 def check_small_pipeline():
     disable_existing_loggers()
     # make sure the rank is 4
@@ -125,6 +125,7 @@ def check_small_pipeline():
         pass
 
     print("rank {} fin".format(local_rank))
+
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()

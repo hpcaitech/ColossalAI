@@ -89,9 +89,7 @@ class PipelineSchedule(BaseSchedule):
 
     """
 
-    def __init__(self,
-                 num_microbatches,
-                 data_process_func: Callable = None):
+    def __init__(self, num_microbatches, data_process_func: Callable = None):
 
         # we need to make sure that the signature of the data_process_func is valid
         if data_process_func:
@@ -107,12 +105,11 @@ class PipelineSchedule(BaseSchedule):
 
         self.num_microbatches = num_microbatches
         self.dtype = torch.float
- 
+
         self._logger = get_dist_logger()
 
         # cache for the batch data
         self.batch_data = None
-    
 
     def load_batch(self, data_iter):
         # Pipeline schedule just puts data in memory
@@ -312,7 +309,7 @@ class PipelineSchedule(BaseSchedule):
 
         Returns:
             Tuple[:class:`torch.Tensor`]: A tuple of (output, label, loss), loss and label could be None.
-        """ 
+        """
 
         assert forward_only or return_loss, \
             'The argument \'return_loss\' has to be True when \'forward_only\' is False, but got False.'
@@ -330,7 +327,6 @@ class PipelineSchedule(BaseSchedule):
         output_objs = None
         local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
-
         if not forward_only:
             input_objs = []
             output_objs = []
@@ -342,10 +338,10 @@ class PipelineSchedule(BaseSchedule):
 
         # Run warmup forward passes.
         for i in range(num_warmup_microbatches):
-            # print(Back.BLUE, "rank {}".format(local_rank), Style.RESET_ALL, "ready to recv_forward") 
+            # print(Back.BLUE, "rank {}".format(local_rank), Style.RESET_ALL, "ready to recv_forward")
             input_obj = comm.recv_forward()
             # print(Back.BLUE, "rank {}".format(local_rank), Style.RESET_ALL, "finish recv_forward")
-            
+
             output_obj = self._forward_step(engine,
                                             input_obj,
                                             return_tensors,
@@ -358,15 +354,14 @@ class PipelineSchedule(BaseSchedule):
             if not forward_only:
                 input_objs.append(input_obj)
                 output_objs.append(output_obj)
-        
+
         # print(Back.GREEN, "rank {}".format(local_rank), Style.RESET_ALL, "warmup finish")
 
         # Before running 1F1B, need to receive first forward tensor.
         # If all microbatches are run in warmup / cooldown phase, then no need to
-        # receive this tensor here. 
+        # receive this tensor here.
         if num_microbatches_remaining > 0:
             input_obj = comm.recv_forward()
-
 
         # Run 1F1B in steady state.
         for i in range(num_microbatches_remaining):
@@ -405,7 +400,6 @@ class PipelineSchedule(BaseSchedule):
                 else:
                     input_obj = comm.recv_forward()
                     comm.send_backward(input_obj_grad)
-
 
         # Run cooldown backward passes.
         if not forward_only:
