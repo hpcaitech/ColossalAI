@@ -90,18 +90,14 @@ def run_trainer(rank, world_size, port):
     #     print(e)
     #     return
     logger = get_dist_logger()
-    
-    
+
     trainer = Trainer(engine=engine, logger=logger)
 
     hook_list = [
         hooks.LRSchedulerHook(lr_scheduler=lr_scheduler, by_epoch=False),
     ]
 
-    trainer.fit(train_dataloader=train_dataloader,
-                epochs=NUM_EPOCHS,
-                hooks=hook_list,
-                display_progress=True)
+    trainer.fit(train_dataloader=train_dataloader, epochs=NUM_EPOCHS, hooks=hook_list, display_progress=True)
 
 
 @pytest.mark.dist
