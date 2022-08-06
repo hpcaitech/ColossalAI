@@ -17,7 +17,7 @@ def test_adam(adamw, device, p_dtype, g_dtype):
     rng_state = torch.get_rng_state()
     p = nn.Parameter(torch.rand(64).to(device, p_dtype))
     torch.set_rng_state(rng_state)
-    p_copy = nn.Parameter(torch.rand(64).to(device).float()) 
+    p_copy = nn.Parameter(torch.rand(64).to(device).float())
 
     if adamw:
         optim = HybridAdam([p], lr=1e-3, adamw_mode=True)
@@ -38,4 +38,4 @@ def test_adam(adamw, device, p_dtype, g_dtype):
         if torch.isnan(p.data).any() or torch.isnan(p_copy.data).any():
             continue
         assert torch.allclose(p.data, p_copy.data, 1e-4, 1e-2), \
-                              f"adaw mode {adamw}, device {device}, p_dtype {p_dtype}, g_dtype {g_dtype}"
+            f"adaw mode {adamw}, device {device}, p_dtype {p_dtype}, g_dtype {g_dtype}"

@@ -75,7 +75,7 @@
    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/JamesDemmel_Colossal-AI.png" width="600" />
    </a>
 
-   Prof. James Demmel (UC Berkeley): Colossal-AI makes distributed training efficient, easy and scalable.
+   Prof. James Demmel (UC Berkeley): Colossal-AI makes training AI models efficient, easy, and scalable.
 </div>
 
 <p align="right">(<a href="#top">back to top</a>)</p>
@@ -154,6 +154,12 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 </p>
 
 - 20x larger model size on the same hardware
+
+<p id="GPT-2-NVME" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/GPT2-NVME.png" width=800/>
+</p>
+
+- 120x larger model size on the same hardware (RTX 3080)
 
 ### PaLM
 <p id="PaLM-Single" align="center">

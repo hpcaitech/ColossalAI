@@ -5,9 +5,43 @@ from torch.fx._compatibility import compatibility
 from packaging import version
 from colossalai.fx.passes.meta_info_prop import TensorMetadata
 import inspect
+from typing import List
 from colossalai.fx.passes.split_module import Partition
-from colossalai.fx.passes.adding_split_node_pass import pipe_split
+from colossalai.fx.passes.adding_split_node_pass import pipe_split, balanced_split_pass
 from torch.fx.node import Node
+
+
+def customized_split_pass_for_gpt2(gm: torch.fx.GraphModule, pp_size: int, partition_list: List[int]):
+    '''
+    This pass is only used to do the gpt2 performance test, it may move into adding_split_node_pass.py, and will be deprecated in future.
+    '''
+    mod_graph = gm.graph
+    valid_children_size = 0
+    valid_children = []
+    for node in mod_graph.nodes:
+        if node.op == "call_module":
+            valid_children_size += 1
+            valid_children.append(node.target)
+    if valid_children_size < pp_size:
+        # If valid children is not enough to shard, we will use balanced policy instead of uniform policy.
+        return balanced_split_pass(gm, pp_size)
+    accumulate_layer_amount = 0
+    list_of_part = partition_list
+    part_index = 0
+    for node in mod_graph.nodes:
+        if pp_size <= 1:
+            break
+        if node.op == "call_module":
+            if node.target in valid_children:
+                accumulate_layer_amount += 1
+        if accumulate_layer_amount == list_of_part[part_index]:
+            part_index += 1
+            pp_size -= 1
+            with mod_graph.inserting_after(node):
+                split_node = mod_graph.create_node('call_function', pipe_split)
+
+    gm.recompile()
+    return gm
 
 
 def split_with_split_nodes_pass_for_gp2_test(annotated_gm: torch.fx.GraphModule):
@@ -25,21 +59,68 @@ def split_with_split_nodes_pass_for_gp2_test(annotated_gm: torch.fx.GraphModule)
         gm.recompile()
         return gm
 
-    def eliminate_unused_outputs(gm, next_partition_placeholders):
+    def refill_outputs_and_placeholders(gm, next_partition_placeholders):
         '''
         This method is used to eliminate the outputs in previous partition which is unused in next partition.
+        In split module pass, it treats partitions as a DAG, but we need treat them as a single direction linked list in pipeline parallel.
+        The difference is if a output from partition 0 is an input argument of partition 3, the DAG will not transfer it
+        to partition 1 and partition 2. However, in single direction linked list, we need to do so.
         '''
+        output_type = None
+        output_args = []
+        non_output_list = []
+        new_placeholder_list = []
         for node in gm.graph.nodes:
             if node.op == 'output':
-                output_type = node.args[0].__class__
-                output_args = list(node.args[0])
-                for n in node.args[0]:
-                    if n.name not in next_partition_placeholders:
-                        output_args.remove(n)
+                if isinstance(node.args[0], (tuple, list)):
+                    output_type = node.args[0].__class__
+                    output_args.extend([n.name for n in node.args[0]])
+                else:
+                    output_args.append(node.args[0].name)
+                rm_list = []
+                for name in output_args:
+                    if next_partition_placeholders and name not in next_partition_placeholders:
+                        rm_list.append(name)
+                for name in rm_list:
+                    output_args.remove(name)
                 gm.graph.erase_node(node)
-        gm.graph.output(output_type(output_args))
+            else:
+                non_output_list.append(node.name)
+
+        for name in next_partition_placeholders:
+            if name not in output_args:
+                output_args.append(name)
+
+        for name in output_args:
+            if name not in non_output_list:
+                gm.graph.placeholder(name)
+
+        # convert name to node for output_args
+        for index, name in enumerate(output_args):
+            for n in gm.graph.nodes:
+                if n.name == name:
+                    output_args[index] = n
+                    continue
+
+        # reorder the output args to make sure
+        # output args has same order as next partition placeholder
+        reorder_output_args = []
+        if next_partition_placeholders:
+            for name in next_partition_placeholders:
+                for node in output_args:
+                    if node.name == name:
+                        reorder_output_args.append(node)
+                        continue
+
+        for node in gm.graph.nodes:
+            if node.op == 'placeholder':
+                new_placeholder_list.append(node.name)
+        if output_type is not None:
+            gm.graph.output(output_type(output_args))
+        else:
+            gm.graph.output(output_args)
         gm.recompile()
-        return gm
+        return gm, new_placeholder_list
 
     def split_callback(n: torch.fx.Node):
         nonlocal part_idx
@@ -62,15 +143,15 @@ def split_with_split_nodes_pass_for_gp2_test(annotated_gm: torch.fx.GraphModule)
     for submodule in submodules:
         submodule = eliminate_unused_placeholders(submodule)
         placeholder_dict[submodule] = []
-        for node in submodule.graph.nodes:
-            if node.op == 'placeholder':
-                placeholder_dict[submodule].append(node.name)
-
+    submodules.reverse()
     for index, submodule in enumerate(submodules):
-        if index >= len(submodules) - 1:
-            break
-        submodule = eliminate_unused_outputs(submodule, placeholder_dict[submodules[index + 1]])
+        if index == 0:
+            placeholder_list = []
+        else:
+            placeholder_list = placeholder_dict[submodules[index - 1]]
+        submodule, placeholder_dict[submodule] = refill_outputs_and_placeholders(submodule, placeholder_list)
         submodule.recompile()
+
     split_mod.recompile()
 
     return split_mod, split_submodules
@@ -118,7 +199,7 @@ def split_module_for_gpt2_test(
 
         _gen_all_ancestors_set(node)
         for n in list(all_ancestors):
-            if n.op != 'placeholder':
+            if n.op != 'placeholder' and n._fx_partition > partition_name:
                 n._fx_partition = partition_name
 
     def record_cross_partition_use(def_node: torch.fx.node.Node,
@@ -126,14 +207,14 @@ def split_module_for_gpt2_test(
         def_partition_name = getattr(def_node, '_fx_partition', None)
         use_partition_name = getattr(use_node, '_fx_partition', None)
         if def_partition_name != use_partition_name:
-            if 'tensor_meta' in def_node.meta:
-                if not _node_with_all_tensor_element(def_node.meta['tensor_meta']):
-                    _move_all_ancestors_into_partition(use_node, def_partition_name)
-                    node_process_list.extend(use_node.all_input_nodes)
-                    node_process_list.extend(list(use_node.users))
-                    node_process_list.append(use_node)
+            # if 'tensor_meta' in def_node.meta:
+            #     if not _node_with_all_tensor_element(def_node.meta['tensor_meta']):
+            #         _move_all_ancestors_into_partition(use_node, def_partition_name)
+            #         node_process_list.extend(use_node.all_input_nodes)
+            #         node_process_list.extend(list(use_node.users))
+            #         node_process_list.append(use_node)
 
-                    return
+            #         return
 
             if def_partition_name is not None:
                 def_partition = partitions[def_partition_name]
@@ -231,7 +312,8 @@ def split_module_for_gpt2_test(
             new_node = partition.graph.create_node(op=node.op,
                                                    target=target,
                                                    args=gathered_args,
-                                                   kwargs=gathered_kwargs)
+                                                   kwargs=gathered_kwargs,
+                                                   name=node.name)
             new_node.meta = node.meta.copy()
             partition.environment[node] = new_node
 

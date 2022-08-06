@@ -104,7 +104,7 @@ class FusedSGD(Optimizer):
             # momentum application can be skipped in the main kernel.
             if 'momentum_buffer' not in param_state:
                 first_run = True
-                buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+                buf = param_state['momentum_buffer'] = torch.zeros_like(p)
                 momentums.append(buf)
             else:
                 first_run = False

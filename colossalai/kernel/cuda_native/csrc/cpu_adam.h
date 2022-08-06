@@ -26,7 +26,7 @@ SOFTWARE
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
 #include <stdio.h>
-
+#include <torch/extension.h>
 #if (__x86_64__ || __i386__)
 #include <cpuid.h>
 #include <x86intrin.h>
@@ -140,6 +140,11 @@ class Adam_Optimizer {
       _bias_correction2 = 1 / sqrt(1 - _betta2_t);
     }
   }
+
+  void step(size_t step, float lr, float beta1, float beta2, float epsilon,
+            float weight_decay, bool bias_correction, torch::Tensor &params,
+            torch::Tensor &grads, torch::Tensor &exp_avg,
+            torch::Tensor &exp_avg_sq, float loss_scale);
 
  private:
   float _alpha;
