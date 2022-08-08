@@ -43,20 +43,14 @@ def check_send_recv_forward():
             data_list_to_send.append(data_in_list.to(device))
 
         send_forward(data_to_send, scatter_gather_tensors=use_scatter_gather_tensors)
-        # print("finish send_forward(data_to_send)")
         send_forward(data_list_to_send, scatter_gather_tensors=use_scatter_gather_tensors)
-        # print("finish send_forward(data_list_to_send)")
 
-        print("rank1 {}".format(data_to_send))
     elif local_rank == 1:
         device = torch.device('cuda:1')
 
         data_recv = recv_forward(TENSOR_SIZE, scatter_gather_tensors=use_scatter_gather_tensors)
-        # print("finish data_recv = recv_forward(TENSOR_SIZE)")
         data_list_recv = recv_forward(TENSOR_SIZE_LIST, scatter_gather_tensors=use_scatter_gather_tensors)
-        # print("finish data_recv = recv_forward(TENSOR_SIZE_LIST)")
 
-        print("rank1 {}".format(data_recv))
         data_to_check = data.to(device)
 
         assert data_recv.equal(data_to_check)
@@ -65,8 +59,6 @@ def check_send_recv_forward():
             data_to_check = data_send.to(device)
             data_recv = data_recv.to(device)
             assert data_recv.equal(data_to_check)
-
-        print("[forward] rank 1, recv and check all right")
 
 
 def check_send_recv_backward():
@@ -84,7 +76,6 @@ def check_send_recv_backward():
             grad_recv = grad_recv.to(device)
             grad_to_check = grad_send.to(device)
             assert grad_recv.equal(grad_to_check)
-        print("[backward] rank 0, recv and check all right")
     else:
         device = torch.device('cuda:1')
         grad_to_send = grad.to(device)
@@ -93,7 +84,6 @@ def check_send_recv_backward():
             grad_list_to_send.append(grad_in_list.to(device))
         send_backward(grad_to_send)
         send_backward(grad_list_to_send)
-        print("[backward] rank 1, send")
 
 
 def check_small_pipeline():
@@ -102,29 +92,18 @@ def check_small_pipeline():
     assert gpc.world_size == 4, "make sure to set world size to 4 to start the training process"
     local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
     if local_rank == 0:
-        # print("I am {}, next is {}, prev is {}".format(local_rank, gpc.get_next_global_rank(ParallelMode.PIPELINE), gpc.get_prev_global_rank(ParallelMode.PIPELINE)))
         obj = [1, torch.randn(2, 2).cuda(), None]
         send_forward(obj)
     elif local_rank == 1:
-        # print("I am {}, next is {}, prev is {}".format(local_rank, gpc.get_next_global_rank(ParallelMode.PIPELINE), gpc.get_prev_global_rank(ParallelMode.PIPELINE)))
         obj = recv_forward()
         send_forward(obj)
-        print("rank_{} {}".format(local_rank, obj))
     elif local_rank == 2:
-        # print("I am {}, next is {}, prev is {}".format(local_rank, gpc.get_next_global_rank(ParallelMode.PIPELINE), gpc.get_prev_global_rank(ParallelMode.PIPELINE)))
         obj = recv_forward()
-        print("rank_{} {}".format(local_rank, obj))
         send_forward(obj)
     elif local_rank == 3:
-        # print("I am {}, next is {}, prev is {}".format(local_rank, gpc.get_next_global_rank(ParallelMode.PIPELINE), gpc.get_prev_global_rank(ParallelMode.PIPELINE)))
-        # import time
-        # time.sleep(5)
         obj = recv_forward()
-        print("rank_{} {}".format(local_rank, obj))
     else:
         pass
-
-    print("rank {} fin".format(local_rank))
 
 
 def check_layer(rank, world_size, port):
