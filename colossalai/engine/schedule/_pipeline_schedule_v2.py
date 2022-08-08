@@ -106,9 +106,7 @@ class PipelineScheduleV2(PipelineSchedule):
 
         # Run warmup forward passes.
         for i in range(num_warmup_microbatches):
-            # print(Back.BLUE, "rank {}".format(local_rank), Style.RESET_ALL, "ready to recv_forward")
             input_obj = comm.recv_forward()
-            # print(Back.BLUE, "rank {}".format(local_rank), Style.RESET_ALL, "finish recv_forward")
 
             output_obj = self._forward_step(engine,
                                             input_obj,
@@ -117,13 +115,10 @@ class PipelineScheduleV2(PipelineSchedule):
                                             accum_loss=accum_loss)
 
             comm.send_forward(output_obj)
-            # print(Back.BLUE, "rank {}".format(local_rank), Style.RESET_ALL, "finish send_forward")
 
             if not forward_only:
                 input_objs.append(input_obj)
                 output_objs.append(output_obj)
-
-        # print(Back.GREEN, "rank {}".format(local_rank), Style.RESET_ALL, "warmup finish")
 
         # Before running 1F1B, need to receive first forward tensor.
         # If all microbatches are run in warmup / cooldown phase, then no need to

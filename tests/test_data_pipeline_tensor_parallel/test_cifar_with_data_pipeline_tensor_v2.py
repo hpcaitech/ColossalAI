@@ -82,13 +82,7 @@ def run_trainer(rank, world_size, port):
                                                          train_dataloader=train_dataloader)
 
     engine._schedule = PipelineScheduleV2(num_microbatches=gpc.config.NUM_MICRO_BATCHES)
-    # print("enter" * 20)
-    # # test v2 schedule
-    # try:
-    #     engine._schedule = PipelineSchedule(gpc.config.NUM_MICRO_BATCHES)
-    # except Exception as e:
-    #     print(e)
-    #     return
+
     logger = get_dist_logger()
 
     trainer = Trainer(engine=engine, logger=logger)
