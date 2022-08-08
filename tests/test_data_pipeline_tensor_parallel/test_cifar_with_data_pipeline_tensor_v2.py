@@ -22,7 +22,7 @@ from colossalai.logging import disable_existing_loggers
 from torchvision.datasets import CIFAR10
 from torchvision import transforms
 
-from colossalai.engine.schedule._pipeline_schedule_v2 import PipelineSchedule as PSV2
+from colossalai.engine.schedule._pipeline_schedule_v2 import PipelineScheduleV2
 
 disable_existing_loggers()
 BATCH_SIZE = 4
@@ -81,7 +81,7 @@ def run_trainer(rank, world_size, port):
                                                          criterion=criterion,
                                                          train_dataloader=train_dataloader)
 
-    engine._schedule = PSV2(num_microbatches=gpc.config.NUM_MICRO_BATCHES)
+    engine._schedule = PipelineScheduleV2(num_microbatches=gpc.config.NUM_MICRO_BATCHES)
     # print("enter" * 20)
     # # test v2 schedule
     # try:

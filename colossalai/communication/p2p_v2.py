@@ -93,9 +93,7 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
     group = _acquire_pair_group_handle(src, dst)
 
     if c10d._rank_not_in_group(group):
-        # c10d._warn_not_in_group("broadcast_object_list")
-        print(Back.RED, "ERROR", Style.RESET_ALL,
-              "{} and {} has abnormal reflection, broadcast failed!".format(src, dst))
+        c10d._warn_not_in_group("broadcast_object_list")
         return
 
     local_rank = gpc.get_local_rank(ParallelMode.PIPELINE)
@@ -122,7 +120,6 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
 
     # Broadcast object sizes
     c10d.broadcast(object_sizes_tensor, src=src, group=group, async_op=False)
-    # print(Back.CYAN, "inner broadcast length", Style.RESET_ALL, "{} finish {} {}".format(local_rank, local_rank, src))
 
     # Concatenate and broadcast serialized object tensors
     if local_rank == src:
@@ -137,7 +134,6 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
         object_tensor = object_tensor.to(current_device)
 
     c10d.broadcast(object_tensor, src=src, group=group, async_op=False)
-    # print(Back.CYAN, "inner broadcast content", Style.RESET_ALL, "rank_{} finish {} {}".format(local_rank, local_rank, src))
 
     # Deserialize objects using their stored sizes.
     offset = 0
@@ -158,9 +154,6 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
                 unpickle_object = unpickle_object.cuda()
 
             object_list[i] = unpickle_object
-        # print(Back.BLUE, "this is rank_{}".format(gpc.get_local_rank(ParallelMode.PIPELINE)), Style.RESET_ALL, object_list)
-
-    # print(Back.GREEN, "rank_{} finish _broadcast_object_list".format(local_rank), Style.RESET_ALL)
 
 
 def _send_object(object: Any, dst: int) -> None:
@@ -182,11 +175,8 @@ def _send_object(object: Any, dst: int) -> None:
     # broadcast length first
     # TODO : more elegant ? P.S. reduce a _broadcast_object_list
     _broadcast_object_list([len(object)], local_rank, dst)
-    # print(Back.LIGHTMAGENTA_EX, "[_send_object]", Style.RESET_ALL, "rank_{} send length {} to rank_{}".format(local_rank, [len(object)], dst))
     # then broadcast safely
     _broadcast_object_list(object, local_rank, dst)
-
-    # print(Back.LIGHTGREEN_EX, "[_send_object]", Style.RESET_ALL, "rank_{} send {} to rank_{}".format(local_rank, type(object), dst))
 
 
 def _recv_object(src: int) -> Any:
@@ -202,17 +192,14 @@ def _recv_object(src: int) -> Any:
     # handler = _acquire_pair_group_handle(local_rank, src)
     # recv length first
     length = [0]
-    # print(Back.LIGHTYELLOW_EX, "[_recv_object]", Style.RESET_ALL, "rank_{} waiting for msg from rank_{}".format(local_rank, src))
     _broadcast_object_list(length, src, local_rank)
 
     # then create recv buff from length[0] and broadcast
     object = [None] * length[0]
-    # print(Back.MAGENTA, "[_recv_object]", Style.RESET_ALL, "rank_{} recv length {} from rank_{}".format(local_rank, length, src))
     _broadcast_object_list(object, src, local_rank)
 
     if length[0] == 1:
         object = object[0]
-    # print(Back.GREEN, "[_recv_object]", Style.RESET_ALL, "rank_{} recv {} from rank_{}".format(local_rank, type(object), src))
 
     return object
 
@@ -281,43 +268,3 @@ def send_backward(input_object: Any, prev_rank: int = None) -> None:
         if prev_rank is None:
             prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)
         _send_object(input_object, prev_rank)
-
-
-def send_forward_recv_backward():
-    """reserve
-    """
-    pass
-
-
-def send_backward_recv_forward():
-    """reserve
-    """
-    pass
-
-
-def send_forward_recv_forward():
-    """reserve
-    """
-    pass
-
-
-def send_backward_recv_backward():
-    """reserve
-    """
-    pass
-
-
-def send_forward_backward_recv_forward_backward(
-        output_tensor,
-        input_tensor_grad,
-        input_tensor_shape,
-        output_grad_shape,
-        recv_prev=True,
-        recv_next=True,
-        prev_rank=None,
-        next_rank=None,
-        dtype=torch.float,
-        scatter_gather_tensors=False) -> Tuple[Union[torch.Tensor, List[torch.Tensor]]]:
-    """reserve
-    """
-    pass
