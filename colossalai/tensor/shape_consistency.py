@@ -27,12 +27,16 @@ class ShapeConsistencyManager:
         Therefore, all gather operation just remove the last element in shard list,
         e.g.: 
             all-gather(S01) -> S0
+
+        Argument:
+            target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
+            and the second element decribes which logical axis will be sharded in that dimension.
         '''
-        pos, shard_list = target_pair
+        _, shard_list = target_pair
         new_shard_list = shard_list[:-1]
         # TODO: compute comm cost
         comm_cost = 0
-        return (pos, new_shard_list), comm_cost
+        return new_shard_list, comm_cost
 
     def _all_to_all_simulator(self, f_target_pair, b_target_pair):
         '''
@@ -40,17 +44,24 @@ class ShapeConsistencyManager:
         and simulate the influence of the DimSpec.
 
         We BANNED all representations which shard_list in decreasing order,
-        such as S10, so all-to-all(S0, S1) -> RS01 is NOT allowed. Therefore, 
-        if the behind shard_list is not None, we just extend it to the front shard_list.
+        such as S10, so all-to-all(S0, S1) -> RS01 is NOT allowed. 
+        Therefore, if the behind shard_list is not None, we just extend it to the front shard_list.
+        Argument:
+            target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
+            and the second element decribes which logical axis will be sharded in that dimension.
         e.g.: 
             all-to-all(S0, S1) -> [S01, R]
             all-to-all(S0, R) -> [R, S0]
         Otherwise, we extend the front shard_list to behind.
         e.g.: 
             all-to-all(R, S1) -> [S1, R]
+        
+        Argument:
+            target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
+            and the second element decribes which logical axis will be sharded in that dimension.
         '''
-        f_pos, f_shard_list = f_target_pair
-        b_pos, b_shard_list = b_target_pair
+        _, f_shard_list = f_target_pair
+        _, b_shard_list = b_target_pair
         if not len(b_shard_list):
             b_shard_list.extend(f_shard_list)
             f_shard_list = []
@@ -59,7 +70,7 @@ class ShapeConsistencyManager:
             b_shard_list = []
         # TODO: compute comm cost
         comm_cost = 0
-        return (f_pos, f_shard_list), (b_pos, b_shard_list), comm_cost
+        return f_shard_list, b_shard_list, comm_cost
 
     def _shard_simulator(self, target_pair, legal_sharding_dims):
         '''
@@ -75,8 +86,12 @@ class ShapeConsistencyManager:
         For the S dimension, we need to make sure the shard_list after sharding still keep rising order.
         e.g:
             shard(S0) -> S01
+
+        Argument:
+            target_pair(Tuple[int, List[int]]): The first element is the dimension of tensor to be sharded,
+            and the second element decribes which logical axis will be sharded in that dimension.
         '''
-        pos, shard_list = target_pair
+        _, shard_list = target_pair
         shard_list_list = []
         for dim in legal_sharding_dims:
             if len(shard_list) != 0 and dim <= shard_list[-1]:
@@ -84,7 +99,7 @@ class ShapeConsistencyManager:
             new_shard_list = shard_list + [dim]
             shard_list_list.append(new_shard_list)
         comm_cost = 0
-        return (pos, shard_list_list), comm_cost
+        return shard_list_list, comm_cost
 
     def get_all_all_gather_spec(self, source_spec, orig_cost):
         '''
@@ -118,8 +133,8 @@ class ShapeConsistencyManager:
         '''
         valid_spec_dict = {}
         for target_pair in source_spec.dim_partition_dict.items():
-            new_target_pair, cost = self._all_gather_simulator(target_pair)
-            index, shard_list = new_target_pair
+            shard_list, cost = self._all_gather_simulator(target_pair)
+            index = target_pair[0]
             new_dim_partition_dict = deepcopy(source_spec.dim_partition_dict)
             new_dim_partition_dict[index] = shard_list
             new_sharding_spec = ShardingSpec(source_spec.device_mesh,
@@ -177,9 +192,9 @@ class ShapeConsistencyManager:
                     else:
                         b_target_pair = (b_index, [])
 
-                new_f_target_pair, new_b_target_pair, cost = self._all_to_all_simulator(f_target_pair, b_target_pair)
-                f_index, f_shard_list = new_f_target_pair
-                b_index, b_shard_list = new_b_target_pair
+                f_shard_list, b_shard_list, cost = self._all_to_all_simulator(f_target_pair, b_target_pair)
+                f_index = f_target_pair[0]
+                b_index = b_target_pair[0]
                 new_dim_partition_dict = deepcopy(source_spec.dim_partition_dict)
                 new_dim_partition_dict[f_index] = f_shard_list
                 new_dim_partition_dict[b_index] = b_shard_list
@@ -232,11 +247,10 @@ class ShapeConsistencyManager:
         tensor_dims = len(source_spec.entire_shape)
         for index in range(tensor_dims):
             if index not in source_spec.dim_partition_dict:
-                new_target_pair, cost = self._shard_simulator((index, []), legal_sharding_dims)
+                shard_list_list, cost = self._shard_simulator((index, []), legal_sharding_dims)
             else:
-                new_target_pair, cost = self._shard_simulator((index, source_spec.dim_partition_dict[index]),
+                shard_list_list, cost = self._shard_simulator((index, source_spec.dim_partition_dict[index]),
                                                               legal_sharding_dims)
-            index, shard_list_list = new_target_pair
             if not shard_list_list:
                 continue
             for shard_list in shard_list_list:
