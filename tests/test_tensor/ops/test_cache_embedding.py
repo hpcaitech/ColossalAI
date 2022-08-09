@@ -3,6 +3,7 @@ from functools import partial
 import torch
 import torch.multiprocessing as mp
 import numpy as np
+import random
 
 import colossalai
 from colossalai.utils import free_port
@@ -14,6 +15,15 @@ from colossalai.nn._ops.cache_embedding import CachedParamMgr, FreqAwareEmbeddin
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
+
+
+def set_seed(seed):
+    """
+    To achieve reproducible results, it's necessary to fix random seeds
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 
 def synthesize_1d_sparse_feature(
@@ -144,15 +154,16 @@ def run_parallel_freq_aware_embed(rank, world_size):
     device = torch.device('cuda', torch.cuda.current_device())
 
     num_embed = 100
-    embed_dim = 8
+    embed_dim = 16
+    batch_size = 8
 
     weight = torch.rand(num_embed, embed_dim)
-    coloweight = ColoParameter(weight.clone().detach().cpu())
+    coloweight = ColoParameter(weight.clone().detach().cpu(), requires_grad=False)
 
     model = ParallelFreqAwareEmbeddingBag.from_pretrained(coloweight,
                                                           include_last_offset=True,
                                                           freeze=False,
-                                                          cuda_row_num=BATCH_SIZE * 2)
+                                                          cuda_row_num=batch_size * 2)
 
     assert model.cache_weight_mgr.cpu_weight.device.type == 'cpu'
     assert model.cache_weight_mgr.cuda_cached_weight.requires_grad
@@ -167,12 +178,12 @@ def run_parallel_freq_aware_embed(rank, world_size):
                                                           freeze=False).to(device)
         ref_optimizer = torch.optim.SGD(ref_model.parameters(), lr=1e-3)
 
-    # DISTMGR.set_seed(4321)
+    set_seed(4321)
     for i in range(5):
-        indices, offsets = synthesize_1d_sparse_feature(BATCH_SIZE, NUM_EMBED, device)
+        indices, offsets = synthesize_1d_sparse_feature(batch_size, num_embed, device)
         res = model(indices, offsets)
 
-        grad = torch.rand(BATCH_SIZE * 2, EMBED_DIM, dtype=res.dtype, device=res.device)
+        grad = torch.rand(batch_size * 2, embed_dim, dtype=res.dtype, device=res.device)
         grad_in_rank = torch.tensor_split(grad, world_size, 0)[rank]
         res.backward(grad_in_rank)
 
@@ -199,8 +210,7 @@ def run_parallel_freq_aware_embed(rank, world_size):
 
 
 def run_dist(rank, world_size, port):
-    config = dict(parallel=dict(tensor=dict(mode="1d", size=world_size),))
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     run_parallel_freq_aware_embed(rank, world_size)
 
 
@@ -215,4 +225,4 @@ def test_parallel_freq_aware_embed(world_size):
 if __name__ == '__main__':
     # test_freq_aware_embed()
     # test_chunkmgr_admit()
-    test_parallel_freq_aware_embed(1)
+    test_parallel_freq_aware_embed(2)
