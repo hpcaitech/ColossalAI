@@ -10,6 +10,8 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.tensor import ColoParameter
 from colossalai.nn._ops.cache_embedding import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag
 
+from colossalai.nn._ops.cache_embedding import CachedParamMgr, FreqAwareEmbeddingBag
+
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
 
