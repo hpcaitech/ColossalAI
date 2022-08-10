@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
+from pprint import pp
 import random
 import socket
 from pathlib import Path
 from typing import Callable, List, Union
 import functools
+
 import torch
 from torch._six import inf
 from torch.nn.parameter import Parameter
@@ -25,6 +27,7 @@ from colossalai.global_variables import tensor_parallel_env as env
 
 from .multi_tensor_apply import multi_tensor_applier
 
+from colossalai.tensor import ColoTensor, ColoParameter
 
 def print_rank_0(msg: str, logger=None):
     """Print messages and save logs(optional). This is executed only if you are the rank-0 gpu.
@@ -161,6 +164,105 @@ def _get_tensor_norm(norm: Union[float, torch.Tensor], move_to_cuda) -> torch.Te
 
 # ======== Gradient Clipping =========
 
+def _norm_tensor_parallel_fp32(parameters, pp_group, norm_type=2):
+    '''
+    Calculate norm of parameters in the same pipeline parallel group. 
+    expect parameter grads on cuda.
+    '''
+    if isinstance(parameters, ColoTensor):
+        parameters = [parameters]
+    params: List[ColoParameter] = []
+    for param in parameters:
+        if param.grad is not None:
+            assert param.grad.dtype == torch.float, \
+                f'expected gradient to be dtype torch.float, but got {param.grad.type()}'
+            assert param.grad.device.type == 'cuda', \
+                f'expected gradient to be on cuda, but got {param.grad.device.type}'
+            params.append(param)
+    norm_type = float(norm_type)
+    total_norm = 0.0
+    # for parameters in the same PP group:
+    #   no need to check every parameter of its distribution to cuda devices. 
+    #   every cuda device only process part of parameters it got.
+    #   only all-reduce once
+    if norm_type == inf:
+        for p in params:
+            p.get_process_group().dp_process_group()
+            local_norm = p.grad.data.abs().max()
+            total_norm = max(total_norm, local_norm)
+        if dist.get_world_size() > 1:
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            dist.all_reduce(total_norm_cuda, 
+                            op=dist.ReduceOp.MAX,
+                            group=pp_group)
+            total_norm = total_norm_cuda[0].item()
+    else:
+        for p in params:
+            if norm_type == 2.0:
+                local_norm = _calc_l2_norm([p.grad.data])**norm_type
+            else:
+                local_norm = _calc_lp([p.grad.data], norm_type)
+            total_norm = total_norm + local_norm
+        if dist.get_world_size() > 1:
+            total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
+            dist.all_reduce(total_norm_cuda, 
+                            op=dist.ReduceOp.SUM,
+                            group=pp_group)
+            total_norm = total_norm_cuda[0].item()
+        total_norm = total_norm**(1.0 / norm_type)    
+        
+    if torch.torch.is_tensor(total_norm):
+        total_norm = total_norm.item()
+    return total_norm
+    
+def _norm_pipeline_parallel_fp32(total_norm, norm_type):
+    # TODO: get the pp_group of this cuda device
+    '''
+        TODO
+        if norm_type == inf:
+            MAX
+        else:
+            x**norm_type, SUM, x**(1/norm_type)
+    '''
+    return total_norm
+
+def _norm_data_parallel_fp32(total_norm, norm_type):
+    # TODO: get the dp_group of this cuda device
+    '''
+        TODO
+        if norm_type == inf:
+            MAX
+        else:
+            x**norm_type, SUM, x**(1/norm_type)
+    '''
+    return total_norm
+
+def _clip_grad_fp32(parameters, max_norm, total_norm):
+    if isinstance(parameters, torch.Tensor):
+        parameters = [parameters]
+    clip_coeff = max_norm / (total_norm + 1.0e-6)
+    if clip_coeff < 1.0:
+        grads = [p.grad.detach() for p in parameters]
+        dummy_overflow_buf = torch.cuda.IntTensor([0])
+        multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coeff)
+    return total_norm
+
+def clip_grad_norm_fp32_new(parameters, max_norm, norm_type=2):
+    """For ColoTensor parameters use this new function instead of clip_grad_norm_fp32().
+    Warning: still developing.
+    """
+    enable_pipline_parallel = False
+    enable_zero = False
+    # TODO: get the pp_group of this cuda device, for now, dist.new_group()
+    # TODO: get the dp_group of this cuda device
+    pp_group = dist.new_group()
+    total_norm = _norm_tensor_parallel_fp32(parameters=parameters, pp_group = pp_group,norm_type=norm_type)
+    if enable_pipline_parallel:
+        total_norm = _norm_pipeline_parallel_fp32(total_norm, norm_type)
+    if enable_zero:
+        total_norm = _norm_data_parallel_fp32(total_norm, norm_type)
+    _clip_grad_fp32(parameters, max_norm, total_norm)
+    return total_norm
 
 def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
     """Clips gradient norm of an iterable of parameters whose gradients are in fp32.
