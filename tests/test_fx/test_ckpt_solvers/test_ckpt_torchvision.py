@@ -33,7 +33,7 @@ def test_ckpt_solver():
             gm = solver(gm)
             assert _is_activation_checkpoint_available(
                 gm), f"Solver {solver} did not annotate {model_cls} with any activation checkpoints"
-            gm(data)
+            assert torch.allclose(gm(data), model(data))
 
 
 if __name__ == '__main__':
