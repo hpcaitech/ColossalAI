@@ -67,9 +67,6 @@ class ParallelFreqAwareEmbeddingBag(BaseEmbeddingBag):
             self.init_parameters()
         else:
             assert isinstance(_weight, ColoParameter), "initialized weight must in type of ColoParameter"
-            _weight.process_group = ProcessGroup(tp_degree=self.world_size)
-            _weight.set_tensor_spec(ShardSpec(dims=[-1], num_partitions=[self.world_size]),
-                                    ComputeSpec(ComputePattern.TP1D))
             self._weight = _weight
 
     @property

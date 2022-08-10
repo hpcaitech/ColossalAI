@@ -8,10 +8,8 @@ import random
 import colossalai
 from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.tensor import ColoParameter
+from colossalai.tensor import ColoParameter, ProcessGroup, ShardSpec, ComputePattern, ComputeSpec
 from colossalai.nn._ops.cache_embedding import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag
-
-from colossalai.nn._ops.cache_embedding import CachedParamMgr, FreqAwareEmbeddingBag
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
@@ -160,6 +158,11 @@ def run_parallel_freq_aware_embed(rank, world_size):
     set_seed(4321)
     weight = torch.rand(num_embed, embed_dim)
     coloweight = ColoParameter(weight.clone().detach().cpu(), requires_grad=False)
+
+    # initialize the tensor spec for the embedding weight parameter,
+    # which is an ColoParameter.
+    coloweight.process_group = ProcessGroup(tp_degree=world_size)
+    coloweight.set_tensor_spec(ShardSpec(dims=[-1], num_partitions=[world_size]), ComputeSpec(ComputePattern.TP1D))
 
     model = ParallelFreqAwareEmbeddingBag.from_pretrained(coloweight,
                                                           include_last_offset=True,
