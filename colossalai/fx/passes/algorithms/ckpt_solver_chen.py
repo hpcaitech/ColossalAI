@@ -26,12 +26,11 @@ def chen_greedy(gm: GraphModule, B: int):
     for n in gm.graph.nodes:
         B -= getattr(n, 'param_size')
         assert B > 0, f'The memory budget {budget / 1024 ** 3:.2f} GB is not enough for model parameters of {gm}'
-    print(B)
     for n in gm.graph.nodes:
         temp += getattr(n, 'activation_size')
         if temp > B:
             x += getattr(n, 'activation_size')
-            temp = 0
+            temp = x
             setattr(n, 'activation_checkpoint', str(idx))
             idx += 1
     gm.recompile()
