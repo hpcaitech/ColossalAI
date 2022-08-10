@@ -1,5 +1,6 @@
 from .cache_mgr import CachedParamMgr
 from .copyer import LimitBuffIndexCopyer
 from .freq_aware_embedding import FreqAwareEmbeddingBag
+from .parallel_freq_aware_embedding import ParallelFreqAwareEmbeddingBag
 
-__all__ = ['CachedParamMgr', 'LimitBuffIndexCopyer', 'FreqAwareEmbeddingBag']
+__all__ = ['CachedParamMgr', 'LimitBuffIndexCopyer', 'FreqAwareEmbeddingBag', 'ParallelFreqAwareEmbeddingBag']
