@@ -7,10 +7,10 @@ from .cache_mgr import CachedParamMgr
 from torch.nn.parameter import Parameter
 from .._utils import dual_all_to_all
 
-from colossalai.tensor import ColoParameter, ShardSpec
+from colossalai.tensor import ColoParameter, ShardSpec, ComputeSpec, ComputePattern, ProcessGroup
 
 
-def get_partition(embedding_dim, rank, world_size):
+def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:
     if world_size == 1:
         return 0, embedding_dim, True
 
@@ -57,6 +57,7 @@ class ParallelFreqAwareEmbeddingBag(BaseEmbeddingBag):
         self.embedding_dim_per_partition = self.partition_end_index - self.partition_start_index
 
         if _weight is None:
+            self._weight.process_group = ProcessGroup(tp_degree=self.world_size)
             self._weight = ColoParameter.from_torch_tensor(torch.empty(self.num_embeddings,
                                                                        self.embedding_dim_per_partition,
                                                                        device='cpu',
@@ -66,7 +67,9 @@ class ParallelFreqAwareEmbeddingBag(BaseEmbeddingBag):
             self.init_parameters()
         else:
             assert isinstance(_weight, ColoParameter), "initialized weight must in type of ColoParameter"
-            _weight.set_dist_spec(ShardSpec(dims=[-1], num_partitions=[self.world_size]))
+            _weight.process_group = ProcessGroup(tp_degree=self.world_size)
+            _weight.set_tensor_spec(ShardSpec(dims=[-1], num_partitions=[self.world_size]),
+                                    ComputeSpec(ComputePattern.TP1D))
             self._weight = _weight
 
     @property

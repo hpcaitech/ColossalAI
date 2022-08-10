@@ -155,8 +155,9 @@ def run_parallel_freq_aware_embed(rank, world_size):
 
     num_embed = 100
     embed_dim = 16
-    batch_size = 8
+    batch_size = 4
 
+    set_seed(4321)
     weight = torch.rand(num_embed, embed_dim)
     coloweight = ColoParameter(weight.clone().detach().cpu(), requires_grad=False)
 
@@ -167,8 +168,10 @@ def run_parallel_freq_aware_embed(rank, world_size):
 
     assert model.cache_weight_mgr.cpu_weight.device.type == 'cpu'
     assert model.cache_weight_mgr.cuda_cached_weight.requires_grad
-    weight_in_rank = torch.tensor_split(weight, world_size, 1)[rank]
-    assert torch.allclose(weight_in_rank, model.cache_weight_mgr.cpu_weight.detach())
+    weight_in_rank = torch.tensor_split(weight, world_size, -1)[rank]
+    assert torch.allclose(
+        weight_in_rank,
+        model.cache_weight_mgr.cpu_weight.detach()), f"{weight_in_rank - model.cache_weight_mgr.cpu_weight}"
 
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 
@@ -206,7 +209,7 @@ def run_parallel_freq_aware_embed(rank, world_size):
     weight_list = gather_tensor(model.cache_weight_mgr.cpu_weight.detach().cuda(), rank, world_size)
     if rank == 0:
         recover_weight = torch.cat(weight_list, dim=1)
-        assert torch.allclose(recover_weight, ref_model.weight.detach())
+        assert torch.allclose(recover_weight, ref_model.weight.detach()), f"{recover_weight - ref_model.weight}"
 
 
 def run_dist(rank, world_size, port):
