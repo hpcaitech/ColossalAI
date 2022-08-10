@@ -24,14 +24,11 @@ SOFTWARE
 #include <math.h>
 #include <omp.h>
 #include <string.h>
-#include <torch/extension.h>
 
 #include <iostream>
 #include <memory>
 #include <type_traits>
 #include <unordered_map>
-
-static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 
 // C++ interface
 
@@ -310,35 +307,6 @@ void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
            grad_half_precision, loss_scale);
 }
 
-int create_adam_optimizer(int optimizer_id, float alpha = 1e-3,
-                          float betta1 = 0.9, float betta2 = 0.999,
-                          float eps = 1e-8, float weight_decay = 0,
-                          bool adamw_mode = true, bool should_log = false) {
-  auto opt = std::make_shared<Adam_Optimizer>(alpha, betta1, betta2, eps,
-                                              weight_decay, adamw_mode);
-
-  s_optimizers[optimizer_id] = opt;
-
-  if (should_log) {
-    std::string avx_type = "";
-#if defined(__AVX512__)
-    avx_type = "AVX512";
-#else
-#if defined(__AVX256__) or defined(__AVX2__)
-    avx_type = "AVX2";
-#else
-    avx_type = "scalar";
-#endif
-#endif
-    printf("Adam Optimizer #%d is created with %s arithmetic capability.\n",
-           optimizer_id, avx_type.c_str());
-    printf("Config: alpha=%f, betas=(%f, %f), weight_decay=%f, adam_w=%d\n",
-           alpha, betta1, betta2, weight_decay, (int)adamw_mode);
-  }
-
-  return 0;
-}
-
 void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
                             float *_exp_avg_sq, size_t _param_size,
                             bool param_half_precision, bool grad_half_precision,
@@ -460,11 +428,11 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
            grad_half_precision, loss_scale);
 }
 
-int adam_step(int optimizer_id, size_t step, float lr, float beta1, float beta2,
-              float epsilon, float weight_decay, bool bias_correction,
-              torch::Tensor &params, torch::Tensor &grads,
-              torch::Tensor &exp_avg, torch::Tensor &exp_avg_sq,
-              float loss_scale) {
+void Adam_Optimizer::step(size_t step, float lr, float beta1, float beta2,
+                          float epsilon, float weight_decay,
+                          bool bias_correction, torch::Tensor &params,
+                          torch::Tensor &grads, torch::Tensor &exp_avg,
+                          torch::Tensor &exp_avg_sq, float loss_scale) {
   auto params_c = params.contiguous();
   auto grads_c = grads.contiguous();
   auto exp_avg_c = exp_avg.contiguous();
@@ -474,24 +442,18 @@ int adam_step(int optimizer_id, size_t step, float lr, float beta1, float beta2,
   float *grads_ptr = (float *)grads_c.data_ptr();
   float *exp_avg_ptr = (float *)exp_avg_c.data_ptr();
   float *exp_avg_sq_ptr = (float *)exp_avg_sq_c.data_ptr();
-  std::shared_ptr<Adam_Optimizer> opt =
-      std::static_pointer_cast<Adam_Optimizer>(s_optimizers[optimizer_id]);
-  opt->IncrementStep(step, beta1, beta2);
-  opt->update_state(lr, epsilon, weight_decay, bias_correction);
-  opt->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr,
-              params_c.numel(), (params.options().dtype() == at::kHalf),
-              (grads.options().dtype() == at::kHalf), loss_scale);
 
-  return 0;
+  this->IncrementStep(step, beta1, beta2);
+  this->update_state(lr, epsilon, weight_decay, bias_correction);
+  this->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr,
+               params_c.numel(), (params.options().dtype() == at::kHalf),
+               (grads.options().dtype() == at::kHalf), loss_scale);
 }
 
-int destroy_adam_optimizer(int optimizer_id) {
-  s_optimizers.erase(optimizer_id);
-  return 0;
-}
+namespace py = pybind11;
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  m.def("adam_update", &adam_step, "CPU Adam update (C++)");
-  m.def("create_adam", &create_adam_optimizer, "CPU Adam (C++)");
-  m.def("destroy_adam", &destroy_adam_optimizer, "CPU Adam destroy (C++)");
+  py::class_<Adam_Optimizer>(m, "CPUAdamOptimizer")
+      .def(py::init<float, float, float, float, float, bool>())
+      .def("step", &Adam_Optimizer::step);
 }

@@ -1,4 +1,3 @@
-from .utils import CPU_ADAM_CNT
 from .colossalai_optimizer import ColossalaiOptimizer
 from .fused_adam import FusedAdam
 from .fused_lamb import FusedLAMB
@@ -8,6 +7,4 @@ from .lars import Lars
 from .cpu_adam import CPUAdam
 from .hybrid_adam import HybridAdam
 
-__all__ = [
-    'ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam', 'HybridAdam', 'CPU_ADAM_CNT'
-]
+__all__ = ['ColossalaiOptimizer', 'FusedLAMB', 'FusedAdam', 'FusedSGD', 'Lamb', 'Lars', 'CPUAdam', 'HybridAdam']

@@ -2,7 +2,6 @@ import math
 import torch
 
 from colossalai.registry import OPTIMIZERS
-from colossalai.nn.optimizer import CPU_ADAM_CNT
 from .nvme_optimizer import NVMeOptimizer
 from typing import Optional
 
@@ -69,25 +68,17 @@ class CPUAdam(NVMeOptimizer):
                  eps=1e-8,
                  weight_decay=0,
                  adamw_mode=True,
-                 simd_log=False,
                  nvme_offload_fraction: float = 0.0,
                  nvme_offload_dir: Optional[str] = None):
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(CPUAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
-        self.opt_id = CPU_ADAM_CNT()
         self.adamw_mode = adamw_mode
         try:
             import cpu_adam
         except ImportError:
             raise ImportError('Please install colossalai from source code to use CPUAdam')
-        self.cpu_adam_op = cpu_adam
-        self.cpu_adam_op.create_adam(self.opt_id, lr, betas[0], betas[1], eps, weight_decay, adamw_mode, simd_log)
-
-    def __del__(self):
-        super().__del__()
-        if getattr(self, 'cpu_adam_op', None):
-            self.cpu_adam_op.destroy_adam(self.opt_id)
+        self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
     def torch_adam_update(self,
                           data,
@@ -156,9 +147,9 @@ class CPUAdam(NVMeOptimizer):
                     assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
                     assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
                     self._pre_update(p, 'exp_avg', 'exp_avg_sq')
-                    self.cpu_adam_op.adam_update(self.opt_id, state['step'], group['lr'], beta1, beta2, group['eps'],
-                                                 group['weight_decay'], group['bias_correction'], p.data, p.grad.data,
-                                                 state['exp_avg'], state['exp_avg_sq'], -1)
+                    self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'], group['weight_decay'],
+                                          group['bias_correction'], p.data, p.grad.data, state['exp_avg'],
+                                          state['exp_avg_sq'], -1)
                     self._post_update(p, 'exp_avg', 'exp_avg_sq')
                 elif target_device.type == 'cuda':
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
