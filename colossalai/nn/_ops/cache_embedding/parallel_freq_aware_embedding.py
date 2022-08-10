@@ -57,6 +57,8 @@ class ParallelFreqAwareEmbeddingBag(BaseEmbeddingBag):
         self.embedding_dim_per_partition = self.partition_end_index - self.partition_start_index
 
         if _weight is None:
+            # TODO(jiaruifang) This branch has not been tested.
+            # I believe the ColoParameter setting should be moved out of the constructer.
             self._weight.process_group = ProcessGroup(tp_degree=self.world_size)
             self._weight = ColoParameter.from_torch_tensor(torch.empty(self.num_embeddings,
                                                                        self.embedding_dim_per_partition,
@@ -67,9 +69,6 @@ class ParallelFreqAwareEmbeddingBag(BaseEmbeddingBag):
             self.init_parameters()
         else:
             assert isinstance(_weight, ColoParameter), "initialized weight must in type of ColoParameter"
-            _weight.process_group = ProcessGroup(tp_degree=self.world_size)
-            _weight.set_tensor_spec(ShardSpec(dims=[-1], num_partitions=[self.world_size]),
-                                    ComputeSpec(ComputePattern.TP1D))
             self._weight = _weight
 
     @property
