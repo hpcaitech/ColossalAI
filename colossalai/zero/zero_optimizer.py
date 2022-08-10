@@ -139,6 +139,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self._update_params_ptr()
         ret = self.optim.step(*args, **kwargs)
         self._register_states()
+        self.zero_grad()
         self._update_fp16_params()
         return ret
 
