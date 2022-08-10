@@ -8,7 +8,7 @@ from colossalai.gemini.chunk import TensorState, STATE_TRANS, TensorInfo, ChunkF
     free_storage, alloc_storage
 
 
-class AgChunk:
+class ChunkV2:
     def __init__(self,
                  chunk_size: int,
                  process_group: ColoProcessGroup,

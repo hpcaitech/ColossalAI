@@ -23,12 +23,24 @@ def test_meta_info_prop():
     input_sample = torch.rand(BATCH_SIZE, DIM_IN)
     orig_output = model(input_sample)
     gm = symbolic_trace(model)
+    for node in gm.graph.nodes:
+        assert not hasattr(node,
+                           'node_size'), 'The attribute Node.node_size should not exist before MetaInfoProp procedure'
+        assert not hasattr(node,
+                           'param_size'), 'The attribute Node.param_size should not exist before MetaInfoProp procedure'
+        assert not hasattr(
+            node,
+            'activation_size'), 'The attribute Node.activation_size should not exist before MetaInfoProp procedure'
     MetaInfoProp(gm).run(input_sample)
     for node in gm.graph.nodes:
         if node.op == 'placeholder':
             meta_check(node.meta['tensor_meta'], input_sample)
         if node.op == 'output':
             meta_check(node.meta['tensor_meta'], orig_output)
+        assert hasattr(node, 'node_size'), 'The attribute Node.node_size should exist after MetaInfoProp procedure'
+        assert hasattr(node, 'param_size'), 'The attribute Node.param_size should exist after MetaInfoProp procedure'
+        assert hasattr(
+            node, 'activation_size'), 'The attribute Node.activation_size should exist after MetaInfoProp procedure'
 
 
 if __name__ == '__main__':

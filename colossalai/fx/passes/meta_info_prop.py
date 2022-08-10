@@ -114,18 +114,29 @@ class MetaInfoProp(torch.fx.Interpreter):
                 return TensorMetadata(None, None, False, None, 0, False)
 
         meta = _map_aggregate(result, extract_tensor_meta)
-
         n.meta['tensor_meta'] = meta
-        total_node_size = _compute_node_numel(n.meta['tensor_meta'])
-        # counting the total size of parameters
+
+        # get byte size for each element
+        size_per_elem_bytes = torch.tensor([], dtype=meta.dtype).element_size()
+
+        # compute the total size of activation tensors
+        total_activation_size = _compute_node_numel(n.meta['tensor_meta'])
+
+        # compute the total size of model parameters
         total_param_size = 0
         if n.op == 'call_module':
             target_module = n.graph.owning_module.get_submodule(n.target)
             for param in target_module.parameters():
                 total_param_size += param.numel()
 
-        total_node_size += total_param_size
-        n.node_size = total_node_size
+        # compute the total memory cost of activation tensors and model parameters
+        total_activation_size *= size_per_elem_bytes
+        total_param_size *= size_per_elem_bytes
+
+        # TODO: node.node_size is not an original attribute
+        setattr(n, 'node_size', total_activation_size + total_param_size)
+        setattr(n, 'param_size', total_param_size)
+        setattr(n, 'activation_size', total_activation_size)
         n.meta['type'] = type(result)
         return result
 
