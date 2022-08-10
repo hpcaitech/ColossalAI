@@ -1,6 +1,6 @@
 import torch
 import torch.distributed as dist
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from colossalai.utils import get_current_device
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
@@ -36,7 +36,7 @@ class AgChunk:
         self.utilized_size = 0
         # Here, we use torch process group,
         # since ColoProcessGroup might get deprecated soon
-        self.torch_pg = process_group.dp_process_group
+        self.torch_pg = process_group.dp_process_group()
         self.pg_size = dist.get_world_size(self.torch_pg)
         self.pg_rank = dist.get_rank(self.torch_pg)
 
@@ -45,10 +45,11 @@ class AgChunk:
         self.shard_size = chunk_size // self.pg_size
         self.shard_begin = self.shard_size * self.pg_rank
         self.shard_end = self.shard_begin + self.shard_size
+        self.valid_end = self.shard_size
 
         self.dtype = dtype
         device = init_device or get_current_device()
-        self.chunk_temp = torch.empty(chunk_size, dtype=dtype, device=device)
+        self.chunk_temp = torch.zeros(chunk_size, dtype=dtype, device=device)  # keep all zero
         self.chunk_total = None  # we force chunk_total located in CUDA
         self.cuda_shard = None  # using two attributes for the better interpretation
         self.cpu_shard = None
@@ -69,6 +70,8 @@ class AgChunk:
         # some chunks can keep gathered all the time
         # so their computation patterns are the same as that of the parameters in DDP
         self.keep_gathered = keep_gathered
+        if self.keep_gathered:
+            pin_memory = False  # since this chunk is gathered, it doesn't need to pin
 
         # if pin_memory is True, we allocate a piece of CPU pin-memory
         # for it all the time
@@ -112,7 +115,7 @@ class AgChunk:
         if self.chunk_temp is not None:
             return self.chunk_temp.device.type
         else:
-            if self.chunk_total is not None:
+            if self.is_gathered:
                 return 'cuda'
             elif self.cuda_shard is not None:
                 return 'cuda'
@@ -134,7 +137,7 @@ class AgChunk:
         if new_utilized_size > self.chunk_size:
             raise ChunkFullError
 
-        self.chunk_temp[self.utilized_size: new_utilized_size].copy_(tensor.flatten())
+        self.chunk_temp[self.utilized_size: new_utilized_size].copy_(tensor.data.flatten())
         assert type(self.chunk_temp) == torch.Tensor, "copy_tensor_to_chunk_slice must use a torch tensor"
         tensor.data = self.chunk_temp[self.utilized_size: new_utilized_size].view(tensor.shape)
 
@@ -145,11 +148,17 @@ class AgChunk:
         self.tensors_state_monitor[tensor_state] += 1
         self.utilized_size = new_utilized_size
 
-    def close_chunk(self, shard_dev: torch.device):
+    def close_chunk(self, shard_dev: Optional[torch.device] = None):
         """Close the chunk. Any tensor can't be appended to a closed chunk.
         """
         # sanity check
         assert self.chunk_temp is not None
+
+        # calculate the valid end for each shard
+        if self.utilized_size <= self.shard_begin:
+            self.valid_end = 0
+        elif self.utilized_size < self.shard_end:
+            self.valid_end = self.utilized_size - self.shard_begin
 
         if self.chunk_temp.device.type == 'cpu':
             self.chunk_total = self.chunk_temp.to(get_current_device())
@@ -158,6 +167,14 @@ class AgChunk:
         self.chunk_temp = None
 
         self.__scatter()
+
+        if self.keep_gathered:
+            if shard_dev is None:
+                shard_dev = get_current_device()
+            else:
+                assert shard_dev.type == 'cuda'
+        elif shard_dev is None:
+            shard_dev = torch.device('cpu')
 
         if self.pin_memory or shard_dev.type == 'cpu':
             self.cpu_shard = torch.empty(self.shard_size,
@@ -247,7 +264,7 @@ class AgChunk:
                 self.shard_size, dtype=self.dtype, device=get_current_device())
 
             input_list = list(torch.chunk(self.chunk_total, chunks=self.pg_size, dim=0))
-            dist.reduce_scatter(self.cuda_shard, input_list, self.torch_pg)
+            dist.reduce_scatter(self.cuda_shard, input_list, group=self.torch_pg)
 
             free_storage(self.chunk_total)
             self.is_gathered = False
@@ -288,16 +305,37 @@ class AgChunk:
         assert self.is_gathered
 
         tensor_info = self.tensors_info[tensor]
-        self.chunk_total[tensor_info.offset:tensor_info.end].copy_(data_slice.flatten())
+        self.chunk_total[tensor_info.offset:tensor_info.end].copy_(data_slice.data.flatten())
         tensor.data = self.chunk_total[tensor_info.offset:tensor_info.end].view(tensor.shape)
 
     @property
+    def can_move(self) -> bool:
+        return not self.is_gathered
+
+    @property
     def can_release(self) -> bool:
-        return self.tensors_state_monitor[TensorState.HOLD] == self.num_tensors
+        if self.keep_gathered:
+            return False
+        else:
+            return self.tensors_state_monitor[TensorState.HOLD] + \
+                   self.tensors_state_monitor[TensorState.HOLD_AFTER_BWD] == self.num_tensors
 
     @property
     def can_reduce(self):
         return self.tensors_state_monitor[TensorState.READY_FOR_REDUCE] == self.num_tensors
+
+    @property
+    def has_inf_or_nan(self) -> bool:
+        """
+        Check if the chunk has inf or nan values in CUDA.
+        """
+        if self.is_gathered:
+            valid_tensor = self.chunk_total[: self.utilized_size]
+        else:
+            assert self.cuda_shard is not None  # only check in CUDA
+            valid_tensor = self.cuda_shard[: self.valid_end]
+
+        return torch.isinf(valid_tensor).any().item() | torch.isnan(valid_tensor).any().item()
 
     def __gather(self):
         if not self.is_gathered:
@@ -364,3 +402,51 @@ class AgChunk:
         for tensor_info in self.tensors_info.values():
             if prev_state is None or tensor_info.state == prev_state:
                 self.__update_one_tensor_info(tensor_info, next_state)
+
+    def __hash__(self) -> int:
+        return hash(id(self))
+
+    def __eq__(self, __o: object) -> bool:
+        return self is __o
+
+    def __repr__(self, detailed: bool = False):
+        output = [
+            "AgChunk Information:\n",
+            "\tchunk size: {}, chunk dtype: {}, process group size: {}\n".format(
+                self.chunk_size, self.dtype, self.pg_size),
+            "\t# of tensors: {}, utilized size: {}, utilized percentage: {:.2f}\n".format(
+                self.num_tensors, self.utilized_size, self.utilized_size / self.chunk_size)
+        ]
+
+        def print_tensor(tensor, prefix=''):
+            output.append("{}shape: {}, dtype: {}, device: {}\n".format(
+                prefix, tensor.shape, tensor.dtype, tensor.device))
+
+        if self.chunk_temp is not None:
+            output.append("\tchunk temp:\n")
+            print_tensor(tensor=self.chunk_temp, prefix='\t\t')
+
+        if self.chunk_total is not None and self.chunk_total.storage().size() > 0:
+            output.append("\tchunk total:\n")
+            print_tensor(tensor=self.chunk_total, prefix='\t\t')
+
+        if self.cuda_shard is not None:
+            output.append("\tcuda shard:\n")
+            print_tensor(tensor=self.cuda_shard, prefix='\t\t')
+
+        if self.cpu_shard is not None:
+            output.append("\tcpu shard:\n")
+            print_tensor(tensor=self.cpu_shard, prefix='\t\t')
+
+        memory_info = self.memory_usage
+        output.append("\tmemory usage: cuda {}, cpu {}\n".format(memory_info['cuda'], memory_info['cpu']))
+
+        if detailed:
+            output.append("\ttensor state monitor:\n")
+            for st in TensorState:
+                output.append("\t\t# of {}: {}\n".format(st, self.tensors_state_monitor[st]))
+
+        return ''.join(output)
+
+    def get_tensors(self) -> List[torch.Tensor]:
+        return list(self.tensors_info.keys())
