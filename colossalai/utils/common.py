@@ -254,7 +254,7 @@ def compute_grad_norm(parameters, norm_type: float = 2.0) -> float:
     return total_norm
 
 
-def clip_grad_norm(parameters, max_norm: float, total_norm: float) -> None:
+def _clip_grad_norm(parameters, max_norm: float, total_norm: float) -> None:
     clip_coef = max_norm / (total_norm + 1e-6)
     if clip_coef < 1.0:
         cuda_grads: List[torch.Tensor] = []
@@ -273,6 +273,12 @@ def clip_grad_norm(parameters, max_norm: float, total_norm: float) -> None:
             multi_tensor_applier(colossal_C.multi_tensor_scale, dummy_overflow_buf, [cuda_grads, cuda_grads], clip_coef)
         for g in cpu_grads:
             g.mul_(clip_coef)
+
+
+def clip_grad_norm(parameters, max_norm: float, norm_type: float = 2.0) -> float:
+    total_norm = compute_grad_norm(parameters, norm_type)
+    _clip_grad_norm(parameters, max_norm, total_norm)
+    return total_norm
 
 
 def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):

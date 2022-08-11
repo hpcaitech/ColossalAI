@@ -9,7 +9,7 @@ from colossalai.utils import free_port, get_current_device
 from torch.nn.utils import clip_grad_norm_
 from functools import partial
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils.common import clip_grad_norm, compute_grad_norm
+from colossalai.utils.common import clip_grad_norm
 from torch.nn.parameter import Parameter
 
 
@@ -55,9 +55,8 @@ def run_grad_clip_norm(world_size: int, dtype: torch.dtype, device: str, norm_ty
     shard_param(colo_params[0])
     shard_param(colo_params[2])
     torch_norm = clip_grad_norm_(params, 1.0, norm_type=norm_type)
-    colo_norm = compute_grad_norm(colo_params, norm_type=norm_type)
+    colo_norm = clip_grad_norm(colo_params, 1.0, norm_type=norm_type)
     assert close(torch_norm, colo_norm), f'diff: {abs(torch_norm-colo_norm)}'
-    clip_grad_norm(colo_params, 1.0, colo_norm)
     for p, colo_p in zip(params, colo_params):
         check_grad_equal(p, colo_p)
 
