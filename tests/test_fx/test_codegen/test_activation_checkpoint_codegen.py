@@ -43,6 +43,9 @@ class MyModule(torch.nn.Module):
 
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
 def test_act_ckpt_codegen():
+    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
+    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+
     # build model and run forward
     model = MyModule()
     data = torch.rand(4, 4)
@@ -76,9 +79,6 @@ def test_act_ckpt_codegen():
     code = graph.python_code('self').src
     assert 'colossalai.utils.checkpoint(checkpoint_0, False, x)' in code and 'colossalai.utils.checkpoint(checkpoint_1, True, x)' in code
 
-    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
-
     # recompile and verify the outputs are consistent
     gm = GraphModule(model, graph)
     gm.recompile()
@@ -88,6 +88,9 @@ def test_act_ckpt_codegen():
 
 @pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
 def test_act_ckpt_python_code_torch11():
+    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
+    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+
     # build model and run forward
     model = MyModule()
     data = torch.rand(4, 4)
@@ -129,9 +132,6 @@ def test_act_ckpt_python_code_torch11():
 
 
 if __name__ == '__main__':
-
-    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
     test_act_ckpt_codegen()
     test_act_ckpt_python_code_torch11()

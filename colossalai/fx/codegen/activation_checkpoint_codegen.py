@@ -377,6 +377,7 @@ if codegen_available:
 
             # as we need colossalai.utils.checkpoint, we need to import colossalai
             # in forward function
+            # TODO: Remove inline import
             prologue = self.gen_fn_def(free_vars, maybe_return_annotation[0])
             prologue = prologue + "\n    import colossalai"
 
@@ -579,6 +580,7 @@ else:
 
         # as we need colossalai.utils.checkpoint, we need to import colossalai
         # in forward function
+        # TODO: Remove inline import
         fn_code = f"""
 {wrap_stmts}
 
