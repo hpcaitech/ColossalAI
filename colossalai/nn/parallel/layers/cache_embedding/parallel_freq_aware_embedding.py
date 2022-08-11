@@ -5,9 +5,9 @@ from typing import List, Optional, Iterator, Tuple
 from .base_embedding import BaseEmbeddingBag
 from .cache_mgr import CachedParamMgr
 from torch.nn.parameter import Parameter
-from .._utils import dual_all_to_all
+from colossalai.nn._ops._utils import dual_all_to_all
 
-from colossalai.tensor import ColoParameter, ShardSpec, ComputeSpec, ComputePattern, ProcessGroup, ColoTensorSpec
+from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec
 
 
 def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:

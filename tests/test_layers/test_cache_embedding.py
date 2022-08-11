@@ -1,15 +1,17 @@
 import pytest
 from functools import partial
-import torch
-import torch.multiprocessing as mp
+
 import numpy as np
 import random
+
+import torch
+import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.tensor import ColoParameter, ProcessGroup, ShardSpec, ComputePattern, ComputeSpec
-from colossalai.nn._ops.cache_embedding import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag
+from colossalai.nn.parallel.layers import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
