@@ -125,7 +125,6 @@ def test_shape_consistency():
                                                                        '[S01, R, R]')][0] == transform_path
     assert shape_consistency_manager.cached_spec_pairs_transform_path[('[R, S01, R]',
                                                                        '[S01, R, R]')][1] == comm_action_sequence
-    assert shape_consistency_manager.cached_spec_pairs_transform_path[('[R, S01, R]', '[S01, R, R]')][2] == total_cost
 
 
 if __name__ == '__main__':
