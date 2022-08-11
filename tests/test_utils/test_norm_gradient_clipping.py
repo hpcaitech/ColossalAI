@@ -1,76 +1,80 @@
-
-from cmath import inf
-import copy
-from colossalai.tensor import distspec, process_group, ColoTensorSpec
+from colossalai.tensor import distspec, ColoTensorSpec, ProcessGroup
 from colossalai.tensor.colo_parameter import ColoParameter
-
 import colossalai
-from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 import pytest
 import torch
-import torch.distributed as dist
 import torch.multiprocessing as mp
-import torch.nn as nn
 from colossalai.logging import disable_existing_loggers
-from colossalai.utils import clip_grad_norm_fp32_new, free_port
-from torch.nn.parallel import DistributedDataParallel as DDP
+from colossalai.utils import free_port, get_current_device
 from torch.nn.utils import clip_grad_norm_
-from colossalai.zero.shard_utils.tensor_shard_strategy import TensorShardStrategy
 from functools import partial
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils.common import clip_grad_norm, compute_grad_norm
+from torch.nn.parameter import Parameter
 
 
-def allclose(tensor_a: torch.Tensor, tensor_b: torch.Tensor, loose=False) -> bool:
-    if loose:
-        return torch.allclose(tensor_a, tensor_b, atol=1e-3, rtol=1e-3)
-    return torch.allclose(tensor_a, tensor_b)
+def close(num: float, other: float, rtol: float = 1e-5, atol: float = 1e-8):
+    return abs(num - other) <= atol + rtol * other
+
+
+def shard_param(p: ColoParameter) -> None:
+    pg = p.get_process_group()
+    p._redistribute(distspec.shard([0], [pg.tp_world_size()]))
+    p.grad = p.grad.chunk(pg.tp_world_size(), 0)[pg.tp_local_rank()].clone().detach()
+
+
+def check_grad_equal(p: Parameter, colo_p: ColoParameter) -> None:
+    pg = colo_p.get_process_group()
+    if p.shape != colo_p.shape:
+        grad = p.grad.chunk(pg.tp_world_size(), 0)[pg.tp_local_rank()]
+    else:
+        grad = p.grad
+    assert torch.allclose(grad, colo_p.grad), f'diff: {torch.abs(grad - colo_p.grad)}'
+
+
+@parameterize('dtype', [torch.float])
+@parameterize('device', ['mixed', 'cuda', 'cpu'])
+@parameterize('norm_type', [2.0, 3.0, float('inf')])
+def run_grad_clip_norm(world_size: int, dtype: torch.dtype, device: str, norm_type: float):
+    print(f'{world_size}, {dtype}, {device}, {norm_type}')
+    cuda_device = get_current_device()
+    devices = [cuda_device] * 4
+    if device == 'cpu':
+        devices = [torch.device('cpu')] * 4
+    elif device == 'mixed':
+        devices = [cuda_device] * 2 + [torch.device('cpu')] * 2
+    pg = ProcessGroup(tp_degree=world_size)
+    params = [Parameter(torch.empty(4, 4, dtype=dtype, device=devices[i])) for i in range(4)]
+    colo_params = [
+        ColoParameter(torch.empty(4, 4, dtype=dtype, device=devices[i]), spec=ColoTensorSpec(pg)) for i in range(4)
+    ]
+    for p, colo_p in zip(params, colo_params):
+        grad = torch.rand_like(p)
+        p.grad = grad
+        colo_p.grad = grad.clone().detach()
+    shard_param(colo_params[0])
+    shard_param(colo_params[2])
+    torch_norm = clip_grad_norm_(params, 1.0, norm_type=norm_type)
+    colo_norm = compute_grad_norm(colo_params, norm_type=norm_type)
+    assert close(torch_norm, colo_norm), f'diff: {abs(torch_norm-colo_norm)}'
+    clip_grad_norm(colo_params, 1.0, colo_norm)
+    for p, colo_p in zip(params, colo_params):
+        check_grad_equal(p, colo_p)
+
 
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    run_grad_clip_norm(world_size=world_size)
 
-    #a, b, splitted to all ranks
-    a = torch.tensor([2.,3.], dtype=torch.float,requires_grad=True, device="cuda")
-    b = torch.tensor([6.,4.], dtype=torch.float,requires_grad=True, device="cuda")
-    shard_spec = distspec.shard(dims=[0], num_partitions=[world_size])
-    pg = process_group.ProcessGroup(rank=rank, ranks=[i for i in range(world_size)], tp_degree=world_size)
-    tensor_spec = ColoTensorSpec(pg=pg,dist_attr=shard_spec)
-    colo_a = ColoParameter(data=a, spec=tensor_spec)
-    colo_b = ColoParameter(data=b, spec=tensor_spec)
-    #c, only on rank 0
-    c = torch.tensor([-2,-1], dtype=torch.float,requires_grad=True, device="cuda")
-    shard_spec2 = distspec.shard(dims=[0], num_partitions=[1])
-    pg2 = process_group.ProcessGroup(rank=0, ranks=[0], tp_degree=1)
-    tensor_spec2 = ColoTensorSpec(pg=pg2, dist_attr=shard_spec2)
-    colo_c = None
-    if rank==0:
-        colo_c = ColoParameter(data=c,spec=tensor_spec2)
-    #generate some gradients
-    if rank==0:
-        colo_loss = 3*colo_a**3 - colo_b**2 + colo_c**4
-    else:
-        colo_loss = 3*colo_a**3 - colo_b**2
-    colo_loss.sum().backward()
-    #print(colo_a.grad, colo_b.grad)
-    if rank==0:
-        params = [colo_a, colo_b, colo_c]
-    else:
-        params = [colo_a, colo_b]
-    total_norm = clip_grad_norm_fp32_new(params,1.0,3.0)
-    if rank == 0:
-        print(colo_a.grad, colo_b.grad, colo_c.grad)
-    else:
-        print(colo_a.grad, colo_b.grad)
-    print(total_norm)
-    #print(colo_a.get_tp_world_size(), colo_a.get_process_group().get_ranks_in_dp())
 
 @pytest.mark.dist
+@pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
-def test_zero_clip_grad():
-    world_size = 4
+def test_zero_clip_grad(world_size: int):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_zero_clip_grad()
+    test_zero_clip_grad(2)
