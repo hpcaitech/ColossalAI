@@ -5,7 +5,7 @@ from torch.utils.checkpoint import checkpoint
 from torch.fx import GraphModule
 from colossalai.fx import ColoTracer
 import colossalai
-import socket
+from colossalai.utils import free_port
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -14,28 +14,6 @@ except:
     # fall back to older pytorch version
     from colossalai.fx.codegen import python_code_with_activation_checkpoint
     with_codegen = False
-
-
-def free_port(host: str = "127.0.0.1") -> int:
-    """Find an available port to launch colossal (search from port 8080)
-
-    Args:
-        host: A host name, default value is 127.0.0.1
-
-    Returns:
-        An available port
-    """
-    # default port is 8080
-    port = 8080
-    while True:
-        s = socket.socket()
-        try:
-            s.bind((host, port))
-            s.close()
-            return port
-        except socket.error:
-            pass
-        port = port + 1
 
 
 class MLP(torch.nn.Module):
@@ -58,11 +36,8 @@ class MyModule(torch.nn.Module):
         self.linear3 = torch.nn.Linear(4, 4)
 
     def forward(self, x):
-        print(x.device)
         y1, y2 = checkpoint(self.mlp1, x)
-        print(x.device)
         y3, y4 = checkpoint(self.mlp2, x)
-        print(x.device)
         return y1 + y2 + y3 + y4
 
 
@@ -146,9 +121,6 @@ def test_act_ckpt_python_code_torch11():
     code = graph.python_code('self').src
     assert 'colossalai.utils.checkpoint(checkpoint_0, False, x)' in code and 'colossalai.utils.checkpoint(checkpoint_1, True, x)' in code
 
-    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
-
     # recompile and verify the outputs are consistent
     gm = GraphModule(model, graph)
     gm.recompile()
@@ -157,5 +129,9 @@ def test_act_ckpt_python_code_torch11():
 
 
 if __name__ == '__main__':
+
+    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
+    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+
     test_act_ckpt_codegen()
     test_act_ckpt_python_code_torch11()
