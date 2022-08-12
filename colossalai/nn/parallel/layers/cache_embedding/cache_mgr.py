@@ -24,55 +24,59 @@ class CachedParamMgr(torch.nn.Module):
         self.elem_size_in_byte = weight.element_size()
 
         # weight configure
-        if cuda_row_num > 0:
-            # Enable cache
-            self._init_with_cache(weight)
-        else:
-            # Disable cache
-            self._init_without_cache()
+        self._init_weight(weight)
 
+        # Perf log
         self.num_hits_history = []
         self.num_miss_history = []
         self.num_write_back_history = []
         self.input_id_percent_in_load_chunk = []
         self._reset_comm_stats()
 
-    def _init_with_cache(self, weight):
-        self.cuda_cached_weight = torch.nn.Parameter(
-            torch.zeros(self.cuda_row_num, self.embedding_dim, device=torch.cuda.current_device(), dtype=weight.dtype))
+    def _init_weight(self, weight):
+        if self.cuda_row_num > 0:
+            # Enable cache with introducing auxiliary data structures
+            self.cuda_cached_weight = torch.nn.Parameter(
+                torch.zeros(self.cuda_row_num,
+                            self.embedding_dim,
+                            device=torch.cuda.current_device(),
+                            dtype=weight.dtype))
 
-        # pin memory cpu for higher CPU-GPU copy bandwidth
-        self.weight = weight.contiguous().cpu().pin_memory()
+            # pin memory cpu for higher CPU-GPU copy bandwidth
+            self.weight = weight.contiguous().cpu().pin_memory()
 
-        # map original id to new id with respect to frequency
-        # id -> cpu_row_idx
-        self.register_buffer(
-            "idx_map",
-            torch.arange(self.num_embeddings, dtype=torch.long, device=torch.cuda.current_device()),
-            persistent=False,
-        )
+            # map original id to new id with respect to frequency
+            # id -> cpu_row_idx
+            self.register_buffer(
+                "idx_map",
+                torch.arange(self.num_embeddings, dtype=torch.long, device=torch.cuda.current_device()),
+                persistent=False,
+            )
 
-        # cached_idx_map: gpu_row_idx -> cpu_row_idx
-        self.register_buffer("cached_idx_map",
-                             torch.empty(self.cuda_row_num, device=torch.cuda.current_device(),
-                                         dtype=torch.long).fill_(-1),
-                             persistent=False)
+            # cached_idx_map: gpu_row_idx -> cpu_row_idx
+            self.register_buffer("cached_idx_map",
+                                 torch.empty(self.cuda_row_num, device=torch.cuda.current_device(),
+                                             dtype=torch.long).fill_(-1),
+                                 persistent=False)
 
-        # cpu_row_id -> gpu_row_idx.
-        # gpu_row_idx as -1 means cpu_row_id not in CUDA.
-        self.register_buffer("inverted_cached_idx",
-                             torch.zeros(self.num_embeddings, device=torch.cuda.current_device(),
-                                         dtype=torch.long).fill_(-1),
-                             persistent=False)
+            # cpu_row_id -> gpu_row_idx.
+            # gpu_row_idx as -1 means cpu_row_id not in CUDA.
+            self.register_buffer("inverted_cached_idx",
+                                 torch.zeros(self.num_embeddings, device=torch.cuda.current_device(),
+                                             dtype=torch.long).fill_(-1),
+                                 persistent=False)
 
-        self.evict_backlist = torch.tensor([], device=torch.cuda.current_device())
+            self.evict_backlist = torch.tensor([], device=torch.cuda.current_device())
 
-        # index copy buffer size should less than 10% of cuda weight.
-        if self.buffer_size > 0:
-            self.limit_buff_index_copyer = LimitBuffIndexCopyer(self.buffer_size)
+            # index copy buffer size should less than 10% of cuda weight.
+            if self.buffer_size > 0:
+                self.limit_buff_index_copyer = LimitBuffIndexCopyer(self.buffer_size)
 
-    def _init_without_cache(self):
-        raise NotImplementedError()
+        else:
+            # Disable cache so that FreqCacheEmbedding is compatible with vanilla EmbeddingBag
+            # self.weight = torch.nn.Parameter(weight)
+            # self.cuda_cached_weight = self.weight
+            raise NotImplementedError()
 
     def cpu_weight_data(self, chunk_id: int) -> torch.Tensor:
         """

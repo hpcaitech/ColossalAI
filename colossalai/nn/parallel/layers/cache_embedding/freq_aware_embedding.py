@@ -40,13 +40,12 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
         self._preprocess(_weight, cuda_row_num, ids_freq_mapping, warmup_ratio, buffer_size)
 
     def _weight_alloc(self, dtype, device):
-        return torch.empty(self.num_embeddings, self.embedding_dim, dtype=dtype, device=device, pin_memory=True)
-
-    @torch.no_grad()
-    def init_parameters(self):
-        self.weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
-        if self.padding_idx is not None:
-            self.weight[self.padding_idx].fill_(0)
+        weight = torch.empty(self.num_embeddings, self.embedding_dim, dtype=dtype, device=device, pin_memory=True)
+        with torch.no_grad():
+            weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
+            if self.padding_idx is not None:
+                weight[self.padding_idx].fill_(0)
+        return weight
 
     def _preprocess(self,
                     weight,
