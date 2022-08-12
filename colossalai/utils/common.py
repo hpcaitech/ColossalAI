@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 import os
-from pprint import pp
 import random
 import socket
 from pathlib import Path

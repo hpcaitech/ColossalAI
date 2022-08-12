@@ -43,9 +43,9 @@ class MyModule(torch.nn.Module):
         return y1 + y2 + y3 + y4
 
 
-def _run_act_ckpt_codegen():
+def _run_act_ckpt_codegen(rank):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
     # build model and run forward
     model = MyModule()
@@ -95,9 +95,9 @@ def test_act_ckpt_codegen():
     mp.spawn(_run_act_ckpt_codegen, nprocs=1)
 
 
-def _run_act_ckpt_python_code_torch11():
+def _run_act_ckpt_python_code_torch11(rank):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
     # build model and run forward
     model = MyModule()
