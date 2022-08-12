@@ -17,12 +17,7 @@ class _DimSpec:
         self.shard_list = shard_list
 
     def __eq__(self, other):
-        if dir(self) != dir(other):
-            return False
-        for attr in dir(self):
-            if not attr.startswith('__') and getattr(self, attr) != getattr(other, attr):
-                return False
-        return True
+        return str(self) == str(other)
 
     def __repr__(self):
         if self.is_replica:
