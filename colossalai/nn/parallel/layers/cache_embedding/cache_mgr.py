@@ -23,14 +23,26 @@ class CachedParamMgr(torch.nn.Module):
 
         self.elem_size_in_byte = weight.element_size()
 
+        # weight configure
+        if cuda_row_num > 0:
+            # Enable cache
+            self._init_with_cache(weight)
+        else:
+            # Disable cache
+            self._init_without_cache()
+
+        self.num_hits_history = []
+        self.num_miss_history = []
+        self.num_write_back_history = []
+        self.input_id_percent_in_load_chunk = []
+        self._reset_comm_stats()
+
+    def _init_with_cache(self, weight):
         self.cuda_cached_weight = torch.nn.Parameter(
             torch.zeros(self.cuda_row_num, self.embedding_dim, device=torch.cuda.current_device(), dtype=weight.dtype))
 
-        if weight.device.type == 'cuda':
-            weight = weight.cpu()
-
         # pin memory cpu for higher CPU-GPU copy bandwidth
-        self.cpu_weight = weight.contiguous().pin_memory()
+        self.weight = weight.contiguous().cpu().pin_memory()
 
         # map original id to new id with respect to frequency
         # id -> cpu_row_idx
@@ -59,11 +71,8 @@ class CachedParamMgr(torch.nn.Module):
         if self.buffer_size > 0:
             self.limit_buff_index_copyer = LimitBuffIndexCopyer(self.buffer_size)
 
-        self.num_hits_history = []
-        self.num_miss_history = []
-        self.num_write_back_history = []
-        self.input_id_percent_in_load_chunk = []
-        self._reset_comm_stats()
+    def _init_without_cache(self):
+        raise NotImplementedError()
 
     def cpu_weight_data(self, chunk_id: int) -> torch.Tensor:
         """
@@ -76,9 +85,9 @@ class CachedParamMgr(torch.nn.Module):
             torch.Tensor: a piece of memory in CPU weight corresponding to chunk id's payload. The tensor is 1-D.
         """
 
-        return self.cpu_weight.data.view(-1).narrow(0,
-                                                    int(chunk_id) * self.embedding_dim,
-                                                    self.embedding_dim).view(1, self.embedding_dim)
+        return self.weight.data.view(-1).narrow(0,
+                                                int(chunk_id) * self.embedding_dim,
+                                                self.embedding_dim).view(1, self.embedding_dim)
 
     @property
     def cuda_available_chunk_num(self):
@@ -86,7 +95,7 @@ class CachedParamMgr(torch.nn.Module):
 
     @torch.no_grad()
     def reorder(self, ids_freq_mapping: Optional[List[int]] = None, warmup_ratio=0.7):
-        """reorder the cpu_weight according to ids' frequency in dataset before training.
+        """reorder the weight according to ids' frequency in dataset before training.
         Also Build the IndexMappingTable, aka index_mapping_table.
         Execute only once before training.
         Args:
@@ -112,11 +121,10 @@ class CachedParamMgr(torch.nn.Module):
                     self.limit_buff_index_copyer.index_copy(0,
                                                             src_index=preload_row_ids,
                                                             tgt_index=preload_slot_ids,
-                                                            src=self.cpu_weight.view(self.num_embeddings, -1),
+                                                            src=self.weight.view(self.num_embeddings, -1),
                                                             tgt=self.cuda_cached_weight.view(self.cuda_row_num, -1))
                 else:
-                    preload_chunks = self.cpu_weight.view(self.num_embeddings, -1).index_select(0,
-                                                                                                preload_row_ids).cuda()
+                    preload_chunks = self.weight.view(self.num_embeddings, -1).index_select(0, preload_row_ids).cuda()
                     self.cuda_cached_weight.view(self.cuda_row_num, -1).index_copy_(0, preload_slot_ids, preload_chunks)
 
                 # update auxiliary info
@@ -133,7 +141,7 @@ class CachedParamMgr(torch.nn.Module):
         slots = torch.nonzero(self.cached_idx_map > -1).squeeze(1)
         chunk_ids = self.cached_idx_map[slots]
         chunks = self.cuda_cached_weight.view(self.cuda_row_num, -1).index_select(0, slots).cpu()
-        self.cpu_weight.view(self.num_embeddings, -1).index_copy_(0, chunk_ids.cpu(), chunks)
+        self.weight.view(self.num_embeddings, -1).index_copy_(0, chunk_ids.cpu(), chunks)
         self.cached_idx_map.index_fill_(0, slots, -1)
         self.inverted_cached_idx.index_fill_(0, chunk_ids, -1)
         self._cuda_available_row_num += slots.numel()
@@ -237,11 +245,11 @@ class CachedParamMgr(torch.nn.Module):
                                                             src_index=evict_gpu_row_idxs,
                                                             tgt_index=evict_info.cpu(),
                                                             src=self.cuda_cached_weight.view(self.cuda_row_num, -1),
-                                                            tgt=self.cpu_weight.view(self.num_embeddings, -1))
+                                                            tgt=self.weight.view(self.num_embeddings, -1))
                 else:
                     # allocate tmp memory on CPU and copy rows on CUDA to CPU.
                     rows = self.cuda_cached_weight.view(self.cuda_row_num, -1).index_select(0, evict_gpu_row_idxs).cpu()
-                    self.cpu_weight.view(self.num_embeddings, -1).index_copy_(0, evict_info.cpu(), rows)
+                    self.weight.view(self.num_embeddings, -1).index_copy_(0, evict_info.cpu(), rows)
 
                 self.cached_idx_map.index_fill_(0, evict_gpu_row_idxs, -1)
                 self.inverted_cached_idx.index_fill_(0, evict_info, -1)
@@ -259,10 +267,10 @@ class CachedParamMgr(torch.nn.Module):
                 self.limit_buff_index_copyer.index_copy(0,
                                                         src_index=cpu_row_idxs.cpu(),
                                                         tgt_index=slots,
-                                                        src=self.cpu_weight.view(self.num_embeddings, -1),
+                                                        src=self.weight.view(self.num_embeddings, -1),
                                                         tgt=self.cuda_cached_weight.view(self.cuda_row_num, -1))
             else:
-                rows = self.cpu_weight.view(self.num_embeddings, -1).index_select(0, cpu_row_idxs.cpu()).cuda()
+                rows = self.weight.view(self.num_embeddings, -1).index_select(0, cpu_row_idxs.cpu()).cuda()
                 self.cuda_cached_weight.view(self.cuda_row_num, -1).index_copy_(0, slots, rows)
             slot_offsets = slots
             self.cached_idx_map[slots] = cpu_row_idxs
