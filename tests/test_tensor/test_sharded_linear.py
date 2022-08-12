@@ -10,6 +10,7 @@ from functools import partial
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.tensor import ColoTensor, ColoParameter, ProcessGroup
+from colossalai.nn._ops._utils import gather_forward_split_backward
 
 
 def run_dist(rank, world_size, port):
@@ -17,9 +18,9 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # create mlp vars
-    x = ColoTensor.from_torch_tensor(torch.rand(2, 4, 8)).cuda()
-    w = ColoParameter.from_torch_tensor(torch.rand(16, 8)).cuda()
-    b = ColoParameter.from_torch_tensor(torch.rand(16)).cuda()
+    x = ColoTensor.from_torch_tensor(torch.rand(2, 4, 8, requires_grad=True)).cuda()
+    w = ColoParameter.from_torch_tensor(torch.rand(16, 8, requires_grad=True)).cuda()
+    b = ColoParameter.from_torch_tensor(torch.rand(16, requires_grad=True)).cuda()
 
     # run normal forward
     out = F.linear(x, w, b)
@@ -56,12 +57,40 @@ def run_dist(rank, world_size, port):
             col_process_group = col_pg
 
     ########################
+    #  RRR x RS0 -> RRS0 #
+    ########################
+    # w will be transposed in F.linear
+    x_replica = x.detach().clone()
+    w_shard = torch.chunk(w.detach().clone(), chunks=2, dim=0)[row_id]
+    b_shard = torch.chunk(b.detach().clone(), chunks=2, dim=0)[row_id]
+
+    # adding sharding spec
+    x_replica.sharding_spec = ShardingSpec(device_mesh, x.shape, dim_partition_dict={})
+    w_shard.sharding_spec = ShardingSpec(device_mesh, w.shape, dim_partition_dict={0: [0]})
+    b_shard.sharding_spec = ShardingSpec(device_mesh, b.shape, dim_partition_dict={0: [0]})
+
+    # check sharding spec
+    assert str(x_replica.sharding_spec.sharding_sequence) == "[R, R, R]"
+    assert str(w_shard.sharding_spec.sharding_sequence) == "[S0, R]"
+    assert str(b_shard.sharding_spec.sharding_sequence) == "[S0]"
+
+    w_shard.pg_axis0 = col_process_group
+    w_shard.pg_axis1 = row_process_group
+
+    out_shard = F.linear(x_replica, w_shard, b_shard)
+    assert str(out_shard.sharding_spec.sharding_sequence) == "[R, R, S0]"
+
+    # each row only has a mini-batch
+    expected_out_shard = torch.chunk(out, chunks=2, dim=2)[row_id]
+    assert torch.allclose(out_shard, expected_out_shard)
+
+    ########################
     #  S0RR x RS1 -> S0RS1 #
     ########################
     # w will be transposed in F.linear
-    x_shard = torch.chunk(x.clone(), chunks=2, dim=0)[row_id]
-    w_shard = torch.chunk(w.clone(), chunks=2, dim=0)[column_id]
-    b_shard = torch.chunk(b.clone(), chunks=2, dim=0)[column_id]
+    x_shard = torch.chunk(x.detach().clone(), chunks=2, dim=0)[row_id]
+    w_shard = torch.chunk(w.detach().clone(), chunks=2, dim=0)[column_id]
+    b_shard = torch.chunk(b.detach().clone(), chunks=2, dim=0)[column_id]
 
     # adding sharding spec
     x_shard.sharding_spec = ShardingSpec(device_mesh, x.shape, dim_partition_dict={0: [0]})
@@ -196,6 +225,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
+@pytest.mark.parametrize('world_size', [4])
 @rerun_if_address_is_in_use()
 def test_sharded_mlp(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())

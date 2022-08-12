@@ -111,6 +111,13 @@ def _new_colo_linear_imp(input_tensor: GeneralTensor,
     if bias is not None:
         assert bias_sharding_seq[0] == weight_sharding_seq[0]
 
+    # compute the output sharding sequence
+    # as weight is transposed, so we look at the first dimension
+    output_shard_seq = input_sharding_seq[:-1] + weight_sharding_seq[:1]
+    output_shard_seq = deepcopy(output_shard_seq)
+
+    # TODO: add reduce grad logic
+
     # handle column and row parallel linear
     # by reusing the implementation above
     out = F.linear(input_tensor, weight)
@@ -130,10 +137,6 @@ def _new_colo_linear_imp(input_tensor: GeneralTensor,
     # add bias
     if bias is not None:
         out += bias
-
-    # as weight is transposed, so we look at the first dimension
-    output_shard_seq = input_sharding_seq[:-1] + weight_sharding_seq[:1]
-    output_shard_seq = deepcopy(output_shard_seq)
 
     # convert shard seq to partition dict
     output_partition_dict = {}
