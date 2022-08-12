@@ -4,6 +4,8 @@ from ._utils import GeneralTensor, convert_to_colo_tensor
 from colossalai.tensor.op_wrapper import colo_op_impl
 from ._utils import reduce_input, reduce_grad
 from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ReplicaSpec, ColoTensorSpec
+from colossalai.tensor.sharding_spec import ShardingSpec
+from copy import deepcopy
 
 
 def colo_linear_1drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
@@ -86,8 +88,84 @@ def colo_linear_imp(input_tensor: GeneralTensor,
     return ret_tensor
 
 
+def _new_colo_linear_imp(input_tensor: GeneralTensor,
+                         weight: GeneralTensor,
+                         bias: Optional[GeneralTensor] = None) -> 'ColoTensor':
+    """
+    A tentative function to compute the distributed linear layer with the latest sharding spec.
+    This function is subject to future change as the current sharding API is not stable.
+    """
+    # get mesh info
+    input_sharding_seq = input_tensor.sharding_spec.sharding_sequence
+    weight_sharding_seq = weight.sharding_spec.sharding_sequence
+    if bias is not None:
+        bias_sharding_seq = bias.sharding_spec.sharding_sequence
+    device_mesh = weight.sharding_spec.device_mesh
+    pg_axis0 = weight.pg_axis0
+    pg_axis1 = weight.pg_axis1
+
+    # the last dim of input should have the same spec as the first dim of weight
+    # the weight is transposed, so we look at the second dimension
+    assert input_sharding_seq[-1] == weight_sharding_seq[1]
+
+    if bias is not None:
+        assert bias_sharding_seq[0] == weight_sharding_seq[0]
+
+    # compute the output sharding sequence
+    # as weight is transposed, so we look at the first dimension
+    output_shard_seq = input_sharding_seq[:-1] + weight_sharding_seq[:1]
+    output_shard_seq = deepcopy(output_shard_seq)
+
+    # TODO: add reduce grad logic
+
+    # handle column and row parallel linear
+    # by reusing the implementation above
+    out = F.linear(input_tensor, weight)
+
+    # run all reduce if necessary
+    last_dim_spec = input_sharding_seq[-1]
+    if last_dim_spec.is_replica:
+        pass
+    elif last_dim_spec.shard_list is not None:
+        for dim in last_dim_spec.shard_list:
+            if dim == 0:
+                reduce_input(out, pg_axis0)
+            elif dim == 1:
+                reduce_input(out, pg_axis1)
+            else:
+                raise RuntimeError("Found invalid sharding axis {dim}, only 0 or 1 is expected")
+    # add bias
+    if bias is not None:
+        out += bias
+
+    # convert shard seq to partition dict
+    output_partition_dict = {}
+    for index, dim_spec in enumerate(output_shard_seq):
+        if not dim_spec.is_replica:
+            if index not in output_partition_dict:
+                output_partition_dict[index] = []
+            output_partition_dict[index].extend(dim_spec.shard_list)
+
+    entire_shape = out.shape
+    output_sharding_spec = ShardingSpec(device_mesh, entire_shape, output_partition_dict)
+    ret_tensor = ColoTensor.from_torch_tensor(out)
+    setattr(ret_tensor, 'sharding_spec', output_sharding_spec)
+    return ret_tensor
+
+
+def _has_sharding_spec(tensor):
+    """
+    A tentative function to check whether the tensor is using the new sharding spec API. We assume that the sharding spec object is 
+    set as the attribute `sharding_spec` on a tensor.
+    """
+    return hasattr(tensor, 'sharding_spec')
+
+
 @colo_op_impl(F.linear)
 def colo_linear(input_tensor: GeneralTensor,
                 weight: GeneralTensor,
                 bias: Optional[GeneralTensor] = None) -> 'ColoTensor':
-    return colo_linear_imp(input_tensor, weight, bias)
+    if _has_sharding_spec(weight):
+        return _new_colo_linear_imp(input_tensor, weight, bias)
+    else:
+        return colo_linear_imp(input_tensor, weight, bias)
