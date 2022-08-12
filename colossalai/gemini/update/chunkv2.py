@@ -404,7 +404,7 @@ class ChunkV2:
     def __eq__(self, __o: object) -> bool:
         return self is __o
 
-    def __repr__(self, detailed: bool = False):
+    def __repr__(self, detailed: bool = True):
         output = [
             "AgChunk Information:\n",
             "\tchunk size: {}, chunk dtype: {}, process group size: {}\n".format(self.chunk_size, self.dtype,

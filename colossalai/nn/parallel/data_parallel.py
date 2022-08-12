@@ -3,7 +3,6 @@ import itertools
 import torch.distributed as dist
 from functools import partial
 from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
-from colossalai.gemini.chunk import TensorState, Chunk
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Dict, Iterable, List, Optional, Set
@@ -12,6 +11,9 @@ from collections import OrderedDict
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from .reducer import Reducer
+
+from colossalai.gemini.chunk import TensorState
+from colossalai.gemini.update import ChunkV2, ChunkManagerV2
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -209,27 +211,31 @@ class ZeroDDP(ColoDDP):
                  module: torch.nn.Module,
                  gemini_manager: GeminiManager,
                  force_outputs_fp32: bool = False) -> None:
-        super().__init__(module, process_group=gemini_manager.chunk_manager.process_group)
+        super().__init__(module, process_group=ColoProcessGroup())
         self.gemini_manager = gemini_manager
-        self.chunk_manager = gemini_manager.chunk_manager
+        self.chunk_manager: ChunkManagerV2 = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = ZeROHookV2(gemini_manager)
         self.fp32_params: List[ColoParameter] = []
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
-        self.chunk_manager.create_group('fp16_param', force_data_on_cuda=True)
-        self.chunk_manager.create_group('fp32_param')
+
         # TODO: get param order and filter unused params
         for p in module.parameters():
+            assert isinstance(p, ColoParameter)
             if getattr(p, '_ddp_to_ignore', False):
                 p.data = p.half()
                 continue
+
+            dp_world_size = p.process_group.dp_world_size()
             fp32_p = p.float().detach()
             p.data = p.half()
-            self.chunk_manager.append_tensor(p, 'fp16_param')
-            self.chunk_manager.append_tensor(fp32_p, 'fp32_param')
+            self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size)
+            self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
+        self.chunk_manager.close_all_groups()
+
         self._cast_buffers()
         self._logger = get_dist_logger()
 
@@ -248,10 +254,7 @@ class ZeroDDP(ColoDDP):
         for p in self.module.parameters():
             if getattr(p, '_ddp_to_ignore', False):
                 continue
-            if self.chunk_manager.get_chunk(p).is_empty or not p.requires_grad:
-                p.grad = None
-            else:
-                p.grad = p.data
+            p.grad = None
 
     def _post_backward(self):
         self.chunk_manager.exec_lazy_release()
@@ -276,21 +279,22 @@ class ZeroDDP(ColoDDP):
         free_storage(empty_grad)
         with torch._C.DisableTorchFunction():
             self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
-            if self.dp_world_size > 1:
-                grad = grad / self.dp_world_size
-            self.chunk_manager.copy_tensor_to_chunk_slice(p, grad)
             chunk = self.chunk_manager.get_chunk(p)
+            chunk.copy_tensor_to_chunk_slice(p, grad)
             reduced = self.chunk_manager.reduce_chunk(chunk)
-            self.chunk_manager.release_chunk(chunk)
-            if reduced and not chunk.is_empty:
+            if reduced:
+                if chunk.is_gathered:
+                    chunk.chunk_total.div_(chunk.pg_size)
+                else:
+                    chunk.cuda_shard.div_(chunk.pg_size)
                 self.overflow_counter += chunk.has_inf_or_nan
-                self.chunk_manager.move_chunk(chunk, self.grads_device[p])
+                self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
 
     def zero_grad(self, set_to_none: bool = False) -> None:
         self.module.zero_grad(set_to_none=True)
 
-    def _set_chunk_grad_device(self, chunk: Chunk, device: torch.device) -> None:
+    def _set_chunk_grad_device(self, chunk: ChunkV2, device: torch.device) -> None:
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 

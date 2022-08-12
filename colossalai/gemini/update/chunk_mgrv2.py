@@ -87,6 +87,8 @@ class ChunkManagerV2:
         if chunk in self.accessed_chunks:
             return
         self.__sub_memroy_usage(chunk.memory_usage)
+        if chunk.device_type == 'cpu':
+            chunk.shard_move(get_current_device())
         chunk.access_chunk()
         self.__add_memory_usage(chunk.memory_usage)
         self.accessed_chunks.add(chunk)
@@ -102,13 +104,13 @@ class ChunkManagerV2:
             self.__add_memory_usage(chunk.memory_usage)
             self.accessed_chunks.remove(chunk)
 
-    def move_chunk(self, chunk: Chunk, device: torch.device) -> None:
+    def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False) -> None:
         """Move the shard of the chunk to the target device.
         """
         if not chunk.can_move or chunk.device_type == device.type:
             return
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.shard_move(device)
+        chunk.shard_move(device, force_copy)
         self.__add_memory_usage(chunk.memory_usage)
 
     def trans_tensor_state(self, tensor: torch.Tensor, state: TensorState) -> None:
@@ -123,7 +125,7 @@ class ChunkManagerV2:
         if not chunk.can_reduce:
             return False
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.release_chunk()
+        chunk.reduce()
         self.__add_memory_usage(chunk.memory_usage)
         return True
 
@@ -164,6 +166,15 @@ class ChunkManagerV2:
         for chunk in self.get_chunks(self.lazy_release_tensors):
             self.release_chunk(chunk)
         self.lazy_release_tensors.clear()
+
+    def get_cuda_movable_chunks(self, group_type: str) -> List[Chunk]:
+        chunk_list = []
+        for group_name in self.chunk_groups:
+            if group_type in group_name:
+                for chunk in self.chunk_groups[group_name]:
+                    if chunk.device_type == 'cuda' and chunk.can_move:
+                        chunk_list.append(chunk)
+        return chunk_list
 
     def __repr__(self) -> str:
         msg = ['Chunk Manager Information:\n',
