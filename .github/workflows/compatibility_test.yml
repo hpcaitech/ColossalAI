@@ -57,6 +57,19 @@ jobs:
         run: |
           pip install -U pip setuptools wheel --user
       - uses: actions/checkout@v2
+        with:
+          repository: hpcaitech/TensorNVMe
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: TensorNVMe
+      - name: Install tensornvme
+        run: |
+          cd TensorNVMe
+          conda install cmake
+          pip install -r requirements.txt
+          pip install -v .
+      - uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
       - name: Install Colossal-AI      
         run: |
           pip install -r requirements/requirements.txt
@@ -68,3 +81,4 @@ jobs:
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
