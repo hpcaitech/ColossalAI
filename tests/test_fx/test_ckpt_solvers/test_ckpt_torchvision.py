@@ -69,6 +69,7 @@ def test_ckpt_solver():
             gm = solver(gm)
             assert _is_activation_checkpoint_available(
                 gm), f"Solver {solver} did not annotate {model_cls} with any activation checkpoints"
+            gm.to_folder("foo", "Bar")
             check_backward_consistency(m, gm, solver, model_cls)
         gpc.destroy()
 
