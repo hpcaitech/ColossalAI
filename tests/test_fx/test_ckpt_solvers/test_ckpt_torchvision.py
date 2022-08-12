@@ -1,12 +1,23 @@
-from ctypes import Union
 from typing import Callable
-from colossalai.fx.passes.algorithms import chen_greedy, chen_sqrtn
+import copy
 import torch
 import torchvision.models as tm
-from colossalai.fx import ColoTracer
 from torch.fx import GraphModule
+import colossalai
+from colossalai.fx import ColoTracer
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.fx.passes.algorithms import chen_greedy, chen_sqrtn
+from colossalai.utils import free_port
+from colossalai.core import global_context as gpc
 import pytest
+
+try:
+    from colossalai.fx.codegen import ActivationCheckpointCodeGen
+    with_codegen = True
+except:
+    # fall back to older pytorch version
+    from colossalai.fx.codegen import python_code_with_activation_checkpoint
+    with_codegen = False
 
 SOLVERS = [chen_greedy, chen_sqrtn]
 
@@ -27,7 +38,7 @@ def _is_all_gradient_close(m: torch.nn.Module, gm: GraphModule):
 def check_backward_consistency(m: torch.nn.Module, gm: GraphModule, solver: Callable[[GraphModule], GraphModule],
                                model_cls: Callable[[], torch.nn.Module]):
     criterion = torch.nn.MSELoss()
-    data = torch.rand(2, 3, 24, 24)
+    data = torch.rand(2, 3, 32, 32)
     label = torch.rand(2, 5)
     loss = criterion(m(data), label)
     loss.backward()
@@ -36,25 +47,58 @@ def check_backward_consistency(m: torch.nn.Module, gm: GraphModule, solver: Call
     assert _is_all_gradient_close(m, gm), f'Solver {solver} did not work correctly in backward pass on {model_cls}'
 
 
+@pytest.mark.skip
+@pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
 def test_ckpt_solver():
-    MODEL_LIST = [tm.resnet18]
+    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+    MODEL_LIST = [tm.resnet18, tm.densenet121]
 
     torch.backends.cudnn.deterministic = True
 
-    tracer = ColoTracer()
+    tracer = ColoTracer(trace_act_ckpt=False)
 
-    data = torch.rand(2, 3, 24, 24)
+    data = torch.rand(2, 3, 32, 32)
     for solver in SOLVERS:
         for model_cls in MODEL_LIST:
-            model = model_cls(num_classes=5)
-            graph = tracer.trace(root=model)
-            gm = GraphModule(model, graph, model.__class__.__name__)
+            m = model_cls(num_classes=5)
+            graph = tracer.trace(root=m)
+            gm = GraphModule(copy.deepcopy(m), graph, m.__class__.__name__)
             MetaInfoProp(gm).run(data)
+            codegen = ActivationCheckpointCodeGen()
+            gm.graph.set_codegen(codegen)
             gm = solver(gm)
             assert _is_activation_checkpoint_available(
                 gm), f"Solver {solver} did not annotate {model_cls} with any activation checkpoints"
-            check_backward_consistency(model, gm, solver, model_cls)
+            gm.to_folder("foo", "Bar")
+            check_backward_consistency(m, gm, solver, model_cls)
+        gpc.destroy()
+
+
+@pytest.mark.skip
+@pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
+def test_ckpt_solver_torch11():
+    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+    MODEL_LIST = [tm.resnet18, tm.densenet121]
+
+    torch.backends.cudnn.deterministic = True
+
+    tracer = ColoTracer(trace_act_ckpt=False)
+
+    data = torch.rand(2, 3, 32, 32)
+    for solver in SOLVERS:
+        for model_cls in MODEL_LIST:
+            m = model_cls(num_classes=5)
+            graph = tracer.trace(root=m)
+            gm = GraphModule(copy.deepcopy(m), graph, m.__class__.__name__)
+            MetaInfoProp(gm).run(data)
+            gm.graph._python_code = python_code_with_activation_checkpoint.__get__(graph)
+            gm = solver(gm)
+            assert _is_activation_checkpoint_available(
+                gm), f"Solver {solver} did not annotate {model_cls} with any activation checkpoints"
+            check_backward_consistency(m, gm, solver, model_cls)
+        gpc.destroy()
 
 
 if __name__ == '__main__':
     test_ckpt_solver()
+    test_ckpt_solver_torch11()
