@@ -6,6 +6,7 @@ from torch.fx import GraphModule
 from colossalai.fx import ColoTracer
 import colossalai
 from colossalai.utils import free_port
+from colossalai.core import global_context as gpc
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -86,6 +87,8 @@ def test_act_ckpt_codegen():
     fx_out = gm(data)
     assert torch.equal(non_fx_out, fx_out)
 
+    gpc.destroy()
+
 
 @pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
 def test_act_ckpt_python_code_torch11():
@@ -131,6 +134,8 @@ def test_act_ckpt_python_code_torch11():
     gm.recompile()
     fx_out = gm(data)
     assert torch.equal(non_fx_out, fx_out)
+
+    gpc.destroy()
 
 
 if __name__ == '__main__':
