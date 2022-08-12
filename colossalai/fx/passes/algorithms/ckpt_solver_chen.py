@@ -54,7 +54,7 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
         temp = 0
         x = 0
         y = 0
-        prev_idx = 2
+        prev_idx = 1
         for (idx, n) in enumerate(gm.graph.nodes):
             temp += getattr(n, 'activation_size')
             y = max(y, temp)
