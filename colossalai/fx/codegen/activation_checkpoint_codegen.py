@@ -105,7 +105,7 @@ def _gen_ckpt_usage(label, activation_offload, input_vars, output_vars):
     """
     outputs = ', '.join(output_vars)
     inputs = ', '.join(input_vars)
-    return f'{outputs} = colossalai.utils.checkpoint(checkpoint_{label}, {activation_offload}, {inputs})'
+    return f'{outputs} = colossalai.utils.activation_checkpoint.checkpoint(checkpoint_{label}, {activation_offload}, {inputs})'
 
 
 def emit_code_with_activation_checkpoint(body, nodes, emit_node_func, delete_unused_value_func):

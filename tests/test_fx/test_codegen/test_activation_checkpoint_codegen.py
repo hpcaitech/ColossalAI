@@ -77,7 +77,8 @@ def test_act_ckpt_codegen():
     # assert checkpoint function will be generated and
     # the offload option is correct
     code = graph.python_code('self').src
-    assert 'colossalai.utils.checkpoint(checkpoint_0, False, x)' in code and 'colossalai.utils.checkpoint(checkpoint_1, True, x)' in code
+    assert 'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_0, False, x)' in code and \
+    'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_1, True, x)' in code
 
     # recompile and verify the outputs are consistent
     gm = GraphModule(model, graph)
@@ -122,7 +123,8 @@ def test_act_ckpt_python_code_torch11():
     # assert checkpoint function will be generated and
     # the offload option is correct
     code = graph.python_code('self').src
-    assert 'colossalai.utils.checkpoint(checkpoint_0, False, x)' in code and 'colossalai.utils.checkpoint(checkpoint_1, True, x)' in code
+    assert 'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_0, False, x)' in code and \
+    'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_1, True, x)' in code
 
     # recompile and verify the outputs are consistent
     gm = GraphModule(model, graph)
