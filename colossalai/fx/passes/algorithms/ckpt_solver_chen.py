@@ -24,20 +24,20 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
 
     def grid_search(num_grids: int = 6) -> Set:
         """
-        Search ckpt strategy with B = 0, then run the allocation algorithm again with B = √xy.
-        Grid search over [√2/2 B, √2 B] for ckpt_opt over num_grids as in appendix A.
+        Search ckpt strategy with b = 0, then run the allocation algorithm again with b = √xy.
+        Grid search over [√2/2 b, √2 b] for ckpt_opt over num_grids as in appendix A.
         """
-        _, B_approx = run_chen_greedy(0)
-        B_min, B_max = math.floor(B_approx / math.sqrt(2)), math.ceil(B_approx * math.sqrt(2))
-        B_opt = math.inf
-        for B in range(B_min, B_max, (B_max - B_min) // num_grids):
-            ckpt, B_approx = run_chen_greedy(B)
-            if B_approx < B_opt:
-                B_opt = B_approx
+        _, b_approx = run_chen_greedy(0)
+        b_min, b_max = math.floor(b_approx / math.sqrt(2)), math.ceil(b_approx * math.sqrt(2))
+        b_opt = math.inf
+        for b in range(b_min, b_max, (b_max - b_min) // num_grids):
+            ckpt, b_approx = run_chen_greedy(b)
+            if b_approx < b_opt:
+                b_opt = b_approx
                 ckpt_opt = ckpt
         return ckpt_opt
 
-    def run_chen_greedy(B: int = 0) -> Tuple[Set, int]:
+    def run_chen_greedy(b: int = 0) -> Tuple[Set, int]:
         """
         This is the simple implementation of Algorithm 3 in https://arxiv.org/abs/1604.06174.
         """
@@ -48,7 +48,7 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
         for (idx, n) in enumerate(gm.graph.nodes):
             temp += getattr(n, 'activation_size')
             y = max(y, temp)
-            if temp > B:
+            if temp > b:
                 x += getattr(n, 'activation_size')
                 temp = 0
                 ckpt.add(idx)
