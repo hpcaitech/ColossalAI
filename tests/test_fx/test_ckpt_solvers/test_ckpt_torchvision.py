@@ -1,6 +1,7 @@
 from typing import Callable
 import copy
 import torch
+import torch.multiprocessing as mp
 import torchvision.models as tm
 from torch.fx import GraphModule
 import colossalai
@@ -47,10 +48,8 @@ def check_backward_consistency(m: torch.nn.Module, gm: GraphModule, solver: Call
     assert _is_all_gradient_close(m, gm), f'Solver {solver} did not work correctly in backward pass on {model_cls}'
 
 
-@pytest.mark.skip
-@pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
-def test_ckpt_solver():
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+def _run_ckpt_solver(rank):
+    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
     MODEL_LIST = [tm.resnet18, tm.densenet121]
 
     torch.backends.cudnn.deterministic = True
@@ -70,13 +69,15 @@ def test_ckpt_solver():
             assert _is_activation_checkpoint_available(
                 gm), f"Solver {solver} did not annotate {model_cls} with any activation checkpoints"
             check_backward_consistency(m, gm, solver, model_cls)
-        gpc.destroy()
 
 
-@pytest.mark.skip
-@pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
-def test_ckpt_solver_torch11():
-    colossalai.launch(config={}, rank=0, world_size=1, host='localhost', port=free_port(), backend='nccl')
+@pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
+def test_ckpt_solver():
+    mp.spawn(_run_ckpt_solver, nprocs=1)
+
+
+def _run_ckpt_solver_torch11(rank):
+    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
     MODEL_LIST = [tm.resnet18, tm.densenet121]
 
     torch.backends.cudnn.deterministic = True
@@ -95,7 +96,12 @@ def test_ckpt_solver_torch11():
             assert _is_activation_checkpoint_available(
                 gm), f"Solver {solver} did not annotate {model_cls} with any activation checkpoints"
             check_backward_consistency(m, gm, solver, model_cls)
-        gpc.destroy()
+
+
+@pytest.mark.skip
+@pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
+def test_ckpt_solver_torch11():
+    mp.spawn(_run_ckpt_solver_torch11, nprocs=1)
 
 
 if __name__ == '__main__':
