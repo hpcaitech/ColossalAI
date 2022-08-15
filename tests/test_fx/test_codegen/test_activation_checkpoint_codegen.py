@@ -90,7 +90,6 @@ def _run_act_ckpt_codegen(rank):
     gpc.destroy()
 
 
-@pytest.mark.skip
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
 def test_act_ckpt_codegen():
     mp.spawn(_run_act_ckpt_codegen, nprocs=1)
@@ -143,7 +142,6 @@ def _run_act_ckpt_python_code_torch11(rank):
     gpc.destroy()
 
 
-@pytest.mark.skip
 @pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
 def test_act_ckpt_python_code_torch11():
     mp.spawn(_run_act_ckpt_python_code_torch11, nprocs=1)

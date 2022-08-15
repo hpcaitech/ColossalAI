@@ -71,6 +71,7 @@ def _run_ckpt_solver(rank):
             check_backward_consistency(m, gm, solver, model_cls)
 
 
+@pytest.mark.skip
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
 def test_ckpt_solver():
     mp.spawn(_run_ckpt_solver, nprocs=1)
