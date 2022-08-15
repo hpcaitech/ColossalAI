@@ -235,7 +235,7 @@ class ColoTensor(torch.Tensor):
 
     @staticmethod
     def from_torch_tensor(tensor: torch.Tensor, spec: Optional[ColoTensorSpec] = None) -> 'ColoTensor':
-        """from_torch_tensor _summary_
+        """from_torch_tensor
 
         A static method builds a `ColoTensor` from a PyTorch Tensor.
 
