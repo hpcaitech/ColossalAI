@@ -45,8 +45,8 @@ class HybridAdam(NVMeOptimizer):
             True for decoupled weight decay(also known as AdamW) (default: True)
         simd_log (boolean, optional): whether to show if you are using SIMD to 
             accelerate. (default: False)
-        nvme_offload_fraction (float, optional): Fraction of params to be offloaded to NVMe. Defaults to 0.0.
-        offload_dir (Optional[str], optional): Directory to save NVMe offload files.
+        nvme_offload_fraction (float, optional): Fraction of optimizer states to be offloaded to NVMe. Defaults to 0.0.
+        nvme_offload_dir (Optional[str], optional): Directory to save NVMe offload files.
             If it's ``None``, a random temporary directory will be used. Defaults to None.
 
     .. _Adam\: A Method for Stochastic Optimization:
