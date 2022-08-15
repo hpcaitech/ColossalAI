@@ -93,8 +93,10 @@ class CommSpec:
         if self.comm_pattern == CollectiveCommPattern.ALLGATHER:
             for rank_list, process_group in process_groups_list:
                 if dist.get_rank() in rank_list:
-                    tensor_list = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) \
-                                   for _ in range(self.sharding_spec.device_mesh.mesh_shape[self.logical_process_axis])]
+                    tensor_list = [
+                        torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device)
+                        for _ in range(self.sharding_spec.device_mesh.mesh_shape[self.logical_process_axis])
+                    ]
                     tensor = tensor
                     group = process_group
                     dist.all_gather(tensor_list, tensor, group=group)
