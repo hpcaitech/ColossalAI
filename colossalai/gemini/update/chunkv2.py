@@ -163,6 +163,7 @@ class ChunkV2:
 
         if self.chunk_temp.device.type == 'cpu':
             self.chunk_total = self.chunk_temp.to(get_current_device())
+            self.__update_tensors_ptr()
         else:
             self.chunk_total = self.chunk_temp
         self.chunk_temp = None

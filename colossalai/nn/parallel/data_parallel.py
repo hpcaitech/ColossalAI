@@ -8,7 +8,7 @@ from colossalai.gemini.gemini_mgr import GeminiManager
 from typing import Dict, Iterable, List, Optional, Set
 from colossalai.logging import get_dist_logger
 from collections import OrderedDict
-from colossalai.tensor.colo_parameter import ColoParameter
+from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from .reducer import Reducer
 
@@ -216,7 +216,7 @@ class ZeroDDP(ColoDDP):
         self.chunk_manager: ChunkManagerV2 = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = ZeROHookV2(gemini_manager)
-        self.fp32_params: List[ColoParameter] = []
+        self.fp32_params: List[ColoTensor] = []
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
 
@@ -228,8 +228,9 @@ class ZeroDDP(ColoDDP):
                 continue
 
             dp_world_size = p.process_group.dp_world_size()
-            fp32_p = p.float().detach()
+            fp32_data = p.float().data
             p.data = p.half()
+            fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size)
             self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size)
             self.fp32_params.append(fp32_p)
