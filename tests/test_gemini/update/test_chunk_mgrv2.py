@@ -30,12 +30,12 @@ def exam_chunk_memory(keep_gathered, pin_memory):
         )
     }
 
-    chunk_manager = ChunkManagerV2(config, pin_memory=pin_memory)
+    chunk_manager = ChunkManagerV2(config)
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == 0
 
     for p in params:
-        chunk_manager.append_tensor(p, 'param', 2)
+        chunk_manager.append_tensor(p, 'param', 2, pin_memory=pin_memory)
     chunk_manager.close_all_groups()
     assert chunk_manager.total_mem['cpu'] == CPU_MEM[keep_gathered][pin_memory]
     assert chunk_manager.total_mem['cuda'] == CUDA_MEM_0[keep_gathered]

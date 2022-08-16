@@ -68,9 +68,9 @@ def exam_gpt_fwd_bwd(placement_policy):
     )
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
-    chunk_manager = ChunkManagerV2(config_dict, pin_memory=True)
+    chunk_manager = ChunkManagerV2(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager)
+    model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
     pg = ProcessGroup()
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
@@ -114,4 +114,4 @@ def test_gpt(world_size):
 
 
 if __name__ == '__main__':
-    test_gpt(4)
+    test_gpt(1)

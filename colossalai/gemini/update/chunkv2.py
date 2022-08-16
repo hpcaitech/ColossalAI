@@ -307,6 +307,60 @@ class ChunkV2:
         self.chunk_total[tensor_info.offset:tensor_info.end].copy_(data_slice.data.flatten())
         tensor.data = self.chunk_total[tensor_info.offset:tensor_info.end].view(tensor.shape)
 
+    def get_valid_length(self) -> int:
+        if self.keep_gathered:
+            return self.chunk_size
+        else:
+            return self.valid_end - self.shard_begin
+
+    def init_pair(self, friend_chunk: 'ChunkV2') -> None:
+        if self.paired_chunk is None and friend_chunk.paired_chunk is None:
+            self.paired_chunk = friend_chunk
+            friend_chunk.paired_chunk = self
+        else:
+            assert self.paired_chunk is friend_chunk
+            assert friend_chunk.paired_chunk is self
+
+    def optim_update(self) -> None:
+        # sanity check
+        assert self.paired_chunk is not None
+
+        friend_chunk = self.paired_chunk
+        if friend_chunk.is_gathered == self.is_gathered:
+            self.chunk_total.copy_(friend_chunk.chunk_total)
+            self.optim_sync_flag = True
+        elif friend_chunk.device_type == 'cuda' and self.device_type == 'cuda':
+            self.cuda_shard.copy_(friend_chunk.cuda_shard)
+            self.optim_sync_flag = True
+            self.cpu_vis_flag = False
+        else:
+            assert friend_chunk.device_type == 'cpu'
+            assert self.device_type == 'cpu'
+            self.optim_sync_flag = False
+            self.cpu_vis_flag = False
+
+    @property
+    def payload(self):
+        # sanity check
+        assert self.chunk_temp is None
+
+        if self.is_gathered:
+            return self.chunk_total
+        elif self.cuda_shard is not None:
+            return self.cuda_shard
+        else:
+            return self.cpu_shard
+
+    @property
+    def payload_mem(self):
+        # sanity check
+        assert self.chunk_temp is None
+
+        if self.is_gathered:
+            return self.chunk_mem
+        else:
+            return self.shard_mem
+
     @property
     def can_move(self) -> bool:
         return not self.is_gathered
@@ -341,12 +395,9 @@ class ChunkV2:
             # sanity check
             assert self.cuda_shard is not None
 
-            if self.pg_size == 1:
-                self.chunk_total = self.cuda_shard
-            else:
-                alloc_storage(self.chunk_total)
-                gather_list = list(torch.chunk(input=self.chunk_total, chunks=self.pg_size, dim=0))
-                dist.all_gather(gather_list, self.cuda_shard, self.torch_pg)
+            alloc_storage(self.chunk_total)
+            gather_list = list(torch.chunk(input=self.chunk_total, chunks=self.pg_size, dim=0))
+            dist.all_gather(gather_list, self.cuda_shard, self.torch_pg)
 
             self.cuda_shard = None
             self.is_gathered = True

@@ -15,12 +15,10 @@ class ChunkManagerV2:
     Args:
         chunk_configuration (Dict[int, Dict]): the configuration dictionary of this chunk manager.
         init_device (torch.device): optional, the device on which the chunk is initialized. The default is None.
-        pin_memory (bool): if ture, all chunks have a piece of pinned memory in CPU.
     """
 
     def __init__(self, chunk_configuration: Dict[int, Dict],
-                 init_device: Optional[torch.device] = None,
-                 pin_memory: bool = False) -> None:
+                 init_device: Optional[torch.device] = None) -> None:
 
         self.device = init_device or get_current_device()
         self.size_config: Dict[int, int] = dict()
@@ -28,7 +26,6 @@ class ChunkManagerV2:
         for k, v in self.kwargs_config.items():
             self.size_config[k] = v.pop('chunk_size')
             v['init_device'] = self.device
-            v['pin_memory'] = pin_memory
 
         self.chunk_groups: Dict[str, Deque] = dict()
         self.tensor_chunk_map: Dict[torch.Tensor, Chunk] = dict()
@@ -36,7 +33,10 @@ class ChunkManagerV2:
         self.lazy_release_tensors: List[torch.Tensor] = list()
         self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
 
-    def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int) -> None:
+    def append_tensor(self, tensor: ColoTensor,
+                      group_type: str,
+                      config_key: int,
+                      pin_memory: bool = False) -> None:
         """Append a tensor to a chunk.
         """
         assert tensor not in self.tensor_chunk_map
@@ -66,7 +66,8 @@ class ChunkManagerV2:
                 chunk_size=chunk_size,
                 process_group=tensor.process_group,
                 dtype=tensor.dtype,
-                **chunk_kwargs
+                pin_memory=pin_memory,
+                **chunk_kwargs,
             )
 
             chunk_group.append(chunk)

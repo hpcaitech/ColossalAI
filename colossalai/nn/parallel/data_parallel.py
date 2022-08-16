@@ -210,6 +210,7 @@ class ZeroDDP(ColoDDP):
     def __init__(self,
                  module: torch.nn.Module,
                  gemini_manager: GeminiManager,
+                 pin_memory: bool = False,
                  force_outputs_fp32: bool = False) -> None:
         super().__init__(module, process_group=ColoProcessGroup())
         self.gemini_manager = gemini_manager
@@ -231,7 +232,7 @@ class ZeroDDP(ColoDDP):
             fp32_data = p.float().data
             p.data = p.half()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
-            self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size)
+            self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
             self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
@@ -295,7 +296,7 @@ class ZeroDDP(ColoDDP):
     def zero_grad(self, set_to_none: bool = False) -> None:
         self.module.zero_grad(set_to_none=True)
 
-    def _set_chunk_grad_device(self, chunk: ChunkV2, device: torch.device) -> None:
+    def set_chunk_grad_device(self, chunk: ChunkV2, device: torch.device) -> None:
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
