@@ -30,10 +30,13 @@ PYTORCHPGDICT_ = PyTorchProcessGroupDict()
 
 
 class ProcessGroup:
-    """
+    """ProcessGroup
     Process Group contains group partition for Tensor Parallel and Data Parallel.
-    NOTE, the ProcessGroup must be used after torch.distributed.initialize()
-    args:
+
+    NOTE, the ProcessGroup must be used after `torch.distributed.initialize()`
+
+
+    Args:
         rank: the global rank of the current process.
         ranks: List[int], a list of rank id belongings to this process group.
         backend: str, the backend of the process group.
@@ -101,6 +104,9 @@ class ProcessGroup:
         self.is_init = True
 
     def set_cpu_groups(self):
+        """set_cpu_groups 
+        Initialize Pytorch process groups for cpu communications.
+        """
         if self.has_cpu_groups:
             return
 
@@ -115,7 +121,13 @@ class ProcessGroup:
         self._has_cpu_groups = True
 
     @property
-    def has_cpu_groups(self):
+    def has_cpu_groups(self) -> bool:
+        """has_cpu_groups 
+        If cpu groups have been initailized.
+
+        Returns:
+            bool: cpu process groups have been initialized or not.
+        """
         return self._has_cpu_groups
 
     def __repr__(self):
@@ -142,51 +154,158 @@ class ProcessGroup:
             return False
         return True
 
-    def rank(self):
+    def rank(self) -> int:
+        """rank 
+
+        The current rank in the global process group.
+
+        Returns:
+            int: the rank number
+        """
         return self._rank
 
-    def ranks_in_group(self):
+    def ranks_in_group(self) -> List[int]:
+        """ranks_in_group 
+
+        a list of rank number in in the global process group. 
+
+        Returns:
+            List[int]: a list of rank number.
+        """
         return self._rank_list
 
-    def world_size(self):
+    def world_size(self) -> int:
+        """world_size
+
+        The world size of the global process group. 
+
+        Returns:
+            int: world size
+        """
         return self._world_size
 
-    def tp_rank_list(self):
+    def tp_rank_list(self) -> List[int]:
+        """tp_rank_list 
+
+        the rank list in the TP process group containing the current rank.
+
+        Returns:
+            List[int]: the list of rank number.
+        """
         return self._tp_rank_list
 
-    def dp_rank_list(self):
+    def dp_rank_list(self) -> List[int]:
+        """dp_rank_list 
+
+        the rank list in the DP process group containing the current rank.
+
+        Returns:
+            List[int]:  the list of rank number.
+        """
         return self._dp_rank_list
 
-    def tp_local_rank(self):
+    def tp_local_rank(self) -> int:
+        """tp_local_rank 
+
+        The local rank number in the current TP process group.
+
+        Returns:
+            int: tp rank number.
+        """
         return self._rank % self._tp_degree
 
-    def dp_local_rank(self):
+    def dp_local_rank(self) -> int:
+        """dp_local_rank
+
+        The local rank number in the current DP process group.
+
+        Returns:
+            int: dp rank number.
+        """
         return self._rank // self._tp_degree
 
-    def dp_world_size(self):
+    def dp_world_size(self) -> int:
+        """dp_world_size
+
+        The world size of the current DP process group.
+
+        Returns:
+            int: dp world size
+        """
         return len(self._dp_rank_list)
 
-    def tp_world_size(self):
+    def tp_world_size(self) -> int:
+        """tp_world_size
+
+        The world size of the current TP process group.
+
+        Returns:
+            int: tp world size
+        """
         return len(self._tp_rank_list)
 
     def dp_process_group(self):
-        # return self._dp_process_group
+        """dp_process_group
+
+        the pytorch DP process group containing the current rank.
+
+        Returns:
+            `torch._C._distributed_c10d.ProcessGroup`: the pytorch DP process group.
+        """
         return PYTORCHPGDICT_.get(self._dp_rank_list, 'nccl')
 
     def tp_process_group(self):
-        # return self._tp_process_group
+        """tp_process_group
+
+        the pytorch TP process group containing the current rank.
+
+        Returns:
+            `torch._C._distributed_c10d.ProcessGroup`: the pytorch TP process group.
+        """
         return PYTORCHPGDICT_.get(self._tp_rank_list, 'nccl')
 
     def cpu_dp_process_group(self):
+        """cpu_dp_process_group
+
+        the pytorch CPU DP process group containing the current rank.
+        
+        assert failed if cpu process group is not initialized.
+
+        Returns:
+            `torch._C._distributed_c10d.ProcessGroup`: the pytorch DP process group.
+        """
         assert self._has_cpu_groups
         return PYTORCHPGDICT_.get(self._dp_rank_list, 'gloo')
 
     def cpu_tp_process_group(self):
+        """cpu_tp_process_group
+
+        the pytorch CPU TP process group containing the current rank.
+        
+        assert failed if cpu process group is not initialized.
+
+        Returns:
+            `torch._C._distributed_c10d.ProcessGroup`: the pytorch TP process group.
+        """
         assert self._has_cpu_groups
         return PYTORCHPGDICT_.get(self._tp_rank_list, 'gloo')
 
-    def get_ranks_in_dp(self):
+    def get_ranks_in_dp(self) -> List[int]:
+        """get_ranks_in_dp
+
+        ranks in current dp process group.
+
+        Returns:
+            List[int]: a list of rank number.
+        """
         return self._dp_rank_list
 
     def get_ranks_in_tp(self):
+        """get_ranks_in_tp
+
+        ranks in current tp process group.
+
+        Returns:
+            List[int]: a list of rank number.
+        """
         return self._tp_rank_list

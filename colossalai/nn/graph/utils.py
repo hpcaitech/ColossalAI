@@ -9,6 +9,7 @@ def register_colo_graph(input_pos: List[int], param_pos: List[int]) -> Callable:
     """register_colo_graph 
     Register a Op (Layer) to ColoGraph.
     Recoders the input args in types of ColoTensor to the Graph.
+    
     Args:
         func (Callable): a function implements the Op.
 
