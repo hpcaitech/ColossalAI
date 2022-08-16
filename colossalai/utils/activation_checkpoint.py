@@ -7,6 +7,8 @@ from torch.utils.checkpoint import check_backward_validity, detach_variable
 from colossalai.context.random import get_states, get_current_mode, set_seed_states, set_mode, sync_states
 from .cuda import get_current_device
 
+import weakref
+
 
 def copy_to_device(obj, device):
     if torch.is_tensor(obj):
@@ -136,7 +138,7 @@ class CheckpointFunction(torch.autograd.Function):
         return (None, None) + grads
 
 
-def checkpoint(function, activation_offload, *args):
+def checkpoint(function, activation_offload, *args, use_reentrant=True):
     """Checkpoint the computation while preserve the rng states, modified from Pytorch torch.utils.checkpoint.
 
     Args:
@@ -146,4 +148,89 @@ def checkpoint(function, activation_offload, *args):
     Returns:
         Output of running function with provided args.
     """
-    return CheckpointFunction.apply(function, activation_offload, *args)
+    if use_reentrant:
+        return CheckpointFunction.apply(function, activation_offload, *args)
+    else:
+        return _checkpoint_without_reentrant(
+            function,
+            activation_offload,
+            *args,
+        )
+
+
+def _checkpoint_without_reentrant(function, activation_offload=False, *args):
+
+    fwd_cpu_state = torch.get_rng_state()
+    sync_states()
+    fwd_seed_states = get_states(copy=True)
+    fwd_current_mode = get_current_mode()
+
+    if hasattr(torch, 'is_autocast_enabled'):
+        has_autocast_in_fwd = torch.is_autocast_enabled()
+    else:
+        has_autocast_in_fwd = False
+
+    storage: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+    weak_holder_list = []
+
+    class Holder():
+        pass
+
+    def pack(x):
+        res = Holder()
+        weak_holder_list.append(weakref.ref(res))
+        return res
+
+    def unpack(x):
+        unpack_counter = 0
+        if len(storage) == 0:
+            # print(weak_holder_list)
+            def inner_pack(inner):
+                nonlocal unpack_counter
+                unpack_counter += 1
+
+                if weak_holder_list[unpack_counter - 1]() is None:
+                    return
+
+                storage[weak_holder_list[unpack_counter - 1]()] = inner.detach()
+                return
+
+            def inner_unpack(packed):
+                raise RuntimeError("You are calling backwards on a tensor that is never exposed. Please open an issue.")
+
+            torch.set_rng_state(fwd_cpu_state)
+            for parallel_mode, state in fwd_seed_states.items():
+                set_seed_states(parallel_mode, state)
+            set_mode(fwd_current_mode)
+
+            if activation_offload:
+                for arg in args:
+                    if torch.is_tensor(arg):
+                        arg = arg.to(device=device)
+
+            if has_autocast_in_fwd:
+                with torch.enable_grad(), \
+                     torch.cuda.amp.autocast(), \
+                     torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
+                    _unused = function(*args)
+            else:
+                with torch.enable_grad(), \
+                     torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack):
+                    _unused = function(*args)
+
+        if x not in storage:
+            raise RuntimeError("Attempt to retrieve a tensor saved by autograd multiple times without checkpoint"
+                               " recomputation being triggered in between, this is not currently supported. Please"
+                               " open an issue with details on your use case so that we can prioritize adding this.")
+
+        return storage[x]
+
+    device = get_current_device()
+    with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
+        output = function(*args)
+        if activation_offload:
+            for arg in args:
+                if torch.is_tensor(arg):
+                    arg = arg.to(device="cpu")
+
+    return output
