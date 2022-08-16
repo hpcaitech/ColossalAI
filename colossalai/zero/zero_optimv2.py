@@ -21,7 +21,7 @@ class OptimState(Enum):
     UNSCALED = 1
 
 
-class ZeroOptimizer(ColossalaiOptimizer):
+class ZeroOptimizerV2(ColossalaiOptimizer):
     """A wrapper for optimizer. ``ZeroDDP`` and ``ZeroOptimizer`` implement Zero Redundancy Optimizer (ZeRO state-3).
 
     Note:
@@ -77,7 +77,6 @@ class ZeroOptimizer(ColossalaiOptimizer):
 
             specious_param = torch.nn.Parameter(torch.empty([0]))
             specious_param.data = chunk_32.payload[: chunk_32.get_valid_length()]
-
             self.fake_param_list.append(specious_param)
             self.param_to_chunk32[specious_param] = chunk_32
             self.chunk32_to_chunk16[chunk_32] = chunk_16
@@ -111,7 +110,9 @@ class ZeroOptimizer(ColossalaiOptimizer):
         for fake_param in self.fake_param_list:
             chunk32 = self.param_to_chunk32[fake_param]
             chunk16 = self.chunk32_to_chunk16[chunk32]
-            fake_param.grad = chunk16.payload[: chunk16.get_valid_length()]
+            fake_param.data = chunk16.payload[: chunk16.get_valid_length()]
+            fake_param.grad = fake_param.data
+            fake_param.data = chunk32.payload[: chunk32.get_valid_length()]
 
     def _update_fp16_params(self):
         for _, chunk16 in self.chunk32_to_chunk16.items():

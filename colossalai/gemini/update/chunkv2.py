@@ -309,9 +309,9 @@ class ChunkV2:
 
     def get_valid_length(self) -> int:
         if self.keep_gathered:
-            return self.chunk_size
+            return self.utilized_size
         else:
-            return self.valid_end - self.shard_begin
+            return self.valid_end
 
     def init_pair(self, friend_chunk: 'ChunkV2') -> None:
         if self.paired_chunk is None and friend_chunk.paired_chunk is None:
@@ -326,7 +326,8 @@ class ChunkV2:
         assert self.paired_chunk is not None
 
         friend_chunk = self.paired_chunk
-        if friend_chunk.is_gathered == self.is_gathered:
+        if self.is_gathered is True:
+            assert friend_chunk.is_gathered is True
             self.chunk_total.copy_(friend_chunk.chunk_total)
             self.optim_sync_flag = True
         elif friend_chunk.device_type == 'cuda' and self.device_type == 'cuda':
