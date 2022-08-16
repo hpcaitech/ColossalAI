@@ -20,6 +20,11 @@ def forward(x, weight):
 @pytest.mark.parametrize("cpu_offload", [True, False])
 def test_activation_checkpointing(cpu_offload):
 
+    # as seed manager is singleton
+    # if we don't reset seeds here,
+    # other tests might affect this test
+    reset_seeds()
+
     # We put initilization here to avoid change cuda rng state below
     inputs = torch.rand(2, 2, requires_grad=True, device='cuda')
     weight = torch.rand(2, 4, requires_grad=True, device='cuda')
@@ -66,6 +71,11 @@ def test_activation_checkpointing(cpu_offload):
 @pytest.mark.gpu
 @pytest.mark.parametrize("cpu_offload", [True, False])
 def test_activation_checkpointing_reentrant_False(cpu_offload):
+
+    # as seed manager is singleton
+    # if we don't reset seeds here,
+    # other tests might affect this test
+    reset_seeds()
 
     # We put initilization here to avoid change cuda rng state below
     inputs = torch.rand(2, 2, requires_grad=True, device='cuda')
