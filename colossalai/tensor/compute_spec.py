@@ -11,6 +11,7 @@ class ComputePattern(Enum):
 class ComputeSpec(object):
     """ComputeSpec 
     The Specification for compuattion pattern
+    
     Args:
         compute_pattern (ComputePattern): an Enum instance for compute pattern.
     """

@@ -99,9 +99,11 @@ class CachedParamMgr(torch.nn.Module):
 
     @torch.no_grad()
     def reorder(self, ids_freq_mapping: Optional[List[int]] = None, warmup_ratio=0.7):
-        """reorder the weight according to ids' frequency in dataset before training.
+        """reorder
+        reorder the weight according to ids' frequency in dataset before training.
         Also Build the IndexMappingTable, aka index_mapping_table.
         Execute only once before training.
+
         Args:
             ids_freq_mapping (List[int]): a list, idx is id number, value is freq. if None no reorder
             warmup_ratio (float): the amount of chunks preloaded in cuda cache

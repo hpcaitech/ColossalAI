@@ -57,6 +57,7 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
         Called after initialized. 
         Reorder the weight rows according to the ids_freq_mapping.
         Then, let the weights of the Module be managed by a CachedParamMgr.
+        
         Args:
             cuda_row_num (int): number of rows can be hosted in CUDA memory
             ids_freq_mapping (List[int]): a list, idx is id number, value is freq
