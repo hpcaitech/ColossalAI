@@ -39,7 +39,7 @@ def _is_all_gradient_close(m: torch.nn.Module, gm: GraphModule):
 
 def _is_graph_linearized(gm: GraphModule):
     code = gm.code
-    # find patterns like r'      return output_1, output_2'
+    # find patterns like r'      return output_1, output_2', which is not expected on a linearized graph
     pattern = re.compile(r'     return [a-zA-Z0-9_]+(, [a-zA-Z0-9_]+)+')
     if pattern.findall(code):
         return False
