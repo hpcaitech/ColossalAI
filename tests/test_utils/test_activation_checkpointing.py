@@ -19,6 +19,8 @@ def forward(x, weight):
 @pytest.mark.gpu
 @pytest.mark.parametrize("cpu_offload", [True, False])
 def test_activation_checkpointing(cpu_offload):
+    # clear all previous seeds possibly set by other tests
+    reset_seeds()
 
     # We put initilization here to avoid change cuda rng state below
     inputs = torch.rand(2, 2, requires_grad=True, device='cuda')
