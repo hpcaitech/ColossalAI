@@ -17,7 +17,6 @@ def forward(x, weight):
 
 
 @pytest.mark.gpu
-@pytest.mark.skip("set seed error")
 @pytest.mark.parametrize("cpu_offload", [True, False])
 def test_activation_checkpointing(cpu_offload):
 
@@ -62,3 +61,8 @@ def test_activation_checkpointing(cpu_offload):
     # other tests will fail if running together with this test
     # as other tests can't overwrite the seed set by this test
     reset_seeds()
+
+
+if __name__ == '__main__':
+    test_activation_checkpointing(cpu_offload=False)
+    test_activation_checkpointing(cpu_offload=True)
