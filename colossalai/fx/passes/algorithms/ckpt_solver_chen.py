@@ -1,16 +1,33 @@
 from typing import List, Set, Tuple
 import torch
-from torch.fx import GraphModule
+from torch.fx import GraphModule, Node
 import math
 
 __all__ = ['chen_greedy', 'chen_sqrtn']
+CKPT_OP = ['call_module', 'call_method', 'call_function', 'get_attr']
 
 
 def _all_potential_ckpt_nodes(gm: GraphModule) -> List:
+    """
+    In most existing frameworks of activation checkpoint, the forward graph is assumed to be linearized.
+    """
+
+    def is_sink():
+        """
+        If we can free all memories when executing a certain node, it is a sink.
+        """
+        return not sum((v for k, v in deps.items()))
+
+    deps = {}
     ckpt_nodes = []
     for n in gm.graph.nodes:
-        if n.op == 'call_module':
+        for n_par in n._input_nodes:
+            deps[n_par] -= 1    # free memory and dependencies
+
+        # We can only put act_ckpt on these nodes
+        if n.op in CKPT_OP and is_sink():
             ckpt_nodes.append(n)
+        deps[n] = len(n.users)    # add dependencies for future graph
     return ckpt_nodes
 
 
@@ -71,7 +88,7 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
     for i, seg in enumerate(ckpt):
         for idx in range(*seg):
             n = node_list[idx]
-            if n.op in ['call_module', 'call_method', 'call_function']:
+            if n.op in CKPT_OP:
                 setattr(n, 'activation_checkpoint', str(i))
     gm.recompile()
     return gm
