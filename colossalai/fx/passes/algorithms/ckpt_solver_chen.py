@@ -92,28 +92,3 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
                 setattr(n, 'activation_checkpoint', str(i))
     gm.recompile()
     return gm
-
-
-def chen_sqrtn(gm: GraphModule) -> GraphModule:
-    """
-    This is the theoretical optimal strategy in https://arxiv.org/abs/1604.06174.
-
-    Usage:
-        model = resnet18()
-        input_sample = torch.rand(4, 3, 224, 224)
-        gm = symbolic_trace(model)
-        MetaInfoProp(gm).run(input_sample)
-        gm = chen_sqrtn(gm)
-
-    Args:
-        gm (GraphModule): The module to add checkpoints
-    """
-    gm.graph.lint()    # make sure nodes are in topological order
-    k = int(len(gm.graph.nodes)**0.5)    # take approximately sqrt(n) checkpoints
-    for idx, n in enumerate(gm.graph.nodes):
-        # We should not add act_ckpt to the placeholder
-        # The last segment should not be checkpointed
-        if n.op != 'placeholder' and (idx + 1) // k < k:
-            setattr(n, 'activation_checkpoint', str((idx + 1) // k))
-    gm.recompile()
-    return gm
