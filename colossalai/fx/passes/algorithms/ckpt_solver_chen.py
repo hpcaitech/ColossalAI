@@ -3,7 +3,7 @@ import torch
 from torch.fx import GraphModule, Node
 import math
 
-__all__ = ['chen_greedy', 'chen_sqrtn']
+__all__ = ['chen_greedy']
 CKPT_OP = ['call_module', 'call_method', 'call_function', 'get_attr']
 
 
