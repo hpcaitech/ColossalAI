@@ -16,6 +16,28 @@ def forward(x, weight):
     return out_
 
 
+def forward_inplace_ckpt(x, weight, cpu_offload=False):
+    out = torch.matmul(x, weight)
+    bn = torch.nn.BatchNorm1d(4, affine=False)
+    bn = bn.to(device="cuda")
+    out = bn(out)
+
+    def ckpt0(x):
+        return F.relu(x, inplace=True)
+
+    out = checkpoint(ckpt0, cpu_offload, out, use_reentrant=False)
+    return out
+
+
+def forward_inplace(x, weight):
+    out = torch.matmul(x, weight)
+    bn = torch.nn.BatchNorm1d(4, affine=False)
+    bn = bn.to(device="cuda")
+    out = bn(out)
+    out = F.relu(out, inplace=True)
+    return out
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("use_reentrant", [True, False])
 @pytest.mark.parametrize("cpu_offload", [True, False])
@@ -61,6 +83,33 @@ def test_activation_checkpointing(cpu_offload, use_reentrant):
 
     assert torch.all(inputs.grad == inputs_.grad), 'Gradient of the input does not match'
     torch.cuda.empty_cache()
+
+    # Extra test for use_reentrant=False
+    if use_reentrant == False:
+        # Recover cuda rng states
+        set_mode(ParallelMode.GLOBAL)
+        torch.cuda.set_rng_state(global_cuda_rng_state)
+        set_mode(ParallelMode.DATA)
+        torch.cuda.set_rng_state(data_parallel_cuda_rng_state)
+        set_mode(ParallelMode.GLOBAL)
+
+        out = forward_inplace(inputs, weight)
+        loss = out.sum()
+        loss.backward()
+
+        # Recover cuda rng states
+        set_mode(ParallelMode.GLOBAL)
+        torch.cuda.set_rng_state(global_cuda_rng_state)
+        set_mode(ParallelMode.DATA)
+        torch.cuda.set_rng_state(data_parallel_cuda_rng_state)
+        set_mode(ParallelMode.GLOBAL)
+
+        out = forward_inplace_ckpt(inputs_, weight_, cpu_offload=cpu_offload)
+        loss = out.sum()
+        loss.backward()
+
+        assert torch.all(inputs.grad == inputs_.grad), 'Gradient of the input does not match'
+        torch.cuda.empty_cache()
 
     # as seed manager is singleton
     # if we don't reset seeds here,
