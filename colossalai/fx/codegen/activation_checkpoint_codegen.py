@@ -4,13 +4,13 @@ from typing import List, Callable, Any, Tuple, Dict
 try:
     from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
     from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, CodeGen, _origin_type_map, inplace_methods
-    codegen_available = True
+    CODEGEN_AVAILABLE = True
 except:
     from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, _origin_type_map, _format_args
     from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
-    codegen_available = False
+    CODEGEN_AVAILABLE = False
 
-if codegen_available:
+if CODEGEN_AVAILABLE:
     __all__ = ['ActivationCheckpointCodeGen']
 else:
     __all__ = ['python_code_with_activation_checkpoint']
@@ -105,7 +105,7 @@ def _gen_ckpt_usage(label, activation_offload, input_vars, output_vars):
     """
     outputs = ', '.join(output_vars)
     inputs = ', '.join(input_vars)
-    return f'{outputs} = colossalai.utils.activation_checkpoint.checkpoint(checkpoint_{label}, {activation_offload}, {inputs})'
+    return f'{outputs} = colossalai.utils.activation_checkpoint.checkpoint(checkpoint_{label}, {activation_offload}, {inputs}, use_reentrant=False)'
 
 
 def emit_code_with_activation_checkpoint(body, nodes, emit_node_func, delete_unused_value_func):
@@ -169,7 +169,7 @@ def emit_code_with_activation_checkpoint(body, nodes, emit_node_func, delete_unu
             within_ckpt_region = False
 
 
-if codegen_available:
+if CODEGEN_AVAILABLE:
 
     class ActivationCheckpointCodeGen(CodeGen):
 

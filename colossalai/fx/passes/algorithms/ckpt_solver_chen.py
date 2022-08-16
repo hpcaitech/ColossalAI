@@ -1,9 +1,34 @@
-from typing import Set, Tuple
+from typing import List, Set, Tuple
 import torch
-from torch.fx import GraphModule
+from torch.fx import GraphModule, Node
 import math
 
 __all__ = ['chen_greedy', 'chen_sqrtn']
+CKPT_OP = ['call_module', 'call_method', 'call_function', 'get_attr']
+
+
+def _all_potential_ckpt_nodes(gm: GraphModule) -> List:
+    """
+    In most existing frameworks of activation checkpoint, the forward graph is assumed to be linearized.
+    """
+
+    def is_sink():
+        """
+        If we can free all memories when executing a certain node, it is a sink.
+        """
+        return not sum((v for k, v in deps.items()))
+
+    deps = {}
+    ckpt_nodes = []
+    for n in gm.graph.nodes:
+        for n_par in n._input_nodes:
+            deps[n_par] -= 1    # free memory and dependencies
+
+        # We can only put act_ckpt on these nodes
+        if n.op in CKPT_OP and is_sink():
+            ckpt_nodes.append(n)
+        deps[n] = len(n.users)    # add dependencies for future graph
+    return ckpt_nodes
 
 
 def chen_greedy(gm: GraphModule) -> GraphModule:
@@ -31,36 +56,40 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
         b_min, b_max = math.floor(b_approx / math.sqrt(2)), math.ceil(b_approx * math.sqrt(2))
         b_opt = math.inf
         for b in range(b_min, b_max, (b_max - b_min) // num_grids):
-            ckpt, b_approx = run_chen_greedy(b)
+            ckpt_intv, b_approx = run_chen_greedy(b)
             if b_approx < b_opt:
                 b_opt = b_approx
-                ckpt_opt = ckpt
+                ckpt_opt = ckpt_intv
         return ckpt_opt
 
     def run_chen_greedy(b: int = 0) -> Tuple[Set, int]:
         """
         This is the simple implementation of Algorithm 3 in https://arxiv.org/abs/1604.06174.
         """
-        ckpt = set()
+        ckpt_nodes = _all_potential_ckpt_nodes(gm)
+        ckpt_intv = []
         temp = 0
         x = 0
         y = 0
+        prev_idx = 2
         for (idx, n) in enumerate(gm.graph.nodes):
             temp += getattr(n, 'activation_size')
             y = max(y, temp)
-            if temp > b:
+            if temp > b and n in ckpt_nodes:
                 x += getattr(n, 'activation_size')
                 temp = 0
-                ckpt.add(idx)
-        return ckpt, math.floor(math.sqrt(x * y))
+                ckpt_intv.append((prev_idx, idx + 1))
+                prev_idx = idx + 1
+        return ckpt_intv, math.floor(math.sqrt(x * y))
 
     gm.graph.lint()    # make sure nodes are in topological order
     ckpt = grid_search(num_grids=6)
-    i = 0
-    for idx, n in enumerate(gm.graph.nodes):
-        if idx in ckpt:
-            setattr(n, 'activation_checkpoint', str(i))
-            i += 1
+    node_list = list(gm.graph.nodes)
+    for i, seg in enumerate(ckpt):
+        for idx in range(*seg):
+            n = node_list[idx]
+            if n.op in CKPT_OP:
+                setattr(n, 'activation_checkpoint', str(i))
     gm.recompile()
     return gm
 
@@ -82,7 +111,9 @@ def chen_sqrtn(gm: GraphModule) -> GraphModule:
     gm.graph.lint()    # make sure nodes are in topological order
     k = int(len(gm.graph.nodes)**0.5)    # take approximately sqrt(n) checkpoints
     for idx, n in enumerate(gm.graph.nodes):
-        if (idx + 1) % k == 0:
+        # We should not add act_ckpt to the placeholder
+        # The last segment should not be checkpointed
+        if n.op != 'placeholder' and (idx + 1) // k < k:
             setattr(n, 'activation_checkpoint', str((idx + 1) // k))
     gm.recompile()
     return gm
