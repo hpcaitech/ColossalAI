@@ -27,7 +27,7 @@ def _all_potential_ckpt_nodes(gm: GraphModule) -> List:
         # We can only put act_ckpt on these nodes
         if n.op in CKPT_OP and is_sink():
             ckpt_nodes.append(n)
-        deps[n] = len(n.users)    # add dependencies for future graph
+        deps[n] = len(n.users)    # add dependencies for future executions
     return ckpt_nodes
 
 
