@@ -36,7 +36,7 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
     return TensorMetadata(shape, dtype, requires_grad, stride, numel, is_tensor)
 
 
-def _compute_param_size(node_metadata: any) -> int:
+def _compute_activation_size(node_metadata: any) -> int:
     """
     Compute numel of a node with ``tensor_meta`` attribute.
     """
@@ -46,10 +46,10 @@ def _compute_param_size(node_metadata: any) -> int:
         node_numel += node_metadata.numel * torch.tensor([], dtype=node_metadata.dtype).element_size()
     elif isinstance(node_metadata, dict):
         value_list = [v for _, v in node_metadata.items()]
-        node_numel += _compute_param_size(value_list)
+        node_numel += _compute_activation_size(value_list)
     else:
         for element in node_metadata:
-            node_numel += _compute_param_size(element)
+            node_numel += _compute_activation_size(element)
 
     return node_numel
 
@@ -117,7 +117,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         n.meta['tensor_meta'] = meta
 
         # compute the total size of activation tensors
-        total_activation_size = _compute_param_size(n.meta['tensor_meta'])
+        total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
 
         # compute the total size of model parameters
         total_param_size = 0
