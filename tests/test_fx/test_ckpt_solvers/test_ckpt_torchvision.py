@@ -8,7 +8,7 @@ from torch.fx import GraphModule
 import colossalai
 from colossalai.fx import ColoTracer
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.fx.passes.algorithms import chen_greedy, chen_sqrtn
+from colossalai.fx.passes.algorithms import chen_greedy
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 import pytest
@@ -84,7 +84,6 @@ def _run_ckpt_solver(rank):
     gpc.destroy()
 
 
-@pytest.mark.skip
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
 def test_ckpt_solver():
     mp.spawn(_run_ckpt_solver, nprocs=1)
@@ -114,7 +113,6 @@ def _run_ckpt_solver_torch11(rank):
     gpc.destroy()
 
 
-@pytest.mark.skip
 @pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
 def test_ckpt_solver_torch11():
     mp.spawn(_run_ckpt_solver_torch11, nprocs=1)

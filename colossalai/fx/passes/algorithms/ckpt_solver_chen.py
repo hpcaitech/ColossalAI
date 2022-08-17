@@ -89,6 +89,6 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
         for idx in range(*seg):
             n = node_list[idx]
             if n.op in CKPT_OP:
-                setattr(n, 'activation_checkpoint', str(i))
+                setattr(n, 'activation_checkpoint', i)
     gm.recompile()
     return gm
