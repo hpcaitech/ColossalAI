@@ -36,20 +36,20 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
     return TensorMetadata(shape, dtype, requires_grad, stride, numel, is_tensor)
 
 
-def _compute_node_numel(node_metadata: any) -> int:
+def _compute_param_size(node_metadata: any) -> int:
     """
     Compute numel of a node with ``tensor_meta`` attribute.
     """
     node_numel = 0
 
     if isinstance(node_metadata, TensorMetadata):
-        node_numel += node_metadata.numel
+        node_numel += node_metadata.numel * torch.tensor([], dtype=node_metadata.dtype).element_size()
     elif isinstance(node_metadata, dict):
         value_list = [v for _, v in node_metadata.items()]
-        node_numel += _compute_node_numel(value_list)
+        node_numel += _compute_param_size(value_list)
     else:
         for element in node_metadata:
-            node_numel += _compute_node_numel(element)
+            node_numel += _compute_param_size(element)
 
     return node_numel
 
@@ -116,24 +116,16 @@ class MetaInfoProp(torch.fx.Interpreter):
         meta = _map_aggregate(result, extract_tensor_meta)
         n.meta['tensor_meta'] = meta
 
-        # get byte size for each element
-        size_per_elem_bytes = torch.tensor([], dtype=meta.dtype).element_size()
-
         # compute the total size of activation tensors
-        total_activation_size = _compute_node_numel(n.meta['tensor_meta'])
+        total_activation_size = _compute_param_size(n.meta['tensor_meta'])
 
         # compute the total size of model parameters
         total_param_size = 0
         if n.op == 'call_module':
             target_module = n.graph.owning_module.get_submodule(n.target)
             for param in target_module.parameters():
-                total_param_size += param.numel()
+                total_param_size += param.numel() * torch.tensor([], dtype=param.dtype).element_size()
 
-        # compute the total memory cost of activation tensors and model parameters
-        total_activation_size *= size_per_elem_bytes
-        total_param_size *= size_per_elem_bytes
-
-        # TODO: node.node_size is not an original attribute
         setattr(n, 'node_size', total_activation_size + total_param_size)
         setattr(n, 'param_size', total_param_size)
         setattr(n, 'activation_size', total_activation_size)
