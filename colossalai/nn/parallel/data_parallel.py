@@ -233,7 +233,7 @@ class ZeroDDP(ColoDDP):
             p.data = p.half()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
-            self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size)
+            self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size, pin_memory)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
         self.chunk_manager.close_all_groups()

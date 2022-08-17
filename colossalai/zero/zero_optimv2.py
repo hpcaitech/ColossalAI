@@ -76,7 +76,7 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
                 continue
 
             specious_param = torch.nn.Parameter(torch.empty([0]))
-            specious_param.data = chunk_32.payload[: chunk_32.get_valid_length()]
+            # specious_param.data = chunk_32.payload[: chunk_32.get_valid_length()]
             self.fake_param_list.append(specious_param)
             self.param_to_chunk32[specious_param] = chunk_32
             self.chunk32_to_chunk16[chunk_32] = chunk_16
@@ -115,6 +115,10 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
             fake_param.data = chunk32.payload[: chunk32.get_valid_length()]
 
     def _update_fp16_params(self):
+        none_tensor = torch.empty([0])
+        for fake_param in self.fake_param_list:
+            assert fake_param.grad is None
+            fake_param.data = none_tensor
         for _, chunk16 in self.chunk32_to_chunk16.items():
             chunk16.optim_update()
 
@@ -187,17 +191,11 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
             for fake_param, (chunk32, chunk16) in zip(self.fake_param_list,
                                                       self.chunk32_to_chunk16.items()):
                 if fp32_params_used_cuda_margin_mem + chunk32.payload_mem < fp32_params_available_cuda_margin_mem:
-                    fake_param.data = torch.empty([0])  # detach the data_ptr()
-                    fake_param.grad = torch.empty([0])
-
                     self.chunk_manager.move_chunk(chunk32, get_current_device())
                     # stores grad now
                     self.chunk_manager.move_chunk(chunk16, get_current_device())
                     self.module.set_chunk_grad_device(chunk16, get_current_device())
                     fp32_params_used_cuda_margin_mem += chunk32.payload_mem
-
-                    fake_param.data = chunk32.payload[: chunk32.get_valid_length()]  # catch the data_ptr()
-                    fake_param.grad = chunk16.payload[: chunk16.get_valid_length()]
 
                     state = self.optim.state[fake_param]
                     for k, v in state.items():
