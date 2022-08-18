@@ -119,7 +119,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         total_activation_size = 0
         total_param_size = 0
-        if n.op == 'call_module':
+        if n.op == "call_module":
             target_module = n.graph.owning_module.get_submodule(n.target)
             # calculate node size of activation if the module is not inplace
             if getattr(target_module, 'inplace', False):
