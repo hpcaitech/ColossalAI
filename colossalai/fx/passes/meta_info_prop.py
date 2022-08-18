@@ -121,7 +121,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         total_param_size = 0
         if n.op == 'call_module':
             target_module = n.graph.owning_module.get_submodule(n.target)
-            if getattr(target_module, 'inplace', False):
+            if not getattr(target_module, 'inplace', False):
                 total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
             for param in target_module.parameters():
                 total_param_size += param.numel() * torch.tensor([], dtype=param.dtype).element_size()
