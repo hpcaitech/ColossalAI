@@ -121,19 +121,14 @@ class MetaInfoProp(torch.fx.Interpreter):
         total_param_size = 0
         if n.op == 'call_module':
             target_module = n.graph.owning_module.get_submodule(n.target)
-            # calculate node size of activation if the module is not inplace
             if getattr(target_module, 'inplace', False):
                 total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
-
-            # calculate node size of parameters
             for param in target_module.parameters():
                 total_param_size += param.numel() * torch.tensor([], dtype=param.dtype).element_size()
         elif n.op == 'call_function':
-            # calculate node size of activation if the function is not inplace
             if 'inplace' not in n.kwargs:
                 total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
         else:
-            # calculate node size of activation
             total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
 
         setattr(n, 'node_size', total_activation_size + total_param_size)
