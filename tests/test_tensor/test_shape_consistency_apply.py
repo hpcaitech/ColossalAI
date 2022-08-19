@@ -12,7 +12,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager, CollectiveCommPattern
 
 
-def check_shape_consistency_apply(rank, world_size, port):
+def check_apply(rank, world_size, port):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
@@ -20,7 +20,7 @@ def check_shape_consistency_apply(rank, world_size, port):
     mesh_shape = (2, 2)
     # [[0, 1,
     #  [2, 3]]
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group_during_init=True)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
     entire_shape = torch.Size((4, 2))
     shape_consistency_manager = ShapeConsistencyManager()
     dim_partition_source = {0: [0]}
@@ -63,7 +63,7 @@ def check_shape_consistency_apply(rank, world_size, port):
         tensor_to_check = torch.tensor([[1], [1], [3], [3]], dtype=tensor_to_comm.dtype).cuda()
 
     tensor_to_comm.sharding_spec = sharding_spec_source
-    shape_consistency_manager.shape_consistency_apply(tensor_to_comm, sharding_spec_target)
+    shape_consistency_manager.apply(tensor_to_comm, sharding_spec_target)
     print(tensor_to_comm)
     assert tensor_to_comm.equal(tensor_to_check)
     assert str(tensor_to_comm.sharding_spec.sharding_sequence) == str(sharding_spec_target.sharding_sequence)
@@ -71,11 +71,11 @@ def check_shape_consistency_apply(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_shape_consistency_apply():
+def test_apply():
     world_size = 4
-    run_func = partial(check_shape_consistency_apply, world_size=world_size, port=free_port())
+    run_func = partial(check_apply, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_shape_consistency_apply()
+    test_apply()

@@ -22,7 +22,7 @@ def check_layer(rank, world_size, port):
     mesh_shape = (2, 2)
     # [[0, 1,
     #  [2, 3]]
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group_during_init=True)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
     logical_pg_dict = {0: [[0, 2], [1, 3]], 1: [[0, 1], [2, 3]]}
     logical_process_groups = device_mesh.process_groups_dict
 

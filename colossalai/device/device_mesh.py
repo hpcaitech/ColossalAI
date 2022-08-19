@@ -19,18 +19,13 @@ class DeviceMesh:
             communication cost (default: None)
         mesh_beta (List[float], optional): coefficients used for computing
             communication cost (default: None)
-        init_process_group_during_init (bool, optional): initialize logical process group
-            during initializing the DeviceMesh instance if the init_process_group_during_init set to True.
+        init_process_group (bool, optional): initialize logical process group
+            during initializing the DeviceMesh instance if the init_process_group set to True.
             Otherwise, users need to call create_process_groups_for_logical_mesh manually to init logical process group.
             (default: False)
     """
 
-    def __init__(self,
-                 physical_mesh_id,
-                 mesh_shape,
-                 mesh_alpha=None,
-                 mesh_beta=None,
-                 init_process_group_during_init=False):
+    def __init__(self, physical_mesh_id, mesh_shape, mesh_alpha=None, mesh_beta=None, init_process_group=False):
         self.physical_mesh_id = physical_mesh_id
         self.mesh_shape = mesh_shape
         self._logical_mesh_id = self.physical_mesh_id.reshape(self.mesh_shape)
@@ -44,7 +39,7 @@ class DeviceMesh:
             mesh_beta = [1] * len(self.mesh_shape)
         self.mesh_alpha = tuple(mesh_alpha)
         self.mesh_beta = tuple(mesh_beta)
-        if init_process_group_during_init:
+        if init_process_group:
             self.process_groups_dict = self.create_process_groups_for_logical_mesh()
 
     @property
@@ -73,8 +68,8 @@ class DeviceMesh:
         '''
         This method is used to initialize the logical process groups which will be used in communications
         among logical device mesh. 
-        Note: if init_process_group_during_init set to False, you have to call this method manually. Otherwise,
-        the communication related function, such as ShapeConsistencyManager.shape_consistency_apply will raise errors.
+        Note: if init_process_group set to False, you have to call this method manually. Otherwise,
+        the communication related function, such as ShapeConsistencyManager.apply will raise errors.
         '''
         process_groups_dict = {}
         check_duplicate_list = []

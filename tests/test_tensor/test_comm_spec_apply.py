@@ -150,7 +150,7 @@ def check_comm(rank, world_size, port):
     mesh_shape = (2, 2)
     # [[0, 1,
     #  [2, 3]]
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group_during_init=True)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
     # test all gather
     check_all_gather(device_mesh, rank)
 
