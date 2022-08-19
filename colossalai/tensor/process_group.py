@@ -31,7 +31,7 @@ PYTORCHPGDICT_ = PyTorchProcessGroupDict()
 
 class ProcessGroup:
     """ProcessGroup
-    Process Group indicates how processes are organized in groups for execution in Tensor Parallelism and Data Parallelism.
+    Process Group indicates how processes are organized in groups for parallel execution using Tensor Parallelism and Data Parallelism.
 
     NOTE, the ProcessGroup must be used after `torch.distributed.initialize()`
 
