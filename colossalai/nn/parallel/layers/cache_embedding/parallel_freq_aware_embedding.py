@@ -3,8 +3,6 @@ import torch.nn.functional as F
 from typing import List, Optional, Iterator, Tuple
 
 from .freq_aware_embedding import FreqAwareEmbeddingBag
-from .cache_mgr import CachedParamMgr
-from torch.nn.parameter import Parameter
 from colossalai.nn._ops._utils import dual_all_to_all
 
 from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor
@@ -63,14 +61,15 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
                              warmup_ratio, buffer_size)
 
     def _weight_alloc(self, dtype, device):
+        weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
+        with torch.no_grad():
+            weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
+            if self.padding_idx is not None:
+                weight[self.padding_idx].fill_(0)
         colo_tensor_spec = ColoTensorSpec(pg=ProcessGroup(tp_degree=self.world_size),
                                           dist_attr=ShardSpec(dims=[-1], num_partitions=[self.world_size]),
                                           compute_attr=ComputePattern.TP1D)
-        return ColoTensor.from_torch_tensor(torch.empty(self.num_embeddings,
-                                                        self.embedding_dim_per_partition,
-                                                        device=device,
-                                                        dtype=dtype),
-                                            spec=colo_tensor_spec)
+        return ColoTensor.from_torch_tensor(weight, spec=colo_tensor_spec)
 
     def forward(self, indices, offsets=None, per_sample_weights=None, shape_hook=None, scatter_dim=0, gather_dim=-1):
         with torch.no_grad():
