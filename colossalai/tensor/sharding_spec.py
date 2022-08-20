@@ -199,7 +199,7 @@ class ShardingSpec:
             if not dim_spec.is_replica:
                 if index not in new_dim_partition_dict:
                     new_dim_partition_dict[index] = []
-                new_dim_partition_dict[index].append(dim_spec.shard_list)
+                new_dim_partition_dict[index].extend(dim_spec.shard_list)
         self.dim_partition_dict = new_dim_partition_dict
 
     def sharding_sequence_difference(self, other):

@@ -31,7 +31,7 @@ PYTORCHPGDICT_ = PyTorchProcessGroupDict()
 
 class ProcessGroup:
     """ProcessGroup
-    Process Group contains group partition for Tensor Parallel and Data Parallel.
+    Process Group indicates how processes are organized in groups for parallel execution using Tensor Parallelism and Data Parallelism.
 
     NOTE, the ProcessGroup must be used after `torch.distributed.initialize()`
 
@@ -40,8 +40,8 @@ class ProcessGroup:
         rank: the global rank of the current process.
         ranks: List[int], a list of rank id belongings to this process group.
         backend: str, the backend of the process group.
-        tp_degree: Optional[int], tensor parallelism degree, default None means 1
-        dp_degree: Optional[int], data parallelism degree, default None means len(ranks)
+        tp_degree: Optional[int], tensor parallelism degree. How many processes are inside a tp process group. default None means 1. 
+        dp_degree: Optional[int], data parallelism degree. How many processes are inside a dp process group. . default None means len(ranks).
     """
 
     def __init__(self,
