@@ -42,10 +42,13 @@ class StrategiesVector:
         strategies(List[ShardingStrategy]): enumerate all the possible sharding strategies of the node.
     '''
 
-    def __init__(self, node, in_nodes, following_nodes=None, strategies=[]):
+    def __init__(self, node, in_nodes, following_nodes=None, strategies=None):
         self.node = node
         self.in_nodes = in_nodes
         self.following_nodes = following_nodes
+
+        if strategies is None:
+            strategies = []
         self.strategies = strategies
 
     def check_merge(self):
