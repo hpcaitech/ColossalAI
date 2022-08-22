@@ -9,6 +9,7 @@ from colossalai.fx import ColoTracer
 import colossalai
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
+from colossalai.fx.graph_module import ColoGraphModule
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -92,15 +93,15 @@ def _run_act_ckpt_codegen(rank):
             if node.name in offload_starts:
                 setattr(node, 'activation_offload', True)
 
-    gm = GraphModule(model, graph)
+    gm = ColoGraphModule(model, graph)
     gm.recompile()
 
     # assert checkpoint function will be generated and
     # the offload option is correct
     code = graph.python_code('self').src
-    assert 'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_0, True, self, x, use_reentrant=True)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_1, False, self, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_2, False, self, x, use_reentrant=False)' in code
+    assert 'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, x, use_reentrant=True)' in code and \
+    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, x, use_reentrant=False)' in code and \
+    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_2, False, x, use_reentrant=False)' in code
 
     # recompile and verify the outputs are consistent
     fx_out = gm(data)
@@ -151,9 +152,9 @@ def _run_act_ckpt_python_code_torch11(rank):
     # assert checkpoint function will be generated and
     # the offload option is correct
     code = graph.python_code('self').src
-    assert 'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_0, True, self, x, use_reentrant=True)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_1, False, self, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(checkpoint_2, False, self, x, use_reentrant=False)' in code
+    assert 'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, x, use_reentrant=True)' in code and \
+    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, x, use_reentrant=False)' in code and \
+    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_2, False, x, use_reentrant=False)' in code
 
     # recompile and verify the outputs are consistent
     fx_out = gm(data)
@@ -168,6 +169,4 @@ def test_act_ckpt_python_code_torch11():
 
 
 if __name__ == '__main__':
-
-    test_act_ckpt_codegen()
-    test_act_ckpt_python_code_torch11()
+    _run_act_ckpt_codegen(rank=0)

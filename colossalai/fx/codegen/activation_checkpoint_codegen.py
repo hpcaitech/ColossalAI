@@ -1,14 +1,19 @@
+import colossalai
 import torch
 from typing import List, Callable, Any, Tuple, Dict
 
 try:
     from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
-    from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, CodeGen, _origin_type_map, inplace_methods
+    from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, CodeGen, _origin_type_map, inplace_methods, _CustomBuiltin
     CODEGEN_AVAILABLE = True
+    # set _custom_builtins here so that we needn't import colossalai in forward
+    _custom_builtins["colossalai"] = _CustomBuiltin("import colossalai", colossalai)
 except:
-    from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, _origin_type_map, _format_args
+    from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, _origin_type_map, _format_args, _CustomBuiltin
     from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
     CODEGEN_AVAILABLE = False
+    # set _custom_builtins here so that we needn't import colossalai in forward
+    _custom_builtins["colossalai"] = _CustomBuiltin("import colossalai", colossalai)
 
 if CODEGEN_AVAILABLE:
     __all__ = ['ActivationCheckpointCodeGen']
@@ -105,7 +110,7 @@ def _gen_ckpt_usage(label, activation_offload, input_vars, output_vars, use_reen
     """
     outputs = ', '.join(output_vars)
     inputs = ', '.join(input_vars)
-    return f'{outputs} = colossalai.utils.activation_checkpoint.checkpoint(checkpoint_{label}, {activation_offload}, self, {inputs}, use_reentrant={use_reentrant})'
+    return f'{outputs} = colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_{label}, {activation_offload}, {inputs}, use_reentrant={use_reentrant})'
 
 
 def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func, delete_unused_value_func):
@@ -399,7 +404,7 @@ if CODEGEN_AVAILABLE:
             # TODO: Remove inline import
             prologue = self.gen_fn_def(free_vars, maybe_return_annotation[0])
             prologue = ''.join(ckpt_func) + prologue
-            prologue = prologue + "\n    import colossalai"
+            prologue = prologue
 
             code = ''.join(body)
             code = '\n'.join('    ' + line for line in code.split('\n'))
@@ -408,7 +413,6 @@ if CODEGEN_AVAILABLE:
 
 {prologue}
 {code}"""
-            print(fn_code)
             return PythonCode(fn_code, globals_)
 
 else:
@@ -612,6 +616,5 @@ else:
 
 {ckpt_func}
 def forward({', '.join(orig_args)}){maybe_return_annotation[0]}:
-    import colossalai
 {code}"""
         return PythonCode(fn_code, globals_)
