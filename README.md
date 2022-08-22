@@ -54,7 +54,7 @@
    <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI in the Real World</a> 
    <ul>
-     <li><a href="#xTrimoMultimer-Demo">xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction</a></li>
+     <li><a href="#xTrimoMultimer">xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction</a></li>
    </ul>
  </li>
  <li>
@@ -108,7 +108,7 @@ distributed training and inference in a few lines.
 - Inference
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 
-- Colossal-AI in the Real World <a id="xTrimoMultimer"></a>
+- Colossal-AI in the Real World 
   - [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): Accelerating Protein Monomer and Multimer Structure Prediction
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -193,7 +193,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 ## Colossal-AI in the Real World
 
 ### xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction
-<p id="xTrimoMultimer-Demo" align="center">
+<p id="xTrimoMultimer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTM_Prediction.jpg" width=380/>
 <p></p>
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>

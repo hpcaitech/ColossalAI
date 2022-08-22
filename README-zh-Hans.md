@@ -55,7 +55,7 @@
    <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
    <ul>
-     <li><a href="#xTrimoMultimer-Demo">xTrimoMultimer: 蛋白质单体与复合物结构预测</a></li>
+     <li><a href="#xTrimoMultimer">xTrimoMultimer: 蛋白质单体与复合物结构预测</a></li>
    </ul>
  </li>
  <li>
@@ -189,7 +189,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 ## Colossal-AI 成功案例
 
 ### xTrimoMultimer: 蛋白质单体与复合物结构预测
-<p id="xTrimoMultimer-Demo" align="center">
+<p id="xTrimoMultimer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTM_Prediction.jpg" width=380/>
 <p></p>
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
