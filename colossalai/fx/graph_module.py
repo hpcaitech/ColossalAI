@@ -97,12 +97,12 @@ if COLOGM:
 
             # we add import colossalai here
             model_str = f"""
-    import torch
-    from torch.nn import *
-    import colossalai
-    class {module_name}(torch.nn.Module):
-        def __init__(self):
-            super().__init__(
+import torch
+from torch.nn import *
+import colossalai
+class {module_name}(torch.nn.Module):
+    def __init__(self):
+        super().__init__(
     """
 
             def _gen_model_repr(module_name: str, module: torch.nn.Module) -> Optional[str]:
