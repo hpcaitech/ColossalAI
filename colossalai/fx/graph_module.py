@@ -103,7 +103,7 @@ import colossalai
 class {module_name}(torch.nn.Module):
     def __init__(self):
         super().__init__()
-    """
+"""
 
             def _gen_model_repr(module_name: str, module: torch.nn.Module) -> Optional[str]:
                 safe_reprs = [
