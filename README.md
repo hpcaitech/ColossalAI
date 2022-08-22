@@ -52,7 +52,7 @@
    </ul>
  </li>
    <li>
-   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI in the Real World</a> 
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a> 
    <ul>
      <li><a href="#xTrimoMultimer">xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction</a></li>
    </ul>
