@@ -12,7 +12,6 @@ try:
 except:
     from torch.fx.graph_module import GraphModule
     from torch.fx.graph import Graph
-    pass
     COLOGM = False
 
 if COLOGM:
