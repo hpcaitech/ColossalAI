@@ -51,8 +51,7 @@
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
    </ul>
  </li>
-  </li>
-   <li>
+<li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
    <ul>
      <li><a href="#xTrimoMultimer">xTrimoMultimer: 蛋白质单体与复合物结构预测</a></li>
