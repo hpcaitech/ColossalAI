@@ -6,14 +6,10 @@ try:
     from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
     from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, CodeGen, _origin_type_map, inplace_methods, _CustomBuiltin
     CODEGEN_AVAILABLE = True
-    # set _custom_builtins here so that we needn't import colossalai in forward
-    _custom_builtins["colossalai"] = _CustomBuiltin("import colossalai", colossalai)
 except:
     from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, _origin_type_map, _format_args, _CustomBuiltin
     from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
     CODEGEN_AVAILABLE = False
-    # set _custom_builtins here so that we needn't import colossalai in forward
-    _custom_builtins["colossalai"] = _CustomBuiltin("import colossalai", colossalai)
 
 if CODEGEN_AVAILABLE:
     __all__ = ['ActivationCheckpointCodeGen']
@@ -225,6 +221,9 @@ if CODEGEN_AVAILABLE:
                     return global_name
                 globals_[global_name] = obj
                 return global_name
+
+            # set _custom_builtins here so that we needn't import colossalai in forward
+            _custom_builtins["colossalai"] = _CustomBuiltin("import colossalai", colossalai)
 
             # Pre-fill the globals table with registered builtins.
             for name, (_, obj) in _custom_builtins.items():
@@ -452,6 +451,9 @@ else:
                 return global_name
             globals_[global_name] = obj
             return global_name
+
+        # set _custom_builtins here so that we needn't import colossalai in forward
+        _custom_builtins["colossalai"] = _CustomBuiltin("import colossalai", colossalai)
 
         # Pre-fill the globals table with registered builtins.
         for name, (_, obj) in _custom_builtins.items():

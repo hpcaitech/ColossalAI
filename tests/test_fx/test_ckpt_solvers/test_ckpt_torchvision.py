@@ -115,6 +115,7 @@ def _run_ckpt_solver_torch11(rank):
 
 
 @pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
+@pytest.mark.skip(reason="currently torch11 ColoGraphModule is not done")
 def test_ckpt_solver_torch11():
     mp.spawn(_run_ckpt_solver_torch11, nprocs=1)
 
