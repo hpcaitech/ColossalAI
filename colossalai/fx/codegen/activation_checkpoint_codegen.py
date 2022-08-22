@@ -153,7 +153,7 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
             # generate return statement
             label = end_idx.index(idx)
             return_statement = _gen_ckpt_output(output_vars[label])
-            return_statement = f'    {return_statement}\n'
+            return_statement = f'    {return_statement}\n\n'
             ckpt_func.append(return_statement)
 
             # we need to check if the checkpoint need to offload the input

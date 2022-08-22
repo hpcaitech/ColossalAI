@@ -100,6 +100,8 @@ if COLOGM:
 import torch
 from torch.nn import *
 import colossalai
+
+
 class {module_name}(torch.nn.Module):
     def __init__(self):
         super().__init__()
