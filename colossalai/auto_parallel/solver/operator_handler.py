@@ -43,3 +43,23 @@ class OperatorHanlder(ABC):
                                      entire_shape=tensor.shape,
                                      dim_partition_dict=dim_partition_dict)
         return sharding_spec
+
+    def _generate_resharding_costs(self, resharding_costs, sharding_spec_for_input):
+        '''
+        Compute the resharding costs with this specific strategy.
+
+        Note: The resharding_cost of weight is NOT counted.
+
+        Argument:
+            resharding_costs(Dict[int, List[float]]): The resharding cost generated in this method will be appended into this dictionary. 
+                                                      Resharding_cost[i][j] means the cost of i-th argument in the output node argument list
+                                                      with j-th strategy in its strategies_vector transforms to sharding spec wanted in this
+                                                      strategy.
+            sharding_spec_for_input(ShardingSpec): ShardingSpec of the input node.
+        '''
+        # The resharding_cost of weight is counted due to sharing weight cases.
+        resharding_costs[self.input_index] = []
+        for stategy in self.input_node.strategies_vector.strategies:
+            _, _, resharding_cost = self.shape_consistency_manager.shape_consistency(stategy, sharding_spec_for_input)
+            resharding_costs[self.input_index].append(resharding_cost)
+        return resharding_cost
