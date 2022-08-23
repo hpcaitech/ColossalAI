@@ -1,17 +1,20 @@
 import operator
 from functools import reduce
 import torch
-from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy
-from .operator_handler import OperatorHanlder
+from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
+from .operator_handler import OperatorHandler
 
 
-class ConvHandler(OperatorHanlder):
+class ConvHandler(OperatorHandler):
     """
     A OperatorHandler which deals with the sharding strategies of linear matrix multiplication.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.input_data = self.predecessor_node[0]._meta_data
+        self.weight = self.module_named_parameters['weight']
+        self.output_data = self.node._meta_data
         self._sanity_check()
 
     def _sanity_check(self):
@@ -42,7 +45,7 @@ class ConvHandler(OperatorHanlder):
         # 1D: (L) * N * Cout * Cin * kernel
         # 2D: (H * W) * N * Cout * Cin * kernel
         # 3D: (H * W  * D) * N * Cout * Cin * kernel
-        output_size = self.output.shape[2:]
+        output_size = self.output_data.shape[2:]
         output_size_product = reduce(operator.mul, output_size, 1)
         kernel_size = self.weight.shape[2:]
         kernel_size_product = reduce(operator.mul, kernel_size, 1)
@@ -59,11 +62,10 @@ class ConvHandler(OperatorHanlder):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output, dim_partition_dict_for_input)
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
-        resharding_costs = {}
-        self._generate_resharding_costs(resharding_costs, sharding_spec_for_input)
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
 
         # compute the computation cost of this strategy
         bs = self.input_data.shape[0] // self.device_mesh.shape[mesh_dim_0]
@@ -73,7 +75,7 @@ class ConvHandler(OperatorHanlder):
 
         # compute the memory cost of this strategy
         dtype = self.input_data.dtype
-        numel = self.output.numel()
+        numel = self.output_data.numel()
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
         sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
         memory_cost = numel * size_per_elem_bytes / sharding_size
@@ -87,7 +89,7 @@ class ConvHandler(OperatorHanlder):
                                                memory_cost=memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.strategies.append(sharding_strategies)
+        self.strategies_vector.append(sharding_strategies)
 
     def split_input_both_dim_weight_in_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
@@ -99,11 +101,10 @@ class ConvHandler(OperatorHanlder):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output, dim_partition_dict_for_input)
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
-        resharding_costs = {}
-        self._generate_resharding_costs(resharding_costs, sharding_spec_for_input)
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
 
         # compute the computation cost of this strategy
         bs = self.input_data.shape[0] // self.device_mesh.shape[mesh_dim_0]
@@ -113,7 +114,7 @@ class ConvHandler(OperatorHanlder):
 
         # compute the memory cost of this strategy
         dtype = self.input_data.dtype
-        numel = self.output.numel()
+        numel = self.output_data.numel()
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
         sharding_size = self.device_mesh.shape[mesh_dim_0]
         memory_cost = numel * size_per_elem_bytes / sharding_size
@@ -127,7 +128,7 @@ class ConvHandler(OperatorHanlder):
                                                memory_cost=memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.strategies.append(sharding_strategies)
+        self.strategies_vector.append(sharding_strategies)
 
     def split_input_in_channel_weight_both_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
@@ -139,11 +140,10 @@ class ConvHandler(OperatorHanlder):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output, dim_partition_dict_for_input)
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
-        resharding_costs = {}
-        self._generate_resharding_costs(resharding_costs, sharding_spec_for_input)
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
 
         # compute the computation cost of this strategy
         bs = self.input_data.shape[0]
@@ -153,7 +153,7 @@ class ConvHandler(OperatorHanlder):
 
         # compute the memory cost of this strategy
         dtype = self.input_data.dtype
-        numel = self.output.numel()
+        numel = self.output_data.numel()
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
         sharding_size = self.device_mesh.shape[mesh_dim_0]
         memory_cost = numel * size_per_elem_bytes / sharding_size
@@ -167,7 +167,7 @@ class ConvHandler(OperatorHanlder):
                                                memory_cost=memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.strategies.append(sharding_strategies)
+        self.strategies_vector.append(sharding_strategies)
 
     def split_weight_out_channel(self, mesh_dim_0):
         name = f'RS{mesh_dim_0} = RR x RS{mesh_dim_0}'
@@ -179,11 +179,10 @@ class ConvHandler(OperatorHanlder):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_0]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output, dim_partition_dict_for_input)
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
-        resharding_costs = {}
-        self._generate_resharding_costs(resharding_costs, sharding_spec_for_input)
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
 
         # compute the computation cost of this strategy
         bs = self.input_data.shape[0]
@@ -193,7 +192,7 @@ class ConvHandler(OperatorHanlder):
 
         # compute the memory cost of this strategy
         dtype = self.input_data.dtype
-        numel = self.output.numel()
+        numel = self.output_data.numel()
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
         sharding_size = self.device_mesh.shape[mesh_dim_0]
         memory_cost = numel * size_per_elem_bytes / sharding_size
@@ -208,7 +207,7 @@ class ConvHandler(OperatorHanlder):
                                                memory_cost=memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.strategies.append(sharding_strategies)
+        self.strategies_vector.append(sharding_strategies)
 
     def non_split(self):
         name = f'RR = RR x RR'
@@ -220,11 +219,10 @@ class ConvHandler(OperatorHanlder):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output, dim_partition_dict_for_input)
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
-        resharding_costs = {}
-        self._generate_resharding_costs(resharding_costs, sharding_spec_for_input)
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
 
         # compute the computation cost of this strategy
         bs = self.input_data.shape[0]
@@ -234,7 +232,7 @@ class ConvHandler(OperatorHanlder):
 
         # compute the memory cost of this strategy
         dtype = self.input_data.dtype
-        numel = self.output.numel()
+        numel = self.output_data.numel()
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
         memory_cost = numel * size_per_elem_bytes
 
@@ -248,9 +246,9 @@ class ConvHandler(OperatorHanlder):
                                                memory_cost=memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.strategies.append(sharding_strategies)
+        self.strategies_vector.append(sharding_strategies)
 
-    def register_strategy_into_strategies_vector(self):
+    def register_strategy(self) -> StrategiesVector:
         '''
         Generate every possible strategies for a Conv node, and record all strategies into the strategies_vector.
 
@@ -315,3 +313,5 @@ class ConvHandler(OperatorHanlder):
 
         # RR= RR x RR
         self.non_split()
+
+        return self.strategies_vector

@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from colossalai.tensor.sharding_spec import ShardingSpec
 from typing import Dict, List
+from torch.fx.node import Node
+
+__all__ = ['ShardingStrategy', 'StrategiesVector']
 
 
 @dataclass
@@ -30,26 +33,21 @@ class ShardingStrategy:
     input_shardings: ShardingSpec = None
 
 
-class StrategiesVector:
+class StrategiesVector(list):
     '''
     Each node in fx graph will have a corresponding StrategiesVector, to store all the possible
     strategies of the node.
 
     Argument:
-        node(Node): node to build corresponding strategies_vector.
-        in_nodes(List[Node]): input nodes in the argument list of the node.
-        following_nodes(List[Node]): the nodes take the target node as their argument.
-        strategies(List[ShardingStrategy]): enumerate all the possible sharding strategies of the node.
+        node (Node): node for which the list of sharding strategies are generated.
     '''
 
-    def __init__(self, node, in_nodes, following_nodes=None, strategies=None):
+    def __init__(self, node: Node):
+        super().__init__()
         self.node = node
-        self.in_nodes = in_nodes
-        self.following_nodes = following_nodes
-
-        if strategies is None:
-            strategies = []
-        self.strategies = strategies
+        # fetch its input and output nodes
+        self.predecessor_nodes = list(node._input_nodes.keys())
+        self.successor_ndoes = list(node.users.keys())
 
     def check_merge(self):
         pass
