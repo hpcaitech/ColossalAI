@@ -78,7 +78,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         for elem in args:
             if isinstance(elem, torch.Tensor):
                 assert elem.is_meta, "Input torch.Tensor are assumed to appear with device='meta'"
-        return super().run(self, *args, initial_env, enable_io_processing)
+        return super().run(*args, initial_env, enable_io_processing)
 
     @compatibility(is_backward_compatible=True)
     def run_node(self, n: Node) -> Any:
