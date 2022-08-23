@@ -47,6 +47,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         ids_freq_mapping=None,
         warmup_ratio=0.7,
         buffer_size=50_000,
+        pin_weight=False,
     ):
         self.rank = torch.distributed.get_rank()
         self.world_size = torch.distributed.get_world_size()
@@ -58,7 +59,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         super(ParallelFreqAwareEmbeddingBag,
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
-                             warmup_ratio, buffer_size)
+                             warmup_ratio, buffer_size, pin_weight)
 
     def _weight_alloc(self, dtype, device):
         weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
