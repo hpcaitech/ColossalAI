@@ -14,12 +14,17 @@ class CachedParamMgr(torch.nn.Module):
     During training, GPU needs to transmit rows between CPU and GPU.
     """
 
-    def __init__(self, weight: torch.Tensor, cuda_row_num: int = 0, buffer_size: int = 50_000) -> None:
+    def __init__(self,
+                 weight: torch.Tensor,
+                 cuda_row_num: int = 0,
+                 buffer_size: int = 50_000,
+                 pin_weight=False) -> None:
         super(CachedParamMgr, self).__init__()
         self.buffer_size = buffer_size
         self.num_embeddings, self.embedding_dim = weight.shape
         self.cuda_row_num = cuda_row_num
         self._cuda_available_row_num = self.cuda_row_num
+        self.pin_weight = pin_weight
 
         self.elem_size_in_byte = weight.element_size()
 
@@ -43,8 +48,7 @@ class CachedParamMgr(torch.nn.Module):
                             dtype=weight.dtype))
 
             # pin memory cpu for higher CPU-GPU copy bandwidth
-            self.weight = weight.contiguous().cpu().pin_memory()
-
+            self.weight = weight.pin_memory() if self.pin_weight else weight
             # map original id to new id with respect to frequency
             # id -> cpu_row_idx
             self.register_buffer(
@@ -109,7 +113,7 @@ class CachedParamMgr(torch.nn.Module):
             warmup_ratio (float): the amount of chunks preloaded in cuda cache
         """
         if ids_freq_mapping is not None:
-            tmp_idx = torch.argsort(torch.from_numpy(ids_freq_mapping).cuda(), descending=True)
+            tmp_idx = torch.argsort(ids_freq_mapping, descending=True)
             sorted_idx = torch.argsort(tmp_idx)
             self.idx_map.data.copy_(sorted_idx)
 
