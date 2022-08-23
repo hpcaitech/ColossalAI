@@ -28,6 +28,7 @@ INPLACE_OPS = [
 # TODO check that call_methods are indeed inplace
 INPLACE_METHOD = [
     'transpose',
+    'permute',
 ]
 
 

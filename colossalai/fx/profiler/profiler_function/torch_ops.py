@@ -12,6 +12,8 @@ def _prod(dims):
 
 @meta_profiler_function.register(torch.arange)
 @meta_profiler_function.register(torch.finfo)
+@meta_profiler_function.register(torch.permute)
+@meta_profiler_function.register(torch.Tensor.permute)
 @meta_profiler_function.register(torch.Tensor.repeat)
 @meta_profiler_function.register(torch.index_select)
 @meta_profiler_function.register(torch.Tensor.index_select)
