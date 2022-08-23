@@ -75,6 +75,7 @@ def profile_function(target: 'Target') -> Callable:
     
     Warnings:
         You may only use tensors with `device=meta` for this wrapped function.
+        Only original `torch.nn.functional` are available.
     
     Usage:
         input = torch.rand(100, 100, 100, 100, device='meta')
@@ -147,6 +148,7 @@ def profile_module(module: torch.nn.Module) -> Callable:
     
     Warnings:
         You may only use tensors with `device=meta` for this wrapped function.
+        Only original `torch.nn` are available.
     
     Usage:
         input = torch.rand(4, 3, 224, 224, device='meta')

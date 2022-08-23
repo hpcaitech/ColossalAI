@@ -41,7 +41,7 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
 @compatibility(is_backward_compatible=True)
 class MetaInfoProp(torch.fx.Interpreter):
     """
-    Execute an FX graph Node-by-Node and
+    Execute an FX graph Node-by-Node with meta tensor and
     record the shape, FLOPs, MACs and type of the result
     into the corresponding node.
 
@@ -70,6 +70,17 @@ class MetaInfoProp(torch.fx.Interpreter):
 
     """
 
+    @compatibility(is_backward_compatible=True)
+    def run(self, *args, initial_env: Optional[Dict[Node, Any]] = None, enable_io_processing: bool = True) -> Any:
+        """
+        Add additional check for initial args to ensure all the tensor appears with `device='meta'`
+        """
+        for elem in args:
+            if isinstance(elem, torch.Tensor):
+                assert elem.is_meta, "Input torch.Tensor are assumed to appear with device='meta'"
+        return super().run(self, *args, initial_env, enable_io_processing)
+
+    @compatibility(is_backward_compatible=True)
     def run_node(self, n: Node) -> Any:
         """
         Run a specific node ``n`` and return the result.
