@@ -42,7 +42,7 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
 class MetaInfoProp(torch.fx.Interpreter):
     """
     Execute an FX graph Node-by-Node and
-    record the shape, FLOPs, macs and type of the result
+    record the shape, FLOPs, MACs and type of the result
     into the corresponding node.
 
     Usage:
