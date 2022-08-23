@@ -39,7 +39,7 @@ def torch_nn_func_layernorm(
     weight: Optional[torch.Tensor] = None,
     bias: Optional[torch.Tensor] = None,
     eps: float = 1e-5,
-):
+) -> Tuple[int, int]:
     has_affine = weight is not None
     flops = input.numel() * (5 if has_affine else 4)
     macs = 0
@@ -56,7 +56,7 @@ def torch_nn_func_batchnorm(
     training: bool = False,
     momentum: float = 0.1,
     eps: float = 1e-5,
-):
+) -> Tuple[int, int]:
     has_affine = weight is not None
     if training:
         flops = input.numel() * (2 if has_affine else 1)
