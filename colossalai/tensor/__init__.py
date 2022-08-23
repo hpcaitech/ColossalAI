@@ -1,7 +1,7 @@
 from .process_group import ProcessGroup
 from .tensor_spec import ColoTensorSpec
-from .distspec import shard as ShardSpec
-from .distspec import replicate as ReplicaSpec
+from .distspec import ShardSpec
+from .distspec import ReplicaSpec
 
 from .compute_spec import ComputeSpec, ComputePattern
 from .colo_tensor import ColoTensor
@@ -13,6 +13,6 @@ from . import distspec
 
 __all__ = [
     'ColoTensor', 'convert_parameter', 'ComputePattern', 'ComputeSpec', 'named_params_with_colotensor', 'ColoParameter',
-    'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ProcessGroup', 'ColoTensorSpec',
-    'ShardSpec', 'ReplicaSpec'
+    'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ProcessGroup', 'ColoTensorSpec', 'ShardSpec',
+    'ReplicaSpec'
 ]
