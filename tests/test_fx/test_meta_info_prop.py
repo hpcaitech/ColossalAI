@@ -20,7 +20,7 @@ def meta_check(meta_info_spec: TensorMetadata, orig_tensor: torch.Tensor):
 
 def test_meta_info_prop():
     model = torch.nn.Linear(DIM_IN, DIM_OUT)
-    input_sample = torch.rand(BATCH_SIZE, DIM_IN)
+    input_sample = torch.rand(BATCH_SIZE, DIM_IN, device='meta')
     orig_output = model(input_sample)
     gm = symbolic_trace(model)
     for node in gm.graph.nodes:
