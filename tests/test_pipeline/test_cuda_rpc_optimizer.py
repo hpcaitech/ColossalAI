@@ -6,6 +6,7 @@ from torch import nn
 import torch.multiprocessing as mp
 import torch.distributed.rpc as rpc
 from torch import autograd
+from torch.optim import SGD, Adam, RMSprop, Optimizer
 from colorama import Back, Style
 
 from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
@@ -49,6 +50,9 @@ def run_main(args):
     actual_stage_num = stage_num * chunk
     use_interleave = args.use_interleave
     use_checkpoint = args.use_checkpoint
+    optimizer_class = globals()[args.optimizer]
+
+    lr = 1e-3
 
     sample_num = 1024
     feat_num = 100
@@ -72,27 +76,32 @@ def run_main(args):
                                     use_interleave=use_interleave,
                                     checkpoint=use_checkpoint)
 
-    forward_result = engine.forward_backward(input_sample)
+    engine.initialize_optimizer(optimizer_class, lr=lr)
+
+    _ = engine.forward_backward(input_sample)
+    engine.step()
 
     cuda_rpc_result = []
     single_result = []
     actual_stage_num = engine._get_actual_stage_num()
 
-    # compute forward result and backward grad of parameters in cuda rpc
-    cuda_rpc_result.append(sum(forward_result[0]))
-    grad = engine.remote_grad()
+    # compute parameters after updating in cuda rpc
+    parameters = engine.remote_parameters()
     for stage_id in range(actual_stage_num):
-        for p in grad[stage_id]:
+        for p in parameters[stage_id]:
             cuda_rpc_result.append(p)
 
     # compute forward result and backward grad of parameters just in rank_0
     test_model = nn.Sequential(*module_partitions).to(device)
+    optimizer: Optimizer = optimizer_class(test_model.parameters(), lr=lr)
     input_sample = input_sample.requires_grad_()
     out_val = test_model(input_sample).sum()
     autograd.backward(out_val)
-    single_result.append(out_val)
+    optimizer.step()
+    optimizer.zero_grad()
+
     for p in test_model.parameters():
-        single_result.append(p.grad)
+        single_result.append(p)
 
     assert len(cuda_rpc_result) == len(single_result)
     for r_c, r_s in zip(cuda_rpc_result, single_result):
@@ -128,6 +137,7 @@ def parse_args():
     parser.add_argument('--chunk', type=int, default=1)
     parser.add_argument('--use_checkpoint', action='store_true')
     parser.add_argument('--use_interleave', action='store_true')
+    parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'RMSprop'], default='SGD')
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--master_addr', type=str, default='localhost')
     parser.add_argument('--master_port', type=str, default='29020')
