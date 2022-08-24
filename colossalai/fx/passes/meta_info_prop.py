@@ -1,10 +1,12 @@
+from operator import add, getitem
 import torch
 import torch.fx
-from torch.fx.node import Node, map_aggregate
+from torch.fx.node import Node, map_aggregate, Argument, Target
 from typing import Any, Tuple, NamedTuple, Optional, Dict
 from functools import reduce
 from torch.fx._compatibility import compatibility
 from torch.fx.immutable_collections import immutable_dict, immutable_list
+from colossalai.fx.profiler import MetaProfile, profile_function, profile_module, calculate_activation_size, profile_method
 
 
 @compatibility(is_backward_compatible=True)
@@ -36,47 +38,11 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
     return TensorMetadata(shape, dtype, requires_grad, stride, numel, is_tensor)
 
 
-def _compute_activation_size(node_metadata: any) -> int:
-    """
-    Compute numel of a node with ``tensor_meta`` attribute.
-    """
-    node_numel = 0
-
-    if isinstance(node_metadata, TensorMetadata):
-        node_numel += node_metadata.numel * torch.tensor([], dtype=node_metadata.dtype).element_size()
-    elif isinstance(node_metadata, dict):
-        value_list = [v for _, v in node_metadata.items()]
-        node_numel += _compute_activation_size(value_list)
-    else:
-        for element in node_metadata:
-            node_numel += _compute_activation_size(element)
-
-    return node_numel
-
-
-def _map_aggregate(arg, fn):
-    """
-    Apply fn to each Node appearing arg. arg may be a list, tuple, slice, or dict with string keys.
-    """
-    if isinstance(arg, torch.Size):
-        return fn(arg)
-    if isinstance(arg, tuple):
-        return tuple(map_aggregate(elem, fn) for elem in arg)
-    elif isinstance(arg, list):
-        return immutable_list(map_aggregate(elem, fn) for elem in arg)
-    elif isinstance(arg, dict):
-        return immutable_dict((k, map_aggregate(v, fn)) for k, v in arg.items())
-    elif isinstance(arg, slice):
-        return slice(map_aggregate(arg.start, fn), map_aggregate(arg.stop, fn), map_aggregate(arg.step, fn))
-    else:
-        return fn(arg)
-
-
 @compatibility(is_backward_compatible=True)
 class MetaInfoProp(torch.fx.Interpreter):
     """
-    Execute an FX graph Node-by-Node and
-    record the shape and type of the result
+    Execute an FX graph Node-by-Node with meta tensor and
+    record the shape, FLOPs, MACs and type of the result
     into the corresponding node.
 
     Usage:
@@ -104,9 +70,32 @@ class MetaInfoProp(torch.fx.Interpreter):
 
     """
 
+    @compatibility(is_backward_compatible=True)
+    def run(self, *args, initial_env: Optional[Dict[Node, Any]] = None, enable_io_processing: bool = True) -> Any:
+        """
+        Add additional check for initial args to ensure all the tensor appears with `device='meta'`
+        """
+        for elem in args:
+            if isinstance(elem, torch.Tensor):
+                assert elem.is_meta, "Input torch.Tensor are assumed to appear with device='meta'"
+        return super().run(*args, initial_env, enable_io_processing)
+
+    @compatibility(is_backward_compatible=True)
     def run_node(self, n: Node) -> Any:
-        # TODO: We might run_node(n) with meta data, and count FLOPS for each node
-        result = super().run_node(n)
+        """
+        Run a specific node ``n`` and return the result.
+        Calls into placeholder, get_attr, call_function,
+        call_method, call_module, or output depending
+        on ``node.op``
+
+        Args:
+            n (Node): The Node to execute
+
+        Returns:
+            Any: The result of executing ``n``
+        """
+        result, profile = super().run_node(n)
+        profile: MetaProfile
 
         def extract_tensor_meta(obj):
             if isinstance(obj, torch.Tensor):
@@ -114,28 +103,138 @@ class MetaInfoProp(torch.fx.Interpreter):
             else:
                 return TensorMetadata(None, None, False, None, 0, False)
 
-        meta = _map_aggregate(result, extract_tensor_meta)
+        meta = map_aggregate(result, extract_tensor_meta)
         n.meta['tensor_meta'] = meta
 
-        total_activation_size = 0
-        total_param_size = 0
-        if n.op == 'call_module':
-            target_module = n.graph.owning_module.get_submodule(n.target)
-            if not getattr(target_module, 'inplace', False):
-                total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
-            for param in target_module.parameters():
-                total_param_size += param.numel() * torch.tensor([], dtype=param.dtype).element_size()
-        elif n.op == 'call_function':
-            if 'inplace' not in n.kwargs:
-                total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
-        else:
-            total_activation_size = _compute_activation_size(n.meta['tensor_meta'])
-
-        setattr(n, 'node_size', total_activation_size + total_param_size)
-        setattr(n, 'param_size', total_param_size)
-        setattr(n, 'activation_size', total_activation_size)
+        # TODO: the attribute node_size should be removed in the future
+        setattr(n, 'node_size', profile.param + profile.activation)
+        setattr(n, '__param__', profile.param)
+        setattr(n, '__activation__', profile.activation)
+        setattr(n, '__flops__', profile.flops)
+        setattr(n, '__macs__', profile.macs)
         n.meta['type'] = type(result)
         return result
+
+    # Main Node running APIs
+    @compatibility(is_backward_compatible=True)
+    def placeholder(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
+        """
+        Execute a ``placeholder`` node. Note that this is stateful:
+        ``Interpreter`` maintains an internal iterator over
+        arguments passed to ``run`` and this method returns
+        next() on that iterator.
+
+        Args:
+            target (Target): The call target for this node. See
+                `Node <https://pytorch.org/docs/master/fx.html#torch.fx.Node>`__ for
+                details on semantics
+            args (Tuple): Tuple of positional args for this invocation
+            kwargs (Dict): Dict of keyword arguments for this invocation
+
+        Returns:
+            result (Any): The argument value that was retrieved
+            profile (MetaProfile): The meta profile of this node
+        """
+        result = super().placeholder(target, args, kwargs)
+        # A placeholder node only has activation
+        return result, MetaProfile(0, calculate_activation_size(result), 0, 0)
+
+    @compatibility(is_backward_compatible=True)
+    def get_attr(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
+        """
+        Execute a ``get_attr`` node. Will retrieve an attribute
+        value from the ``Module`` hierarchy of ``self.module``.
+
+        Args:
+            target (Target): The call target for this node. See
+                `Node <https://pytorch.org/docs/master/fx.html#torch.fx.Node>`__ for
+                details on semantics
+            args (Tuple): Tuple of positional args for this invocation
+            kwargs (Dict): Dict of keyword arguments for this invocation
+
+        Return:
+            result (Any): The argument value that was retrieved
+            profile (MetaProfile): The meta profile of this node
+        """
+        # A get_attr node never has parameters, activations, FLOPs, or MACs
+        return super().get_attr(target, args, kwargs), MetaProfile(0, 0, 0, 0)
+
+    @compatibility(is_backward_compatible=True)
+    def call_function(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
+        """
+        Execute a ``call_function`` node with meta tensor and return the result and its meta profile.
+
+        Args:
+            target (Target): The call target for this node. See
+                `Node <https://pytorch.org/docs/master/fx.html#torch.fx.Node>`__ for
+                details on semantics
+            args (Tuple): Tuple of positional args for this invocation
+            kwargs (Dict): Dict of keyword arguments for this invocation
+
+        Return
+            result (Any): The argument value that was retrieved
+            profile (MetaProfile): The meta profile of this node
+        """
+        assert not isinstance(target, str)
+        return profile_function(target)(*args, **kwargs)
+
+    @compatibility(is_backward_compatible=True)
+    def call_method(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
+        """
+        Execute a ``call_method`` node with meta tensor and return the result and its meta profile.
+
+        Args:
+            target (Target): The call target for this node. See
+                `Node <https://pytorch.org/docs/master/fx.html#torch.fx.Node>`__ for
+                details on semantics
+            args (Tuple): Tuple of positional args for this invocation
+            kwargs (Dict): Dict of keyword arguments for this invocation
+
+        Return
+            result (Any): The argument value that was retrieved
+            profile (MetaProfile): The meta profile of this node
+        """
+        return profile_method(target)(*args, **kwargs)
+
+    @compatibility(is_backward_compatible=True)
+    def call_module(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
+        """
+        Execute a ``call_module`` node with meta tensor and return the result and its meta profile.
+
+        Args:
+            target (Target): The call target for this node. See
+                `Node <https://pytorch.org/docs/master/fx.html#torch.fx.Node>`__ for
+                details on semantics
+            args (Tuple): Tuple of positional args for this invocation
+            kwargs (Dict): Dict of keyword arguments for this invocation
+
+        Return
+            result (Any): The argument value that was retrieved
+            profile (MetaProfile): The meta profile of this node
+        """
+        # Retrieve executed args and kwargs values from the environment
+        # Execute the method and return the result
+        assert isinstance(target, str)
+        submod = self.fetch_attr(target)
+        return profile_module(submod)(*args, **kwargs)
+
+    @compatibility(is_backward_compatible=True)
+    def output(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
+        """
+        Execute an ``output`` node. This really just retrieves
+        the value referenced by the ``output`` node and returns it.
+
+        Args:
+            target (Target): The call target for this node. See
+                `Node <https://pytorch.org/docs/master/fx.html#torch.fx.Node>`__ for
+                details on semantics
+            args (Tuple): Tuple of positional args for this invocation
+            kwargs (Dict): Dict of keyword arguments for this invocation
+
+        Return:
+            Any: The return value referenced by the output node
+        """
+        return args[0], MetaProfile(0, 0, 0, 0)
 
     def propagate(self, *args):
         """
