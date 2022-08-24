@@ -4,6 +4,8 @@ import torch
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from .operator_handler import OperatorHandler
 
+__all__ = ['ConvHandler']
+
 
 class ConvHandler(OperatorHandler):
     """
