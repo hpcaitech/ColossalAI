@@ -1,4 +1,5 @@
 import math
+from typing import Tuple
 import torch
 from ..registry import meta_patched_module
 
@@ -167,26 +168,35 @@ def torch_nn_maxpool3d(self, input):
 @meta_patched_module.register(torch.nn.AdaptiveAvgPool1d)
 @meta_patched_module.register(torch.nn.AdaptiveMaxPool1d)
 def torch_nn_adapative_pooling_1d(self, input):
-    result_shape = input.shape[:-1] + (self.output_size,)
+    if isinstance(self.output_size, Tuple):
+        result_shape = input.shape[:-1] + self.output_size
+    else:
+        result_shape = input.shape[:-1] + (self.output_size,)
     return torch.empty(result_shape, device='meta')
 
 
 @meta_patched_module.register(torch.nn.AdaptiveAvgPool2d)
 @meta_patched_module.register(torch.nn.AdaptiveMaxPool2d)
 def torch_nn_adapative_pooling_2d(self, input):
-    result_shape = input.shape[:-2] + (
-        self.output_size,
-        self.output_size,
-    )
+    if isinstance(self.output_size, Tuple):
+        result_shape = input.shape[:-2] + self.output_size
+    else:
+        result_shape = input.shape[:-2] + (
+            self.output_size,
+            self.output_size,
+        )
     return torch.empty(result_shape, device='meta')
 
 
 @meta_patched_module.register(torch.nn.AdaptiveAvgPool3d)
 @meta_patched_module.register(torch.nn.AdaptiveMaxPool3d)
 def torch_nn_adapative_pooling_3d(self, input):
-    result_shape = input.shape[:-3] + (
-        self.output_size,
-        self.output_size,
-        self.output_size,
-    )
+    if isinstance(self.output_size, Tuple):
+        result_shape = input.shape[:-3] + self.output_size
+    else:
+        result_shape = input.shape[:-3] + (
+            self.output_size,
+            self.output_size,
+            self.output_size,
+        )
     return torch.empty(result_shape, device='meta')

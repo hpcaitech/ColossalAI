@@ -22,13 +22,16 @@ INPLACE_OPS = [
     pos,
     getitem,
     setitem,
+    getattr,
     torch.Tensor.cpu,
 ]
 
-# TODO check that call_methods are indeed inplace
+# TODO: check that call_methods are indeed inplace
 INPLACE_METHOD = [
     'transpose',
     'permute',
+    # TODO: reshape may return a copy of the data if the data is not contiguous
+    'reshape',
 ]
 
 
@@ -53,7 +56,7 @@ def calculate_activation_size(activation: any) -> int:
     elif isinstance(activation, dict):
         value_list = [v for _, v in activation.items()]
         activation_size += calculate_activation_size(value_list)
-    else:
+    elif isinstance(activation, tuple) or isinstance(activation, list):
         for element in activation:
             activation_size += calculate_activation_size(element)
     return activation_size

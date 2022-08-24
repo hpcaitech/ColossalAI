@@ -37,12 +37,19 @@ def _elementwise_flops_compute(input, other):
 
 
 @meta_profiler_function.register(torch.add)
+@meta_profiler_function.register(torch.eq)
+@meta_profiler_function.register(torch.sub)
+@meta_profiler_function.register(torch.mul)
+@meta_profiler_function.register(torch.floor_divide)
 @meta_profiler_function.register('add')    # for built-in op +
 @meta_profiler_function.register('iadd')    # for built-in op +=
+@meta_profiler_function.register('eq')    # for built-in op =
 @meta_profiler_function.register('sub')    # for built-in op -
 @meta_profiler_function.register('isub')    # for built-in op -=
 @meta_profiler_function.register('mul')    # for built-in op *
 @meta_profiler_function.register('imul')    # for built-in op *=
+@meta_profiler_function.register('floordiv')    # for built-in op //
+@meta_profiler_function.register('ifloordiv')    # for built-in op //=
 def torch_add_like_ops(input: Any, other: Any, *, out: Optional[torch.Tensor] = None) -> Tuple[int, int]:
     return _elementwise_flops_compute(input, other)
 

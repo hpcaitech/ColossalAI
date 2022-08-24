@@ -1,5 +1,6 @@
 from .activation_function import *
 from .convolution import *
+from .dropout import *
 from .embedding import *
 from .linear import *
 from .normalization import *

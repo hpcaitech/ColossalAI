@@ -31,6 +31,7 @@ def _prod(dims):
 @meta_profiler_function.register(torch.full)
 @meta_profiler_function.register(torch.Tensor.cpu)
 @meta_profiler_function.register(torch.Tensor.cuda)
+@meta_profiler_function.register(torch._assert)
 def torch_zero_flops_op(*args, **kwargs) -> Tuple[int, int]:
     flops = 0
     macs = 0
