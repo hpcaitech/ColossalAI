@@ -59,7 +59,7 @@ class CachedParamMgr(torch.nn.Module):
         """_update_freq_cnter 
 
         Update the frequency valude w.r.t. the cpu_row_ids in self.freq_cnter.
-
+        
         Args:
             cpu_row_idxs (torch.Tensor): a list of indices of cpu weight.
         """
@@ -298,15 +298,22 @@ class CachedParamMgr(torch.nn.Module):
         if evict_num > 0:
             with Timer() as timer:
                 mask_cpu_row_idx = torch.isin(self.cached_idx_map, self.evict_backlist)
-                backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
+                
                 invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
 
-                self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
-
-                evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
-
-                self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
-
+                if self._evict_strategy == EvictionStrategy.DATASET:
+                    # mask method. 
+                    backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
+                    self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
+                    evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
+                    self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
+                    
+                elif self._evict_strategy == EvictionStrategy.LFU:
+                    # another mask method.
+                    # set 
+                    evict_gpu_row_idxs = []
+                    
+                    
                 evict_info = self.cached_idx_map[evict_gpu_row_idxs]
 
                 if self.buffer_size > 0:
