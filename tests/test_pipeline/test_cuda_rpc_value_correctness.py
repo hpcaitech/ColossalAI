@@ -5,8 +5,15 @@ import torch
 from torch import nn
 import torch.multiprocessing as mp
 import torch.distributed.rpc as rpc
+from torch import autograd
+from colorama import Back, Style
 
 from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
+
+
+def color_debug(text, prefix=' ', color='blue'):
+    color = color.upper()
+    print(getattr(Back, color), prefix, Style.RESET_ALL, text)
 
 
 class TestModel(nn.Module):
@@ -38,18 +45,19 @@ def run_main(args):
     device = args.device
     stage_num = args.world_size
     chunk = args.chunk
-    num_microbatches = args.num_microbatches
     actual_stage_num = stage_num * chunk
     use_interleave = args.use_interleave
     use_checkpoint = args.use_checkpoint
 
     sample_num = 1024
-    feat_num = 10
-    h = 10
+    feat_num = 100
+    h = 100
     batch_size = 1024
 
     assert sample_num % batch_size == 0
     batch_num = sample_num // batch_size
+
+    num_microbatches = stage_num * 1
 
     input_sample = torch.randn((sample_num, feat_num), device=device)
 
@@ -63,7 +71,39 @@ def run_main(args):
                                     use_interleave=use_interleave,
                                     checkpoint=use_checkpoint)
 
-    _ = engine.forward_backward(input_sample)
+    forward_result = engine.forward_backward(input_sample)
+
+    cuda_rpc_result = []
+    single_result = []
+    actual_stage_num = engine._get_actual_stage_num()
+
+    # color_debug('cuda rpc forward', 'Test')
+    # print(sum(forward_result[0]))
+    cuda_rpc_result.append(sum(forward_result[0]).item())
+    # color_debug('cuda rpc backward', 'Test')
+    grad = engine.remote_grad()
+    for stage_id in range(actual_stage_num):
+        for p in grad[stage_id]:
+            # print(p.sum())
+            cuda_rpc_result.append(p.sum().item())
+
+    test_model = nn.Sequential(*module_partitions).to(device)
+    input_sample = input_sample.requires_grad_()
+    out_val = test_model(input_sample).sum()
+    autograd.backward(out_val)
+    # color_debug('single forward', 'Test')
+    # print(out_val)
+    single_result.append(out_val.item())
+    # color_debug('single backward', 'Test')
+    for p in test_model.parameters():
+        # print(p.grad.sum())
+        single_result.append(p.grad.sum().item())
+
+    cuda_rpc_result = torch.tensor(cuda_rpc_result)
+    single_result = torch.tensor(single_result)
+    distance = (cuda_rpc_result - single_result).abs().sum().item()
+    kappa = round(distance / actual_stage_num, 5)
+    assert kappa < 0.01, f"kappa({kappa}) is too big, PP result may be incorrect!"
 
 
 def run_worker(rank, args):
@@ -92,10 +132,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--world_size', type=int, default=2)
     parser.add_argument('--num_microbatches', type=int, default=2)
-    parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--chunk', type=int, default=1)
     parser.add_argument('--use_checkpoint', action='store_true')
     parser.add_argument('--use_interleave', action='store_true')
+    parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument('--master_addr', type=str, default='localhost')
     parser.add_argument('--master_port', type=str, default='29020')
     parser.add_argument('--num_worker_threads', type=str, default=128)
@@ -105,5 +145,6 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     world_size = args.world_size
+    assert args.num_microbatches >= args.world_size, "num_microbatches cannot be fewer than world_size!"
     assert args.device in ['cpu', 'cuda'], "device must be cpu or cuda!"
     mp.spawn(run_worker, args=(args,), nprocs=world_size)
