@@ -78,9 +78,14 @@ class CachedParamMgr(torch.nn.Module):
             torch.Tensor: a list tensor (1D), contains the gpu_row_idxs.
         """
         if self._evict_strategy == EvictionStrategy.LFU:
-            evict_cpu_row_idxs = torch.argsort(self.freq_cnter)[:evict_num]
-            return self.cached_idx_map[evict_cpu_row_idxs]
+            # find the minimal evict_num freq entries in cached_idx_map
+            evict_gpu_row_idxs = torch.argsort(self.freq_cnter[self.cached_idx_map])[:evict_num]
+            return self.cached_idx_map[evict_gpu_row_idxs]
         elif self._evict_strategy == EvictionStrategy.DATASET:
+            # cached_idx_map itself implies the priority of eviction.
+            # The value of self.cached_idx_map represents cpu_row_idx.
+            # The larger it is, the less frequently it will appear in the dataset,
+            # and the higher its eviction priority will be.
             return torch.argsort(self.cached_idx_map, descending=True)[:evict_num]
         else:
             raise TypeError
