@@ -80,4 +80,4 @@ class OperatorHandler(ABC):
             for strategy in input_node.strategies_vector:
                 _, _, resharding_cost = self.shape_consistency_manager.shape_consistency(strategy, input_spec)
                 resharding_costs[input_node].append(resharding_cost)
-        return resharding_cost
+        return resharding_costs
