@@ -4,6 +4,8 @@ from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, 
 from .operator_handler import OperatorHandler
 from functools import reduce
 
+__all__ = ['DotHandler']
+
 
 class DotHandler(OperatorHandler):
     """
