@@ -10,6 +10,7 @@ from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 
 # this is the python compute table code from rotor
 # https://gitlab.inria.fr/hiepacs/rotor
+# paper link: https://hal.inria.fr/hal-02352969
 def _compute_table(chain: Chain, mmax) -> Tuple:
     """Returns the optimal table: a tuple containing: 
     Opt[m][lmin][lmax] with lmin = 0...chain.length
