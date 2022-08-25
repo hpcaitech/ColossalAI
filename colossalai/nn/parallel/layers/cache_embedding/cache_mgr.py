@@ -25,15 +25,13 @@ class CachedParamMgr(torch.nn.Module):
                  cuda_row_num: int = 0,
                  buffer_size: int = 50_000,
                  pin_weight=False,
-                 evict_strategy=EvictionStrategy.DATASET,
-                 sets_num: int = 1) -> None:
+                 evict_strategy=EvictionStrategy.DATASET,) -> None:
         super(CachedParamMgr, self).__init__()
         self.buffer_size = buffer_size
         self.num_embeddings, self.embedding_dim = weight.shape
         self.cuda_row_num = cuda_row_num
         self._cuda_available_row_num = self.cuda_row_num
         self.pin_weight = pin_weight
-        self.sets_num = sets_num
         
         self.elem_size_in_byte = weight.element_size()
 
@@ -52,8 +50,10 @@ class CachedParamMgr(torch.nn.Module):
         if self._evict_strategy == EvictionStrategy.LFU:
             # cpu_row_idx -> frequency, freq of the cpu rows.
             # evict the minimal freq value row in cuda cache.
+            
+            # the last element match to masked cache_idx, and should ALWAYS have MAX + 1 value.
             self.register_buffer("freq_cnter",
-                                 torch.empty(self.num_embeddings, device=torch.cuda.current_device(),
+                                 torch.empty(self.num_embeddings + 1, device=torch.cuda.current_device(),
                                              dtype=torch.long).fill_(0),
                                  persistent=False)
 
@@ -173,7 +173,7 @@ class CachedParamMgr(torch.nn.Module):
             self.idx_map.data.copy_(sorted_idx)
             #initialize freq_cnter if use LFU
             if self._evict_strategy == EvictionStrategy.LFU:
-                self.freq_cnter,_ = torch.sort(ids_freq_mapping)
+                self.freq_cnter[:-1],_ = torch.sort(ids_freq_mapping)
         # TODO() The following code will allocate extra CUDA memory. preload_row_num * chunks.
         # As cuda_cached_weight is very big. You may not have that much available memory!
         # Warmup the cuda cache by moving high freq chunks (lowest chunk id) to cuda
@@ -255,7 +255,7 @@ class CachedParamMgr(torch.nn.Module):
         """
         with record_function("(zhg) get unique indices"):
             cpu_row_idxs = torch.unique(self.idx_map.index_select(0, ids))
-
+            
             assert len(cpu_row_idxs) <= self.cuda_row_num, \
                 f"the input indices pull {len(cpu_row_idxs)} chunks, " \
                 f"which is larger than the presented {self.cuda_row_num}, " \
@@ -277,10 +277,10 @@ class CachedParamMgr(torch.nn.Module):
         # new ids chunk_offset + offset_in_chunk
         with record_function("(zhg) embed idx -> cache chunk id"):
             gpu_row_idxs = self._id_to_cached_cuda_id(ids)
-
+            
         # update for LFU.
+        # TODO: add one for each idx, even some are the same
         self._update_freq_cnter(cpu_row_idxs)
-
         return gpu_row_idxs
 
     def _reset_comm_stats(self):
@@ -303,26 +303,24 @@ class CachedParamMgr(torch.nn.Module):
         if evict_num > 0:
             with Timer() as timer:
                 mask_cpu_row_idx = torch.isin(self.cached_idx_map, self.evict_backlist)
-                
-                invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
 
                 if self._evict_strategy == EvictionStrategy.DATASET:
                     # mask method. 
                     # set cached_idx_map[invalid_idxs] to -2.
                     # so those idxs will be sorted to end, therefore not being chosen as victim
+                    invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
                     backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
                     self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
                     evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
                     self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
                     
                 elif self._evict_strategy == EvictionStrategy.LFU:
-                    # another mask method.
-                    # set freq_cnter[invalid_idxs] to max
-                    # so those idxs will be sorted to end, therefore not being chosen as victim
-                    backup_cnter = self.freq_cnter[invalid_idxs].clone()
-                    self.freq_cnter.index_fill_(0, invalid_idxs, torch.max(self.freq_cnter) + 1) # or can we use a confident max value? 
+                    self.freq_cnter[-1] = torch.max(self.freq_cnter[:-1]) + 1
+                    invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
+                    backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
+                    self.cached_idx_map.index_fill_(0, invalid_idxs, -1)
                     evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
-                    self.freq_cnter.index_copy_(0,invalid_idxs,backup_cnter)
+                    self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
                     
                 evict_info = self.cached_idx_map[evict_gpu_row_idxs]
 
