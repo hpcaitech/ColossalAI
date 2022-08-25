@@ -4,6 +4,8 @@ from torch.fx import GraphModule, Node
 import math
 from .linearize import linearize
 from .utils import *
+from colossalai.fx.profiler import profile_function, profile_module
+from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 
 
 # this is the python compute table code from rotor
@@ -106,13 +108,90 @@ def _rec(chain, lmin, lmax, cmem, opt_table):
     return sequence
 
 
-def _construct_chain(node_dict: Dict[int, Node], mem_unit: int) -> Chain:
-    pass
+def _discretize(mem_unit, values):
+    return [math.ceil(value / mem_unit) for value in values]
 
 
-def rotor(gm: GraphModule, mem_limit: int, mem_slots: int = 500) -> GraphModule:
+def _construct_chain(node_dict: Dict[int, Node], data: torch.Tensor, mem_unit: int) -> Chain:
+
+    fwd_time = []
+    bwd_time = []
+    xbar_sizes = [data.numel() * data.element_size()]
+    x_sizes = [data.numel() * data.element_size()]
+
+    # currently we can't get the temp memory needed in fwd and bwd
+    tmp_fwd = [0] * len(node_dict)
+    tmp_bwd = [0] * (len(node_dict) + 1)
+
+    for key in node_dict.keys():
+        fwd_time.append(0)
+        bwd_time.append(0)
+        xbar_sizes.append(0)
+        x_sizes.append(node_dict[key][-1].meta['tensor_meta'].numel * \
+            torch.tensor([], dtype=node_dict[key][-1].meta['tensor_meta'].dtype).element_size())
+        for node in node_dict[key]:
+            fwd_time[-1] += node.__flops__
+
+            # currently we haven't patched the backward flops count
+            bwd_time[-1] += node.__flops__ * 2
+
+            xbar_sizes[-1] += node.__activation__
+
+        xbar_sizes[-1] = max(xbar_sizes[-1], x_sizes[-1])
+
+    bwd_time.append(0)
+
+    fwd_time = _discretize(mem_unit, fwd_time)
+    bwd_time = _discretize(mem_unit, bwd_time)
+    xbar_sizes = _discretize(mem_unit, xbar_sizes)
+    x_sizes = _discretize(mem_unit, x_sizes)
+    tmp_fwd = _discretize(mem_unit, tmp_fwd)
+    tmp_bwd = _discretize(mem_unit, tmp_bwd)
+
+    return Chain(fwd_time, bwd_time, x_sizes, xbar_sizes, tmp_fwd, tmp_bwd)
+
+
+def _annotate_from_sequence(sequence: Sequence, node_dict: Dict[int, Node]) -> GraphModule:
+    op_list = sequence.list_operations()
+    loss_op = [op for op in op_list if isinstance(op, Loss)][0]
+    op_list = op_list[:op_list.index(loss_op)]
+    ckpt_idx = 0
+    in_ckpt = False
+    ckpt_region = []
+    for idx, op in enumerate(op_list, 1):
+        if in_ckpt:
+            if isinstance(op, ForwardNograd):
+                ckpt_region.append(idx)
+
+            elif isinstance(op, ForwardEnable):
+                in_ckpt = False
+                for idx in ckpt_region:
+                    for node in node_dict[idx]:
+                        setattr(node, "activation_checkpoint", ckpt_idx)
+
+                ckpt_idx += 1
+                ckpt_region = []
+
+            elif isinstance(op, ForwardCheck):
+                for idx in ckpt_region:
+                    for node in node_dict[idx]:
+                        setattr(node, "activation_checkpoint", ckpt_idx)
+
+                ckpt_idx += 1
+                ckpt_region = [idx]
+
+        else:
+            if isinstance(op, ForwardCheck):
+                in_ckpt = True
+                ckpt_region.append(idx)
+
+
+def solver_rotor(gm: GraphModule, data: torch.Tensor, mem_limit: int, mem_slots: int = 500) -> GraphModule:
     node_dict = linearize(gm)
     mem_unit = mem_limit // mem_slots
-    chain: Chain = _construct_chain(node_dict, mem_unit)
-    opt_table = _compute_table(chain, mem_limit)
-    sequence = _rec(chain, 0, chain.length, mem_limit - chain.cweigth[0], opt_table)
+    MetaInfoProp(gm).run(data)
+    chain: Chain = _construct_chain(node_dict, data, mem_unit)
+    opt_table = _compute_table(chain, mem_slots)
+    sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweigth[0], opt_table)
+    _annotate_from_sequence(sequence, node_dict)
+    return gm
