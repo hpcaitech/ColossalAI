@@ -17,13 +17,13 @@ class Chain:
                 and (len(self.bwd_tmp) == self.length + 1) and (len(self.cbweigth) == self.length + 1))
 
     def __repr__(self):
-        l = []
+        chain_list = []
         for i in range(self.length):
-            l.append(
+            chain_list.append(
                 (self.fweigth[i], self.bweigth[i], self.cweigth[i], self.cbweigth[i], self.fwd_tmp[i], self.bwd_tmp[i]))
         i = self.length
-        l.append((None, self.bweigth[i], self.cweigth[i], self.cbweigth[i], None, self.bwd_tmp[i]))
-        return l.__repr__()
+        chain_list.append((None, self.bweigth[i], self.cweigth[i], self.cbweigth[i], None, self.bwd_tmp[i]))
+        return chain_list.__repr__()
 
 
 class Operation:
@@ -172,14 +172,14 @@ class Sequence:
         return repr(self.list_operations())
 
     def list_operations(self):
-        l = []
+        op_list = []
         for x in self.sequence:
             if isinstance(x, Operation):
-                l.append(x)
+                op_list.append(x)
             else:
                 assert isinstance(x, Sequence)
-                l += x.list_operations()
-        return l
+                op_list += x.list_operations()
+        return op_list
 
     def insert(self, operation):
         self.sequence.append(operation)

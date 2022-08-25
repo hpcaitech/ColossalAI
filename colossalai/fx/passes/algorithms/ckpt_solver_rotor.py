@@ -45,31 +45,31 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
     for m in range(mmax + 1):
         for d in range(1, chain.length + 1):
             for i in range(chain.length + 1 - d):
-                # for l in range(i+1, chain.length + 1):
-                l = i + d
-                mmin = cw[l + 1] + cw[i + 1] + fwd_tmp[i]
-                if l > i + 1:
-                    mmin = max(mmin, cw[l + 1] + max(cw[j] + cw[j + 1] + fwd_tmp[j] for j in range(i + 1, l)))
+                # for idx in range(i+1, chain.length + 1):
+                idx = i + d
+                mmin = cw[idx + 1] + cw[i + 1] + fwd_tmp[i]
+                if idx > i + 1:
+                    mmin = max(mmin, cw[idx + 1] + max(cw[j] + cw[j + 1] + fwd_tmp[j] for j in range(i + 1, idx)))
                 if m < mmin:
-                    opt[m][i][l] = float("inf")
+                    opt[m][i][idx] = float("inf")
                 else:
-                    leaf_checkpoints = [(j, sum(fw[i:j]) + opt[m - cw[j]][j][l] + opt[m][i][j - 1])
-                                        for j in range(i + 1, l + 1)
+                    leaf_checkpoints = [(j, sum(fw[i:j]) + opt[m - cw[j]][j][idx] + opt[m][i][j - 1])
+                                        for j in range(i + 1, idx + 1)
                                         if m >= cw[j]]
                     if leaf_checkpoints:
                         best_leaf = min(leaf_checkpoints, key=lambda t: t[1])
                     else:
                         best_leaf = None
                     if m >= cbw[i + 1]:
-                        chain_checkpoint = opt[m][i][i] + opt[m - cbw[i + 1]][i + 1][l]
+                        chain_checkpoint = opt[m][i][i] + opt[m - cbw[i + 1]][i + 1][idx]
                     else:
                         chain_checkpoint = float("inf")
                     if best_leaf and best_leaf[1] <= chain_checkpoint:
-                        opt[m][i][l] = best_leaf[1]
-                        what[m][i][l] = (False, best_leaf[0])
+                        opt[m][i][idx] = best_leaf[1]
+                        what[m][i][idx] = (False, best_leaf[0])
                     else:
-                        opt[m][i][l] = chain_checkpoint
-                        what[m][i][l] = (True,)
+                        opt[m][i][idx] = chain_checkpoint
+                        what[m][i][idx] = (True,)
     return (opt, what)
 
 
@@ -128,8 +128,8 @@ def _construct_chain(node_dict: Dict[int, Node], data: torch.Tensor, mem_unit: i
         fwd_time.append(0)
         bwd_time.append(0)
         xbar_sizes.append(0)
-        x_sizes.append(node_dict[key][-1].meta['tensor_meta'].numel * \
-            torch.tensor([], dtype=node_dict[key][-1].meta['tensor_meta'].dtype).element_size())
+        x_sizes.append(node_dict[key][-1].meta['tensor_meta'].numel *
+                       torch.tensor([], dtype=node_dict[key][-1].meta['tensor_meta'].dtype).element_size())
         for node in node_dict[key]:
             fwd_time[-1] += node.__flops__
 
