@@ -67,8 +67,8 @@ def torch_nn_rnn(self: torch.nn.RNNCellBase, input: torch.Tensor, hx: Optional[t
     w_hh = self.__getattr__('weight_hh_l')
     flops, macs = _rnn_flops(flops, macs, self, w_ih, w_hh)
     if self.bias:
-        b_ih = self.__getattr__('bias_ih_l' + str(i))
-        b_hh = self.__getattr__('bias_hh_l' + str(i))
+        b_ih = self.__getattr__('bias_ih_l')
+        b_hh = self.__getattr__('bias_hh_l')
         flops += reduce(operator.mul, b_ih) + reduce(operator.mul, b_hh)
     flops *= input.shape[0]
     macs *= input.shape[0]
