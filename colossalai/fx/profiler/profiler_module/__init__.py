@@ -1,4 +1,5 @@
 from .activation_function import *
+from .attention import *
 from .convolution import *
 from .dropout import *
 from .embedding import *
@@ -6,3 +7,4 @@ from .linear import *
 from .normalization import *
 from .pooling import *
 from .rnn import *
+from .torch_op import *
