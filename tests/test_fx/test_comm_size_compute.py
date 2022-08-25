@@ -32,7 +32,7 @@ class MLP(torch.nn.Module):
 
 def test_comm_size_compute():
     model = MLP(MODEL_DIM)
-    input_sample = torch.rand(BATCH_SIZE, MODEL_DIM)
+    input_sample = torch.rand(BATCH_SIZE, MODEL_DIM, device='meta')
     gm = symbolic_trace(model)
     MetaInfoProp(gm).run(input_sample)
     annotated_model = uniform_split_pass(gm, PIPELINE_SIZE)

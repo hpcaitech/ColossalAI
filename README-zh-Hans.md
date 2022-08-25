@@ -51,6 +51,12 @@
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
    </ul>
  </li>
+<li>
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
+   <ul>
+     <li><a href="#xTrimoMultimer">xTrimoMultimer: 蛋白质单体与复合物结构预测</a></li>
+   </ul>
+ </li>
  <li>
    <a href="#安装">安装</a>
    <ul>
@@ -96,6 +102,8 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 基于参数文件的并行化
 - 推理
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
+- Colossal-AI 成功案例
+  - [xTrimoMultimer: 蛋白质单体与复合物结构预测](https://github.com/biomap-research/xTrimoMultimer)
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 并行训练样例展示
@@ -177,6 +185,16 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
+## Colossal-AI 成功案例
+
+### xTrimoMultimer: 蛋白质单体与复合物结构预测
+<p id="xTrimoMultimer" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTM_Prediction.jpg" width=380/>
+<p></p>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
+</p>
+
+- [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): 11倍加速蛋白质单体与复合物结构预测
 
 ## 安装
 

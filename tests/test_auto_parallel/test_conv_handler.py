@@ -47,7 +47,9 @@ def test_conv_handler():
     # [x, mul, conv, output]
     nodes = [node for node in gm.graph.nodes]
 
-    strategies_for_input = []
+    # find the sharding strategies for the input node of the conv node
+    # strategies_for_input = [[R, R, R, R], [R, S0, R, R], [R, S1, R, R], [S0, R, R, R], [S0, S1, R, R], [S1, R, R, R], [S1, S0, R, R]]
+    strategies_vector_for_input = StrategiesVector(nodes[1])
     sharding_option = (None, 0, 1)
     for first_sharding_index in sharding_option:
         for second_sharding_index in sharding_option:
@@ -68,28 +70,19 @@ def test_conv_handler():
             sharding_spec = ShardingSpec(device_mesh=device_mesh,
                                          entire_shape=entire_shape,
                                          sharding_sequence=sharding_sequence)
-            strategies_for_input.append(sharding_spec)
-
-    # strategies_for_input = [[R, R, R, R], [R, S0, R, R], [R, S1, R, R], [S0, R, R, R], [S0, S1, R, R], [S1, R, R, R], [S1, S0, R, R]]
-    strategies_vector_for_input = StrategiesVector(node=nodes[0],
-                                                   in_nodes=[nodes[1], 2],
-                                                   strategies=strategies_for_input)
+            strategies_vector_for_input.append(sharding_spec)
     setattr(nodes[1], 'strategies_vector', strategies_vector_for_input)
 
-    strategies_vector = StrategiesVector(node=nodes[2], in_nodes=[
-        nodes[1],
-    ])
-    conv_handler = ConvHandler(input_node=nodes[1],
-                               input_index=0,
-                               weight=dict(gm.named_modules())[nodes[2].name].weight,
-                               output_node=nodes[2],
+    # generate conv strategy
+    strategies_vector = StrategiesVector(node=nodes[2])
+    conv_handler = ConvHandler(node=nodes[2],
                                device_mesh=device_mesh,
                                strategies_vector=strategies_vector,
                                shape_consistency_manager=shape_consistency_manager)
-    conv_handler.register_strategy_into_strategies_vector()
+    conv_handler.register_strategy()
 
     # ['S0S1 = S0R x RS1', 'S1S0 = S1R x RS0', 'S0R = S0S1 x S1R', 'S1R = S1S0 x S0R', 'RS1 = RS0 x S0S1', 'RS0 = RS1 x S1S0', 'RS0 = RR x RS0', 'RS1 = RR x RS1', 'RR = RR x RR']
-    strategy_name_list = [strategy.name for strategy in conv_handler.strategies_vector.strategies]
+    strategy_name_list = [strategy.name for strategy in conv_handler.strategies_vector]
 
     # SS = SR x RS
     assert 'S0S1 = S0R x RS1' in strategy_name_list
