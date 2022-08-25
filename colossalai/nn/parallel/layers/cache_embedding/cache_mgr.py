@@ -168,7 +168,9 @@ class CachedParamMgr(torch.nn.Module):
             tmp_idx = torch.argsort(ids_freq_mapping, descending=True)
             sorted_idx = torch.argsort(tmp_idx)
             self.idx_map.data.copy_(sorted_idx)
-
+            #initialize freq_cnter if use LFU
+            if self._evict_strategy == EvictionStrategy.LFU:
+                self.freq_cnter,_ = torch.sort(ids_freq_mapping)
         # TODO() The following code will allocate extra CUDA memory. preload_row_num * chunks.
         # As cuda_cached_weight is very big. You may not have that much available memory!
         # Warmup the cuda cache by moving high freq chunks (lowest chunk id) to cuda
