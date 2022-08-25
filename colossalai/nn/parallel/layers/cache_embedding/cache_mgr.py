@@ -303,6 +303,8 @@ class CachedParamMgr(torch.nn.Module):
 
                 if self._evict_strategy == EvictionStrategy.DATASET:
                     # mask method. 
+                    # set cached_idx_map[invalid_idxs] to -2.
+                    # so those idxs will be sorted to end, therefore not being chosen as victim
                     backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
                     self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
                     evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
@@ -310,9 +312,12 @@ class CachedParamMgr(torch.nn.Module):
                     
                 elif self._evict_strategy == EvictionStrategy.LFU:
                     # another mask method.
-                    # set 
-                    evict_gpu_row_idxs = []
-                    
+                    # set freq_cnter[invalid_idxs] to max
+                    # so those idxs will be sorted to end, therefore not being chosen as victim
+                    backup_cnter = self.freq_cnter[mask_cpu_row_idx].clone()
+                    self.freq_cnter.index_fill_(0, invalid_idxs, torch.max(self.freq_cnter))
+                    evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
+                    self.freq_cnter.index_fill_(0,invalid_idxs,backup_cnter)
                     
                 evict_info = self.cached_idx_map[evict_gpu_row_idxs]
 
