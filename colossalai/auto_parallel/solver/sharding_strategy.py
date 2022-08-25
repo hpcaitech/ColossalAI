@@ -47,7 +47,7 @@ class StrategiesVector(list):
         self.node = node
         # fetch its input and output nodes
         self.predecessor_nodes = list(node._input_nodes.keys())
-        self.successor_ndoes = list(node.users.keys())
+        self.successor_nodes = list(node.users.keys())
 
     def check_merge(self):
         pass
