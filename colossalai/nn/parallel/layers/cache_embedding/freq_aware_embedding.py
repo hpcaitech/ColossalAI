@@ -27,20 +27,19 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
         ids_freq_mapping=None,
         warmup_ratio=0.7,
         buffer_size=50_000,
+        pin_weight=False,
     ):
         super(FreqAwareEmbeddingBag, self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type,
                                                     scale_grad_by_freq, sparse, mode, include_last_offset)
 
         if _weight is None:
             _weight = self._weight_alloc(dtype, device)
-        else:
-            _weight = _weight
 
         # configure weight & cache
-        self._preprocess(_weight, cuda_row_num, ids_freq_mapping, warmup_ratio, buffer_size)
+        self._preprocess(_weight, cuda_row_num, ids_freq_mapping, warmup_ratio, buffer_size, pin_weight)
 
     def _weight_alloc(self, dtype, device):
-        weight = torch.empty(self.num_embeddings, self.embedding_dim, dtype=dtype, device=device, pin_memory=True)
+        weight = torch.empty(self.num_embeddings, self.embedding_dim, dtype=dtype, device=device)
         with torch.no_grad():
             weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
             if self.padding_idx is not None:
@@ -52,7 +51,8 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
                     cuda_row_num: int,
                     ids_freq_mapping: Optional[List[int]] = None,
                     warmup_ratio=0.7,
-                    buffer_size=50_000):
+                    buffer_size=50_000,
+                    pin_weight=False):
         """
         Called after initialized. 
         Reorder the weight rows according to the ids_freq_mapping.
@@ -63,17 +63,18 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
             ids_freq_mapping (List[int]): a list, idx is id number, value is freq
             warmup_ratio (float): the amount of rows preloaded in cuda cache
         """
-        self.cache_weight_mgr = CachedParamMgr(weight, cuda_row_num, buffer_size)
+        self.cache_weight_mgr = CachedParamMgr(weight, cuda_row_num, buffer_size, pin_weight)
         self.cache_weight_mgr.reorder(ids_freq_mapping, warmup_ratio)
 
-    def forward(self, indices, offsets=None, per_sample_weights=None):
+    def forward(self, indices, offsets=None, per_sample_weights=None, shape_hook=None):
         with torch.no_grad():
             reorder_ids = self.cache_weight_mgr.prepare_ids(indices)
 
         embeddings = F.embedding_bag(reorder_ids, self.cache_weight_mgr.cuda_cached_weight, offsets, self.max_norm,
                                      self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
                                      per_sample_weights, self.include_last_offset, self.padding_idx)
-
+        if shape_hook is not None:
+            embeddings = shape_hook(embeddings)
         return embeddings
 
     @property
