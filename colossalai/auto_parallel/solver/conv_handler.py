@@ -395,8 +395,8 @@ class ConvHandler(OperatorHandler):
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
         memory_cost = numel * size_per_elem_bytes
 
-        # TODO: this communication cost will be completed in future, we do not have a flatten 1D device mesh now.
-        communication_cost = 0
+        # compute communication cost
+        communication_cost = self.device_mesh.flatten_device_mesh.all_reduce_cost(memory_cost, 0)
 
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_ouput,
