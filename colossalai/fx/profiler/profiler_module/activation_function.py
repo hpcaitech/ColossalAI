@@ -12,6 +12,8 @@ _multiplier = {
     torch.nn.ELU: 4,
     torch.nn.ReLU6: 2,
     torch.nn.GELU: 9,
+    torch.nn.Hardswish: 5,
+    torch.nn.Hardsigmoid: 4,
 }
 
 
@@ -23,6 +25,8 @@ _multiplier = {
 @meta_profiler_module.register(torch.nn.Tanh)
 @meta_profiler_module.register(torch.nn.ReLU6)
 @meta_profiler_module.register(torch.nn.PReLU)
+@meta_profiler_module.register(torch.nn.Hardswish)
+@meta_profiler_module.register(torch.nn.Hardsigmoid)
 def torch_nn_non_linear_act(self: torch.nn.Module, input: torch.Tensor) -> Tuple[int, int]:
     flops = input.numel()
     macs = 0
