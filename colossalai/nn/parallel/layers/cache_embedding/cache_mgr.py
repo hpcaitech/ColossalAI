@@ -25,14 +25,16 @@ class CachedParamMgr(torch.nn.Module):
                  cuda_row_num: int = 0,
                  buffer_size: int = 50_000,
                  pin_weight=False,
-                 evict_strategy=EvictionStrategy.DATASET) -> None:
+                 evict_strategy=EvictionStrategy.DATASET,
+                 sets_num: int = 1) -> None:
         super(CachedParamMgr, self).__init__()
         self.buffer_size = buffer_size
         self.num_embeddings, self.embedding_dim = weight.shape
         self.cuda_row_num = cuda_row_num
         self._cuda_available_row_num = self.cuda_row_num
         self.pin_weight = pin_weight
-
+        self.sets_num = sets_num
+        
         self.elem_size_in_byte = weight.element_size()
 
         # weight configure
