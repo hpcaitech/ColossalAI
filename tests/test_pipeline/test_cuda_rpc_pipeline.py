@@ -1,10 +1,5 @@
-import os
-import argparse
-
 import torch
 from torch import nn
-import torch.multiprocessing as mp
-import torch.distributed.rpc as rpc
 
 from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from rpc_test_utils import rpc_run, parse_args, RpcTestModel
@@ -41,7 +36,7 @@ def run_master(args):
                                     use_interleave=use_interleave,
                                     checkpoint=use_checkpoint)
 
-    _ = engine.forward_backward(input_sample)
+    _ = engine.forward_backward(input_sample, forward_only=False)
 
 
 if __name__ == "__main__":

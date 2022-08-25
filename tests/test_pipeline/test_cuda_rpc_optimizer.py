@@ -1,13 +1,7 @@
-import os
-import argparse
-
 import torch
 from torch import nn
-import torch.multiprocessing as mp
-import torch.distributed.rpc as rpc
 from torch import autograd
 from torch.optim import SGD, Adam, RMSprop, Optimizer
-from colorama import Back, Style
 
 from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from colossalai.testing import assert_close
