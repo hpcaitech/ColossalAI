@@ -1,24 +1,19 @@
+import operator
+from functools import reduce
 from typing import Any, Optional, Tuple, Union
 import torch
 from ..registry import meta_profiler_function
-
-
-def _prod(dims):
-    p = 1
-    for v in dims:
-        p *= v
-    return p
 
 
 def _elementwise_flops_compute(input, other):
     # copied from https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/profiling/flops_profiler/profiler.py#L763
     if not torch.is_tensor(input):
         if torch.is_tensor(other):
-            return _prod(other.shape), 0
+            return reduce(operator.mul, other.shape), 0
         else:
             return 1, 0
     elif not torch.is_tensor(other):
-        return _prod(input.shape), 0
+        return reduce(operator.mul, input.shape), 0
     else:
         dim_input = len(input.shape)
         dim_other = len(other.shape)
@@ -32,7 +27,7 @@ def _elementwise_flops_compute(input, other):
                 final_shape.append(in_i)
             else:
                 final_shape.append(ot_i)
-        flops = _prod(final_shape)
+        flops = reduce(operator.mul, final_shape)
         return flops, 0
 
 
@@ -65,14 +60,14 @@ def torch_elementwise_op(input: torch.Tensor, *, out: Optional[torch.Tensor] = N
 @meta_profiler_function.register('matmul')    # for built-in op @
 @meta_profiler_function.register(torch.Tensor.matmul)
 def torch_matmul(input: torch.Tensor, other: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> Tuple[int, int]:
-    macs = _prod(input.shape) * other.shape[-1]
+    macs = reduce(operator.mul, input.shape) * other.shape[-1]
     flops = 2 * macs
     return flops, macs
 
 
 @meta_profiler_function.register(torch.bmm)
 def torch_bmm(input: torch.Tensor, other: torch.Tensor, *, out: Optional[torch.Tensor] = None) -> Tuple[int, int]:
-    macs = _prod(input.shape) * other.shape[-1]
+    macs = reduce(operator.mul, input.shape) * other.shape[-1]
     flops = 2 * macs
     return flops, macs
 

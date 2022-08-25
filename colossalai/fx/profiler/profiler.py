@@ -2,7 +2,7 @@ from functools import partial
 from operator import add, floordiv, getitem, mul, neg, setitem, sub, pos
 from typing import Callable, List, NamedTuple, Any, Dict, Tuple, Union
 import torch
-from torch.fx.node import Argument, Target
+from torch.fx.node import Argument, Target, map_aggregate
 from torch.fx._compatibility import compatibility
 from colossalai.fx.tracer.meta_patch import meta_patched_function, meta_patched_module
 from . import meta_profiler_function, meta_profiler_module
@@ -41,10 +41,6 @@ INPLACE_METHOD = [
 NON_INPLACE_METHOD = [
     'expand',
 ]
-
-
-def _to_meta(args: Union[List, Tuple], kwargs: Dict) -> Tuple[Union[List, Tuple], Dict]:
-    pass
 
 
 @compatibility(is_backward_compatible=True)
@@ -117,6 +113,8 @@ def profile_function(target: 'Target') -> Callable:
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
         assert meta_profiler_function.has(target) or meta_profiler_function.has(
             target.__name__), f"Colossal-AI hasn't supported profiling for {target}, you might manually patch it."
+        # ensure all arguments satisfy `device='meta'`
+        args, kwargs = map_aggregate([args, kwargs], lambda a: a.to('meta') if isinstance(a, torch.Tensor) else a)
 
         # call_function has no parameters
         param_size = 0
@@ -155,8 +153,11 @@ def profile_method(target: 'Target') -> Callable:
         # args[0] is the `self` object for this method call
         self_obj, *args_tail = args
 
-        # Execute the method and return the result
+        # execute the method and return the result
         assert isinstance(target, str), f'{target} instance is not str.'
+
+        # ensure all arguments satisfy `device='meta'`
+        map_aggregate([args, kwargs], lambda a: a.to('meta') if isinstance(a, torch.Tensor) else a)
         result = getattr(self_obj, target)(*args_tail, **kwargs)
         assert target in INPLACE_METHOD + NON_INPLACE_METHOD, CALL_METHOD_MSG.format(
             target, INPLACE_METHOD, NON_INPLACE_METHOD)
@@ -190,8 +191,11 @@ def profile_module(module: torch.nn.Module) -> Callable:
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
+        print(module)
         assert meta_profiler_module.has(
             type(module)), f"Colossal-AI hasn't supported profiling for {module}, you might manually patch it."
+        # ensure all arguments satisfy `device='meta'`
+        map_aggregate([args, kwargs], lambda a: a.to('meta') if isinstance(a, torch.Tensor) else a)
         param_size = calculate_param_size(module)
         activation_size = 0
         result = func(*args, **kwargs)
