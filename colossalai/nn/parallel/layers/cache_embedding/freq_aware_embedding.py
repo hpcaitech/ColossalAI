@@ -3,35 +3,35 @@ import torch.nn.functional as F
 from typing import List, Optional, Iterator, Tuple
 
 from .base_embedding import BaseEmbeddingBag
-from .cache_mgr import CachedParamMgr
+from .cache_mgr import CachedParamMgr, EvictionStrategy
 from torch.nn.parameter import Parameter
 
 
 class FreqAwareEmbeddingBag(BaseEmbeddingBag):
 
-    def __init__(
-        self,
-        num_embeddings,
-        embedding_dim,
-        padding_idx=None,
-        max_norm=None,
-        norm_type=2.,
-        scale_grad_by_freq=False,
-        sparse=False,
-        _weight=None,
-        mode='mean',
-        include_last_offset=False,
-        dtype=None,
-        device=None,
-        cuda_row_num=0,
-        ids_freq_mapping=None,
-        warmup_ratio=0.7,
-        buffer_size=50_000,
-        pin_weight=False,
-    ):
+    def __init__(self,
+                 num_embeddings,
+                 embedding_dim,
+                 padding_idx=None,
+                 max_norm=None,
+                 norm_type=2.,
+                 scale_grad_by_freq=False,
+                 sparse=False,
+                 _weight=None,
+                 mode='mean',
+                 include_last_offset=False,
+                 dtype=None,
+                 device=None,
+                 cuda_row_num=0,
+                 ids_freq_mapping=None,
+                 warmup_ratio=0.7,
+                 buffer_size=50_000,
+                 pin_weight=False,
+                 evict_strategy: EvictionStrategy = EvictionStrategy.DATASET):
         super(FreqAwareEmbeddingBag, self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type,
                                                     scale_grad_by_freq, sparse, mode, include_last_offset)
 
+        self.evict_strategy = evict_strategy
         if _weight is None:
             _weight = self._weight_alloc(dtype, device)
 
@@ -63,7 +63,11 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
             ids_freq_mapping (List[int]): a list, idx is id number, value is freq
             warmup_ratio (float): the amount of rows preloaded in cuda cache
         """
-        self.cache_weight_mgr = CachedParamMgr(weight, cuda_row_num, buffer_size, pin_weight)
+        self.cache_weight_mgr = CachedParamMgr(weight,
+                                               cuda_row_num,
+                                               buffer_size,
+                                               pin_weight,
+                                               evict_strategy=self.evict_strategy)
         self.cache_weight_mgr.reorder(ids_freq_mapping, warmup_ratio)
 
     def forward(self, indices, offsets=None, per_sample_weights=None, shape_hook=None):
