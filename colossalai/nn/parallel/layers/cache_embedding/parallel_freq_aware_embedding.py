@@ -3,8 +3,6 @@ import torch.nn.functional as F
 from typing import List, Optional, Iterator, Tuple
 
 from .freq_aware_embedding import FreqAwareEmbeddingBag
-from .cache_mgr import CachedParamMgr
-from torch.nn.parameter import Parameter
 from colossalai.nn._ops._utils import dual_all_to_all
 
 from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor
@@ -49,6 +47,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         ids_freq_mapping=None,
         warmup_ratio=0.7,
         buffer_size=50_000,
+        pin_weight=False,
     ):
         self.rank = torch.distributed.get_rank()
         self.world_size = torch.distributed.get_world_size()
@@ -60,17 +59,18 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         super(ParallelFreqAwareEmbeddingBag,
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
-                             warmup_ratio, buffer_size)
+                             warmup_ratio, buffer_size, pin_weight)
 
     def _weight_alloc(self, dtype, device):
+        weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
+        with torch.no_grad():
+            weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
+            if self.padding_idx is not None:
+                weight[self.padding_idx].fill_(0)
         colo_tensor_spec = ColoTensorSpec(pg=ProcessGroup(tp_degree=self.world_size),
                                           dist_attr=ShardSpec(dims=[-1], num_partitions=[self.world_size]),
                                           compute_attr=ComputePattern.TP1D)
-        return ColoTensor.from_torch_tensor(torch.empty(self.num_embeddings,
-                                                        self.embedding_dim_per_partition,
-                                                        device=device,
-                                                        dtype=dtype),
-                                            spec=colo_tensor_spec)
+        return ColoTensor.from_torch_tensor(weight, spec=colo_tensor_spec)
 
     def forward(self, indices, offsets=None, per_sample_weights=None, shape_hook=None, scatter_dim=0, gather_dim=-1):
         with torch.no_grad():

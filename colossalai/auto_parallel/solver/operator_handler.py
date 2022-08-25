@@ -1,3 +1,4 @@
+from webbrowser import Opera
 import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
@@ -8,6 +9,8 @@ from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 from .sharding_strategy import StrategiesVector
+
+__all__ = ['OperatorHandler']
 
 
 class OperatorHandler(ABC):
@@ -48,6 +51,9 @@ class OperatorHandler(ABC):
 
     @abstractmethod
     def register_strategy(self) -> StrategiesVector:
+        """
+        Register 
+        """
         pass
 
     def _generate_sharding_spec(self, tensor: torch.Tensor, dim_partition_dict: Dict[int, int]) -> ShardingSpec:

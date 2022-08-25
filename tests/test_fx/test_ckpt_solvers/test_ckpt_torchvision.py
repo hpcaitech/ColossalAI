@@ -68,7 +68,7 @@ def _run_ckpt_solver(rank):
 
     tracer = ColoTracer(trace_act_ckpt=False)
 
-    data = torch.rand(2, 3, 32, 32)
+    data = torch.rand(2, 3, 32, 32, device='meta')
     for solver in SOLVERS:
         for model_cls in MODEL_LIST:
             m = model_cls(num_classes=5)
@@ -98,7 +98,7 @@ def _run_ckpt_solver_torch11(rank):
 
     tracer = ColoTracer(trace_act_ckpt=False)
 
-    data = torch.rand(2, 3, 32, 32)
+    data = torch.rand(2, 3, 32, 32, device='meta')
     for solver in SOLVERS:
         for model_cls in MODEL_LIST:
             m = model_cls(num_classes=5)

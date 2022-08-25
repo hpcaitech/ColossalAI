@@ -4,6 +4,12 @@ from torch.profiler import record_function
 from typing import List, Optional
 from contexttimer import Timer
 from .copyer import LimitBuffIndexCopyer
+from enum import Enum
+
+
+class EvictionStrategy(Enum):
+    LFU = 1
+    DATASET = 2
 
 
 class CachedParamMgr(torch.nn.Module):
@@ -14,12 +20,18 @@ class CachedParamMgr(torch.nn.Module):
     During training, GPU needs to transmit rows between CPU and GPU.
     """
 
-    def __init__(self, weight: torch.Tensor, cuda_row_num: int = 0, buffer_size: int = 50_000) -> None:
+    def __init__(self,
+                 weight: torch.Tensor,
+                 cuda_row_num: int = 0,
+                 buffer_size: int = 50_000,
+                 pin_weight=False,
+                 evict_strategy=EvictionStrategy.DATASET) -> None:
         super(CachedParamMgr, self).__init__()
         self.buffer_size = buffer_size
         self.num_embeddings, self.embedding_dim = weight.shape
         self.cuda_row_num = cuda_row_num
         self._cuda_available_row_num = self.cuda_row_num
+        self.pin_weight = pin_weight
 
         self.elem_size_in_byte = weight.element_size()
 
@@ -33,6 +45,51 @@ class CachedParamMgr(torch.nn.Module):
         self.input_id_percent_in_load_chunk = []
         self._reset_comm_stats()
 
+        self._evict_strategy = evict_strategy
+
+        if self._evict_strategy == EvictionStrategy.LFU:
+            # cpu_row_idx -> frequency, freq of the cpu rows.
+            # evict the minimal freq value row in cuda cache.
+            self.register_buffer("freq_cnter",
+                                 torch.empty(self.num_embeddings, device=torch.cuda.current_device(),
+                                             dtype=torch.long).fill_(0),
+                                 persistent=False)
+
+    def _update_freq_cnter(self, cpu_row_idxs: torch.Tensor) -> None:
+        """_update_freq_cnter 
+
+        Update the frequency valude w.r.t. the cpu_row_ids in self.freq_cnter.
+        
+        Args:
+            cpu_row_idxs (torch.Tensor): a list of indices of cpu weight.
+        """
+        if self._evict_strategy == EvictionStrategy.LFU:
+            self.freq_cnter[cpu_row_idxs] += 1
+
+    def _find_evict_gpu_idxs(self, evict_num: int) -> torch.Tensor:
+        """_find_evict_gpu_idxs 
+
+        Find the gpu idxs to be evicted, according to their freq.
+
+        Args:
+            evict_num (int): how many rows has to be evicted
+
+        Returns:
+            torch.Tensor: a list tensor (1D), contains the gpu_row_idxs.
+        """
+        if self._evict_strategy == EvictionStrategy.LFU:
+            # find the minimal evict_num freq entries in cached_idx_map
+            evict_gpu_row_idxs = torch.argsort(self.freq_cnter[self.cached_idx_map])[:evict_num]
+            return evict_gpu_row_idxs
+        elif self._evict_strategy == EvictionStrategy.DATASET:
+            # cached_idx_map itself implies the priority of eviction.
+            # The value of self.cached_idx_map represents cpu_row_idx.
+            # The larger it is, the less frequently it will appear in the dataset,
+            # and the higher its eviction priority will be.
+            return torch.argsort(self.cached_idx_map, descending=True)[:evict_num]
+        else:
+            raise TypeError
+
     def _init_weight(self, weight):
         if self.cuda_row_num > 0:
             # Enable cache with introducing auxiliary data structures
@@ -43,8 +100,7 @@ class CachedParamMgr(torch.nn.Module):
                             dtype=weight.dtype))
 
             # pin memory cpu for higher CPU-GPU copy bandwidth
-            self.weight = weight.contiguous().cpu().pin_memory()
-
+            self.weight = weight.pin_memory() if self.pin_weight else weight
             # map original id to new id with respect to frequency
             # id -> cpu_row_idx
             self.register_buffer(
@@ -109,7 +165,7 @@ class CachedParamMgr(torch.nn.Module):
             warmup_ratio (float): the amount of chunks preloaded in cuda cache
         """
         if ids_freq_mapping is not None:
-            tmp_idx = torch.argsort(torch.from_numpy(ids_freq_mapping).cuda(), descending=True)
+            tmp_idx = torch.argsort(ids_freq_mapping, descending=True)
             sorted_idx = torch.argsort(tmp_idx)
             self.idx_map.data.copy_(sorted_idx)
 
@@ -216,6 +272,10 @@ class CachedParamMgr(torch.nn.Module):
         # new ids chunk_offset + offset_in_chunk
         with record_function("(zhg) embed idx -> cache chunk id"):
             gpu_row_idxs = self._id_to_cached_cuda_id(ids)
+
+        # update for LFU.
+        self._update_freq_cnter(cpu_row_idxs)
+
         return gpu_row_idxs
 
     def _reset_comm_stats(self):
@@ -230,6 +290,7 @@ class CachedParamMgr(torch.nn.Module):
     @torch.no_grad()
     def _prepare_rows_on_cuda(self, cpu_row_idxs: torch.Tensor) -> None:
         """prepare rows in cpu_row_idxs on CUDA memory
+
         Args:
             cpu_row_idxs (torch.Tensor): the chunks to be placed on CUDA
         """
@@ -237,13 +298,27 @@ class CachedParamMgr(torch.nn.Module):
         if evict_num > 0:
             with Timer() as timer:
                 mask_cpu_row_idx = torch.isin(self.cached_idx_map, self.evict_backlist)
-                backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
+                
                 invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
 
-                self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
-                evict_gpu_row_idxs = torch.argsort(self.cached_idx_map, descending=True)[:evict_num]
-                self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
-
+                if self._evict_strategy == EvictionStrategy.DATASET:
+                    # mask method. 
+                    # set cached_idx_map[invalid_idxs] to -2.
+                    # so those idxs will be sorted to end, therefore not being chosen as victim
+                    backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
+                    self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
+                    evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
+                    self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
+                    
+                elif self._evict_strategy == EvictionStrategy.LFU:
+                    # another mask method.
+                    # set freq_cnter[invalid_idxs] to max
+                    # so those idxs will be sorted to end, therefore not being chosen as victim
+                    backup_cnter = self.freq_cnter[invalid_idxs].clone()
+                    self.freq_cnter.index_fill_(0, invalid_idxs, torch.max(self.freq_cnter) + 1) # or can we use a confident max value? 
+                    evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
+                    self.freq_cnter.index_copy_(0,invalid_idxs,backup_cnter)
+                    
                 evict_info = self.cached_idx_map[evict_gpu_row_idxs]
 
                 if self.buffer_size > 0:
@@ -287,8 +362,16 @@ class CachedParamMgr(torch.nn.Module):
         self._cpu_to_cuda_numel += weight_size
         # print(f"admit embedding weight: {weight_size*self.elem_size_in_byte/1e6:.2f} MB")
 
+    def _find_free_cuda_row(self) -> int:
+        if self._cuda_available_row_num == 0:
+            return -1
+        candidates = torch.nonzero(self.cached_idx_map == -1).squeeze(1)
+        return candidates[0].item()
+
     def _evict(self) -> int:
         """
+        deprecated
+
         evict one chunk from cuda to cpu.
         Returns: 
         (int) : the slot id be evicted.
@@ -325,15 +408,11 @@ class CachedParamMgr(torch.nn.Module):
         # self.num_write_back_history[-1] += 1
         return max_cpu_row_idx
 
-    def _find_free_cuda_row(self) -> int:
-        if self._cuda_available_row_num == 0:
-            return -1
-        candidates = torch.nonzero(self.cached_idx_map == -1).squeeze(1)
-        return candidates[0].item()
-
     @torch.no_grad()
     def _admit(self, row_id: int):
         """
+        deprecated
+
         move in row_id to CUDA
 
         Args:

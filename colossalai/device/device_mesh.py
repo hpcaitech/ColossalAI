@@ -25,7 +25,13 @@ class DeviceMesh:
             (default: False)
     """
 
-    def __init__(self, physical_mesh_id, mesh_shape, mesh_alpha=None, mesh_beta=None, init_process_group=False):
+    def __init__(self,
+                 physical_mesh_id,
+                 mesh_shape,
+                 mesh_alpha=None,
+                 mesh_beta=None,
+                 init_process_group=False,
+                 need_flatten=True):
         self.physical_mesh_id = physical_mesh_id
         self.mesh_shape = mesh_shape
         self._logical_mesh_id = self.physical_mesh_id.reshape(self.mesh_shape)
@@ -39,8 +45,12 @@ class DeviceMesh:
             mesh_beta = [1] * len(self.mesh_shape)
         self.mesh_alpha = tuple(mesh_alpha)
         self.mesh_beta = tuple(mesh_beta)
-        if init_process_group:
+        self.init_process_group = init_process_group
+        self.need_flatten = need_flatten
+        if self.init_process_group:
             self.process_groups_dict = self.create_process_groups_for_logical_mesh()
+        if self.need_flatten:
+            self.flatten_device_mesh = self.flatten()
 
     @property
     def shape(self):
@@ -53,6 +63,19 @@ class DeviceMesh:
     @property
     def logical_mesh_id(self):
         return self._logical_mesh_id
+
+    def flatten(self):
+        """
+        Flatten the logical mesh into an effective 1d logical mesh,
+        """
+        flatten_mesh_shape_size = len(self.mesh_shape)
+        flatten_mesh_shape = [self.num_devices]
+        return DeviceMesh(self.physical_mesh_id,
+                          tuple(flatten_mesh_shape),
+                          mesh_alpha=[max(self.mesh_alpha)] * (flatten_mesh_shape_size - 1),
+                          mesh_beta=[min(self.mesh_beta)] * (flatten_mesh_shape_size - 1),
+                          init_process_group=self.init_process_group,
+                          need_flatten=False)
 
     def _global_rank_to_logical_rank_map(self, tensor, index_list):
         '''
