@@ -80,7 +80,7 @@ class CachedParamMgr(torch.nn.Module):
         if self._evict_strategy == EvictionStrategy.LFU:
             # find the minimal evict_num freq entries in cached_idx_map
             evict_gpu_row_idxs = torch.argsort(self.freq_cnter[self.cached_idx_map])[:evict_num]
-            return self.cached_idx_map[evict_gpu_row_idxs]
+            return evict_gpu_row_idxs
         elif self._evict_strategy == EvictionStrategy.DATASET:
             # cached_idx_map itself implies the priority of eviction.
             # The value of self.cached_idx_map represents cpu_row_idx.
@@ -314,10 +314,10 @@ class CachedParamMgr(torch.nn.Module):
                     # another mask method.
                     # set freq_cnter[invalid_idxs] to max
                     # so those idxs will be sorted to end, therefore not being chosen as victim
-                    backup_cnter = self.freq_cnter[mask_cpu_row_idx].clone()
-                    self.freq_cnter.index_fill_(0, invalid_idxs, torch.max(self.freq_cnter))
+                    backup_cnter = self.freq_cnter[invalid_idxs].clone()
+                    self.freq_cnter.index_fill_(0, invalid_idxs, torch.max(self.freq_cnter) + 1) # or can we use a confident max value? 
                     evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
-                    self.freq_cnter.index_fill_(0,invalid_idxs,backup_cnter)
+                    self.freq_cnter.index_copy_(0,invalid_idxs,backup_cnter)
                     
                 evict_info = self.cached_idx_map[evict_gpu_row_idxs]
 
