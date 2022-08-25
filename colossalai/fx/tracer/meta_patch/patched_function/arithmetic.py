@@ -15,7 +15,7 @@ def torch_matmul(input, other, *, out=None):
         shape = (input.size(0), other.size(1))
     elif d1 == 1 and d2 == 2:
         shape = (other.size(1),)
-    elif d1 == 2 and d1 == 1:
+    elif d1 == 2 and d2 == 1:
         shape = (input.size(0),)
     else:
         max_length = max(input.dim(), other.dim())
