@@ -167,6 +167,7 @@ class CachedParamMgr(torch.nn.Module):
             warmup_ratio (float): the amount of chunks preloaded in cuda cache
         """
         if ids_freq_mapping is not None:
+            ids_freq_mapping = torch.tensor(ids_freq_mapping)
             tmp_idx = torch.argsort(ids_freq_mapping, descending=True)
             sorted_idx = torch.argsort(tmp_idx)
             self.idx_map.data.copy_(sorted_idx)
