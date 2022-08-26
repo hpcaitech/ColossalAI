@@ -159,6 +159,9 @@ def test_lfu_strategy():
     offsets = torch.tensor([0],device="cuda:0")
 
     # prepare frequency learning info:
+    Bag.forward(torch.tensor([2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
     Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
     Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
     Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
@@ -182,7 +185,7 @@ def test_lfu_strategy():
 
     assert torch.allclose(torch.Tensor(Bag.cache_weight_mgr.num_hits_history[-6:]), torch.Tensor([3, 0, 1, 0, 1, 1])), \
         "LFU strategy behavior failed"
-
+    
 def gather_tensor(tensor, rank, world_size):
     gather_list = []
     if rank == 0:
@@ -273,6 +276,6 @@ def test_parallel_freq_aware_embed(world_size):
 
 
 if __name__ == '__main__':
-    test_freq_aware_embed(True)
+    # test_freq_aware_embed(True)
     # test_parallel_freq_aware_embed(2)
-    # test_lfu_strategy()
+    test_lfu_strategy()
