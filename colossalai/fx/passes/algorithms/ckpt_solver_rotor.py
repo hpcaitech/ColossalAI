@@ -73,7 +73,7 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
     return (opt, what)
 
 
-def _rec(chain, lmin, lmax, cmem, opt_table):
+def _rec(chain: Chain, lmin, lmax, cmem, opt_table):
     """ chain : the class describing the AC graph
         lmin : index of the first forward to execute
         lmax : upper bound index of the last forward to execute (not included)
