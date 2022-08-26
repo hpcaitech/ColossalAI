@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from colossalai.tensor.sharding_spec import ShardingSpec
-from typing import Dict, List
+from typing import Dict, List, Union, Tuple
 from torch.fx.node import Node
 
 __all__ = ['ShardingStrategy', 'StrategiesVector']
@@ -25,12 +25,15 @@ class ShardingStrategy:
     '''
 
     name: str
-    output_sharding_spec: ShardingSpec
+    # TODO: output of fx node,such as torch.var_mean, could be a tuple, so we cannot simply suppose it is a tensor.
+    output_sharding_spec: Union[ShardingSpec, Tuple[ShardingSpec]]
     compute_cost: float = 0.
     communication_cost: float = 0.
     memory_cost: float = 0.
-    resharding_costs: Dict[int, List[float]] = None
-    input_shardings: ShardingSpec = None
+    resharding_costs: Dict[Node, List[float]] = None
+    # sometimes the input node could be a tuple of nodes, but most of op won't accept tuple of node as input.
+    # Therefore, we could process them at the specific op(operator.getitem)
+    input_shardings: List[ShardingSpec] = None
 
 
 class StrategiesVector(list):
@@ -46,6 +49,7 @@ class StrategiesVector(list):
         super().__init__()
         self.node = node
         # fetch its input and output nodes
+        # TODO: placeholder input nodes
         self.predecessor_nodes = list(node._input_nodes.keys())
         self.successor_nodes = list(node.users.keys())
 
