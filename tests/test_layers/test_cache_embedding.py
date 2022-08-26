@@ -12,7 +12,7 @@ from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.tensor import ColoParameter, ProcessGroup, ShardSpec, ComputePattern, ComputeSpec, \
     ColoTensor, ColoTensorSpec
-from colossalai.nn.parallel.layers import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag
+from colossalai.nn.parallel.layers import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag, EvictionStrategy
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
@@ -41,10 +41,11 @@ def synthesize_1d_sparse_feature(
     return indices, offsets
 
 
+@pytest.mark.skip
 def test_cachemgr():
     model = torch.nn.EmbeddingBag(10000, 128)
     # 10 chunks, 5 in cuda
-    mgr = CachedParamMgr(model.weight, 5)
+    mgr = CachedParamMgr(model.weight.detach(), 5)
     assert mgr.cuda_row_num == 5
 
     mgr._admit(1)
@@ -74,8 +75,8 @@ def test_reorder_with_freq():
     chunk_size = 1
     num_chunk = 5
 
-    idx_map = np.random.randint(10000, size=(num_embed,))
-    sorted_idx = np.flipud(np.argsort(idx_map)).tolist()
+    idx_map = torch.randint(10000, size=(num_embed,))
+    sorted_idx = torch.argsort(idx_map, descending=True).tolist()
     chunkid, offset_in_chunk = [], []
     for i in range(num_embed):
         idx = sorted_idx.index(i)
@@ -98,14 +99,17 @@ def test_reorder_with_freq():
         f"offset in chunk: {offset_in_chunk}, mgr: {mgr_offsets}"
 
 
-def test_freq_aware_embed():
+@pytest.mark.parametrize('use_LFU', [True, False])
+def test_freq_aware_embed(use_LFU: bool):
     device = torch.device('cuda', 0)
+    evict_strategy = EvictionStrategy.LFU if use_LFU else EvictionStrategy.DATASET
     model = FreqAwareEmbeddingBag(NUM_EMBED,
                                   EMBED_DIM,
                                   mode='mean',
                                   include_last_offset=True,
                                   cuda_row_num=BATCH_SIZE * 2,
-                                  ids_freq_mapping=None).to(device)
+                                  ids_freq_mapping=None,
+                                  evict_strategy=evict_strategy).to(device)
 
     assert model.weight.shape[0] == NUM_EMBED
     ref_model = torch.nn.EmbeddingBag.from_pretrained(model.weight.detach().to(device),
@@ -140,7 +144,48 @@ def test_freq_aware_embed():
     assert torch.allclose(model_weight, ref_weight), \
         f"model weight: {model_weight[10:18, :8]}, reference: {ref_weight[10:18, :8]}"
 
+def test_lfu_strategy():
+    # minimal test to check behavior
+    Bag = FreqAwareEmbeddingBag(
+        5,
+        5,
+        cuda_row_num=3,
+        buffer_size=0,
+        pin_weight=True,
+        warmup_ratio=0.0,
+        evict_strategy=EvictionStrategy.LFU
+    )
 
+    offsets = torch.tensor([0],device="cuda:0")
+
+    # prepare frequency learning info:
+    Bag.forward(torch.tensor([2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+
+    # check strategy
+    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([3],device="cuda:0"),offsets) # miss, evict 1
+    Bag.forward(torch.tensor([2],device="cuda:0"),offsets) # hit
+    Bag.forward(torch.tensor([4],device="cuda:0"),offsets) # miss, evict 1
+    Bag.forward(torch.tensor([2],device="cuda:0"),offsets) # hit 
+    Bag.forward(torch.tensor([0],device="cuda:0"),offsets) # hit
+
+    assert torch.allclose(torch.Tensor(Bag.cache_weight_mgr.num_hits_history[-6:]), torch.Tensor([3, 0, 1, 0, 1, 1])), \
+        "LFU strategy behavior failed"
+    
 def gather_tensor(tensor, rank, world_size):
     gather_list = []
     if rank == 0:
@@ -231,6 +276,6 @@ def test_parallel_freq_aware_embed(world_size):
 
 
 if __name__ == '__main__':
-    # test_cachemgr()
-    # test_freq_aware_embed()
-    test_parallel_freq_aware_embed(2)
+    # test_freq_aware_embed(True)
+    # test_parallel_freq_aware_embed(2)
+    test_lfu_strategy()
