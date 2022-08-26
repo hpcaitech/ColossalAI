@@ -403,8 +403,7 @@ class Worker:
                     target_microbatch_id = self.backward_times
 
                 target_key = UniqueKey(target_microbatch_id, target_phase)
-                # if self.pp_rank == 3:
-                #     print(f"I am rank_{self.pp_rank}, target_key: {target_key}, work_list: {self.work_list.keys()}")
+
                 if target_key in self.work_list:
                     select_work_list_key = target_key
 
@@ -422,10 +421,10 @@ class Worker:
         is_first_stage = (self.pp_rank == 0)
         is_last_stage = (self.pp_rank == self.actual_stage_num - 1)
 
-        if self.pp_rank == 3:
-            print(
-                f'I am rank_{self.pp_rank} microbatch_id : {microbatch_id} {phase} {self._get_store_len()} | {self.outstanding} {self.outstanding_range}'
-            )
+        # if self.pp_rank == 3:
+        #     print(
+        #         f'I am rank_{self.pp_rank} microbatch_id : {microbatch_id} {phase} {self._get_store_len()} | {self.outstanding} {self.outstanding_range}'
+        #     )
 
         if phase == Phase.FORWARD:
             # remind its consumer to get data before forward
