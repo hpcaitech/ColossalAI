@@ -97,14 +97,14 @@ def _rec(chain, lmin, lmax, cmem, opt_table):
 
     if what[cmem][lmin][lmax][0]:
         sequence.insert(ForwardEnable(lmin))
-        sequence.insert_sequence(_rec(chain, lmin + 1, lmax, cmem - chain.cbweigth[lmin + 1], opt_table))
+        sequence.insert_sequence(_rec(chain, lmin + 1, lmax, cmem - chain.cbweight[lmin + 1], opt_table))
         sequence.insert(Backward(lmin))
     else:
         j = what[cmem][lmin][lmax][1]
         sequence.insert(ForwardCheck(lmin))
         for k in range(lmin + 1, j):
             sequence.insert(ForwardNograd(k))
-        sequence.insert_sequence(_rec(chain, j, lmax, cmem - chain.cweigth[j], opt_table))
+        sequence.insert_sequence(_rec(chain, j, lmax, cmem - chain.cweight[j], opt_table))
         sequence.insert_sequence(_rec(chain, lmin, j - 1, cmem, opt_table))
     return sequence
 
