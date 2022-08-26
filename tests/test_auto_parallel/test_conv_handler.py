@@ -70,7 +70,9 @@ def test_conv_handler():
             sharding_spec = ShardingSpec(device_mesh=device_mesh,
                                          entire_shape=entire_shape,
                                          sharding_sequence=sharding_sequence)
-            strategies_vector_for_input.append(sharding_spec)
+            strategy_name = str(sharding_spec.sharding_sequence)
+            sharding_strategy = ShardingStrategy(name=strategy_name, output_sharding_spec=sharding_spec)
+            strategies_vector_for_input.append(sharding_strategy)
     setattr(nodes[1], 'strategies_vector', strategies_vector_for_input)
 
     # generate conv strategy

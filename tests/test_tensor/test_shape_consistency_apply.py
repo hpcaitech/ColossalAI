@@ -64,7 +64,6 @@ def check_apply(rank, world_size, port):
 
     tensor_to_comm.sharding_spec = sharding_spec_source
     shape_consistency_manager.apply(tensor_to_comm, sharding_spec_target)
-    print(tensor_to_comm)
     assert tensor_to_comm.equal(tensor_to_check)
     assert str(tensor_to_comm.sharding_spec.sharding_sequence) == str(sharding_spec_target.sharding_sequence)
 
