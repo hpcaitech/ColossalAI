@@ -196,7 +196,7 @@ class CachedParamMgr(torch.nn.Module):
             self.idx_map.data.copy_(sorted_idx)
             #initialize freq_cnter if use LFU
             if self._evict_strategy == EvictionStrategy.LFU:
-                self.freq_cnter[:-1], _ = torch.sort(ids_freq_mapping)
+                self.freq_cnter[:-1], _ = torch.sort(ids_freq_mapping, descending=True)
 
         preload_row_num = min(int(np.ceil(self.cuda_row_num * warmup_ratio)), self.num_embeddings)
         if preload_row_num > 0:

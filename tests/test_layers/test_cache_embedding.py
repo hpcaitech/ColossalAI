@@ -153,29 +153,31 @@ def test_lfu_strategy():
         buffer_size=0,
         pin_weight=True,
         warmup_ratio=0.0,
+        ids_freq_mapping=torch.tensor([2000,500,1000,3,2]),
         evict_strategy=EvictionStrategy.LFU
     )
 
     offsets = torch.tensor([0],device="cuda:0")
 
     # prepare frequency learning info:
-    Bag.forward(torch.tensor([2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([1,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
-    Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([1,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0,2],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
+    # Bag.forward(torch.tensor([0],device="cuda:0"),offsets)
 
     # check strategy
+    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
     Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
     Bag.forward(torch.tensor([3],device="cuda:0"),offsets) # miss, evict 1
     Bag.forward(torch.tensor([2],device="cuda:0"),offsets) # hit
