@@ -8,12 +8,12 @@ from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 def run_master(args):
     torch.manual_seed(100)
 
+    epoch = args.epoch
     device = args.device
     stage_num = args.world_size
     chunk = args.chunk
     num_microbatches = args.num_microbatches
     actual_stage_num = stage_num * chunk
-    use_interleave = args.use_interleave
     use_checkpoint = args.use_checkpoint
 
     sample_num = 1024
@@ -33,10 +33,10 @@ def run_master(args):
                                     num_microbatches=num_microbatches,
                                     device=device,
                                     chunk=chunk,
-                                    use_interleave=use_interleave,
                                     checkpoint=use_checkpoint)
 
-    _ = engine.forward_backward(input_sample, forward_only=False)
+    for _ in range(epoch):
+        _ = engine.forward_backward(input_sample, forward_only=False)
 
 
 if __name__ == "__main__":

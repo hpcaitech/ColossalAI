@@ -39,11 +39,11 @@ class RpcTestModel(nn.Module):
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--epoch', type=int, default=1)
     parser.add_argument('--world_size', type=int, default=2)
     parser.add_argument('--num_microbatches', type=int, default=2)
     parser.add_argument('--chunk', type=int, default=1)
     parser.add_argument('--use_checkpoint', action='store_true')
-    parser.add_argument('--use_interleave', action='store_true')
     parser.add_argument('--optimizer', type=str, choices=['SGD', 'Adam', 'RMSprop'], default='SGD')
     parser.add_argument('--device', type=str, choices=['cpu', 'cuda'], default='cuda')
     parser.add_argument('--master_addr', type=str, default='localhost')

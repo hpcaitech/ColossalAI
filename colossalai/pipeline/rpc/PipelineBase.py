@@ -138,37 +138,32 @@ class Worker:
         self.pp_rank = pp_rank
         self.actual_stage_num = actual_stage_num
         self.num_microbatches = num_microbatches
+        self.checkpoint = checkpoint
+        self.device = device
+        self.outstanding_range = self._initialize_outstanding_range(pp_rank, actual_stage_num, use_1F1B)
 
-        if use_1F1B:
-            if pp_rank == actual_stage_num - 1:
-                self.outstanding_range = (0, 1)
-            else:
-                self.outstanding_range = (actual_stage_num, actual_stage_num)
-        else:
-            self.outstanding_range = None
-
+        # variable and const for context managment
         self.outstanding = 0
         self.forward_times = 0
         self.backward_times = 0
-        self.checkpoint = checkpoint
-        self.device = device
+        self.reset_key = UniqueKey(0, Phase.FORWARD)
 
-        self.future_devices = None if device is None or device == 'cpu' else [device]
-
+        # rref of other workers
         self.pp_rank_to_worker_rref: Dict[int, PyRRef] = None
+
+        # topology info
         self.producer_stage_ids: List[int] = None
         self.consumer_stage_ids: List[int] = None
 
-        # module
+        # module partitions
         self.module_partition = module_partition.to(device)
 
+        # container to maintain loop
         self.microbatch_id_to_backward_cache: Dict[int, BackwardCache] = dict()
-
         self.work_list: Dict[UniqueKey, WorkItem] = dict()
         self.output_list: Dict[UniqueKey, WorkItem] = dict()
 
-        # Why must a Lock instead of RLock ?
-        # Because RLock cannot be pickled
+        # lock for the list
         self.work_list_condition_lock = threading.Condition(threading.Lock())
         self.output_list_condition_lock = threading.Condition(threading.Lock())
 
@@ -178,15 +173,14 @@ class Worker:
     def _get_future_by_device(self):
         return torch.futures.Future(devices=None if self.device in (None, 'cpu') else [self.device])
 
-    def _is_steady(self, microbatch_id: int, phase: Phase) -> bool:
-        pp_rank = self.pp_rank
-        num_microbatches = self.num_microbatches
-        actual_stage_num = self.actual_stage_num
-
-        if phase == Phase.FORWARD:
-            return microbatch_id >= actual_stage_num
-        elif phase == Phase.BACKWARD:
-            return pp_rank <= microbatch_id < num_microbatches - actual_stage_num + pp_rank
+    def _initialize_outstanding_range(self, pp_rank: int, actual_stage_num: int, use_1F1B: bool) -> Tuple[int]:
+        outstanding_range = None
+        if use_1F1B:
+            if pp_rank == actual_stage_num - 1:
+                outstanding_range = (0, 1)
+            else:
+                outstanding_range = (actual_stage_num, actual_stage_num)
+        return outstanding_range
 
     def sync_global_worker_rrefs(self, pp_rank_to_worker_rref: Dict[int, PyRRef]) -> None:
         assert self.pp_rank_to_worker_rref is None, f"in rank {self.pp_rank}, worker has sync global workers rrefs"
@@ -216,6 +210,13 @@ class Worker:
 
     def get_parameter_gradients(self) -> List[torch.Tensor]:
         return [p.grad for p in self.module_partition.parameters()]
+
+    def reset_pp_context(self):
+        self.forward_times = 0
+        self.backward_times = 0
+        self.outstanding = 0
+        self.microbatch_id_to_backward_cache.clear()
+        self.output_list.clear()
 
     # just for first pp_rank
     def set_input(self, microbatch_id: int, microbatch: Tuple[Any], forward_only: bool):
@@ -259,7 +260,6 @@ class Worker:
         assert producer_num > 0, "only stage that has producers can subscribe producers"
 
         stage_id = self.pp_rank
-
         subscribe_forward_futures: List[Future] = [None] * producer_num
         output = self._get_future_by_device()
 
@@ -277,7 +277,6 @@ class Worker:
             producer_args = subscribe_forward_futures[i].wait()
             args.extend(producer_args)
 
-        # TODO : not only args
         work_item_from_producer = WorkItem(stage_id, Phase.FORWARD, args, {}, output, microbatch_id, None,
                                            self.num_microbatches, forward_only)
 
@@ -300,9 +299,7 @@ class Worker:
         consumer_num = len(self.consumer_stage_ids)
         assert consumer_num > 0, "only stage that has consumers can subscribe comsumers"
 
-        # TODO : is this right?
         stage_id = self.pp_rank
-
         subscribe_backward_futures: List[Future] = [None] * consumer_num
         output = self._get_future_by_device()
 
@@ -358,6 +355,11 @@ class Worker:
             while len(self.work_list) == 0:
                 self.work_list_condition_lock.wait()
 
+            # each stage must do Key(microbatch_id=0, phase=FORWARD) first
+            # before doing the operation, reset the context first
+            if self.reset_key in self.work_list:
+                self.reset_pp_context()
+
             # execute backward first (if backward phase in work_list)
             pp_rank = self.pp_rank
             actual_stage_num = self.actual_stage_num
@@ -401,6 +403,8 @@ class Worker:
                     target_microbatch_id = self.backward_times
 
                 target_key = UniqueKey(target_microbatch_id, target_phase)
+                # if self.pp_rank == 3:
+                #     print(f"I am rank_{self.pp_rank}, target_key: {target_key}, work_list: {self.work_list.keys()}")
                 if target_key in self.work_list:
                     select_work_list_key = target_key
 
@@ -552,9 +556,6 @@ class Worker:
         self.optimizer.zero_grad()
 
 
-# TODO
-# 1. chunk
-# 2. checkpoint
 class PipelineEngineBase(ABC, nn.Module):
 
     def __init__(self,
@@ -562,19 +563,18 @@ class PipelineEngineBase(ABC, nn.Module):
                  stage_num,
                  num_microbatches,
                  device: str,
-                 outstanding_range=None,
+                 use_1F1B=False,
                  chunk: int = 1,
-                 use_interleave: bool = False,
                  checkpoint: bool = False) -> None:
         super().__init__()
         self.module_partitions: List[nn.Module] = module_partitions
         self.chunk = chunk
         self.num_microbatches = num_microbatches
         self.device = device
-        self.outstanding_range = outstanding_range
+        self.use_1F1B = use_1F1B
         self.stage_num = stage_num
         self.checkpoint = checkpoint
-        self.use_interleave = use_interleave
+        self.use_interleave = chunk > 1
 
         self.pp_rank_to_worker_rref: Dict[int, PyRRef] = dict()
 
@@ -610,7 +610,7 @@ class PipelineEngineBase(ABC, nn.Module):
     def _init_worker(self):
         actual_stage_num = self._get_actual_stage_num()
 
-        outstanding_range = self.outstanding_range
+        use_1F1B = self.use_1F1B
         checkpoint = self.checkpoint
         num_microbatches = self.num_microbatches
         device = self.device
@@ -623,8 +623,7 @@ class PipelineEngineBase(ABC, nn.Module):
             self.pp_rank_to_worker_rref[pp_rank] = rpc.remote(rpc_worker_id,
                                                               Worker,
                                                               args=(module_partition, pp_rank, actual_stage_num,
-                                                                    num_microbatches, outstanding_range, device,
-                                                                    checkpoint))
+                                                                    num_microbatches, use_1F1B, device, checkpoint))
 
         # let each worker know global worker rref (include itself)
         for pp_rank in range(actual_stage_num):
@@ -666,9 +665,10 @@ class PipelineEngineBase(ABC, nn.Module):
         for microbatch_id in microbatch_iter:
             microbatch = batch[microbatch_size * microbatch_id:microbatch_size * (microbatch_id + 1)]
 
-            # control data input
+            # control data input speed
+            # to prevent exceed of wait limitations
             if microbatch_id >= actual_stage_num:
-                if forward_only:
+                if forward_only or not self.use_1F1B:
                     ret_future[microbatch_id - actual_stage_num].wait()
                 else:
                     key = UniqueKey(microbatch_id - actual_stage_num, Phase.BACKWARD)
@@ -725,11 +725,9 @@ class FillDrainPipelineEngine(PipelineEngineBase):
                  num_microbatches: int,
                  device: str,
                  chunk: int = 1,
-                 use_interleave: bool = False,
                  checkpoint: bool = False) -> None:
-        outstanding_range = None
-        super().__init__(module_partitions, stage_num, num_microbatches, device, outstanding_range, chunk,
-                         use_interleave, checkpoint)
+        use_1F1B = False
+        super().__init__(module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk, checkpoint)
 
 
 class OneFOneBPipelineEngine(PipelineEngineBase):
@@ -740,8 +738,6 @@ class OneFOneBPipelineEngine(PipelineEngineBase):
                  num_microbatches: int,
                  device: str,
                  chunk: int = 1,
-                 use_interleave: bool = False,
                  checkpoint: bool = False) -> None:
         use_1F1B = True
-        super().__init__(module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk, use_interleave,
-                         checkpoint)
+        super().__init__(module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk, checkpoint)

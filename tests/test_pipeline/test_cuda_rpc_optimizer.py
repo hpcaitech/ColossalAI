@@ -15,7 +15,6 @@ def run_master(args):
     stage_num = args.world_size
     chunk = args.chunk
     actual_stage_num = stage_num * chunk
-    use_interleave = args.use_interleave
     use_checkpoint = args.use_checkpoint
     num_microbatches = args.num_microbatches
     optimizer_class = globals()[args.optimizer]
@@ -39,7 +38,6 @@ def run_master(args):
                                     num_microbatches=num_microbatches,
                                     device=device,
                                     chunk=chunk,
-                                    use_interleave=use_interleave,
                                     checkpoint=use_checkpoint)
 
     engine.initialize_optimizer(optimizer_class, lr=lr)
