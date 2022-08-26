@@ -83,7 +83,7 @@ def test_conv_handler():
                                shape_consistency_manager=shape_consistency_manager)
     conv_handler.register_strategy()
 
-    # ['S0S1 = S0R x RS1', 'S1S0 = S1R x RS0', 'S0R = S0S1 x S1R', 'S1R = S1S0 x S0R', 'RS1 = RS0 x S0S1', 'RS0 = RS1 x S1S0', 'RS0 = RR x RS0', 'RS1 = RR x RS1', 'RR = RR x RR']
+    # ['S0S1 = S0R x RS1', 'S1S0 = S1R x RS0', 'S0R = S0R x RR', 'S1R = S1R x RR', 'S0R = S0S1 x S1R', 'S1R = S1S0 x S0R', 'RS1 = RS0 x S0S1', 'RS0 = RS1 x S1S0', 'RR = RS0 x S0R', 'RR = RS1 x S1R', 'RS0 = RR x RS0', 'RS1 = RR x RS1', 'RR = RR x RR', 'S01R = S01R x RR', 'RR = RS01 x S01R']
     strategy_name_list = [strategy.name for strategy in conv_handler.strategies_vector]
 
     # SS = SR x RS
@@ -104,6 +104,16 @@ def test_conv_handler():
 
     # RR= RR x RR
     assert 'RR = RR x RR' in strategy_name_list
+
+    # SR = SR x RR
+    assert 'S0R = S0R x RR' in strategy_name_list
+    assert 'S1R = S1R x RR' in strategy_name_list
+    assert 'S01R = S01R x RR' in strategy_name_list
+
+    # RR = RS x SR
+    assert 'RR = RS0 x S0R' in strategy_name_list
+    assert 'RR = RS1 x S1R' in strategy_name_list
+    assert 'RR = RS01 x S01R' in strategy_name_list
 
 
 if __name__ == '__main__':
