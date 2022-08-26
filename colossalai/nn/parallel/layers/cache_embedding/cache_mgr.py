@@ -46,7 +46,6 @@ class CachedParamMgr(torch.nn.Module):
         self.cuda_row_num = cuda_row_num
         self._cuda_available_row_num = self.cuda_row_num
         self.pin_weight = pin_weight
-
         self.elem_size_in_byte = weight.element_size()
 
         # weight configure
