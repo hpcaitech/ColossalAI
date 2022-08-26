@@ -84,14 +84,6 @@ class StrategiesConstructor:
             strategies_vector.remove(strategy)
 
     def build_strategies_and_cost(self):
-        # graph():
-        # %x : torch.Tensor [#users=1] = placeholder[target=x]
-        # %conv_weight : [#users=0] = get_attr[target=conv.weight]
-        # %mul : [#users=2] = call_function[target=operator.mul](args = (%x, 2), kwargs = {})
-        # %dim : [#users=0] = call_method[target=dim](args = (%mul,), kwargs = {})
-        # %conv : [#users=1] = call_module[target=conv](args = (%mul,), kwargs = {})
-        # return conv
-
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
             # placeholder node
