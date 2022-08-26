@@ -1,13 +1,7 @@
-import os
-import argparse
-
 import torch
 from torch import nn
-import torch.multiprocessing as mp
-import torch.distributed.rpc as rpc
 from torch import autograd
 from torch.optim import SGD, Adam, RMSprop, Optimizer
-from colorama import Back, Style
 
 from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from colossalai.testing import assert_close
@@ -21,7 +15,6 @@ def run_master(args):
     stage_num = args.world_size
     chunk = args.chunk
     actual_stage_num = stage_num * chunk
-    use_interleave = args.use_interleave
     use_checkpoint = args.use_checkpoint
     num_microbatches = args.num_microbatches
     optimizer_class = globals()[args.optimizer]
@@ -45,7 +38,6 @@ def run_master(args):
                                     num_microbatches=num_microbatches,
                                     device=device,
                                     chunk=chunk,
-                                    use_interleave=use_interleave,
                                     checkpoint=use_checkpoint)
 
     engine.initialize_optimizer(optimizer_class, lr=lr)
