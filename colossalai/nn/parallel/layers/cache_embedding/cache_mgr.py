@@ -65,7 +65,7 @@ class CachedParamMgr(torch.nn.Module):
                                  persistent=False)
             self.freq_cnter[-1] = sys.maxsize
 
-    def _update_freq_cnter(self, cpu_row_idxs: torch.Tensor) -> None:
+    def _update_freq_cnter(self, cpu_row_idxs_original: torch.Tensor) -> None:
         """_update_freq_cnter 
 
         Update the frequency valude w.r.t. the cpu_row_ids in self.freq_cnter.
@@ -74,7 +74,8 @@ class CachedParamMgr(torch.nn.Module):
             cpu_row_idxs (torch.Tensor): a list of indices of cpu weight.
         """
         if self._evict_strategy == EvictionStrategy.LFU:
-            self.freq_cnter[cpu_row_idxs] += 1
+            add_num = torch.bincount(cpu_row_idxs_original)
+            self.freq_cnter[:add_num.shape[0]] += add_num
 
     def _find_evict_gpu_idxs(self, evict_num: int) -> torch.Tensor:
         """_find_evict_gpu_idxs 
@@ -262,7 +263,8 @@ class CachedParamMgr(torch.nn.Module):
             torch.Tensor: indices on the cuda_cached_weight.
         """
         with record_function("(zhg) get unique indices"):
-            cpu_row_idxs = torch.unique(self.idx_map.index_select(0, ids))
+            cpu_row_idxs_original = self.idx_map.index_select(0, ids)
+            cpu_row_idxs = torch.unique(cpu_row_idxs_original)
             
             assert len(cpu_row_idxs) <= self.cuda_row_num, \
                 f"the input indices pull {len(cpu_row_idxs)} chunks, " \
@@ -287,8 +289,7 @@ class CachedParamMgr(torch.nn.Module):
             gpu_row_idxs = self._id_to_cached_cuda_id(ids)
             
         # update for LFU.
-        # TODO: add one for each idx, even some are the same
-        self._update_freq_cnter(cpu_row_idxs)
+        self._update_freq_cnter(cpu_row_idxs_original)
         return gpu_row_idxs
 
     def _reset_comm_stats(self):
