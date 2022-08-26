@@ -19,10 +19,10 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
                            (False, j) if the optimal choice is a leaf checkpoint of length j
     The computation uses dynamic programming"""
 
-    fw = chain.fweigth + [0]    ## forward time
-    bw = chain.bweigth    ## backward time, not used
-    cw = chain.cweigth + [0]    ## size of x (and of y)
-    cbw = chain.cbweigth + [0]    ## size of xbar
+    fw = chain.fweight + [0]    ## forward time
+    bw = chain.bweight    ## backward time, not used
+    cw = chain.cweight + [0]    ## size of x (and of y)
+    cbw = chain.cbweight + [0]    ## size of xbar
     fwd_tmp = chain.fwd_tmp + [0]
     bwd_tmp = chain.bwd_tmp + [0]
 
@@ -193,6 +193,6 @@ def solver_rotor(gm: GraphModule, data: torch.Tensor, mem_limit: int, mem_slots:
     MetaInfoProp(gm).run(data)
     chain: Chain = _construct_chain(node_dict, data, mem_unit)
     opt_table = _compute_table(chain, mem_slots)
-    sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweigth[0], opt_table)
+    sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
     _annotate_from_sequence(sequence, node_dict)
     return gm

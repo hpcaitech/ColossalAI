@@ -1,10 +1,10 @@
 class Chain:
 
     def __init__(self, fw, bw, cw, cbw, ftmp, btmp, check=True):
-        self.fweigth = fw
-        self.bweigth = bw
-        self.cweigth = cw
-        self.cbweigth = cbw
+        self.fweight = fw
+        self.bweight = bw
+        self.cweight = cw
+        self.cbweight = cbw
         self.fwd_tmp = ftmp
         self.bwd_tmp = btmp
         self.length = len(fw)
@@ -12,17 +12,17 @@ class Chain:
             raise AttributeError("In Chain, input lists do not have consistent lengths")
 
     def check_lengths(self):
-        return ((len(self.fweigth) == self.length) and (len(self.bweigth) == self.length + 1)
-                and (len(self.cweigth) == self.length + 1) and (len(self.fwd_tmp) == self.length)
-                and (len(self.bwd_tmp) == self.length + 1) and (len(self.cbweigth) == self.length + 1))
+        return ((len(self.fweight) == self.length) and (len(self.bweight) == self.length + 1)
+                and (len(self.cweight) == self.length + 1) and (len(self.fwd_tmp) == self.length)
+                and (len(self.bwd_tmp) == self.length + 1) and (len(self.cbweight) == self.length + 1))
 
     def __repr__(self):
         chain_list = []
         for i in range(self.length):
             chain_list.append(
-                (self.fweigth[i], self.bweigth[i], self.cweigth[i], self.cbweigth[i], self.fwd_tmp[i], self.bwd_tmp[i]))
+                (self.fweight[i], self.bweight[i], self.cweight[i], self.cbweight[i], self.fwd_tmp[i], self.bwd_tmp[i]))
         i = self.length
-        chain_list.append((None, self.bweigth[i], self.cweigth[i], self.cbweigth[i], None, self.bwd_tmp[i]))
+        chain_list.append((None, self.bweight[i], self.cweight[i], self.cbweight[i], None, self.bwd_tmp[i]))
         return chain_list.__repr__()
 
 
@@ -204,26 +204,26 @@ class Sequence:
     def get_makespan(self, chain):
         return sum(op.cost(chain) for op in self.list_operations())
 
-    def withoutSuffix(self):
+    def without_suffix(self):
         ops = self.list_operations()
-        endOfFirstPhase = [i for i in range(len(ops)) if type(ops[i]) is Loss][0]
+        end_of_first_phase = [i for i in range(len(ops)) if type(ops[i]) is Loss][0]
         try:
-            lastIndex = max(i for i in range(endOfFirstPhase) if not type(ops[i]) is ForwardEnable)
+            last_idx = max(i for i in range(end_of_first_phase) if not type(ops[i]) is ForwardEnable)
         except ValueError:
-            lastIndex = -1
-        if lastIndex == endOfFirstPhase - 1:
+            last_idx = -1
+        if last_idx == end_of_first_phase - 1:
             return (self, None)
-        chainLength = ops[endOfFirstPhase -
-                          1].index    ## Some assumption here about the sequence (finishes with Forward_L
-        startOfFwdEnableChain = ops[lastIndex + 1].index    ## And starts with B_L), but should be fine in practice
-        result = Sequence(Function("Strip", self.function.name, *self.function.args, startOfFwdEnableChain))
-        for i in range(lastIndex + 1):
+        chain_length = ops[end_of_first_phase -
+                           1].index    ## Some assumption here about the sequence (finishes with Forward_L
+        start_of_fwd_enable_chain = ops[last_idx + 1].index    ## And starts with B_L), but should be fine in practice
+        result = Sequence(Function("Strip", self.function.name, *self.function.args, start_of_fwd_enable_chain))
+        for i in range(last_idx + 1):
             result.insert(ops[i])
         result.insert(Loss())
-        for i in range(chainLength, startOfFwdEnableChain - 1, -1):
-            position = endOfFirstPhase + 1 + (chainLength - i)
+        for i in range(chain_length, start_of_fwd_enable_chain - 1, -1):
+            position = end_of_first_phase + 1 + (chain_length - i)
             assert type(ops[position]) is Backward
             assert ops[position].index == i
-        for i in range(endOfFirstPhase + 1 + 1 + chainLength - startOfFwdEnableChain, len(ops)):
+        for i in range(end_of_first_phase + 1 + 1 + chain_length - start_of_fwd_enable_chain, len(ops)):
             result.insert(ops[i])
-        return (result, startOfFwdEnableChain)
+        return (result, start_of_fwd_enable_chain)
