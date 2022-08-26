@@ -68,6 +68,21 @@ class StrategiesConstructor:
                 resharding_costs[input_node].append(resharding_cost)
         return resharding_costs
 
+    def remove_duplicated_strategy(self, strategies_vector):
+        '''
+        In build_strategies_and_cost method, we may produce some duplicated strategies.
+        In this method, we will remove the duplicated strategies depending on the strategies name.
+        '''
+        name_checklist = []
+        remove_list = []
+        for strategy in strategies_vector:
+            if strategy.name not in name_checklist:
+                name_checklist.append(strategy.name)
+            else:
+                remove_list.append(strategy)
+        for strategy in remove_list:
+            strategies_vector.remove(strategy)
+
     def build_strategies_and_cost(self):
         # graph():
         # %x : torch.Tensor [#users=1] = placeholder[target=x]
@@ -359,6 +374,7 @@ class StrategiesConstructor:
                                                                    resharding_costs=resharding_costs)
                     strategies_vector.append(sharding_strategy_attribute)
 
+            self.remove_duplicated_strategy(strategies_vector)
             setattr(node, 'strategies_vector', strategies_vector)
             self.leaf_strategies.append(strategies_vector)
             self.strategy_map[node] = strategies_vector
