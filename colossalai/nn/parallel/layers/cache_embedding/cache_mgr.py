@@ -5,7 +5,7 @@ from typing import List, Optional
 from contexttimer import Timer
 from .copyer import LimitBuffIndexCopyer
 from enum import Enum
-
+import sys
 
 class EvictionStrategy(Enum):
     LFU = 1
@@ -51,11 +51,19 @@ class CachedParamMgr(torch.nn.Module):
             # cpu_row_idx -> frequency, freq of the cpu rows.
             # evict the minimal freq value row in cuda cache.
             
-            # the last element match to masked cache_idx, and should ALWAYS have MAX + 1 value.
+            '''
+            during cache eviction, if a cached_idx_map element maps to a masked cpu_idx, we re-map that element to -1 temporary.
+            also, disabled cached_idx_map element maps to -1 by default.
+            freq_cnter[-1], the last element, should ALWAYS be MAX VALUE so those masked or disabled idxs will be argsorted to end,
+            not being chosen to evict.
+            
+            ZH: freq_cnter的最后一位设为了最大值, 不该被选为换出的cache idx都是-1, 指向这个最大值, 所以排序时在队尾, 不会被选中换出
+            '''
             self.register_buffer("freq_cnter",
                                  torch.empty(self.num_embeddings + 1, device=torch.cuda.current_device(),
                                              dtype=torch.long).fill_(0),
                                  persistent=False)
+            self.freq_cnter[-1] = sys.maxsize
 
     def _update_freq_cnter(self, cpu_row_idxs: torch.Tensor) -> None:
         """_update_freq_cnter 
@@ -315,7 +323,6 @@ class CachedParamMgr(torch.nn.Module):
                     self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
                     
                 elif self._evict_strategy == EvictionStrategy.LFU:
-                    self.freq_cnter[-1] = torch.max(self.freq_cnter[:-1]) + 1
                     invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
                     backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
                     self.cached_idx_map.index_fill_(0, invalid_idxs, -1)
