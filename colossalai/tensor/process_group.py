@@ -20,8 +20,8 @@ class PyTorchProcessGroupDict(metaclass=SingletonMeta):
 
         if pg_key not in self.dict:
 
-            self.logger = get_dist_logger('ProcessGroup')
-            self.logger.info(f'NCCL initialize ProcessGroup on {rank_list}', ranks=[0])
+            # self.logger = get_dist_logger('ProcessGroup')
+            # self.logger.info(f'NCCL initialize ProcessGroup on {rank_list}', ranks=[0])
             self.dict[pg_key] = torch.distributed.new_group(ranks=rank_list, backend=backend)
         return self.dict[pg_key]
 
