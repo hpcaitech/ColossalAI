@@ -1,13 +1,8 @@
+from functools import reduce
+import operator
 from typing import Any, Optional, Tuple
 import torch
 from ..registry import meta_profiler_function
-
-
-def _prod(dims):
-    p = 1
-    for v in dims:
-        p *= v
-    return p
 
 
 @meta_profiler_function.register(torch.arange)
@@ -31,6 +26,7 @@ def _prod(dims):
 @meta_profiler_function.register(torch.full)
 @meta_profiler_function.register(torch.Tensor.cpu)
 @meta_profiler_function.register(torch.Tensor.cuda)
+@meta_profiler_function.register(torch._assert)
 def torch_zero_flops_op(*args, **kwargs) -> Tuple[int, int]:
     flops = 0
     macs = 0
@@ -57,7 +53,7 @@ def torch_max(input: torch.Tensor,
     if dim is not None:
         shape = list(input.shape)
         shape.pop(int(dim))
-        flops = _prod(shape), macs
+        flops = reduce(operator.mul, shape), macs
         return flops, macs
     else:
         flops = input.numel()

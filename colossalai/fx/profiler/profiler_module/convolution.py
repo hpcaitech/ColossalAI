@@ -1,14 +1,9 @@
+import operator
+from functools import reduce
 import math
 from typing import Tuple
 import torch
 from ..registry import meta_profiler_module
-
-
-def _prod(dims):
-    p = 1
-    for v in dims:
-        p *= v
-    return p
 
 
 @meta_profiler_module.register(torch.nn.Conv1d)
@@ -23,8 +18,8 @@ def torch_nn_conv1d(self: torch.nn.Conv1d, input: torch.Tensor) -> Tuple[int, in
         c_out,
         l_out,
     )
-    macs_per_elem = _prod(self.kernel_size) * c_in // self.groups
-    num_elem = _prod(result_shape)
+    macs_per_elem = reduce(operator.mul, self.kernel_size) * c_in // self.groups
+    num_elem = reduce(operator.mul, result_shape)
     macs = macs_per_elem * num_elem
     flops = 2 * macs
     if self.bias is not None:
@@ -47,8 +42,8 @@ def torch_nn_conv2d(self: torch.nn.Conv2d, input: torch.Tensor) -> Tuple[int, in
         h_out,
         w_out,
     )
-    macs_per_elem = _prod(self.kernel_size) * c_in // self.groups
-    num_elem = _prod(result_shape)
+    macs_per_elem = reduce(operator.mul, self.kernel_size) * c_in // self.groups
+    num_elem = reduce(operator.mul, result_shape)
     macs = macs_per_elem * num_elem
     flops = 2 * macs
     if self.bias is not None:
@@ -74,8 +69,8 @@ def torch_nn_conv3d(self: torch.nn.Conv3d, input: torch.Tensor) -> Tuple[int, in
         h_out,
         w_out,
     )
-    macs_per_elem = _prod(self.kernel_size) * c_in // self.groups
-    num_elem = _prod(result_shape)
+    macs_per_elem = reduce(operator.mul, self.kernel_size) * c_in // self.groups
+    num_elem = reduce(operator.mul, result_shape)
     macs = macs_per_elem * num_elem
     flops = 2 * macs
     if self.bias is not None:
@@ -95,14 +90,14 @@ def torch_nn_convtranspose1d(self: torch.nn.ConvTranspose1d, input: torch.Tensor
         c_out,
         l_out,
     )
-    macs_per_elem = _prod(self.kernel_size) * c_in // self.groups
-    num_elem = _prod(
-        input.shape
+    macs_per_elem = reduce(operator.mul, self.kernel_size) * c_in // self.groups
+    num_elem = reduce(
+        operator.mul, input.shape
     )    # see https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/profiling/flops_profiler/profiler.py#L604
     macs = macs_per_elem * num_elem
     flops = 2 * macs
     if self.bias is not None:
-        flops += _prod(result_shape)
+        flops += reduce(operator.mul, result_shape)
     return flops, macs
 
 
@@ -121,12 +116,12 @@ def torch_nn_convtranspose2d(self: torch.nn.ConvTranspose2d, input: torch.Tensor
         h_out,
         w_out,
     )
-    macs_per_elem = _prod(self.kernel_size) * c_in // self.groups
-    num_elem = _prod(input.shape)
+    macs_per_elem = reduce(operator.mul, self.kernel_size) * c_in // self.groups
+    num_elem = reduce(operator.mul, input.shape)
     macs = macs_per_elem * num_elem
     flops = 2 * macs
     if self.bias is not None:
-        flops += _prod(result_shape)
+        flops += reduce(operator.mul, result_shape)
     return flops, macs
 
 
@@ -148,10 +143,10 @@ def torch_nn_convtranspose3d(self: torch.nn.ConvTranspose3d, input: torch.Tensor
         h_out,
         w_out,
     )
-    macs_per_elem = _prod(self.kernel_size) * c_in // self.groups
-    num_elem = _prod(input.shape)
+    macs_per_elem = reduce(operator.mul, self.kernel_size) * c_in // self.groups
+    num_elem = reduce(operator.mul, input.shape)
     macs = macs_per_elem * num_elem
     flops = 2 * macs
     if self.bias is not None:
-        flops += _prod(result_shape)
+        flops += reduce(operator.mul, result_shape)
     return flops, macs

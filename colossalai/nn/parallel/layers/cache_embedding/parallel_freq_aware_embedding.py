@@ -6,7 +6,7 @@ from .freq_aware_embedding import FreqAwareEmbeddingBag
 from colossalai.nn._ops._utils import dual_all_to_all
 
 from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor
-
+from .cache_mgr import CachedParamMgr, EvictionStrategy
 
 def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:
     if world_size == 1:
@@ -48,6 +48,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         warmup_ratio=0.7,
         buffer_size=50_000,
         pin_weight=False,
+        evict_strategy: EvictionStrategy = EvictionStrategy.DATASET
     ):
         self.rank = torch.distributed.get_rank()
         self.world_size = torch.distributed.get_world_size()
@@ -59,7 +60,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         super(ParallelFreqAwareEmbeddingBag,
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
-                             warmup_ratio, buffer_size, pin_weight)
+                             warmup_ratio, buffer_size, pin_weight,evict_strategy)
 
     def _weight_alloc(self, dtype, device):
         weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
