@@ -182,7 +182,7 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
                                 if "inplace" in user.kwargs:
                                     use_reentrant = not user.kwargs["inplace"]
 
-            # if all the inputs are leaf node, we need to set use_reentrat = False
+            # if all the inputs are leaf nodes, we need to set use_reentrant = False
             if not non_leaf_input:
                 use_reentrant = False
 
