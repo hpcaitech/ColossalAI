@@ -52,15 +52,15 @@ class MyModule(torch.nn.Module):
     def ckpt2(self, x):
         return F.relu(x, inplace=True)
 
-    def ckpt3(self, x):
-        return self.linear2(x)
+    def ckpt3(self, x, y):
+        return self.linear2(x) + self.linear2(y)
 
     def forward(self, x):
         y1, y2 = checkpoint(self.mlp1, x)
         y3 = checkpoint(self.relu, x)
 
         y4 = checkpoint(self.ckpt2, x)
-        y5 = checkpoint(self.ckpt3, y4)
+        y5 = checkpoint(self.ckpt3, x, y4)
         y6 = self.linear2(y4)
         return y1 + y2 + y3 + y4 + y5 + y6
 
@@ -106,7 +106,7 @@ def _run_act_ckpt_codegen(rank):
     assert 'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, x, use_reentrant=False)' in code and \
     'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, x, use_reentrant=False)' in code and \
     'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_2, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_3, False, relu, use_reentrant=True)' in code
+    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_3, False, x, relu, use_reentrant=True)' in code
 
     # recompile and verify the outputs are consistent
     fx_out = gm(data)
@@ -160,7 +160,7 @@ def _run_act_ckpt_python_code_torch11(rank):
     assert 'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, x, use_reentrant=False)' in code and \
     'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_1, False, x, use_reentrant=False)' in code and \
     'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_2, False, x, use_reentrant=False)' in code and \
-    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_3, False, relu, use_reentrant=True)' in code
+    'colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_3, False, x, relu, use_reentrant=True)' in code
 
     # recompile and verify the outputs are consistent
     fx_out = gm(data)
