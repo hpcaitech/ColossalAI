@@ -190,6 +190,7 @@ def meta_bn(
     running_var = torch.empty((n_input), device='meta')
     return output, running_mean, running_var
 
+
 @register_meta(aten.native_layer_norm.default)
 def meta_ln(
     input: torch.Tensor, 
