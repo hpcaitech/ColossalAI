@@ -29,12 +29,11 @@ class PipelineProcessGroup:
         self.device = device
         self._stage_num = world_size // device_mesh_size
         self._pp_rank = rank // device_mesh_size
+        self._pp_ranks = [(rank % device_mesh_size) + i * device_mesh_size for i in range(self._stage_num)]
+        self._local_stage_ranks = [(rank // device_mesh_size * device_mesh_size) + i for i in range(device_mesh_size)]
 
         # pp_ranks
         self._initialize_pp_process_group()
-
-        # initialise ranks in local stage
-        self._local_stage_ranks = [rank for rank in range(rank, rank + device_mesh_size)]
 
         # initialise tp dp process groups
         self._initialize_tp_dp_process_group()
@@ -44,8 +43,8 @@ class PipelineProcessGroup:
         self._is_last_pp_rank = self._pp_rank == self._stage_num - 1
 
     def _initialize_process_group(self):
-        actual_stage_num = self.get_actual_stage_num()
-        if actual_stage_num == 1:
+        stage_num = self.get_stage_num()
+        if stage_num == 1:
             return
         device = self.device
         world_size = self.get_world_size()
@@ -55,10 +54,7 @@ class PipelineProcessGroup:
 
     def _initialize_pp_process_group(self) -> None:
         rank = self.get_global_rank()
-        device_mesh_size = self.get_local_device_mesh_size()
-        actual_stage_num = self.get_actual_stage_num()
         world_size = self.get_world_size()
-        self._pp_ranks = [(rank % device_mesh_size) + i * device_mesh_size for i in range(actual_stage_num)]
 
         # build rpc connection
         options = rpc.TensorPipeRpcBackendOptions(num_worker_threads=self._num_worker_threads)

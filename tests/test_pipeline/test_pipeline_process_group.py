@@ -4,6 +4,8 @@ import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
 
 from colossalai.pipeline.pipeline_process_group import PipelineProcessGroup
+from colossalai.initialize import launch
+from colossalai.logging import disable_existing_loggers
 from rpc_test_utils import test_pg_parse_args, rpc_is_initialized
 
 
@@ -16,6 +18,12 @@ def run_worker(rank, args):
     dp_degree = args.dp_degree
     tp_degree = args.tp_degree
     num_worker_threads = args.num_worker_threads
+    host = args.master_addr
+    port = args.master_port
+    backend = 'nccl' if device == 'cuda' else 'gloo'
+
+    disable_existing_loggers()
+    launch(dict(), rank, world_size, host, int(port), backend, verbose=False)
 
     pg = PipelineProcessGroup(rank=rank,
                               world_size=world_size,
