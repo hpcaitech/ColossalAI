@@ -3,7 +3,6 @@ from typing import Callable, List, NamedTuple, Any, Dict, Tuple, Union
 import torch
 from torch.fx.node import Argument, Target
 from torch.fx._compatibility import compatibility
-
 from . import meta_profiler_function, meta_profiler_module
 
 __all__ = [
