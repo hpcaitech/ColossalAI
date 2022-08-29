@@ -177,9 +177,10 @@ def test_lfu_strategy():
 
     # check strategy
     Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
+    Bag.forward(torch.tensor([0,1,2],device="cuda:0"),offsets)
     Bag.forward(torch.tensor([3],device="cuda:0"),offsets) # miss, evict 1
     Bag.forward(torch.tensor([2],device="cuda:0"),offsets) # hit
-    Bag.forward(torch.tensor([4],device="cuda:0"),offsets) # miss, evict 1
+    Bag.forward(torch.tensor([4],device="cuda:0"),offsets) # miss, evict 3
     Bag.forward(torch.tensor([2],device="cuda:0"),offsets) # hit 
     Bag.forward(torch.tensor([0],device="cuda:0"),offsets) # hit
 
