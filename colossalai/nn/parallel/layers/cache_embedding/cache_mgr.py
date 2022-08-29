@@ -60,33 +60,6 @@ class CachedParamMgr(torch.nn.Module):
 
         self._evict_strategy = evict_strategy
 
-        if self._evict_strategy == EvictionStrategy.LFU:
-            # cpu_row_idx -> frequency, freq of the cpu rows.
-            # evict the minimal freq value row in cuda cache.
-            '''
-            The last element of `freq_cnter` is set to the maximum value of int.
-            The rows store nothing (not used) in the `self.cuda_weight` whose value is -1 in `self.cached_idx_map`.
-            In this way, the not used rows are placed at the end of the sorted.
-            '''
-            self.register_buffer("freq_cnter",
-                                 torch.empty(self.num_embeddings + 1,
-                                             device=torch.cuda.current_device(),
-                                             dtype=torch.long).fill_(0),
-                                 persistent=False)
-            self.freq_cnter[-1] = sys.maxsize
-
-    def _update_freq_cnter(self, cpu_row_idxs_original: torch.Tensor) -> None:
-        """_update_freq_cnter 
-
-        Update the frequency valude w.r.t. the cpu_row_ids in self.freq_cnter.
-        
-        Args:
-            cpu_row_idxs (torch.Tensor): a list of indices of cpu weight.
-        """
-        if self._evict_strategy == EvictionStrategy.LFU:
-            add_num = torch.bincount(cpu_row_idxs_original)
-            self.freq_cnter[:add_num.shape[0]] += add_num
-
     def _find_evict_gpu_idxs(self, evict_num: int) -> torch.Tensor:
         """_find_evict_gpu_idxs 
 
@@ -99,7 +72,7 @@ class CachedParamMgr(torch.nn.Module):
             torch.Tensor: a list tensor (1D), contains the gpu_row_idxs.
         """
         if self._evict_strategy == EvictionStrategy.LFU:
-            # find the minimal evict_num freq entries in cached_idx_map
+            # find the minimal evict_num freq entries in cached_idx_map, from ascending
             evict_gpu_row_idxs = torch.argsort(self.freq_cnter[self.cached_idx_map])[:evict_num]
             return evict_gpu_row_idxs
         elif self._evict_strategy == EvictionStrategy.DATASET:
@@ -135,6 +108,16 @@ class CachedParamMgr(torch.nn.Module):
                                  torch.empty(self.cuda_row_num, device=torch.cuda.current_device(),
                                              dtype=torch.long).fill_(-1),
                                  persistent=False)
+
+            if self._evict_strategy == EvictionStrategy.LFU:
+                # freq_cnter contains the frequency counter of cuda_cached_idx.
+                # used with cached_idx_map (gpu_row_idx -> cpu_row_idx)
+                # freq_cnter (gpu_row_idx -> freq)
+                self.register_buffer("freq_cnter",
+                                     torch.empty(self.cuda_row_num,
+                                                 device=torch.cuda.current_device(),
+                                                 dtype=torch.long).fill_(0),
+                                     persistent=False)
 
             # cpu_row_id -> gpu_row_idx.
             # gpu_row_idx as -1 means cpu_row_id not in CUDA.
@@ -181,7 +164,9 @@ class CachedParamMgr(torch.nn.Module):
         Execute only once before training, also known as warmup phase.
         
         :NOTE If you would like to use the DATASET as the eviction strategy, you must call this function.
+
         :NOTE If you are use the LFU as the eviction strategy, you can skip this function. The `freq_cnter` will be initialized as all zeros.
+        
         You can also call this function to inialized the `freq_cnter` with dataset frequency statistics.
 
         Args:
@@ -194,9 +179,6 @@ class CachedParamMgr(torch.nn.Module):
             tmp_idx = torch.argsort(ids_freq_mapping, descending=True)
             sorted_idx = torch.argsort(tmp_idx)
             self.idx_map.data.copy_(sorted_idx)
-            #initialize freq_cnter if use LFU
-            if self._evict_strategy == EvictionStrategy.LFU:
-                self.freq_cnter[:-1], _ = torch.sort(ids_freq_mapping)
 
         preload_row_num = min(int(np.ceil(self.cuda_row_num * warmup_ratio)), self.num_embeddings)
         if preload_row_num > 0:
@@ -220,6 +202,8 @@ class CachedParamMgr(torch.nn.Module):
                 self.cached_idx_map[preload_slot_ids] = preload_slot_ids
                 self.inverted_cached_idx[preload_slot_ids] = slot_offsets
                 self._cuda_available_row_num -= preload_row_num
+
+                # TODO LFU
             print(f'Cache warmup finished cost {timer.elapsed} sec.')
 
     def flush(self):
@@ -300,8 +284,6 @@ class CachedParamMgr(torch.nn.Module):
         with record_function("(zhg) embed cpu rows idx -> cache gpu row idxs"):
             gpu_row_idxs = self._id_to_cached_cuda_id(ids)
 
-        # update for LFU.
-        self._update_freq_cnter(cpu_row_idxs_original)
         return gpu_row_idxs
 
     def _reset_comm_stats(self):
@@ -325,22 +307,11 @@ class CachedParamMgr(torch.nn.Module):
             with Timer() as timer:
                 mask_cpu_row_idx = torch.isin(self.cached_idx_map, self.evict_backlist)
 
-                if self._evict_strategy == EvictionStrategy.DATASET:
-                    # mask method.
-                    # set cached_idx_map[invalid_idxs] to -2.
-                    # so those idxs will be sorted to end, therefore not being chosen as victim
-                    invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
-                    backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
-                    self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
-                    evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
-                    self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
-
-                elif self._evict_strategy == EvictionStrategy.LFU:
-                    invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
-                    backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
-                    self.cached_idx_map.index_fill_(0, invalid_idxs, -1)
-                    evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
-                    self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
+                invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
+                backup_idxs = self.cached_idx_map[mask_cpu_row_idx].clone()
+                self.cached_idx_map.index_fill_(0, invalid_idxs, -2)
+                evict_gpu_row_idxs = self._find_evict_gpu_idxs(evict_num)
+                self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
 
                 evict_info = self.cached_idx_map[evict_gpu_row_idxs]
 
@@ -356,6 +327,10 @@ class CachedParamMgr(torch.nn.Module):
                     self.weight.view(self.num_embeddings, -1).index_copy_(0, evict_info.cpu(), rows)
 
                 self.cached_idx_map.index_fill_(0, evict_gpu_row_idxs, -1)
+
+                if self._evict_strategy == EvictionStrategy.LFU:
+                    self.freq_cnter[evict_gpu_row_idxs] = 0
+
                 self.inverted_cached_idx.index_fill_(0, evict_info, -1)
                 self._cuda_available_row_num += evict_num
 
@@ -380,6 +355,11 @@ class CachedParamMgr(torch.nn.Module):
             self.cached_idx_map[slots] = cpu_row_idxs
             self.inverted_cached_idx.index_copy_(0, cpu_row_idxs, slot_offsets)
             self._cuda_available_row_num -= cpu_row_idxs.numel()
+
+            if self._evict_strategy == EvictionStrategy.LFU:
+                # TODO() update the real occurances.
+                self.freq_cnter[slot_offsets] += 1
+
         self._cpu_to_cuda_elpase += timer.elapsed
         weight_size = cpu_row_idxs.numel() * self.embedding_dim
         self._cpu_to_cuda_numel += weight_size
