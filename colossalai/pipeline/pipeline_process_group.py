@@ -27,7 +27,7 @@ class PipelineProcessGroup:
         self._dp_degree = dp_degree
         self._tp_degree = tp_degree
         self.device = device
-        self._actual_stage_num = world_size // device_mesh_size
+        self._stage_num = world_size // device_mesh_size
         self._pp_rank = rank // device_mesh_size
 
         # pp_ranks
@@ -41,9 +41,12 @@ class PipelineProcessGroup:
 
         # status
         self._is_first_pp_rank = self._pp_rank == 0
-        self._is_last_pp_rank = self._pp_rank == self._actual_stage_num - 1
+        self._is_last_pp_rank = self._pp_rank == self._stage_num - 1
 
     def _initialize_process_group(self):
+        actual_stage_num = self.get_actual_stage_num()
+        if actual_stage_num == 1:
+            return
         device = self.device
         world_size = self.get_world_size()
         rank = self.get_global_rank()
@@ -90,8 +93,8 @@ class PipelineProcessGroup:
     def get_device_mesh_num(self) -> int:
         pass
 
-    def get_actual_stage_num(self) -> int:
-        return self._actual_stage_num
+    def get_stage_num(self) -> int:
+        return self._stage_num
 
     def is_first_stage(self) -> bool:
         return self._is_first_pp_rank
@@ -100,7 +103,7 @@ class PipelineProcessGroup:
         return self._is_last_pp_rank
 
     def check_pp_rank_valid(self, pp_rank: int) -> bool:
-        return -1 < pp_rank < self._actual_stage_num
+        return -1 < pp_rank < self._stage_num
 
     def get_local_pp_rank(self) -> int:
         return self._pp_rank

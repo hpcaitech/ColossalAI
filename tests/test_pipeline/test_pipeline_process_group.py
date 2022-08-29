@@ -31,5 +31,4 @@ def run_worker(rank, args):
 if __name__ == "__main__":
     args = test_pg_parse_args()
     world_size = args.world_size
-    assert world_size // (args.dp_degree * args.tp_degree) >= 2
     mp.spawn(run_worker, args=(args,), nprocs=world_size)
