@@ -190,7 +190,6 @@ class CachedParamMgr(torch.nn.Module):
             with Timer() as timer:
                 # extract rows from cpu weight
                 if self._evict_strategy == EvictionStrategy.LFU and ids_freq_mapping is not None:
-                    print('ids_freq_mapping: ', ids_freq_mapping)
                     freq_value, preload_cpu_ids = torch.topk(ids_freq_mapping, preload_row_num, dim=0, largest=True)
                     preload_cuda_row_idxs = torch.arange(preload_row_num).cuda()
                 else:
