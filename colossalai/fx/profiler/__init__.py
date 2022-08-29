@@ -1,6 +1,7 @@
 try:
     from ._meta_registrations import *
 except:
+    import torch
     print(f'_meta_registrations seems to be incompatible with PyTorch {torch.__version__}.')
 from .meta_tensor import *
 from .registry import *
