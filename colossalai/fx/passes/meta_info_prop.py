@@ -1,12 +1,13 @@
 from operator import add, getitem
 import torch
 import torch.fx
-from torch.fx.node import Node, map_aggregate, Argument, Target
+from torch.fx.node import Node, Argument, Target
+from torch.utils._pytree import tree_map
 from typing import Any, Tuple, NamedTuple, Optional, Dict
 from functools import reduce
 from torch.fx._compatibility import compatibility
 from torch.fx.immutable_collections import immutable_dict, immutable_list
-from colossalai.fx.profiler import MetaProfile, profile_function, profile_module, calculate_activation_size, profile_method
+from colossalai.fx.profiler import MetaProfile, MetaTensor, profile_function, profile_module, calculate_activation_size, profile_method
 
 
 @compatibility(is_backward_compatible=True)
@@ -75,9 +76,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         """
         Add additional check for initial args to ensure all the tensor appears with `device='meta'`
         """
-        for elem in args:
-            if isinstance(elem, torch.Tensor):
-                assert elem.is_meta, "Input torch.Tensor are assumed to appear with device='meta'"
+        args = tree_map(lambda elem: MetaTensor(elem.to('meta')) if isinstance(elem, torch.Tensor) else elem, args)
         return super().run(*args, initial_env, enable_io_processing)
 
     @compatibility(is_backward_compatible=True)
@@ -103,7 +102,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             else:
                 return TensorMetadata(None, None, False, None, 0, False)
 
-        meta = map_aggregate(result, extract_tensor_meta)
+        meta = tree_map(extract_tensor_meta, result)
         n.meta['tensor_meta'] = meta
 
         # TODO: the attribute node_size should be removed in the future
