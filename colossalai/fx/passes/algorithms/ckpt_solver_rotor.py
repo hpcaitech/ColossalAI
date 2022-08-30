@@ -1,6 +1,7 @@
 from typing import List, Set, Tuple, Dict
 import torch
 from torch.fx import GraphModule, Node
+from colossalai.fx.graph_module import ColoGraphModule
 import math
 from .linearize import linearize
 from .utils import *
@@ -131,10 +132,10 @@ def _construct_chain(node_dict: Dict[int, Node], data: torch.Tensor, mem_unit: i
         x_sizes.append(node_dict[key][-1].meta['tensor_meta'].numel *
                        torch.tensor([], dtype=node_dict[key][-1].meta['tensor_meta'].dtype).element_size())
         for node in node_dict[key]:
-            fwd_time[-1] += node.__flops__
+            fwd_time[-1] += max(node.__flops__, 1)
 
             # currently we haven't patched the backward flops count
-            bwd_time[-1] += node.__flops__ * 2
+            bwd_time[-1] += max(node.__flops__ * 2, 2)
 
             xbar_sizes[-1] += node.__activation__
 
@@ -164,16 +165,16 @@ def _annotate_from_sequence(sequence: Sequence, node_dict: Dict[int, Node]) -> G
 
             elif isinstance(op, ForwardEnable):
                 in_ckpt = False
-                for idx in ckpt_region:
-                    for node in node_dict[idx]:
+                for node_idx in ckpt_region:
+                    for node in node_dict[node_idx]:
                         setattr(node, "activation_checkpoint", ckpt_idx)
 
                 ckpt_idx += 1
                 ckpt_region = []
 
             elif isinstance(op, ForwardCheck):
-                for idx in ckpt_region:
-                    for node in node_dict[idx]:
+                for node_idx in ckpt_region:
+                    for node in node_dict[node_idx]:
                         setattr(node, "activation_checkpoint", ckpt_idx)
 
                 ckpt_idx += 1
@@ -185,7 +186,19 @@ def _annotate_from_sequence(sequence: Sequence, node_dict: Dict[int, Node]) -> G
                 ckpt_region.append(idx)
 
 
-def solver_rotor(gm: GraphModule, data: torch.Tensor, mem_limit: int, mem_slots: int = 500) -> GraphModule:
+def solver_rotor(gm: ColoGraphModule, data: torch.Tensor, mem_limit: int, mem_slots: int = 500) -> GraphModule:
+    f"""solving the activation checkpoint in rotor's manner
+    Input:
+        gm: ColoGraphModule, we need it instead of GraphModule becuase
+        we need to generate code with activation checkpoint in colossalai's manner
+        data: the data needed for MetaInfoProp
+        mem_limit: memory limit, use Byte as unit
+        mem_slots: number of slots for discretize
+
+    Output:
+        gm: annotated graph
+        sequence: the operation sequence (for debug purpose)
+    """
     node_dict = linearize(gm)
     mem_unit = mem_limit // mem_slots
     MetaInfoProp(gm).run(data)
@@ -193,4 +206,4 @@ def solver_rotor(gm: GraphModule, data: torch.Tensor, mem_limit: int, mem_slots:
     opt_table = _compute_table(chain, mem_slots)
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
     _annotate_from_sequence(sequence, node_dict)
-    return gm
+    return gm, sequence
