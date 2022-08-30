@@ -8,7 +8,7 @@ class MetaTensor(torch.Tensor):
 
     _tensor: torch.Tensor
  
-    __slots__ = ['elem']
+    __slots__ = ['_tensor']
  
     @staticmethod
     def __new__(cls, elem):
