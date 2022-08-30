@@ -191,6 +191,17 @@ def meta_bn(
     return output, running_mean, running_var
 
 
+@register_meta(aten.native_batch_norm_backward.default)
+def meta_bn_backward(
+    dY: torch.Tensor, input: torch.Tensor, weight: torch.Tensor, 
+    running_mean, running_var, save_mean, save_invstd, train, eps, output_mask
+):
+    dX = torch.empty_like(input)
+    dgamma = torch.empty_like(weight)
+    dbeta = torch.empty_like(weight)
+    return dX, dgamma, dbeta
+
+
 @register_meta(aten.native_layer_norm.default)
 def meta_ln(
     input: torch.Tensor, 
