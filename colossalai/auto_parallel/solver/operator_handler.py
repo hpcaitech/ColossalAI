@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
 from torch.fx.node import Node
-from typing import Dict
+from typing import Dict, List
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
@@ -56,7 +56,7 @@ class OperatorHandler(ABC):
         """
         pass
 
-    def _generate_sharding_spec(self, tensor: torch.Tensor, dim_partition_dict: Dict[int, int]) -> ShardingSpec:
+    def _generate_sharding_spec(self, tensor: torch.Tensor, dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
         """
         Generate the sharding spec of the tensor based on the given dim_partition_dict 
         where the key is the tensor dimension and the value is the mesh dimension for sharding.
@@ -84,7 +84,9 @@ class OperatorHandler(ABC):
         for input_node, input_spec in zip(self.predecessor_node, sharding_spec_for_input):
             resharding_costs[input_node] = []
             for strategy in input_node.strategies_vector:
+                input_sharding_spec = strategy.output_sharding_spec
+                assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
                 _, _, resharding_cost = self.shape_consistency_manager.shape_consistency(
-                    strategy.output_sharding_spec, input_spec)
+                    input_sharding_spec, input_spec)
                 resharding_costs[input_node].append(resharding_cost)
         return resharding_costs

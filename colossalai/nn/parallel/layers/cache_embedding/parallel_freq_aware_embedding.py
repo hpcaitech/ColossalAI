@@ -8,6 +8,7 @@ from colossalai.nn._ops._utils import dual_all_to_all
 from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor
 from .cache_mgr import CachedParamMgr, EvictionStrategy
 
+
 def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:
     if world_size == 1:
         return 0, embedding_dim, True
@@ -29,27 +30,25 @@ def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:
 
 class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
 
-    def __init__(
-        self,
-        num_embeddings,
-        embedding_dim,
-        padding_idx=None,
-        max_norm=None,
-        norm_type=2.,
-        scale_grad_by_freq=False,
-        sparse=False,
-        _weight=None,
-        mode='mean',
-        include_last_offset=False,
-        dtype=None,
-        device=None,
-        cuda_row_num=0,
-        ids_freq_mapping=None,
-        warmup_ratio=0.7,
-        buffer_size=50_000,
-        pin_weight=False,
-        evict_strategy: EvictionStrategy = EvictionStrategy.DATASET
-    ):
+    def __init__(self,
+                 num_embeddings,
+                 embedding_dim,
+                 padding_idx=None,
+                 max_norm=None,
+                 norm_type=2.,
+                 scale_grad_by_freq=False,
+                 sparse=False,
+                 _weight=None,
+                 mode='mean',
+                 include_last_offset=False,
+                 dtype=None,
+                 device=None,
+                 cuda_row_num=0,
+                 ids_freq_mapping=None,
+                 warmup_ratio=0.7,
+                 buffer_size=50_000,
+                 pin_weight=False,
+                 evict_strategy: EvictionStrategy = EvictionStrategy.DATASET):
         self.rank = torch.distributed.get_rank()
         self.world_size = torch.distributed.get_world_size()
 
@@ -60,7 +59,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         super(ParallelFreqAwareEmbeddingBag,
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
-                             warmup_ratio, buffer_size, pin_weight,evict_strategy)
+                             warmup_ratio, buffer_size, pin_weight, evict_strategy)
 
     def _weight_alloc(self, dtype, device):
         weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
@@ -77,8 +76,8 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         with torch.no_grad():
             reorder_ids = self.cache_weight_mgr.prepare_ids(indices)
 
-        output_shard = F.embedding_bag(reorder_ids, self.cache_weight_mgr.cuda_cached_weight, offsets, self.max_norm,
-                                       self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
+        output_shard = F.embedding_bag(reorder_ids.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets,
+                                       self.max_norm, self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
                                        per_sample_weights, self.include_last_offset, self.padding_idx)
 
         if shape_hook is not None:
