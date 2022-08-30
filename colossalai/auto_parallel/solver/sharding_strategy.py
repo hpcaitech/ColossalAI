@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from colossalai.tensor.sharding_spec import ShardingSpec
 from typing import Dict, List, Union, Tuple
 from torch.fx.node import Node
+from .constants import *
 
 __all__ = ['ShardingStrategy', 'StrategiesVector']
 
@@ -54,4 +55,18 @@ class StrategiesVector(list):
         self.successor_nodes = list(node.users.keys())
 
     def check_merge(self):
-        pass
+        merge_label = False
+        if self.node.op == 'call_module':
+            target = self.node.target
+            root_module = self.node.graph.owning_module
+            submod = root_module.get_submodule(target)
+            submod_type = type(submod)
+            # merge elementwise module node into following nodes
+            if submod_type in ELEMENTWISE_MODULE_OP:
+                merge_label = True
+
+        if self.node.op == 'call_function':
+            if self.node.target in ELEMENTWISE_FUNC_OP:
+                merge_label = True
+
+        return merge_label
