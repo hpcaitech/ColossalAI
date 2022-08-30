@@ -7,6 +7,8 @@ class MetaTensor(torch.Tensor):
     """
 
     elem: torch.Tensor
+    __temp__: int    # maximum temp memory during execution
+    __activation__: int
  
     __slots__ = ['elem']
  
@@ -28,6 +30,8 @@ class MetaTensor(torch.Tensor):
     @ classmethod
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
         def unwrap(x):
+            if isinstance(x, torch.Tensor) and not hasattr(x, 'elem'):
+                x = MetaTensor(x)
             return x.elem.to('meta') if isinstance(x, MetaTensor) else x
         
         args = tree_map(unwrap, args)
