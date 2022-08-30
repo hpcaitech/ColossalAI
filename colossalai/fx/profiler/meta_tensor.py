@@ -6,7 +6,7 @@ class MetaTensor(torch.Tensor):
     A wrapping tensor that hacks `torch.autograd` without patching more `torch.ops.aten` ops.
     """
 
-    elem: torch.Tensor
+    _tensor: torch.Tensor
  
     __slots__ = ['elem']
  
@@ -21,7 +21,7 @@ class MetaTensor(torch.Tensor):
             dtype=elem.dtype, layout=elem.layout,
             device='cpu', requires_grad=elem.requires_grad
         )    # deceive the frontend for aten selections
-        r.elem = elem
+        r._tensor = elem
         # ...the real tensor is held as an element on the tensor.
         return r
 
@@ -30,7 +30,7 @@ class MetaTensor(torch.Tensor):
         def unwrap(x):
             if isinstance(x, torch.Tensor) and not hasattr(x, 'elem'):
                 x = MetaTensor(x)
-            return x.elem.to('meta') if isinstance(x, MetaTensor) else x
+            return x._tensor.to('meta') if isinstance(x, MetaTensor) else x
         
         args = tree_map(unwrap, args)
         kwargs = tree_map(unwrap, kwargs)
