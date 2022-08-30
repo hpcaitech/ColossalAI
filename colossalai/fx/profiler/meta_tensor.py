@@ -7,8 +7,6 @@ class MetaTensor(torch.Tensor):
     """
 
     elem: torch.Tensor
-    __temp__: int    # maximum temp memory during execution
-    __activation__: int
  
     __slots__ = ['elem']
  
