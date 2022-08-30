@@ -44,9 +44,9 @@ class Forward(Operation):
     def __repr__(self):
         return "{n}_{i}".format(n=self.name, i=self.index)
 
-    def cost(self, chain):
+    def cost(self, chain: Chain):
         if chain is not None:
-            return chain.fweigth[self.index]
+            return chain.fweight[self.index]
         else:
             return 1
 
@@ -80,9 +80,9 @@ class Forwards(Operation):
     def __repr__(self):
         return "F_{i}->{j}".format(i=self.index[0], j=self.index[1])
 
-    def cost(self, chain):
+    def cost(self, chain: Chain):
         if chain is not None:
-            return sum(chain.fweigth[self.index[0]:self.index[1] + 1])
+            return sum(chain.fweight[self.index[0]:self.index[1] + 1])
         else:
             return (self.index[1] - self.index[0] + 1)
 
@@ -99,9 +99,9 @@ class Backward(Operation):
     def __repr__(self):
         return "B_{i}".format(i=self.index)
 
-    def cost(self, chain):
+    def cost(self, chain: Chain):
         if chain is not None:
-            return chain.bweigth[self.index]
+            return chain.bweight[self.index]
         else:
             return 1
 
@@ -126,7 +126,7 @@ class MemoryAccess(Operation):
     def __repr__(self):
         return "{n}_{i}".format(n=self.name, i=self.index)
 
-    def cost(self, chain):
+    def cost(self, chain: Chain):
         return 0
 
 

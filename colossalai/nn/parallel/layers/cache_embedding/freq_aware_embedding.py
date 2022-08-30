@@ -120,7 +120,3 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
             return self.cache_weight_mgr._cuda_to_cpu_numel * self.cache_weight_mgr.elem_size_in_byte / 1e6 / \
                    self.cache_weight_mgr._cuda_to_cpu_elapse
         return 0
-
-    @property
-    def input_id_percent_in_load_chunk(self):
-        return 0    # np.mean(self.cache_weight_mgr.input_id_percent_in_load_chunk) * 100
