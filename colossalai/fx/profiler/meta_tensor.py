@@ -1,6 +1,10 @@
 import torch
 from torch.utils._pytree import tree_map, tree_flatten
 
+
+__all__ = ['MetaTensor']
+
+
 class MetaTensor(torch.Tensor):
     """
     A wrapping tensor that hacks `torch.autograd` without patching more `torch.ops.aten` ops.
