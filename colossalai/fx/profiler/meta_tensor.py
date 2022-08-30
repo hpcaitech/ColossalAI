@@ -28,7 +28,7 @@ class MetaTensor(torch.Tensor):
     @ classmethod
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
         def unwrap(x):
-            if isinstance(x, torch.Tensor) and not hasattr(x, 'elem'):
+            if isinstance(x, torch.Tensor) and not hasattr(x, '_tensor'):
                 x = MetaTensor(x)
             return x._tensor.to('meta') if isinstance(x, MetaTensor) else x
         
