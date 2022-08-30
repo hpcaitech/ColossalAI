@@ -12,11 +12,15 @@ import colossalai
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx.passes.algorithms import solver_rotor
-from colossalai.fx.codegen import ActivationCheckpointCodeGen
 from colossalai.utils import free_port
 import pytest
 import time
 import numpy as np
+
+try:
+    from colossalai.fx.codegen import ActivationCheckpointCodeGen
+except:
+    from colossalai.fx.codegen import python_code_with_activation_checkpoint
 
 
 def _data_gen(batch_size: int, shape: Tuple[int, int, int], device='cuda'):
