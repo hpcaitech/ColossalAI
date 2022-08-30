@@ -1,15 +1,12 @@
-from operator import contains
-from xml.dom import NotFoundErr
-import torch
 from dataclasses import dataclass
 from torch.fx.node import Node
 from torch.fx.graph import Graph
 from torch.fx.graph_module import GraphModule
 from collections import OrderedDict as ODict
-from typing import List, OrderedDict, Type, Union, Any
+from typing import List, OrderedDict, Union, Any
 from colossalai.fx.passes.utils import get_node_module
 
-__all__ = ['LiveVariable', 'LiveVariableVector', 'LiveStage', 'GraphAnalyser', 'compute_tensor_size']
+__all__ = ['LiveVariable', 'LiveVariableVector', 'LiveStage', 'GraphAnalyser']
 
 
 @dataclass
@@ -40,7 +37,7 @@ class LiveVariableVector(list):
         for var in self:
             if name == var.name:
                 return var
-        raise NotFoundErr(f"Variable {name} is not found")
+        raise KeyError(f"Variable {name} is not found")
 
     def copy(self) -> "LiveVariableVector":
         """
@@ -61,14 +58,6 @@ class LiveStage:
     node: Node
     all_live_vars: LiveVariableVector
     unique_live_vars: LiveVariableVector
-    memory_cost: float
-
-
-def compute_tensor_size(tensor: torch.Tensor):
-    """
-    Get the memory space in Bytes used by the given tensor.
-    """
-    return tensor.element_size() * tensor.nelement()
 
 
 class GraphAnalyser:
@@ -173,36 +162,11 @@ class GraphAnalyser:
             # TODO: add the logic to remove live variables
             # this should be completed if we are able to trace the backward compute graph
 
-            ###########################
-            # compute the memory cost #
-            ###########################
-            memory_cost = 0
-
-            for var in unique_live_vars:
-                meta_data = var.meta
-                if meta_data is None:
-                    continue
-                if torch.is_tensor(meta_data):
-                    memory_cost += compute_tensor_size(meta_data)
-                elif isinstance(meta_data, (tuple, list, set)):
-                    for ele in meta_data:
-                        if torch.is_tensor(ele):
-                            memory_cost += compute_tensor_size(ele)
-                elif isinstance(meta_data, dict):
-                    for val in meta_data.values():
-                        if torch.is_tensor(ele):
-                            memory_cost += compute_tensor_size(ele)
-                else:
-                    raise TypeError(
-                        f"Expected meta data to be a torch.Tensor or a list, tuple, set, dictionary of torch.Tensor, but found {type(meta_data)}"
-                    )
-
             # add this stage to liveness dict
             stage = LiveStage(name=node.name,
                               node=node,
                               all_live_vars=all_live_variables.copy(),
-                              unique_live_vars=unique_live_vars.copy(),
-                              memory_cost=memory_cost)
+                              unique_live_vars=unique_live_vars.copy())
             liveness_dict[idx] = stage
         return liveness_dict
 

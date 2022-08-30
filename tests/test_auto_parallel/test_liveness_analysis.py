@@ -49,14 +49,6 @@ def test_liveness_analysis():
     unique_live_vars = liveness_dict[7].unique_live_vars
     assert len(unique_live_vars) + 1 == len(all_live_vars)
 
-    # total memory cost
-    # inputs: 16 + 16 = 32
-    # weights: 16 + 4 + 16 + 4 = 40
-    # activation: 16 + 16 + 16 + 16 + 16 = 80
-    # total elements = 152
-    # total size in Bytes (fp32) = 152 * 4 = 608
-    assert liveness_dict[7].memory_cost == 608
-
 
 if __name__ == '__main__':
     test_liveness_analysis()
