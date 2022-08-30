@@ -39,11 +39,11 @@ class CostGraph:
             dst_node = strategies_vector.node
             for src_node in strategies_vector.predecessor_nodes:
                 node_pair = (src_node, dst_node)
-                src_index = strategies_vector.predecessor_nodes.index(src_node)
+                # src_index = strategies_vector.predecessor_nodes.index(src_node)
                 edge_cost = {}
                 for i in range(len(strategies_vector)):
-                    for j in range(len(src_node.stategy_vector)):
-                        edge_cost[(i, j)] = strategies_vector[i].resharding_costs[src_index][j]
+                    for j in range(len(src_node.strategies_vector)):
+                        edge_cost[(j, i)] = strategies_vector[i].resharding_costs[src_node][j]
                 self.edge_costs[node_pair] = edge_cost
             # add parents and children attribute to node
             setattr(dst_node, 'parents', strategies_vector.predecessor_nodes)
@@ -83,33 +83,19 @@ class CostGraph:
         merge_map = {}
         for dst_strate_index, strategy in enumerate(dst_node.strategies_vector):
             resharding_costs = strategy.resharding_costs
-            resharding_cost_for_src = resharding_costs[src_node_index]
+            resharding_cost_for_src = resharding_costs[src_node]
             lowest_cost_index = resharding_cost_for_src.index(min(resharding_cost_for_src))
             merge_map[dst_strate_index] = lowest_cost_index
 
         # extra_node_cost for dst node
-        extra_node_costs[dst_node] = [0.0 for _ in range(self.node_lens[dst_node])]
+        self.extra_node_costs[dst_node] = [0.0 for _ in range(self.node_lens[dst_node])]
         for dst_strate_index, strategy in enumerate(dst_node.strategies_vector):
             target_strate_index = merge_map[dst_strate_index]
-            extra_node_costs[dst_node][dst_strate_index] += strategy.resharding_costs[src_node_index][
+            self.extra_node_costs[dst_node][dst_strate_index] += strategy.resharding_costs[src_node][
                 target_strate_index]
-            if src_node in extra_node_costs:
-                extra_node_costs[dst_node][dst_strate_index] += extra_node_costs[src_node][target_strate_index]
-
-        # connect dst node and parents of src node
-        dst_node.parents.remove(src_node)
-        src_node.children.remove(dst_node)
-        node_pair_to_remove = [(src_node, dst_node)]
-        for parent_node in src_node.parents:
-            if parent_node not in dst_node.parents:
-                dst_node.parents.append(parent)
-            if dst_node not in parent_node.children:
-                parent_node.children.append(dst_node)
-            # remove src node from cost graph when src node has no consumer.
-            if len(src_node.children) == 0:
-                parent_node.children.remove(src_node)
-                node_pair = (parent_node, src_node)
-                self.edge_costs.pop(node_pair)
+            if src_node in self.extra_node_costs:
+                self.extra_node_costs[dst_node][dst_strate_index] += self.extra_node_costs[src_node][
+                    target_strate_index]
 
         # add new node pair to cost graph
         for parent_node in src_node.parents:
@@ -121,8 +107,23 @@ class CostGraph:
             for i in range(self.node_lens[dst_node]):
                 for j in range(self.node_lens[parent_node]):
                     src_strate_index = merge_map[i]
-                    edge_cost[(i, j)] = self.edge_costs[old_node_pair][(j, src_strate_index)]
+                    edge_cost[(j, i)] = self.edge_costs[old_node_pair][(j, src_strate_index)]
             self.edge_costs[new_node_pair] = edge_cost
+
+        # connect dst node and parents of src node
+        dst_node.parents.remove(src_node)
+        src_node.children.remove(dst_node)
+        self.edge_costs.pop((src_node, dst_node))
+        for parent_node in src_node.parents:
+            if parent_node not in dst_node.parents:
+                dst_node.parents.append(parent_node)
+            if dst_node not in parent_node.children:
+                parent_node.children.append(dst_node)
+            # remove src node from cost graph when src node has no consumer.
+            if len(src_node.children) == 0:
+                parent_node.children.remove(src_node)
+                node_pair = (parent_node, src_node)
+                self.edge_costs.pop(node_pair)
 
     def simplify_graph(self):
         if not self.simplify:

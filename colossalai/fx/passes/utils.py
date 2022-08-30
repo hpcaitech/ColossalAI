@@ -160,3 +160,20 @@ def assign_bfs_level_to_nodes(graph: Graph):
             new_process_list.extend(get_all_consumers(graph, node))
         nodes_to_process = new_process_list
         current_level += 1
+
+
+def get_node_module(node) -> torch.nn.Module:
+    """
+    Find the module associated with the given node.
+
+    Args:
+        node (torch.fx.Node): a torch.fx.Node object in the fx computation graph
+
+    Returns:
+        torch.nn.Module: the module associated with the given node
+    """
+
+    assert node.graph.owning_module is not None, 'Cannot find the owning_module for node.graph, please make sure the graph is associated with a GraphModule object'
+    assert node.op == 'call_module', f'Expected node.op to be call_module, but found {node.op}'
+    module = node.graph.owning_module.get_submodule(node.target)
+    return module
