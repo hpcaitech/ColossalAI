@@ -62,13 +62,13 @@ def check_backward_consistency(m: torch.nn.Module, gm: GraphModule, solver: Call
 
 def _run_ckpt_solver(rank):
     colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
-    MODEL_LIST = [tm.resnet18, tm.densenet121]
+    MODEL_LIST = [tm.densenet121]
 
     torch.backends.cudnn.deterministic = True
 
     tracer = ColoTracer(trace_act_ckpt=False)
 
-    data = torch.rand(2, 3, 32, 32, device='meta')
+    data = torch.rand(8, 3, 224, 224, device='meta')
     for solver in SOLVERS:
         for model_cls in MODEL_LIST:
             m = model_cls(num_classes=5)
@@ -78,7 +78,7 @@ def _run_ckpt_solver(rank):
             codegen = ActivationCheckpointCodeGen()
             gm.graph.set_codegen(codegen)
             if solver == solver_rotor:
-                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
+                gm, _ = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
             else:
                 gm = solver(gm)
             assert _is_graph_linearized(gm), f"Solver {solver} did not solve {model_cls} in a linearized manner."
@@ -95,13 +95,13 @@ def test_ckpt_solver():
 
 def _run_ckpt_solver_torch11(rank):
     colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
-    MODEL_LIST = [tm.resnet18, tm.densenet121]
+    MODEL_LIST = [tm.densenet121]
 
     torch.backends.cudnn.deterministic = True
 
     tracer = ColoTracer(trace_act_ckpt=False)
 
-    data = torch.rand(2, 3, 32, 32, device='meta')
+    data = torch.rand(8, 3, 32, 32, device='meta')
     for solver in SOLVERS:
         for model_cls in MODEL_LIST:
             m = model_cls(num_classes=5)
@@ -110,7 +110,7 @@ def _run_ckpt_solver_torch11(rank):
             MetaInfoProp(gm).run(data)
             gm.graph._python_code = python_code_with_activation_checkpoint.__get__(graph)
             if solver == solver_rotor:
-                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
+                gm, _ = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
             else:
                 gm = solver(gm)
             assert _is_graph_linearized(gm), f"Solver {solver} did not solve {model_cls} in a linearized manner."
