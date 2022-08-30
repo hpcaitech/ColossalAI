@@ -7,7 +7,7 @@ import pytest
 from colossalai.pipeline.pipeline_process_group import PipelineProcessGroup
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from rpc_test_utils import test_pg_parse_args, rpc_is_initialized
+from rpc_test_utils import pg_parse_args, rpc_is_initialized
 
 
 def run_worker(rank, args):
@@ -37,12 +37,7 @@ def run_worker(rank, args):
         rpc.shutdown()
 
 
-@pytest.mark.skip("running failed")
-def main():
-    args = test_pg_parse_args()
+if __name__ == "__main__":
+    args = pg_parse_args()
     world_size = args.world_size
     mp.spawn(run_worker, args=(args,), nprocs=world_size)
-
-
-if __name__ == "__main__":
-    main()

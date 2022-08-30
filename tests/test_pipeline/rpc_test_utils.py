@@ -56,7 +56,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def test_pg_parse_args():
+def pg_parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--world_size', type=int, default=4)
     parser.add_argument('--dp_degree', type=int, default=2)
