@@ -117,8 +117,8 @@ class ColoAttribute(ColoProxy):
             method = getattr(meta_args[0].__class__, self.attr)
             if meta_patched_function.has(method):
                 meta_target = meta_patched_function.get(method)
-            elif meta_patched_function.has(target.__name__):
-                meta_target = meta_patched_function.get(target.__name__)
+            elif meta_patched_function.has(method.__name__):
+                meta_target = meta_patched_function.get(method.__name__)
             else:
                 meta_target = method
             meta_out = meta_target(*meta_args, **meta_kwargs)
