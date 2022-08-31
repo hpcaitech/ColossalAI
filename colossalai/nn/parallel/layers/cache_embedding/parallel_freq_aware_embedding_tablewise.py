@@ -6,9 +6,6 @@ import torch.nn as nn
 from typing import List, Optional, Iterator, Tuple
 import abc
 
-
-from files_2022.ColossalAI.colossalai.nn.parallel.layers.cache_embedding.base_embedding import BaseEmbeddingBag
-
 from .freq_aware_embedding import FreqAwareEmbeddingBag
 
 from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor
