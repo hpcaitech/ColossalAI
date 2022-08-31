@@ -196,8 +196,7 @@ def solver_rotor(gm: ColoGraphModule, data: torch.Tensor, mem_limit: int, mem_sl
         mem_slots: number of slots for discretize
 
     Output:
-        gm: annotated graph
-        sequence: the operation sequence (for debug purpose)
+        gm: annotated graph, with __sequence__ attribute denote the sequence of operation
     """
     node_dict = linearize(gm)
     mem_unit = mem_limit // mem_slots
@@ -206,4 +205,7 @@ def solver_rotor(gm: ColoGraphModule, data: torch.Tensor, mem_limit: int, mem_sl
     opt_table = _compute_table(chain, mem_slots)
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
     _annotate_from_sequence(sequence, node_dict)
-    return gm, sequence
+
+    # set __sequence__ attribute to GraphModule
+    setattr(gm, "__sequence__", sequence)
+    return gm

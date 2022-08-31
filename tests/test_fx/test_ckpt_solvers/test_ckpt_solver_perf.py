@@ -89,15 +89,15 @@ def test_meta_info_prop(bs: int = 32, rank=0):
                 graph = tracer.trace(model, meta_args={"x": data})
                 graph.set_codegen(ActivationCheckpointCodeGen())
                 gm = ColoGraphModule(model, graph, model.__class__.__name__)
-                gm, sequence = solver_rotor(gm, data, mem_limit * 1024 * 1024)
+                gm = solver_rotor(gm, data, mem_limit * 1024 * 1024)
                 gm.recompile()
                 mem, step_time = _test_forward(gm, bs=bs, num_steps=10)
             except:
                 mem = mem_limit
                 step_time = float('inf')
             with open(f"./{M.__name__}.log", "a") as f:
-                if "sequence" in locals():
-                    f.write(str(sequence) + "\n")
+                if hasattr(gm, "__sequence__"):
+                    f.write(str(gm.__sequence__) + "\n")
                 f.write(
                     f'|{M}|mem_limit: {mem_limit} MB|real memory consumption: {mem:.3f} MB|train step time: {step_time:.3f} MS|\n'
                 )
