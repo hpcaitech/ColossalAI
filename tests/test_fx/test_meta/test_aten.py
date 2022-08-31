@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from colossalai.fx.profiler import MetaTensor
+
 import pytest
 
 try:
