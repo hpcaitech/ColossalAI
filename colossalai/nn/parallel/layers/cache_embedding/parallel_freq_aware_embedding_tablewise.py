@@ -1,4 +1,5 @@
 from sqlite3 import SQLITE_CREATE_TRIGGER
+from unicodedata import name
 import torch
 import torch.nn.functional as F
 import torch.distributed as dist
@@ -12,13 +13,21 @@ from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessG
 from .cache_mgr import CachedParamMgr, EvictionStrategy
 
 class TablewiseEmbeddingBagConfig:
-    num_embeddings: int
-    cuda_row_num: int
-    assigned_rank: int = 0
-    buffer_size = 50_000
-    ids_freq_mapping = None
-    initial_weight: torch.tensor = None # 
-    name: str = "" # feature name
+    def __init__(self,
+                num_embeddings: int,
+                cuda_row_num: int,
+                assigned_rank: int = 0,
+                buffer_size = 50_000,
+                ids_freq_mapping = None,
+                initial_weight: torch.tensor = None, 
+                name: str = ""): 
+        self.num_embeddings=num_embeddings
+        self.cuda_row_num=cuda_row_num
+        self.assigned_rank=assigned_rank
+        self.buffer_size=buffer_size
+        self.ids_freq_mapping=ids_freq_mapping
+        self.initial_weight=initial_weight
+        self.name=name
 '''
 example: 
 def prepare_tablewise_config(args, cache_ratio, ...):
@@ -34,16 +43,17 @@ def _all_to_all_for_tablewise(x: torch.Tensor, pg: ProcessGroup, scatter_strides
         return x
     assert x.device.type == 'cuda', f"Currently, the collective function dual_all_to_all only supports nccl backend"
     if forward:
-        scatter_list = x.split(scatter_strides, 0)
+        scatter_list = list(x.split(scatter_strides, 0))
         gather_list = [torch.empty(scatter_strides[rank], gather_strides[i], dtype=x.dtype,
                                    device=x.device) for i in range(world_size)]
-        torch.distributed.all_to_all(gather_list, scatter_list, group=pg.tp_process_group)
+        torch.distributed.all_to_all(gather_list, scatter_list, group=pg.tp_process_group())
         return torch.cat(gather_list, 1).contiguous()
     else:
-        scatter_list = x.split(scatter_strides, 1)
+        # split on dim 1, lose contiguity
+        scatter_list = [each.contiguous() for each in x.split(scatter_strides, 1)]
         gather_list = [torch.empty(gather_strides[i], scatter_strides[rank], dtype=x.dtype,
                                    device=x.device) for i in range(world_size)]
-        torch.distributed.all_to_all(gather_list, scatter_list, group=pg.tp_process_group)
+        torch.distributed.all_to_all(gather_list, scatter_list, group=pg.tp_process_group())
         return torch.cat(gather_list, 0).contiguous()
 
 class _DualAllToAllForTablewise(torch.autograd.Function):
@@ -65,7 +75,7 @@ def _dual_all_to_all(x, pg, scatter_strides, gather_strides):
 class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
     # I will implement LFU first
     '''
-    every table assigned to this FreqAwareEmbeddingBag is managed by a FreqAwareEmbeddingBag.
+    every table assigned to this class instance is managed by a FreqAwareEmbeddingBag.
     '''
     def __init__(self,
                  embedding_bag_config_list: List[TablewiseEmbeddingBagConfig],
@@ -88,7 +98,8 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
         self.global_table_assign_list = [config.assigned_rank for config in embedding_bag_config_list]
         self.global_table_length_list = [config.num_embeddings for config in embedding_bag_config_list]
         self.global_tables_num = len(embedding_bag_config_list)
-        self.global_tables_offsets = torch.cumsum(torch.tensor(self.global_table_length_list)) - self.global_table_length_list[0]
+        self.global_tables_offsets = torch.cumsum(torch.tensor([0] + self.global_table_length_list),0)
+        
         self.assigned_table_list: List[int] = []
         for i, rank in enumerate(self.global_table_assign_list):
             if rank == self.rank:
@@ -97,7 +108,8 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
         self.pg = ProcessGroup(tp_degree=self.world_size)
         
         # prepare FreqAwareEmbeddingBag list
-        self.freq_aware_embedding_bag_list: List[FreqAwareEmbeddingBag] = []
+        
+        self.freq_aware_embedding_bag_list: nn.ModuleList = nn.ModuleList()
         for config in embedding_bag_config_list:
             if config.assigned_rank != self.rank:
                 continue
@@ -128,10 +140,14 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
         self.embedding_dim_per_rank = [0 for i in range(self.world_size)]
         for rank in self.global_table_assign_list:
             self.embedding_dim_per_rank[rank] += embedding_dim
-
+            
+        #print("global_table_assign_list {}".format(self.global_table_assign_list))
+        #print("global_table_length_list {}".format(self.global_table_length_list))
+        #print("global_tables_offsets {}".format(self.global_tables_offsets))
+#
     def forward(self, indices: torch.Tensor, offsets: torch.Tensor = None, per_sample_weights=None, shape_hook=None):
         # determine indices to handle
-        batch_size = (offsets.shape[0]) // self.num_total_tables
+        batch_size = (offsets.shape[0]) // self.global_tables_num
         indices_start_positions = []
         indices_end_positions = []
         for handle_table in self.assigned_table_list:

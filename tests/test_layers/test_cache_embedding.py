@@ -1,3 +1,4 @@
+from xml.etree.ElementInclude import include
 import pytest
 from functools import partial
 
@@ -12,7 +13,9 @@ from colossalai.utils import free_port
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.tensor import ColoParameter, ProcessGroup, ShardSpec, ComputePattern, ComputeSpec, \
     ColoTensor, ColoTensorSpec
-from colossalai.nn.parallel.layers import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag, EvictionStrategy
+from colossalai.nn.parallel.layers import CachedParamMgr, FreqAwareEmbeddingBag, ParallelFreqAwareEmbeddingBag, EvictionStrategy, \
+    ParallelFreqAwareEmbeddingBagTablewise, TablewiseEmbeddingBagConfig
+from typing import List
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
@@ -200,6 +203,51 @@ def gather_tensor(tensor, rank, world_size):
     return gather_list
 
 
+def run_parallel_freq_aware_embed_tablewise(rank, world_size):
+    if world_size != 2:
+        pass
+    device = torch.device('cuda', torch.cuda.current_device())
+    embedding_bag_config_list: List[TablewiseEmbeddingBagConfig] = []
+    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(num_embeddings=6, cuda_row_num=4, assigned_rank=0))
+    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(num_embeddings=5, cuda_row_num=4, assigned_rank=0))
+    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(num_embeddings=7, cuda_row_num=4, assigned_rank=1))
+    # 0~5, 6~10, 11~17
+    
+    model = ParallelFreqAwareEmbeddingBagTablewise(
+        embedding_bag_config_list,
+        embedding_dim=5,
+        evict_strategy=EvictionStrategy.LFU,
+        include_last_offset=True
+    )
+    # demo explain:
+    '''
+    batch       feature 1       feature 2       feature 3
+    input0      [1,2,3]         [6,7]           []
+    input1      []              [9]             [13,15]
+    input2      [1,5]           [6,8]           [11]
+                  ↑               ↑               ↑ 
+                rank 0          rank 0          rank 1
+    in KJT format
+    '''
+    res = model(torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
+                      torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device))
+    #print(res)
+    optimizer = torch.optim.SGD(model.parameters(),lr=0.1)
+    optimizer.zero_grad()
+    if rank == 0:
+        fake_grad = torch.rand(2, 5*3,dtype=res.dtype, device=res.device)
+    else :
+        fake_grad = torch.rand(1, 5*3,dtype=res.dtype, device=res.device)
+    res.backward(fake_grad)
+    optimizer.step()
+    optimizer.zero_grad()
+    res = model(torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
+                torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device))
+    #print(fake_grad)
+    #print(res)
+    # just check if error occured. TODO: check correctness
+    
+    
 def run_parallel_freq_aware_embed(rank, world_size):
     device = torch.device('cuda', torch.cuda.current_device())
 
@@ -219,7 +267,8 @@ def run_parallel_freq_aware_embed(rank, world_size):
     model = ParallelFreqAwareEmbeddingBag.from_pretrained(coloweight,
                                                           include_last_offset=True,
                                                           freeze=False,
-                                                          cuda_row_num=batch_size * 2)
+                                                          cuda_row_num=batch_size * 2,
+                                                    )
 
     assert model.cache_weight_mgr.weight.device.type == 'cpu'
     assert model.cache_weight_mgr.cuda_cached_weight.requires_grad
@@ -269,7 +318,7 @@ def run_parallel_freq_aware_embed(rank, world_size):
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_parallel_freq_aware_embed(rank, world_size)
+    run_parallel_freq_aware_embed_tablewise(rank, world_size)
 
 
 @pytest.mark.dist
@@ -281,6 +330,6 @@ def test_parallel_freq_aware_embed(world_size):
 
 
 if __name__ == '__main__':
-    test_freq_aware_embed(True)
-    # test_parallel_freq_aware_embed(2)
+    # test_freq_aware_embed(True)
+    test_parallel_freq_aware_embed(2)
     # test_lfu_strategy(False)
