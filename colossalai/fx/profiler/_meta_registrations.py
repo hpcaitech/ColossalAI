@@ -178,6 +178,12 @@ def meta_relu(input: torch.Tensor):
     return torch.empty_like(input)
 
 
+@register_meta([aten.hardswish_backward.default, ])
+def meta_activation_backward(grad_out:torch.Tensor, input: torch.Tensor):
+    grad_in = torch.empty_like(input)
+    return grad_in
+
+
 @register_meta(aten.native_batch_norm.default)
 def meta_bn(
     input: torch.Tensor, 
@@ -225,3 +231,11 @@ def meta_ln_backward(
     dgamma = torch.empty_like(weight)
     dbeta = torch.empty_like(bias)
     return dX, dgamma, dbeta
+
+
+@register_meta(aten._adaptive_avg_pool2d_backward.default)
+def meta_adaptive_avg_pool2d_backward(
+    grad_output: torch.Tensor, input: torch.Tensor,
+):
+    grad_input = torch.empty_like(input)
+    return torch.empty_like(input)
