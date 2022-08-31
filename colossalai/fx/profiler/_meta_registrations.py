@@ -181,9 +181,7 @@ def meta_hardswish_backward(grad_out: torch.Tensor, input: torch.Tensor):
     return grad_in
 
 
-@register_meta([
-    aten.roll.default,
-])
+@register_meta(aten.roll.default)
 def meta_roll(input: torch.Tensor, shifts, dims):
     return torch.empty_like(input)
 
