@@ -12,7 +12,6 @@ except:
     incompatible = True
 
 
-
 tm_models = [
     tm.vgg11, 
     tm.resnet18, 
