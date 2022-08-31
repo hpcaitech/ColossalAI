@@ -178,8 +178,13 @@ def meta_relu(input: torch.Tensor):
     return torch.empty_like(input)
 
 
-@register_meta([aten.hardswish_backward.default, ])
-def meta_activation_backward(grad_out:torch.Tensor, input: torch.Tensor):
+@register_meta(aten.hardswish.default)
+def meta_hardswish(input: torch.Tensor):
+    return torch.empty_like(input)
+
+
+@register_meta(aten.hardswish_backward.default)
+def meta_hardswish_backward(grad_out:torch.Tensor, input: torch.Tensor):
     grad_in = torch.empty_like(input)
     return grad_in
 
