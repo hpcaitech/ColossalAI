@@ -1,5 +1,3 @@
-from sqlite3 import SQLITE_CREATE_TRIGGER
-from unicodedata import name
 import torch
 import torch.nn.functional as F
 import torch.distributed as dist
@@ -188,3 +186,4 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
         if shape_hook is not None:
             output_full = shape_hook(output_full)
         return output_full
+
