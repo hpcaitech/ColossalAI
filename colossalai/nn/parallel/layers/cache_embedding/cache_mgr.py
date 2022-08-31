@@ -25,11 +25,9 @@ class CachedParamMgr(torch.nn.Module):
         weight (torch.Tensor): the weight of the Embedding layer.
         cuda_row_num (int, optional): the number of rows cached in CUDA memory. Defaults to 0.
         buffer_size (int, optional): the number of rows in a data transmitter buffer. Defaults to 50_000.
-        pin_weight (bool, optional): use pin memory to store the cpu weight. If set `True`, the cpu memory usage will increase largely. Defaults to False.
-        evict_strategy (EvictionStrategy, optional): the eviction strategy. There are two options.
-        `EvictionStrategy.LFU`: use the least frequently used cache.
-        `EvictionStrategy.DATASET`: use the stats collected from the target dataset. It usually leads to less cpu-gpu communication volume.
-        Defaults to EvictionStrategy.DATASET.
+        pin_weight (bool, optional): use pin memory to store the cpu weight. If set `True`, the cpu memory usage will increase largely. Defaults to False. 
+        evict_strategy (EvictionStrategy, optional): the eviction strategy. There are two options. `EvictionStrategy.LFU` uses the least frequently used cache. `EvictionStrategy.DATASET`: use the stats collected from the target dataset. It usually leads to less cpu-gpu communication volume.
+        Default as  EvictionStrategy.DATASET.
         use_cpu_caching (bool, optional): use cpu to execute cache indexing. It is slower than use gpu.
     """
 

@@ -1,10 +1,8 @@
-from functools import partial
 from operator import add, floordiv, getitem, mul, neg, setitem, sub, pos
 from typing import Callable, List, NamedTuple, Any, Dict, Tuple, Union
 import torch
-from torch.fx.node import Argument, Target, map_aggregate
+from torch.fx.node import Argument, Target
 from torch.fx._compatibility import compatibility
-from colossalai.fx.tracer.meta_patch import meta_patched_function, meta_patched_module
 from . import meta_profiler_function, meta_profiler_module
 
 __all__ = [
@@ -58,6 +56,10 @@ INPLACE_METHOD = [
     'reshape',
     'dim',
     'flatten',
+    'size',
+    'view',
+    'unsqueeze',
+    'to',
 ]
 
 # TODO: list all call_methods that are not inplace here
@@ -137,8 +139,6 @@ def profile_function(target: 'Target') -> Callable:
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
         assert meta_profiler_function.has(target) or meta_profiler_function.has(
             target.__name__), CALL_FUNCTION_MSG.format(target)
-        # ensure all arguments satisfy `device='meta'`
-        args, kwargs = map_aggregate([args, kwargs], lambda a: a.to('meta') if isinstance(a, torch.Tensor) else a)
 
         # call_function has no parameters
         param_size = 0
@@ -154,13 +154,7 @@ def profile_function(target: 'Target') -> Callable:
         return result, MetaProfile(param_size, activation_size, flops, macs)
 
     f.__name__ = target.__name__
-    # fetch patched function
-    if meta_patched_function.has(target):
-        func = meta_patched_function.get(target)
-    elif meta_patched_function.has(target.__name__):
-        func = meta_patched_function.get(target.__name__)
-    else:
-        func = target
+    func = target
     return f
 
 
@@ -180,8 +174,6 @@ def profile_method(target: 'Target') -> Callable:
         # execute the method and return the result
         assert isinstance(target, str), f'{target} instance is not str.'
 
-        # ensure all arguments satisfy `device='meta'`
-        map_aggregate([args, kwargs], lambda a: a.to('meta') if isinstance(a, torch.Tensor) else a)
         result = getattr(self_obj, target)(*args_tail, **kwargs)
         assert target in INPLACE_METHOD + NON_INPLACE_METHOD, CALL_METHOD_MSG.format(
             target, INPLACE_METHOD, NON_INPLACE_METHOD)
@@ -216,8 +208,8 @@ def profile_module(module: torch.nn.Module) -> Callable:
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
         assert meta_profiler_module.has(type(module)), CALL_MODULE_MSG.format(type(module))
-        # ensure all arguments satisfy `device='meta'`
-        map_aggregate([args, kwargs], lambda a: a.to('meta') if isinstance(a, torch.Tensor) else a)
+
+        # only `nn.Module` has parameters
         param_size = calculate_param_size(module)
         activation_size = 0
         result = func(*args, **kwargs)
@@ -228,9 +220,5 @@ def profile_module(module: torch.nn.Module) -> Callable:
         return result, MetaProfile(param_size, activation_size, flops, macs)
 
     f.__name__ = module.__class__.__name__
-    # fetch patched module
-    if meta_patched_module.has(type(module)):
-        func = partial(meta_patched_module.get(type(module)), module)
-    else:
-        func = module.forward
+    func = module.forward
     return f
