@@ -163,7 +163,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
             )
 
         # get result of shape = (batch_size, (len(assigned_tables)*embedding_dim))
-        local_output = torch.cat(local_indices, 1)
+        local_output = torch.cat(local_output_pt, 1)
         # then concatenate those local_output on the second demension.
         # use all_to_all
         remains = batch_size % self.world_size
