@@ -50,7 +50,7 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
                  device: Optional[torch.device] = None,
                  cuda_row_num: int = 0,
                  ids_freq_mapping: Optional[Union[List, torch.Tensor]] = None,
-                 warmup_ratio: bool = 0.7,
+                 warmup_ratio: float = 0.7,
                  buffer_size: int = 50_000,
                  pin_weight: bool = False,
                  evict_strategy: EvictionStrategy = EvictionStrategy.DATASET):
