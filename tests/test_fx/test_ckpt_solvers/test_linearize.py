@@ -1,20 +1,9 @@
-from ast import For
-from binhex import REASONABLY_LARGE
-from typing import Callable
-import copy
-import re
 import torch
-import torch.multiprocessing as mp
 import torchvision.models as tm
-from torch.fx import GraphModule
-import colossalai
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor, linearize
+from colossalai.fx.passes.algorithms import solver_rotor, linearize
 from colossalai.fx.passes.algorithms.utils import Loss, ForwardCheck, ForwardEnable, ForwardNograd
-from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
 import pytest
 
 try:

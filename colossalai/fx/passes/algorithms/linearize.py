@@ -1,7 +1,5 @@
-from typing import OrderedDict, List
+from typing import List
 from torch.fx import GraphModule, Node
-from collections import OrderedDict
-import pdb
 
 
 def linearize(gm: GraphModule) -> List[List[Node]]:
