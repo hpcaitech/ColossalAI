@@ -78,7 +78,6 @@ def _dual_all_to_all(x, pg, scatter_strides, gather_strides):
 
 
 class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
-    # I will implement LFU first
     '''
     every table assigned to this class instance is managed by a FreqAwareEmbeddingBag.
     '''
