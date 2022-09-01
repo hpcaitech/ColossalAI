@@ -12,6 +12,13 @@ from .cache_mgr import CachedParamMgr, EvictionStrategy
 
 
 class TablewiseEmbeddingBagConfig:
+    '''
+    example:
+    def prepare_tablewise_config(args, cache_ratio, ...):
+        embedding_bag_config_list: List[TablewiseEmbeddingBagConfig] = []
+        ...
+        return embedding_bag_config_list
+    '''
     def __init__(self,
                  num_embeddings: int,
                  cuda_row_num: int,
@@ -28,14 +35,6 @@ class TablewiseEmbeddingBagConfig:
         self.initial_weight = initial_weight
         self.name = name
 
-
-'''
-example: 
-def prepare_tablewise_config(args, cache_ratio, ...):
-    embedding_bag_config_list: List[TablewiseEmbeddingBagConfig] = []
-    ...
-    return embedding_bag_config_list
-'''
 
 
 def _all_to_all_for_tablewise(x: torch.Tensor, pg: ProcessGroup, scatter_strides: List[int], gather_strides: List[int], forward=True) -> torch.Tensor:
@@ -153,18 +152,16 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
     def forward(self, indices: torch.Tensor, offsets: torch.Tensor = None, per_sample_weights=None, shape_hook=None):
         # determine indices to handle
         batch_size = (offsets.shape[0]) // self.global_tables_num
-        indices_start_positions = []
-        indices_end_positions = []
-        for handle_table in self.assigned_table_list:
-            indices_start_positions.append(offsets[batch_size * handle_table])
-            if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):
-                indices_end_positions.append(indices.shape[0])
-            else:
-                indices_end_positions.append(offsets[batch_size * (handle_table + 1)])
-
         local_output_list = []
         for i, handle_table in enumerate(self.assigned_table_list):
-            local_indices = indices[indices_start_positions[i]:indices_end_positions[i]] - \
+            indices_start_position = offsets[batch_size * handle_table]
+            if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):
+                # till the end special case
+                indices_end_position = indices.shape[0]
+            else :
+                indices_end_position = offsets[batch_size * (handle_table + 1)]
+            
+            local_indices = indices[indices_start_position:indices_end_position] - \
                 self.global_tables_offsets[handle_table]
             if self.include_last_offset:
                 local_offsets = offsets[batch_size * handle_table:batch_size
@@ -174,7 +171,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
                                         * (handle_table + 1)] - offsets[batch_size * (handle_table)]
             local_per_sample_weights = None
             if per_sample_weights != None:
-                local_per_sample_weights = per_sample_weights[indices_start_positions[i]:indices_end_positions[i]]
+                local_per_sample_weights = per_sample_weights[indices_start_position:indices_end_position]
             local_output_list.append(
                 self.freq_aware_embedding_bag_list[i](
                     local_indices,
