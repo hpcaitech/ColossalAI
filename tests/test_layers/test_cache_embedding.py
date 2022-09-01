@@ -1,4 +1,3 @@
-from lib2to3 import refactor
 import pytest
 from functools import partial
 
@@ -205,7 +204,7 @@ def gather_tensor(tensor, rank, world_size):
 
 def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     if world_size != 2:
-        pass
+        return
     device = torch.device('cuda', torch.cuda.current_device())
 
     # initialize weight
