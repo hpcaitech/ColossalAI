@@ -1,4 +1,4 @@
-from xml.etree.ElementInclude import include
+from lib2to3 import refactor
 import pytest
 from functools import partial
 
@@ -207,12 +207,20 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     if world_size != 2:
         pass
     device = torch.device('cuda', torch.cuda.current_device())
+
+    # initialize weight
+    # 3 feature tables. idx: 0~5, 6~10, 11~17
+    weight_table1 = torch.rand(6, 5)
+    weight_table2 = torch.rand(5, 5)
+    weight_table3 = torch.rand(7, 5)
     embedding_bag_config_list: List[TablewiseEmbeddingBagConfig] = []
-    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(num_embeddings=6, cuda_row_num=4, assigned_rank=0))
-    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(num_embeddings=5, cuda_row_num=4, assigned_rank=0))
-    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(num_embeddings=7, cuda_row_num=4, assigned_rank=1))
-    # 0~5, 6~10, 11~17
-    
+    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(
+        num_embeddings=6, cuda_row_num=4, assigned_rank=0, initial_weight=weight_table1.clone().detach().cpu()))
+    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(
+        num_embeddings=5, cuda_row_num=4, assigned_rank=0, initial_weight=weight_table2.clone().detach().cpu()))
+    embedding_bag_config_list.append(TablewiseEmbeddingBagConfig(
+        num_embeddings=7, cuda_row_num=4, assigned_rank=1, initial_weight=weight_table3.clone().detach().cpu()))
+
     model = ParallelFreqAwareEmbeddingBagTablewise(
         embedding_bag_config_list,
         embedding_dim=5,
@@ -230,25 +238,37 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     in KJT format
     '''
     res = model(torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
-                      torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device))
-    #print(res)
-    optimizer = torch.optim.SGD(model.parameters(),lr=0.1)
-    optimizer.zero_grad()
+                torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device))
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
+    rand_grad = torch.rand(3, 5 * 3, dtype=res.dtype, device=res.device)
     if rank == 0:
-        fake_grad = torch.rand(2, 5*3,dtype=res.dtype, device=res.device)
+        fake_grad = rand_grad[0:2]
     else :
-        fake_grad = torch.rand(1, 5*3,dtype=res.dtype, device=res.device)
+        fake_grad = rand_grad[2:]
+
     res.backward(fake_grad)
     optimizer.step()
     optimizer.zero_grad()
-    res = model(torch.tensor([1, 2, 3, 1, 5, 6, 7, 9, 6, 8, 13, 15, 11], device=device),
-                torch.tensor([0, 3, 3, 5, 7, 8, 10, 10, 12, 13], device=device))
-    #print(fake_grad)
-    #print(res)
-    # just check if error occured. TODO: check correctness
-    
-    
-def run_parallel_freq_aware_embed(rank, world_size):
+
+    # check correctness on weight_table2
+    if rank == 0:
+        ref_model = torch.nn.EmbeddingBag.from_pretrained(weight_table2.detach().clone(),
+                                                          include_last_offset=True,
+                                                          freeze=False).to(device)
+        ref_optimizer = torch.optim.SGD(ref_model.parameters(), lr=1e-2)
+        ref_grad = rand_grad[:, 5:10]
+        ref_res = ref_model(torch.tensor([0, 1, 3, 0, 2], device=device), torch.tensor([0, 2, 3, 5], device=device))
+        ref_res.backward(ref_grad)
+        ref_optimizer.step()
+        ref_optimizer.zero_grad()
+
+        model.freq_aware_embedding_bag_list[1].cache_weight_mgr.flush()  # update cpu weight
+        recover_weight = model.freq_aware_embedding_bag_list[1].cache_weight_mgr.weight
+        assert torch.allclose(recover_weight, ref_model.weight.detach().cpu()
+                              ), f"{recover_weight - ref_model.weight.detach().cpu()}"
+
+
+def run_parallel_freq_aware_embed_columnwise(rank, world_size):
     device = torch.device('cuda', torch.cuda.current_device())
 
     num_embed = 100
@@ -268,7 +288,7 @@ def run_parallel_freq_aware_embed(rank, world_size):
                                                           include_last_offset=True,
                                                           freeze=False,
                                                           cuda_row_num=batch_size * 2,
-                                                    )
+                                                          )
 
     assert model.cache_weight_mgr.weight.device.type == 'cpu'
     assert model.cache_weight_mgr.cuda_cached_weight.requires_grad
@@ -318,6 +338,7 @@ def run_parallel_freq_aware_embed(rank, world_size):
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    # run_parallel_freq_aware_embed_columnwise(rank, world_size)
     run_parallel_freq_aware_embed_tablewise(rank, world_size)
 
 
