@@ -8,14 +8,14 @@ import pytest
 
 try:
     meta_lib = torch.library.Library("aten", "IMPL", "Meta")
-    incompatible = False    # version > 1.12.0
+    INCOMPATIBLE = False    # version > 1.12.0
 except:
-    incompatible = True
+    INCOMPATIBLE = True
 
 aten = torch.ops.aten
 
 registered_meta = {
-    (aten.convolution.default, True): [    # (aten ops, requires_backward)
+    ('aten.convolution.default', True): [    # (aten ops, requires_backward)
         (nn.Conv1d(in_channels=3, out_channels=4, kernel_size=2, padding=1, dilation=2), torch.rand(2, 3, 4)),
         (nn.Conv2d(in_channels=3, out_channels=4, kernel_size=2, padding=1, dilation=2), torch.rand(2, 3, 4, 4)),
         (nn.Conv3d(in_channels=3, out_channels=4, kernel_size=2, padding=1, dilation=2), torch.rand(2, 3, 4, 4, 4)),
@@ -25,25 +25,25 @@ registered_meta = {
         (nn.ConvTranspose3d(in_channels=3, out_channels=4, kernel_size=2, padding=1,
                             dilation=2), torch.rand(2, 3, 4, 4, 4)),
     ],
-    (aten.native_batch_norm.default, True): [
+    ('aten.native_batch_norm.default', True): [
         (nn.BatchNorm1d(4), torch.rand(2, 4)),
         (nn.BatchNorm2d(4), torch.rand(1, 4, 4, 4)),
         (nn.BatchNorm3d(4), torch.rand(1, 4, 4, 4, 4)),
     ],
-    (aten.native_layer_norm.default, True): [(nn.LayerNorm(4), torch.rand(1, 2, 3, 4)),],
-    (aten.avg_pool1d.default, True): [
+    ('aten.native_layer_norm.default', True): [(nn.LayerNorm(4), torch.rand(1, 2, 3, 4)),],
+    ('aten.avg_pool1d.default', True): [
         (nn.MaxPool1d(3, stride=2), torch.rand(4, 5, 5)),
         (nn.AvgPool1d(3, stride=2), torch.rand(4, 5, 5)),
         (nn.AdaptiveMaxPool1d(3), torch.rand(4, 5, 5)),
         (nn.AdaptiveAvgPool1d(3), torch.rand(4, 5, 5)),
     ],
-    (aten.avg_pool2d.default, True): [
+    ('aten.avg_pool2d.default', True): [
         (nn.MaxPool2d((3, 2), stride=(2, 1)), torch.rand(2, 4, 5, 5)),
         (nn.AvgPool2d((3, 2), stride=(2, 1)), torch.rand(2, 4, 5, 5)),
         (nn.AdaptiveMaxPool2d((3, 2)), torch.rand(2, 4, 5, 5)),
         (nn.AdaptiveAvgPool2d((3, 2)), torch.rand(2, 4, 5, 5)),
     ],
-    (aten.relu.default, True): [
+    ('aten.relu.default', True): [
         (nn.ReLU(), torch.rand(4, 3, 1, 2)),
         (nn.LeakyReLU(), torch.rand(4, 3, 1, 2)),
         (nn.SiLU(), torch.rand(4, 3, 1, 2)),
@@ -77,7 +77,7 @@ def run_and_compare(f: Union[nn.Module, Callable], x: torch.Tensor, requires_bac
         compare_all(x.grad, meta_x.grad)
 
 
-@pytest.mark.skipif(incompatible, reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(INCOMPATIBLE, reason='torch version is lower than 1.12.0')
 def test_meta_aten():
     for (aten_op, requires_backward), v in registered_meta.items():
         for f, x in v:
