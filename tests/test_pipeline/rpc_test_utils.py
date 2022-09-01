@@ -1,12 +1,16 @@
 import os
 import argparse
+import warnings
 
 import torch
 from torch import nn
 import torch.multiprocessing as mp
 import torch.distributed.rpc as rpc
 from torch.optim import SGD, Adam, RMSprop, Optimizer
+from torch._C._distributed_rpc import _is_current_rpc_agent_set
 from colorama import Back, Style
+
+rpc_is_initialized = _is_current_rpc_agent_set
 
 
 def color_debug(text, prefix=' ', color='blue'):
@@ -52,6 +56,19 @@ def parse_args():
     return parser.parse_args()
 
 
+def pg_parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--world_size', type=int, default=4)
+    parser.add_argument('--dp_degree', type=int, default=2)
+    parser.add_argument('--tp_degree', type=int, default=1)
+    parser.add_argument('--chunk', type=int, default=1)
+    parser.add_argument('--num_worker_threads', type=str, default=128)
+    parser.add_argument('--device', type=str, choices=['cpu', 'cuda'], default='cuda')
+    parser.add_argument('--master_addr', type=str, default='localhost')
+    parser.add_argument('--master_port', type=str, default='29020')
+    return parser.parse_args()
+
+
 def run_worker(rank, args, master_func):
     os.environ['MASTER_ADDR'] = args.master_addr
     os.environ['MASTER_PORT'] = args.master_port
@@ -71,7 +88,10 @@ def run_worker(rank, args, master_func):
     if rank == 0:
         master_func(args)
     # barrier here
-    rpc.shutdown()
+    if rpc_is_initialized():
+        rpc.shutdown()
+    else:
+        warnings.warn("RPC has not been initialized")
 
 
 def rpc_run(args, master_func):

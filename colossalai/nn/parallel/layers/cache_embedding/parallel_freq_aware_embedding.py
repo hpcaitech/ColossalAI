@@ -79,10 +79,8 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         output_shard = F.embedding_bag(reorder_ids.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets,
                                        self.max_norm, self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
                                        per_sample_weights, self.include_last_offset, self.padding_idx)
-
         if shape_hook is not None:
             output_shard = shape_hook(output_shard)
-
         output_full = dual_all_to_all(output_shard,
                                       self.weight.get_process_group(),
                                       scatter_dim=scatter_dim,
