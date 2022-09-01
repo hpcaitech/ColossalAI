@@ -1,89 +1,130 @@
-from typing import OrderedDict
-from torch.fx import GraphModule
+from typing import OrderedDict, List
+from torch.fx import GraphModule, Node
 from collections import OrderedDict
 import pdb
 
+# def linearize(gm: GraphModule) -> dict:
+#     status_dict = {}
+#     node_dict = OrderedDict()
+#     node_idx = 0
+#     for node in gm.graph.nodes:
+#         last_dict_len = len(status_dict)
+#         # remove node from users list in status_dict
+#         for item in status_dict.values():
+#             if node in item:
+#                 item.remove(node)
 
-def linearize(gm: GraphModule) -> dict:
-    status_dict = {}
-    node_dict = OrderedDict()
-    node_idx = 0
-    for node in gm.graph.nodes:
-        last_dict_len = len(status_dict)
-        # remove node from users list in status_dict
-        for item in status_dict.values():
-            if node in item:
-                item.remove(node)
+#         # pop node from status_dict if it is fully used
+#         for key in list(status_dict):
+#             if len(status_dict[key]) == 0:
+#                 status_dict.pop(key)
 
-        # pop node from status_dict if it is fully used
-        for key in list(status_dict):
-            if len(status_dict[key]) == 0:
-                status_dict.pop(key)
+#         # first node in graph, it should be in n0-n1 type,
+#         # where n0 contains only input op, i.e. placeholder
+#         if last_dict_len == 0:
+#             node_dict[node_idx] = [node]
+#             status_dict[node.name] = list(node.users)
+#             node_idx += 1
+#             node_dict[node_idx] = []
 
-        # first node in graph, it should be in n0-n1 type,
-        # where n0 contains only input op, i.e. placeholder
-        if last_dict_len == 0:
-            node_dict[node_idx] = [node]
-            status_dict[node.name] = list(node.users)
-            node_idx += 1
-            node_dict[node_idx] = []
+#             continue
 
-            continue
+#         # boundary case
+#         if len(status_dict) == 0:
+#             # current node region end point = next node region start point
+#             # i.e. n1-n2-n3-... type node, each node contains only one op
+#             if last_dict_len == 1:
+#                 if len(node_dict[node_idx]) > 0:
+#                     node_idx += 1
+#                     node_dict[node_idx] = []
+#                 node_dict[node_idx].append(node)
+#                 status_dict[node.name] = list(node.users)
 
-        # boundary case
-        if len(status_dict) == 0:
-            # current node region end point = next node region start point
-            # i.e. n1-n2-n3-... type node, each node contains only one op
-            if last_dict_len == 1:
-                if len(node_dict[node_idx]) > 0:
-                    node_idx += 1
-                    node_dict[node_idx] = []
-                node_dict[node_idx].append(node)
-                status_dict[node.name] = list(node.users)
+#                 continue
 
-                continue
+#             # n1-n2-n3, if n1 has multiple ops, the last op in n1 will be
+#             # the one who is able to clean all others in status_dict
+#             # and as the last_dict_len > 1, there are multiple ops are used
+#             # by this node, we view it as the end of one node and start a new node
+#             else:
 
-            # n1-n2-n3, if n1 has multiple ops, the last op in n1 will be
-            # the one who is able to clean all others in status_dict
-            # and as the last_dict_len > 1, there are multiple ops are used
-            # by this node, we view it as the end of one node and start a new node
-            else:
+#                 node_dict[node_idx].append(node)
+#                 status_dict[node.name] = list(node.users)
+#                 node_idx += 1
+#                 node_dict[node_idx] = []
 
-                node_dict[node_idx].append(node)
-                status_dict[node.name] = list(node.users)
-                node_idx += 1
-                node_dict[node_idx] = []
+#                 continue
 
-                continue
+#         else:
+#             # currently I will use bigger node structure
+#             # if the following region is activated, the node will be smaller
+#             #################################################
+#             # if last_dict_len == 1:
+#             #     if len(node_dict[node_idx]) > 0:
+#             #         node_idx += 1
+#             #     node_dict[node_idx] = [node]
+#             #     status_dict[node.name] = list(node.users)
+#             #
+#             #     continue
+#             #################################################
 
-        else:
-            # currently I will use bigger node structure
-            # if the following region is activated, the node will be smaller
-            #################################################
-            # if last_dict_len == 1:
-            #     if len(node_dict[node_idx]) > 0:
-            #         node_idx += 1
-            #     node_dict[node_idx] = [node]
-            #     status_dict[node.name] = list(node.users)
-            #
-            #     continue
-            #################################################
+#             # in-node case, as the current node can not clean status_dict
+#             # we view it as in-node status, the node will be appended to the
+#             # current node_idx
+#             node_dict[node_idx].append(node)
+#             status_dict[node.name] = list(node.users)
 
-            # in-node case, as the current node can not clean status_dict
-            # we view it as in-node status, the node will be appended to the
-            # current node_idx
-            node_dict[node_idx].append(node)
-            status_dict[node.name] = list(node.users)
+#             continue
 
-            continue
+#     # If the output node use multiple nodes, there might be an
+#     # empty node after the output node
+#     if len(node_dict[node_idx]) == 0:
+#         node_dict.pop[node_idx]
+#         node_idx -= 1
 
-    # If the output node use multiple nodes, there might be an
-    # empty node after the output node
-    if len(node_dict[node_idx]) == 0:
-        node_dict.pop[node_idx]
-        node_idx -= 1
+#     # pop the last two nodes
+#     node_dict.pop(0)
+#     node_dict.pop(node_idx)
+#     return node_dict
 
-    # pop the last two nodes
-    node_dict.pop(0)
-    node_dict.pop(node_idx)
-    return node_dict
+
+def linearize(gm: GraphModule) -> List[List[Node]]:
+    """Linearizing the graph
+
+    Args:
+        gm (GraphModule): GraphModule derived by tracing
+
+    Returns:
+        List[List[Node]]: List of list, each inside list of Node presents
+        the actual 'node' in linearized manner.
+    """
+
+    def _is_sink() -> bool:
+        """Check if we can free all dependencies
+
+        Returns:
+            bool
+        """
+
+        return not sum([v for _, v in deps.items()])
+
+    deps = {}
+    linearized_nodes = []
+    region = []
+
+    for n in gm.graph.nodes:
+        for n_par in n._input_nodes:
+            deps[n_par] -= 1
+        region.append(n)
+
+        # if the node could free all dependencies in graph
+        # we could begin a new node
+        if _is_sink():
+            linearized_nodes.append(region)
+            region = []
+
+        deps[n] = len(n.users)
+
+    # Remove input
+    linearized_nodes = linearized_nodes[1:-1]
+    return linearized_nodes
