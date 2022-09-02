@@ -114,7 +114,7 @@ def _discretize(mem_unit, values):
     return [math.ceil(value / mem_unit) for value in values]
 
 
-def _construct_chain(node_dict: Dict[int, Node], data: torch.Tensor, mem_unit: int) -> Chain:
+def _construct_chain(node_list: List[List[Node]], data: torch.Tensor, mem_unit: int) -> Chain:
 
     fwd_time = []
     bwd_time = []
@@ -122,22 +122,22 @@ def _construct_chain(node_dict: Dict[int, Node], data: torch.Tensor, mem_unit: i
     x_sizes = [data.numel() * data.element_size()]
 
     # currently we can't get the temp memory needed in fwd and bwd
-    tmp_fwd = [0] * len(node_dict)
-    tmp_bwd = [0] * (len(node_dict) + 1)
+    tmp_fwd = [0] * len(node_list)
+    tmp_bwd = [0] * (len(node_list) + 1)
 
-    for key in node_dict.keys():
+    for idx, node in enumerate(node_list):
         fwd_time.append(0)
         bwd_time.append(0)
         xbar_sizes.append(0)
-        x_sizes.append(node_dict[key][-1].meta['tensor_meta'].numel *
-                       torch.tensor([], dtype=node_dict[key][-1].meta['tensor_meta'].dtype).element_size())
-        for node in node_dict[key]:
-            fwd_time[-1] += max(node.__flops__, 1)
+        x_sizes.append(node[-1].meta['tensor_meta'].numel *
+                       torch.tensor([], dtype=node[-1].meta['tensor_meta'].dtype).element_size())
+        for n in node:
+            fwd_time[-1] += max(n.__flops__, 1)
 
             # currently we haven't patched the backward flops count
-            bwd_time[-1] += max(node.__flops__ * 2, 2)
+            bwd_time[-1] += max(n.__flops__ * 2, 2)
 
-            xbar_sizes[-1] += node.__activation__
+            xbar_sizes[-1] += n.__activation__
 
         xbar_sizes[-1] = max(xbar_sizes[-1], x_sizes[-1])
 
@@ -151,14 +151,14 @@ def _construct_chain(node_dict: Dict[int, Node], data: torch.Tensor, mem_unit: i
     return Chain(fwd_time, bwd_time, x_sizes, xbar_sizes, tmp_fwd, tmp_bwd)
 
 
-def _annotate_from_sequence(sequence: Sequence, node_dict: Dict[int, Node]) -> GraphModule:
+def _annotate_from_sequence(sequence: Sequence, node_list: List[List[Node]]) -> GraphModule:
     op_list = sequence.list_operations()
-    loss_op = [op for op in op_list if isinstance(op, Loss)][0]
+    loss_op = next(op for op in op_list if isinstance(op, Loss))
     op_list = op_list[:op_list.index(loss_op)]
     ckpt_idx = 0
     in_ckpt = False
     ckpt_region = []
-    for idx, op in enumerate(op_list, 1):
+    for idx, op in enumerate(op_list, 0):
         if in_ckpt:
             if isinstance(op, ForwardNograd):
                 ckpt_region.append(idx)
@@ -166,16 +166,16 @@ def _annotate_from_sequence(sequence: Sequence, node_dict: Dict[int, Node]) -> G
             elif isinstance(op, ForwardEnable):
                 in_ckpt = False
                 for node_idx in ckpt_region:
-                    for node in node_dict[node_idx]:
-                        setattr(node, "activation_checkpoint", ckpt_idx)
+                    for n in node_list[node_idx]:
+                        setattr(n, "activation_checkpoint", ckpt_idx)
 
                 ckpt_idx += 1
                 ckpt_region = []
 
             elif isinstance(op, ForwardCheck):
                 for node_idx in ckpt_region:
-                    for node in node_dict[node_idx]:
-                        setattr(node, "activation_checkpoint", ckpt_idx)
+                    for n in node_list[node_idx]:
+                        setattr(n, "activation_checkpoint", ckpt_idx)
 
                 ckpt_idx += 1
                 ckpt_region = [idx]
@@ -199,13 +199,13 @@ def solver_rotor(gm: ColoGraphModule, data: torch.Tensor, mem_limit: int, mem_sl
         ColoGraphModule: annotated ColoGraphModuled with __sequence__ attribute
     """
 
-    node_dict = linearize(gm)
+    node_list = linearize(gm)
     mem_unit = mem_limit // mem_slots
     MetaInfoProp(gm).run(data)
-    chain: Chain = _construct_chain(node_dict, data, mem_unit)
+    chain: Chain = _construct_chain(node_list, data, mem_unit)
     opt_table = _compute_table(chain, mem_slots)
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
-    _annotate_from_sequence(sequence, node_dict)
+    _annotate_from_sequence(sequence, node_list)
 
     # set __sequence__ attribute to GraphModule
     setattr(gm, "__sequence__", sequence)
