@@ -8,6 +8,12 @@ from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_p
 from colossalai.fx.passes.utils import get_comm_size
 import pytest
 
+try:
+    meta_lib = torch.library.Library("aten", "IMPL", "Meta")
+    INCOMPATIBLE = False    # version > 1.12.0
+except:
+    INCOMPATIBLE = True
+
 MODEL_DIM = 16
 BATCH_SIZE = 8
 PIPELINE_SIZE = 2
@@ -30,6 +36,7 @@ class MLP(torch.nn.Module):
         return x
 
 
+@pytest.mark.skipif(INCOMPATIBLE, reason='torch version is lower than 1.12.0')
 def test_comm_size_compute():
     model = MLP(MODEL_DIM)
     input_sample = torch.rand(BATCH_SIZE, MODEL_DIM, device='meta')
