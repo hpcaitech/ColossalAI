@@ -1,5 +1,5 @@
 import torch
-from typing import Union, Optional
+from typing import Union, Optional, List
 from colossalai.tensor import ColoTensor
 import torch
 import torch.distributed as dist
@@ -231,3 +231,54 @@ class _DualAllToAll(torch.autograd.Function):
 
 def dual_all_to_all(x, pg, scatter_dim: int, gather_dim: int):
     return _DualAllToAll.apply(x, pg, scatter_dim, gather_dim)
+
+
+### table wise embedding shard
+
+
+def _all_to_all_for_tablewise(x: torch.Tensor,
+                              pg: ProcessGroup,
+                              scatter_strides: List[int],
+                              gather_strides: List[int],
+                              forward=True) -> torch.Tensor:
+    world_size = pg.tp_world_size()
+    rank = pg.tp_local_rank()
+    if world_size == 1:
+        return x
+    assert x.device.type == 'cuda', f"Currently, the collective function dual_all_to_all only supports nccl backend"
+    if forward:
+        scatter_list = list(x.split(scatter_strides, 0))
+        gather_list = [
+            torch.empty(scatter_strides[rank], gather_strides[i], dtype=x.dtype, device=x.device)
+            for i in range(world_size)
+        ]
+        torch.distributed.all_to_all(gather_list, scatter_list, group=pg.tp_process_group())
+        return torch.cat(gather_list, 1).contiguous()
+    else:
+        # split on dim 1, lose contiguity
+        scatter_list = [each.contiguous() for each in x.split(scatter_strides, 1)]
+        gather_list = [
+            torch.empty(gather_strides[i], scatter_strides[rank], dtype=x.dtype, device=x.device)
+            for i in range(world_size)
+        ]
+        torch.distributed.all_to_all(gather_list, scatter_list, group=pg.tp_process_group())
+        return torch.cat(gather_list, 0).contiguous()
+
+
+class _DualAllToAllForTablewise(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, x, pg, scatter_strides, gather_strides):
+        ctx.pg = pg
+        ctx.scatter_strides = scatter_strides
+        ctx.gather_strides = gather_strides
+        return _all_to_all_for_tablewise(x, pg, scatter_strides, gather_strides, forward=True)
+
+    @staticmethod
+    def backward(ctx, grad):
+        return _all_to_all_for_tablewise(grad, ctx.pg, ctx.gather_strides, ctx.scatter_strides,
+                                         forward=False), None, None, None
+
+
+def dual_all_to_all_tablewise(x, pg, scatter_strides, gather_strides):
+    return _DualAllToAllForTablewise.apply(x, pg, scatter_strides, gather_strides)

@@ -20,7 +20,10 @@ def register_meta(op, register_dispatcher=True):
             meta_table[op] = f
             if register_dispatcher:
                 name = (op.__name__ if op._overloadname != "default" else op.overloadpacket.__name__)
-                meta_lib.impl(name, f)
+                try:
+                    meta_lib.impl(name, f)
+                except:
+                    pass
 
         tree_map(add_func, op)
         return f
@@ -178,9 +181,7 @@ def meta_hardswish_backward(grad_out: torch.Tensor, input: torch.Tensor):
     return grad_in
 
 
-@register_meta([
-    aten.roll.default,
-])
+@register_meta(aten.roll.default)
 def meta_roll(input: torch.Tensor, shifts, dims):
     return torch.empty_like(input)
 
