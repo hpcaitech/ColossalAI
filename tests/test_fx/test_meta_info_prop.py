@@ -28,9 +28,6 @@ def test_meta_info_prop():
             meta_check(node.meta['tensor_meta'], input_sample)
         if node.op == 'output':
             meta_check(node.meta['tensor_meta'], orig_output)
-        assert hasattr(node, 'node_size'), 'The attribute Node.node_size should exist after MetaInfoProp procedure'
-        assert hasattr(node, 'flop_count'), 'The attribute Node.flop_count should exist after MetaInfoProp procedure'
-        assert hasattr(node, 'mem_stat'), 'The attribute Node.mem_stat should exist after MetaInfoProp procedure'
 
 
 if __name__ == '__main__':

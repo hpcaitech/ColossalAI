@@ -98,8 +98,12 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         # TODO: the attribute node_size should be removed in the future
         setattr(n, 'node_size', mem_stat[1])
-        setattr(n, 'flop_count', flop_count)
-        setattr(n, 'mem_stat', mem_stat)
+        setattr(n, 'fwd_flop', flop_count[0])
+        setattr(n, 'bwd_flop', flop_count[1])
+        setattr(n, 'fwd_tmp', mem_stat[0])
+        setattr(n, 'fwd_out', mem_stat[1])
+        setattr(n, 'bwd_tmp', mem_stat[2])
+        setattr(n, 'bwd_out', mem_stat[3])
         n.meta['type'] = type(result)
         return result
 
