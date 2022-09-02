@@ -4,9 +4,7 @@ import torch
 from torch.fx.node import Argument, Target
 from torch.fx._compatibility import compatibility
 from torch.utils._pytree import tree_map, tree_flatten
-from .tensor import MetaTensor
-from .opcount import flop_mapping
-from .memory import activation_size
+from . import flop_mapping, MetaTensor, activation_size
 
 __all__ = ['profile_function', 'profile_module', 'profile_method', '_profile']
 

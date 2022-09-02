@@ -1,5 +1,6 @@
 try:
     from ._meta_registrations import *
+    from .opcount import flop_mapping
 except:
     import torch
     print(f'_meta_registrations seems to be incompatible with PyTorch {torch.__version__}.')
