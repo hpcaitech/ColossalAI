@@ -1,6 +1,7 @@
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.profiler import record_function
 from typing import List
 import abc
 
@@ -109,26 +110,28 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
         batch_size = (offsets.shape[0]) // self.global_tables_num
         local_output_list = []
         for i, handle_table in enumerate(self.assigned_table_list):
-            indices_start_position = offsets[batch_size * handle_table]
-            if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):
-                # till the end special case
-                indices_end_position = indices.shape[0]
-            else:
-                indices_end_position = offsets[batch_size * (handle_table + 1)]
+            with record_function("(tablewise) prepare indices and offsets"):
+                indices_start_position = offsets[batch_size * handle_table]
+                if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):
+                    # till the end special case
+                    indices_end_position = indices.shape[0]
+                else:
+                    indices_end_position = offsets[batch_size * (handle_table + 1)]
 
-            local_indices = indices[indices_start_position:indices_end_position] - \
-                self.global_tables_offsets[handle_table]
-            if self.include_last_offset:
-                local_offsets = offsets[batch_size * handle_table:batch_size *
-                                        (handle_table + 1) + 1] - offsets[batch_size * (handle_table)]
-            else:
-                local_offsets = offsets[batch_size * handle_table:batch_size *
-                                        (handle_table + 1)] - offsets[batch_size * (handle_table)]
-            local_per_sample_weights = None
-            if per_sample_weights != None:
-                local_per_sample_weights = per_sample_weights[indices_start_position:indices_end_position]
-            local_output_list.append(self.freq_aware_embedding_bag_list[i](local_indices, local_offsets,
-                                                                           local_per_sample_weights))
+                local_indices = indices[indices_start_position:indices_end_position] - \
+                    self.global_tables_offsets[handle_table]
+                if self.include_last_offset:
+                    local_offsets = offsets[batch_size * handle_table:batch_size *
+                                            (handle_table + 1) + 1] - offsets[batch_size * (handle_table)]
+                else:
+                    local_offsets = offsets[batch_size * handle_table:batch_size *
+                                            (handle_table + 1)] - offsets[batch_size * (handle_table)]
+                local_per_sample_weights = None
+                if per_sample_weights != None:
+                    local_per_sample_weights = per_sample_weights[indices_start_position:indices_end_position]
+            with record_function("(tablewise) tablewise forward"):
+                local_output_list.append(self.freq_aware_embedding_bag_list[i](local_indices, local_offsets,
+                                                                               local_per_sample_weights))
 
         # get result of shape = (batch_size, (len(assigned_table_list)*embedding_dim))
         local_output = torch.cat(local_output_list, 1)
@@ -140,3 +143,12 @@ class ParallelFreqAwareEmbeddingBagTablewise(abc.ABC, nn.Module):
         if shape_hook is not None:
             output_full = shape_hook(output_full)
         return output_full
+
+    def element_size(self):
+        if len(self.assigned_table_list) == 0:
+            return 0
+        return self.freq_aware_embedding_bag_list[0].cache_weight_mgr.weight.element_size()
+
+    def print_comm_stats_(self):
+        for freq_aware_embedding_bag in self.freq_aware_embedding_bag_list:
+            freq_aware_embedding_bag.cache_weight_mgr.print_comm_stats()
