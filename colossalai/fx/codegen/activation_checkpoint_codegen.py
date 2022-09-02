@@ -167,8 +167,7 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
             use_reentrant = True
             non_leaf_input = 0
             for var in input_vars[label]:
-                input_node = [item for item in node_list if item.name == var]
-                input_node = input_node[0]
+                input_node = next(item for item in node_list if item.name == var)
                 if input_node.op != "placeholder":
                     non_leaf_input = 1
                 for user in input_node.users:
