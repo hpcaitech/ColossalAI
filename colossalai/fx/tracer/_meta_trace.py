@@ -2,14 +2,9 @@ import torch
 from torch.fx import Node, Graph
 from torch.fx.graph import _Namespace
 from torch.utils._pytree import tree_map
-import colossalai.fx.profiler
-
-from typing import Tuple, Dict, Any, Optional
-
-import torchvision.models as tm
 
 
-def meta_trace(module: torch.nn.Module, *args, **kwargs):
+def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
     """Trace forward and backward graph with MetaTensor
 
     Args:
