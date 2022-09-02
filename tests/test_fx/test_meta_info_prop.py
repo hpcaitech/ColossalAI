@@ -24,7 +24,7 @@ def meta_check(meta_info_spec: TensorMetadata, orig_tensor: torch.Tensor):
     assert meta_info_spec.numel == orig_tensor.numel()
 
 
-@pytest.skip.skipif(INCOMPATIBLE, reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(INCOMPATIBLE, reason='torch version is lower than 1.12.0')
 def test_meta_info_prop():
     model = torch.nn.Linear(DIM_IN, DIM_OUT)
     input_sample = torch.rand(BATCH_SIZE, DIM_IN, device='meta')
