@@ -20,3 +20,5 @@ CONV_FUNC_OP = [
 ]
 LINEAR_MODULE_OP = [torch.nn.Linear]
 LINEAR_FUNC_OP = [torch.nn.functional.linear, torch.matmul, torch.bmm]
+
+INFINITY_COST = 1e13
