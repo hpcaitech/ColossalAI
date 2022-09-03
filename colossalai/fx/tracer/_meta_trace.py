@@ -12,6 +12,12 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
 
     Returns:
         graph (torch.fx.Graph): The computation graph.
+
+    Usage:
+        >>> import torchvision.models as tm
+        >>> model = tm.alexnet()
+        >>> graph = meta_trace(model, torch.rand(1000, 3, 224, 224))
+        >>> graph.print_tabular()
     """
     graph = Graph()
     namespace = _Namespace()
