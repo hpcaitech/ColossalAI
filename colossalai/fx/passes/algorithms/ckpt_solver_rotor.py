@@ -7,6 +7,7 @@ from .linearize import linearize
 from .utils import *
 from colossalai.fx.profiler import profile_function, profile_module
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+import pdb
 
 
 # this is the python compute table code from rotor
@@ -114,12 +115,57 @@ def _discretize(mem_unit, values):
     return [math.ceil(value / mem_unit) for value in values]
 
 
-def _construct_chain(node_list: List[List[Node]], data: torch.Tensor, mem_unit: int) -> Chain:
+def _compute_size(obj: torch.Tensor) -> int:
+    return obj.numel() * obj.element_size()
+
+
+def _compute_output_size(node: List[Node]) -> int:
+    """Compute the output size of a node
+
+    Args:
+        node (List[Node]): node, list of torch.fx.Node
+
+    Returns:
+        int: output size
+    """
+
+    return node[-1].meta['tensor_meta'].numel * torch.tensor([],
+                                                             dtype=node[-1].meta['tensor_meta'].dtype).element_size()
+
+
+def _get_inplace(node: Node) -> bool:
+    """Get the inplace argument from torch.fx.Node
+
+    Args:
+        node (Node): torch.fx.Node
+
+    Returns:
+        bool: indicates whether this op is inplace
+    """
+
+    is_inplace = False
+    if node.op == "call_function":
+        is_inplace = node.kwargs.get("inplace", False)
+    elif node.op == "call_module":
+        is_inplace = getattr(node.graph.owning_module.get_submodule(node.target), "inplace", False)
+
+    return is_inplace
+
+
+def _construct_chain(node_list: List[List[Node]], data, mem_unit: int) -> Chain:
 
     fwd_time = []
     bwd_time = []
-    xbar_sizes = [data.numel() * data.element_size()]
-    x_sizes = [data.numel() * data.element_size()]
+
+    if isinstance(data, torch.Tensor):
+        xbar_sizes = [_compute_size(data)]
+        x_sizes = [_compute_size(data)]
+    elif isinstance(data, list) or isinstance(data, tuple):
+        xbar_sizes = [_compute_size(obj) for obj in data]
+        x_sizes = [_compute_size(obj) for obj in data]
+    elif isinstance(data, dict):
+        xbar_sizes = [_compute_size(obj) for obj in data.values()]
+        x_sizes = [_compute_size(obj) for obj in data.values()]
 
     # currently we can't get the temp memory needed in fwd and bwd
     tmp_fwd = [0] * len(node_list)
@@ -129,15 +175,26 @@ def _construct_chain(node_list: List[List[Node]], data: torch.Tensor, mem_unit: 
         fwd_time.append(0)
         bwd_time.append(0)
         xbar_sizes.append(0)
-        x_sizes.append(node[-1].meta['tensor_meta'].numel *
-                       torch.tensor([], dtype=node[-1].meta['tensor_meta'].dtype).element_size())
+        x_sizes.append(_compute_output_size(node))
+
+        _check_inplace_flag = 1
         for n in node:
             fwd_time[-1] += max(n.__flops__, 1)
 
             # currently we haven't patched the backward flops count
             bwd_time[-1] += max(n.__flops__ * 2, 2)
-
             xbar_sizes[-1] += n.__activation__
+
+            # we need to clear the xbar of previous node as there is
+            # one op in the current node that use the previous node's
+            # output but applies inplace operation on it
+            # NOTE: This process should be done only once as the previous
+            # node will only have one output
+            if _check_inplace_flag:
+                for par in n._input_nodes:
+                    if par not in node and _get_inplace(n):
+                        xbar_sizes[-2] -= x_sizes[-2]
+                        _check_inplace_flag = 0
 
         xbar_sizes[-1] = max(xbar_sizes[-1], x_sizes[-1])
 
@@ -186,7 +243,7 @@ def _annotate_from_sequence(sequence: Sequence, node_list: List[List[Node]]) -> 
                 ckpt_region.append(idx)
 
 
-def solver_rotor(gm: ColoGraphModule, data: torch.Tensor, mem_limit: int, mem_slots: int = 500) -> ColoGraphModule:
+def solver_rotor(gm: ColoGraphModule, data, mem_limit: int, mem_slots: int = 500) -> ColoGraphModule:
     """solver that automatically find activation checkpoint in rotor's manner
 
     Args:
