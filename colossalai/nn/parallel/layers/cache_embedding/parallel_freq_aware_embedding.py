@@ -121,3 +121,9 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
                             buffer_size=buffer_size)
         embedding_bag.cache_weight_mgr.cuda_cached_weight.requires_grad_ = not freeze
         return embedding_bag
+
+    def print_comm_stats_(self):
+        self.cache_weight_mgr.print_comm_stats()
+        
+    def element_size(self):
+        return self.weight.element_size()
