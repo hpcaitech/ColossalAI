@@ -1,16 +1,14 @@
-from operator import add, floordiv, getitem, mul, neg, setitem, sub, pos
-from typing import Callable, List, NamedTuple, Any, Dict, Tuple, Union
+from typing import Callable, Any, Dict, Tuple
 import torch
 from torch.fx.node import Argument, Target
-from torch.fx._compatibility import compatibility
-from torch.utils._pytree import tree_map, tree_flatten
-from . import MetaTensor, activation_size
-try:
-    from . import flop_mapping
-except:
-    pass
+from torch.utils._pytree import tree_map
+from .memory import activation_size, NON_INPLACE_METHOD, INPLACE_METHOD, INPLACE_OPS
+from .tensor import MetaTensor
+from .opcount import flop_mapping
 
 __all__ = ['profile_function', 'profile_module', 'profile_method', '_profile']
+
+CALL_METHOD_MSG = 'Please check if {} is an inplace method. If so, add target to INPLACE_METHOD={}. Otherwise, add target to NON_INPLACE_METHOD={}'
 
 
 def normalize_tuple(x):
@@ -116,12 +114,17 @@ def profile_function(target: 'Target') -> Callable:
         Only original `torch.nn.functional` are available.
     
     Examples:
-        >> input = torch.rand(100, 100, 100, 100, device='meta')
-        >> func = torch.nn.functional.relu
-        >> output, (fwd_flop, bwd_flop), (fwd_tmp, fwd_out, bwd_tmp, bwd_out) = profile_function(func)(input, inplace=False)
+        >>> input = torch.rand(100, 100, 100, 100, device='meta')
+        >>> func = torch.nn.functional.relu
+        >>> output, (fwd_flop, bwd_flop), (fwd_tmp, fwd_out, bwd_tmp, bwd_out) = profile_function(func)(input, inplace=False)
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
+        if target in INPLACE_OPS or kwargs.get('inplace', False):
+            args = tree_map(lambda x: x.to('meta'), args)
+            kwargs = tree_map(lambda x: x.to('meta'), kwargs)
+            out = func(*args, **kwargs)
+            return out, (out.numel(), out.numel()), (0, 0, 0, 0)
         out, flop_count, mem_stat = _profile(func, args, kwargs)
         return out, flop_count, mem_stat
 
@@ -136,7 +139,7 @@ def profile_method(target: 'Target') -> Callable:
     record the memory cost and FLOPs of the execution. 
 
     Warnings:
-        This is not fully implemented and you may follow the error message to debug.
+        Not all `call_method` nodes are inplace. But for sake of simplicity, we mark all of them as inplace.
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
@@ -147,7 +150,13 @@ def profile_method(target: 'Target') -> Callable:
         assert isinstance(target, str), f'{target} instance is not str.'
 
         out = getattr(self_obj, target)(args_tail, kwargs)
-        return out, (0, 0), (0, activation_size(out), activation_size(out), 0)
+
+        assert target in INPLACE_METHOD + NON_INPLACE_METHOD, CALL_METHOD_MSG.format(
+            target, INPLACE_METHOD, NON_INPLACE_METHOD)
+        # call_method has no parameters and are MOSTLY(?) inplace, and has no FLOPs or MACs.
+        fwd_tmp = 0 if target in INPLACE_METHOD else activation_size(out)
+        fwd_out = 0 if target not in INPLACE_METHOD else activation_size(out)
+        return out, (0, 0), (fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
 
     return f
 
@@ -162,12 +171,17 @@ def profile_module(module: torch.nn.Module) -> Callable:
         Only original `torch.nn` are available.
     
     Example:
-        >> input = torch.rand(4, 3, 224, 224, device='meta')
-        >> mod = torch.nn.Conv2d(3, 128, 3)
-        >> output, (fwd_flop, bwd_flop), (fwd_tmp, fwd_out, bwd_tmp, bwd_out) = profile_module(mod)(input)
+        >>> input = torch.rand(4, 3, 224, 224, device='meta')
+        >>> mod = torch.nn.Conv2d(3, 128, 3)
+        >>> output, (fwd_flop, bwd_flop), (fwd_tmp, fwd_out, bwd_tmp, bwd_out) = profile_module(mod)(input)
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
+        if getattr(module, 'inplace', False):
+            args = tree_map(lambda x: x.to('meta'), args)
+            kwargs = tree_map(lambda x: x.to('meta'), kwargs)
+            out = func(*args, **kwargs)
+            return out, (out.numel(), out.numel()), (0, 0, 0, 0)
         out, flop_count, mem_stat = _profile(func, args, kwargs)
         return out, flop_count, mem_stat
 

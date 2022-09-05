@@ -1,12 +1,10 @@
-from operator import add, getitem
+from re import L
 import torch
 import torch.fx
 from torch.fx.node import Node, Argument, Target
 from torch.utils._pytree import tree_map
-from typing import Any, Tuple, NamedTuple, Optional, Dict
-from functools import reduce
+from typing import Any, Tuple, NamedTuple, Dict
 from torch.fx._compatibility import compatibility
-from torch.fx.immutable_collections import immutable_dict, immutable_list
 from colossalai.fx.profiler import profile_function, profile_module, profile_method, activation_size, parameter_size
 
 
@@ -105,6 +103,9 @@ class MetaInfoProp(torch.fx.Interpreter):
         setattr(n, 'bwd_tmp', mem_stat[2])
         setattr(n, 'bwd_out', mem_stat[3])
         n.meta['type'] = type(result)
+
+        for param in self.module.parameters():
+            param.grad = None
         return result
 
     # Main Node running APIs
