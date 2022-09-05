@@ -7,7 +7,7 @@ def linearize(gm: GraphModule, cnode: List[str] = None) -> List[List[Node]]:
 
     Args:
         gm (GraphModule): GraphModule derived by tracing
-        cnode (List[str]): common node List, should be the subset of input
+        cnode (List[str], optional): common node List, should be the subset of input. Default to None.
 
     Returns:
         List[List[Node]]: List of list, each inside list of Node presents
