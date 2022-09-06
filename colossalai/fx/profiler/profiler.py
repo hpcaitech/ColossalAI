@@ -3,7 +3,7 @@ import torch
 from torch.fx import Graph
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
-from .memory import activation_size, NON_INPLACE_METHOD, INPLACE_METHOD, INPLACE_OPS, INPLACE_ATEN, WEIRD_OPS
+from .memory import activation_size, INPLACE_ATEN, WEIRD_OPS
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
