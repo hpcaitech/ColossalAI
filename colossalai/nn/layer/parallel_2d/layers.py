@@ -94,7 +94,7 @@ class Linear2D(ParallelLayer):
         if self.bias is not None:
             bias_initializer(self.bias, fan_in=fan_in)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -137,9 +137,9 @@ class Linear2D(ParallelLayer):
             },
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict({weight_key: self.weight})
@@ -252,7 +252,7 @@ class LayerNorm2D(ParallelLayer):
         if self.bias is not None:
             set_tensor_parallel_attribute_by_partition(self.bias, self.summa_dim**2)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -294,9 +294,9 @@ class LayerNorm2D(ParallelLayer):
             },
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict({weight_key: self.weight})
@@ -443,7 +443,7 @@ class PatchEmbedding2D(ParallelLayer):
             bias_initializer(self.bias, fan_in=fan_in)
             position_embed_initializer(self.pos_embed)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -503,9 +503,9 @@ class PatchEmbedding2D(ParallelLayer):
             },
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         cls_token_key = prefix + 'cls_token'
@@ -651,7 +651,7 @@ class Embedding2D(ParallelLayer):
             with torch.no_grad():
                 self.weight[self.padding_idx].fill_(0)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
@@ -676,9 +676,9 @@ class Embedding2D(ParallelLayer):
             partition_states={weight_key: True},
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         local_state = OrderedDict({weight_key: self.weight})
 
@@ -712,7 +712,7 @@ class Embedding2D(ParallelLayer):
 
 
 @LAYERS.register_module
-class VocabParallelEmbedding2D(torch.nn.Module):
+class VocabParallelEmbedding2D(ParallelLayer):
     r"""Embedding parallelized in the vocabulary dimension.
 
     Args:
@@ -789,7 +789,7 @@ class VocabParallelEmbedding2D(torch.nn.Module):
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
@@ -814,9 +814,9 @@ class VocabParallelEmbedding2D(torch.nn.Module):
             partition_states={weight_key: True},
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         local_state = OrderedDict({weight_key: self.weight})
 
@@ -924,7 +924,7 @@ class Classifier2D(ParallelLayer):
                 broadcast(self.bias, col_src_rank, ParallelMode.PARALLEL_2D_COL)
                 broadcast(self.bias, row_src_rank, ParallelMode.PARALLEL_2D_ROW)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -968,9 +968,9 @@ class Classifier2D(ParallelLayer):
             },
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict()
@@ -1095,7 +1095,7 @@ class VocabParallelClassifier2D(ParallelLayer):
         if self.bias is not None:
             bias_initializer(self.bias, fan_in=fan_in)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -1139,9 +1139,9 @@ class VocabParallelClassifier2D(ParallelLayer):
             },
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict()
