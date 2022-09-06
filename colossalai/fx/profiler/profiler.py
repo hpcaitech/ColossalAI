@@ -9,8 +9,6 @@ from .opcount import flop_mapping
 
 __all__ = ['profile_function', 'profile_module', 'profile_method', '_profile']
 
-CALL_METHOD_MSG = 'Please check if {} is an inplace method. If so, add target to INPLACE_METHOD={}. Otherwise, add target to NON_INPLACE_METHOD={}'
-
 
 def normalize_tuple(x):
     if not isinstance(x, tuple):
