@@ -170,10 +170,10 @@ def elementwise_flop_counter(input_scale: float = 1, output_scale: float = 0) ->
         ret = 0
         if input_scale != 0:
             shape = inputs[0].shape
-            ret += input_scale * reduce(operator.mul, shape)
+            ret += input_scale * reduce(operator.mul, shape) if shape else 0
         if output_scale != 0:
             shape = outputs[0].shape
-            ret += output_scale * reduce(operator.mul, shape)
+            ret += output_scale * reduce(operator.mul, shape) if shape else 0
         return ret
 
     return elementwise_flop
@@ -233,14 +233,21 @@ elementwise_flop_aten = [
     aten.div.Scalar,
     aten.div_.Scalar,
     aten.mul.Tensor,
+    aten.mul.Scalar,
     aten.mul_.Tensor,
+    aten.neg.default,
+    aten.pow.Tensor_Scalar,
+    aten.rsub.Scalar,
     aten.sum.default,
     aten.sum.dim_IntList,
     aten.mean.dim,
 
     # activation op
+    aten.hardswish.default,
     aten.hardswish_.default,
     aten.hardswish_backward.default,
+    aten.hardtanh_.default,
+    aten.hardtanh_backward.default,
     aten.hardsigmoid_backward.default,
     aten.hardsigmoid.default,
     aten.gelu.default,
@@ -253,6 +260,8 @@ elementwise_flop_aten = [
     aten._softmax_backward_data.default,
     aten.relu_.default,
     aten.relu.default,
+    aten.tanh.default,
+    aten.tanh_backward.default,
     aten.threshold_backward.default,
 ]
 
@@ -287,6 +296,7 @@ zero_flop_aten = [
     aten.unsqueeze.default,
     aten._unsafe_view.default,
     aten.view.default,
+    aten.where.self,
     aten.zero_.default,
 ]
 

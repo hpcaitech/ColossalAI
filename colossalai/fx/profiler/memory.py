@@ -1,6 +1,7 @@
 import torch
 from typing import Union, Dict, List, Tuple
 from operator import add, floordiv, getitem, mul, neg, setitem, sub, pos
+from . import META_COMPATIBILITY
 
 __all__ = ['activation_size', 'parameter_size', 'INPLACE_METHOD', 'NON_INPLACE_METHOD']
 
@@ -18,6 +19,31 @@ INPLACE_OPS = [
     torch.Tensor.cpu,
 ]
 
+if META_COMPATIBILITY:
+    aten = torch.ops.aten
+
+    WEIRD_OP = [
+        torch.where,
+    ]
+
+    INPLACE_ATEN = [
+        aten.add_.Tensor,
+        aten.add.Tensor,
+        aten.sub_.Tensor,
+        aten.div_.Tensor,
+        aten.div_.Scalar,
+        aten.mul_.Tensor,
+        aten.mul.Tensor,
+        aten.bernoulli_.float,
+
+    # inplace reshaping
+        aten.detach.default,
+        aten.t.default,
+        aten.transpose.int,
+        aten.view.default,
+        aten._unsafe_view.default,
+    ]
+
 # TODO: list all call_methods that are inplace here
 INPLACE_METHOD = [
     'transpose',
@@ -30,12 +56,17 @@ INPLACE_METHOD = [
     'view',
     'unsqueeze',
     'to',
+    'type',
+    'flatten',
 ]
 
 # TODO: list all call_methods that are not inplace here
 NON_INPLACE_METHOD = [
+    'chunk',
+    'contiguous',
     'expand',
     'mean',
+    'split',
 ]
 
 

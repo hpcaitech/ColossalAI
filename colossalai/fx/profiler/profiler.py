@@ -1,8 +1,9 @@
 from typing import Callable, Any, Dict, Tuple
 import torch
+from torch.fx import Graph
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
-from .memory import activation_size, NON_INPLACE_METHOD, INPLACE_METHOD, INPLACE_OPS
+from .memory import activation_size, NON_INPLACE_METHOD, INPLACE_METHOD, INPLACE_OPS, INPLACE_ATEN, WEIRD_OP
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
@@ -17,7 +18,11 @@ def normalize_tuple(x):
     return x
 
 
-def _profile(target: Callable, args, kwargs) -> Tuple[Any, ...]:
+def is_autogradable(x):
+    return isinstance(x, torch.Tensor) and x.is_floating_point()
+
+
+def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     """Profile a Callable function with args and kwargs.
 
     Args:
@@ -59,44 +64,55 @@ def _profile(target: Callable, args, kwargs) -> Tuple[Any, ...]:
                 return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
 
             def to_meta(x):
-                return x.to('meta')
+                return x.to('meta') if isinstance(x, torch.Tensor) else x
 
             args = tree_map(unwrap, args)
             kwargs = tree_map(unwrap, kwargs)
 
             # run aten for backend=CPU but actually on backend=Meta
             out = func(*args, **kwargs)
-
-            # TODO: this will be, but we should examine all aten ops first
-            # if func in flop_mapping:
-            #     flop_count[stage] += flop_mapping[func](args, normalize_tuple(out))
             flop_count[stage] += flop_mapping[func](args, normalize_tuple(out))
-            temp[stage].append(tree_map(to_meta, normalize_tuple(out)))
+            if func not in INPLACE_ATEN:
+                temp[stage].append(tree_map(to_meta, normalize_tuple(out)))
 
             def wrap(x):
                 return FlopTensor(x.to('meta')) if isinstance(x, torch.Tensor) else x
 
             return tree_map(wrap, out)
 
-    def wrap(x):
-        return FlopTensor(
-            x.detach().requires_grad_(True)) if isinstance(x, torch.Tensor) and not hasattr(x, '_tensor') else x
+    if target not in WEIRD_OP:
+
+        def wrap(x):
+            return FlopTensor(
+                x.detach().requires_grad_(True)) if is_autogradable(x) and not hasattr(x, '_tensor') else x
+    else:
+
+        def wrap(x):
+            return FlopTensor(
+                x.detach().requires_grad_(False)) if is_autogradable(x) and not hasattr(x, '_tensor') else x
 
     args = tree_map(wrap, args)
     kwargs = tree_map(wrap, kwargs)
 
-    out = target(*args, **kwargs)
-    stage = 'l'
-    loss = out.sum()
-    stage = 'b'
-    loss.backward()
+    if isinstance(target, str):
+        # args[0] is the `self` object for this method call
+        self_obj, *args_tail = args
+        out = getattr(self_obj, target)(*args_tail, **kwargs)
+    else:
+        out = target(*args, **kwargs)
+
+    if is_autogradable(out) and out.requires_grad:
+        stage = 'l'
+        loss = out.sum()
+        stage = 'b'
+        loss.backward()
 
     fwd_flop = flop_count['f']
     bwd_flop = flop_count['b']
 
-    fwd_tmp = activation_size(temp['f'][:-1])
+    fwd_tmp = max(map(activation_size, temp['f'][:-1])) if len(temp['f'][:-1]) else 0
     fwd_out = activation_size(temp['f'][-1]) if len(temp['f']) else 0
-    bwd_tmp = activation_size(temp['b'])
+    bwd_tmp = max(map(activation_size, temp['b'])) if len(temp['b']) else 0
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
@@ -120,12 +136,12 @@ def profile_function(target: 'Target') -> Callable:
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
-        if target in INPLACE_OPS or kwargs.get('inplace', False):
-            args = tree_map(lambda x: x.to('meta'), args)
-            kwargs = tree_map(lambda x: x.to('meta'), kwargs)
+        if kwargs.get('inplace', False):
+            args = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, args)
+            kwargs = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, kwargs)
             out = func(*args, **kwargs)
-            return out, (out.numel(), out.numel()), (0, 0, 0, 0)
-        out, flop_count, mem_stat = _profile(func, args, kwargs)
+            return out, (0, 0), (0, 0, 0, 0)
+        out, flop_count, mem_stat = _profile(func, *args, **kwargs)
         return out, flop_count, mem_stat
 
     f.__name__ = target.__name__
@@ -143,20 +159,10 @@ def profile_method(target: 'Target') -> Callable:
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
-        # args[0] is the `self` object for this method call
-        self_obj, *args_tail = args
-
         # execute the method and return the result
         assert isinstance(target, str), f'{target} instance is not str.'
-
-        out = getattr(self_obj, target)(args_tail, kwargs)
-
-        assert target in INPLACE_METHOD + NON_INPLACE_METHOD, CALL_METHOD_MSG.format(
-            target, INPLACE_METHOD, NON_INPLACE_METHOD)
-        # call_method has no parameters and are MOSTLY(?) inplace, and has no FLOPs or MACs.
-        fwd_tmp = 0 if target in INPLACE_METHOD else activation_size(out)
-        fwd_out = 0 if target not in INPLACE_METHOD else activation_size(out)
-        return out, (0, 0), (fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
+        out, flop_count, mem_stat = _profile(target, *args, **kwargs)
+        return out, flop_count, mem_stat
 
     return f
 
@@ -182,7 +188,7 @@ def profile_module(module: torch.nn.Module) -> Callable:
             kwargs = tree_map(lambda x: x.to('meta'), kwargs)
             out = func(*args, **kwargs)
             return out, (out.numel(), out.numel()), (0, 0, 0, 0)
-        out, flop_count, mem_stat = _profile(func, args, kwargs)
+        out, flop_count, mem_stat = _profile(func, *args, **kwargs)
         return out, flop_count, mem_stat
 
     f.__name__ = module.__class__.__name__
