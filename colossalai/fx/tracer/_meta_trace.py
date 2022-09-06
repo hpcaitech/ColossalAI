@@ -20,7 +20,7 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
         >>> graph.print_tabular()
     """
     graph = Graph()
-    namespace = _Namespace()
+    namespace = graph._graph_namespace
 
     class MetaProxy(torch.Tensor):
         """
