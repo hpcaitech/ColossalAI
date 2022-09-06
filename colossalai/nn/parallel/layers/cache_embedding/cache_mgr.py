@@ -293,7 +293,7 @@ class CachedParamMgr(torch.nn.Module):
         Returns:
             torch.Tensor: indices on the cuda_cached_weight.
         """
-        with record_function("(zhg) get unique indices"):
+        with record_function("(pre-id) get unique indices"):
             ids = ids.to(self._cache_dev)
             cpu_row_idxs, repeat_times = torch.unique(self.idx_map.index_select(0, ids), return_counts=True)
 
@@ -303,7 +303,7 @@ class CachedParamMgr(torch.nn.Module):
                 f"Please increase cuda_row_num or decrease the training batch size."
             self.evict_backlist = cpu_row_idxs
 
-        with record_function("(zhg) get cpu row idxs"):
+        with record_function("(pre-id) get cpu row idxs"):
             comm_cpu_row_idxs = cpu_row_idxs[torch.isin(cpu_row_idxs, self.cached_idx_map, invert=True)]
 
         self.num_hits_history.append(len(cpu_row_idxs) - len(comm_cpu_row_idxs))
@@ -311,18 +311,18 @@ class CachedParamMgr(torch.nn.Module):
         self.num_write_back_history.append(0)
 
         # move sure the cuda rows will not be evicted!
-        with record_function("(zhg) cache update"):
+        with record_function("(pre-id) cache update"):
             self._prepare_rows_on_cuda(comm_cpu_row_idxs)
+            self.evict_backlist = torch.tensor([], device=cpu_row_idxs.device, dtype=cpu_row_idxs.dtype)
 
-        self.evict_backlist = torch.tensor([], device=cpu_row_idxs.device, dtype=cpu_row_idxs.dtype)
-
-        with record_function("(zhg) embed cpu rows idx -> cache gpu row idxs"):
+        with record_function("(pre-id) embed cpu rows idx -> cache gpu row idxs"):
             gpu_row_idxs = self._id_to_cached_cuda_id(ids)
 
         # update for LFU.
         if self._evict_strategy == EvictionStrategy.LFU:
-            unique_gpu_row_idxs = self.inverted_cached_idx[cpu_row_idxs]
-            self.freq_cnter.scatter_add_(0, unique_gpu_row_idxs, repeat_times)
+            with record_function("(pre-id) lfu cnter updates"):
+                unique_gpu_row_idxs = self.inverted_cached_idx[cpu_row_idxs]
+                self.freq_cnter.scatter_add_(0, unique_gpu_row_idxs, repeat_times)
 
         return gpu_row_idxs
 
