@@ -17,8 +17,7 @@ class ChunkManagerV2:
         init_device (torch.device): optional, the device on which the chunk is initialized. The default is None.
     """
 
-    def __init__(self, chunk_configuration: Dict[int, Dict],
-                 init_device: Optional[torch.device] = None) -> None:
+    def __init__(self, chunk_configuration: Dict[int, Dict], init_device: Optional[torch.device] = None) -> None:
 
         self.device = init_device or get_current_device()
         self.size_config: Dict[int, int] = dict()
@@ -33,10 +32,7 @@ class ChunkManagerV2:
         self.lazy_release_tensors: List[torch.Tensor] = list()
         self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
 
-    def append_tensor(self, tensor: ColoTensor,
-                      group_type: str,
-                      config_key: int,
-                      pin_memory: bool = False) -> None:
+    def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int, pin_memory: bool = False) -> None:
         """Append a tensor to a chunk.
         """
         assert tensor not in self.tensor_chunk_map
@@ -178,8 +174,10 @@ class ChunkManagerV2:
         return chunk_list
 
     def __repr__(self) -> str:
-        msg = ['Chunk Manager Information:\n',
-               'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n']
+        msg = [
+            'Chunk Manager Information:\n',
+            'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n'
+        ]
         for group_name, group in self.chunk_groups.items():
             msg.append(f'Group {group_name}:\n')
             for i, chunk in enumerate(group):
@@ -220,8 +218,9 @@ class ChunkManagerV2:
         return self.chunk_groups[group_name]
 
     def __close_one_chunk(self, chunk: Chunk):
+        device = None if chunk.is_gathered else self.device    # keep gathered chunk in cuda
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.close_chunk(self.device)
+        chunk.close_chunk(device)
         self.__add_memory_usage(chunk.memory_usage)
 
     def __sub_memroy_usage(self, usage: Dict[str, int]):
