@@ -153,9 +153,6 @@ def profile_method(target: 'Target') -> Callable:
     """
     Wrap a `call_method` node
     record the memory cost and FLOPs of the execution. 
-
-    Warnings:
-        Not all `call_method` nodes are inplace. But for sake of simplicity, we mark all of them as inplace.
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
