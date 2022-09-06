@@ -53,7 +53,7 @@ registered_meta = {
 }
 
 
-def compare_all(tensor: torch.Tensor, meta_tensor: MetaTensor) -> Any:
+def compare_all(tensor: torch.Tensor, meta_tensor: torch.Tensor) -> Any:
     assert tensor.shape == meta_tensor.shape, f'the shape of tensor ({tensor.shape}) and meta tensor ({meta_tensor.shape}) does not match.'
     assert tensor.dtype == meta_tensor.dtype, f'the dtype of tensor ({tensor.dtype}) and meta tensor ({meta_tensor.dtype}) does not match.'
     assert tensor.stride() == meta_tensor.stride(
