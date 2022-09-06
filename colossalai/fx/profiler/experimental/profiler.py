@@ -9,7 +9,7 @@ __all__ = ['profile_function', 'profile_module', 'profile_method']
 CALL_FUNCTION_MSG = \
 """
 Colossal-AI hasn't supported profiling for {}, you might manually patch it with the following code.\n
-from colossalai.fx.profiler import meta_profiler_function
+from colossalai.fx.profiler.experimental import meta_profiler_function
 @meta_profiler_function.register(YOUR_FUNCTION)
 def profile_YOUR_FUNCTION(input: torch.Tensor, *args) -> Tuple[int, int]:
     flops = ...
@@ -20,7 +20,7 @@ CALL_METHOD_MSG = 'Please check if {} is an inplace method. If so, add target to
 CALL_MODULE_MSG = \
 """
 Colossal-AI hasn't supported profiling for {}, you might manually patch it with the following code.\n
-from colossalai.fx.profiler import meta_profiler_module
+from colossalai.fx.profiler.experimental import meta_profiler_module
 @meta_profiler_module.register(YOUR_MODULE)
 def profile_YOUR_MODULE(self: torch.nn.Module, input: torch.Tensor) -> Tuple[int, int]:
     flops = ...
