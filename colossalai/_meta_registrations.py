@@ -181,6 +181,12 @@ def meta_hardswish_backward(grad_out: torch.Tensor, input: torch.Tensor):
     return grad_in
 
 
+@register_meta(aten.hardtanh_backward.default)
+def meta_hardtanh_backward(grad_out: torch.Tensor, input: torch.Tensor, min_val: int, max_val: int):
+    grad_in = torch.empty_like(input)
+    return grad_in
+
+
 @register_meta(aten.roll.default)
 def meta_roll(input: torch.Tensor, shifts, dims):
     return torch.empty_like(input)
@@ -321,3 +327,17 @@ def meta_index_Tensor(self, indices):
         else:
             replacement_shape = list(index.shape)
     return self.new_empty(before_shape + replacement_shape + after_shape)
+
+
+@register_meta(aten.embedding_dense_backward.default)
+def meta_embedding_dense_backward(grad_output: torch.Tensor, indices: torch.Tensor, num_weights, padding_idx,
+                                  scale_grad_by_freq):
+    return torch.empty((num_weights, grad_output.size(-1)),
+                       dtype=grad_output.dtype,
+                       device=grad_output.device,
+                       layout=grad_output.layout)
+
+
+@register_meta(aten.where.self)
+def meta_where_self(condition: torch.Tensor, self: torch.Tensor, other: torch.Tensor):
+    return torch.empty_like(condition)
