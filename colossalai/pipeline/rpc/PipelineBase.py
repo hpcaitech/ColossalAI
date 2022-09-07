@@ -3,6 +3,7 @@ from enum import Enum
 from typing import List, Any, Tuple, Dict, Callable
 from abc import ABC
 import sys
+import os
 
 import torch
 from torch import nn
@@ -147,6 +148,7 @@ class Worker:
                  use_1F1B: bool,
                  device: str,
                  criterion: Callable = None,
+                 metric: Callable = None,
                  checkpoint: bool = False) -> None:
         super().__init__()
         self.pp_rank = pp_rank
@@ -172,23 +174,14 @@ class Worker:
 
         # module partitions
         self.module_partition = module_partition.to(device)
-        if criterion:
-            assert callable(criterion)
         self.criterion = criterion
+        self.metric = metric
 
-        # container to maintain loop
-        self.microbatch_id_to_backward_cache: Dict[int, BackwardCache] = dict()
-        self.microbatch_id_to_labels: Dict[int, Any] = dict()
-        self.work_list: Dict[UniqueKey, WorkItem] = dict()
-        self.output_list: Dict[UniqueKey, WorkItem] = dict()
+        # context to maintain loop
+        self._initialize_context_container()
 
         # lock for the list
-        self.work_list_condition_lock = threading.Condition(threading.Lock())
-        self.output_list_condition_lock = threading.Condition(threading.Lock())
-        self.label_lock = threading.Condition(threading.Lock())
-
-        self.step_lock = threading.Lock()
-        self.step_lock.acquire()
+        self._initialize_lock()
 
         # main loop
         self.main_loop_thread = threading.Thread(target=self._work_loop, name=f'rank_{pp_rank}', daemon=True)
@@ -205,6 +198,20 @@ class Worker:
             else:
                 outstanding_range = (self.actual_stage_num, self.actual_stage_num)
         self.outstanding_range = outstanding_range
+
+    def _initialize_context_container(self):
+        self.microbatch_id_to_backward_cache: Dict[int, BackwardCache] = dict()
+        self.microbatch_id_to_labels: Dict[int, Any] = dict()
+        self.work_list: Dict[UniqueKey, WorkItem] = dict()
+        self.output_list: Dict[UniqueKey, WorkItem] = dict()
+
+    def _initialize_lock(self):
+        self.work_list_condition_lock = threading.Condition(threading.Lock())
+        self.output_list_condition_lock = threading.Condition(threading.Lock())
+        self.label_lock = threading.Condition(threading.Lock())
+        if self.criterion is not None:
+            self.step_lock = threading.Lock()
+            self.step_lock.acquire()
 
     def sync_global_worker_rrefs(self, pp_rank_to_worker_rref: Dict[int, PyRRef]) -> None:
         assert self.pp_rank_to_worker_rref is None, f"in rank {self.pp_rank}, worker has sync global workers rrefs"
@@ -241,12 +248,15 @@ class Worker:
                              forward_only)
         with self.work_list_condition_lock:
             self.work_list[key] = work_item
-            color_debug(f'rank {self.pp_rank} receive data from dataloader', 'data dispatch', 'magenta')
+            color_debug(f'rank {self.pp_rank} receive data from dataloader {self._get_store_len()}', 'data dispatch',
+                        'magenta')
             self.work_list_condition_lock.notify_all()
 
     # just for last pp_rank
     def set_labels(self, microbatch_id: int, microlabels: Any):
-        self.microbatch_id_to_labels[microbatch_id] = microlabels
+        with self.label_lock:
+            self.microbatch_id_to_labels[microbatch_id] = microlabels
+            self.label_lock.notify_all()
 
     # just for last pp_rank
     def _begin_backward(self, microbatch_id: int):
@@ -433,6 +443,21 @@ class Worker:
             if forward_only:
                 with torch.no_grad():
                     consume_result = self.module_partition(*args, **kwargs)
+
+                # TODO : integrate output list
+                if is_last_stage and self.criterion:
+                    with self.label_lock:
+                        self.label_lock.wait_for(lambda: microbatch_id in self.microbatch_id_to_labels)
+                    labels = self.microbatch_id_to_labels.pop(microbatch_id)
+                    loss: torch.Tensor = self.criterion(consume_result, labels)
+                    if self.metric is not None:
+                        metric_result = self.metric(consume_result, labels)
+                        if isinstance(metric_result, torch.Tensor):
+                            metric_result = metric_result.item()
+                    else:
+                        metric_result = None
+                    consume_result = [loss.item(), metric_result]
+
                 stage_outputs = None
                 stage_inputs = None
                 use_checkpoint = None
@@ -444,10 +469,21 @@ class Worker:
                 use_checkpoint = True
             else:
                 consume_result = self.module_partition(*args, **kwargs)
+                # print(f'model{self.pp_rank + 1}(param_sum: {sum([p.sum().item() for p in self.module_partition.parameters()])}) input sum: {args[0].sum().item()} forward output sum: {consume_result.sum().item()}', )
+
                 if is_last_stage and self.criterion:
+                    with self.label_lock:
+                        self.label_lock.wait_for(lambda: microbatch_id in self.microbatch_id_to_labels)
                     labels = self.microbatch_id_to_labels.pop(microbatch_id)
                     loss: torch.Tensor = self.criterion(consume_result, labels)
-                    consume_result = loss.item()
+                    if self.metric is not None:
+                        metric_result = self.metric(consume_result, labels)
+                        if isinstance(metric_result, torch.Tensor):
+                            metric_result = metric_result.item()
+                    else:
+                        metric_result = None
+
+                    consume_result = [loss.item(), metric_result]
                 else:
                     loss = consume_result
 
@@ -491,6 +527,16 @@ class Worker:
 
             autograd.backward(stage_outputs, grad_tensors=grad_tensors)
 
+            if isinstance(stage_outputs, list):
+                stage_outputs = stage_outputs[0]
+            if isinstance(grad_tensors, list):
+                grad_tensors = grad_tensors[0]
+
+            print(
+                f'model{self.pp_rank + 1}(param_sum :{sum([p.sum().item() for p in self.module_partition.parameters()])}) \
+                    loss sum : {stage_outputs.sum()} grad_tensors sum : {grad_tensors.sum()} grad sum : {sum([p.grad.sum() for p in self.module_partition.parameters()])}'
+            )
+
             # collect grad of input tensor
             consume_result = []
             if not is_first_stage:
@@ -513,11 +559,17 @@ class Worker:
                 grad_sum += p.grad.sum()
         return grad_sum
 
-    def _is_first_step(self, work_item) -> bool:
+    def _is_first_step(self, work_item: WorkItem) -> bool:
         return work_item.phase == Phase.FORWARD and work_item.microbatch_id == 0
 
-    def _is_last_step(self, work_item) -> bool:
-        return work_item.phase == Phase.BACKWARD and work_item.microbatch_id == self.num_microbatches - 1
+    def _is_last_step(self, work_item: WorkItem) -> bool:
+        if work_item.forward_only:
+            last_phase = Phase.FORWARD
+        else:
+            last_phase = Phase.BACKWARD
+        is_last_phase = work_item.phase == last_phase
+        is_last_microbatch = work_item.microbatch_id == self.num_microbatches - 1
+        return is_last_phase and is_last_microbatch
 
     # do the main loop to consume ready_list
     def _work_loop(self):
@@ -551,7 +603,7 @@ class Worker:
 
             # if is last step in one batch reset context and do step
             if self._is_last_step(work_item):
-                if hasattr(self, 'optimizer'):
+                if hasattr(self, 'optimizer') and not work_item.forward_only:
                     self.step()
                 self.forward_times = 0
                 self.backward_times = 0
@@ -565,11 +617,8 @@ class Worker:
         self.step_lock.acquire()
 
     def step(self):
-        # print(f'rank_{self.pp_rank}', sum([p.sum() for p in self.module_partition.parameters()]))
         self.optimizer.step()
-        # print(f'rank_{self.pp_rank}', sum([p.sum() for p in self.module_partition.parameters()]))
         self.optimizer.zero_grad()
-
         self.step_lock.release()
 
 
@@ -583,11 +632,13 @@ class PipelineEngineBase(ABC, nn.Module):
                  use_1F1B=False,
                  chunk: int = 1,
                  criterion: Callable = None,
+                 metric: Callable = None,
                  checkpoint: bool = False) -> None:
         super().__init__()
         self.module_partitions: List[nn.Module] = module_partitions
         self.chunk = chunk
         self.criterion = criterion
+        self.metric = metric
         self.num_microbatches = num_microbatches
         self.device = device
         self.use_1F1B = use_1F1B
@@ -636,6 +687,7 @@ class PipelineEngineBase(ABC, nn.Module):
         num_microbatches = self.num_microbatches
         device = self.device
         criterion = self.criterion
+        metric = self.metric
 
         for pp_rank in range(actual_stage_num):
             module_partition = self.module_partitions[pp_rank]
@@ -646,7 +698,7 @@ class PipelineEngineBase(ABC, nn.Module):
                                                               Worker,
                                                               args=(module_partition, pp_rank, actual_stage_num,
                                                                     num_microbatches, use_1F1B, device, criterion,
-                                                                    checkpoint))
+                                                                    metric, checkpoint))
 
         # let each worker know global worker rref (include itself)
         for pp_rank in range(actual_stage_num):
@@ -673,6 +725,8 @@ class PipelineEngineBase(ABC, nn.Module):
     def forward_backward(self, batch: torch.Tensor, labels: torch.Tensor = None, forward_only: bool = False):
         if labels is not None:
             assert len(batch) == len(labels)
+            if not forward_only:
+                assert hasattr(self, 'optimizer_class')
 
         num_microbatches = self.num_microbatches
         microbatch_size = len(batch) // num_microbatches
@@ -701,7 +755,7 @@ class PipelineEngineBase(ABC, nn.Module):
             microbatch = microbatch.cuda()
             first_worker_rref.remote().set_input(microbatch_id, microbatch, forward_only)
             # set labels
-            if not forward_only and labels is not None:
+            if labels is not None:
                 microlabels = labels[microbatch_size * microbatch_id:microbatch_size * (microbatch_id + 1)]
                 microlabels = microlabels.cuda()
                 last_worker_rref.remote().set_labels(microbatch_id, microlabels)
@@ -716,23 +770,20 @@ class PipelineEngineBase(ABC, nn.Module):
 
         # collect forward result
         # TODO : all the node to output
-        forward_result = None
+        forward_result = [None] * self.num_microbatches
 
         for microbatch_id in range(self.num_microbatches):
             key = UniqueKey(microbatch_id, Phase.FORWARD)
             ret = ret_future[microbatch_id].wait()
-            if forward_result is None:
-                forward_result = [[]] * len(ret)
-            for i in range(len(forward_result)):
-                forward_result[i].append(ret[i])
+            forward_result[microbatch_id] = ret
 
-        if hasattr(self, 'optimizer_class'):
+        forward_result = list(zip(*forward_result))
+
+        if not forward_only and labels is not None:
             # wait for all step
-            # TODO : more elegant ?
             for pp_rank in self.pp_rank_to_worker_rref:
                 worker_rref = self.pp_rank_to_worker_rref[pp_rank]
                 worker_rref.rpc_sync().wait_for_step()
-
         return forward_result
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
@@ -762,9 +813,11 @@ class FillDrainPipelineEngine(PipelineEngineBase):
                  device: str,
                  chunk: int = 1,
                  criterion: Callable = None,
+                 metric: Callable = None,
                  checkpoint: bool = False) -> None:
         use_1F1B = False
-        super().__init__(module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk, criterion, checkpoint)
+        super().__init__(module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk, criterion, metric,
+                         checkpoint)
 
 
 class OneFOneBPipelineEngine(PipelineEngineBase):
@@ -776,6 +829,8 @@ class OneFOneBPipelineEngine(PipelineEngineBase):
                  device: str,
                  chunk: int = 1,
                  criterion: Callable = None,
+                 metric: Callable = None,
                  checkpoint: bool = False) -> None:
         use_1F1B = True
-        super().__init__(module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk, criterion, checkpoint)
+        super().__init__(module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk, criterion, metric,
+                         checkpoint)
