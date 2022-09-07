@@ -15,7 +15,7 @@ __all__ = ['OperatorHandler']
 
 class OperatorHandler(ABC):
     '''
-    The OperatorHandler is an abstract class used to generate every possible strategies for a operator node.
+    The OperatorHandler is an abstract class used to generate every possible strategies for an operator node.
 
     Argument:
         input_node(Node): the input node in node argument list.
@@ -43,6 +43,10 @@ class OperatorHandler(ABC):
             named_parameters = list(module.named_parameters(recurse=False))
             # convert named parameters from list to dict
             named_parameters = {k: v for k, v in named_parameters}
+        elif self.node.op == 'call_function':
+            module = None
+            parameters = list(self.node.args)[1]
+            named_parameters = {'weight': parameters._meta_data}
         else:
             module = None
             named_parameters = None
