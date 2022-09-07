@@ -82,7 +82,8 @@ class CommSpec:
         if self.comm_pattern == CollectiveCommPattern.ALLREDUCE:
             return self.device_mesh.all_reduce_cost(comm_size, self.logical_process_axis)
         if self.comm_pattern == CollectiveCommPattern.SHARD:
-            return 0
+            # give a tiny cost to shard
+            return 10
         raise RuntimeError(f"Could not find a matching CollectiveCommPattern for {self.comm_pattern}.")
 
     def covert_spec_to_action(self, tensor):
