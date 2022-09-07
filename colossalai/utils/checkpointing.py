@@ -3,9 +3,9 @@ from itertools import chain
 
 import torch
 import torch.distributed as dist
-from colossalai.communication.collective import scatter_object_list
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.constants import IS_TENSOR_PARALLEL
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
 except ImportError:
@@ -29,26 +29,37 @@ def partition_tensor_parallel_state_dict(state_dict: OrderedDict,
                                          partition_states: dict = dict()):
     src_rank = gpc.get_ranks_in_group(parallel_mode)[0]
     depth = gpc.get_world_size(parallel_mode)
-
-    if gpc.get_local_rank(parallel_mode) == 0:
-
-        partitioned_state_list = [dict() for _ in range(depth)]
-
-        for key in list(state_dict.keys()):
-            param = state_dict.pop(key)
-            dim = dims.get(key, 0)
-            do_partition = partition_states.get(key, True)
-            if do_partition:
-                param = torch.chunk(param, depth, dim=dim)
-            for i, p in enumerate(partitioned_state_list):
-                p[key] = param[i] if do_partition else param
-
-    else:
-        partitioned_state_list = [None for _ in range(depth)]
-
-    partitioned_state = [None]
-    scatter_object_list(partitioned_state, partitioned_state_list, src=src_rank, group=gpc.get_cpu_group(parallel_mode))
-    return partitioned_state[0]
+    group = gpc.get_cpu_group(parallel_mode)
+    is_rank0 = gpc.get_local_rank(parallel_mode) == 0
+    partition_info = [None]
+    if is_rank0:
+        partition_info_dict = OrderedDict()
+        for key, param in state_dict.items():
+            dim = dims[key]
+            is_partitioned = partition_states[key]
+            shape = list(param.shape)
+            if is_partitioned:
+                shape[dim] = shape[dim] // depth
+            partition_info_dict[key] = (is_partitioned, param.dtype, shape, dim)
+        partition_info[0] = partition_info_dict
+    dist.broadcast_object_list(partition_info, src_rank, group=group)
+    partitioned_state = OrderedDict()
+    for key, (is_partitioned, dtype, shape, dim) in partition_info[0].items():
+        if is_partitioned:
+            output = torch.empty(shape, dtype=dtype)
+            if is_rank0:
+                scatter_list = [t.contiguous() for t in state_dict[key].chunk(depth, dim)]
+            else:
+                scatter_list = None
+            dist.scatter(output, scatter_list, src_rank, group=group)
+        else:
+            if is_rank0:
+                output = state_dict[key]
+            else:
+                output = torch.empty(shape, dtype=dtype)
+            dist.broadcast(output, src_rank, group=group)
+        partitioned_state[key] = output
+    return partitioned_state
 
 
 def gather_tensor_parallel_state_dict(
@@ -179,6 +190,15 @@ def save_checkpoint(file,
         torch.save(checkpoint, file, **kwargs)
 
 
+def broadcast_model(model: torch.nn.Module):
+    src_rank = gpc.get_ranks_in_group(ParallelMode.TENSOR)[0]
+    for p in model.parameters():
+        if not getattr(p, IS_TENSOR_PARALLEL, False) and p.storage().size() > 0:
+            group = gpc.get_group(ParallelMode.TENSOR) if p.device.type == 'cuda' else gpc.get_cpu_group(
+                ParallelMode.TENSOR)
+            dist.broadcast(p, src_rank, group=group)
+
+
 def load_checkpoint(
     file,
     model: torch.nn.Module,
@@ -214,6 +234,7 @@ def load_checkpoint(
         model_state = partition_pipeline_parallel_state_dict(model, model_state)
     try:
         model.load_state_dict(model_state, strict=strict)
+        broadcast_model(model)
     except RuntimeError as e:
         error_msgs = str(e)
         if error_msgs.startswith("Error(s) in loading state_dict for "):
