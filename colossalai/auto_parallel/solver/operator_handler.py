@@ -85,12 +85,17 @@ class OperatorHandler(ABC):
         '''
         # The resharding_cost of weight is counted due to sharing weight cases.
         resharding_costs = {}
-        for input_node, input_spec in zip(self.predecessor_node, sharding_spec_for_input):
+        for input_node, target_spec in zip(self.predecessor_node, sharding_spec_for_input):
             resharding_costs[input_node] = []
             for strategy in input_node.strategies_vector:
                 input_sharding_spec = strategy.output_sharding_spec
                 assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
-                _, _, resharding_cost = self.shape_consistency_manager.shape_consistency(
-                    input_sharding_spec, input_spec)
+                # compute the resharding cost during forward phase
+                _, _, resharding_cost_forward = self.shape_consistency_manager.shape_consistency(
+                    input_sharding_spec, target_spec)
+                # In backward phase, we should convert grad with target_spec into input_sharding_spec
+                _, _, resharding_cost_backward = self.shape_consistency_manager.shape_consistency(
+                    target_spec, input_sharding_spec)
+                resharding_cost = resharding_cost_forward + resharding_cost_backward
                 resharding_costs[input_node].append(resharding_cost)
         return resharding_costs

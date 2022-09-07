@@ -82,7 +82,6 @@ def test_conv_handler():
                                strategies_vector=strategies_vector,
                                shape_consistency_manager=shape_consistency_manager)
     conv_handler.register_strategy()
-
     # ['S0S1 = S0R x RS1', 'S1S0 = S1R x RS0', 'S0R = S0R x RR', 'S1R = S1R x RR', 'S0R = S0S1 x S1R', 'S1R = S1S0 x S0R', 'RS1 = RS0 x S0S1', 'RS0 = RS1 x S1S0', 'RR = RS0 x S0R', 'RR = RS1 x S1R', 'RS0 = RR x RS0', 'RS1 = RR x RS1', 'RR = RR x RR', 'S01R = S01R x RR', 'RR = RS01 x S01R']
     strategy_name_list = [strategy.name for strategy in conv_handler.strategies_vector]
 
