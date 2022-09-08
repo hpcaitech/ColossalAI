@@ -250,6 +250,7 @@ def call_module(module, args=None, kwargs=None):
     else:
         return module(*args_needed, **kwargs)
 
+
 def customized_partition(exec_seq):
     '''
     This function will analyze the exec_seq. In the exec_seq, users will use 'SPLIT_NODE' as an 
@@ -269,4 +270,3 @@ def customized_partition(exec_seq):
                 stop += 1
     customized_parts[rank] = [(start, stop)]
     return customized_parts
-

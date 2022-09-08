@@ -35,12 +35,11 @@ def exam_search_chunk_size():
     with ColoInitContext(device=get_current_device()):
         model = model_builder()
     init_1d_row_spec(model, pg_tp)
-    config_dict = search_chunk_configuration(
-        model,
-        search_range_mb=1,
-        search_interval_byte=16,
-        min_chunk_size_mb=0,
-        filter_exlarge_params=True)
+    config_dict = search_chunk_configuration(model,
+                                             search_range_mb=1,
+                                             search_interval_byte=16,
+                                             min_chunk_size_mb=0,
+                                             filter_exlarge_params=True)
 
     for key in config_dict:
         chunk_size = config_dict[key]['chunk_size']

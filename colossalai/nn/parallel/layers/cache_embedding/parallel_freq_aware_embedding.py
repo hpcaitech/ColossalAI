@@ -124,6 +124,6 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
 
     def print_comm_stats_(self):
         self.cache_weight_mgr.print_comm_stats()
-        
+
     def element_size(self):
         return self.weight.element_size()

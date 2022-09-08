@@ -18,7 +18,8 @@ class ChunkManagerV2:
         pin_memory (bool): if ture, all chunks have a piece of pinned memory in CPU.
     """
 
-    def __init__(self, chunk_configuration: Dict[int, Dict],
+    def __init__(self,
+                 chunk_configuration: Dict[int, Dict],
                  init_device: Optional[torch.device] = None,
                  pin_memory: bool = False) -> None:
 
@@ -62,12 +63,7 @@ class ChunkManagerV2:
 
             if tensor.numel() > chunk_size:
                 chunk_size = tensor.numel()
-            chunk = Chunk(
-                chunk_size=chunk_size,
-                process_group=tensor.process_group,
-                dtype=tensor.dtype,
-                **chunk_kwargs
-            )
+            chunk = Chunk(chunk_size=chunk_size, process_group=tensor.process_group, dtype=tensor.dtype, **chunk_kwargs)
 
             chunk_group.append(chunk)
             chunk.append_tensor(tensor)
@@ -166,8 +162,10 @@ class ChunkManagerV2:
         self.lazy_release_tensors.clear()
 
     def __repr__(self) -> str:
-        msg = ['Chunk Manager Information:\n',
-               'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n']
+        msg = [
+            'Chunk Manager Information:\n',
+            'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n'
+        ]
         for group_name, group in self.chunk_groups.items():
             msg.append(f'Group {group_name}:\n')
             for i, chunk in enumerate(group):

@@ -38,14 +38,12 @@ def check_euqal(param, param_cp):
 def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     world_size = torch.distributed.get_world_size()
     pg = ColoProcessGroup()
-    my_chunk = ChunkV2(
-        chunk_size=1024,
-        process_group=pg,
-        dtype=torch.float32,
-        init_device=init_device,
-        keep_gathered=keep_gathered,
-        pin_memory=pin_memory
-    )
+    my_chunk = ChunkV2(chunk_size=1024,
+                       process_group=pg,
+                       dtype=torch.float32,
+                       init_device=init_device,
+                       keep_gathered=keep_gathered,
+                       pin_memory=pin_memory)
 
     param_list = []
     param_cp_list = []
