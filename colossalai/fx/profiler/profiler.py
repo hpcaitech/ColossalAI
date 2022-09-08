@@ -33,19 +33,32 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
         flop_count (Tuple[int, ...]): The flop count for (fwd_flop, bwd_flop).
         mem_stat (Tuple[int, ...]): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
     """
+    # This subgraph traces aten level ops inside one node.
+    subgraph = Graph()
 
+    # flop_count serves as a global dictionary to store results.
     flop_count = {
         'f': 0,
         'l': 0,
         'b': 0,
     }
+
+    # TODO: remove this
     temp = {
         'f': [],
         'l': [],
         'b': [],
     }
+
+    # `stage` will mark the stage of autograd from outside scope.
     stage = 'f'
 
+    # FlopTensor not only get the flop statistics of a single node,
+    # it also build a full autograd graph for this node.
+    # This makes sure we can analyze the dependencies of memory, and
+    # decide which forward intermediate results should be kept until
+    # backward is executed.
+    # Hopefully, this attempt will provide a better estimation of memory.
     class FlopTensor(MetaTensor):
 
         def __repr__(self):
@@ -78,6 +91,8 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
 
             return tree_map(wrap, out)
 
+    # `WEIRD_OPS` are tough to handle because they don't accept autograd
+    #  on meta tensor.
     if target not in WEIRD_OPS:
 
         def wrap(x):
@@ -89,6 +104,7 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
             return FlopTensor(
                 x.detach().requires_grad_(False)) if is_autogradable(x) and not hasattr(x, '_tensor') else x
 
+    # Basically, we need to detach the args and kwargs from the outer graph.
     args = tree_map(wrap, args)
     kwargs = tree_map(wrap, kwargs)
 
@@ -99,6 +115,8 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     else:
         out = target(*args, **kwargs)
 
+    # If the output is not a floating point `torch.Tensor` or it does not
+    # requires grad, then we should not run backward for this node.
     if is_autogradable(out) and out.requires_grad:
         stage = 'l'
         loss = out.sum()
@@ -110,7 +128,8 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
 
     fwd_tmp = max(map(activation_size, temp['f'][:-1])) if len(temp['f'][:-1]) else 0
     fwd_out = activation_size(temp['f'][-1]) if len(temp['f']) else 0
-    bwd_tmp = max(map(activation_size, temp['b'])) if len(temp['b']) else 0
+    bwd_tmp = max(map(activation_size, temp['b'][:-1])) if len(temp['b'][:-1]) else 0
+    fwd_out = activation_size(temp['b'][-1]) if len(temp['b']) else 0
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
@@ -134,11 +153,14 @@ def profile_function(target: 'Target') -> Callable:
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
+
+        # If there is an argument that this `call_function` is inplace, we should
+        # skip the autograd profiling.
         if kwargs.get('inplace', False):
             args = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, args)
             kwargs = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, kwargs)
             out = func(*args, **kwargs)
-            return out, (0, 0), (0, 0, 0, 0)
+            return out, (out.numel(), out.numel()), (0, 0, 0, 0)
         out, flop_count, mem_stat = _profile(func, *args, **kwargs)
         return out, flop_count, mem_stat
 
@@ -178,6 +200,9 @@ def profile_module(module: torch.nn.Module) -> Callable:
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
+
+        # If there is an argument that this `call_module` is inplace, we should
+        # skip the autograd profiling.
         if getattr(module, 'inplace', False):
             args = tree_map(lambda x: x.to('meta'), args)
             kwargs = tree_map(lambda x: x.to('meta'), kwargs)
