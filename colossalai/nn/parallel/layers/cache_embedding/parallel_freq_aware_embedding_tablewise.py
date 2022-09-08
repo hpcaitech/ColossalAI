@@ -87,7 +87,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
             local_per_sample_weights_list: List(torch.Tensor) = []
 
         offset_pre_end = 0    # local_offsets trick
-        
+
         for i, handle_table in enumerate(self.assigned_table_list):
             indices_start_position = offsets[batch_size * handle_table]
             if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):
@@ -95,7 +95,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                 indices_end_position = indices.shape[0]
             else:
                 indices_end_position = offsets[batch_size * (handle_table + 1)]
-            # alternative approach: reduce malloc 
+            # alternative approach: reduce malloc
             '''
             # 1. local_indices_list:
             local_indices = indices.narrow(0, indices_start_position, indices_end_position - indices_start_position)
@@ -115,7 +115,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                 local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size)
                 torch.add(local_offsets, offset_pre_end - offsets[batch_size * handle_table], out=local_offsets)
                 offset_pre_end = offsets[batch_size * (handle_table + 1)] + offset_pre_end - temp_holder
-                local_offsets_list.append(local_offsets)s
+                local_offsets_list.append(local_offsets)
             '''
             # 1. local_indices_list:
             local_indices_list.append(

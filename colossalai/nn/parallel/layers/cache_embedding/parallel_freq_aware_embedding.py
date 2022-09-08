@@ -60,7 +60,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
                              warmup_ratio, buffer_size, pin_weight, evict_strategy)
-        
+
     def _weight_alloc(self, dtype, device):
         weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
         with torch.no_grad():
@@ -123,6 +123,6 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
 
     def print_comm_stats_(self):
         self.cache_weight_mgr.print_comm_stats()
-        
+
     def element_size(self):
         return self.weight.element_size()
