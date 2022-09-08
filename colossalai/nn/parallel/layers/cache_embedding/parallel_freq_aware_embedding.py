@@ -48,7 +48,8 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
                  warmup_ratio=0.7,
                  buffer_size=50_000,
                  pin_weight=False,
-                 evict_strategy: EvictionStrategy = EvictionStrategy.DATASET):
+                 evict_strategy: EvictionStrategy = EvictionStrategy.DATASET,
+                 compressor=True):
         self.rank = torch.distributed.get_rank()
         self.world_size = torch.distributed.get_world_size()
 
@@ -60,7 +61,13 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
                              warmup_ratio, buffer_size, pin_weight, evict_strategy)
-
+        self.compressor = compressor
+        if compressor:
+            self.encoder = torch.nn.Linear(embedding_dim // self.world_size, embedding_dim // self.world_size // 2)
+            self.decoder = torch.nn.Linear(embedding_dim // 2, embedding_dim)
+            torch.nn.init.xavier_uniform(self.encoder.weight)
+            torch.nn.init.xavier_uniform(self.decoder.weight)
+        
     def _weight_alloc(self, dtype, device):
         weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
         with torch.no_grad():
@@ -75,16 +82,19 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
     def forward(self, indices, offsets=None, per_sample_weights=None, shape_hook=None, scatter_dim=0, gather_dim=-1):
         with torch.no_grad():
             reorder_ids = self.cache_weight_mgr.prepare_ids(indices)
-
         output_shard = F.embedding_bag(reorder_ids.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets,
                                        self.max_norm, self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
                                        per_sample_weights, self.include_last_offset, self.padding_idx)
+        if self.compressor:
+            output_shard = self.encoder(output_shard)
         if shape_hook is not None:
             output_shard = shape_hook(output_shard)
         output_full = dual_all_to_all(output_shard,
                                       self.weight.get_process_group(),
                                       scatter_dim=scatter_dim,
                                       gather_dim=gather_dim)
+        if self.compressor:
+            output_full = self.decoder(output_full)
         return output_full
 
     @classmethod
