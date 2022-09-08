@@ -218,7 +218,7 @@ class ChunkManagerV2:
         return self.chunk_groups[group_name]
 
     def __close_one_chunk(self, chunk: Chunk):
-        device = None if chunk.is_gathered else self.device    # keep gathered chunk in cuda
+        device = get_current_device() if chunk.keep_gathered else self.device    # keep gathered chunk in cuda
         self.__sub_memroy_usage(chunk.memory_usage)
         chunk.close_chunk(device)
         self.__add_memory_usage(chunk.memory_usage)
