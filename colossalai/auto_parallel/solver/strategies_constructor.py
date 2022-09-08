@@ -27,7 +27,13 @@ class StrategiesConstructor:
         Generate the sharding spec of the tensor based on the given dim_partition_dict 
         where the key is the tensor dimension and the value is the mesh dimension for sharding.
         """
-        meta_tensor = node._meta_data
+        if hasattr(node, '_meta_data'):
+            meta_tensor = node._meta_data
+        elif isinstance(node, torch.Tensor):
+            meta_tensor = node
+        else:
+            raise RuntimeError(f'We cannot generate sharding spec for {type(node)} type.')
+
         sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
                                      entire_shape=meta_tensor.shape,
                                      dim_partition_dict=dim_partition_dict)
