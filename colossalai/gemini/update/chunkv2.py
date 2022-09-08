@@ -42,7 +42,8 @@ class ChunkV2:
         self.pg_rank = dist.get_rank(self.torch_pg)
 
         # the chunk size should be able to be divied by the size of GPU
-        assert chunk_size % self.pg_size == 0
+        if not keep_gathered:
+            assert chunk_size % self.pg_size == 0
         self.shard_size = chunk_size // self.pg_size
         self.shard_begin = self.shard_size * self.pg_rank
         self.shard_end = self.shard_begin + self.shard_size
