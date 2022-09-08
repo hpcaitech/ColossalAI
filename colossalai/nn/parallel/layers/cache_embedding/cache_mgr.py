@@ -178,7 +178,7 @@ class CachedParamMgr(torch.nn.Module):
         """reorder
         reorder the weight according to ids' frequency in dataset before training.
         Execute only once before training, also known as warmup phase.
-        
+
         Note:
             If you would like to use the DATASET as the eviction strategy, you must call this function.
 
@@ -304,7 +304,8 @@ class CachedParamMgr(torch.nn.Module):
             self.evict_backlist = cpu_row_idxs
 
         with record_function("(pre-id) get cpu row idxs"):
-            comm_cpu_row_idxs = cpu_row_idxs[torch.isin(cpu_row_idxs, self.cached_idx_map, invert=True)]
+            comm_cpu_row_idxs = cpu_row_idxs[torch.isin(
+                cpu_row_idxs, self.cached_idx_map, assume_unique=True, invert=True)]
 
         self.num_hits_history.append(len(cpu_row_idxs) - len(comm_cpu_row_idxs))
         self.num_miss_history.append(len(comm_cpu_row_idxs))
@@ -345,7 +346,7 @@ class CachedParamMgr(torch.nn.Module):
         evict_num = cpu_row_idxs.numel() - self.cuda_available_row_num
         if evict_num > 0:
             with Timer() as timer:
-                mask_cpu_row_idx = torch.isin(self.cached_idx_map, self.evict_backlist)
+                mask_cpu_row_idx = torch.isin(self.cached_idx_map, self.evict_backlist, assume_unique=True)
                 invalid_idxs = torch.nonzero(mask_cpu_row_idx).squeeze(1)
                 if self._evict_strategy == EvictionStrategy.DATASET:
                     # mask method.
