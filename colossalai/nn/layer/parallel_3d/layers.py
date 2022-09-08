@@ -70,7 +70,7 @@ class LayerNorm3D(ParallelLayer):
         if self.bias is not None:
             init.zeros_()(self.bias)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -105,9 +105,9 @@ class LayerNorm3D(ParallelLayer):
         # broadcast in weight groups
         local_state = broadcast_state_dict(local_state, self.weight_parallel_mode)
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict({weight_key: self.weight})
@@ -207,7 +207,7 @@ class Linear3D(ParallelLayer):
                 broadcast(self.bias, weight_src_rank, self.weight_parallel_mode)
                 broadcast(self.bias, output_src_rank, self.output_parallel_mode)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -265,9 +265,9 @@ class Linear3D(ParallelLayer):
             },
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict({weight_key: self.weight})
@@ -400,7 +400,7 @@ class Classifier3D(ParallelLayer):
                 broadcast(self.bias, output_src_rank, self.output_parallel_mode)
                 broadcast(self.bias, input_src_rank, self.input_parallel_mode)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -437,9 +437,9 @@ class Classifier3D(ParallelLayer):
         # broadcast in weight groups
         local_state = broadcast_state_dict(local_state, self.weight_parallel_mode)
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict()
@@ -551,7 +551,7 @@ class VocabParallelClassifier3D(ParallelLayer):
                 broadcast(self.bias, weight_src_rank, self.weight_parallel_mode)
                 broadcast(self.bias, output_src_rank, self.output_parallel_mode)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -610,9 +610,9 @@ class VocabParallelClassifier3D(ParallelLayer):
             },
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict({weight_key: self.weight})
@@ -763,7 +763,7 @@ class PatchEmbedding3D(ParallelLayer):
         self.cls_token.register_hook(self._sync_grad_hook)
         self.pos_embed.register_hook(self._sync_grad_hook)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -812,9 +812,9 @@ class PatchEmbedding3D(ParallelLayer):
         # broadcast in weight groups
         local_state = broadcast_state_dict(local_state, self.weight_parallel_mode)
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         cls_token_key = prefix + 'cls_token'
@@ -937,7 +937,7 @@ class Embedding3D(ParallelLayer):
             with torch.no_grad():
                 self.weight[self.padding_idx].fill_(0)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
@@ -961,9 +961,9 @@ class Embedding3D(ParallelLayer):
         # broadcast in weight groups
         local_state = broadcast_state_dict(local_state, self.weight_parallel_mode)
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         local_state = OrderedDict({weight_key: self.weight})
 
@@ -991,7 +991,7 @@ class Embedding3D(ParallelLayer):
 
 
 @LAYERS.register_module
-class VocabParallelEmbedding3D(torch.nn.Module):
+class VocabParallelEmbedding3D(ParallelLayer):
     r"""Embedding parallelized in the vocabulary dimension.
 
     Args:
@@ -1070,7 +1070,7 @@ class VocabParallelEmbedding3D(torch.nn.Module):
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args, **kwargs):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
@@ -1104,9 +1104,9 @@ class VocabParallelEmbedding3D(torch.nn.Module):
             partition_states={weight_key: True},
         )
 
-        super()._load_from_state_dict(local_state, prefix, *args, **kwargs)
+        super()._load_from_global_state_dict(local_state, prefix, *args, **kwargs)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         local_state = OrderedDict({weight_key: self.weight})
 
