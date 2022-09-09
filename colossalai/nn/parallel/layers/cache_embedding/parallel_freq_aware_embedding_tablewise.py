@@ -115,7 +115,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                          per_sample_weights=None):
         '''
         if input indices and offsets haven't been splitted along assigned rank, this function will do it.
-        it takes time. please consider split data during batch loading.
+        it takes time. please consider splitting data during batch loading.
         '''
         local_indices_list: List(torch.Tensor) = []
         local_offsets_list: List(torch.Tensor) = []
