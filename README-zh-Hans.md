@@ -49,6 +49,7 @@
    <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a> 
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
+     <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
    </ul>
  </li>
 <li>
@@ -143,7 +144,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), 由Meta发布的1750亿语言模型，由于完全公开了预训练参数权重，因此促进了下游任务和应用部署的发展。
-- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt)
+- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[在线推理]](https://service.colossalai.org/opt) 
 
 请访问我们的 [文档](https://www.colossalai.org/) 和 [例程](https://github.com/hpcaitech/ColossalAI-Examples) 以了解详情。
 
@@ -176,12 +177,18 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 ## 推理 (Energon-AI) 样例展示
 
-### GPT-3
 <p id="GPT-3-Inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
 </p>
 
 - [Energon-AI](https://github.com/hpcaitech/EnergonAI) ：用相同的硬件推理加速50%
+
+<p id="OPT-Serving" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_serving.png" width=800/>
+</p>
+
+- [OPT推理服务](https://service.colossalai.org/opt): 无需注册，免费体验1750亿参数OPT在线推理服务
+
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -195,6 +202,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </p>
 
 - [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): 11倍加速蛋白质单体与复合物结构预测
+
 
 ## 安装
 

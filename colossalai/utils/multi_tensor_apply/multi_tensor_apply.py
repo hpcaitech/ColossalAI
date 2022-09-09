@@ -26,13 +26,9 @@ class MultiTensorApply(object):
             raise RuntimeError(
                 "Attempted to call MultiTensorApply method, but MultiTensorApply "
                 "is not available, possibly because Apex was installed without "
-                "--cpp_ext --cuda_ext.  Original import error message:",
-                MultiTensorApply.import_err)
+                "--cpp_ext --cuda_ext.  Original import error message:", MultiTensorApply.import_err)
 
     def __call__(self, op, noop_flag_buffer, tensor_lists, *args):
         self.check_avail()
 
-        return op(self.chunk_size,
-                  noop_flag_buffer,
-                  tensor_lists,
-                  *args)
+        return op(self.chunk_size, noop_flag_buffer, tensor_lists, *args)
