@@ -32,7 +32,8 @@ class ConvModel(nn.Module):
         return x
 
 
-def test_cost_graph():
+@pytest.mark.skip("for higher testing speed")
+def test_solver():
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
     # [[0, 1]
@@ -74,4 +75,4 @@ def test_cost_graph():
 
 
 if __name__ == '__main__':
-    test_cost_graph()
+    test_solver()
