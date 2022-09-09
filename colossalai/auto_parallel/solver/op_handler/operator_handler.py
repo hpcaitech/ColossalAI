@@ -8,7 +8,7 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 
-from .sharding_strategy import StrategiesVector
+from ..sharding_strategy import StrategiesVector
 
 __all__ = ['OperatorHandler']
 
@@ -70,6 +70,48 @@ class OperatorHandler(ABC):
                                      dim_partition_dict=dim_partition_dict)
         return sharding_spec
 
+    def _generate_memory_cost(self, dim_partition_dict_for_output, dim_partition_dict_for_weight):
+        '''
+        Compute the memory cost per device with this specific strategy.
+
+        Argument:
+            dim_partition_dict_for_output(List[int]): The key is the dimension of output to be sharded,
+                and the value of the key decribe which logical axis will be sharded in that dimension.
+            dim_partition_dict_for_weight(List[int]): The key is the dimension of weight to be sharded,
+                and the value of the key decribe which logical axis will be sharded in that dimension.
+        Return:
+            total_memory_cost(float): total memory cost per device with this specific strategy
+            activation_cost(float): the memory cost of activation per device with this specific strategy
+            weight_memory_cost(float): the memory cost of weight per device with this specific strategy
+        '''
+        # compute the size of one element with specific dtype
+        dtype = self.input_data.dtype
+        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
+
+        # compute the memory cost of activation
+        activation_numel = self.output_data.numel()
+        output_mesh_dims = []
+        for sharding_dim, mesh_dims in dim_partition_dict_for_output.items():
+            output_mesh_dims.extend(mesh_dims)
+        activation_sharding_size = 1
+        for mesh_dim in output_mesh_dims:
+            activation_sharding_size *= self.device_mesh.shape[mesh_dim]
+        activation_memory_cost = activation_numel / activation_sharding_size * size_per_elem_bytes
+
+        # compute the memory cost of weight
+        weight_numel = self.weight.numel()
+        weight_sharding_size = 1
+        weight_mesh_dims = []
+        for sharding_dim, mesh_dims in dim_partition_dict_for_weight.items():
+            weight_mesh_dims.extend(mesh_dims)
+        for mesh_dim in weight_mesh_dims:
+            weight_sharding_size *= self.device_mesh.shape[mesh_dim]
+        weight_memory_cost = weight_numel / weight_sharding_size * size_per_elem_bytes
+
+        total_memory_cost = activation_memory_cost + weight_memory_cost
+
+        return total_memory_cost, activation_memory_cost, weight_memory_cost
+
     def _generate_resharding_costs(self, sharding_spec_for_input):
         '''
         Compute the resharding costs with this specific strategy.
@@ -85,17 +127,20 @@ class OperatorHandler(ABC):
         '''
         # The resharding_cost of weight is counted due to sharing weight cases.
         resharding_costs = {}
-        for input_node, target_spec in zip(self.predecessor_node, sharding_spec_for_input):
+        dtype = self.node._meta_data.dtype
+        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
+        for input_node, input_spec in zip(self.predecessor_node, sharding_spec_for_input):
             resharding_costs[input_node] = []
             for strategy in input_node.strategies_vector:
                 input_sharding_spec = strategy.output_sharding_spec
                 assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
                 # compute the resharding cost during forward phase
                 _, _, resharding_cost_forward = self.shape_consistency_manager.shape_consistency(
-                    input_sharding_spec, target_spec)
+                    input_sharding_spec, input_spec)
                 # In backward phase, we should convert grad with target_spec into input_sharding_spec
                 _, _, resharding_cost_backward = self.shape_consistency_manager.shape_consistency(
-                    target_spec, input_sharding_spec)
-                resharding_cost = resharding_cost_forward + resharding_cost_backward
+                    input_spec, input_sharding_spec)
+                # we need multiply the size of elem dtype to get correct communication cost
+                resharding_cost = (resharding_cost_forward + resharding_cost_backward) * size_per_elem_bytes
                 resharding_costs[input_node].append(resharding_cost)
         return resharding_costs

@@ -1,7 +1,7 @@
 from torch.fx import Graph, Node
 from colossalai.tensor.sharding_spec import ShardingSpec
-from .sharding_strategy import ShardingStrategy, StrategiesVector
-from .conv_handler import ConvHandler
+from . import ShardingStrategy, StrategiesVector
+from .op_handler import *
 from .constants import *
 from copy import deepcopy
 import math
@@ -175,6 +175,58 @@ class StrategiesConstructor:
                                                              input_shardings=[input_sharding_spec])
                         strategies_vector.append(sharding_strategy)
 
+                # BatchNormNd module
+                elif submod_type in BATCHNORM_MODULE_OP:
+                    # bn1 call_module bn1 (conv1,)
+                    # print(node, node.op, node.target, node.args)
+                    # create sharding strategy for element-wise module
+                    # input_node = strategies_vector.predecessor_nodes[0]
+                    norm_handler = BatchNormHandler(node, self.device_mesh, strategies_vector,
+                                                    self.shape_consistency_manager)
+                    norm_handler.register_strategy()
+                    # for strategy in norm_handler.strategies_vector:
+                    #     print(f'{strategy.name}, computation_cost: {strategy.compute_cost}, memory_cost: {strategy.memory_cost}')
+                    # assert False
+
+                # MaxPool module
+                elif submod_type in POOL_MODULE_OP:
+                    # create sharding strategy for element-wise module
+                    assert len(strategies_vector.predecessor_nodes
+                              ) == 1, f'Temporally, we just support single input element-wise op.'
+                    input_node = strategies_vector.predecessor_nodes[0]
+                    # For element-wise module, we keep the sharding spec of output node same as
+                    # the input. Therefore, the different strategies of input node with same
+                    # output sharding spec will generate same strategy for element-wise module.
+                    sharding_spec_checklist = []
+                    for strategy in input_node.strategies_vector:
+                        # It looks a little bit confusing, the input of the processing node
+                        # is the output of the input_node.
+                        input_sharding_spec = strategy.output_sharding_spec
+                        assert isinstance(input_sharding_spec,
+                                          ShardingSpec), f'The input node should NOT be a tuple of tensor.'
+                        if input_sharding_spec in sharding_spec_checklist:
+                            continue
+
+                        sharding_spec_checklist.append(input_sharding_spec)
+                        dim_partition_dict = deepcopy(input_sharding_spec.dim_partition_dict)
+                        output_sharding_spec = self._generate_sharding_spec(node, dim_partition_dict)
+
+                        name = f'{input_sharding_spec.sharding_sequence} -> {output_sharding_spec.sharding_sequence}'
+
+                        # TODO: use meta_info_prop to profile memory cost and compute cost
+                        compute_cost = node._meta_data.numel()
+                        memory_cost = 0
+                        resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                           [input_sharding_spec])
+
+                        sharding_strategy = ShardingStrategy(name,
+                                                             output_sharding_spec,
+                                                             compute_cost=compute_cost,
+                                                             memory_cost=memory_cost,
+                                                             resharding_costs=resharding_costs,
+                                                             input_shardings=[input_sharding_spec])
+                        strategies_vector.append(sharding_strategy)
+
                 # other module
                 else:
                     raise RuntimeError(f'{submod_type} module is NOT supported now.')
@@ -203,7 +255,7 @@ class StrategiesConstructor:
                     # TODO: integrate element-wise func and module together
                     # create sharding strategy for element-wise function
                     assert len(strategies_vector.predecessor_nodes
-                              ) == 1, f'Temporally, we just support single input element-wise op.'
+                              ) == 1, f'Temporally, we just support single input element-wise op, node name is {node}.'
                     input_node = strategies_vector.predecessor_nodes[0]
                     # For element-wise function, we keep the sharding spec of output node same as
                     # the input. Therefore, the different strategies of input node with same
@@ -349,6 +401,13 @@ class StrategiesConstructor:
                     memory_cost = 0
                     resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
                                                                        input_sharding_specs)
+
+                    # clear the resharding cost for the output node
+                    # TODO: we may remove this in final version
+                    if True:
+                        for prev_node, resharding_cost_list in resharding_costs.items():
+                            resharding_costs[prev_node] = [0] * len(resharding_cost_list)
+
                     sharding_strategy_attribute = ShardingStrategy(name,
                                                                    output_sharding_spec,
                                                                    memory_cost=memory_cost,
