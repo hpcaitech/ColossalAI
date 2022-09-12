@@ -1,5 +1,24 @@
-from typing import List
+from typing import List, Any
 from torch.fx import GraphModule, Node
+
+# List of target name that could be seen as common node
+COPS = ["getattr", "getitem", "size"]
+
+
+def _is_cop(target: Any) -> bool:
+    """Check if an op could be seen as common node
+
+    Args:
+        target (Any): node target
+
+    Returns:
+        bool
+    """
+
+    if isinstance(target, str):
+        return target in COPS
+    else:
+        return target.__name__ in COPS
 
 
 def linearize(gm: GraphModule, cnode: List[str] = None) -> List[List[Node]]:
@@ -53,7 +72,7 @@ def linearize(gm: GraphModule, cnode: List[str] = None) -> List[List[Node]]:
                 region = []
 
             # propagate common node attr if possible
-            if len(n._input_nodes) == len([node for node in n._input_nodes if node.name in cnode]):
+            if len(n._input_nodes) == len([node for node in n._input_nodes if node.name in cnode]) or _is_cop(n.target):
                 cnode.append(n.name)
             else:
                 deps[n] = len([user for user in n.users if user.op != "output"])
