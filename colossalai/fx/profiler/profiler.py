@@ -6,7 +6,7 @@ from torch.fx import Graph
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
 from .dataflow import autograd_graph_analysis
-from .memory import INPLACE_ATEN, WEIRD_OPS, activation_size
+from .memory import WEIRD_OPS
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
