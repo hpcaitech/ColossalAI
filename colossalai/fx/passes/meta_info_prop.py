@@ -94,13 +94,13 @@ class MetaInfoProp(torch.fx.Interpreter):
         n.meta['tensor_meta'] = meta
 
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', mem_stat[1])
-        setattr(n, 'fwd_flop', flop_count[0])
-        setattr(n, 'bwd_flop', flop_count[1])
-        setattr(n, 'fwd_in', mem_stat[0])
-        setattr(n, 'fwd_tmp', mem_stat[1])
-        setattr(n, 'bwd_tmp', mem_stat[2])
-        setattr(n, 'bwd_out', mem_stat[3])
+        setattr(n, 'node_size', mem_stat[0] + mem_stat[1])
+        n.meta['fwd_flop'] = flop_count[0]
+        n.meta['bwd_flop'] = flop_count[1]
+        n.meta['fwd_in'] = mem_stat[0]
+        n.meta['fwd_tmp'] = mem_stat[1]
+        n.meta['bwd_tmp'] = mem_stat[2]
+        n.meta['bwd_out'] = mem_stat[3]
         n.meta['type'] = type(result)
 
         for param in self.module.parameters():
