@@ -121,7 +121,7 @@ def _end_of_ckpt(node: Node, check_idx: int) -> bool:
         bool
     """
     if hasattr(node, "activation_checkpoint"):
-        if isinstance(node.activation_checkpoint, tuple):
+        if isinstance(node.activation_checkpoint, list):
             return node.activation_checkpoint[check_idx] == None
         else:
             return False
