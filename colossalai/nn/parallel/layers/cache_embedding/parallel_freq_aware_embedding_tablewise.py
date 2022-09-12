@@ -87,6 +87,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
             local_per_sample_weights_list: List(torch.Tensor) = []
 
         offset_pre_end = 0    # local_offsets trick
+
         for i, handle_table in enumerate(self.assigned_table_list):
             indices_start_position = offsets[batch_size * handle_table]
             if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):
@@ -94,6 +95,28 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                 indices_end_position = indices.shape[0]
             else:
                 indices_end_position = offsets[batch_size * (handle_table + 1)]
+            # alternative approach: reduce malloc
+            '''
+            # 1. local_indices_list:
+            local_indices = indices.narrow(0, indices_start_position, indices_end_position - indices_start_position)
+            torch.sub(local_indices, self.idx_offset_list[i], out=local_indices)
+            local_indices_list.append(local_indices)
+            # 2. local_offsets_list:
+            if i + 1 == len(self.assigned_table_list):
+                # till-the-end special case
+                if not self.include_last_offset:
+                    local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size)
+                else:
+                    local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size + 1)
+                torch.add(local_offsets, offset_pre_end - offsets[batch_size * handle_table], out=local_offsets)
+                local_offsets_list.append(local_offsets)
+            else:
+                temp_holder = offsets[batch_size * handle_table].item()
+                local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size)
+                torch.add(local_offsets, offset_pre_end - offsets[batch_size * handle_table], out=local_offsets)
+                offset_pre_end = offsets[batch_size * (handle_table + 1)] + offset_pre_end - temp_holder
+                local_offsets_list.append(local_offsets)
+            '''
             # 1. local_indices_list:
             local_indices_list.append(
                 indices.narrow(0, indices_start_position,
@@ -103,21 +126,20 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                 # till-the-end special case
                 if not self.include_last_offset:
                     local_offsets = offsets.narrow(0, batch_size * handle_table,
-                                                   batch_size).add(offset_pre_end - offsets[batch_size *
-                                                                                            (handle_table)])
+                                                   batch_size).add(offset_pre_end - offsets[batch_size
+                                                                                            * (handle_table)])
                 else:
-                    local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size +
-                                                   1).add(offset_pre_end - offsets[batch_size * (handle_table)])
+                    local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size
+                                                   + 1).add(offset_pre_end - offsets[batch_size * (handle_table)])
                 local_offsets_list.append(local_offsets)
             else:
-                local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size +
-                                               1).add(offset_pre_end - offsets[batch_size * (handle_table)])
+                local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size
+                                               + 1).add(offset_pre_end - offsets[batch_size * (handle_table)])
                 offset_pre_end = local_offsets[-1]
                 local_offsets_list.append(local_offsets[:-1])
             # 3. local_per_sample_weights_list:
             if per_sample_weights != None:
                 local_per_sample_weights_list.append(per_sample_weights[indices_start_position:indices_end_position])
-
         local_indices = torch.cat(local_indices_list, 0)
         local_offsets = torch.cat(local_offsets_list, 0)
         local_per_sample_weights = None
