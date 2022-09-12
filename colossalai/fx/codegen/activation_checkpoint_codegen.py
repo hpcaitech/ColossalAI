@@ -740,7 +740,10 @@ else:
 
         # Modified for activation checkpointing
         ckpt_func = []
-        emit_code_with_activation_checkpoint(body, ckpt_func, self.nodes, emit_node, delete_unused_values)
+        if all(not isinstance(getattr(node, "activation_checkpoint", None), list) for node in self.nodes):
+            emit_code_with_activation_checkpoint(body, ckpt_func, self.nodes, emit_node, delete_unused_values)
+        else:
+            emit_code_with_nested_activation_checkpoint(body, ckpt_func, self.nodes, emit_node, delete_unused_values)
 
         if len(body) == 0:
             # If the Graph has no non-placeholder nodes, no lines for the body
