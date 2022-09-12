@@ -1,5 +1,3 @@
-from operator import mod
-from turtle import forward
 import torch
 import torch.nn.functional as F
 import pytest
