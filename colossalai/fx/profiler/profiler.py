@@ -1,9 +1,12 @@
+from lib2to3.pytree import Node
+from operator import getitem
 from typing import Callable, Any, Dict, Tuple
 import torch
 from torch.fx import Graph
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
-from .memory import activation_size, INPLACE_ATEN, WEIRD_OPS
+from .dataflow import autograd_graph_analysis
+from .memory import INPLACE_ATEN, WEIRD_OPS, activation_size
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
@@ -43,13 +46,6 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
         'b': 0,
     }
 
-    # TODO: remove this
-    temp = {
-        'f': [],
-        'l': [],
-        'b': [],
-    }
-
     # `stage` will mark the stage of autograd from outside scope.
     stage = 'f'
 
@@ -60,6 +56,8 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     # backward is executed.
     # Hopefully, this attempt will provide a better estimation of memory.
     class FlopTensor(MetaTensor):
+
+        _node: Node
 
         def __repr__(self):
             if self.grad_fn:
@@ -74,8 +72,12 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
                     x = FlopTensor(x.to('meta'))
                 return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
 
-            def to_meta(x):
-                return x.to('meta') if isinstance(x, torch.Tensor) else x
+            def get_node(x):
+                return None if not hasattr(x, '_node') else x._node
+
+            args_node = tree_map(get_node, args)
+            kwargs_node = tree_map(get_node, kwargs)
+            node = subgraph.create_node('call_function', func, args_node, kwargs_node)
 
             args = tree_map(unwrap, args)
             kwargs = tree_map(unwrap, kwargs)
@@ -83,13 +85,18 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
             # run aten for backend=CPU but actually on backend=Meta
             out = func(*args, **kwargs)
             flop_count[stage] += flop_mapping[func](args, normalize_tuple(out))
-            if func not in INPLACE_ATEN:
-                temp[stage].append(tree_map(to_meta, normalize_tuple(out)))
+            node.meta['out'] = normalize_tuple(out)
+            node.meta['stage'] = stage
 
             def wrap(x):
                 return FlopTensor(x.to('meta')) if isinstance(x, torch.Tensor) else x
 
-            return tree_map(wrap, out)
+            def set_node(x):
+                x._node = node
+
+            out = tree_map(wrap, out)
+            tree_map(set_node, out)
+            return out
 
     # `WEIRD_OPS` are tough to handle because they don't accept autograd
     #  on meta tensor.
@@ -107,6 +114,17 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     # Basically, we need to detach the args and kwargs from the outer graph.
     args = tree_map(wrap, args)
     kwargs = tree_map(wrap, kwargs)
+
+    def set_placeholder(x):
+        if isinstance(x, FlopTensor):
+            x._node = subgraph.create_node('placeholder',
+                                           'placeholder', (subgraph._root,),
+                                           name=subgraph._graph_namespace.create_name('input', x._tensor))
+            x._node.meta['stage'] = 'p'
+            x._node.meta['out'] = (x._tensor,)
+
+    tree_map(set_placeholder, args)
+    tree_map(set_placeholder, kwargs)
 
     if isinstance(target, str):
         # args[0] is the `self` object for this method call
@@ -126,15 +144,12 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     fwd_flop = flop_count['f']
     bwd_flop = flop_count['b']
 
-    fwd_tmp = max(map(activation_size, temp['f'][:-1])) if len(temp['f'][:-1]) else 0
-    fwd_out = activation_size(temp['f'][-1]) if len(temp['f']) else 0
-    bwd_tmp = max(map(activation_size, temp['b'][:-1])) if len(temp['b'][:-1]) else 0
-    fwd_out = activation_size(temp['b'][-1]) if len(temp['b']) else 0
+    fwd_in, fwd_tmp, bwd_tmp, bwd_out = autograd_graph_analysis(subgraph)
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
 
-    return tree_map(unwrap, out), (fwd_flop, bwd_flop), (fwd_tmp, fwd_out, bwd_tmp, 0)
+    return tree_map(unwrap, out), (fwd_flop, bwd_flop), (fwd_in, fwd_tmp, bwd_tmp, bwd_out)
 
 
 def profile_function(target: 'Target') -> Callable:
