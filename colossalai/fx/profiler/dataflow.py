@@ -68,15 +68,17 @@ def autograd_graph_analysis(graph: Graph) -> Tuple[int, int, int, int]:
 
     for n in graph.nodes:
         n: Node
-        if is_placeholder(n):
-            # a placeholder node who has any backward node users will have to be kept in memory until released
-            if any(map(is_backward, n.users)) and not any(map(is_loss, n.users)):
-                # but if its users are all inplace methods in forward pass, it should not have activations
+        if n.meta['save'] and not any(map(is_loss, n.users)):
+            # A forward tensor who is marked `save` but is not
+            # an input to `loss` should be saved during forward.
+            # If the tensor is a placeholder, then it belongs to `fwd_in`.
+            # Any `fwd_in` should be kept in memory even this function
+            # is checkpointed.
+            # Otherwise, the tensor belongs to `fwd_tmp`. If we checkpoint
+            # the node, `fwd_tmp` can be freed.
+            if is_placeholder(n):
                 fwd_in += activation_size(n.meta['out'])
-        if is_forward(n):
-            # a forward node who has any backward node users will have to be kept in memory until released
-            if any(map(is_backward, n.users)) and not any(map(is_loss, n.users)):
-                # but if its users are all inplace methods in forward pass, it should not have activations
+            if is_forward(n):
                 fwd_tmp += activation_size(n.meta['out'])
         elif is_backward(n):
             if len(n.users):

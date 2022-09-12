@@ -87,6 +87,7 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
             flop_count[stage] += flop_mapping[func](args, normalize_tuple(out))
             node.meta['out'] = normalize_tuple(out)
             node.meta['stage'] = stage
+            node.meta['save'] = False
 
             def wrap(x):
                 return FlopTensor(x.to('meta')) if isinstance(x, torch.Tensor) else x
@@ -122,16 +123,29 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
                                            name=subgraph._graph_namespace.create_name('input', x._tensor))
             x._node.meta['stage'] = 'p'
             x._node.meta['out'] = (x._tensor,)
+            x._node.meta['save'] = False
 
     tree_map(set_placeholder, args)
     tree_map(set_placeholder, kwargs)
 
-    if isinstance(target, str):
-        # args[0] is the `self` object for this method call
-        self_obj, *args_tail = args
-        out = getattr(self_obj, target)(*args_tail, **kwargs)
-    else:
-        out = target(*args, **kwargs)
+    fwd_in = 0
+
+    def pack(x):
+        if isinstance(x, FlopTensor):
+            x._node.meta['save'] = True
+        return x
+
+    def unpack(x):
+        return x
+
+    # mark saved tensors with save_tensors_hooks
+    with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
+        if isinstance(target, str):
+            # args[0] is the `self` object for this method call
+            self_obj, *args_tail = args
+            out = getattr(self_obj, target)(*args_tail, **kwargs)
+        else:
+            out = target(*args, **kwargs)
 
     # If the output is not a floating point `torch.Tensor` or it does not
     # requires grad, then we should not run backward for this node.
