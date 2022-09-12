@@ -110,6 +110,16 @@ def _gen_ckpt_usage(label, activation_offload, input_vars, output_vars, use_reen
 
 
 def _end_of_ckpt(node: Node, check_idx: int) -> bool:
+    """Check if the node could end the ckpt region
+
+    Args:
+        node (Node): torch.fx.Node
+        check_idx (int): the index of checkpoint level for 
+        nested checkpoint
+
+    Returns:
+        bool
+    """
     if hasattr(node, "activation_checkpoint"):
         if isinstance(node.activation_checkpoint, tuple):
             return node.activation_checkpoint[check_idx] == None
@@ -121,8 +131,8 @@ def _end_of_ckpt(node: Node, check_idx: int) -> bool:
 
 def _find_nested_ckpt_regions(nodes, check_idx=0):
     """
-    Find the checkpoint regions given a list of consecutive nodes. The outputs will be list
-    of tuples, each tuple is in the form of (start_index, end_index).
+    Find the nested checkpoint regions given a list of consecutive nodes. The outputs 
+    will be list of tuples, each tuple is in the form of (start_index, end_index).
     """
     ckpt_regions = []
     start = -1
@@ -175,7 +185,23 @@ def emit_ckpt_func(body,
                    delete_unused_value_func,
                    level=0,
                    in_ckpt=False):
+    """Emit ckpt fuction in nested way
+
+    Args:
+        body: forward code, in recursive calls, this part will be checkpoint
+        functions code
+        ckpt_func: checkpoint functions code, in recursive calls, this part
+        will be a buffer
+        node_list (List[Node]): list of torch.fx.Node
+        emit_node_func: function to emit a node
+        delete_unused_value_func: function to delete unused value
+        level (int, optional): checkpoint level. Defaults to 0.
+        in_ckpt (bool, optional): indicates wether the func is in recursive
+        call. Defaults to False.
+    """
     inputs, outputs = _find_input_and_output_nodes(node_list)
+
+    # if the current checkpoint function use int as label, using old generation method
     if isinstance(node_list[0].activation_checkpoint, int):
         label = node_list[0].activation_checkpoint
         ckpt_fn_def = _gen_ckpt_fn_def(label, inputs)
@@ -190,26 +216,33 @@ def emit_ckpt_func(body,
         usage = _gen_ckpt_usage(label, activation_offload, inputs, outputs, False)
         usage += "\n"
         body.append(usage)
+
+    # use nested ckpt function codegen
     else:
+        # label given by each layer, e.g. if you are currently at level [0, 1, 1]
+        # the label will be '0_1_1'
         label = "_".join([str(idx) for idx in node_list[0].activation_checkpoint[:level + 1]])
         ckpt_fn_def = _gen_ckpt_fn_def(label, inputs)
         ckpt_func.append(f'{ckpt_fn_def}\n')
+
+        # if there is more level to fetch
         if level + 1 < len(node_list[0].activation_checkpoint):
             ckpt_regions = _find_nested_ckpt_regions(node_list, level + 1)
             start_idx = [item[0] for item in ckpt_regions]
             end_idx = [item[1] for item in ckpt_regions]
 
-            node_idx = 0
+            # use ckpt_func_buffer to store nested checkpoint functions
             ckpt_func_buffer = []
+            node_idx = 0
             while 1:
                 if node_idx >= len(node_list):
                     break
+
                 if node_idx in start_idx:
                     ckpt_node_list = node_list[node_idx:end_idx[start_idx.index(node_idx)] + 1]
                     emit_ckpt_func(ckpt_func, ckpt_func_buffer, ckpt_node_list, emit_node_func,
                                    delete_unused_value_func, level + 1, True)
                     node_idx += len(ckpt_node_list)
-                    # ckpt_func_buffer.append('    ' + _gen_ckpt_output(outputs) + '\n')
 
                 else:
                     node = node_list[node_idx]
@@ -226,6 +259,7 @@ def emit_ckpt_func(body,
                 usage = '    ' + usage
             body.append(usage)
 
+        # last level
         else:
             for node in node_list:
                 emit_node_func(node, ckpt_func)
@@ -241,6 +275,17 @@ def emit_ckpt_func(body,
 
 
 def emit_code_with_nested_activation_checkpoint(body, ckpt_func, nodes, emit_node_func, delete_unused_value_func):
+    """Emit code with nested activation checkpoint
+    When we detect some of the node.activation_checkpoint is a List, we will use
+    this function to emit the activation checkpoint codes.
+
+    Args:
+        body: forward code
+        ckpt_func: checkpoint functions code
+        nodes: graph.nodes
+        emit_node_func: function to emit node
+        delete_unused_value_func: function to remove the unused value
+    """
     ckpt_regions = _find_nested_ckpt_regions(nodes, 0)
     start_idx = [item[0] for item in ckpt_regions]
     end_idx = [item[1] for item in ckpt_regions]
@@ -249,14 +294,17 @@ def emit_code_with_nested_activation_checkpoint(body, ckpt_func, nodes, emit_nod
 
     node_idx = 0
     while 1:
+        # break if we finish the processing all the nodes
         if node_idx >= len(node_list):
             break
 
+        # process ckpt_regions
         if node_idx in start_idx:
             ckpt_node_list = node_list[node_idx:end_idx[start_idx.index(node_idx)] + 1]
             emit_ckpt_func(body, ckpt_func, ckpt_node_list, emit_node_func, delete_unused_value_func)
             node_idx += len(ckpt_node_list)
 
+        # process node in forward function
         else:
             node = node_list[node_idx]
             emit_node_func(node, body)
