@@ -11,6 +11,7 @@ from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, 
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.auto_parallel.solver.strategies_constructor import StrategiesConstructor
+from colossalai.auto_parallel.solver.options import SolverOptions
 from copy import deepcopy
 
 
@@ -47,7 +48,7 @@ def test_strategies_constructor():
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
 
-    solver_options = {'fast_mode': True}
+    solver_options = SolverOptions(fast=True)
     strategies_constructor = StrategiesConstructor(graph, device_mesh, shape_consistency_manager, solver_options)
 
     assert strategies_constructor.leaf_strategies == []
