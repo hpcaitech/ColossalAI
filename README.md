@@ -49,6 +49,7 @@
    <a href="#Inference-Energon-AI-Demo">Inference (Energon-AI) Demo</a> 
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
+     <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
    </ul>
  </li>
    <li>
@@ -148,7 +149,7 @@ distributed training and inference in a few lines.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because public pretrained model weights.
-- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt)
+- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt) 
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
 
@@ -181,12 +182,17 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 ## Inference (Energon-AI) Demo
 
-### GPT-3
 <p id="GPT-3-Inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
 </p>
 
 - [Energon-AI](https://github.com/hpcaitech/EnergonAI): 50% inference acceleration on the same hardware
+
+<p id="OPT-Serving" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_serving.png" width=800/>
+</p>
+
+- [OPT Serving](https://service.colossalai.org/opt): Try 175-billion-parameter OPT online services for free, without any registration whatsoever.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

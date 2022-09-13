@@ -44,11 +44,8 @@ class DotHandler(OperatorHandler):
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
 
         # compute the memory cost of this strategy
-        dtype = self.input_data.dtype
-        numel = self.output_data.numel()
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        memory_cost = numel * size_per_elem_bytes / sharding_size
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
 
         # compute the communication cost
         # no all-reduce required for this case
@@ -59,7 +56,7 @@ class DotHandler(OperatorHandler):
                                                output_sharding_spec=sharding_spec_for_ouput,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
-                                               memory_cost=memory_cost,
+                                               memory_cost=toatl_memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
@@ -86,19 +83,16 @@ class DotHandler(OperatorHandler):
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
 
         # compute the memory cost of this strategy
-        dtype = self.input_data.dtype
-        numel = self.output_data.numel()
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        sharding_size = self.device_mesh.shape[mesh_dim_0]
-        memory_cost = numel * size_per_elem_bytes / sharding_size
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
 
         # compute the communication cost of this strategy
-        communication_cost = self.device_mesh.all_reduce_cost(memory_cost, mesh_dim_1)
+        communication_cost = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim_1)
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_ouput,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
-                                               memory_cost=memory_cost,
+                                               memory_cost=toatl_memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
@@ -122,19 +116,16 @@ class DotHandler(OperatorHandler):
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
 
         # compute the memory cost of this strategy
-        dtype = self.input_data.dtype
-        numel = self.output_data.numel()
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        sharding_size = self.device_mesh.shape[mesh_dim_0]
-        memory_cost = numel * size_per_elem_bytes / sharding_size
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
 
         # compute the communication cost of this strategy
-        communication_cost = self.device_mesh.all_reduce_cost(memory_cost, mesh_dim_1)
+        communication_cost = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim_1)
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_ouput,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
-                                               memory_cost=memory_cost,
+                                               memory_cost=toatl_memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
@@ -158,18 +149,16 @@ class DotHandler(OperatorHandler):
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
 
         # compute the memory cost of this strategy
-        dtype = self.input_data.dtype
-        numel = self.output_data.numel()
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        memory_cost = numel * size_per_elem_bytes
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
 
         # compute the communication cost of this strategy
-        communication_cost = self.device_mesh.all_reduce_cost(memory_cost, mesh_dim)
+        communication_cost = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim)
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_ouput,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
-                                               memory_cost=memory_cost,
+                                               memory_cost=toatl_memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
@@ -193,19 +182,115 @@ class DotHandler(OperatorHandler):
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
 
         # compute the memory cost of this strategy
-        dtype = self.input_data.dtype
-        numel = self.output_data.numel()
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        sharding_size = self.device_mesh.shape[mesh_dim]
-        memory_cost = numel * size_per_elem_bytes / sharding_size
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
 
         # compute the communication cost of this strategy
-        communication_cost = self.device_mesh.all_reduce_cost(memory_cost, mesh_dim)
+        communication_cost = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim)
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_ouput,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
-                                               memory_cost=memory_cost,
+                                               memory_cost=toatl_memory_cost,
+                                               resharding_costs=resharding_costs,
+                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
+        self.strategies_vector.append(sharding_strategies)
+
+    def split_lhs_1st_dim_1d(self, mesh_dim_0, mesh_dim_1):
+        name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
+
+        dim_partition_dict_for_input = {0: [mesh_dim_0, mesh_dim_1]}
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+
+        dim_partition_dict_for_weight = {}
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+
+        dim_partition_dict_for_output = {0: [mesh_dim_0, mesh_dim_1]}
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+
+        # generate resharding cost for this strategy
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+
+        # compute the computation cost of this strategy
+        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
+
+        # compute the memory cost of this strategy
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
+
+        # compute the communication cost of this strategy
+        communication_cost = 0
+        sharding_strategies = ShardingStrategy(name,
+                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               compute_cost=compute_cost,
+                                               communication_cost=communication_cost,
+                                               memory_cost=toatl_memory_cost,
+                                               resharding_costs=resharding_costs,
+                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
+        self.strategies_vector.append(sharding_strategies)
+
+    def split_lhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
+        name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
+
+        dim_partition_dict_for_input = {1: [mesh_dim_0, mesh_dim_1]}
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+
+        dim_partition_dict_for_weight = {0: [mesh_dim_0, mesh_dim_1]}
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+
+        dim_partition_dict_for_output = {}
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+
+        # generate resharding cost for this strategy
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+
+        # compute the computation cost of this strategy
+        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
+
+        # compute the memory cost of this strategy
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
+
+        # compute the communication cost of this strategy
+        communication_cost = self.device_mesh.flatten_device_mesh.all_reduce_cost(activation_memory_cost, 0)
+        sharding_strategies = ShardingStrategy(name,
+                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               compute_cost=compute_cost,
+                                               communication_cost=communication_cost,
+                                               memory_cost=toatl_memory_cost,
+                                               resharding_costs=resharding_costs,
+                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
+        self.strategies_vector.append(sharding_strategies)
+
+    def split_rhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
+        name = f'RS{mesh_dim_0}{mesh_dim_1} = RR x RS{mesh_dim_0}{mesh_dim_1}'
+
+        dim_partition_dict_for_input = {}
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+
+        dim_partition_dict_for_weight = {1: [mesh_dim_0, mesh_dim_1]}
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+
+        dim_partition_dict_for_output = {1: [mesh_dim_0, mesh_dim_1]}
+        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+
+        # generate resharding cost for this strategy
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+
+        # compute the computation cost of this strategy
+        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
+
+        # compute the memory cost of this strategy
+        toatl_memory_cost, activation_memory_cost, weight_memory_cost = self._generate_memory_cost(
+            dim_partition_dict_for_output, dim_partition_dict_for_weight)
+
+        # compute the communication cost of this strategy
+        communication_cost = 0
+        sharding_strategies = ShardingStrategy(name,
+                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               compute_cost=compute_cost,
+                                               communication_cost=communication_cost,
+                                               memory_cost=toatl_memory_cost,
                                                resharding_costs=resharding_costs,
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
@@ -236,4 +321,14 @@ class DotHandler(OperatorHandler):
         # RS = RR x RS
         self.split_rhs_space_only(0)
         self.split_rhs_space_only(1)
+
+        # S01R = S01R x RR
+        self.split_lhs_1st_dim_1d(0, 1)
+
+        # RR = RS01 x S01R
+        self.split_lhs_2nd_dim_1d(0, 1)
+
+        # RS01 = RR x RS01
+        self.split_rhs_2nd_dim_1d(0, 1)
+
         return self.strategies_vector

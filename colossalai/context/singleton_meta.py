@@ -15,4 +15,7 @@ class SingletonMeta(type):
         if cls not in cls._instances:
             instance = super().__call__(*args, **kwargs)
             cls._instances[cls] = instance
+        else:
+            assert len(args) == 0 and len(
+                kwargs) == 0, f'{cls.__name__} is a singleton class and a instance has been created.'
         return cls._instances[cls]

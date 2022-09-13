@@ -81,7 +81,8 @@ class Linear(ColossalaiModule):
         else:
             linear_cls = _parallel_linear[tensor_parallel]
             gather_output = kwargs.pop('gather_output', None)
-            if 'gather_output' in inspect.signature(linear_cls.__init__).parameters.keys(): # gather_out arg is available
+            if 'gather_output' in inspect.signature(
+                    linear_cls.__init__).parameters.keys():    # gather_out arg is available
                 kwargs['gather_output'] = gather_output
             layer = linear_cls(
                 in_features,

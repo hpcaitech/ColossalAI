@@ -18,6 +18,7 @@ class LRSchedulerHook(MetricHook):
             defaults to 1. If different hooks share same priority, the order of printing would
             depend on the hooks order in the hook list.
     """
+
     def __init__(
         self,
         lr_scheduler,
