@@ -1,11 +1,49 @@
+from dataclasses import dataclass
 from typing import Callable, Any, Dict, Tuple
 import torch
 from torch.fx.node import Argument, Target
 from . import meta_profiler_function, meta_profiler_module
 from ..memory import activation_size, INPLACE_METHOD, NON_INPLACE_METHOD, INPLACE_OPS
-from ..profiler import MetaInfo
 
 __all__ = ['profile_function', 'profile_module', 'profile_method']
+
+
+# this is for compatibility use
+@dataclass
+class GraphInfo:
+    """
+    GraphInfo is a dataclass for MetaInfo, which measures
+    the execution memory cost and FLOPs with `MetaTensor`.
+    The dataflow analysis is conducted on a single node of the FX graph.
+    ============================================================================
+                            -------------------------------
+                            |            Node             |
+    [fwd_in] are       ---> | [fwd_in]          [bwd_out] |    <----- [bwd_out] is marks the memory for `grad_out`
+    placeholders saved for  |     | \__________     |     |
+    backward.               |     |            \    |     |
+                            | [fwd_tmp] ------> [bwd_tmp] |    <-----
+                            |     |  \_________     |     |    [bwd_tmp] marks the peak memory 
+                            |    / \           \    |     |    in backward pass.
+    [x] is not counted ---> | [x]  [fwd_tmp] -> [bwd_tmp] |    <-----
+    in [fwd_tmp] because    |  |       |  \_____    |     |
+    it is not saved for     |  |       |        \   |     |
+    backward.               -------------------------------
+    ============================================================================
+    Attributes:
+        fwd_flop (int): The forward FLOPs of a certain node
+        bwd_flop (int): The backward FLOPs of a certain node.
+        fwd_mem_in (int): See the above illustration.
+        fwd_mem_tmp (int): See the above illustration.
+        bwd_mem_tmp (int): See the above illustration.
+        bwd_mem_out (int): See the above illustration.
+    """
+    fwd_flop: int = 0
+    bwd_flop: int = 0
+    fwd_mem_in: int = 0
+    fwd_mem_tmp: int = 0
+    bwd_mem_tmp: int = 0
+    bwd_mem_out: int = 0
+
 
 CALL_FUNCTION_MSG = \
 """
