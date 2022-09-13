@@ -1,12 +1,12 @@
 from dataclasses import asdict
-from colossalai.fx.profiler.profiler import MetaInfo
+from colossalai.fx.profiler import GraphInfo
 import torch
 import torch.fx
 from torch.fx.node import Node, Argument, Target
 from torch.utils._pytree import tree_map
 from typing import Any, Tuple, NamedTuple, Dict
 from torch.fx._compatibility import compatibility
-from colossalai.fx.profiler import profile_function, profile_module, profile_method, activation_size, parameter_size
+from colossalai.fx.profiler import profile_function, profile_module, profile_method, activation_size
 
 
 @compatibility(is_backward_compatible=True)
@@ -97,9 +97,9 @@ class MetaInfoProp(torch.fx.Interpreter):
         n.meta = {**n.meta, **asdict(meta_info)}    # extend MetaInfo to `n.meta`
 
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', n.meta.get('fwd_tmp', 0) + n.meta.get('fwd_out', 0))
+        setattr(n, 'node_size', n.meta.get('fwd_mem_tmp', 0) + n.meta.get('fwd_mem_out', 0))
         for par in n.all_input_nodes:
-            par.meta['fwd_out'] = max(par.meta.get('fwd_out', 0), n.meta.get('fwd_in', 0))
+            par.meta['fwd_mem_out'] = par.meta.get('fwd_mem_out', 0) + n.meta.get('fwd_mem_in', 0)
         n.meta['type'] = type(result)
 
         # retain the autograd graph
@@ -128,7 +128,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             result (Any): The argument value that was retrieved
             meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        return super().placeholder(target, args, kwargs), MetaInfo()
+        return super().placeholder(target, args, kwargs), GraphInfo()
 
     @compatibility(is_backward_compatible=True)
     def get_attr(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -147,7 +147,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             result (Any): The argument value that was retrieved
             meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        return super().get_attr(target, args, kwargs), MetaInfo()
+        return super().get_attr(target, args, kwargs), GraphInfo()
 
     @compatibility(is_backward_compatible=True)
     def call_function(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -225,7 +225,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             result (Any): The argument value that was retrieved
             meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        return args[0], MetaInfo(fwd_in=activation_size(args[0]))
+        return args[0], GraphInfo(fwd_mem_in=activation_size(args[0]))
 
     def propagate(self, *args):
         """

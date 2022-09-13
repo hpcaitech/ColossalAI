@@ -6,7 +6,7 @@ from torch.fx import Graph, Node
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
 from .dataflow import autograd_graph_analysis, Stage
-from .memory import WEIRD_OPS, activation_size
+from .memory import WEIRD_OPS
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
@@ -23,29 +23,9 @@ def is_autogradable(x):
     return isinstance(x, torch.Tensor) and x.is_floating_point()
 
 
-@dataclass
-class MetaInfo:
-    """
-    This is a dataclass for MetaInfo, which measures
-    the execution memory cost and FLOPs with `MetaTensor`.
-    Attributes:
-        fwd_flop (int): The forward FLOPs of a certain node
-        bwd_flop (int): The backward FLOPs of a certain node.
-        fwd_in (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
-        fwd_tmp (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
-        bwd_tmp (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
-        bwd_out (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
-    """
-    fwd_flop: int = 0
-    bwd_flop: int = 0
-    fwd_in: int = 0
-    fwd_tmp: int = 0
-    bwd_tmp: int = 0
-    bwd_out: int = 0
-
-
 def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...]:
-    """Profile a Callable function with args and kwargs.
+    """
+    Profile a Callable function with args and kwargs.
 
     Args:
         target (Callable): A Callable function
@@ -54,22 +34,20 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
 
     Returns:
         out (Tuple[Any, ...]): The argument value that was retrieved.
-        meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
+        meta_info (GraphInfo): The memory cost and FLOPs estimated with `MetaTensor`.
     """
     # This subgraph traces aten level ops inside one node.
     subgraph = Graph()
 
-    meta_info = MetaInfo()
-
     # `flop_count`` serves as a global dictionary to store results.
     flop_count = {
-        Stage.F: 0,
-        Stage.L: 0,
-        Stage.B: 0,
+        Stage.FORWARD: 0,
+        Stage.LOSS: 0,
+        Stage.BACKWARD: 0,
     }
 
     # `stage` will mark the stage of autograd from outside scope.
-    stage = Stage.F
+    stage = Stage.FORWARD
 
     # FlopTensor not only get the flop statistics of a single node,
     # it also build a full autograd graph for this node.
@@ -143,7 +121,7 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
             x._node = subgraph.create_node('placeholder',
                                            'placeholder', (subgraph._root,),
                                            name=subgraph._graph_namespace.create_name('input', x._tensor))
-            x._node.meta['stage'] = Stage.P
+            x._node.meta['stage'] = Stage.PLACEHOLDER
             x._node.meta['out'] = (x._tensor,)
 
     tree_map(set_placeholder, args)
@@ -169,19 +147,18 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
     # If the output is not a floating point `torch.Tensor` or it does not
     # requires grad, then we should not run backward for this node.
     if is_autogradable(out) and out.requires_grad:
-        stage = Stage.L
+        stage = Stage.LOSS
         loss = out.sum()
-        stage = Stage.B
+        stage = Stage.BACKWARD
         loss.backward()
 
     graph_info = autograd_graph_analysis(subgraph)
-    meta_info.fwd_flop, meta_info.bwd_flop = flop_count[Stage.F], flop_count[Stage.B]
-    meta_info.__dict__.update(graph_info.__dict__)
+    graph_info.fwd_flop, graph_info.bwd_flop = flop_count[Stage.FORWARD], flop_count[Stage.BACKWARD]
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
 
-    return tree_map(unwrap, out), meta_info
+    return tree_map(unwrap, out), graph_info
 
 
 def profile_function(target: 'Target') -> Callable:

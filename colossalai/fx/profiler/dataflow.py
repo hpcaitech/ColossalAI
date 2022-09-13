@@ -6,16 +6,17 @@ from .memory import activation_size
 
 
 class Stage(Enum):
-    F = 0
-    L = 1
-    B = 2
-    P = 3
+    FORWARD = 0
+    LOSS = 1
+    BACKWARD = 2
+    PLACEHOLDER = 3
 
 
 @dataclass
 class GraphInfo:
     """
-    GraphInfo is a dataclass for the dataflow analysis.
+    GraphInfo is a dataclass for MetaInfo, which measures
+    the execution memory cost and FLOPs with `MetaTensor`.
     The dataflow analysis is conducted on a single node of the FX graph.
     ============================================================================
                             -------------------------------
@@ -32,35 +33,39 @@ class GraphInfo:
     backward.               -------------------------------
     ============================================================================
     Attributes:
-        fwd_in (int): See the above illustration.
-        fwd_tmp (int): See the above illustration.
-        bwd_tmp (int): See the above illustration.
-        bwd_out (int): See the above illustration.
+        fwd_flop (int): The forward FLOPs of a certain node
+        bwd_flop (int): The backward FLOPs of a certain node.
+        fwd_mem_in (int): See the above illustration.
+        fwd_mem_tmp (int): See the above illustration.
+        bwd_mem_tmp (int): See the above illustration.
+        bwd_mem_out (int): See the above illustration.
     """
-    fwd_in: int = 0
-    fwd_tmp: int = 0
-    bwd_tmp: int = 0
-    bwd_out: int = 0
+    fwd_flop: int = 0
+    bwd_flop: int = 0
+    fwd_mem_in: int = 0
+    fwd_mem_tmp: int = 0
+    bwd_mem_tmp: int = 0
+    bwd_mem_out: int = 0
 
 
 def is_forward(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.F
+    return n.meta['stage'] == Stage.FORWARD
 
 
 def is_loss(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.L
+    return n.meta['stage'] == Stage.LOSS
 
 
 def is_placeholder(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.P
+    return n.meta['stage'] == Stage.PLACEHOLDER
 
 
 def is_backward(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.B
+    return n.meta['stage'] == Stage.BACKWARD
 
 
 def is_saved(n: Node):
@@ -89,7 +94,7 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
         graph (Graph): The autograd graph with nodes marked 'f' (forward), 'l' (loss), 'b' (backward) for keyword `stage`.
 
     Returns:
-        graphinfo (GraphInfo): Meta information for the dataflow.
+        graph_info (GraphInfo): Meta information for the dataflow.
     """
 
     def _peak_memory(deps: Dict[Node, int]):
@@ -114,20 +119,20 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
             # Otherwise, the tensor belongs to `fwd_tmp`. If we checkpoint
             # the node, `fwd_tmp` can be freed.
             if is_placeholder(n):
-                graph_info.fwd_in += activation_size(n.meta['out'])
+                graph_info.fwd_mem_in += activation_size(n.meta['out'])
                 # print(activation_size(n.meta['out']))
             if is_forward(n):
-                graph_info.fwd_tmp += activation_size(n.meta['out'])
+                graph_info.fwd_mem_tmp += activation_size(n.meta['out'])
                 # print(activation_size(n.meta['out']))
         elif is_backward(n):
             if len(n.users):
                 # liveness analysis is only used in backward
                 deps[n] = len(n.users)
-                graph_info.bwd_tmp = max(graph_info.bwd_tmp, _peak_memory(deps))
+                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, _peak_memory(deps))
                 for input_n in n.all_input_nodes:
                     if input_n in deps:
                         deps[input_n] -= 1
             else:
                 # basically a backward node without user is a `grad_out` node
-                graph_info.bwd_out += activation_size(n.meta['out'])
+                graph_info.bwd_mem_out += activation_size(n.meta['out'])
     return graph_info
