@@ -6,7 +6,7 @@ from torch.fx import Graph
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
 from .dataflow import autograd_graph_analysis
-from .memory import WEIRD_OPS
+from .memory import WEIRD_OPS, activation_size
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
@@ -67,17 +67,18 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
         @classmethod
         def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
 
-            def unwrap(x):
-                if isinstance(x, torch.Tensor) and not hasattr(x, '_tensor'):
-                    x = FlopTensor(x.to('meta'))
-                return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
-
             def get_node(x):
                 return None if not hasattr(x, '_node') else x._node
 
             args_node = tree_map(get_node, args)
             kwargs_node = tree_map(get_node, kwargs)
             node = subgraph.create_node('call_function', func, args_node, kwargs_node)
+
+            def unwrap(x):
+                # if x is a `nn.Parameter`, we can first wrap it with `FlopTensor`
+                if isinstance(x, torch.Tensor) and not hasattr(x, '_tensor'):
+                    x = FlopTensor(x.to('meta'))
+                return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
 
             args = tree_map(unwrap, args)
             kwargs = tree_map(unwrap, kwargs)
@@ -128,8 +129,6 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     tree_map(set_placeholder, args)
     tree_map(set_placeholder, kwargs)
 
-    fwd_in = 0
-
     def pack(x):
         if isinstance(x, FlopTensor):
             x._node.meta['save'] = True
@@ -138,7 +137,7 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     def unpack(x):
         return x
 
-    # mark saved tensors with save_tensors_hooks
+    # mark saved tensors with saved_tensors_hooks
     with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
         if isinstance(target, str):
             # args[0] is the `self` object for this method call
@@ -155,15 +154,13 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
         stage = 'b'
         loss.backward()
 
-    fwd_flop = flop_count['f']
-    bwd_flop = flop_count['b']
-
-    fwd_in, fwd_tmp, bwd_tmp, bwd_out = autograd_graph_analysis(subgraph)
+    flop_meta = {'fwd_flop': flop_count['f'], 'bwd_flop': flop_count['b']}
+    mem_meta = autograd_graph_analysis(subgraph)
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
 
-    return tree_map(unwrap, out), (fwd_flop, bwd_flop), (fwd_in, fwd_tmp, bwd_tmp, bwd_out)
+    return tree_map(unwrap, out), {**flop_meta, **mem_meta}
 
 
 def profile_function(target: 'Target') -> Callable:
@@ -189,9 +186,9 @@ def profile_function(target: 'Target') -> Callable:
             args = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, args)
             kwargs = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, kwargs)
             out = func(*args, **kwargs)
-            return out, (out.numel(), out.numel()), (0, 0, 0, 0)
-        out, flop_count, mem_stat = _profile(func, *args, **kwargs)
-        return out, flop_count, mem_stat
+            return out, {'fwd_flop': out.numel(), 'bwd_flop': out.numel()}
+        out, meta = _profile(func, *args, **kwargs)
+        return out, meta
 
     f.__name__ = target.__name__
     func = target
@@ -207,8 +204,8 @@ def profile_method(target: 'Target') -> Callable:
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
         # execute the method and return the result
         assert isinstance(target, str), f'{target} instance is not str.'
-        out, flop_count, mem_stat = _profile(target, *args, **kwargs)
-        return out, flop_count, mem_stat
+        out, meta = _profile(target, *args, **kwargs)
+        return out, meta
 
     return f
 
@@ -236,9 +233,9 @@ def profile_module(module: torch.nn.Module) -> Callable:
             args = tree_map(lambda x: x.to('meta'), args)
             kwargs = tree_map(lambda x: x.to('meta'), kwargs)
             out = func(*args, **kwargs)
-            return out, (out.numel(), out.numel()), (0, 0, 0, 0)
-        out, flop_count, mem_stat = _profile(func, *args, **kwargs)
-        return out, flop_count, mem_stat
+            return out, {'fwd_flop': out.numel(), 'bwd_flop': out.numel()}
+        out, meta = _profile(func, *args, **kwargs)
+        return out, meta
 
     f.__name__ = module.__class__.__name__
     func = module.forward

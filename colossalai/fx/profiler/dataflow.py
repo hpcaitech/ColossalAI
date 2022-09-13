@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Dict
 from torch.fx import Graph, Node
 from .memory import INPLACE_ATEN, activation_size
 
@@ -23,7 +23,7 @@ def is_backward(n: Node):
     return n.meta['stage'] == 'b'
 
 
-def autograd_graph_analysis(graph: Graph) -> Tuple[int, int, int, int]:
+def autograd_graph_analysis(graph: Graph) -> Dict[str, int]:
     """Analyze the autograd node dependencies and find out the memory usage.
     Basically the input graph should have all nodes marked 'f' (forward), 'l' (loss), 'b' (backward) for keyword `stage`.
     Nodes should have attribute `out` indicating the output of each node.
@@ -45,10 +45,7 @@ def autograd_graph_analysis(graph: Graph) -> Tuple[int, int, int, int]:
         graph (Graph): The autograd graph with nodes marked 'f' (forward), 'l' (loss), 'b' (backward) for keyword `stage`.
 
     Returns:
-        fwd_tmp (int): Intermediate memory encountered through forward pass. These tensors are not supposed to be freed unless checkpointed.
-        fwd_out (int): The output of the entire forward pass.
-        bwd_tmp (int): Intermediate memory (or peak memory) encountered through backward pass. These tensors can be freed as long as it is not required for its users. We will use liveness analysis to detect the peak memory usage.
-        bwd_out (int): The output of the entire backward pass.
+        meta (Dict): Meta information for the dataflow.
     """
 
     def _peak_memory(deps: Dict[Node, int]):
@@ -60,11 +57,12 @@ def autograd_graph_analysis(graph: Graph) -> Tuple[int, int, int, int]:
 
     # deps is used to track all the memory dependencies of the graph.
     deps = {}
-
-    fwd_in = 0
-    fwd_tmp = 0
-    bwd_tmp = 0
-    bwd_out = 0
+    meta = {
+        'fwd_in': 0,
+        'fwd_tmp': 0,
+        'bwd_tmp': 0,
+        'bwd_out': 0,
+    }
 
     for n in graph.nodes:
         n: Node
@@ -77,18 +75,18 @@ def autograd_graph_analysis(graph: Graph) -> Tuple[int, int, int, int]:
             # Otherwise, the tensor belongs to `fwd_tmp`. If we checkpoint
             # the node, `fwd_tmp` can be freed.
             if is_placeholder(n):
-                fwd_in += activation_size(n.meta['out'])
+                meta['fwd_in'] += activation_size(n.meta['out'])
             if is_forward(n):
-                fwd_tmp += activation_size(n.meta['out'])
+                meta['fwd_tmp'] += activation_size(n.meta['out'])
         elif is_backward(n):
             if len(n.users):
                 # liveness analysis is only used in backward
                 deps[n] = len(n.users)
-                bwd_tmp = max(bwd_tmp, _peak_memory(deps))
+                meta['bwd_tmp'] = max(meta['bwd_tmp'], _peak_memory(deps))
                 for input_n in n.all_input_nodes:
                     if input_n in deps:
                         deps[input_n] -= 1
             else:
                 # basically a backward node without user is a `grad_out` node
-                bwd_out += activation_size(n.meta['out'])
-    return fwd_in, fwd_tmp, bwd_tmp, bwd_out
+                meta['bwd_out'] += activation_size(n.meta['out'])
+    return meta

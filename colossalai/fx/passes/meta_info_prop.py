@@ -40,8 +40,10 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
 class MetaInfoProp(torch.fx.Interpreter):
     """
     Execute an FX graph Node-by-Node with meta tensor and
-    record the shape, FLOPs, MACs and type of the result
+    record the memory usage, FLOPs, and type of the result
     into the corresponding node.
+    All information should be retrieved with 
+    `node.meta.get(key, default=0)`.
 
     Usage:
         BATCH_SIZE = 2
@@ -82,7 +84,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         Returns:
             Any: The result of executing ``n``
         """
-        result, flop_count, mem_stat = super().run_node(n)
+        result, meta_info = super().run_node(n)
 
         def extract_tensor_meta(obj):
             if isinstance(obj, torch.Tensor):
@@ -90,21 +92,20 @@ class MetaInfoProp(torch.fx.Interpreter):
             else:
                 return TensorMetadata(None, None, False, None, 0, False)
 
-        meta = tree_map(extract_tensor_meta, result)
-        n.meta['tensor_meta'] = meta
+        tensor_meta = tree_map(extract_tensor_meta, result)
+        n.meta['tensor_meta'] = tensor_meta
 
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', mem_stat[0] + mem_stat[1])
-        n.meta['fwd_flop'] = flop_count[0]
-        n.meta['bwd_flop'] = flop_count[1]
-        n.meta['fwd_in'] = mem_stat[0]
-        n.meta['fwd_tmp'] = mem_stat[1]
-        n.meta['bwd_tmp'] = mem_stat[2]
-        n.meta['bwd_out'] = mem_stat[3]
+        setattr(n, 'node_size', meta_info.get('fwd_tmp', 0) + meta_info.get('fwd_out', 0))
+        n.meta = {**n.meta, **meta_info}
+        for par in n.all_input_nodes:
+            par.meta['fwd_out'] = max(par.meta.get('fwd_out', 0), meta_info.get('fwd_in', 0))
         n.meta['type'] = type(result)
 
+        # retain the autograd graph
         for param in self.module.parameters():
             param.grad = None
+
         return result
 
     # Main Node running APIs
@@ -130,7 +131,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         """
         result = super().placeholder(target, args, kwargs)
         # A placeholder node only has activation
-        return result, (0, 0), (0, activation_size(result), 0, 0)
+        return result, {}
 
     @compatibility(is_backward_compatible=True)
     def get_attr(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -150,7 +151,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
             mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
         """
-        return super().get_attr(target, args, kwargs), (0, 0), (0, 0, 0, 0)
+        return super().get_attr(target, args, kwargs), {}
 
     @compatibility(is_backward_compatible=True)
     def call_function(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -232,7 +233,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
             mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
         """
-        return args[0], (0, 0), (0, 0, 0, 0)
+        return args[0], {'fwd_in': activation_size(args[0])}
 
     def propagate(self, *args):
         """
