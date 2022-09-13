@@ -103,7 +103,7 @@ class OperatorHandler(ABC):
 
         return total_memory_cost, activation_memory_cost, weight_memory_cost
 
-    def _generate_resharding_costs(self, sharding_specs):
+    def _generate_resharding_cost(self, sharding_specs):
         # The resharding_cost of weight is counted due to sharing weight cases.
         dtype = self.node._meta_data.dtype
         nodes = self.predecessor_node

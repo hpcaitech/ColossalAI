@@ -164,6 +164,7 @@ class ShapeConsistencyOptions:
     """
     ShapeConsistencyOptions is a dataclass which specifies the preferences for shape consistency.
     """
+    # TODO: shape consistency option is not implemented yet
     pass
 
 
@@ -178,7 +179,6 @@ def set_shape_consistency_options(options: ShapeConsistencyOptions):
 class ShapeConsistencyManager(metaclass=SingletonMeta):
 
     def __init__(self):
-        # TODO: shape consistency option is not implemented yet
         self._options = None
         self.total_communication_cost = 0
         self.total_transform_steps = 0
