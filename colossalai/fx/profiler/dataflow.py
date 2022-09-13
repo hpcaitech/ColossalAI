@@ -120,19 +120,14 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
             # the node, `fwd_tmp` can be freed.
             if is_placeholder(n):
                 graph_info.fwd_mem_in += activation_size(n.meta['out'])
-                # print(activation_size(n.meta['out']))
             if is_forward(n):
                 graph_info.fwd_mem_tmp += activation_size(n.meta['out'])
-                # print(activation_size(n.meta['out']))
         elif is_backward(n):
             if len(n.users):
                 # liveness analysis is only used in backward
-                deps[n] = len(n.users)
-                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, _peak_memory(deps))
                 for input_n in n.all_input_nodes:
                     if input_n in deps:
                         deps[input_n] -= 1
-            else:
-                # basically a backward node without user is a `grad_out` node
-                graph_info.bwd_mem_out += activation_size(n.meta['out'])
+                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, _peak_memory(deps))
+                deps[n] = len(n.users)
     return graph_info

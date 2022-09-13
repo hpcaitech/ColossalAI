@@ -78,7 +78,7 @@ def _run_ckpt_solver(rank):
             codegen = ActivationCheckpointCodeGen()
             gm.graph.set_codegen(codegen)
             if solver == solver_rotor:
-                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
+                gm = solver(gm, data, mem_limit=1000 * 1024 * 1024, mem_slots=500)
             else:
                 gm = solver(gm)
             assert _is_graph_linearized(gm), f"Solver {solver} did not solve {model_cls} in a linearized manner."
@@ -89,7 +89,6 @@ def _run_ckpt_solver(rank):
 
 
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
-@pytest.mark.skip('TODO: refactor ckpt solvers')
 def test_ckpt_solver():
     mp.spawn(_run_ckpt_solver, nprocs=1)
 
@@ -111,7 +110,7 @@ def _run_ckpt_solver_torch11(rank):
             MetaInfoProp(gm).run(data)
             gm.graph._python_code = python_code_with_activation_checkpoint.__get__(graph)
             if solver == solver_rotor:
-                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
+                gm = solver(gm, data, mem_limit=1000 * 1024 * 1024, mem_slots=500)
             else:
                 gm = solver(gm)
             assert _is_graph_linearized(gm), f"Solver {solver} did not solve {model_cls} in a linearized manner."
