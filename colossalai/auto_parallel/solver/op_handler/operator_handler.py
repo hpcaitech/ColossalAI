@@ -7,7 +7,7 @@ from typing import Dict, List
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
-from .._utils import generate_resharding_cost, generate_sharding_spec
+from .._utils import generate_resharding_costs, generate_sharding_spec
 
 from ..sharding_strategy import StrategiesVector
 
@@ -103,14 +103,14 @@ class OperatorHandler(ABC):
 
         return total_memory_cost, activation_memory_cost, weight_memory_cost
 
-    def _generate_resharding_cost(self, sharding_specs):
+    def _generate_resharding_costs(self, sharding_specs):
         # The resharding_cost of weight is counted due to sharing weight cases.
         dtype = self.node._meta_data.dtype
         nodes = self.predecessor_node
-        return generate_resharding_cost(nodes=nodes,
-                                        sharding_specs=sharding_specs,
-                                        count_backward=self.handle_backward,
-                                        dtype=dtype)
+        return generate_resharding_costs(nodes=nodes,
+                                         sharding_specs=sharding_specs,
+                                         count_backward=self.handle_backward,
+                                         dtype=dtype)
 
     def _generate_sharding_spec(self, input_: torch.Tensor, dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
         return generate_sharding_spec(input_=input_,

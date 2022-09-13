@@ -34,10 +34,10 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
     return sharding_spec
 
 
-def generate_resharding_cost(nodes: List[Node],
-                             sharding_specs: List[ShardingSpec],
-                             count_backward: Optional[bool] = True,
-                             dtype: Optional[torch.dtype] = None):
+def generate_resharding_costs(nodes: List[Node],
+                              sharding_specs: List[ShardingSpec],
+                              count_backward: Optional[bool] = True,
+                              dtype: Optional[torch.dtype] = None):
     '''
     Compute the resharding costs with this specific strategy.
 
