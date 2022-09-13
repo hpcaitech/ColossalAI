@@ -1,16 +1,16 @@
-from lib2to3.pytree import Node
-from operator import getitem
+from dataclasses import dataclass
+from enum import auto
 from typing import Callable, Any, Dict, Tuple
 import torch
-from torch.fx import Graph
+from torch.fx import Graph, Node
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
-from .dataflow import autograd_graph_analysis
+from .dataflow import autograd_graph_analysis, Stage
 from .memory import WEIRD_OPS, activation_size
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
-__all__ = ['profile_function', 'profile_module', 'profile_method', '_profile']
+__all__ = ['profile_function', 'profile_module', 'profile_method']
 
 
 def normalize_tuple(x):
@@ -23,7 +23,28 @@ def is_autogradable(x):
     return isinstance(x, torch.Tensor) and x.is_floating_point()
 
 
-def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
+@dataclass
+class MetaInfo:
+    """
+    This is a dataclass for MetaInfo, which measures
+    the execution memory cost and FLOPs with `MetaTensor`.
+    Attributes:
+        fwd_flop (int): The forward FLOPs of a certain node
+        bwd_flop (int): The backward FLOPs of a certain node.
+        fwd_in (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
+        fwd_tmp (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
+        bwd_tmp (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
+        bwd_out (int): See definitions in https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/fx/profiler/dataflow.py
+    """
+    fwd_flop: int = 0
+    bwd_flop: int = 0
+    fwd_in: int = 0
+    fwd_tmp: int = 0
+    bwd_tmp: int = 0
+    bwd_out: int = 0
+
+
+def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...]:
     """Profile a Callable function with args and kwargs.
 
     Args:
@@ -32,22 +53,23 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
         kwargs (Any): Argument
 
     Returns:
-        out (Tuple[Any, ...]): The argument value that was retrieved
-        flop_count (Tuple[int, ...]): The flop count for (fwd_flop, bwd_flop).
-        mem_stat (Tuple[int, ...]): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
+        out (Tuple[Any, ...]): The argument value that was retrieved.
+        meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
     """
     # This subgraph traces aten level ops inside one node.
     subgraph = Graph()
 
-    # flop_count serves as a global dictionary to store results.
+    meta_info = MetaInfo()
+
+    # `flop_count`` serves as a global dictionary to store results.
     flop_count = {
-        'f': 0,
-        'l': 0,
-        'b': 0,
+        Stage.F: 0,
+        Stage.L: 0,
+        Stage.B: 0,
     }
 
     # `stage` will mark the stage of autograd from outside scope.
-    stage = 'f'
+    stage = Stage.F
 
     # FlopTensor not only get the flop statistics of a single node,
     # it also build a full autograd graph for this node.
@@ -88,7 +110,6 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
             flop_count[stage] += flop_mapping[func](args, normalize_tuple(out))
             node.meta['out'] = normalize_tuple(out)
             node.meta['stage'] = stage
-            node.meta['save'] = False
 
             def wrap(x):
                 return FlopTensor(x.to('meta')) if isinstance(x, torch.Tensor) else x
@@ -105,13 +126,13 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
     if target not in WEIRD_OPS:
 
         def wrap(x):
-            return FlopTensor(
-                x.detach().requires_grad_(True)) if is_autogradable(x) and not hasattr(x, '_tensor') else x
+            return FlopTensor(x.detach().requires_grad_(
+                True)) if is_autogradable(x) and not inplace and not hasattr(x, '_tensor') else x
     else:
 
         def wrap(x):
-            return FlopTensor(
-                x.detach().requires_grad_(False)) if is_autogradable(x) and not hasattr(x, '_tensor') else x
+            return FlopTensor(x.detach().requires_grad_(
+                False)) if is_autogradable(x) and not inplace and not hasattr(x, '_tensor') else x
 
     # Basically, we need to detach the args and kwargs from the outer graph.
     args = tree_map(wrap, args)
@@ -122,16 +143,15 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
             x._node = subgraph.create_node('placeholder',
                                            'placeholder', (subgraph._root,),
                                            name=subgraph._graph_namespace.create_name('input', x._tensor))
-            x._node.meta['stage'] = 'p'
+            x._node.meta['stage'] = Stage.P
             x._node.meta['out'] = (x._tensor,)
-            x._node.meta['save'] = False
 
     tree_map(set_placeholder, args)
     tree_map(set_placeholder, kwargs)
 
     def pack(x):
         if isinstance(x, FlopTensor):
-            x._node.meta['save'] = True
+            x._node.meta['saved'] = True
         return x
 
     def unpack(x):
@@ -148,19 +168,22 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Any, ...]:
 
     # If the output is not a floating point `torch.Tensor` or it does not
     # requires grad, then we should not run backward for this node.
-    if is_autogradable(out) and out.requires_grad:
-        stage = 'l'
+    if is_autogradable(out) and out.requires_grad and not inplace:
+        stage = Stage.L
         loss = out.sum()
-        stage = 'b'
+        stage = Stage.B
         loss.backward()
 
-    flop_meta = {'fwd_flop': flop_count['f'], 'bwd_flop': flop_count['b']}
-    mem_meta = autograd_graph_analysis(subgraph)
+    graph_info = autograd_graph_analysis(subgraph)
+    meta_info.fwd_flop, meta_info.bwd_flop = flop_count[Stage.F], flop_count[Stage.B]
+    meta_info.__dict__.update(graph_info.__dict__)
+    if inplace:
+        meta_info.fwd_in = 0
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
 
-    return tree_map(unwrap, out), {**flop_meta, **mem_meta}
+    return tree_map(unwrap, out), meta_info
 
 
 def profile_function(target: 'Target') -> Callable:
@@ -175,18 +198,13 @@ def profile_function(target: 'Target') -> Callable:
     Examples:
         >>> input = torch.rand(100, 100, 100, 100, device='meta')
         >>> func = torch.nn.functional.relu
-        >>> output, (fwd_flop, bwd_flop), (fwd_tmp, fwd_out, bwd_tmp, bwd_out) = profile_function(func)(input, inplace=False)
+        >>> output, meta_info = profile_function(func)(input, inplace=False)
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
 
         # If there is an argument that this `call_function` is inplace, we should
         # skip the autograd profiling.
-        if kwargs.get('inplace', False):
-            args = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, args)
-            kwargs = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, kwargs)
-            out = func(*args, **kwargs)
-            return out, {'fwd_flop': out.numel(), 'bwd_flop': out.numel()}
         out, meta = _profile(func, *args, **kwargs)
         return out, meta
 
@@ -204,7 +222,7 @@ def profile_method(target: 'Target') -> Callable:
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
         # execute the method and return the result
         assert isinstance(target, str), f'{target} instance is not str.'
-        out, meta = _profile(target, *args, **kwargs)
+        out, meta = _profile(target, *args, inplace=False, **kwargs)
         return out, meta
 
     return f
@@ -222,19 +240,14 @@ def profile_module(module: torch.nn.Module) -> Callable:
     Example:
         >>> input = torch.rand(4, 3, 224, 224, device='meta')
         >>> mod = torch.nn.Conv2d(3, 128, 3)
-        >>> output, (fwd_flop, bwd_flop), (fwd_tmp, fwd_out, bwd_tmp, bwd_out) = profile_module(mod)(input)
+        >>> output, meta_info = profile_module(mod)(input)
     """
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
 
         # If there is an argument that this `call_module` is inplace, we should
         # skip the autograd profiling.
-        if getattr(module, 'inplace', False):
-            args = tree_map(lambda x: x.to('meta'), args)
-            kwargs = tree_map(lambda x: x.to('meta'), kwargs)
-            out = func(*args, **kwargs)
-            return out, {'fwd_flop': out.numel(), 'bwd_flop': out.numel()}
-        out, meta = _profile(func, *args, **kwargs)
+        out, meta = _profile(func, *args, inplace=getattr(module, 'inplace', False), **kwargs)
         return out, meta
 
     f.__name__ = module.__class__.__name__

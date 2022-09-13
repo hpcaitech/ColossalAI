@@ -1,3 +1,5 @@
+from dataclasses import asdict
+from colossalai.fx.profiler.profiler import MetaInfo
 import torch
 import torch.fx
 from torch.fx.node import Node, Argument, Target
@@ -42,8 +44,6 @@ class MetaInfoProp(torch.fx.Interpreter):
     Execute an FX graph Node-by-Node with meta tensor and
     record the memory usage, FLOPs, and type of the result
     into the corresponding node.
-    All information should be retrieved with 
-    `node.meta.get(key, default=0)`.
 
     Usage:
         BATCH_SIZE = 2
@@ -94,12 +94,12 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         tensor_meta = tree_map(extract_tensor_meta, result)
         n.meta['tensor_meta'] = tensor_meta
+        n.meta = {**n.meta, **asdict(meta_info)}    # extend MetaInfo to `n.meta`
 
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', meta_info.get('fwd_tmp', 0) + meta_info.get('fwd_out', 0))
-        n.meta = {**n.meta, **meta_info}
+        setattr(n, 'node_size', n.meta.get('fwd_tmp', 0) + n.meta.get('fwd_out', 0))
         for par in n.all_input_nodes:
-            par.meta['fwd_out'] = max(par.meta.get('fwd_out', 0), meta_info.get('fwd_in', 0))
+            par.meta['fwd_out'] = max(par.meta.get('fwd_out', 0), n.meta.get('fwd_in', 0))
         n.meta['type'] = type(result)
 
         # retain the autograd graph
@@ -126,12 +126,9 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Returns:
             result (Any): The argument value that was retrieved
-            flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
-            mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        result = super().placeholder(target, args, kwargs)
-        # A placeholder node only has activation
-        return result, {}
+        return super().placeholder(target, args, kwargs), MetaInfo()
 
     @compatibility(is_backward_compatible=True)
     def get_attr(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -148,10 +145,9 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return:
             result (Any): The argument value that was retrieved
-            flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
-            mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        return super().get_attr(target, args, kwargs), {}
+        return super().get_attr(target, args, kwargs), MetaInfo()
 
     @compatibility(is_backward_compatible=True)
     def call_function(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -167,8 +163,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
-            mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
         assert not isinstance(target, str)
         return profile_function(target)(*args, **kwargs)
@@ -187,8 +182,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
-            mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
         return profile_method(target)(*args, **kwargs)
 
@@ -206,8 +200,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
-            mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
         # Retrieve executed args and kwargs values from the environment
         # Execute the method and return the result
@@ -230,10 +223,9 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return:
             result (Any): The argument value that was retrieved
-            flop_count (Tuple): The flop count for (fwd_flop, bwd_flop).
-            mem_stat (Tuple): The memory statistics for (fwd_tmp, fwd_out, bwd_tmp, bwd_out)
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        return args[0], {'fwd_in': activation_size(args[0])}
+        return args[0], MetaInfo(fwd_in=activation_size(args[0]))
 
     def propagate(self, *args):
         """

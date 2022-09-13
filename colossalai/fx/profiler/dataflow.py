@@ -1,29 +1,73 @@
+from dataclasses import dataclass
+from enum import Enum
 from typing import Dict
 from torch.fx import Graph, Node
-from .memory import INPLACE_ATEN, activation_size
+from .memory import activation_size
+
+
+class Stage(Enum):
+    F = 0
+    L = 1
+    B = 2
+    P = 3
+
+
+@dataclass
+class GraphInfo:
+    """
+    GraphInfo is a dataclass for the dataflow analysis.
+    The dataflow analysis is conducted on a single node of the FX graph.
+    ============================================================================
+                            -------------------------------
+                            |            Node             |
+    [fwd_in] are       ---> | [fwd_in]          [bwd_out] |    <----- [bwd_out] is marks the memory for `grad_out`
+    placeholders saved for  |     | \__________     |     |
+    backward.               |     |            \    |     |
+                            | [fwd_tmp] ------> [bwd_tmp] |    <-----
+                            |     |  \_________     |     |    [bwd_tmp] marks the peak memory 
+                            |    / \           \    |     |    in backward pass.
+    [x] is not counted ---> | [x]  [fwd_tmp] -> [bwd_tmp] |    <-----
+    in [fwd_tmp] because    |  |       |  \_____    |     |
+    it is not saved for     |  |       |        \   |     |
+    backward.               -------------------------------
+    ============================================================================
+    Attributes:
+        fwd_in (int): See the above illustration.
+        fwd_tmp (int): See the above illustration.
+        bwd_tmp (int): See the above illustration.
+        bwd_out (int): See the above illustration.
+    """
+    fwd_in: int = 0
+    fwd_tmp: int = 0
+    bwd_tmp: int = 0
+    bwd_out: int = 0
 
 
 def is_forward(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == 'f'
+    return n.meta['stage'] == Stage.F
 
 
 def is_loss(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == 'l'
+    return n.meta['stage'] == Stage.L
 
 
 def is_placeholder(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == 'p'
+    return n.meta['stage'] == Stage.P
 
 
 def is_backward(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == 'b'
+    return n.meta['stage'] == Stage.B
 
 
-def autograd_graph_analysis(graph: Graph) -> Dict[str, int]:
+def is_saved(n: Node):
+    return n.meta.get('saved', False)
+
+
+def autograd_graph_analysis(graph: Graph) -> GraphInfo:
     """Analyze the autograd node dependencies and find out the memory usage.
     Basically the input graph should have all nodes marked 'f' (forward), 'l' (loss), 'b' (backward) for keyword `stage`.
     Nodes should have attribute `out` indicating the output of each node.
@@ -45,7 +89,7 @@ def autograd_graph_analysis(graph: Graph) -> Dict[str, int]:
         graph (Graph): The autograd graph with nodes marked 'f' (forward), 'l' (loss), 'b' (backward) for keyword `stage`.
 
     Returns:
-        meta (Dict): Meta information for the dataflow.
+        graphinfo (GraphInfo): Meta information for the dataflow.
     """
 
     def _peak_memory(deps: Dict[Node, int]):
@@ -57,16 +101,11 @@ def autograd_graph_analysis(graph: Graph) -> Dict[str, int]:
 
     # deps is used to track all the memory dependencies of the graph.
     deps = {}
-    meta = {
-        'fwd_in': 0,
-        'fwd_tmp': 0,
-        'bwd_tmp': 0,
-        'bwd_out': 0,
-    }
+    graph_info = GraphInfo()
 
     for n in graph.nodes:
         n: Node
-        if n.meta['save'] and not any(map(is_loss, n.users)):
+        if is_saved(n) and not any(map(is_loss, n.users)):
             # A forward tensor who is marked `save` but is not
             # an input to `loss` should be saved during forward.
             # If the tensor is a placeholder, then it belongs to `fwd_in`.
@@ -75,18 +114,18 @@ def autograd_graph_analysis(graph: Graph) -> Dict[str, int]:
             # Otherwise, the tensor belongs to `fwd_tmp`. If we checkpoint
             # the node, `fwd_tmp` can be freed.
             if is_placeholder(n):
-                meta['fwd_in'] += activation_size(n.meta['out'])
+                graph_info.fwd_in += activation_size(n.meta['out'])
             if is_forward(n):
-                meta['fwd_tmp'] += activation_size(n.meta['out'])
+                graph_info.fwd_tmp += activation_size(n.meta['out'])
         elif is_backward(n):
             if len(n.users):
                 # liveness analysis is only used in backward
                 deps[n] = len(n.users)
-                meta['bwd_tmp'] = max(meta['bwd_tmp'], _peak_memory(deps))
+                graph_info.bwd_tmp = max(graph_info.bwd_tmp, _peak_memory(deps))
                 for input_n in n.all_input_nodes:
                     if input_n in deps:
                         deps[input_n] -= 1
             else:
                 # basically a backward node without user is a `grad_out` node
-                meta['bwd_out'] += activation_size(n.meta['out'])
-    return meta
+                graph_info.bwd_out += activation_size(n.meta['out'])
+    return graph_info
