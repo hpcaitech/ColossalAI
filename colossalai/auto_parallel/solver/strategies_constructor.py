@@ -11,6 +11,7 @@ import math
 import torch
 import operator
 from typing import Dict, List
+from ._utils import generate_sharding_spec
 
 
 class StrategiesConstructor:
@@ -35,23 +36,6 @@ class StrategiesConstructor:
         self.strategy_map = {}
         self.shape_consistency_manager = shape_consistency_manager
         self.solver_options = solver_options
-
-    def _generate_sharding_spec(self, node: Node, dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
-        """
-        Generate the sharding spec of the tensor based on the given dim_partition_dict 
-        where the key is the tensor dimension and the value is the mesh dimension for sharding.
-        """
-        if hasattr(node, '_meta_data'):
-            meta_tensor = node._meta_data
-        elif isinstance(node, torch.Tensor):
-            meta_tensor = node
-        else:
-            raise RuntimeError(f'We cannot generate sharding spec for {type(node)} type.')
-
-        sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                     entire_shape=meta_tensor.shape,
-                                     dim_partition_dict=dim_partition_dict)
-        return sharding_spec
 
     def _generate_resharding_costs(self, input_nodes, target_sharding_specs):
         '''
@@ -101,7 +85,7 @@ class StrategiesConstructor:
                     # create sharding strategy for placeholder
                     name = 'Replica Placeholder'
                     dim_partition_dict = {}
-                    output_sharding_spec = self._generate_sharding_spec(node, dim_partition_dict)
+                    output_sharding_spec = generate_sharding_spec(node, self.device_mesh, dim_partition_dict)
                     # TODO: use meta_info_prop to profile memory cost
                     memory_cost = 0
                     sharding_strategy_placeholder = ShardingStrategy(name,
@@ -120,7 +104,7 @@ class StrategiesConstructor:
                     # create sharding strategy for get_attr
                     name = 'Replica Attribute'
                     dim_partition_dict = {}
-                    output_sharding_spec = self._generate_sharding_spec(node, dim_partition_dict)
+                    output_sharding_spec = generate_sharding_spec(node, self.device_mesh, dim_partition_dict)
                     # TODO: use meta_info_prop to profile memory cost
                     memory_cost = 0
                     sharding_strategy_attribute = ShardingStrategy(name, output_sharding_spec, memory_cost=memory_cost)
@@ -167,7 +151,7 @@ class StrategiesConstructor:
 
                         sharding_spec_checklist.append(input_sharding_spec)
                         dim_partition_dict = deepcopy(input_sharding_spec.dim_partition_dict)
-                        output_sharding_spec = self._generate_sharding_spec(node, dim_partition_dict)
+                        output_sharding_spec = generate_sharding_spec(node, self.device_mesh, dim_partition_dict)
 
                         name = f'{input_sharding_spec.sharding_sequence} -> {output_sharding_spec.sharding_sequence}'
 
@@ -223,7 +207,7 @@ class StrategiesConstructor:
 
                         sharding_spec_checklist.append(input_sharding_spec)
                         dim_partition_dict = deepcopy(input_sharding_spec.dim_partition_dict)
-                        output_sharding_spec = self._generate_sharding_spec(node, dim_partition_dict)
+                        output_sharding_spec = generate_sharding_spec(node, self.device_mesh, dim_partition_dict)
 
                         name = f'{input_sharding_spec.sharding_sequence} -> {output_sharding_spec.sharding_sequence}'
 
@@ -285,7 +269,7 @@ class StrategiesConstructor:
                             continue
                         sharding_spec_checklist.append(input_sharding_spec)
                         dim_partition_dict = deepcopy(input_sharding_spec.dim_partition_dict)
-                        output_sharding_spec = self._generate_sharding_spec(node, dim_partition_dict)
+                        output_sharding_spec = generate_sharding_spec(node, self.device_mesh, dim_partition_dict)
                         name = f'{input_sharding_spec.sharding_sequence} -> {output_sharding_spec.sharding_sequence}'
                         # TODO: use meta_info_prop to profile memory cost and compute cost
                         compute_cost = node._meta_data.numel()

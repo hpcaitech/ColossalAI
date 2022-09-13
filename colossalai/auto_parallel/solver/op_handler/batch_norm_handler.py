@@ -4,6 +4,7 @@ import warnings
 import torch
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from .operator_handler import OperatorHandler
+from .._utils import generate_sharding_spec
 
 __all__ = ['BatchNormHandler']
 
@@ -114,13 +115,15 @@ class BatchNormHandler(OperatorHandler):
         name = f'RS{mesh_dim_0} = RS{mesh_dim_0} x S{mesh_dim_0}'
 
         dim_partition_dict_for_input = {1: [mesh_dim_0]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
+                                                         dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {0: [mesh_dim_0]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_0]}
-        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                          dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
@@ -153,7 +156,8 @@ class BatchNormHandler(OperatorHandler):
         new_name = f'S{mesh_dim_1}S{mesh_dim_0} = RS{mesh_dim_0} x S{mesh_dim_0}'
 
         dim_partition_dict_for_output = {0: [mesh_dim_1], 1: [mesh_dim_0]}
-        new_sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        new_sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                              dim_partition_dict_for_output)
         # the computation cost is all the same
         new_compute_cost = compute_cost
 
@@ -188,13 +192,15 @@ class BatchNormHandler(OperatorHandler):
         name = f'RS{mesh_dim_0}{mesh_dim_1} = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}'
 
         dim_partition_dict_for_input = {1: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
+                                                         dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                          dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
@@ -228,13 +234,15 @@ class BatchNormHandler(OperatorHandler):
         name = f'RR = RR x R'
 
         dim_partition_dict_for_input = {}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
+                                                         dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {}
-        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                          dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
@@ -265,7 +273,8 @@ class BatchNormHandler(OperatorHandler):
 
         def _construct_batch_sharding_strategies(mesh_dim_list, new_name):
             dim_partition_dict_for_output = {0: mesh_dim_list}
-            new_sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+            new_sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                                  dim_partition_dict_for_output)
 
             # the computation cost is all the same
             new_compute_cost = compute_cost
@@ -323,13 +332,15 @@ class BatchNormHandler(OperatorHandler):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}R x R WITH SYNC_BN'
 
         dim_partition_dict_for_input = {0: [mesh_dim_0]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
+                                                         dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0]}
-        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                          dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
@@ -363,13 +374,15 @@ class BatchNormHandler(OperatorHandler):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x R WITH SYNC_BN'
 
         dim_partition_dict_for_input = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
+                                                         dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                          dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
@@ -403,13 +416,15 @@ class BatchNormHandler(OperatorHandler):
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1} WITH SYNC_BN'
 
         dim_partition_dict_for_input = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
+        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
+                                                         dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {0: [mesh_dim_1]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
+                                                          dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
