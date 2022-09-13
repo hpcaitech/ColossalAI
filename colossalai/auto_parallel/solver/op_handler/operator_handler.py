@@ -60,16 +60,6 @@ class OperatorHandler(ABC):
         """
         pass
 
-    def _generate_sharding_spec(self, tensor: torch.Tensor, dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
-        """
-        Generate the sharding spec of the tensor based on the given dim_partition_dict 
-        where the key is the tensor dimension and the value is the mesh dimension for sharding.
-        """
-        sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                     entire_shape=tensor.shape,
-                                     dim_partition_dict=dim_partition_dict)
-        return sharding_spec
-
     def _generate_memory_cost(self, dim_partition_dict_for_output, dim_partition_dict_for_weight):
         '''
         Compute the memory cost per device with this specific strategy.
