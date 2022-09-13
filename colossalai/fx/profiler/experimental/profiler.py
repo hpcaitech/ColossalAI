@@ -98,7 +98,7 @@ def profile_function(target: 'Target') -> Callable:
         else:
             profiler = meta_profiler_function.get(target.__name__)
         fwd_flop, _ = profiler(*args, **kwargs)
-        return out, MetaInfo(fwd_flop, fwd_flop * 2, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
+        return out, GraphInfo(fwd_flop, fwd_flop * 2, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
 
     f.__name__ = target.__name__
     func = target
@@ -127,7 +127,7 @@ def profile_method(target: 'Target') -> Callable:
         # call_method has no parameters and are MOSTLY(?) inplace, and has no FLOPs or MACs.
         fwd_tmp = 0 if target in INPLACE_METHOD else activation_size(out)
         fwd_out = 0 if target not in INPLACE_METHOD else activation_size(out)
-        return out, MetaInfo(0, 0, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
+        return out, GraphInfo(0, 0, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
 
     return f
 
@@ -157,7 +157,7 @@ def profile_module(module: torch.nn.Module) -> Callable:
             fwd_out = activation_size(out)
         profiler = meta_profiler_module.get(type(module))
         fwd_flop, _ = profiler(module, *args, **kwargs)
-        return out, MetaInfo(fwd_flop, fwd_flop * 2, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
+        return out, GraphInfo(fwd_flop, fwd_flop * 2, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
 
     f.__name__ = module.__class__.__name__
     func = module.forward
