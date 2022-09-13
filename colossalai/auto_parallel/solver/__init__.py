@@ -4,5 +4,9 @@ from .solver import Solver
 from .cost_graph import CostGraph
 from .strategies_constructor import StrategiesConstructor
 from .constants import *
+from .options import SolverOptions
 
-__all__ = ['StrategiesVector', 'ShardingStrategy', 'GraphAnalyser', 'Solver', 'StrategiesConstructor', 'CostGraph']
+__all__ = [
+    'StrategiesVector', 'ShardingStrategy', 'GraphAnalyser', 'Solver', 'StrategiesConstructor', 'CostGraph',
+    'SolverOptions'
+]

@@ -11,6 +11,7 @@ from colossalai.auto_parallel.solver.cost_graph import CostGraph
 from colossalai.auto_parallel.solver.graph_analysis import GraphAnalyser
 from copy import deepcopy
 from colossalai.auto_parallel.solver import Solver
+from colossalai.auto_parallel.solver.options import SolverOptions
 
 
 class ConvModel(nn.Module):
@@ -39,7 +40,6 @@ def test_solver():
     # [[0, 1]
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
-    entire_shape = torch.Size((4, 16, 64, 64))
     shape_consistency_manager = ShapeConsistencyManager()
 
     tracer = ColoTracer()
@@ -57,9 +57,8 @@ def test_solver():
     #     return relu
     graph = tracer.trace(root=model, meta_args=input_sample)
     gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
 
-    solver_options = {'fast_mode': True}
+    solver_options = SolverOptions(fast=True)
     strategies_constructor = StrategiesConstructor(graph, device_mesh, shape_consistency_manager, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
