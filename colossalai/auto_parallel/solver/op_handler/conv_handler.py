@@ -4,7 +4,6 @@ import warnings
 import torch
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from .operator_handler import OperatorHandler
-from .._utils import generate_sharding_spec
 
 __all__ = ['ConvHandler']
 
@@ -103,21 +102,19 @@ class ConvHandler(OperatorHandler):
         # memory_cost pair
         memory_cost = (memory_cost_forward, memory_cost_backward)
 
-        return memory_cost, memory_cost_forward_activation, memory_cost_backward_activation
+        return memory_cost, memory_cost_forward_activation, memory_cost_backward_activation, memory_cost_backward_weight
 
     def split_input_batch_weight_out_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
 
         dim_partition_dict_for_input = {0: [mesh_dim_0]}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {1: [mesh_dim_1]}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -132,15 +129,18 @@ class ConvHandler(OperatorHandler):
         sharding_size_forward = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
         sharding_size_backward_activation = self.device_mesh.shape[mesh_dim_0]
         sharding_size_weight = self.device_mesh.shape[mesh_dim_1]
-        memory_cost, _, memory_cost_backward_activation = self._generate_memory_cost(
+        memory_cost, _, memory_cost_backward_activation, memory_cost_backward_weight = self._generate_memory_cost(
             sharding_size_forward, sharding_size_backward_activation, sharding_size_weight)
 
         # This strategy do not need to do all_reduce operation during forward
         communication_cost_forward = 0
-        # compute the backward communication cost of this strategy
-        communication_cost_backward = self.device_mesh.all_reduce_cost(memory_cost_backward_activation, mesh_dim_1)
+        # compute the backward communication cost to all reduce the input activation grad
+        communication_cost_backward_activation = self.device_mesh.all_reduce_cost(memory_cost_backward_activation,
+                                                                                  mesh_dim_1)
+        # compute the backward communication cost to all reduce the weight due to data parallel
+        communication_cost_backward_weight = self.device_mesh.all_reduce_cost(memory_cost_backward_weight, mesh_dim_0)
         # total communication cost
-        communication_cost = communication_cost_forward + communication_cost_backward
+        communication_cost = communication_cost_forward + communication_cost_backward_activation + communication_cost_backward_weight
 
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_output,
@@ -155,15 +155,13 @@ class ConvHandler(OperatorHandler):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}R x RR'
 
         dim_partition_dict_for_input = {0: [mesh_dim_0]}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0]}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -178,11 +176,16 @@ class ConvHandler(OperatorHandler):
         sharding_size_forward = self.device_mesh.shape[mesh_dim_0]
         sharding_size_backward_activation = self.device_mesh.shape[mesh_dim_0]
         sharding_size_weight = 1
-        memory_cost, _, _ = self._generate_memory_cost(sharding_size_forward, sharding_size_backward_activation,
-                                                       sharding_size_weight)
+        memory_cost, _, _, memory_cost_backward_weight = self._generate_memory_cost(sharding_size_forward,
+                                                                                    sharding_size_backward_activation,
+                                                                                    sharding_size_weight)
 
-        # This strategy do not need to do all_reduce operation in both forward and backward phase.
-        communication_cost = 0
+        # This strategy do not need to do all_reduce operation in forward phase.
+        communication_cost_forward = 0
+        # compute the backward communication cost to all reduce the weight due to data parallel
+        communication_cost_backward_weight = self.device_mesh.all_reduce_cost(memory_cost_backward_weight, mesh_dim_0)
+        # compute the total cost
+        communication_cost = communication_cost_forward + communication_cost_backward_weight
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
@@ -197,15 +200,13 @@ class ConvHandler(OperatorHandler):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
 
         dim_partition_dict_for_input = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {0: [mesh_dim_0]}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0]}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -220,15 +221,17 @@ class ConvHandler(OperatorHandler):
         sharding_size_forward = self.device_mesh.shape[mesh_dim_0]
         sharding_size_backward_activation = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
         sharding_size_weight = self.device_mesh.shape[mesh_dim_1]
-        memory_cost, memory_cost_forward_activation, _ = self._generate_memory_cost(sharding_size_forward,
-                                                                                    sharding_size_backward_activation,
-                                                                                    sharding_size_weight)
+        memory_cost, memory_cost_forward_activation, _, memory_cost_backward_weight = self._generate_memory_cost(
+            sharding_size_forward, sharding_size_backward_activation, sharding_size_weight)
 
         # compute the communication cost of this strategy during forward phase
         communication_cost_forward = self.device_mesh.all_reduce_cost(memory_cost_forward_activation, mesh_dim_1)
-        # This strategy do not need to do all_reduce operation during backward phase
-        communication_cost_backward = 0
-        communication_cost = communication_cost_forward + communication_cost_backward
+        # This strategy do not need to do all_reduce operation to compute the input activation grad
+        communication_cost_backward_activation = 0
+        # compute the backward communication cost to all reduce the weight due to data parallel
+        communication_cost_backward_weight = self.device_mesh.all_reduce_cost(memory_cost_backward_weight, mesh_dim_0)
+        # compute total cost
+        communication_cost = communication_cost_forward + communication_cost_backward_activation + communication_cost_backward_weight
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
@@ -242,15 +245,13 @@ class ConvHandler(OperatorHandler):
         name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
 
         dim_partition_dict_for_input = {1: [mesh_dim_0]}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_1]}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -265,7 +266,7 @@ class ConvHandler(OperatorHandler):
         sharding_size_forward = self.device_mesh.shape[mesh_dim_1]
         sharding_size_backward_activation = self.device_mesh.shape[mesh_dim_0]
         sharding_size_weight = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        memory_cost, memory_cost_forward_activation, memory_cost_backward_activation = self._generate_memory_cost(
+        memory_cost, memory_cost_forward_activation, memory_cost_backward_activation, _ = self._generate_memory_cost(
             sharding_size_forward, sharding_size_backward_activation, sharding_size_weight)
 
         # compute the communication cost of this strategy during forward phase
@@ -286,15 +287,13 @@ class ConvHandler(OperatorHandler):
         name = f'RR = RS{mesh_dim_0} x S{mesh_dim_0}R'
 
         dim_partition_dict_for_input = {1: [mesh_dim_0]}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {0: [mesh_dim_0]}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -309,9 +308,8 @@ class ConvHandler(OperatorHandler):
         sharding_size_forward = 1
         sharding_size_backward_activation = self.device_mesh.shape[mesh_dim_0]
         sharding_size_weight = self.device_mesh.shape[mesh_dim_0]
-        memory_cost, memory_cost_forward_activation, _ = self._generate_memory_cost(sharding_size_forward,
-                                                                                    sharding_size_backward_activation,
-                                                                                    sharding_size_weight)
+        memory_cost, memory_cost_forward_activation, _, _ = self._generate_memory_cost(
+            sharding_size_forward, sharding_size_backward_activation, sharding_size_weight)
 
         # compute the communication cost of this strategy during forward phase
         communication_cost_forward = self.device_mesh.all_reduce_cost(memory_cost_forward_activation, mesh_dim_0)
@@ -331,15 +329,13 @@ class ConvHandler(OperatorHandler):
         name = f'RS{mesh_dim_0} = RR x RS{mesh_dim_0}'
 
         dim_partition_dict_for_input = {}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {1: [mesh_dim_0]}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_0]}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -354,7 +350,7 @@ class ConvHandler(OperatorHandler):
         sharding_size_forward = self.device_mesh.shape[mesh_dim_0]
         sharding_size_backward_activation = 1
         sharding_size_weight = self.device_mesh.shape[mesh_dim_0]
-        memory_cost, _, memory_cost_backward_activation = self._generate_memory_cost(
+        memory_cost, _, memory_cost_backward_activation, _ = self._generate_memory_cost(
             sharding_size_forward, sharding_size_backward_activation, sharding_size_weight)
 
         # This strategy do not need to do all_reduce during forward phase
@@ -375,15 +371,13 @@ class ConvHandler(OperatorHandler):
         name = f'RR = RR x RR'
 
         dim_partition_dict_for_input = {}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -398,8 +392,8 @@ class ConvHandler(OperatorHandler):
         sharding_size_forward = 1
         sharding_size_backward_activation = 1
         sharding_size_weight = 1
-        memory_cost, _, _ = self._generate_memory_cost(sharding_size_forward, sharding_size_backward_activation,
-                                                       sharding_size_weight)
+        memory_cost, _, _, _ = self._generate_memory_cost(sharding_size_forward, sharding_size_backward_activation,
+                                                          sharding_size_weight)
 
         # This strategy do not need to do all_reduce in both forward and backward phase
         communication_cost = 0
@@ -417,15 +411,13 @@ class ConvHandler(OperatorHandler):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
 
         dim_partition_dict_for_input = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -441,11 +433,17 @@ class ConvHandler(OperatorHandler):
         sharding_size_backward_activation = self.device_mesh.mesh_shape[mesh_dim_0] * self.device_mesh.mesh_shape[
             mesh_dim_1]
         sharding_size_weight = 1
-        memory_cost, _, _ = self._generate_memory_cost(sharding_size_forward, sharding_size_backward_activation,
-                                                       sharding_size_weight)
+        memory_cost, _, _, memory_cost_backward_weight = self._generate_memory_cost(sharding_size_forward,
+                                                                                    sharding_size_backward_activation,
+                                                                                    sharding_size_weight)
 
-        # This strategy do not need to do all_reduce in both forward and backward phase
-        communication_cost = 0
+        # This strategy do not need to do all_reduce in forward phase
+        communication_cost_forward = 0
+        # compute the backward communication cost to all reduce the weight due to data parallel
+        communication_cost_backward_weight = self.device_mesh.flatten_device_mesh.all_reduce_cost(
+            memory_cost_backward_weight, 0)
+        # compute the total communication cost
+        communication_cost = communication_cost_backward_weight + communication_cost_forward
 
         sharding_strategies = ShardingStrategy(name,
                                                output_sharding_spec=sharding_spec_for_output,
@@ -460,15 +458,13 @@ class ConvHandler(OperatorHandler):
         name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
 
         dim_partition_dict_for_input = {1: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_input = generate_sharding_spec(self.input_data, self.device_mesh,
-                                                         dim_partition_dict_for_input)
+        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
 
         dim_partition_dict_for_weight = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_weight = generate_sharding_spec(self.weight, self.device_mesh, dim_partition_dict_for_weight)
+        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {}
-        sharding_spec_for_output = generate_sharding_spec(self.output_data, self.device_mesh,
-                                                          dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -485,9 +481,8 @@ class ConvHandler(OperatorHandler):
         sharding_size_backward_activation = self.device_mesh.mesh_shape[mesh_dim_0] * self.device_mesh.mesh_shape[
             mesh_dim_1]
         sharding_size_weight = self.device_mesh.mesh_shape[mesh_dim_0] * self.device_mesh.mesh_shape[mesh_dim_1]
-        memory_cost, memory_cost_forward_activation, _ = self._generate_memory_cost(sharding_size_forward,
-                                                                                    sharding_size_backward_activation,
-                                                                                    sharding_size_weight)
+        memory_cost, memory_cost_forward_activation, _, _ = self._generate_memory_cost(
+            sharding_size_forward, sharding_size_backward_activation, sharding_size_weight)
 
         # compute communication cost during forward phase
         communication_cost_forward = self.device_mesh.flatten_device_mesh.all_reduce_cost(

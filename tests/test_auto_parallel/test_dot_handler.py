@@ -8,7 +8,6 @@ from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 from colossalai.auto_parallel.solver.op_handler.dot_handler import DotHandler
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh
 
 
@@ -31,7 +30,6 @@ def test_dot_handler():
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     entire_shape = torch.Size((4, 8))
-    shape_consistency_manager = ShapeConsistencyManager()
 
     tracer = ColoTracer()
     model = LinearModel(8, 16)
@@ -76,10 +74,11 @@ def test_dot_handler():
 
     # generate dot strategy
     strategies_vector = StrategiesVector(node=nodes[2])
-    dot_handler = DotHandler(node=nodes[2],
-                             device_mesh=device_mesh,
-                             strategies_vector=strategies_vector,
-                             shape_consistency_manager=shape_consistency_manager)
+    dot_handler = DotHandler(
+        node=nodes[2],
+        device_mesh=device_mesh,
+        strategies_vector=strategies_vector,
+    )
     strategies_vector = dot_handler.register_strategy()
 
     # ['S0S1 = S0R x RS1', 'S1S0 = S1R x RS0', 'S0R = S0S1 x S1R', 'S1R = S1S0 x S0R', 'RS1 = RS0 x S0S1', 'RS0 = RS1 x S1S0', 'RS0 = RR x RS0', 'RS1 = RR x RS1', 'RR = RR x RR']

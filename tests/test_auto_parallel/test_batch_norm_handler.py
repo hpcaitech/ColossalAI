@@ -8,7 +8,6 @@ from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 from colossalai.auto_parallel.solver.op_handler.batch_norm_handler import BatchNormHandler
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh
 
 
@@ -31,7 +30,6 @@ def test_bn_handler():
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     entire_shape = torch.Size((4, 16, 64, 64))
-    shape_consistency_manager = ShapeConsistencyManager()
 
     tracer = ColoTracer()
     model = BNModel(16)
@@ -77,10 +75,11 @@ def test_bn_handler():
 
     # generate bn strategy
     strategies_vector = StrategiesVector(node=nodes[2])
-    bn_handler = BatchNormHandler(node=nodes[2],
-                                  device_mesh=device_mesh,
-                                  strategies_vector=strategies_vector,
-                                  shape_consistency_manager=shape_consistency_manager)
+    bn_handler = BatchNormHandler(
+        node=nodes[2],
+        device_mesh=device_mesh,
+        strategies_vector=strategies_vector,
+    )
     bn_handler.register_strategy()
     # ['RS0 = RS0 x S0', 'S1S0 = RS0 x S0', 'RS1 = RS1 x S1', 'S0S1 = RS1 x S1', 'RR = RR x R', 'S0R = RR x R', 'S1R = RR x R', 'S01R = RR x R', 'RS01 = RS01 x S01',
     # 'S0R = S0R x R WITH SYNC_BN', 'S1R = S1R x R WITH SYNC_BN', 'S0S1 = S0S1 x S1 WITH SYNC_BN', 'S1S0 = S1S0 x S0 WITH SYNC_BN', 'S01R = S01R x R WITH SYNC_BN']
