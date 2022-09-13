@@ -157,8 +157,7 @@ class StrategiesConstructor:
                     # print(node, node.op, node.target, node.args)
                     # create sharding strategy for element-wise module
                     # input_node = strategies_vector.predecessor_nodes[0]
-                    norm_handler = BatchNormHandler(node, self.device_mesh, strategies_vector,
-                                                    self.shape_consistency_manager)
+                    norm_handler = BatchNormHandler(node, self.device_mesh, strategies_vector)
                     norm_handler.register_strategy()
                     # for strategy in norm_handler.strategies_vector:
                     #     print(f'{strategy.name}, computation_cost: {strategy.compute_cost}, memory_cost: {strategy.memory_cost}')
@@ -214,17 +213,21 @@ class StrategiesConstructor:
                 if target in CONV_FUNC_OP:
                     # use ConvHandler to create sharding strategies for conv node
                     # TODO: the operator_handler does NOT support function node processing now.
-                    conv_handler = ConvHandler(node, self.device_mesh, strategies_vector,
-                                               self.shape_consistency_manager)
+                    conv_handler = ConvHandler(node, self.device_mesh, strategies_vector)
                     conv_handler.register_strategy()
 
                 # linear function
                 elif target in LINEAR_FUNC_OP:
                     # use DotHandler to create sharding strategies for linear node
                     # TODO: the operator_handler does NOT support function node processing now.
-                    linear_handler = DotHandler(node, self.device_mesh, strategies_vector,
-                                                self.shape_consistency_manager)
+                    linear_handler = DotHandler(node, self.device_mesh, strategies_vector)
                     linear_handler.register_strategy()
+
+                # reshape function
+                elif target in RESHAPE_FUNC_OP:
+                    # use ReshapeHandler to create sharding strategies for rehsape node
+                    reshape_handler = ReshapeHandler(node, self.device_mesh, strategies_vector)
+                    reshape_handler.register_strategy()
 
                 # element-wise function
                 elif target in ELEMENTWISE_FUNC_OP:

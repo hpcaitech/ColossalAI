@@ -14,6 +14,7 @@ from colossalai.auto_parallel.solver import Solver
 from torchvision.models import resnet34, resnet50
 from colossalai.auto_parallel.solver.constants import *
 from colossalai.auto_parallel.solver.graph_analysis import GraphAnalyser
+from colossalai.auto_parallel.solver.options import SolverOptions
 
 
 class ConvModel(nn.Module):
@@ -81,8 +82,8 @@ def test_cost_graph():
     liveness_list = graph_analyser.liveness_analysis()
     # print(len(liveness_dict[0].unique_live_vars))
     # assert False
-    solver_options = {'fast_mode': True}
-    strategies_constructor = StrategiesConstructor(graph, device_mesh, shape_consistency_manager, solver_options)
+    solver_options = SolverOptions(fast=True)
+    strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
     cost_graph = CostGraph(strategies_constructor.leaf_strategies)

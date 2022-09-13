@@ -61,12 +61,17 @@ class StrategiesVector(list):
             root_module = self.node.graph.owning_module
             submod = root_module.get_submodule(target)
             submod_type = type(submod)
-            # merge elementwise module node into following nodes
+            # merge elementwise module node into source nodes
+            # we could merge element-wise op, because the output sharding spec is always same as the input sharding spec.
             if submod_type in ELEMENTWISE_MODULE_OP:
                 merge_label = True
 
         if self.node.op == 'call_function':
+            # we could merge element-wise op, because the output sharding spec is always same as the input sharding spec.
             if self.node.target in ELEMENTWISE_FUNC_OP:
+                merge_label = True
+            # we could merge reshape op, because the output sharding spec of reshape op is always fully replicated.
+            if self.node.target in RESHAPE_FUNC_OP:
                 merge_label = True
 
         return merge_label
