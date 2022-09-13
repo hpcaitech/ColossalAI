@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch import autograd
 
-from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
+from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from colossalai.testing import assert_close
 from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 
@@ -36,7 +36,7 @@ def run_master(args):
                                     chunk=chunk,
                                     checkpoint=use_checkpoint)
 
-    forward_result = engine.forward_backward(input_sample)
+    forward_result = engine.forward_backward(input_sample)[0]
 
     cuda_rpc_result = []
     single_result = []

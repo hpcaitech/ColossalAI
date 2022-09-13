@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
+from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 
 
