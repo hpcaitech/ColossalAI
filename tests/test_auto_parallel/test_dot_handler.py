@@ -6,7 +6,7 @@ import pytest
 from colossalai.fx.proxy import ColoProxy
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
-from colossalai.auto_parallel.solver.dot_handler import DotHandler
+from colossalai.auto_parallel.solver.op_handler.dot_handler import DotHandler
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh

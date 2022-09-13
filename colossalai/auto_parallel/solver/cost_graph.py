@@ -1,4 +1,3 @@
-from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from typing import List
 import math
 from torch.fx.node import Node
