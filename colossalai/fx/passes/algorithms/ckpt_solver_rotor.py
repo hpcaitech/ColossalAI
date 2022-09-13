@@ -129,8 +129,8 @@ def _compute_output_size(node: List[Node]) -> int:
         int: output size
     """
 
-    return node[-1].meta['tensor_meta'].numel * \
-    torch.tensor([], dtype=node[-1].meta['tensor_meta'].dtype).element_size()
+    return node[-1].meta['tensor_meta'].numel * torch.tensor([],
+                                                             dtype=node[-1].meta['tensor_meta'].dtype).element_size()
 
 
 def _get_inplace(node: Node) -> bool:

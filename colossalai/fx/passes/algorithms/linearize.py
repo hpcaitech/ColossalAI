@@ -1,6 +1,16 @@
 from typing import List, Any
 from torch.fx import GraphModule, Node
 
+# Common nodes are type of nodes that could be seen as attributes and remain
+# unchanged throughout the whole model, it will be used several times by
+# different blocks of model, so that it is hard for us to linearize the graph
+# when we encounter those kinds of nodes. We let users to annotate some of the
+# input as common node, such as attention mask, and the followings are some of
+# the ops that could actually be seen as common nodes. With our common node prop,
+# we could find some of the "real" common nodes (e.g. the real attention mask
+# used in BERT and GPT), the rule is simple, for node who's parents are all common
+# nodes or it's op belongs to the following operations, we view this node as a
+# newly born common node.
 # List of target name that could be seen as common node
 COPS = ["getattr", "getitem", "size"]
 
