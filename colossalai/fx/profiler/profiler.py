@@ -168,7 +168,7 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
 
     # If the output is not a floating point `torch.Tensor` or it does not
     # requires grad, then we should not run backward for this node.
-    if is_autogradable(out) and out.requires_grad and not inplace:
+    if is_autogradable(out) and out.requires_grad:
         stage = Stage.L
         loss = out.sum()
         stage = Stage.B
@@ -177,8 +177,6 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
     graph_info = autograd_graph_analysis(subgraph)
     meta_info.fwd_flop, meta_info.bwd_flop = flop_count[Stage.F], flop_count[Stage.B]
     meta_info.__dict__.update(graph_info.__dict__)
-    if inplace:
-        meta_info.fwd_in = 0
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
