@@ -17,7 +17,7 @@ except:
 
 @pytest.mark.skipif(not with_codegen, reason="torch version is lower than 1.12.0")
 def test_linearize():
-    MODEL_DICT = {tm.resnet18: [2000,]}
+    MODEL_DICT = {tm.resnet18: [2100, 3000], tm.densenet121: [8100, 17000]}
     tracer = ColoTracer()
     for M, budgets in MODEL_DICT.items():
         for budget in budgets:
@@ -37,7 +37,8 @@ def test_linearize():
                     if isinstance(op, ForwardNograd):
                         for n in node_list[idx]:
                             assert hasattr(n, "activation_checkpoint"), f"{n} is not annotated!"
-                            assert n.activation_checkpoint == ckpt_idx, f"{n} ckpt_idx wrong, should be {ckpt_idx}!"
+                            assert n.activation_checkpoint[
+                                0] == ckpt_idx, f"{n} ckpt_idx {n.activation_checkpoint[0]} wrong, should be {ckpt_idx}!"
 
                         continue
 
@@ -53,7 +54,8 @@ def test_linearize():
                         ckpt_idx += 1
                         for n in node_list[idx]:
                             assert hasattr(n, "activation_checkpoint"), f"{n} is not annotated!"
-                            assert n.activation_checkpoint == ckpt_idx, f"{n} ckpt_idx wrong, should be {ckpt_idx}!"
+                            assert n.activation_checkpoint[
+                                0] == ckpt_idx, f"{n} ckpt_idx {n.activation_checkpoint[0]} wrong, should be {ckpt_idx}!"
 
                         continue
 
@@ -62,7 +64,8 @@ def test_linearize():
                         in_ckpt = True
                         for n in node_list[idx]:
                             assert hasattr(n, "activation_checkpoint"), f"{n} is not annotated!"
-                            assert n.activation_checkpoint == ckpt_idx, f"{n} ckpt_idx wrong, should be {ckpt_idx}!"
+                            assert n.activation_checkpoint[
+                                0] == ckpt_idx, f"{n} ckpt_idx {n.activation_checkpoint[0]} wrong, should be {ckpt_idx}!"
 
             del model
             del gm

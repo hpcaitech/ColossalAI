@@ -74,7 +74,7 @@ def is_saved(n: Node):
 
 def autograd_graph_analysis(graph: Graph) -> GraphInfo:
     """Analyze the autograd node dependencies and find out the memory usage.
-    Basically the input graph should have all nodes marked 'f' (forward), 'l' (loss), 'b' (backward) for keyword `stage`.
+    Basically the input graph should have all nodes marked for keyword `stage`.
     Nodes should have attribute `out` indicating the output of each node.
     ============================================================================
     Placeholder ---->   p           o     <---- We need to keep track of grad out
@@ -91,7 +91,7 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
                                l
     =============================================================================                     
     Args:
-        graph (Graph): The autograd graph with nodes marked 'f' (forward), 'l' (loss), 'b' (backward) for keyword `stage`.
+        graph (Graph): The autograd graph with nodes marked for keyword `stage`.
 
     Returns:
         graph_info (GraphInfo): Meta information for the dataflow.
@@ -125,9 +125,11 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
         elif is_backward(n):
             if len(n.users):
                 # liveness analysis is only used in backward
+                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, _peak_memory(deps))
+                deps[n] = len(n.users)
                 for input_n in n.all_input_nodes:
                     if input_n in deps:
                         deps[input_n] -= 1
-                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, _peak_memory(deps))
-                deps[n] = len(n.users)
+            else:
+                graph_info.bwd_mem_out = activation_size(n.meta['out'])
     return graph_info

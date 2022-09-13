@@ -231,11 +231,12 @@ def _get_bwd_mem_tmp(node: List[Node]) -> int:
     for child in node[-1].users:
         deps[child] = 1
     for n in reversed(node):
+        bwd_mem_tmp = max(bwd_mem_tmp, _get_deps_size() + n.meta['bwd_mem_tmp'])
+
+        deps[n] = len(n.all_input_nodes)
         for child in n.users:
             if child in deps:
                 deps[child] -= 1
-        bwd_mem_tmp = max(bwd_mem_tmp, _get_deps_size() + n.meta['bwd_mem_tmp'])
-        deps[n] = len(n.all_input_nodes)
 
         for key in list(deps.keys()):
             if deps[key] == 0:
@@ -379,7 +380,7 @@ def solver_rotor(gm: ColoGraphModule,
                  mem_limit: int,
                  mem_slots: int = 500,
                  cnode: List[str] = None,
-                 eps: float = 0.02) -> ColoGraphModule:
+                 eps: float = 0.0) -> ColoGraphModule:
     """solver that automatically find activation checkpoint in rotor's manner
 
     Args:
@@ -398,7 +399,6 @@ def solver_rotor(gm: ColoGraphModule,
     mem_unit = mem_limit * (1.0 - eps) // mem_slots
     MetaInfoProp(gm).run(data)
     chain: Chain = _construct_chain(node_list, data, mem_unit)
-    print(chain)
     opt_table = _compute_table(chain, mem_slots)
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
     _annotate_from_sequence(sequence, node_list)
