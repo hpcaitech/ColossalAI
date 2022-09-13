@@ -15,7 +15,7 @@ class LiveVariable:
     LiveVariable is a data structure to store the meta information of a variable for liveness analysis.
     """
     name: str
-    meta: Union[Any, List[Any]]
+    node: Node
     is_inplace: bool
 
 
@@ -80,13 +80,13 @@ class GraphAnalyser:
         """
         return self._graph
 
-    def liveness_analysis(self) -> OrderedDict[int, LiveStage]:
+    def liveness_analysis(self) -> List[LiveStage]:
         """
         Analyse the graph to obtain the variable liveness information. This function returns
         an ordered dictionary where the key is the compute stage ID and the value is a LivenessStage object.
         """
         compute_nodes = self.graph.nodes
-        liveness_dict = ODict()
+        liveness_list = []
 
         # checked: record all variables created since the first stage
         # all: record the live variables only exist until the current stage.
@@ -96,25 +96,6 @@ class GraphAnalyser:
         checked_variables = LiveVariableVector()
         all_live_variables = LiveVariableVector()
         unique_live_vars = LiveVariableVector()
-
-        def _add_param_or_buf(node, tensor_type):
-            module = get_node_module(node)
-
-            if tensor_type == 'param':
-                iterator = module.named_parameters()
-            elif tensor_type == 'buffer':
-                iterator = module.named_buffers()
-            else:
-                raise ValueError(f"Expected tensor_type to be param or buffer, but got {tensor_type}")
-
-            for name, tensor in iterator:
-                tensor_name = f'{node.name}.{name}'
-
-                if not checked_variables.exists(tensor_name):
-                    live_tensor = LiveVariable(name=tensor_name, meta=tensor.to('meta'), is_inplace=False)
-                    unique_live_vars.append(live_tensor)
-                    checked_variables.append(live_tensor)
-                    all_live_variables.append(live_tensor)
 
         for idx, node in enumerate(compute_nodes):
             #############################
@@ -135,26 +116,19 @@ class GraphAnalyser:
 
             # add the output var
             meta = getattr(node, '_meta_data', None)
-            live_var = LiveVariable(name=node.name, meta=meta, is_inplace=is_inplace)
+            live_var = LiveVariable(name=node.name, node=node, is_inplace=is_inplace)
             if not is_inplace:
                 unique_live_vars.append(live_var)
             checked_variables.append(live_var)
             all_live_variables.append(live_var)
 
-            # add the model parameters
-            if node.op == 'call_module':
-                _add_param_or_buf(node, tensor_type='param')
-                _add_param_or_buf(node, tensor_type='buffer')
-
-            # add this output variable to the checked list
-            checked_variables.append(live_var)
-
             # check if any input is not checked yet
             for arg in node.args:
-                arg_name = str(arg)
+                if not isinstance(arg, Node):
+                    continue
+                arg_name = arg.name
                 if not checked_variables.exists(arg_name):
-                    meta = getattr(node, '_meta_data', None)
-                    live_var_from_arg = LiveVariable(name=arg_name, meta=meta, is_inplace=False)
+                    live_var_from_arg = LiveVariable(name=arg_name, node=node, is_inplace=False)
                     all_live_variables.append(live_var_from_arg)
                     checked_variables.append(live_var_from_arg)
                     unique_live_vars.append(live_var_from_arg)
@@ -167,8 +141,23 @@ class GraphAnalyser:
                               node=node,
                               all_live_vars=all_live_variables.copy(),
                               unique_live_vars=unique_live_vars.copy())
-            liveness_dict[idx] = stage
-        return liveness_dict
+            # if a LiveStage is covered by another LiveStage, we just keep the larger one.
+            replace = False
+            for index, prev_stage in enumerate(liveness_list):
+                all_covered = True
+                for ele in prev_stage.unique_live_vars:
+                    if ele not in stage.unique_live_vars:
+                        all_covered = False
+                        break
+                if all_covered:
+                    replace = True
+                    break
+            if replace:
+                liveness_list[index] = stage
+            else:
+                liveness_list.append(stage)
+
+        return liveness_list
 
     def get_alias_set(self):
         pass

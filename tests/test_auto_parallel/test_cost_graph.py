@@ -1,3 +1,4 @@
+from pickletools import optimize
 import torch
 from torch.fx import GraphModule
 import torch.nn as nn
@@ -6,12 +7,11 @@ import pytest
 from colossalai.fx.proxy import ColoProxy
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
-from colossalai.auto_parallel.solver.conv_handler import ConvHandler, CONV_STRATEGIES_LIST
-from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.auto_parallel.solver.strategies_constructor import StrategiesConstructor
 from colossalai.auto_parallel.solver.cost_graph import CostGraph
+from colossalai.auto_parallel.solver.options import SolverOptions
 from copy import deepcopy
 
 
@@ -54,7 +54,7 @@ def test_cost_graph():
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
 
-    solver_options = {'fast_mode': True}
+    solver_options = SolverOptions(fast=True)
     strategies_constructor = StrategiesConstructor(graph, device_mesh, shape_consistency_manager, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
