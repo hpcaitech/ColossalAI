@@ -4,10 +4,7 @@ from torch.fx import GraphModule
 import torch.nn as nn
 import pytest
 
-from colossalai.fx.proxy import ColoProxy
 from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.auto_parallel.solver.strategies_constructor import StrategiesConstructor
 from colossalai.auto_parallel.solver.cost_graph import CostGraph
@@ -37,7 +34,6 @@ def test_cost_graph():
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     entire_shape = torch.Size((4, 16, 64, 64))
-    shape_consistency_manager = ShapeConsistencyManager()
 
     tracer = ColoTracer()
     model = ConvModel(16, 32)
@@ -55,7 +51,7 @@ def test_cost_graph():
     gm.recompile()
 
     solver_options = SolverOptions(fast=True)
-    strategies_constructor = StrategiesConstructor(graph, device_mesh, shape_consistency_manager, solver_options)
+    strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
     # (x, mul):{(0, 0): 0}

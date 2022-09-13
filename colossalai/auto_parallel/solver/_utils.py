@@ -1,8 +1,9 @@
+from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 import torch
 from torch.fx.node import Node
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
-from typing import Union, Dict, List
+from typing import Union, Dict, List, Optional
 
 
 def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: DeviceMesh,
@@ -31,3 +32,45 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
 
     sharding_spec = ShardingSpec(device_mesh=device_mesh, entire_shape=shape, dim_partition_dict=dim_partition_dict)
     return sharding_spec
+
+
+def generate_resharding_costs(nodes: List[Node],
+                              sharding_specs: List[ShardingSpec],
+                              count_backward: Optional[bool] = True,
+                              dtype: Optional[torch.dtype] = None):
+    '''
+    Compute the resharding costs with this specific strategy.
+
+    Argument:
+        nodes (List[Node]): a list of nodes
+        sharding_spec_for_input(ShardingSpec): a list of ShardingSpec for the nodes.
+        count_backward (Optional[bool]): whether to include the cost of resharding in the backward pass, default is True. False can be used for inference.
+        dtype (Optional[torch.dtype]): the data type for cost calculation, default is None. 
+    '''
+    # The resharding_cost of weight is counted due to sharing weight cases.
+    resharding_costs = {}
+    size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
+
+    # shape consistency manager is a singleton class
+    shape_consistency_manager = ShapeConsistencyManager()
+
+    for input_node, input_spec in zip(nodes, sharding_specs):
+        resharding_costs[input_node] = []
+        for strategy in input_node.strategies_vector:
+            input_sharding_spec = strategy.output_sharding_spec
+            assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
+            # compute the resharding cost during forward phase
+            _, _, resharding_cost_forward = shape_consistency_manager.shape_consistency(input_sharding_spec, input_spec)
+
+            if count_backward:
+                # In backward phase, we should convert grad with target_spec into input_sharding_spec
+                _, _, resharding_cost_backward = shape_consistency_manager.shape_consistency(
+                    input_spec, input_sharding_spec)
+                total_resharding_cost = resharding_cost_forward + resharding_cost_backward
+            else:
+                total_resharding_cost = resharding_cost_forward
+
+            # we need multiply the size of elem dtype to get correct communication cost
+            resharding_cost = total_resharding_cost * size_per_elem_bytes
+            resharding_costs[input_node].append(resharding_cost)
+    return resharding_costs

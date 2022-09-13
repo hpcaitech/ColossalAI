@@ -11,7 +11,7 @@ import math
 import torch
 import operator
 from typing import Dict, List
-from ._utils import generate_sharding_spec
+from ._utils import generate_sharding_spec, generate_resharding_costs
 
 
 class StrategiesConstructor:
@@ -21,12 +21,10 @@ class StrategiesConstructor:
     Args:
         graph (Graph): a Graph object used for analysis and strategy generation.
         device_mesh (DeviceMesh): a DeviceMesh object which contains the meta information about the cluster.
-        shape_consistency_manager (ShapeConsistencyManager): a ShapeConsistencyManager object to make sure the sharding specs are consistent.
         solver_options (SolverOptions): a SolverOptions object which specifies the preferences for plan searching.
     """
 
-    def __init__(self, graph: Graph, device_mesh: DeviceMesh, shape_consistency_manager: ShapeConsistencyManager,
-                 solver_options: SolverOptions):
+    def __init__(self, graph: Graph, device_mesh: DeviceMesh, solver_options: SolverOptions):
         self.graph = graph
         assert graph.owning_module is not None, 'The given graph is not associated with a owning_module'
         self.root_module = self.graph.owning_module
@@ -34,26 +32,7 @@ class StrategiesConstructor:
         self.device_mesh = device_mesh
         self.leaf_strategies = []
         self.strategy_map = {}
-        self.shape_consistency_manager = shape_consistency_manager
         self.solver_options = solver_options
-
-    def _generate_resharding_costs(self, input_nodes, target_sharding_specs):
-        '''
-        Compute the resharding costs with this specific strategy.
-
-        Argument:
-            sharding_spec_for_input(ShardingSpec): ShardingSpec of the input node.
-        '''
-        resharding_costs = {}
-        for input_node, target_sharding_spec in zip(input_nodes, target_sharding_specs):
-            resharding_costs[input_node] = []
-            for strategy in input_node.strategies_vector:
-                input_sharding_spec = strategy.output_sharding_spec
-                assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
-                _, _, resharding_cost = self.shape_consistency_manager.shape_consistency(
-                    input_sharding_spec, target_sharding_spec)
-                resharding_costs[input_node].append(resharding_cost)
-        return resharding_costs
 
     def remove_duplicated_strategy(self, strategies_vector):
         '''
@@ -120,14 +99,13 @@ class StrategiesConstructor:
                 # conv module
                 if submod_type in CONV_MODULE_OP:
                     # use ConvHandler to create sharding strategies for conv module node
-                    conv_handler = ConvHandler(node, self.device_mesh, strategies_vector,
-                                               self.shape_consistency_manager)
+                    conv_handler = ConvHandler(node, self.device_mesh, strategies_vector)
                     conv_handler.register_strategy()
 
                 # linear module
                 elif submod_type in LINEAR_MODULE_OP:
                     # use DotHandler to create sharding strategies for linear module node
-                    dot_handler = DotHandler(node, self.device_mesh, strategies_vector, self.shape_consistency_manager)
+                    dot_handler = DotHandler(node, self.device_mesh, strategies_vector)
                     dot_handler.register_strategy()
 
                 # element-wise module
@@ -158,8 +136,8 @@ class StrategiesConstructor:
                         # TODO: use meta_info_prop to profile memory cost and compute cost
                         compute_cost = node._meta_data.numel()
                         memory_cost = 0
-                        resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                           [input_sharding_spec])
+                        resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                     [input_sharding_spec])
 
                         # to prevent the resharding happening, set their resharding cost to inf.
                         resharding_costs[input_node] = [
@@ -214,8 +192,8 @@ class StrategiesConstructor:
                         # TODO: use meta_info_prop to profile memory cost and compute cost
                         compute_cost = node._meta_data.numel()
                         memory_cost = 0
-                        resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                           [input_sharding_spec])
+                        resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                     [input_sharding_spec])
 
                         sharding_strategy = ShardingStrategy(name,
                                                              output_sharding_spec,
@@ -275,8 +253,8 @@ class StrategiesConstructor:
                         compute_cost = node._meta_data.numel()
                         memory_cost = 0
 
-                        resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                           [input_sharding_spec])
+                        resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                     [input_sharding_spec])
 
                         # to prevent the resharding happening, set their resharding cost to inf.
                         resharding_costs[input_node] = [
@@ -317,8 +295,8 @@ class StrategiesConstructor:
                             # TODO: use meta_info_prop to profile origin memory cost and compute cost, then divide them depending on sharding spec.
                             compute_cost = 0
                             memory_cost = 0
-                            resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                               [new_input_sharding_spec])
+                            resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                         [new_input_sharding_spec])
                             sharding_strategy = ShardingStrategy(name, (output_sharding_spec, output_sharding_spec),
                                                                  compute_cost=compute_cost,
                                                                  memory_cost=memory_cost,
@@ -335,8 +313,8 @@ class StrategiesConstructor:
                             # TODO: use meta_info_prop to profile origin memory cost and compute cost, then divide them depending on sharding spec.
                             compute_cost = 0
                             memory_cost = 0
-                            resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                               [input_sharding_spec])
+                            resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                         [input_sharding_spec])
                             sharding_strategy = ShardingStrategy(name, (output_sharding_spec, output_sharding_spec),
                                                                  compute_cost=compute_cost,
                                                                  memory_cost=memory_cost,
@@ -360,8 +338,8 @@ class StrategiesConstructor:
                         # TODO: use meta_info_prop to profile origin memory cost and compute cost, then divide them depending on sharding spec.
                         compute_cost = 0
                         memory_cost = 0
-                        resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                           [input_sharding_spec])
+                        resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                     [input_sharding_spec])
                         # to prevent the resharding happening, set their resharding cost to inf.
                         resharding_costs[input_tensor_node] = [
                             cost if cost == 0 else math.inf for cost in resharding_costs[input_tensor_node]
@@ -397,8 +375,8 @@ class StrategiesConstructor:
                     output_sharding_spec = input_sharding_specs
                     # TODO: use meta_info_prop to profile memory cost
                     memory_cost = 0
-                    resharding_costs = self._generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                       input_sharding_specs)
+                    resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                 input_sharding_specs)
 
                     # clear the resharding cost for the output node
                     # TODO: we may remove this in final version

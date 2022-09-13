@@ -8,7 +8,6 @@ from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 from colossalai.auto_parallel.solver.op_handler.conv_handler import ConvHandler
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh
 
 
@@ -31,7 +30,6 @@ def test_conv_handler():
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     entire_shape = torch.Size((4, 16, 64, 64))
-    shape_consistency_manager = ShapeConsistencyManager()
 
     tracer = ColoTracer()
     model = ConvModel(16, 32)
@@ -77,10 +75,11 @@ def test_conv_handler():
 
     # generate conv strategy
     strategies_vector = StrategiesVector(node=nodes[2])
-    conv_handler = ConvHandler(node=nodes[2],
-                               device_mesh=device_mesh,
-                               strategies_vector=strategies_vector,
-                               shape_consistency_manager=shape_consistency_manager)
+    conv_handler = ConvHandler(
+        node=nodes[2],
+        device_mesh=device_mesh,
+        strategies_vector=strategies_vector,
+    )
     conv_handler.register_strategy()
     # ['S0S1 = S0R x RS1', 'S1S0 = S1R x RS0', 'S0R = S0R x RR', 'S1R = S1R x RR', 'S0R = S0S1 x S1R', 'S1R = S1S0 x S0R', 'RS1 = RS0 x S0S1', 'RS0 = RS1 x S1S0', 'RR = RS0 x S0R', 'RR = RS1 x S1R', 'RS0 = RR x RS0', 'RS1 = RR x RS1', 'RR = RR x RR', 'S01R = S01R x RR', 'RR = RS01 x S01R']
     strategy_name_list = [strategy.name for strategy in conv_handler.strategies_vector]

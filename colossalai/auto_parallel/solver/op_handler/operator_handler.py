@@ -7,6 +7,7 @@ from typing import Dict, List
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
+from .._utils import generate_resharding_costs, generate_sharding_spec
 
 from ..sharding_strategy import StrategiesVector
 
@@ -17,24 +18,24 @@ class OperatorHandler(ABC):
     '''
     The OperatorHandler is an abstract class used to generate every possible strategies for an operator node.
 
-    Argument:
-        input_node(Node): the input node in node argument list.
-        input_index(int): the index of input node in the node argument list.
-        weight(torch.Tensor): Weight of the node.
-        output_node(Node): Output_node is the output of the node.
-        device_mesh(DeviceMesh): A logical view of a physical mesh.
-        strategies_vector(StrategiesVector): all the strategies generated in this handler will be recorded into the strategies_vector.
-        shape_consistency_manager(ShapeConsistencyManager): ShapeConsistencyManager will give the resharding costs of the different sharding specs. 
+    Args:
+        node (Node): the input node in node argument list.
+        device_mesh (DeviceMesh): A logical view of a physical mesh.
+        strategies_vector (StrategiesVector): all the strategies generated in this handler will be recorded into the strategies_vector.
+        handle_backward (Optional[bool]): whether to consider the backward pass. The default value is True. False can be used for inference.
     '''
 
-    def __init__(self, node: Node, device_mesh: DeviceMesh, strategies_vector: StrategiesVector,
-                 shape_consistency_manager: ShapeConsistencyManager):
+    def __init__(self,
+                 node: Node,
+                 device_mesh: DeviceMesh,
+                 strategies_vector: StrategiesVector,
+                 handle_backward: bool = True):
         self.node = node
         self.predecessor_node = list(node._input_nodes.keys())
         self.successor_node = list(node.users.keys())
         self.device_mesh = device_mesh
         self.strategies_vector = strategies_vector
-        self.shape_consistency_manager = shape_consistency_manager
+        self.handle_backward = handle_backward
 
         # find the module and its parameters associated with this node
         # this can be used to compute the compute/communication/sharding cost
@@ -102,35 +103,23 @@ class OperatorHandler(ABC):
 
         return total_memory_cost, activation_memory_cost, weight_memory_cost
 
-    def _generate_resharding_costs(self, sharding_spec_for_input):
-        '''
-        Compute the resharding costs with this specific strategy.
-
-        Note: The resharding_cost of weight is NOT counted.
-
-        Argument:
-            resharding_costs(Dict[int, List[float]]): The resharding cost generated in this method will be appended into this dictionary. 
-                                                      Resharding_cost[i][j] means the cost of i-th argument in the output node argument list
-                                                      with j-th strategy in its strategies_vector transforms to sharding spec wanted in this
-                                                      strategy.
-            sharding_spec_for_input(ShardingSpec): ShardingSpec of the input node.
-        '''
+    def _generate_resharding_costs(self, sharding_specs):
         # The resharding_cost of weight is counted due to sharing weight cases.
-        resharding_costs = {}
         dtype = self.node._meta_data.dtype
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        for input_node, input_spec in zip(self.predecessor_node, sharding_spec_for_input):
-            resharding_costs[input_node] = []
-            for strategy in input_node.strategies_vector:
-                input_sharding_spec = strategy.output_sharding_spec
-                assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
-                # compute the resharding cost during forward phase
-                _, _, resharding_cost_forward = self.shape_consistency_manager.shape_consistency(
-                    input_sharding_spec, input_spec)
-                # In backward phase, we should convert grad with target_spec into input_sharding_spec
-                _, _, resharding_cost_backward = self.shape_consistency_manager.shape_consistency(
-                    input_spec, input_sharding_spec)
-                # we need multiply the size of elem dtype to get correct communication cost
-                resharding_cost = (resharding_cost_forward + resharding_cost_backward) * size_per_elem_bytes
-                resharding_costs[input_node].append(resharding_cost)
-        return resharding_costs
+        nodes = self.predecessor_node
+        return generate_resharding_costs(nodes=nodes,
+                                         sharding_specs=sharding_specs,
+                                         count_backward=self.handle_backward,
+                                         dtype=dtype)
+
+    def _generate_sharding_spec(self, input_: torch.Tensor, dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
+        return generate_sharding_spec(input_=input_,
+                                      device_mesh=self.device_mesh,
+                                      dim_partition_dict=dim_partition_dict)
+
+    @abstractmethod
+    def _generate_compute_cost(self, *args, **kwargs):
+        """
+        Compute the flops involved in the node.
+        """
+        pass
