@@ -150,7 +150,6 @@ def _run_offload_codegen_torch11(rank):
     gpc.destroy()
 
 
-@pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
 @pytest.mark.skip(reason="currently torch11 ColoGraphModule is not implemented")
 def test_act_ckpt_python_code_torch11():
     mp.spawn(_run_offload_codegen_torch11, nprocs=1)
