@@ -381,7 +381,7 @@ def solver_rotor(gm: ColoGraphModule,
                  mem_limit: int,
                  mem_slots: int = 500,
                  cnode: List[str] = None,
-                 eps: float = 0.00) -> ColoGraphModule:
+                 eps: float = 0.02) -> ColoGraphModule:
     """solver that automatically find activation checkpoint in rotor's manner
 
     Args:
@@ -407,6 +407,4 @@ def solver_rotor(gm: ColoGraphModule,
 
     # set __sequence__ attribute to GraphModule
     setattr(gm, "__sequence__", sequence)
-    print(chain)
-    print(node_list)
     return gm
