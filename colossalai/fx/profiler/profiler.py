@@ -46,9 +46,6 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
         Phase.BACKWARD: 0,
     }
 
-    # `stage` will mark the stage of autograd from outside scope.
-    stage = Phase.FORWARD
-
     # FlopTensor not only get the flop statistics of a single node,
     # it also build a full autograd graph for this node.
     # This makes sure we can analyze the dependencies of memory, and
@@ -85,9 +82,9 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
 
             # run aten for backend=CPU but actually on backend=Meta
             out = func(*args, **kwargs)
-            flop_count[stage] += flop_mapping[func](args, normalize_tuple(out))
+            flop_count[phase] += flop_mapping[func](args, normalize_tuple(out))
             node.meta['out'] = normalize_tuple(out)
-            node.meta['stage'] = stage
+            node.meta['phase'] = phase
 
             def wrap(x):
                 return FlopTensor(x.to('meta')) if isinstance(x, torch.Tensor) else x
@@ -121,7 +118,7 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
             x._node = subgraph.create_node('placeholder',
                                            'placeholder', (subgraph._root,),
                                            name=subgraph._graph_namespace.create_name('input', x._tensor))
-            x._node.meta['stage'] = Phase.PLACEHOLDER
+            x._node.meta['phase'] = Phase.PLACEHOLDER
             x._node.meta['out'] = (x._tensor,)
 
     tree_map(set_placeholder, args)
@@ -135,6 +132,8 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
     def unpack(x):
         return x
 
+    # `phase` will mark the phase of autograd from outside scope.
+    phase = Phase.FORWARD
     # mark saved tensors with saved_tensors_hooks
     with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
         if isinstance(target, str):
@@ -147,9 +146,9 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
     # If the output is not a floating point `torch.Tensor` or it does not
     # requires grad, then we should not run backward for this node.
     if is_autogradable(out) and out.requires_grad:
-        stage = Phase.LOSS
+        phase = Phase.LOSS
         loss = out.sum()
-        stage = Phase.BACKWARD
+        phase = Phase.BACKWARD
         loss.backward()
 
     graph_info = autograd_graph_analysis(subgraph)

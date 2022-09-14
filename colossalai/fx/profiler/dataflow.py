@@ -49,23 +49,23 @@ class GraphInfo:
 
 
 def is_forward(n: Node):
-    assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Phase.FORWARD
+    assert 'phase' in n.meta, f'Node meta of {n} has no key `phase`!'
+    return n.meta['phase'] == Phase.FORWARD
 
 
 def is_loss(n: Node):
-    assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Phase.LOSS
+    assert 'phase' in n.meta, f'Node meta of {n} has no key `phase`!'
+    return n.meta['phase'] == Phase.LOSS
 
 
 def is_placeholder(n: Node):
-    assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Phase.PLACEHOLDER
+    assert 'phase' in n.meta, f'Node meta of {n} has no key `phase`!'
+    return n.meta['phase'] == Phase.PLACEHOLDER
 
 
 def is_backward(n: Node):
-    assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Phase.BACKWARD
+    assert 'phase' in n.meta, f'Node meta of {n} has no key `phase`!'
+    return n.meta['phase'] == Phase.BACKWARD
 
 
 def is_saved(n: Node):
@@ -74,7 +74,7 @@ def is_saved(n: Node):
 
 def autograd_graph_analysis(graph: Graph) -> GraphInfo:
     """Analyze the autograd node dependencies and find out the memory usage.
-    Basically the input graph should have all nodes marked for keyword `stage`.
+    Basically the input graph should have all nodes marked for keyword `phase`.
     Nodes should have attribute `out` indicating the output of each node.
     ============================================================================
     Placeholder ---->   p           o     <---- We need to keep track of grad out
@@ -91,7 +91,7 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
                                l
     =============================================================================                     
     Args:
-        graph (Graph): The autograd graph with nodes marked for keyword `stage`.
+        graph (Graph): The autograd graph with nodes marked for keyword `phase`.
 
     Returns:
         graph_info (GraphInfo): Meta information for the dataflow.
