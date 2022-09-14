@@ -90,7 +90,7 @@ def _run_offload_codegen(rank):
     gm.recompile()
     print(gm)
 
-    # assert we have all the components for saved_tensors_hooks
+    # assert we have all the components
     code = graph.python_code("self").src
     assert "def pack_hook(self, x):" in code and \
     "def unpack_hook(self, packed):" in code and \
@@ -100,6 +100,60 @@ def _run_offload_codegen(rank):
 
     _test_fwd_and_bwd(model, gm, data)
     gpc.destroy()
+
+
+@pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
+def test_act_ckpt_codegen():
+    mp.spawn(_run_offload_codegen, nprocs=1)
+
+
+def _run_offload_codegen_torch11(rank):
+    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
+    colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
+
+    # build model and input
+    model = MyNet().cuda()
+    data = torch.rand(4, 4).cuda()
+
+    # trace the module and replace codegen
+    tracer = ColoTracer(trace_act_ckpt=True)
+    graph = tracer.trace(model)
+
+    # replace a bound method of an object
+    graph._python_code = python_code_with_activation_checkpoint.__get__(graph)
+
+    # annotate the activation offload part
+    # also annotate the activation_checkpoint so we could test both types
+    # of input offload
+    for node in graph.nodes:
+        if node.name == "linear2":
+            setattr(node, "activation_offload", True)
+        if node.name == "linear3":
+            setattr(node, "activation_offload", True)
+            setattr(node, "activation_checkpoint", [0])
+        if node.name == "linear4":
+            setattr(node, "activation_checkpoint", [0])
+
+    gm = ColoGraphModule(copy.deepcopy(model), graph)
+    gm.recompile()
+    print(gm)
+
+    # assert we have all the components
+    code = graph.python_code("self").src
+    assert "def pack_hook(self, x):" in code and \
+    "def unpack_hook(self, packed):" in code and \
+    "setattr(linear1, 'offload', True)" in code and \
+    "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook, self.unpack_hook):" in code and \
+    "colossalai.utils.activation_checkpoint.checkpoint(self.checkpoint_0, True, linear2, use_reentrant=False)" in code
+
+    _test_fwd_and_bwd(model, gm, data)
+    gpc.destroy()
+
+
+@pytest.mark.skipif(with_codegen, reason='torch version is equal to or higher than 1.12.0')
+@pytest.mark.skip(reason="currently torch11 ColoGraphModule is not implemented")
+def test_act_ckpt_python_code_torch11():
+    mp.spawn(_run_offload_codegen_torch11, nprocs=1)
 
 
 if __name__ == "__main__":
