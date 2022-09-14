@@ -444,7 +444,7 @@ class BatchNormHandler(OperatorHandler):
         Generate every possible strategies for a BatchNorm node, and record all strategies into the strategies_vector.
 
         Example:
-            norm_handler = BatchNormHandler(node, self.device_mesh, strategies_vector,
+            norm_handler = BatchNormHandler(node,  strategies_vector,
                                                self.shape_consistency_manager)
             norm_handler.register_strategy()
             for strategy in norm_handler.strategies_vector:
