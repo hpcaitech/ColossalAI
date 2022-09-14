@@ -5,7 +5,7 @@ from torch.fx import Graph, Node
 from .memory import activation_size
 
 
-class Stage(Enum):
+class Phase(Enum):
     FORWARD = 0
     LOSS = 1
     BACKWARD = 2
@@ -50,22 +50,22 @@ class GraphInfo:
 
 def is_forward(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.FORWARD
+    return n.meta['stage'] == Phase.FORWARD
 
 
 def is_loss(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.LOSS
+    return n.meta['stage'] == Phase.LOSS
 
 
 def is_placeholder(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.PLACEHOLDER
+    return n.meta['stage'] == Phase.PLACEHOLDER
 
 
 def is_backward(n: Node):
     assert 'stage' in n.meta, f'Node meta of {n} has no key `stage`!'
-    return n.meta['stage'] == Stage.BACKWARD
+    return n.meta['stage'] == Phase.BACKWARD
 
 
 def is_saved(n: Node):
@@ -124,5 +124,13 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
                 graph_info.fwd_mem_tmp += activation_size(n.meta['out'])
         elif is_backward(n):
             if len(n.users):
-                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, activation_size(n.meta['out']))
+                # liveness analysis is only used in backward
+                deps[n] = len(n.users)
+                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, _peak_memory(deps))
+                for input_n in n.all_input_nodes:
+                    if input_n in deps:
+                        deps[input_n] -= 1
+            else:
+                # basically a backward node without user is a `grad_out` node
+                graph_info.bwd_mem_out += activation_size(n.meta['out'])
     return graph_info

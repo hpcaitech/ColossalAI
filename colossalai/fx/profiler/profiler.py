@@ -5,7 +5,7 @@ import torch
 from torch.fx import Graph, Node
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
-from .dataflow import GraphInfo, autograd_graph_analysis, Stage
+from .dataflow import GraphInfo, autograd_graph_analysis, Phase
 from .memory import WEIRD_OPS, activation_size
 from .tensor import MetaTensor
 from .opcount import flop_mapping
@@ -41,13 +41,13 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
 
     # `flop_count`` serves as a global dictionary to store results.
     flop_count = {
-        Stage.FORWARD: 0,
-        Stage.LOSS: 0,
-        Stage.BACKWARD: 0,
+        Phase.FORWARD: 0,
+        Phase.LOSS: 0,
+        Phase.BACKWARD: 0,
     }
 
     # `stage` will mark the stage of autograd from outside scope.
-    stage = Stage.FORWARD
+    stage = Phase.FORWARD
 
     # FlopTensor not only get the flop statistics of a single node,
     # it also build a full autograd graph for this node.
@@ -121,7 +121,7 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
             x._node = subgraph.create_node('placeholder',
                                            'placeholder', (subgraph._root,),
                                            name=subgraph._graph_namespace.create_name('input', x._tensor))
-            x._node.meta['stage'] = Stage.PLACEHOLDER
+            x._node.meta['stage'] = Phase.PLACEHOLDER
             x._node.meta['out'] = (x._tensor,)
 
     tree_map(set_placeholder, args)
@@ -147,13 +147,13 @@ def _profile(target: Callable, *args, inplace=False, **kwargs) -> Tuple[Any, ...
     # If the output is not a floating point `torch.Tensor` or it does not
     # requires grad, then we should not run backward for this node.
     if is_autogradable(out) and out.requires_grad:
-        stage = Stage.LOSS
+        stage = Phase.LOSS
         loss = out.sum()
-        stage = Stage.BACKWARD
+        stage = Phase.BACKWARD
         loss.backward()
 
     graph_info = autograd_graph_analysis(subgraph)
-    graph_info.fwd_flop, graph_info.bwd_flop = flop_count[Stage.FORWARD], flop_count[Stage.BACKWARD]
+    graph_info.fwd_flop, graph_info.bwd_flop = flop_count[Phase.FORWARD], flop_count[Phase.BACKWARD]
 
     def unwrap(x):
         return x._tensor.to('meta') if isinstance(x, FlopTensor) else x
