@@ -2,6 +2,7 @@ from typing import List, Tuple
 import torch
 from torch.fx import GraphModule, Node
 from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.fx.profiler import parameter_size
 import math
 from .linearize import linearize
 from .utils import *
@@ -380,7 +381,7 @@ def solver_rotor(gm: ColoGraphModule,
                  mem_limit: int,
                  mem_slots: int = 500,
                  cnode: List[str] = None,
-                 eps: float = 0.0) -> ColoGraphModule:
+                 eps: float = 0.00) -> ColoGraphModule:
     """solver that automatically find activation checkpoint in rotor's manner
 
     Args:
@@ -396,6 +397,7 @@ def solver_rotor(gm: ColoGraphModule,
     """
 
     node_list = linearize(gm, cnode)
+    mem_limit -= parameter_size(gm)
     mem_unit = mem_limit * (1.0 - eps) // mem_slots
     MetaInfoProp(gm).run(data)
     chain: Chain = _construct_chain(node_list, data, mem_unit)
@@ -405,4 +407,6 @@ def solver_rotor(gm: ColoGraphModule,
 
     # set __sequence__ attribute to GraphModule
     setattr(gm, "__sequence__", sequence)
+    print(chain)
+    print(node_list)
     return gm

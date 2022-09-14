@@ -5,8 +5,8 @@ import torch
 from torch.fx import Graph, Node
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
-from .dataflow import autograd_graph_analysis, Stage
-from .memory import WEIRD_OPS
+from .dataflow import GraphInfo, autograd_graph_analysis, Stage
+from .memory import WEIRD_OPS, activation_size
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 
@@ -180,6 +180,11 @@ def profile_function(target: 'Target') -> Callable:
 
         # If there is an argument that this `call_function` is inplace, we should
         # skip the autograd profiling.
+        if kwargs.get('inplace', False):
+            args = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, args)
+            kwargs = tree_map(lambda x: x.to('meta') if isinstance(x, torch.Tensor) else x, kwargs)
+            out = func(*args, **kwargs)
+            return out, GraphInfo(out.numel(), out.numel(), activation_size((args, kwargs)), 0, activation_size(out), 0)
         out, meta = _profile(func, *args, **kwargs)
         return out, meta
 
@@ -222,6 +227,11 @@ def profile_module(module: torch.nn.Module) -> Callable:
 
         # If there is an argument that this `call_module` is inplace, we should
         # skip the autograd profiling.
+        if getattr(module, 'inplace', False):
+            args = tree_map(lambda x: x.to('meta'), args)
+            kwargs = tree_map(lambda x: x.to('meta'), kwargs)
+            out = func(*args, **kwargs)
+            return out, GraphInfo(out.numel(), out.numel(), activation_size((args, kwargs)), 0, activation_size(out), 0)
         out, meta = _profile(func, *args, inplace=getattr(module, 'inplace', False), **kwargs)
         return out, meta
 

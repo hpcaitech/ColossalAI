@@ -124,12 +124,5 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
                 graph_info.fwd_mem_tmp += activation_size(n.meta['out'])
         elif is_backward(n):
             if len(n.users):
-                # liveness analysis is only used in backward
-                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, _peak_memory(deps))
-                deps[n] = len(n.users)
-                for input_n in n.all_input_nodes:
-                    if input_n in deps:
-                        deps[input_n] -= 1
-            else:
-                graph_info.bwd_mem_out = activation_size(n.meta['out'])
+                graph_info.bwd_mem_tmp = max(graph_info.bwd_mem_tmp, activation_size(n.meta['out']))
     return graph_info
