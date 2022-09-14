@@ -351,7 +351,7 @@ def emit_code_with_nested_activation_checkpoint(body, ckpt_func, nodes, emit_nod
                     pack_hook, unpack_hook = _gen_saved_tensors_hooks()
                     ckpt_func.insert(0, "\n".join([pack_hook, unpack_hook]) + "\n")
 
-                for par in node._input_nodes:
+                for par in node.all_input_nodes:
                     # annotate the input tensor for pack hook
                     body.append(f"setattr({repr(par)}, 'offload', True)\n")
 
@@ -414,7 +414,7 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
                     pack_hook, unpack_hook = _gen_saved_tensors_hooks()
                     ckpt_func.insert(0, "\n".join([pack_hook, unpack_hook]) + "\n")
 
-                for par in node._input_nodes:
+                for par in node.all_input_nodes:
                     # annotate the input tensor for pack hook
                     body.append(f"setattr({repr(par)}, 'offload', True)\n")
 
