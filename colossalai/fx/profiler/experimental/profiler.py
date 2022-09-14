@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Callable, Any, Dict, Tuple
 import torch
 from torch.fx.node import Argument, Target
@@ -5,6 +6,44 @@ from . import meta_profiler_function, meta_profiler_module
 from ..memory import activation_size, INPLACE_METHOD, NON_INPLACE_METHOD, INPLACE_OPS
 
 __all__ = ['profile_function', 'profile_module', 'profile_method']
+
+
+# this is for compatibility use
+@dataclass
+class GraphInfo:
+    """
+    GraphInfo is a dataclass for MetaInfo, which measures
+    the execution memory cost and FLOPs with `MetaTensor`.
+    The dataflow analysis is conducted on a single node of the FX graph.
+    ============================================================================
+                            -------------------------------
+                            |            Node             |
+    [fwd_in] are       ---> | [fwd_in]          [bwd_out] |    <----- [bwd_out] is marks the memory for `grad_out`
+    placeholders saved for  |     | \__________     |     |
+    backward.               |     |            \    |     |
+                            | [fwd_tmp] ------> [bwd_tmp] |    <-----
+                            |     |  \_________     |     |    [bwd_tmp] marks the peak memory 
+                            |    / \           \    |     |    in backward pass.
+    [x] is not counted ---> | [x]  [fwd_tmp] -> [bwd_tmp] |    <-----
+    in [fwd_tmp] because    |  |       |  \_____    |     |
+    it is not saved for     |  |       |        \   |     |
+    backward.               -------------------------------
+    ============================================================================
+    Attributes:
+        fwd_flop (int): The forward FLOPs of a certain node
+        bwd_flop (int): The backward FLOPs of a certain node.
+        fwd_mem_in (int): See the above illustration.
+        fwd_mem_tmp (int): See the above illustration.
+        bwd_mem_tmp (int): See the above illustration.
+        bwd_mem_out (int): See the above illustration.
+    """
+    fwd_flop: int = 0
+    bwd_flop: int = 0
+    fwd_mem_in: int = 0
+    fwd_mem_tmp: int = 0
+    bwd_mem_tmp: int = 0
+    bwd_mem_out: int = 0
+
 
 CALL_FUNCTION_MSG = \
 """
@@ -59,7 +98,7 @@ def profile_function(target: 'Target') -> Callable:
         else:
             profiler = meta_profiler_function.get(target.__name__)
         fwd_flop, _ = profiler(*args, **kwargs)
-        return out, (fwd_flop, fwd_flop * 2), (fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
+        return out, GraphInfo(fwd_flop, fwd_flop * 2, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
 
     f.__name__ = target.__name__
     func = target
@@ -88,7 +127,7 @@ def profile_method(target: 'Target') -> Callable:
         # call_method has no parameters and are MOSTLY(?) inplace, and has no FLOPs or MACs.
         fwd_tmp = 0 if target in INPLACE_METHOD else activation_size(out)
         fwd_out = 0 if target not in INPLACE_METHOD else activation_size(out)
-        return out, (0, 0), (fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
+        return out, GraphInfo(0, 0, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
 
     return f
 
@@ -118,7 +157,7 @@ def profile_module(module: torch.nn.Module) -> Callable:
             fwd_out = activation_size(out)
         profiler = meta_profiler_module.get(type(module))
         fwd_flop, _ = profiler(module, *args, **kwargs)
-        return out, (fwd_flop, fwd_flop * 2), (fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
+        return out, GraphInfo(fwd_flop, fwd_flop * 2, fwd_tmp, fwd_out, fwd_tmp + fwd_out, 0)
 
     f.__name__ = module.__class__.__name__
     func = module.forward

@@ -14,12 +14,10 @@ if META_COMPATIBILITY:
 
     INPLACE_ATEN = [
         aten.add_.Tensor,
-        aten.add.Tensor,
         aten.sub_.Tensor,
         aten.div_.Tensor,
         aten.div_.Scalar,
         aten.mul_.Tensor,
-        aten.mul.Tensor,
         aten.bernoulli_.float,
 
     # inplace reshaping
