@@ -1,11 +1,11 @@
-from typing import List, Set, Tuple, Dict
+from typing import List, Tuple
 import torch
 from torch.fx import GraphModule, Node
 from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.fx.profiler import parameter_size
 import math
 from .linearize import linearize
 from .utils import *
-from colossalai.fx.profiler import profile_function, profile_module
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 
@@ -25,8 +25,8 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
     bw = chain.bweight    ## backward time, not used
     cw = chain.cweight + [0]    ## size of x (and of y)
     cbw = chain.cbweight + [0]    ## size of xbar
-    fwd_tmp = chain.fwd_tmp + [0]
-    bwd_tmp = chain.bwd_tmp + [0]
+    fwd_mem_tmp = chain.fwd_mem_tmp + [0]
+    bwd_mem_tmp = chain.bwd_mem_tmp + [0]
 
     # Build table
     opt = [[{} for _ in range(chain.length + 1)] for _ in range(mmax + 1)]
@@ -37,7 +37,7 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
     for m in range(mmax + 1):
         for i in range(chain.length + 1):
             #lmax-lmin = 0
-            limit = max(cw[i + 1] + cbw[i + 1] + fwd_tmp[i], cw[i + 1] + cbw[i + 1] + bwd_tmp[i])
+            limit = max(cw[i + 1] + cbw[i + 1] + fwd_mem_tmp[i], cw[i + 1] + cbw[i + 1] + bwd_mem_tmp[i])
             if m >= limit:    ## Equation (1)
                 opt[m][i][i] = fw[i] + bw[i]
             else:
@@ -49,9 +49,9 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
             for i in range(chain.length + 1 - d):
                 # for idx in range(i+1, chain.length + 1):
                 idx = i + d
-                mmin = cw[idx + 1] + cw[i + 1] + fwd_tmp[i]
+                mmin = cw[idx + 1] + cw[i + 1] + fwd_mem_tmp[i]
                 if idx > i + 1:
-                    mmin = max(mmin, cw[idx + 1] + max(cw[j] + cw[j + 1] + fwd_tmp[j] for j in range(i + 1, idx)))
+                    mmin = max(mmin, cw[idx + 1] + max(cw[j] + cw[j + 1] + fwd_mem_tmp[j] for j in range(i + 1, idx)))
                 if m < mmin:
                     opt[m][i][idx] = float("inf")
                 else:
@@ -165,7 +165,7 @@ def _fwd_xbar(node: List[Node]) -> int:
 
     xbar = 0
     for n in node:
-        xbar += n.fwd_tmp + n.fwd_out
+        xbar += n.meta['fwd_mem_tmp'] + n.meta['fwd_mem_out']
     return xbar
 
 
@@ -183,7 +183,7 @@ def _fwd_time(node: List[Node]) -> int:
     fwd_time = 0
     for n in node:
         # minimum flop count is needed
-        fwd_time += max(n.fwd_flop, 1)
+        fwd_time += max(n.meta['fwd_flop'], 1)
     return fwd_time
 
 
@@ -201,11 +201,11 @@ def _bwd_time(node: List[Node]) -> int:
     bwd_time = 0
     for n in node:
         # minimum flop count is needed
-        bwd_time += max(n.bwd_flop, 1)
+        bwd_time += max(n.meta['bwd_flop'], 1)
     return bwd_time
 
 
-def _get_bwd_tmp(node: List[Node]) -> int:
+def _get_bwd_mem_tmp(node: List[Node]) -> int:
     """Get the backward temp memory of a node
 
     Args:
@@ -218,29 +218,32 @@ def _get_bwd_tmp(node: List[Node]) -> int:
 
     def _get_deps_size():
         deps_size = 0
-        for key in deps.keys():
-            deps_size += key.bwd_out
+        for k, v in deps.items():
+            if v > 0:
+                deps_size += k.meta['bwd_mem_out']
 
         return deps_size
 
-    bwd_tmp = 0
+    bwd_mem_tmp = 0
     deps = {}
 
     # add all the users for last node into deps,
     # as those nodes' gradient out will be stored in memory
-    for son in node[-1].users:
-        deps[son] = 1
+    for child in node[-1].users:
+        deps[child] = 1
     for n in reversed(node):
-        bwd_tmp = max(bwd_tmp, _get_deps_size() + n.bwd_tmp)
-        deps[n] = len(n._input_nodes)
-        for son in n.users:
-            deps[son] -= 1
+        bwd_mem_tmp = max(bwd_mem_tmp, _get_deps_size() + n.meta['bwd_mem_tmp'])
+
+        deps[n] = len(n.all_input_nodes)
+        for child in n.users:
+            if child in deps:
+                deps[child] -= 1
 
         for key in list(deps.keys()):
             if deps[key] == 0:
                 del deps[key]
 
-    return bwd_tmp
+    return bwd_mem_tmp
 
 
 def _construct_chain(node_list: List[List[Node]], data, mem_unit: int) -> Chain:
@@ -267,7 +270,7 @@ def _construct_chain(node_list: List[List[Node]], data, mem_unit: int) -> Chain:
         bwd_time.append(_bwd_time(node))
         x_sizes.append(_compute_output_size(node))
         xbar_sizes.append(max(x_sizes[-1], _fwd_xbar(node)))
-        tmp_bwd.append(_get_bwd_tmp(node))
+        tmp_bwd.append(_get_bwd_mem_tmp(node))
 
         # if a node with only one inplace op, we need to let x_bar = 0
         if len(node) == 1 and _get_inplace(node[0]):
@@ -394,6 +397,7 @@ def solver_rotor(gm: ColoGraphModule,
     """
 
     node_list = linearize(gm, cnode)
+    mem_limit -= parameter_size(gm)
     mem_unit = mem_limit * (1.0 - eps) // mem_slots
     MetaInfoProp(gm).run(data)
     chain: Chain = _construct_chain(node_list, data, mem_unit)
