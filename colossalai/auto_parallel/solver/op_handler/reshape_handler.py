@@ -8,7 +8,7 @@ import math
 
 class ReshapeHandler(OperatorHandler):
     """
-    A OperatorHandler which deals with the sharding strategies of Reshape Operator, such as torch.reshape, torch.flatten, etc.
+    An OperatorHandler which deals with the sharding strategies of Reshape Operator, such as torch.reshape, torch.flatten, etc.
     """
 
     def __init__(self, *args, **kwargs):
@@ -37,7 +37,7 @@ class ReshapeHandler(OperatorHandler):
             sharding_spec_checklist.append(input_sharding_spec)
             dim_partition_dict_for_output = {}
             output_sharding_spec = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
-            name = f'{input_sharding_spec.sharding_sequence} -> FULLY REPLICATE'
+            name = f'{input_sharding_spec.sharding_sequence} -> FULLY REPLICATED'
             # TODO: use meta_info_prop to profile memory cost and compute cost
             compute_cost = 0
             memory_cost = self.node._meta_data.numel()

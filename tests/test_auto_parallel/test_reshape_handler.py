@@ -37,7 +37,6 @@ def test_conv_handler():
     #     return flatten
     graph = tracer.trace(root=model, meta_args=input_sample)
     gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
     # [x, conv, flatten, output]
     nodes = [node for node in gm.graph.nodes]
     solver_options = SolverOptions(fast=True)
