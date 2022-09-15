@@ -2,8 +2,9 @@ import torch
 import torch.distributed as dist
 from enum import Enum
 from torch.optim import Optimizer
+from torch.nn import Parameter
 from colossalai.nn.parallel.data_parallel import ZeroDDP
-from typing import Dict
+from typing import Dict, Tuple, Set
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
@@ -51,35 +52,29 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
                  optim: Optimizer,
                  module: ZeroDDP,
                  gpu_margin_mem_ratio: float = 0.0,
-                 initial_scale: float = 2 ** 32,
+                 initial_scale: float = 2**32,
                  min_scale: float = 1,
                  growth_factor: float = 2,
                  backoff_factor: float = 0.5,
                  growth_interval: int = 1000,
                  hysteresis: int = 2,
-                 max_scale: float = 2 ** 32):
+                 max_scale: float = 2**32):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManagerV2 = self.gemini_manager.chunk_manager
         self.optim_state = OptimState.UNSCALED
-        self.fake_param_list = list()
-        self.param_to_chunk32: Dict[torch.nn.Parameter, ChunkV2] = dict()
-        self.chunk32_to_chunk16: Dict[ChunkV2, ChunkV2] = dict()
+        self.param_to_range: Dict[Parameter, Tuple[int, int]] = dict()
+        self.param_to_chunk32: Dict[Parameter, ChunkV2] = dict()
+        self.chunk16_set: Set[ChunkV2] = set()
 
         for p, fp32_p in zip(module.parameters(), module.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
             chunk_32.init_pair(chunk_16)
-            if chunk_32 in self.chunk32_to_chunk16:
-                continue
-
-            specious_param = torch.nn.Parameter(torch.empty([0]))
-            # specious_param.data = chunk_32.payload[: chunk_32.get_valid_length()]
-            self.fake_param_list.append(specious_param)
-            self.param_to_chunk32[specious_param] = chunk_32
-            self.chunk32_to_chunk16[chunk_32] = chunk_16
+            if chunk_16 not in self.chunk16_set:
+                self.chunk16_set.add(chunk_16)
 
         self.__init__optimizer()
 
@@ -107,19 +102,24 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
         self._register_states = disposable(self._register_states_)
 
     def _set_grad_ptr(self):
-        for fake_param in self.fake_param_list:
-            chunk32 = self.param_to_chunk32[fake_param]
-            chunk16 = self.chunk32_to_chunk16[chunk32]
-            fake_param.data = chunk16.payload[: chunk16.get_valid_length()]
-            fake_param.grad = fake_param.data
-            fake_param.data = chunk32.payload[: chunk32.get_valid_length()]
+        for group in self.param_groups:
+            for fake_param in group['params']:
+                chunk32 = self.param_to_chunk32[fake_param]
+                begin, end = self.param_to_range[fake_param]
+                chunk16 = chunk32.paired_chunk
+
+                fake_param.data = chunk16.payload[begin:end]
+                fake_param.grad = fake_param.data
+                fake_param.data = chunk32.payload[begin:end]
 
     def _update_fp16_params(self):
         none_tensor = torch.empty([0])
-        for fake_param in self.fake_param_list:
-            assert fake_param.grad is None
-            fake_param.data = none_tensor
-        for _, chunk16 in self.chunk32_to_chunk16.items():
+        for group in self.param_groups:
+            for fake_param in group['params']:
+                assert fake_param.grad is None
+                fake_param.data = none_tensor
+
+        for chunk16 in self.chunk16_set:
             chunk16.optim_update()
 
     def _check_overflow(self):
@@ -188,19 +188,30 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
             available_cuda_margin_mem = self.gemini_manager.cuda_margin_mem * self.gpu_margin_mem_ratio
             fp32_params_available_cuda_margin_mem = available_cuda_margin_mem / self.optim.num_fp32_shards_per_param
             fp32_params_used_cuda_margin_mem = 0
-            for fake_param, (chunk32, chunk16) in zip(self.fake_param_list,
-                                                      self.chunk32_to_chunk16.items()):
-                if fp32_params_used_cuda_margin_mem + chunk32.payload_mem < fp32_params_available_cuda_margin_mem:
-                    self.chunk_manager.move_chunk(chunk32, get_current_device())
-                    # stores grad now
-                    self.chunk_manager.move_chunk(chunk16, get_current_device())
-                    self.module.set_chunk_grad_device(chunk16, get_current_device())
-                    fp32_params_used_cuda_margin_mem += chunk32.payload_mem
 
-                    state = self.optim.state[fake_param]
-                    for k, v in state.items():
-                        if isinstance(v, torch.Tensor):
-                            state[k] = v.to(get_current_device())
+            for group in self.param_groups:
+                for fake_param in group['params']:
+                    chunk32 = self.param_to_chunk32[fake_param]
+                    chunk16 = chunk32.paired_chunk
+
+                    if chunk32.device_type == 'cuda':
+                        continue
+
+                    if fp32_params_used_cuda_margin_mem + chunk32.payload_mem < fp32_params_available_cuda_margin_mem:
+                        self.chunk_manager.move_chunk(chunk32, get_current_device())
+                        # stores grad now
+                        self.chunk_manager.move_chunk(chunk16, get_current_device())
+                        self.module.set_chunk_grad_device(chunk16, get_current_device())
+                        fp32_params_used_cuda_margin_mem += chunk32.payload_mem
+
+            for group in self.param_groups:
+                for fake_param in group['params']:
+                    chunk32 = self.param_to_chunk32[fake_param]
+                    if chunk32.device_type == 'cuda':
+                        state = self.optim.state[fake_param]
+                        for k, v in state.items():
+                            if isinstance(v, torch.Tensor):
+                                state[k] = v.to(get_current_device())
 
     def _register_states_(self):
         for group in self.optim.param_groups:
@@ -217,5 +228,26 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
         raise NotImplementedError
 
     def __init__optimizer(self):
-        assert len(self.optim.param_groups) == 1, "can't support multiple parameter groups yet"
-        self.optim.param_groups[0]['params'] = self.fake_param_list
+
+        def get_range_pair(local_chunk: ChunkV2, local_param: Parameter):
+            param_info = local_chunk.tensors_info[local_param]
+            begin = max(0, param_info.offset - local_chunk.shard_begin)
+            end = min(local_chunk.shard_size, param_info.end - local_chunk.shard_begin)
+            return begin, end
+
+        for group in self.optim.param_groups:
+            fake_params_list = list()
+
+            for param in group['params']:
+                chunk16 = self.chunk_manager.get_chunk(param)
+                range_pair = get_range_pair(chunk16, param)
+                if range_pair[0] >= range_pair[1]:
+                    continue
+
+                fake_param = torch.nn.Parameter(torch.empty([0]))
+                self.param_to_chunk32[fake_param] = chunk16.paired_chunk
+                self.param_to_range[fake_param] = range_pair
+
+                fake_params_list.append(fake_param)
+
+            group['params'] = fake_params_list
