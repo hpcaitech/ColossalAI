@@ -35,7 +35,7 @@ class CachedParamMgr(torch.nn.Module):
         self,
         weight: torch.Tensor,
         cuda_row_num: int = 0,
-        buffer_size: int = 50_000,
+        buffer_size: int = 0,
         pin_weight: bool = False,
         evict_strategy: EvictionStrategy = EvictionStrategy.DATASET,
         use_cpu_caching=False,
@@ -211,7 +211,7 @@ class CachedParamMgr(torch.nn.Module):
                     freq_value, preload_cpu_ids = torch.topk(ids_freq_mapping, preload_row_num, dim=0, largest=True)
                     preload_cuda_row_idxs = torch.arange(preload_row_num).to(self._cache_dev)
                 else:
-                    preload_cpu_ids = torch.arange(preload_row_num)
+                    preload_cpu_ids = torch.arange(preload_row_num, device=self.weight.device)
                     preload_cuda_row_idxs = preload_cpu_ids.to(self._cache_dev)
 
                 if self.buffer_size > 0:
@@ -304,8 +304,10 @@ class CachedParamMgr(torch.nn.Module):
             self.evict_backlist = cpu_row_idxs
 
         with record_function("(pre-id) get cpu row idxs"):
-            comm_cpu_row_idxs = cpu_row_idxs[torch.isin(
-                cpu_row_idxs, self.cached_idx_map, assume_unique=True, invert=True)]
+            comm_cpu_row_idxs = cpu_row_idxs[torch.isin(cpu_row_idxs,
+                                                        self.cached_idx_map,
+                                                        assume_unique=True,
+                                                        invert=True)]
 
         self.num_hits_history.append(len(cpu_row_idxs) - len(comm_cpu_row_idxs))
         self.num_miss_history.append(len(comm_cpu_row_idxs))

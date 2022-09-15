@@ -1,9 +1,10 @@
 import torch
+from torch.fx import Node
 from typing import Union, Dict, List, Tuple
 from operator import add, floordiv, getitem, mul, neg, setitem, sub, pos
 from . import META_COMPATIBILITY
 
-__all__ = ['activation_size', 'parameter_size']
+__all__ = ['activation_size', 'parameter_size', 'is_inplace']
 
 if META_COMPATIBILITY:
     aten = torch.ops.aten
@@ -21,6 +22,7 @@ if META_COMPATIBILITY:
         aten.bernoulli_.float,
 
     # inplace reshaping
+        aten.copy_.default,
         aten.detach.default,
         aten.t.default,
         aten.transpose.int,
@@ -28,7 +30,17 @@ if META_COMPATIBILITY:
         aten._unsafe_view.default,
     ]
 
-    __all__ += ['INPLACE_ATEN', 'WEIRD_OPS']
+    NORMALIZATION_ATEN = [
+        aten.native_batch_norm.default,
+        aten.native_layer_norm.default,
+    # aten.max_pool2d_with_indices.default,
+    ]
+
+    CLONE_ATEN = [
+        aten.clone.default,
+    ]
+
+    __all__ += ['INPLACE_ATEN', 'WEIRD_OPS', 'NORMALIZATION_ATEN', 'CLONE_ATEN']
 
 else:
     # TODO fill out the inplace ops
@@ -106,3 +118,23 @@ def parameter_size(mod: torch.nn.Module) -> int:
     for param in mod.parameters():
         param_size += param.numel() * torch.tensor([], dtype=param.dtype).element_size()
     return param_size
+
+
+def is_inplace(n: Node):
+    """Get the inplace argument from torch.fx.Node
+
+    Args:
+        node (Node): torch.fx.Node
+
+    Returns:
+        bool: indicates whether this op is inplace
+    """
+    inplace = False
+    if n.op == "call_function":
+        inplace = n.kwargs.get("inplace", False)
+        if META_COMPATIBILITY and n.target in INPLACE_ATEN:
+            inplace = True
+    elif n.op == "call_module":
+        inplace = getattr(n.graph.owning_module.get_submodule(n.target), "inplace", False)
+
+    return inplace
