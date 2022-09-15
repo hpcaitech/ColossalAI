@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from torch.fx.node import Node
 from typing import Dict, List
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 from .._utils import generate_resharding_costs, generate_sharding_spec
 from colossalai.auto_parallel.solver.constants import *
