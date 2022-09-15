@@ -4,8 +4,6 @@ from torch.fx.node import Node
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Union, Dict, List, Optional
-from functools import reduce
-import operator
 
 
 def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: DeviceMesh,
