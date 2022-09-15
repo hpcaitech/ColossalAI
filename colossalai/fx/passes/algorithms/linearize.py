@@ -1,5 +1,6 @@
 from typing import List, Any
 from torch.fx import GraphModule, Node
+from colossalai.fx.profiler import is_inplace
 
 # Common nodes are type of nodes that could be seen as attributes and remain
 # unchanged throughout the whole model, it will be used several times by
@@ -41,6 +42,9 @@ def linearize(gm: GraphModule, cnode: List[str] = None) -> List[List[Node]]:
     Returns:
         List[List[Node]]: List of list, each inside list of Node presents
         the actual 'node' in linearized manner.
+
+    Remarks:
+        We merge the inplace ops into the previous node.
     """
 
     def _is_sink() -> bool:
@@ -50,7 +54,7 @@ def linearize(gm: GraphModule, cnode: List[str] = None) -> List[List[Node]]:
             bool
         """
 
-        return not sum([v for _, v in deps.items()])
+        return not sum([v for _, v in deps.items()]) and not any(map(is_inplace, n.users))
 
     # make sure that item in cnode is valid
     if cnode:

@@ -7,4 +7,4 @@ else:
     from .experimental import meta_profiler_function, meta_profiler_module, profile_function, profile_method, profile_module
 
 from .dataflow import GraphInfo
-from .memory import parameter_size, activation_size
+from .memory import parameter_size, activation_size, is_inplace
