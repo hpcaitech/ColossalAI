@@ -8,6 +8,7 @@ from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 from copy import deepcopy
 from typing import Dict, List
+from colossalai.auto_parallel.solver._utils import exception_handler
 
 __all__ = ['BcastOpHandler']
 
@@ -126,38 +127,39 @@ class BcastOpHandler(OperatorHandler):
     def _generate_compute_cost(self, *args, **kwargs):
         return super()._generate_compute_cost(*args, **kwargs)
 
+    @exception_handler
+    def _register_strategy(self, output_sharding_spec):
+        dim_partition_dict_for_input = output_sharding_spec.dim_partition_dict
+        sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_input)
+        sharding_spec_for_rhs = self._generate_sharding_spec(self.rhs_data, dim_partition_dict_for_input)
+
+        name = f'{output_sharding_spec.sharding_sequence} = {sharding_spec_for_lhs.sharding_sequence} x {sharding_spec_for_rhs.sharding_sequence}'
+        dim_partition_dict_for_output = output_sharding_spec.dim_partition_dict
+
+        # generate resharding cost for this strategy
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_lhs, sharding_spec_for_rhs])
+
+        # compute the computation cost of this strategy
+        sharding_dims = []
+        for mesh_dims in dim_partition_dict_for_output.values():
+            for mesh_dim in mesh_dims:
+                sharding_dims.append(self.device_mesh.shape[mesh_dim])
+        sharding_size = reduce(operator.mul, sharding_dims, 1)
+        memory_cost = self.output_data.numel() / sharding_size
+        compute_cost = memory_cost
+        communication_cost = 0
+
+        sharding_strategies = ShardingStrategy(name,
+                                               output_sharding_spec=output_sharding_spec,
+                                               compute_cost=compute_cost,
+                                               communication_cost=communication_cost,
+                                               memory_cost=memory_cost,
+                                               resharding_costs=resharding_costs,
+                                               input_shardings=(sharding_spec_for_lhs, sharding_spec_for_rhs))
+
+        self.strategies_vector.append(sharding_strategies)
+
     def register_strategy(self) -> StrategiesVector:
         output_sharding_specs = self._enumerate_all_possible_output(0, 1)
         for output_sharding_spec in output_sharding_specs:
-            try:
-                dim_partition_dict_for_input = output_sharding_spec.dim_partition_dict
-                sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_input)
-                sharding_spec_for_rhs = self._generate_sharding_spec(self.rhs_data, dim_partition_dict_for_input)
-
-                name = f'{output_sharding_spec.sharding_sequence} = {sharding_spec_for_lhs.sharding_sequence} x {sharding_spec_for_rhs.sharding_sequence}'
-                dim_partition_dict_for_output = output_sharding_spec.dim_partition_dict
-
-                # generate resharding cost for this strategy
-                resharding_costs = self._generate_resharding_costs([sharding_spec_for_lhs, sharding_spec_for_rhs])
-
-                # compute the computation cost of this strategy
-                sharding_dims = []
-                for mesh_dims in dim_partition_dict_for_output.values():
-                    for mesh_dim in mesh_dims:
-                        sharding_dims.append(self.device_mesh.shape[mesh_dim])
-                sharding_size = reduce(operator.mul, sharding_dims, 1)
-                memory_cost = self.output_data.numel() / sharding_size
-                compute_cost = memory_cost
-                communication_cost = 0
-
-                sharding_strategies = ShardingStrategy(name,
-                                                       output_sharding_spec=output_sharding_spec,
-                                                       compute_cost=compute_cost,
-                                                       communication_cost=communication_cost,
-                                                       memory_cost=memory_cost,
-                                                       resharding_costs=resharding_costs,
-                                                       input_shardings=(sharding_spec_for_lhs, sharding_spec_for_rhs))
-
-                self.strategies_vector.append(sharding_strategies)
-            except Exception as e:
-                warnings.warn(f'{e}')
+            self._register_strategy(output_sharding_spec)

@@ -4,6 +4,10 @@ from torch.fx.node import Node
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Union, Dict, List, Optional
+import warnings
+from functools import reduce
+import functools
+import operator
 
 
 def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: DeviceMesh,
@@ -29,6 +33,11 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
         raise TypeError(
             f'We cannot generate sharding spec for {type(input_)} type, only torch.fx.Node or torch.Tensor is expected.'
         )
+    for dim_index, sharding_index_list in dim_partition_dict.items():
+        sharding_list = [device_mesh.mesh_shape[sharding_index] for sharding_index in sharding_index_list]
+        sharding_size = reduce(operator.mul, sharding_list, 1)
+        assert shape[
+            dim_index] % sharding_size == 0, f'we cannot shard the {dim_index} dimension of tensor into {sharding_size} partitions.'
 
     sharding_spec = ShardingSpec(device_mesh=device_mesh, entire_shape=shape, dim_partition_dict=dim_partition_dict)
     return sharding_spec
@@ -74,3 +83,18 @@ def generate_resharding_costs(nodes: List[Node],
             resharding_cost = total_resharding_cost * size_per_elem_bytes
             resharding_costs[input_node].append(resharding_cost)
     return resharding_costs
+
+
+def exception_handler(func):
+    """
+    A function wrapper which executes the function with a specified seed.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except Exception as e:
+            warnings.warn(f'{e}')
+
+    return wrapper
