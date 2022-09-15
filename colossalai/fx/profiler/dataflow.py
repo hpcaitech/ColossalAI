@@ -2,7 +2,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict
 from torch.fx import Graph, Node
-from .memory import activation_size, is_inplace, NORMALIZATION_ATEN, CLONE_ATEN
+from .memory import activation_size, is_inplace
+from . import META_COMPATIBILITY
+if META_COMPATIBILITY:
+    from .memory import NORMALIZATION_ATEN, CLONE_ATEN
 
 
 class Phase(Enum):
