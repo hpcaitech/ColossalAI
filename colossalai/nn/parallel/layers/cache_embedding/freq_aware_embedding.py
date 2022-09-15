@@ -30,7 +30,7 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
         cuda_row_num (int, optional): the max number of embedding vector in cuda cache. Defaults to 0.
         ids_freq_mapping (Union[List, torch.Tensor], optional): the frequency of each embedding vector occures in dataset. Defaults to None.
         warmup_ratio (float, optional): the ratio of cuda cache is warmuped with. Defaults to 0.7.
-        buffer_size (int, optional): the max number of vectors in transmitter buffer. Defaults to 50_000.
+        buffer_size (int, optional): the max number of vectors in transmitter buffer. If set to 0, means do not use the buffer. Defaults to 0.
         pin_weight (bool, optional): pin the cpu weight. Defaults to False.
         evict_strategy (EvictionStrategy, optional): evict strategy of the software cache. Defaults to EvictionStrategy.DATASET.
     """
@@ -51,9 +51,9 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
                  cuda_row_num: int = 0,
                  ids_freq_mapping: Optional[Union[List, torch.Tensor]] = None,
                  warmup_ratio: float = 0.7,
-                 buffer_size: int = 50_000,
+                 buffer_size: int = 0,
                  pin_weight: bool = False,
-                 evict_strategy: EvictionStrategy = EvictionStrategy.DATASET):
+                 evict_strategy: EvictionStrategy = EvictionStrategy.LFU):
         super(FreqAwareEmbeddingBag, self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type,
                                                     scale_grad_by_freq, sparse, mode, include_last_offset)
 
@@ -96,10 +96,10 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
                                                evict_strategy=self.evict_strategy)
         self.cache_weight_mgr.reorder(ids_freq_mapping, warmup_ratio)
 
-    def forward(self, indices, offsets=None, per_sample_weights=None, shape_hook=None):
+    def forward(self, input, offsets=None, per_sample_weights=None, shape_hook=None):
         with torch.no_grad():
-            reorder_ids = self.cache_weight_mgr.prepare_ids(indices)
-            
+            reorder_ids = self.cache_weight_mgr.prepare_ids(input)
+
         embeddings = F.embedding_bag(reorder_ids.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets,
                                      self.max_norm, self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
                                      per_sample_weights, self.include_last_offset, self.padding_idx)
