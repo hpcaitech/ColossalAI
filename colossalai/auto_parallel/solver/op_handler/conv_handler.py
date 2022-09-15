@@ -10,7 +10,7 @@ __all__ = ['ConvHandler']
 
 class ConvHandler(OperatorHandler):
     """
-    A OperatorHandler which deals with the sharding strategies of Convolution.
+    An OperatorHandler which deals with the sharding strategies of Convolution.
     """
 
     def __init__(self, *args, **kwargs):
