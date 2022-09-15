@@ -40,7 +40,7 @@ if META_COMPATIBILITY:
         aten.clone.default,
     ]
 
-    __all__ += ['INPLACE_ATEN', 'WEIRD_OPS']
+    __all__ += ['INPLACE_ATEN', 'WEIRD_OPS', 'NORMALIZATION_ATEN', 'CLONE_ATEN']
 
 else:
     # TODO fill out the inplace ops
