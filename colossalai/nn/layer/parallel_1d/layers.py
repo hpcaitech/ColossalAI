@@ -189,7 +189,7 @@ class Classifier1D(ParallelLayer):
             num_partition = gpc.get_world_size(ParallelMode.TENSOR)
             set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -215,9 +215,9 @@ class Classifier1D(ParallelLayer):
                                                                weight_key: True,
                                                                bias_key: False
                                                            })
-        super()._load_from_state_dict(local_state, prefix, *args)
+        super()._load_from_global_state_dict(local_state, prefix, *args)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict()
@@ -242,12 +242,12 @@ class Classifier1D(ParallelLayer):
         # Set up backprop all-reduce.
         if self.parallel_input:
             assert input_.shape[-1] == self.weight.shape[-1], \
-            'Invalid shapes in Classifier1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                'Invalid shapes in Classifier1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1])
             input_ = input_
         else:
             assert divide(input_.shape[-1], gpc.tensor_parallel_size) == self.weight.shape[-1], \
-            'Invalid shapes in Classifier1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                'Invalid shapes in Classifier1D forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1] * gpc.tensor_parallel_size)
             input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
@@ -283,11 +283,13 @@ class VocabParallelClassifier1D(ParallelLayer):
                  weight: Parameter = None,
                  bias: bool = True,
                  dtype: torch.dtype = None,
+                 gather_output: bool = False,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         super().__init__()
         self.in_features = in_features
         self.num_classes = num_classes
+        self.gather_output = gather_output
         self.parallel_input = get_parallel_input()
 
         # Divide the weight matrix along the last dimension.
@@ -326,7 +328,7 @@ class VocabParallelClassifier1D(ParallelLayer):
         if self.bias is not None:
             set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -352,9 +354,9 @@ class VocabParallelClassifier1D(ParallelLayer):
                                                                weight_key: True,
                                                                bias_key: True
                                                            })
-        super()._load_from_state_dict(local_state, prefix, *args)
+        super()._load_from_global_state_dict(local_state, prefix, *args)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict()
@@ -382,7 +384,12 @@ class VocabParallelClassifier1D(ParallelLayer):
         # Set up backprop all-reduce.
         input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
         # Matrix multiply.
-        output = F.linear(input_parallel, self.weight, self.bias)
+        output_parallel = F.linear(input_parallel, self.weight, self.bias)
+        if self.gather_output:
+            # All-gather across the partitions.
+            output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
+        else:
+            output = output_parallel
         return output
 
 
@@ -461,7 +468,7 @@ class Linear1D_Col(ParallelLayer):
         if self.bias is not None:
             set_tensor_parallel_attribute_by_partition(self.bias, num_partition)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -486,9 +493,9 @@ class Linear1D_Col(ParallelLayer):
                                                                weight_key: True,
                                                                bias_key: True
                                                            })
-        super()._load_from_state_dict(local_state, prefix, *args)
+        super()._load_from_global_state_dict(local_state, prefix, *args)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict({weight_key: self.weight})
@@ -598,7 +605,7 @@ class Linear1D_Row(ParallelLayer):
         num_partition = gpc.get_world_size(ParallelMode.TENSOR)
         set_tensor_parallel_attribute_by_partition(self.weight, num_partition)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
@@ -623,9 +630,9 @@ class Linear1D_Row(ParallelLayer):
                                                                weight_key: True,
                                                                bias_key: False
                                                            })
-        super()._load_from_state_dict(local_state, prefix, *args)
+        super()._load_from_global_state_dict(local_state, prefix, *args)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         bias_key = prefix + 'bias'
         local_state = OrderedDict({weight_key: self.weight})
@@ -648,12 +655,12 @@ class Linear1D_Row(ParallelLayer):
         # Set up backprop all-reduce.
         if self.parallel_input:
             assert input_.shape[-1] == self.weight.shape[-1], \
-            'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1])
             input_ = input_
         else:
             assert divide(input_.shape[-1], gpc.tensor_parallel_size) == self.weight.shape[-1], \
-            'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
+                'Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1] * gpc.tensor_parallel_size)
             input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
@@ -738,7 +745,7 @@ class Embedding1D(ParallelLayer):
             with torch.no_grad():
                 self.weight[self.padding_idx].fill_(0)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
@@ -751,9 +758,9 @@ class Embedding1D(ParallelLayer):
                                                            ParallelMode.PARALLEL_1D,
                                                            dims={weight_key: -1},
                                                            partition_states={weight_key: True})
-        super()._load_from_state_dict(local_state, prefix, *args)
+        super()._load_from_global_state_dict(local_state, prefix, *args)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         local_state = OrderedDict({weight_key: self.weight})
         local_state = gather_tensor_parallel_state_dict(local_state,
@@ -773,7 +780,7 @@ class Embedding1D(ParallelLayer):
 
 
 @LAYERS.register_module
-class VocabParallelEmbedding1D(torch.nn.Module):
+class VocabParallelEmbedding1D(ParallelLayer):
     r"""Embedding parallelized in the vocabulary dimension.
 
     Args:
@@ -847,7 +854,7 @@ class VocabParallelEmbedding1D(torch.nn.Module):
             with torch.no_grad():
                 self.weight[self.padding_idx - self.vocab_start_index].fill_(0)
 
-    def _load_from_state_dict(self, state_dict, prefix, *args):
+    def _load_from_global_state_dict(self, state_dict, prefix, *args):
         local_state = OrderedDict()
         weight_key = prefix + 'weight'
         if gpc.get_local_rank(ParallelMode.TENSOR) == 0:
@@ -860,9 +867,9 @@ class VocabParallelEmbedding1D(torch.nn.Module):
                                                            ParallelMode.PARALLEL_1D,
                                                            dims={weight_key: 0},
                                                            partition_states={weight_key: True})
-        super()._load_from_state_dict(local_state, prefix, *args)
+        super()._load_from_global_state_dict(local_state, prefix, *args)
 
-    def _save_to_state_dict(self, destination, prefix, keep_vars):
+    def _save_to_global_state_dict(self, destination, prefix, keep_vars):
         weight_key = prefix + 'weight'
         local_state = OrderedDict({weight_key: self.weight})
         local_state = gather_tensor_parallel_state_dict(local_state,

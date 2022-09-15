@@ -15,7 +15,7 @@ class LazyInitContext():
     """
     A context to allow for lazy weight initialization of PyTorch modules. It intercepts the tensor 
     initialization functions for lazy initialization
-    
+
     Note:
         This API is only experimental and subject to future changes. 
 
@@ -23,17 +23,17 @@ class LazyInitContext():
         with LazyInitContext() as ctx:
             model = nn.Linear(10, 10)
             model.weight.zero_()
-        
+
         # make sure the weight is a meta tensor
         assert model.weight.is_meta
-        
+
         # initialize weights
         ctx.lazy_init_parameters(model)
-        
+
         # make sure the weight is not a meta tensor 
         # and initialized correctly
         assert not model.weight.is_meta and torch.all(model.weight == 0)
-        
+
     Args:
         to_meta (bool): optional, whether to initialize the model with meta tensors, default is False.
         extra_torch_tensor_func (List[str]): extra torch tensor functions related 
@@ -138,14 +138,14 @@ class LazyInitContext():
             cls.__orig_init__ = cls.__init__
             cls.__init__ = self._wrap_module_init(cls.__init__)
 
-        substitute_init_recursively(self._torch_mod_cls, _activate_wrap_init)
+        substitute_init_recursively(self._torch_mod_cls, _activate_wrap_init, set())
 
     def _unpatch_submodule_init(self):
 
         def _recover_orig_init(cls):
             cls.__init__ = cls.__orig_init__
 
-        substitute_init_recursively(self._torch_mod_cls, _recover_orig_init)
+        substitute_init_recursively(self._torch_mod_cls, _recover_orig_init, set())
 
     def _patch_torch_tensor_funcs(self):
         # patch tensor value-setting functions
@@ -178,7 +178,7 @@ class LazyInitContext():
     def lazy_init_parameters(self, model: torch.nn.Module, device='cpu'):
         """
         Initialize the weights of the meta-tensor model.
-        
+
         Args:
             model (`torch.nn.Module`): the model instantiated under the context.
             device (str): the device on which weights are initialized

@@ -1,4 +1,3 @@
-from operator import mod
 import torch
 import torch.nn.functional as F
 import pytest

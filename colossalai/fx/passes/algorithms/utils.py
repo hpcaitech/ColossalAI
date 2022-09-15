@@ -5,24 +5,24 @@ class Chain:
         self.bweight = bw
         self.cweight = cw
         self.cbweight = cbw
-        self.fwd_tmp = ftmp
-        self.bwd_tmp = btmp
+        self.fwd_mem_tmp = ftmp
+        self.bwd_mem_tmp = btmp
         self.length = len(fw)
         if check and not self.check_lengths():
             raise AttributeError("In Chain, input lists do not have consistent lengths")
 
     def check_lengths(self):
         return ((len(self.fweight) == self.length) and (len(self.bweight) == self.length + 1)
-                and (len(self.cweight) == self.length + 1) and (len(self.fwd_tmp) == self.length)
-                and (len(self.bwd_tmp) == self.length + 1) and (len(self.cbweight) == self.length + 1))
+                and (len(self.cweight) == self.length + 1) and (len(self.fwd_mem_tmp) == self.length)
+                and (len(self.bwd_mem_tmp) == self.length + 1) and (len(self.cbweight) == self.length + 1))
 
     def __repr__(self):
         chain_list = []
         for i in range(self.length):
-            chain_list.append(
-                (self.fweight[i], self.bweight[i], self.cweight[i], self.cbweight[i], self.fwd_tmp[i], self.bwd_tmp[i]))
+            chain_list.append((self.fweight[i], self.bweight[i], self.cweight[i], self.cbweight[i], self.fwd_mem_tmp[i],
+                               self.bwd_mem_tmp[i]))
         i = self.length
-        chain_list.append((None, self.bweight[i], self.cweight[i], self.cbweight[i], None, self.bwd_tmp[i]))
+        chain_list.append((None, self.bweight[i], self.cweight[i], self.cbweight[i], None, self.bwd_mem_tmp[i]))
         return chain_list.__repr__()
 
 

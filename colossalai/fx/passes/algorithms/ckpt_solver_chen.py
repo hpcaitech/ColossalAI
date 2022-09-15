@@ -73,10 +73,11 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
         y = 0
         prev_idx = 2
         for (idx, n) in enumerate(gm.graph.nodes):
-            temp += getattr(n, '__activation__')
+            n: Node
+            temp += n.meta['fwd_mem_out'] + n.meta['fwd_mem_tmp']
             y = max(y, temp)
             if temp > b and n in ckpt_nodes:
-                x += getattr(n, '__activation__')
+                x += n.meta['fwd_mem_out']
                 temp = 0
                 ckpt_intv.append((prev_idx, idx + 1))
                 prev_idx = idx + 1

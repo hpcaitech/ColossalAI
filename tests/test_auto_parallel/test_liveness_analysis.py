@@ -32,21 +32,21 @@ def test_liveness_analysis():
     gm = ColoGraphModule(root=model, graph=graph, class_name=model.__class__.__name__)
 
     graph_analyser = GraphAnalyser(gm)
-    liveness_dict = graph_analyser.liveness_analysis()
-    stage_count = len(liveness_dict)
+    liveness_list = graph_analyser.liveness_analysis()
+    stage_count = len(liveness_list)
 
-    # 8 stages including input and output
-    assert stage_count == 8
+    # if a LiveStage is covered by another LiveStage, we just keep the larger one.
+    assert stage_count == 1
 
     # a variable named `relu` must exist
     # and this live var must have inplace = True
-    assert liveness_dict[5].all_live_vars.exists('relu')
-    relu_var = liveness_dict[5].all_live_vars.get('relu')
+    assert liveness_list[0].all_live_vars.exists('relu')
+    relu_var = liveness_list[0].all_live_vars.get('relu')
     assert relu_var.is_inplace
 
     # the unique vars must be fewer than the all vars since in-place ops exist
-    all_live_vars = liveness_dict[7].all_live_vars
-    unique_live_vars = liveness_dict[7].unique_live_vars
+    all_live_vars = liveness_list[0].all_live_vars
+    unique_live_vars = liveness_list[0].unique_live_vars
     assert len(unique_live_vars) + 1 == len(all_live_vars)
 
 

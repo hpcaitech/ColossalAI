@@ -89,6 +89,7 @@ def _run_ckpt_solver(rank):
 
 
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
+@pytest.mark.skip('TODO: refactor ckpt solvers')
 def test_ckpt_solver():
     mp.spawn(_run_ckpt_solver, nprocs=1)
 

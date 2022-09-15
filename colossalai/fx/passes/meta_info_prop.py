@@ -1,13 +1,12 @@
-from operator import add, getitem
+from dataclasses import asdict
+from colossalai.fx.profiler import GraphInfo
 import torch
 import torch.fx
 from torch.fx.node import Node, Argument, Target
 from torch.utils._pytree import tree_map
-from typing import Any, Tuple, NamedTuple, Optional, Dict
-from functools import reduce
+from typing import Any, Tuple, NamedTuple, Dict
 from torch.fx._compatibility import compatibility
-from torch.fx.immutable_collections import immutable_dict, immutable_list
-from colossalai.fx.profiler import MetaProfile, MetaTensor, profile_function, profile_module, calculate_activation_size, profile_method
+from colossalai.fx.profiler import profile_function, profile_module, profile_method, activation_size
 
 
 @compatibility(is_backward_compatible=True)
@@ -43,7 +42,7 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
 class MetaInfoProp(torch.fx.Interpreter):
     """
     Execute an FX graph Node-by-Node with meta tensor and
-    record the shape, FLOPs, MACs and type of the result
+    record the memory usage, FLOPs, and type of the result
     into the corresponding node.
 
     Usage:
@@ -72,14 +71,6 @@ class MetaInfoProp(torch.fx.Interpreter):
     """
 
     @compatibility(is_backward_compatible=True)
-    def run(self, *args, initial_env: Optional[Dict[Node, Any]] = None, enable_io_processing: bool = True) -> Any:
-        """
-        Add additional check for initial args to ensure all the tensor appears with `device='meta'`
-        """
-        args = tree_map(lambda elem: MetaTensor(elem.to('meta')) if isinstance(elem, torch.Tensor) else elem, args)
-        return super().run(*args, initial_env, enable_io_processing)
-
-    @compatibility(is_backward_compatible=True)
     def run_node(self, n: Node) -> Any:
         """
         Run a specific node ``n`` and return the result.
@@ -93,8 +84,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         Returns:
             Any: The result of executing ``n``
         """
-        result, profile = super().run_node(n)
-        profile: MetaProfile
+        result, meta_info = super().run_node(n)
 
         def extract_tensor_meta(obj):
             if isinstance(obj, torch.Tensor):
@@ -102,16 +92,19 @@ class MetaInfoProp(torch.fx.Interpreter):
             else:
                 return TensorMetadata(None, None, False, None, 0, False)
 
-        meta = tree_map(extract_tensor_meta, result)
-        n.meta['tensor_meta'] = meta
-
+        tensor_meta = tree_map(extract_tensor_meta, result)
+        n.meta['tensor_meta'] = tensor_meta
+        n.meta = {**n.meta, **asdict(meta_info), 'fwd_mem_out': 0}    # extend MetaInfo to `n.meta`
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', profile.param + profile.activation)
-        setattr(n, '__param__', profile.param)
-        setattr(n, '__activation__', profile.activation)
-        setattr(n, '__flops__', profile.flops)
-        setattr(n, '__macs__', profile.macs)
+        setattr(n, 'node_size', n.meta.get('fwd_mem_tmp', 0) + n.meta.get('fwd_mem_out', 0))
+        for par in n.all_input_nodes:
+            par.meta['fwd_mem_out'] = max(par.meta.get('fwd_mem_out', 0), n.meta.get('fwd_mem_in', 0))
         n.meta['type'] = type(result)
+
+        # retain the autograd graph
+        for param in self.module.parameters():
+            param.grad = None
+
         return result
 
     # Main Node running APIs
@@ -132,11 +125,9 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Returns:
             result (Any): The argument value that was retrieved
-            profile (MetaProfile): The meta profile of this node
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        result = super().placeholder(target, args, kwargs)
-        # A placeholder node only has activation
-        return result, MetaProfile(0, calculate_activation_size(result), 0, 0)
+        return super().placeholder(target, args, kwargs), GraphInfo()
 
     @compatibility(is_backward_compatible=True)
     def get_attr(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -153,10 +144,9 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return:
             result (Any): The argument value that was retrieved
-            profile (MetaProfile): The meta profile of this node
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        # A get_attr node never has parameters, activations, FLOPs, or MACs
-        return super().get_attr(target, args, kwargs), MetaProfile(0, 0, 0, 0)
+        return super().get_attr(target, args, kwargs), GraphInfo()
 
     @compatibility(is_backward_compatible=True)
     def call_function(self, target: 'Target', args: Tuple[Argument, ...], kwargs: Dict[str, Any]) -> Any:
@@ -172,7 +162,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            profile (MetaProfile): The meta profile of this node
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
         assert not isinstance(target, str)
         return profile_function(target)(*args, **kwargs)
@@ -191,7 +181,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            profile (MetaProfile): The meta profile of this node
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
         return profile_method(target)(*args, **kwargs)
 
@@ -209,7 +199,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            profile (MetaProfile): The meta profile of this node
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
         # Retrieve executed args and kwargs values from the environment
         # Execute the method and return the result
@@ -231,9 +221,10 @@ class MetaInfoProp(torch.fx.Interpreter):
             kwargs (Dict): Dict of keyword arguments for this invocation
 
         Return:
-            Any: The return value referenced by the output node
+            result (Any): The argument value that was retrieved
+            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        return args[0], MetaProfile(0, 0, 0, 0)
+        return args[0], GraphInfo(fwd_mem_in=activation_size(args[0]))
 
     def propagate(self, *args):
         """
