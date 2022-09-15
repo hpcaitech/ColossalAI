@@ -1,8 +1,7 @@
 from typing import List, Tuple
-import torch
-from torch.fx import GraphModule, Node
+from torch.fx import Node
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.profiler import activation_size, parameter_size, is_inplace
+from colossalai.fx.profiler import activation_size, parameter_size
 import math
 from .linearize import linearize
 from .utils import *

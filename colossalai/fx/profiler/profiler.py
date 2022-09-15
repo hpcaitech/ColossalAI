@@ -1,12 +1,10 @@
-from dataclasses import dataclass
-from enum import auto
 from typing import Callable, Any, Dict, Tuple
 import torch
 from torch.fx import Graph, Node
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
 from .dataflow import GraphInfo, autograd_graph_analysis, Phase
-from .memory import WEIRD_OPS, activation_size, is_inplace
+from .memory import WEIRD_OPS
 from .tensor import MetaTensor
 from .opcount import flop_mapping
 

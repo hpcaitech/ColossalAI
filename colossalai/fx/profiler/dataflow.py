@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from enum import Enum
-from functools import partial
 from typing import Dict
 from torch.fx import Graph, Node
 from .memory import activation_size, is_inplace, NORMALIZATION_ATEN, CLONE_ATEN
