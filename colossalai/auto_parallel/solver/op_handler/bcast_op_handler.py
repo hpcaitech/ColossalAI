@@ -50,7 +50,6 @@ class BcastOpHandler(OperatorHandler):
         # The resharding_cost of weight is counted due to sharing weight cases.
         dtype = self.node._meta_data.dtype
         nodes = self.predecessor_node
-        # The resharding_cost of weight is counted due to sharing weight cases.
         resharding_costs = {}
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
 
