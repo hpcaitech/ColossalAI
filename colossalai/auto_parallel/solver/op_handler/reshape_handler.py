@@ -20,6 +20,7 @@ class ReshapeHandler(OperatorHandler):
         return super()._generate_compute_cost(*args, **kwargs)
 
     def register_strategy(self):
+        # TODO: add strategies with more output sharding specs other than only fully replicated.
         input_node = self.strategies_vector.predecessor_nodes[0]
         # For reshape function, to keep the computing correctness we keep the sharding
         # spec of input is fully replicated. In addition, we will keep the output in

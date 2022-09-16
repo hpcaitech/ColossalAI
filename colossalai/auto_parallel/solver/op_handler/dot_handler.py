@@ -6,9 +6,11 @@ from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, 
 from .operator_handler import OperatorHandler
 from ..constants import LINEAR_FUNC_OP, LINEAR_MODULE_OP
 from functools import reduce
+from colossalai.auto_parallel.solver._utils import exception_handler
 from enum import Enum
 from .strategy_generator import StrategyGenerator, IntermediateStrategy
 from typing import List
+
 
 __all__ = ['DotHandler']
 
@@ -414,6 +416,7 @@ class DotHandler(OperatorHandler):
         compute_cost = reduce(operator.mul, input_shape) * weight_shape[0] * 2
         return compute_cost
 
+    @exception_handler
     def split_lhs_space_rhs_space(self, mesh_dim_0, mesh_dim_1):
         # handle case SS = SR x RS
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
@@ -452,6 +455,7 @@ class DotHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_lhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         # handle the case SR = SS x SR
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
@@ -488,6 +492,7 @@ class DotHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_rhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
 
@@ -521,6 +526,7 @@ class DotHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def recompute_split_both_contract(self, mesh_dim):
         name = f'RR = RS{mesh_dim} x S{mesh_dim}R'
 
@@ -554,6 +560,7 @@ class DotHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_rhs_space_only(self, mesh_dim):
         name = f'RS{mesh_dim} = RR x RS{mesh_dim}'
 
@@ -587,6 +594,7 @@ class DotHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_lhs_1st_dim_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
 
@@ -620,6 +628,7 @@ class DotHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_lhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
 
@@ -653,6 +662,7 @@ class DotHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_rhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_0}{mesh_dim_1} = RR x RS{mesh_dim_0}{mesh_dim_1}'
 

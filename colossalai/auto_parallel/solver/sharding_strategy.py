@@ -70,6 +70,9 @@ class StrategiesVector(list):
             # we could merge element-wise op, because the output sharding spec is always same as the input sharding spec.
             if self.node.target in ELEMENTWISE_FUNC_OP:
                 merge_label = True
+            # we could merge bcast op if the rhs is a scalar, because it will fall back to the element-wise case.
+            if self.node.target in BCAST_FUNC_OP and len(self.predecessor_nodes) == 1:
+                merge_label = True
             # we could merge reshape op, because the output sharding spec of reshape op is always fully replicated.
             if self.node.target in RESHAPE_FUNC_OP:
                 merge_label = True
