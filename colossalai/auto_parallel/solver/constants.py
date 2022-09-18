@@ -14,7 +14,7 @@ ELEMENTWISE_FUNC_OP = [
 RESHAPE_FUNC_OP = [torch.flatten, torch.Tensor.view, torch.reshape]
 BCAST_FUNC_OP = [
     torch.add, torch.sub, torch.mul, torch.div, torch.floor_divide, torch.true_divide, operator.add, operator.sub,
-    operator.mul, operator.floordiv, operator.truediv
+    operator.mul, operator.floordiv, operator.truediv, torch.matmul
 ]
 CONV_MODULE_OP = [
     torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d, torch.nn.ConvTranspose1d, torch.nn.ConvTranspose2d,

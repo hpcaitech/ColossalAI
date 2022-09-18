@@ -50,6 +50,15 @@ class StrategiesConstructor:
         for strategy in remove_list:
             strategies_vector.remove(strategy)
 
+    def _is_bcast_matmul(self, node):
+        is_bcast_matmul = False
+        if node.target is torch.matmul and len(node.args) == 2:
+            lhs_data = node.args[0]._meta_data
+            rhs_data = node.args[1]._meta_data
+            if lhs_data.dim() >= 3 and rhs_data.dim() >= 3:
+                is_bcast_matmul = True
+        return is_bcast_matmul
+
     def build_strategies_and_cost(self):
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
@@ -222,7 +231,7 @@ class StrategiesConstructor:
                     conv_handler.register_strategy()
 
                 # linear function
-                elif target in LINEAR_FUNC_OP:
+                elif target in LINEAR_FUNC_OP and not self._is_bcast_matmul(node):
                     # use DotHandler to create sharding strategies for linear node
                     # TODO: the operator_handler does NOT support function node processing now.
                     linear_handler = DotHandler(node, self.device_mesh, strategies_vector)
