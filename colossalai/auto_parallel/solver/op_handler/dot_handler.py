@@ -11,7 +11,6 @@ from enum import Enum
 from .strategy_generator import StrategyGenerator, IntermediateStrategy
 from typing import List
 
-
 __all__ = ['DotHandler']
 
 
@@ -465,7 +464,7 @@ class DotHandler(OperatorHandler):
 
         # since weight of the linear layer is transposed
         # the actual dim to be sharded is 1
-        dim_partition_dict_for_weight = {1: [mesh_dim_0]}
+        dim_partition_dict_for_weight = {1: [mesh_dim_1]}
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0]}
