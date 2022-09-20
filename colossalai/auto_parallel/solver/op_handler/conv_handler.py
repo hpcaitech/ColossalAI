@@ -4,13 +4,14 @@ import warnings
 import torch
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from .operator_handler import OperatorHandler
+from colossalai.auto_parallel.solver._utils import exception_handler
 
 __all__ = ['ConvHandler']
 
 
 class ConvHandler(OperatorHandler):
     """
-    A OperatorHandler which deals with the sharding strategies of Convolution.
+    An OperatorHandler which deals with the sharding strategies of Convolution.
     """
 
     def __init__(self, *args, **kwargs):
@@ -104,6 +105,7 @@ class ConvHandler(OperatorHandler):
 
         return memory_cost, memory_cost_forward_activation, memory_cost_backward_activation, memory_cost_backward_weight
 
+    @exception_handler
     def split_input_batch_weight_out_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
 
@@ -151,6 +153,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_input_batch(self, mesh_dim_0):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}R x RR'
 
@@ -196,6 +199,7 @@ class ConvHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_input_both_dim_weight_in_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
 
@@ -241,6 +245,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_input_in_channel_weight_both_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
 
@@ -283,6 +288,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_input_in_channel_weight_in_channel(self, mesh_dim_0):
         name = f'RR = RS{mesh_dim_0} x S{mesh_dim_0}R'
 
@@ -325,6 +331,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_weight_out_channel(self, mesh_dim_0):
         name = f'RS{mesh_dim_0} = RR x RS{mesh_dim_0}'
 
@@ -367,6 +374,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def non_split(self):
         name = f'RR = RR x RR'
 
@@ -407,6 +415,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_1d_parallel_on_input_batch(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
 
@@ -454,6 +463,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_1d_parallel_on_in_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
 
@@ -554,48 +564,24 @@ class ConvHandler(OperatorHandler):
             RR = RS01 x S01R: compute_cost is 8856576, communication_cost is 0, memory_cost is 1968128, resharding_costs is {mul: [0, 0, 262148.4, 65538.002, 196614.402, 262148.4, 65538.2]}
         '''
         # SS = SR x RS
-        try:
-            self.split_input_batch_weight_out_channel(0, 1)
-        except Exception as e:
-            warnings.warn(f'{e}')
-        try:
-            self.split_input_batch_weight_out_channel(1, 0)
-        except Exception as e:
-            warnings.warn(f'{e}')
+        self.split_input_batch_weight_out_channel(0, 1)
+        self.split_input_batch_weight_out_channel(1, 0)
 
         # SR = SR x RR
         self.split_input_batch(0)
         self.split_input_batch(1)
 
         # SR = SS x SR
-        try:
-            self.split_input_both_dim_weight_in_channel(0, 1)
-        except Exception as e:
-            warnings.warn(f'{e}')
-        try:
-            self.split_input_both_dim_weight_in_channel(1, 0)
-        except Exception as e:
-            warnings.warn(f'{e}')
+        self.split_input_both_dim_weight_in_channel(0, 1)
+        self.split_input_both_dim_weight_in_channel(1, 0)
 
         # RS = RS x SS
-        try:
-            self.split_input_in_channel_weight_both_channel(0, 1)
-        except Exception as e:
-            warnings.warn(f'{e}')
-        try:
-            self.split_input_in_channel_weight_both_channel(1, 0)
-        except Exception as e:
-            warnings.warn(f'{e}')
+        self.split_input_in_channel_weight_both_channel(0, 1)
+        self.split_input_in_channel_weight_both_channel(1, 0)
 
         # RR = RS x SR
-        try:
-            self.split_input_in_channel_weight_in_channel(0)
-        except Exception as e:
-            warnings.warn(f'{e}')
-        try:
-            self.split_input_in_channel_weight_in_channel(1)
-        except Exception as e:
-            warnings.warn(f'{e}')
+        self.split_input_in_channel_weight_in_channel(0)
+        self.split_input_in_channel_weight_in_channel(1)
 
         # RS = RR x RS
         self.split_weight_out_channel(0)
@@ -608,12 +594,7 @@ class ConvHandler(OperatorHandler):
         self.split_1d_parallel_on_input_batch(0, 1)
 
         # RR = RS01 x S01R
-        try:
-            self.split_1d_parallel_on_in_channel(0, 1)
-        except Exception as e:
-            warnings.warn(f'{e}')
-
-        # print(f'strategies num is :{len(self.strategies_vector)}')
+        self.split_1d_parallel_on_in_channel(0, 1)
 
         return self.strategies_vector
 

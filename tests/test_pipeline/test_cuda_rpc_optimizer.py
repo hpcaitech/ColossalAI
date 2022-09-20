@@ -3,7 +3,7 @@ from torch import nn
 from torch import autograd
 from torch.optim import SGD, Adam, RMSprop, Optimizer
 
-from colossalai.pipeline.rpc.PipelineBase import FillDrainPipelineEngine, OneFOneBPipelineEngine
+from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, OneFOneBPipelineEngine
 from colossalai.testing import assert_close
 from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 

@@ -32,4 +32,14 @@ class StrategyGenerator(ABC):
 
     @abstractmethod
     def generate(self) -> List[IntermediateStrategy]:
+        """
+        """
+        pass
+
+    @abstractmethod
+    def validate(self, *args, **kwargs) -> bool:
+        """
+        Validate if the operands are of desired shape. 
+        If True, means this generator can be used for the current operation.
+        """
         pass
