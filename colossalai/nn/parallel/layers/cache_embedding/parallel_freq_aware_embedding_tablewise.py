@@ -31,7 +31,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                  include_last_offset=False,
                  dtype=None,
                  device=None,
-                 cuda_row_num=0,
+                 cache_ratio=0.01,
                  warmup_ratio=0.7,
                  buffer_size=50_000,
                  pin_weight=False,
@@ -61,6 +61,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                     break
 
         # table-associate cache
+        cuda_row_num = int(cache_ratio * self.num_embeddings)
         super(ParallelFreqAwareEmbeddingBagTablewise,
               self).__init__(self.num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
