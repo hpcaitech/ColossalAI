@@ -139,7 +139,8 @@ class BackwardCache:
 class WorkerBase(ABC):
 
     def __init__(self,
-                 module_partition: nn.Module,
+                 partition_fn: Callable,
+                 partition_args: tuple,
                  pp_rank: int,
                  actual_stage_num: int,
                  num_microbatches: int,
@@ -165,20 +166,21 @@ class WorkerBase(ABC):
         # rref of other workers
         self.pp_rank_to_worker_rref: Dict[int, PyRRef] = None
 
+        # lock for the list
+        self._initialize_lock()
+
         # topology info
         self.producer_stage_ids: List[int] = None
         self.consumer_stage_ids: List[int] = None
 
         # module partitions
-        self.module_partition = module_partition.to(device)
+        self.partition_fn = partition_fn
+        self.partition_args = partition_args
         self.criterion = criterion
         self.metric = metric
 
         # context to maintain loop
         self._initialize_context_container()
-
-        # lock for the list
-        self._initialize_lock()
 
         # main loop
         self.main_loop_thread = threading.Thread(target=self._work_loop, name=f'rank_{pp_rank}', daemon=True)
@@ -202,20 +204,37 @@ class WorkerBase(ABC):
         self.output_list: Dict[UniqueKey, WorkItem] = dict()
 
     def _initialize_lock(self):
+        self.partition_condition_lock = threading.Condition(threading.Lock())
         self.work_list_condition_lock = threading.Condition(threading.Lock())
         self.output_list_condition_lock = threading.Condition(threading.Lock())
         self.label_lock = threading.Condition(threading.Lock())
+
+    def _initialize_partition(self):
+        partition_fn = self.partition_fn
+        partition_args = self.partition_args
+        device = self.device
+        with self.partition_condition_lock:
+            self.module_partition: nn.Module = partition_fn(*partition_args).to(device)
+            self.partition_condition_lock.notify_all()
 
     def sync_global_worker_rrefs(self, pp_rank_to_worker_rref: Dict[int, PyRRef]) -> None:
         assert self.pp_rank_to_worker_rref is None, f"in rank {self.pp_rank}, worker has sync global workers rrefs"
         assert pp_rank_to_worker_rref is not None, "stage_to_workers must be a dict instead of None"
         self.pp_rank_to_worker_rref = pp_rank_to_worker_rref
 
+        # for some schedule need the other worker's info to initialise partition (like Chimera)
+        # construction of partition is executed after the registion of pp_rank_to_worker_rref
+        self._initialize_partition()
+
     def get_output_by_key(self, key: UniqueKey) -> Any:
         with self.output_list_condition_lock:
             self.output_list_condition_lock.wait_for(lambda: key in self.output_list)
             output_work_item = self.output_list[key]
-        output = output_work_item.output.wait()
+
+        output = output_work_item.output
+        if isinstance(output, Future):
+            output = output.wait()
+
         # color_debug(f'rank {self.pp_rank}, output {type(output)}', 'get output', 'red')
         output_work_item.refcount += 1
 
@@ -230,6 +249,16 @@ class WorkerBase(ABC):
 
     def get_parameter_gradients(self) -> List[torch.Tensor]:
         return [p.grad for p in self.module_partition.parameters()]
+
+    def get_partition(self):
+        with self.partition_condition_lock:
+            self.partition_condition_lock.wait_for(lambda: hasattr(self, 'module_partition'))
+            return self.module_partition
+
+    def get_partition_state_dict(self):
+        with self.partition_condition_lock:
+            self.partition_condition_lock.wait_for(lambda: hasattr(self, 'module_partition'))
+            return self.module_partition.state_dict()
 
     # just for first pp_rank
     def set_input(self, microbatch_id: int, microbatch: Tuple[Any], forward_only: bool):
@@ -520,6 +549,15 @@ class WorkerBase(ABC):
         is_last_microbatch = work_item.microbatch_id == self.num_microbatches - 1
         return is_last_phase and is_last_microbatch
 
+    def _hook_before_step(self):
+        pass
+
+    def _reset_context(self):
+        self.forward_times = 0
+        self.backward_times = 0
+        self.outstanding = 0
+        self._initialize_outstanding_range()
+
     # do the main loop to consume ready_list
     def _work_loop(self):
         # for init
@@ -545,19 +583,17 @@ class WorkerBase(ABC):
             consume_result = self._consume_work_item_by_phase(work_item)
 
             color_debug(
-                f'rank_{self.pp_rank} [{work_item.phase}] finish consuming, result is {tensor_shape_list(consume_result)} {self._get_store_len()}',
+                f'rank_{self.pp_rank} [{work_item.phase}] finish consuming, result is {tensor_shape_list(consume_result)} {self._get_store_len()} | {self.work_list.keys()} | {self.output_list.keys()}',
                 'work loop', 'green')
 
             work_item.output.set_result(consume_result)
 
             # if is last step in one batch reset context and do step
             if self._is_last_step(work_item):
+                self._hook_before_step()
                 if hasattr(self, 'optimizer') and not work_item.forward_only:
                     self.step()
-                self.forward_times = 0
-                self.backward_times = 0
-                self.outstanding = 0
-                self._initialize_outstanding_range()
+                self._reset_context()
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
         self.optimizer: optim.Optimizer = optimizer_class(self.module_partition.parameters(), **kwargs)
@@ -577,7 +613,7 @@ class PipelineEngineBase(ABC, nn.Module):
 
     def __init__(self,
                  worker_type,
-                 module_partitions,
+                 partition_fn: Callable,
                  stage_num,
                  num_microbatches,
                  device: str,
@@ -588,7 +624,7 @@ class PipelineEngineBase(ABC, nn.Module):
                  checkpoint: bool = False) -> None:
         super().__init__()
         self.worker_type = worker_type
-        self.module_partitions: List[nn.Module] = module_partitions
+        self.partition_fn: Callable = partition_fn
         self.chunk = chunk
         self.criterion = criterion
         self.metric = metric
@@ -609,18 +645,15 @@ class PipelineEngineBase(ABC, nn.Module):
 
     def _check_argument(self) -> None:
         self.virtual_stage_num = self.stage_num * self.chunk
-
         assert self.stage_num <= torch.cuda.device_count(), "stage_num must be smaller than device count!"
-        assert self.virtual_stage_num == len(
-            self.module_partitions), "stage_num * chunk must be equal to length of model partition!"
 
     def _get_actual_stage_num(self) -> int:
         return self.stage_num if self.chunk == 1 else self.virtual_stage_num
 
     def _create_pp_rank_to_rpc_worker_id(self) -> None:
         """create a map from model partition to stage_id, which is useful when use_interleave is True.
-        e.g. If a model is splited into 4 parts, which means len(self.module_partitions) == 3. 
-        stage_num is 2, chunk is 2, then pp_rank_to_rpc_worker_id = [0, 1, 0, 1], that means first and third part
+        e.g. If a model is splited into 4 parts, which means stage_num is 2, chunk is 2, then 
+        pp_rank_to_rpc_worker_id = [0, 1, 0, 1], that means first and third part
         of partitions will be moved to device 0 and the others to device 1
         """
         stage_num = self.stage_num
@@ -647,26 +680,34 @@ class PipelineEngineBase(ABC, nn.Module):
         device = self.device
         criterion = self.criterion
         metric = self.metric
+        partition_fn = self.partition_fn
+        chunk = self.chunk
 
         for pp_rank in range(len(self.pp_rank_to_rpc_worker_id)):
-            module_partition_id = self.pp_rank_to_module_partition_id[pp_rank]
+            partition_id = self.pp_rank_to_module_partition_id[pp_rank]
+            partition_args = (partition_id, chunk, actual_stage_num)
             rpc_worker_id = self.pp_rank_to_rpc_worker_id[pp_rank]
             if device[:4] == 'cuda':
                 device = f'cuda:{rpc_worker_id}'
-            module_partition = self.module_partitions[module_partition_id]
             self.pp_rank_to_worker_rref[pp_rank] = rpc.remote(rpc_worker_id,
                                                               worker_type,
-                                                              args=(module_partition, pp_rank, actual_stage_num,
-                                                                    num_microbatches, device, criterion, metric,
-                                                                    checkpoint))
+                                                              args=(partition_fn, partition_args, pp_rank,
+                                                                    actual_stage_num, num_microbatches, device,
+                                                                    criterion, metric, checkpoint))
 
         # let each worker know global worker rref (include itself)
+        sync_futs = []
         for pp_rank in self.pp_rank_to_worker_rref:
-            self.pp_rank_to_worker_rref[pp_rank].rpc_sync().sync_global_worker_rrefs(self.pp_rank_to_worker_rref)
+            fut = self.pp_rank_to_worker_rref[pp_rank].rpc_async().sync_global_worker_rrefs(self.pp_rank_to_worker_rref)
+            sync_futs.append(fut)
+
+        for fut in sync_futs:
+            fut.wait()
 
     def remote_parameters(self) -> Dict[int, List[torch.Tensor]]:
         parameters = {}
-        for stage_id in self.pp_rank_to_worker_rref:
+        actual_stage_num = self._get_actual_stage_num()
+        for stage_id in range(actual_stage_num):
             parameters[stage_id] = []
             worker_rref = self.pp_rank_to_worker_rref[stage_id]
             for p in worker_rref.rpc_sync().get_parameters():
@@ -675,7 +716,8 @@ class PipelineEngineBase(ABC, nn.Module):
 
     def remote_grad(self) -> Dict[int, List[torch.Tensor]]:
         grads = {}
-        for stage_id in self.pp_rank_to_worker_rref:
+        actual_stage_num = self._get_actual_stage_num()
+        for stage_id in range(actual_stage_num):
             grads[stage_id] = []
             worker_rref = self.pp_rank_to_worker_rref[stage_id]
             for grad in worker_rref.rpc_sync().get_parameter_gradients():
@@ -784,7 +826,7 @@ class PipelineEngineBase(ABC, nn.Module):
         # collect forward result
         forward_result = self._collect_forward_result(output_pp_ranks, ret_future)
 
-        if not forward_only and labels is not None:
+        if not forward_only and hasattr(self, 'optimizer_class'):
             # wait for all step
             for pp_rank in self.pp_rank_to_worker_rref:
                 worker_rref = self.pp_rank_to_worker_rref[pp_rank]
@@ -793,9 +835,8 @@ class PipelineEngineBase(ABC, nn.Module):
         return forward_result
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
-        actual_stage_num = self._get_actual_stage_num()
         self.optimizer_class = optimizer_class
-        for pp_rank in range(actual_stage_num):
+        for pp_rank in self.pp_rank_to_worker_rref:
             worker_rref = self.pp_rank_to_worker_rref[pp_rank]
             worker_rref.remote().initialize_optimizer(optimizer_class, **kwargs)
 

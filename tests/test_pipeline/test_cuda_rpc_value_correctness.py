@@ -6,6 +6,15 @@ from colossalai.pipeline.rpc._pipeline_schedule import FillDrainPipelineEngine, 
 from colossalai.testing import assert_close
 from rpc_test_utils import rpc_run, parse_args, RpcTestModel
 
+feat_num = 100
+h = 100
+
+
+def partition(pp_rank: int, chunk: int, stage_num: int):
+    torch.manual_seed(1024)
+    partition = RpcTestModel(pp_rank, stage_num, feat_num, h)
+    return partition
+
 
 def run_master(args):
     torch.manual_seed(100)
@@ -18,25 +27,20 @@ def run_master(args):
     num_microbatches = args.num_microbatches
 
     sample_num = 1024
-    feat_num = 100
-    h = 100
     batch_size = 1024
 
     assert sample_num % batch_size == 0
-    batch_num = sample_num // batch_size
 
     input_sample = torch.randn((sample_num, feat_num), device=device)
 
-    module_partitions = [RpcTestModel(pp_rank, actual_stage_num, feat_num, h) for pp_rank in range(actual_stage_num)]
-
-    engine = OneFOneBPipelineEngine(module_partitions=module_partitions,
+    engine = OneFOneBPipelineEngine(partition_fn=partition,
                                     stage_num=stage_num,
                                     num_microbatches=num_microbatches,
                                     device=device,
                                     chunk=chunk,
                                     checkpoint=use_checkpoint)
 
-    forward_result = engine.forward_backward(input_sample)[0]
+    forward_result = engine.forward_backward(input_sample)
 
     cuda_rpc_result = []
     single_result = []
@@ -50,7 +54,8 @@ def run_master(args):
             cuda_rpc_result.append(p)
 
     # compute forward result and backward grad of parameters just in rank_0
-    test_model = nn.Sequential(*module_partitions).to(device)
+    test_model = nn.Sequential(
+        *[partition(pp_rank, chunk, actual_stage_num) for pp_rank in range(actual_stage_num)]).to(device)
     input_sample = input_sample.requires_grad_()
     out_val = test_model(input_sample).sum()
     autograd.backward(out_val)
