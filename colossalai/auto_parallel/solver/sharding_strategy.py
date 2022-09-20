@@ -1,4 +1,7 @@
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from enum import Enum
+from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.sharding_spec import ShardingSpec
 from typing import Dict, List, Union, Tuple, Any
 from torch.fx.node import Node
@@ -37,6 +40,20 @@ class ShardingStrategy:
     input_shardings: List[ShardingSpec] = None
 
 
+class OperandType(Enum):
+    """
+    An operand can come from the argument list of an operator or the parameter list of a module.
+    """
+    ARG = 0
+    PARAM = 1
+
+
+@dataclass
+class Operand:
+    name: str
+    type: OperandType
+
+
 @dataclass
 class TrainCycleItem:
     """
@@ -44,9 +61,8 @@ class TrainCycleItem:
     in a training iteration.
 
     Args:
-        fwd (Any): the item for the forward pass
-        bwd (Any): the item for the backward pass
-        total (Any): the total value for the forward and backward pass
+        fwd (float): the item for the forward pass
+        bwd (float): the item for the backward pass
     """
     fwd: Any
     bwd: Any
@@ -74,8 +90,33 @@ class ShardingStrategy_V2:
     compute_cost: TrainCycleItem = None
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None
-    input_sharding_specs: List[ShardingSpec] = None
-    input_resharding_costs: Dict[Node, List[float]] = None
+    input_sharding_specs: Dict[Operand, ShardingSpec] = None
+    input_resharding_costs: Dict[Operand, List[float]] = None
+
+
+class StrategyGenerator_V2(ABC):
+    """
+    StrategyGenerator is used to generate the same group of sharding strategies. 
+
+    TODO: remove the original strategy_generator.py after refactoring
+    """
+
+    def __init__(self, device_mesh: DeviceMesh):
+        self.device_mesh = device_mesh
+
+    @abstractmethod
+    def generate(self, operand_mapping: Dict[str:Operand]) -> List[ShardingStrategy_V2]:
+        """
+        """
+        pass
+
+    @abstractmethod
+    def validate(self, *args, **kwargs) -> bool:
+        """
+        Validate if the operands are of desired shape. 
+        If True, means this generator can be used for the current operation.
+        """
+        pass
 
 
 class StrategiesVector(list):
