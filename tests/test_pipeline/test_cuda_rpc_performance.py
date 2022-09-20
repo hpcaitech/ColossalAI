@@ -18,17 +18,30 @@ from colossalai.trainer import Trainer, hooks
 from colossalai.utils import MultiTimer, get_dataloader
 from colossalai.context import ParallelMode
 from colossalai.pipeline.pipelinable import PipelinableContext, PipelinableModel
-from colossalai.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
+from colossalai.pipeline.rpc import OneFOneBPipelineEngine, ChimeraPipelineEngine
+from colossalai.pipeline.pipeline_process_group import ppg
 
 
 def flatten(x):
     return torch.flatten(x, 1)
 
 
-class Flatten(nn.Module):
+def partition(pp_rank: int, chunk: int, stage_num: int):
+    pipelinable = PipelinableContext()
 
-    def forward(self, x):
-        return torch.flatten(x, start_dim=1)
+    # build model partitions
+    with pipelinable:
+        # input : [B, 3, 32, 32]
+        _ = resnet50()
+
+    pipelinable.policy = "customized"
+
+    exec_seq = [
+        'conv1', 'bn1', 'relu', 'maxpool', 'layer1', 'layer2', 'layer3', 'layer4', 'avgpool', (flatten, "behind"), 'fc'
+    ]
+    pipelinable.to_layer_list(exec_seq)
+    partition = pipelinable.partition(chunk, stage_num, pp_rank)
+    return partition
 
 
 def run_master(args):
@@ -39,37 +52,12 @@ def run_master(args):
     stage_num = world_size
     num_microbatches = args.num_microbatches
 
-    assert chunk == 1
-
-    pipelinable = PipelinableContext()
-
-    # build model partitions
-    with pipelinable:
-        # input : [B, 3, 32, 32]
-        model = resnet50()
-
-    exec_seq = [
-        'conv1', 'bn1', 'relu', 'maxpool', 'layer1', 'layer2', 'layer3', 'layer4', 'avgpool', (flatten, "behind"), 'fc'
-    ]
-    pipelinable.to_layer_list(exec_seq)
-    module_partitions: List[PipelinableModel] = [
-        pipelinable.partition(chunk, stage_num, pp_rank) for pp_rank in range(world_size)
-    ]
-
     # build dataloader
     root = os.environ.get('DATA', './data')
     train_dataloader, test_dataloader = build_cifar(batch_size, root, padding=4, crop=32, resize=32)
     criterion = nn.CrossEntropyLoss()
 
-    partition_1 = module_partitions[0]
-    partition_2 = []
-    for model in module_partitions[1]._module_list:
-        partition_2.append(model)
-    partition_2.insert(len(partition_2) - 1, Flatten())
-    partition_2 = nn.Sequential(*partition_2)
-    module_partitions = [partition_1, partition_2]
-
-    pp_engine = OneFOneBPipelineEngine(module_partitions=module_partitions,
+    pp_engine = OneFOneBPipelineEngine(partition_fn=partition,
                                        stage_num=stage_num,
                                        num_microbatches=num_microbatches,
                                        device=device,

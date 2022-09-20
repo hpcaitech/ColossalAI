@@ -1,5 +1,6 @@
 from typing import List, Dict, Tuple
 import os
+import threading
 
 from torch.distributed import rpc
 import torch.distributed as dist
@@ -10,13 +11,17 @@ from colossalai.tensor import ProcessGroup
 class PipelineProcessGroup:
     # TODO : flexible API for DP size and TP size
     # In the future design mode, dp_degree and tp_degree should be removed
-    def __init__(self,
-                 rank: int,
-                 world_size: int,
-                 dp_degree: int = 1,
-                 tp_degree: int = 1,
-                 num_worker_threads: int = 1,
-                 device: str = "cuda") -> None:
+    def __init__(self) -> None:
+        self.is_initialize = False
+
+    def set_global_info(self,
+                        rank: int,
+                        world_size: int,
+                        dp_degree: int = 1,
+                        tp_degree: int = 1,
+                        num_worker_threads: int = 1,
+                        device: str = "cuda") -> None:
+
         device_mesh_size = dp_degree * tp_degree
         assert world_size % device_mesh_size == 0, "world_size must be the multiple of dp_degree * tp_degree !!!"
         self._num_worker_threads = num_worker_threads
@@ -41,6 +46,11 @@ class PipelineProcessGroup:
         # status
         self._is_first_pp_rank = self._pp_rank == 0
         self._is_last_pp_rank = self._pp_rank == self._stage_num - 1
+
+        self.is_initialize = True
+
+        # lock
+        self.chimera_lock = threading.Lock()
 
     def _initialize_process_group(self):
         stage_num = self.get_stage_num()
@@ -133,3 +143,25 @@ class PipelineProcessGroup:
 
     def get_tp_global_ranks(self):
         pass
+
+    def get_chimera_all_reduce_group(self, pp_rank: int):
+        with self.chimera_lock:
+            if not hasattr(self, 'chimera_groups'):
+                world_size = self.get_world_size()
+                stage_num = self.get_stage_num()
+                assert world_size % 2 == 0, 'world_size must be even in chimera!'
+                self.chimera_groups = {}
+                for rank in range(world_size // 2):
+                    pair = [rank, world_size - 1 - rank]
+                    group = dist.new_group(pair)
+                    self.chimera_groups[pair[0]] = group
+                    self.chimera_groups[pair[1]] = group
+                    self.chimera_groups[pair[0] + stage_num] = group
+                    self.chimera_groups[pair[1] + stage_num] = group
+                self.chimera_step_lock = threading.Lock()
+                self.chimera_step_lock.acquire()
+
+        return self.chimera_groups[pp_rank]
+
+
+ppg = PipelineProcessGroup()

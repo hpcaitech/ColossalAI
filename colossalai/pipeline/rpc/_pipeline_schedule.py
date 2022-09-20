@@ -1,10 +1,12 @@
 from typing import List, Callable, Dict
 
-import torch.nn as nn
+import torch
+import torch.distributed as dist
 from torch.futures import Future
 from torch._C._distributed_rpc import PyRRef
 
-from colossalai.pipeline.rpc._pipeline_base import PipelineEngineBase, WorkerBase, UniqueKey, Phase
+from colossalai.pipeline.rpc._pipeline_base import PipelineEngineBase, WorkerBase, UniqueKey, Phase, WorkItem
+from colossalai.pipeline.pipeline_process_group import ppg
 
 # Implementation of different Pipeline schedule
 # <strategy>Worker defines the worker for each stage
@@ -35,7 +37,7 @@ class FillDrainWorker(WorkerBase):
 class FillDrainPipelineEngine(PipelineEngineBase):
 
     def __init__(self,
-                 module_partitions: List[nn.Module],
+                 partition_fn: Callable,
                  stage_num: int,
                  num_microbatches: int,
                  device: str,
@@ -49,8 +51,8 @@ class FillDrainPipelineEngine(PipelineEngineBase):
                 "if you use interleaving strategy, make sure 'num_microbatches' is a multiple of stage_num!"
         use_1F1B = False
 
-        super().__init__(FillDrainWorker, module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk,
-                         criterion, metric, checkpoint)
+        super().__init__(FillDrainWorker, partition_fn, stage_num, num_microbatches, device, use_1F1B, chunk, criterion,
+                         metric, checkpoint)
 
 
 class OneFOneBWorker(WorkerBase):
@@ -94,7 +96,7 @@ class OneFOneBWorker(WorkerBase):
 class OneFOneBPipelineEngine(PipelineEngineBase):
 
     def __init__(self,
-                 module_partitions: List[nn.Module],
+                 partition_fn: Callable,
                  stage_num: int,
                  num_microbatches: int,
                  device: str,
@@ -106,10 +108,11 @@ class OneFOneBPipelineEngine(PipelineEngineBase):
         if chunk > 1:
             assert num_microbatches % stage_num == 0, \
                 "if you use interleaving strategy, make sure 'num_microbatches' is a multiple of stage_num!"
+        assert num_microbatches > stage_num * chunk, "num_microbatches must be greater than stage_num * chunk"
         use_1F1B = True
 
-        super().__init__(OneFOneBWorker, module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk,
-                         criterion, metric, checkpoint)
+        super().__init__(OneFOneBWorker, partition_fn, stage_num, num_microbatches, device, use_1F1B, chunk, criterion,
+                         metric, checkpoint)
 
 
 class ChimeraWorker(WorkerBase):
@@ -139,21 +142,16 @@ class ChimeraWorker(WorkerBase):
         stage_num = self.actual_stage_num
         real_microbatch_num = self.num_microbatches // 2
 
-        if self.forward_times < real_microbatch_num:
-            if (pp_rank + 1) % stage_num == 0:    # last rank
-                forward_blocks = self.forward_times // (self.num_microbatches // stage_num)
-                if forward_blocks > self.backward_times:
-                    target_phase = Phase.BACKWARD
-                    target_microbatch_id = self.backward_times
-                else:
-                    target_phase = Phase.FORWARD
-                    target_microbatch_id = self.forward_times
-            else:    # others
-                target_phase = Phase.FORWARD
-                target_microbatch_id = self.forward_times
-        else:
+        forward_block_size = 1 if self.num_microbatches < stage_num else self.num_microbatches // stage_num
+        forward_block_num = self.forward_times // forward_block_size
+
+        if self.forward_times >= real_microbatch_num or \
+            ((pp_rank + 1) % stage_num == 0 and forward_block_num > self.backward_times):
             target_phase = Phase.BACKWARD
             target_microbatch_id = self.backward_times
+        else:    # others
+            target_phase = Phase.FORWARD
+            target_microbatch_id = self.forward_times
 
         # In up pipeline, microbatch_id to consume is 0, 2, 4 (2n)
         # In down pipeline, microbatch_id to consume is 1, 3, 5 (2n + 1)
@@ -164,8 +162,27 @@ class ChimeraWorker(WorkerBase):
 
         with self.work_list_condition_lock:
             self.work_list_condition_lock.wait_for(lambda: target_key in self.work_list)
-
         return target_key
+
+    def _initialize_partition(self):
+        # In order to ensure the down pipeline share the same parameter
+        # with the up pipeline, partition of down partition will be copied
+        # from corresponding up stage
+        pp_rank = self.pp_rank
+        stage_num = self.actual_stage_num
+        device = self.device
+        if pp_rank < stage_num:
+            super()._initialize_partition()
+        else:
+            # if it is down pipeline, create partition by origin method
+            co_up_pp_worker_rref = self.pp_rank_to_worker_rref[pp_rank - stage_num]
+            # get the coresponding model state dict and wait for its init
+            state_dict = co_up_pp_worker_rref.rpc_sync().get_partition_state_dict()
+            super()._initialize_partition()
+            self.module_partition.load_state_dict(state_dict)
+
+        # init group for chimera in ppg
+        ppg.get_chimera_all_reduce_group(pp_rank)
 
     def is_first_stage(self):
         return (self.pp_rank % self.actual_stage_num) == 0
@@ -173,13 +190,57 @@ class ChimeraWorker(WorkerBase):
     def is_last_stage(self):
         return (self.pp_rank % self.actual_stage_num) == self.actual_stage_num - 1
 
+    def _is_last_step(self, work_item: WorkItem) -> bool:
+        if work_item.forward_only:
+            last_phase = Phase.FORWARD
+        else:
+            last_phase = Phase.BACKWARD
+        is_last_phase = work_item.phase == last_phase
+        last_microbatch_id = self.num_microbatches - 1
+        if self.pp_rank < self.actual_stage_num:
+            last_microbatch_id -= 1
+        is_last_microbatch = work_item.microbatch_id == last_microbatch_id
+        return is_last_phase and is_last_microbatch
+
+    def _get_step_order(self) -> List[int]:
+        # TODO : If you want to extend it to multi head chimera, overwrite here
+        stage_num = self.actual_stage_num
+        pp_rank = self.pp_rank
+        # pp_rank in the same device
+        local_device_pp_ranks = [pp_rank, stage_num * 2 - pp_rank - 1]
+        local_device_pp_ranks.sort(reverse=min(local_device_pp_ranks) < stage_num // 2)
+        return local_device_pp_ranks
+
+    def _hook_before_step(self):
+        pp_rank = self.pp_rank
+
+        orders = self._get_step_order()
+        step_index = orders.index(pp_rank)
+
+        # if currrent pp_rank is not the first to do step
+        # wait its previous pp_rank finish step
+
+        all_reduce_group = ppg.get_chimera_all_reduce_group(self.pp_rank)
+        grads = self.get_parameter_gradients()
+
+        # print(self.pp_rank, "begin all reduce", torch.cuda.max_memory_allocated(ppg.get_local_pp_rank()), torch.cuda.max_memory_reserved(ppg.get_local_pp_rank()))
+        if step_index == 1:
+            ppg.chimera_step_lock.acquire()
+
+        print(f'rank_{self.pp_rank} before all reduce')
+        dist.all_reduce_coalesced(grads, group=all_reduce_group, async_op=False)
+        print(f'rank_{self.pp_rank} after  all reduce')
+
+        if step_index == 0:
+            ppg.chimera_step_lock.release()
+
 
 class ChimeraPipelineEngine(PipelineEngineBase):
 
     def __init__(self,
-                 module_partitions,
-                 stage_num,
-                 num_microbatches,
+                 partition_fn: Callable,
+                 stage_num: int,
+                 num_microbatches: int,
                  device: str,
                  criterion: Callable = None,
                  metric: Callable = None,
@@ -189,11 +250,12 @@ class ChimeraPipelineEngine(PipelineEngineBase):
             "In Chimera, num_microbatches must be the multiply of stage_num!"
         use_1F1B = False
         chunk = 1
-        super().__init__(ChimeraWorker, module_partitions, stage_num, num_microbatches, device, use_1F1B, chunk,
-                         criterion, metric, checkpoint)
+
+        super().__init__(ChimeraWorker, partition_fn, stage_num, num_microbatches, device, use_1F1B, chunk, criterion,
+                         metric, checkpoint)
 
     def _consume_constraint(self, microbatch_id: int, forward_only: bool, ret_future: Dict[PyRRef, List[Future]],
-                            input_worker_rrefs: List[PyRRef], output_worker_rrefs: List[PyRRef]):
+                            input_pp_ranks: List[PyRRef], output_pp_ranks: List[PyRRef]):
         pass
 
     def _create_pp_rank_to_rpc_worker_id(self) -> None:
@@ -254,7 +316,6 @@ class ChimeraPipelineEngine(PipelineEngineBase):
 
                 up_key = UniqueKey(up_last_microbatch_id, Phase.BACKWARD)
                 down_key = UniqueKey(down_last_microbatch_id, Phase.BACKWARD)
-
                 up_worker_rref.rpc_sync().get_output_by_key(up_key)
                 down_worker_rref.rpc_sync().get_output_by_key(down_key)
 
