@@ -110,7 +110,7 @@ def test_freq_aware_embed(use_LFU: bool):
                                   EMBED_DIM,
                                   mode='mean',
                                   include_last_offset=True,
-                                  cache_ratio=BATCH_SIZE * 2 / NUM_EMBED,
+                                  cache_ratio=min(BATCH_SIZE * 2 / NUM_EMBED, 1.0),
                                   ids_freq_mapping=None,
                                   evict_strategy=evict_strategy).to(device)
 
@@ -216,17 +216,17 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     embedding_bag_config_list: List[TablewiseEmbeddingBagConfig] = []
     embedding_bag_config_list.append(
         TablewiseEmbeddingBagConfig(num_embeddings=6,
-                                    cuda_row_num=4 / 6,
+                                    cuda_row_num=4,
                                     assigned_rank=0,
                                     initial_weight=weight_table1.clone().detach().cpu()))
     embedding_bag_config_list.append(
         TablewiseEmbeddingBagConfig(num_embeddings=5,
-                                    cuda_row_num=4 / 5,
+                                    cuda_row_num=4,
                                     assigned_rank=0,
                                     initial_weight=weight_table2.clone().detach().cpu()))
     embedding_bag_config_list.append(
         TablewiseEmbeddingBagConfig(num_embeddings=7,
-                                    cuda_row_num=4 / 7,
+                                    cuda_row_num=4,
                                     assigned_rank=1,
                                     initial_weight=weight_table3.clone().detach().cpu()))
     if rank == 0:
@@ -304,7 +304,7 @@ def run_parallel_freq_aware_embed_columnwise(rank, world_size):
         coloweight,
         include_last_offset=True,
         freeze=False,
-        cache_ratio=batch_size * 2 / 100,
+        cache_ratio=batch_size * 2 / num_embed,
     )
 
     assert model.cache_weight_mgr.weight.device.type == 'cpu'
