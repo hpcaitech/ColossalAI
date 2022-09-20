@@ -43,7 +43,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
                  include_last_offset=False,
                  dtype=None,
                  device=None,
-                 cuda_row_num=0,
+                 cache_ratio=0.01,
                  ids_freq_mapping=None,
                  warmup_ratio=0.7,
                  buffer_size=50_000,
@@ -58,7 +58,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
 
         super(ParallelFreqAwareEmbeddingBag,
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
-                             sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
+                             sparse, _weight, mode, include_last_offset, dtype, device, cache_ratio, ids_freq_mapping,
                              warmup_ratio, buffer_size, pin_weight, evict_strategy)
 
     def _weight_alloc(self, dtype, device):

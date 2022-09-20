@@ -293,7 +293,7 @@ class CachedParamMgr(torch.nn.Module):
         Returns:
             torch.Tensor: indices on the cuda_cached_weight.
         """
-        with record_function("(pre-id) get unique indices"):
+        with record_function(f"(pre-id) get unique indices. cache ratio {self.cuda_row_num / self.num_embeddings}"):
             ids = ids.to(self._cache_dev)
             cpu_row_idxs, repeat_times = torch.unique(self.idx_map.index_select(0, ids), return_counts=True)
 
