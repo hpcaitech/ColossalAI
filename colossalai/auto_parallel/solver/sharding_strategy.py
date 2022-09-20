@@ -105,7 +105,7 @@ class StrategyGenerator_V2(ABC):
         self.device_mesh = device_mesh
 
     @abstractmethod
-    def generate(self, operand_mapping: Dict[str:Operand]) -> List[ShardingStrategy_V2]:
+    def generate(self, operand_mapping: Dict[str, Operand]) -> List[ShardingStrategy_V2]:
         """
         """
         pass
