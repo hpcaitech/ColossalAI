@@ -66,6 +66,7 @@ def check_apply(rank, world_size, port):
     sharding_spec_dict, origin_spec_dict = solution_annotatation_pass(gm, solution, device_mesh)
     shape_consistency_pass(gm)
     nodes = [node for node in gm.graph.nodes]
+    # TODO: wrap the gm to avoid the influence of the user training code
     output = gm(input, sharding_spec_dict, origin_spec_dict)
     assert output.equal(origin_output)
 

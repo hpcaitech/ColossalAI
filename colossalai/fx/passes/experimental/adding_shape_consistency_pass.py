@@ -108,5 +108,4 @@ def shape_consistency_pass(gm: torch.fx.GraphModule):
             with mod_graph.inserting_before(user_node):
                 shape_consistency_node = mod_graph.create_node('call_function', apply, args=(node, sharding_spec_node))
 
-    gm.recompile()
     return gm
