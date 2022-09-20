@@ -4,7 +4,7 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.profiler import activation_size, parameter_size
 import math
 from .linearize import linearize
-from .utils import *
+from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 
@@ -110,10 +110,6 @@ def _rec(chain: Chain, lmin, lmax, cmem, opt_table):
     return sequence
 
 
-def _discretize(mem_unit, values):
-    return [math.ceil(value / mem_unit) for value in values]
-
-
 def _fwd_xbar(node: List[Node]) -> int:
     """Get the forward xbar of a node
 
@@ -204,7 +200,7 @@ def _get_bwd_mem_tmp(node: List[Node]) -> int:
     return bwd_mem_tmp
 
 
-def _construct_chain(node_list: List[List[Node]], input, mem_unit: int) -> Chain:
+def _construct_chain(node_list: List[List[Node]], input) -> Chain:
 
     fwd_time = []
     bwd_time = []
@@ -225,11 +221,6 @@ def _construct_chain(node_list: List[List[Node]], input, mem_unit: int) -> Chain
 
     # currently we view loss backward temp as zero
     tmp_bwd.append(0)
-
-    xbar_sizes = _discretize(mem_unit, xbar_sizes)
-    x_sizes = _discretize(mem_unit, x_sizes)
-    tmp_fwd = _discretize(mem_unit, tmp_fwd)
-    tmp_bwd = _discretize(mem_unit, tmp_bwd)
 
     return Chain(fwd_time, bwd_time, x_sizes, xbar_sizes, tmp_fwd, tmp_bwd)
 
@@ -345,7 +336,9 @@ def solver_rotor(gm: ColoGraphModule,
     mem_limit -= parameter_size(gm)
     mem_unit = mem_limit * (1.0 - eps) // mem_slots
     MetaInfoProp(gm).run(data)
-    chain: Chain = _construct_chain(node_list, data, mem_unit)
+
+    chain: Chain = _construct_chain(node_list, data)
+    chain._discretize(mem_unit)
     opt_table = _compute_table(chain, mem_slots)
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
     _annotate_from_sequence(sequence, node_list)
