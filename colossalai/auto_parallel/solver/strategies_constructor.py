@@ -408,7 +408,8 @@ class StrategiesConstructor:
                     sharding_strategy_attribute = ShardingStrategy(name,
                                                                    output_sharding_spec,
                                                                    memory_cost=memory_cost,
-                                                                   resharding_costs=resharding_costs)
+                                                                   resharding_costs=resharding_costs,
+                                                                   input_shardings=tuple(input_sharding_specs))
                     strategies_vector.append(sharding_strategy_attribute)
 
             self.remove_duplicated_strategy(strategies_vector)
