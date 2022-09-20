@@ -31,7 +31,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                  include_last_offset=False,
                  dtype=None,
                  device=None,
-                 cuda_row_num=0,
+                 cache_ratio=0.01,
                  warmup_ratio=0.7,
                  buffer_size=50_000,
                  pin_weight=False,
@@ -59,11 +59,12 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                 else:
                     ids_freq_mapping = None
                     break
-
+        self.cache_ratio = cache_ratio
         # table-associate cache
+        cuda_row_num = int(cache_ratio * self.num_embeddings)
         super(ParallelFreqAwareEmbeddingBagTablewise,
               self).__init__(self.num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
-                             sparse, _weight, mode, include_last_offset, dtype, device, cuda_row_num, ids_freq_mapping,
+                             sparse, _weight, mode, include_last_offset, dtype, device, cache_ratio, ids_freq_mapping,
                              warmup_ratio, buffer_size, pin_weight, evict_strategy)
 
         # for assigned tables reconnection:
@@ -123,7 +124,6 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
             local_per_sample_weights_list: List(torch.Tensor) = []
 
         offset_pre_end = 0    # local_offsets trick
-
         for i, handle_table in enumerate(self.assigned_table_list):
             indices_start_position = offsets[batch_size * handle_table]
             if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):
@@ -162,15 +162,15 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
                 # till-the-end special case
                 if not self.include_last_offset:
                     local_offsets = offsets.narrow(0, batch_size * handle_table,
-                                                   batch_size).add(offset_pre_end - offsets[batch_size
-                                                                                            * (handle_table)])
+                                                   batch_size).add(offset_pre_end - offsets[batch_size *
+                                                                                            (handle_table)])
                 else:
-                    local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size
-                                                   + 1).add(offset_pre_end - offsets[batch_size * (handle_table)])
+                    local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size +
+                                                   1).add(offset_pre_end - offsets[batch_size * (handle_table)])
                 local_offsets_list.append(local_offsets)
             else:
-                local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size
-                                               + 1).add(offset_pre_end - offsets[batch_size * (handle_table)])
+                local_offsets = offsets.narrow(0, batch_size * handle_table, batch_size +
+                                               1).add(offset_pre_end - offsets[batch_size * (handle_table)])
                 offset_pre_end = local_offsets[-1]
                 local_offsets_list.append(local_offsets[:-1])
             # 3. local_per_sample_weights_list:

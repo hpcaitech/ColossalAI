@@ -5,9 +5,9 @@ from abc import ABC, abstractmethod
 from torch.fx.node import Node
 from typing import Dict, List
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 from .._utils import generate_resharding_costs, generate_sharding_spec
+from colossalai.auto_parallel.solver.constants import *
 
 from ..sharding_strategy import StrategiesVector
 
@@ -44,7 +44,7 @@ class OperatorHandler(ABC):
             named_parameters = list(module.named_parameters(recurse=False))
             # convert named parameters from list to dict
             named_parameters = {k: v for k, v in named_parameters}
-        elif self.node.op == 'call_function':
+        elif self.node.op == 'call_function' and self.node.target not in NON_PARAM_FUNC_OP:
             module = None
             parameters = list(self.node.args)[1]
             named_parameters = {'weight': parameters._meta_data}

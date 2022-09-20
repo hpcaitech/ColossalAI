@@ -1,3 +1,10 @@
+import math
+
+
+def _discretize(mem_unit, values):
+    return [math.ceil(value / mem_unit) for value in values]
+
+
 class Chain:
 
     def __init__(self, fw, bw, cw, cbw, ftmp, btmp, check=True):
@@ -5,25 +12,31 @@ class Chain:
         self.bweight = bw
         self.cweight = cw
         self.cbweight = cbw
-        self.fwd_tmp = ftmp
-        self.bwd_tmp = btmp
+        self.fwd_mem_tmp = ftmp
+        self.bwd_mem_tmp = btmp
         self.length = len(fw)
         if check and not self.check_lengths():
             raise AttributeError("In Chain, input lists do not have consistent lengths")
 
     def check_lengths(self):
         return ((len(self.fweight) == self.length) and (len(self.bweight) == self.length + 1)
-                and (len(self.cweight) == self.length + 1) and (len(self.fwd_tmp) == self.length)
-                and (len(self.bwd_tmp) == self.length + 1) and (len(self.cbweight) == self.length + 1))
+                and (len(self.cweight) == self.length + 1) and (len(self.fwd_mem_tmp) == self.length)
+                and (len(self.bwd_mem_tmp) == self.length + 1) and (len(self.cbweight) == self.length + 1))
 
     def __repr__(self):
         chain_list = []
         for i in range(self.length):
-            chain_list.append(
-                (self.fweight[i], self.bweight[i], self.cweight[i], self.cbweight[i], self.fwd_tmp[i], self.bwd_tmp[i]))
+            chain_list.append((self.fweight[i], self.bweight[i], self.cweight[i], self.cbweight[i], self.fwd_mem_tmp[i],
+                               self.bwd_mem_tmp[i]))
         i = self.length
-        chain_list.append((None, self.bweight[i], self.cweight[i], self.cbweight[i], None, self.bwd_tmp[i]))
+        chain_list.append((None, self.bweight[i], self.cweight[i], self.cbweight[i], None, self.bwd_mem_tmp[i]))
         return chain_list.__repr__()
+
+    def _discretize(self, mem_unit):
+        self.cweight = _discretize(mem_unit, self.cweight)
+        self.cbweight = _discretize(mem_unit, self.cbweight)
+        self.fwd_mem_tmp = _discretize(mem_unit, self.fwd_mem_tmp)
+        self.bwd_mem_tmp = _discretize(mem_unit, self.bwd_mem_tmp)
 
 
 class Operation:
@@ -33,6 +46,32 @@ class Operation:
             self.index = tuple(x + value for x in self.index)
         else:
             self.index += value
+
+
+class Offload(Operation):
+
+    def __init__(self, index, has_bar=False) -> None:
+        super().__init__()
+        self.index = index
+        self.name = "Off"
+        if has_bar:
+            self.name += "wBar"
+
+    def __repr__(self):
+        return f"{self.name}_{self.index}"
+
+
+class Prefetch(Operation):
+
+    def __init__(self, index, has_bar=False) -> None:
+        super().__init__()
+        self.index = index
+        self.name = "Pre"
+        if has_bar:
+            self.name += "wBar"
+
+    def __repr__(self):
+        return f"{self.name}_{self.index}"
 
 
 class Forward(Operation):

@@ -222,6 +222,7 @@ flop_mapping = {
     aten._adaptive_avg_pool2d_backward.default: elementwise_flop_counter(0, 1),
     aten._adaptive_avg_pool3d.default: elementwise_flop_counter(1, 0),
     aten._adaptive_avg_pool3d_backward.default: elementwise_flop_counter(0, 1),
+    aten.embedding_dense_backward.default: elementwise_flop_counter(0, 1),
 }
 
 elementwise_flop_aten = [
