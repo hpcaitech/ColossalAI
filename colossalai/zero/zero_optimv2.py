@@ -221,12 +221,6 @@ class ZeroOptimizerV2(ColossalaiOptimizer):
                     if isinstance(val, torch.Tensor):
                         self.chunk_manager.add_extern_static_tensor(val)
 
-    def state_dict(self, only_rank_0: bool = True):
-        raise NotImplementedError
-
-    def load_state_dict(self, state_dict):
-        raise NotImplementedError
-
     def __init__optimizer(self):
 
         def get_range_pair(local_chunk: ChunkV2, local_param: Parameter):
