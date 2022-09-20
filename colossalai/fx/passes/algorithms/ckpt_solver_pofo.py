@@ -6,7 +6,7 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.profiler import parameter_size
 import math
 from .linearize import linearize
-from .utils import *
+from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function, Offload, Prefetch
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 from colossalai.fx.passes.algorithms.ckpt_solver_rotor import _construct_chain, _compute_table, _rec
@@ -26,6 +26,10 @@ def _normalize_flops(chain: Chain, flops) -> Chain:
 
 
 class PofoTable:
+    """PofoTable
+    The PofoTable contains the necessary components to store intermediate results
+    of dynamic programming and the operations alone the way.
+    """
 
     def __init__(self, chain_length: int, mem_slots: int):
         """Init pofo table
@@ -78,6 +82,11 @@ class PofoTable:
 
 
 class PofoSolver:
+    """PofoSolver that executes algorithm mentioned in https://proceedings.neurips.cc/paper/2021/hash/c8461bf13fca8a2b9912ab2eb1668e4b-Abstract.html
+    The new pofo solver is based on paper Efficient Combination of Rematerialization and Offloading for Training DNNs 
+    and it's code given in the supplemental. Currently we doesn't use the whole set up in the original paper and reuse 
+    rotor solver for the backward sequence as suggested in supplemental. The solver now is able to find strategy with offload. 
+    """
 
     def __init__(self, chain: Chain, max_memory: int, bandwidth, mem_slots: int) -> None:
         self.chain = chain
@@ -201,7 +210,6 @@ class PofoSolver:
         """Generate new values for next state
 
         Args:
-            chain (Chain): chain for sequence
             state (Tuple): undiscretized states
             do_offload (bool): bool type indicates whether we need to do offload
             common_values (Tuple): common values (offload_data, prefetch_data, total_time, idle_time)

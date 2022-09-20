@@ -4,7 +4,7 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.profiler import activation_size, parameter_size
 import math
 from .linearize import linearize
-from .utils import *
+from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 
