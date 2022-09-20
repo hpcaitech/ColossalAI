@@ -110,7 +110,8 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
             name_list.append((name, param))
 
         for name, param in name_list:
-            delattr(module, name)
+            if hasattr(module, name):
+                delattr(module, name)
             setattr(module, name, ColoParameter.from_torch_tensor(tensor=param.data, requires_grad=param.requires_grad))
 
     def to_layer_list(self, exec_seq=None):
