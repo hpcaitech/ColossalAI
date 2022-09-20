@@ -57,6 +57,7 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
         super(FreqAwareEmbeddingBag, self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type,
                                                     scale_grad_by_freq, sparse, mode, include_last_offset)
 
+        assert cache_ratio <= 1.0, f"cache ratio {cache_ratio} must less than 1.0"
         self.evict_strategy = evict_strategy
         if _weight is None:
             _weight = self._weight_alloc(dtype, device)
