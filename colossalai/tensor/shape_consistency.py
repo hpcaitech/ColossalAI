@@ -197,9 +197,14 @@ class _AllToAll(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, input_, comm_spec):
-        # TODO: change the sharding_dim and gather_dim for backward
-        ctx.comm_spec = comm_spec
-        return _all_to_all(input_, comm_spec)
+        output = _all_to_all(input_, comm_spec)
+        comm_spec_for_backward = CommSpec(comm_pattern=comm_spec.comm_pattern,
+                                          sharding_spec=comm_spec.sharding_spec,
+                                          gather_dim=comm_spec.shard_dim,
+                                          shard_dim=comm_spec.gather_dim,
+                                          logical_process_axis=comm_spec.logical_process_axis)
+        ctx.comm_spec = comm_spec_for_backward
+        return output
 
     @staticmethod
     def backward(ctx, grad_outputs):
