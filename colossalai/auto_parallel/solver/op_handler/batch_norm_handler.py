@@ -1,9 +1,9 @@
 import operator
 from functools import reduce
-import warnings
 import torch
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from .operator_handler import OperatorHandler
+from colossalai.auto_parallel.solver._utils import exception_handler
 
 __all__ = ['BatchNormHandler']
 
@@ -110,6 +110,7 @@ class BatchNormHandler(OperatorHandler):
 
         return memory_cost, memory_cost_forward_activation, memory_cost_backward_activation
 
+    @exception_handler
     def split_input_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_0} = RS{mesh_dim_0} x S{mesh_dim_0}'
 
@@ -184,6 +185,7 @@ class BatchNormHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_input_channel_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_0}{mesh_dim_1} = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}'
 
@@ -224,6 +226,7 @@ class BatchNormHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def non_split(self, mesh_dim_0, mesh_dim_1):
         name = f'RR = RR x R'
 
@@ -319,6 +322,7 @@ class BatchNormHandler(OperatorHandler):
         new_sharding_strategy = _construct_batch_sharding_strategies(mesh_dim_list, new_name)
         self.strategies_vector.append(new_sharding_strategy)
 
+    @exception_handler
     def split_input_batch(self, mesh_dim_0):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}R x R WITH SYNC_BN'
 
@@ -359,6 +363,7 @@ class BatchNormHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_input_batch_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x R WITH SYNC_BN'
 
@@ -399,6 +404,7 @@ class BatchNormHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def split_input_both_dim(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1} WITH SYNC_BN'
 

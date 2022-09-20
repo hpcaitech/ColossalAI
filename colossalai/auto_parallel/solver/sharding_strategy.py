@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from colossalai.tensor.sharding_spec import ShardingSpec
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Union, Tuple, Any
 from torch.fx.node import Node
 from .constants import *
 
@@ -37,6 +37,47 @@ class ShardingStrategy:
     input_shardings: List[ShardingSpec] = None
 
 
+@dataclass
+class TrainCycleItem:
+    """
+    TrainCycleItem is a dataclass to store the items which have different values for the forward and backward pass
+    in a training iteration.
+
+    Args:
+        fwd (Any): the item for the forward pass
+        bwd (Any): the item for the backward pass
+        total (Any): the total value for the forward and backward pass
+    """
+    fwd: Any
+    bwd: Any
+    total: Any
+
+
+@dataclass
+class ShardingStrategy_V2:
+    """
+    ShardingStrategy is a dataclass to store the meta information on tensor sharding for a node.
+
+    Args:
+        name (str): express the sharding strategies in string, such as 'S0S1 = S0R x RS1'.
+        output_sharding_spec (ShardingSpec): ShardingSpec of the output node.
+        compute_cost (TrainCycleItem): Computation cost to complete this strategy. (default to None)
+        communication_cost (TrainCycleItem): Communication cost to complete this strategy. (default to None)
+        memory_cost (TrainCycleItem): Memory cost of the output node using this strategy. (default to None)
+        input_sharding_specs (List(ShardingSpec)): The ShardingSpecs of the input nodes.
+        input_resharding_costs (Dict[int, List[float]]): resharding_cost[i][j] means the cost of i-th argument in the output node argument list
+                                                  with j-th strategy in its strategies_vector transforms to sharding spec wanted in this
+                                                  strategy.(default to None)
+    """
+    name: str
+    output_sharding_spec: ShardingSpec
+    compute_cost: TrainCycleItem = None
+    communication_cost: TrainCycleItem = None
+    memory_cost: TrainCycleItem = None
+    input_sharding_specs: List[ShardingSpec] = None
+    input_resharding_costs: Dict[Node, List[float]] = None
+
+
 class StrategiesVector(list):
     '''
     Each node in fx graph will have a corresponding StrategiesVector, to store all the possible
@@ -69,6 +110,9 @@ class StrategiesVector(list):
         if self.node.op == 'call_function':
             # we could merge element-wise op, because the output sharding spec is always same as the input sharding spec.
             if self.node.target in ELEMENTWISE_FUNC_OP:
+                merge_label = True
+            # we could merge bcast op if the rhs is a scalar, because it will fall back to the element-wise case.
+            if self.node.target in BCAST_FUNC_OP and len(self.predecessor_nodes) == 1:
                 merge_label = True
             # we could merge reshape op, because the output sharding spec of reshape op is always fully replicated.
             if self.node.target in RESHAPE_FUNC_OP:

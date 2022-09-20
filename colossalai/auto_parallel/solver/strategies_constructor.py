@@ -1,4 +1,5 @@
 from torch.fx import Graph, Node
+from colossalai.auto_parallel.solver.op_handler.bcast_op_handler import BcastOpHandler
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
@@ -49,9 +50,19 @@ class StrategiesConstructor:
         for strategy in remove_list:
             strategies_vector.remove(strategy)
 
+    def _is_bcast_matmul(self, node):
+        is_bcast_matmul = False
+        if node.target is torch.matmul and len(node.args) == 2:
+            lhs_data = node.args[0]._meta_data
+            rhs_data = node.args[1]._meta_data
+            if lhs_data.dim() >= 3 and rhs_data.dim() >= 3:
+                is_bcast_matmul = True
+        return is_bcast_matmul
+
     def build_strategies_and_cost(self):
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
+            input_nodes_len = len(strategies_vector.predecessor_nodes)
             # placeholder node
             if node.op == 'placeholder':
                 # For placeholder nodes, if solver_options.fast is True, we just let them in
@@ -165,6 +176,9 @@ class StrategiesConstructor:
 
                 # MaxPool module
                 elif submod_type in POOL_MODULE_OP:
+                    # TODO: add sharding constraints on image dimension
+                    # e.g.: for a 2D pooling input NCHW, we should promise no sharding happens on H and W dimension
+
                     # create sharding strategy for element-wise module
                     assert len(strategies_vector.predecessor_nodes
                               ) == 1, f'Temporally, we just support single input element-wise op.'
@@ -217,7 +231,7 @@ class StrategiesConstructor:
                     conv_handler.register_strategy()
 
                 # linear function
-                elif target in LINEAR_FUNC_OP:
+                elif target in LINEAR_FUNC_OP and not self._is_bcast_matmul(node):
                     # use DotHandler to create sharding strategies for linear node
                     # TODO: the operator_handler does NOT support function node processing now.
                     linear_handler = DotHandler(node, self.device_mesh, strategies_vector)
@@ -230,7 +244,7 @@ class StrategiesConstructor:
                     reshape_handler.register_strategy()
 
                 # element-wise function
-                elif target in ELEMENTWISE_FUNC_OP:
+                elif target in ELEMENTWISE_FUNC_OP or (target in BCAST_FUNC_OP and input_nodes_len == 1):
                     # TODO: integrate element-wise func and module together
                     # create sharding strategy for element-wise function
                     assert len(strategies_vector.predecessor_nodes
@@ -270,6 +284,11 @@ class StrategiesConstructor:
                                                              resharding_costs=resharding_costs,
                                                              input_shardings=[input_sharding_spec])
                         strategies_vector.append(sharding_strategy)
+
+                # bcast op
+                elif target in BCAST_FUNC_OP:
+                    bcast_op_handler = BcastOpHandler(node, self.device_mesh, strategies_vector)
+                    bcast_op_handler.register_strategy()
 
                 # torch.var_mean
                 elif target == torch.var_mean:
@@ -383,9 +402,8 @@ class StrategiesConstructor:
 
                     # clear the resharding cost for the output node
                     # TODO: we may remove this in final version
-                    if True:
-                        for prev_node, resharding_cost_list in resharding_costs.items():
-                            resharding_costs[prev_node] = [0] * len(resharding_cost_list)
+                    for prev_node, resharding_cost_list in resharding_costs.items():
+                        resharding_costs[prev_node] = [0] * len(resharding_cost_list)
 
                     sharding_strategy_attribute = ShardingStrategy(name,
                                                                    output_sharding_spec,
