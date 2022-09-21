@@ -3,7 +3,7 @@ import functools
 from .memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import List, Optional, Tuple
 from time import time
-from colossalai.gemini.update import ChunkV2, ChunkManagerV2
+from colossalai.gemini.chunk import Chunk, ChunkManager
 from .placement_policy import PlacementPolicyFactory
 
 
@@ -23,13 +23,13 @@ class GeminiManager:
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
     """
 
-    def __init__(self, placement_policy: str, chunk_manager: ChunkManagerV2) -> None:
+    def __init__(self, placement_policy: str, chunk_manager: ChunkManager) -> None:
         assert placement_policy in PlacementPolicyFactory.get_polocy_names()
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
         self._mem_stats_collector = MemStatsCollectorV2(chunk_manager) if policy_cls.need_mem_stats else None
         self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector)
-        self._compute_list: List[Tuple[ChunkV2, ...]] = []
+        self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
 
         self._h2d_volume = 0
@@ -56,7 +56,7 @@ class GeminiManager:
         self._evict_time = 0
         self._comp_cuda_demand_time = 0
 
-    def adjust_layout(self, chunks: Tuple[ChunkV2, ...], group_type: str) -> None:
+    def adjust_layout(self, chunks: Tuple[Chunk, ...], group_type: str) -> None:
         """ Adjust the layout of statefuil tensor according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
         """
@@ -66,13 +66,11 @@ class GeminiManager:
         cuda_demand, hold_cuda_tensor_list = self._get_layout_info(self._compute_idx, self._warmup, chunks, group_type)
         self._layout_time += time() - start
 
-        vol, evict_time = self._placement_policy.evict_tensors(
-            can_evict_chunks=hold_cuda_tensor_list,
-            cuda_demand=cuda_demand,
-            warmup=self._warmup,
-            compute_list=self._compute_list,
-            compute_idx=self._compute_idx
-        )
+        vol, evict_time = self._placement_policy.evict_tensors(can_evict_chunks=hold_cuda_tensor_list,
+                                                               cuda_demand=cuda_demand,
+                                                               warmup=self._warmup,
+                                                               compute_list=self._compute_list,
+                                                               compute_idx=self._compute_idx)
 
         self._d2h_volume += vol
         self._evict_time += evict_time
@@ -80,7 +78,7 @@ class GeminiManager:
         self._h2d_volume += cuda_demand
 
     @functools.lru_cache(maxsize=None)
-    def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[ChunkV2, ...], group_type: str):
+    def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...], group_type: str):
         start = time()
         cuda_demand = 0
         for chunk in chunks:
@@ -98,7 +96,7 @@ class GeminiManager:
         can_evict_chunks = self._chunk_manager.get_cuda_movable_chunks(group_type)
         return cuda_demand, can_evict_chunks
 
-    def _record_chunks_order(self, chunks: Tuple[ChunkV2, ...]) -> None:
+    def _record_chunks_order(self, chunks: Tuple[Chunk, ...]) -> None:
         self._compute_idx += 1
         if self._warmup and self._placement_policy.need_mem_stats:
             self._compute_list.append(chunks)

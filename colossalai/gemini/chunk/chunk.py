@@ -1,14 +1,55 @@
 import torch
 import torch.distributed as dist
+from dataclasses import dataclass
+from enum import Enum
 from typing import Optional, Dict, List
 
 from colossalai.utils import get_current_device
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
-from colossalai.gemini.chunk import TensorState, STATE_TRANS, TensorInfo, ChunkFullError, \
-    free_storage, alloc_storage
 
 
-class ChunkV2:
+class TensorState(Enum):
+    FREE = 0
+    COMPUTE = 1
+    HOLD = 2
+    HOLD_AFTER_BWD = 3
+    READY_FOR_REDUCE = 4
+
+
+STATE_TRANS = ((TensorState.FREE, TensorState.HOLD), (TensorState.FREE, TensorState.COMPUTE),
+               (TensorState.HOLD, TensorState.FREE), (TensorState.HOLD, TensorState.COMPUTE),
+               (TensorState.COMPUTE, TensorState.HOLD), (TensorState.COMPUTE, TensorState.HOLD_AFTER_BWD),
+               (TensorState.COMPUTE, TensorState.READY_FOR_REDUCE), (TensorState.HOLD_AFTER_BWD, TensorState.COMPUTE),
+               (TensorState.HOLD_AFTER_BWD, TensorState.READY_FOR_REDUCE), (TensorState.READY_FOR_REDUCE,
+                                                                            TensorState.HOLD))
+
+
+@dataclass
+class TensorInfo:
+    state: TensorState
+    offset: int
+    end: int
+
+
+class ChunkFullError(Exception):
+    pass
+
+
+def is_storage_empty(tensor: torch.Tensor) -> bool:
+    return tensor.storage().size() == 0
+
+
+def free_storage(tensor: torch.Tensor) -> None:
+    if not is_storage_empty(tensor):
+        tensor.storage().resize_(0)
+
+
+def alloc_storage(tensor: torch.Tensor) -> None:
+    if is_storage_empty(tensor):
+        tensor.storage().resize_(tensor.numel())
+
+
+class Chunk:
 
     def __init__(self,
                  chunk_size: int,
@@ -365,7 +406,7 @@ class ChunkV2:
         else:
             return self.valid_end
 
-    def init_pair(self, friend_chunk: 'ChunkV2') -> None:
+    def init_pair(self, friend_chunk: 'Chunk') -> None:
         """Initialize the paired chunk.
         """
         if self.paired_chunk is None and friend_chunk.paired_chunk is None:

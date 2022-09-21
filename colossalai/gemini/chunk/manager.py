@@ -4,11 +4,10 @@ from collections import deque
 
 from colossalai.utils import get_current_device
 from colossalai.tensor import ColoTensor
-from colossalai.gemini.chunk import ChunkFullError, TensorState
-from colossalai.gemini.update import ChunkV2 as Chunk
+from colossalai.gemini.chunk import ChunkFullError, TensorState, Chunk
 
 
-class ChunkManagerV2:
+class ChunkManager:
     """
     A manager class to manipulate the tensors in chunks.
 

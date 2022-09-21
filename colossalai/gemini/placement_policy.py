@@ -8,18 +8,18 @@ from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import Type
 import functools
-from colossalai.gemini.update import ChunkV2, ChunkManagerV2
+from colossalai.gemini.chunk import Chunk, ChunkManager
 
 
 class PlacementPolicy(ABC):
     need_mem_stats: bool = False
 
-    def __init__(self, chunk_manager: ChunkManagerV2, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
         self.chunk_manager = chunk_manager
         self.mem_stats_collector: Optional[MemStatsCollectorV2] = mem_stats_collector
 
     @abstractmethod
-    def evict_tensors(self, can_evict_chunks: List[ChunkV2], **kwargs) -> Tuple[int, float]:
+    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
         raise NotImplementedError
 
     @staticmethod
@@ -29,10 +29,10 @@ class PlacementPolicy(ABC):
 
 class CPUPlacementPolicy(PlacementPolicy):
 
-    def __init__(self, chunk_manager: ChunkManagerV2, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
-    def evict_tensors(self, can_evict_chunks: List[ChunkV2], **kwargs) -> Tuple[int, float]:
+    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
         volume = 0
         start = time()
         for chunk in can_evict_chunks:
@@ -43,11 +43,11 @@ class CPUPlacementPolicy(PlacementPolicy):
 
 class CUDAPlacementPolicy(PlacementPolicy):
 
-    def __init__(self, chunk_manager: ChunkManagerV2, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
         assert torch.cuda.is_available(), 'Cannot use CUDATensorPlacementPolicy when CUDA is not available'
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
-    def evict_tensors(self, can_evict_chunks: List[ChunkV2], **kwargs) -> Tuple[int, float]:
+    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
         return 0, 0
 
     @staticmethod
@@ -64,14 +64,14 @@ class AutoPlacementPolicy(PlacementPolicy):
     _warmup_non_model_data_ratio: float = 0.8
     _steady_cuda_cap_ratio: float = 0.9
 
-    def __init__(self, chunk_manager: ChunkManagerV2, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
     def evict_tensors(self,
-                      can_evict_chunks: List[ChunkV2],
+                      can_evict_chunks: List[Chunk],
                       cuda_demand: int = 0,
                       warmup: bool = True,
-                      compute_list: Optional[List[Tuple[ChunkV2, ...]]] = None,
+                      compute_list: Optional[List[Tuple[Chunk, ...]]] = None,
                       compute_idx: int = 0,
                       **kwargs) -> Tuple[int, float]:
         """
@@ -119,10 +119,8 @@ class AutoPlacementPolicy(PlacementPolicy):
                 self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
                 freed_cuda_model_data += chunk.shard_mem
             if freed_cuda_model_data < to_free_cuda_model_data:
-                raise RuntimeError(
-                    f"Adjust layout failed! No enough CUDA memory! "
-                    f"Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
-                )
+                raise RuntimeError(f"Adjust layout failed! No enough CUDA memory! "
+                                   f"Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}")
         return freed_cuda_model_data, time() - start
 
     @staticmethod

@@ -1,10 +1,10 @@
 import torch
 import torch.distributed as dist
-from colossalai.gemini.update import ChunkV2
+from colossalai.gemini.chunk import Chunk
 from colossalai.utils import get_current_device
 
 
-def get_temp_total_chunk_on_cuda(chunk: ChunkV2):
+def get_temp_total_chunk_on_cuda(chunk: Chunk):
     if chunk.is_gathered:
         return chunk.chunk_total
 

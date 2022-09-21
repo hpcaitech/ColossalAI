@@ -14,14 +14,14 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.zero.zero_optimv2 import ZeroOptimizerV2
+from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
 from colossalai.gemini.gemini_mgr import GeminiManager
 from tests.test_tensor.common_utils import debug_print
 
 from time import time
-from colossalai.gemini.update import search_chunk_configuration, ChunkManagerV2
+from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -69,12 +69,12 @@ def exam_gpt_fwd_bwd(placement_policy):
         init_device = torch.device('cpu')
     else:
         init_device = None
-    chunk_manager = ChunkManagerV2(config_dict, init_device=init_device)
+    chunk_manager = ChunkManager(config_dict, init_device=init_device)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizerV2(optimizer, model, initial_scale=2)
+    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=2)
 
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)

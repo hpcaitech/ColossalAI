@@ -12,12 +12,12 @@ from functools import partial
 from tests.test_tensor.common_utils import set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.nn.parallel import ZeroDDP
-from colossalai.zero.zero_optimv2 import ZeroOptimizerV2
+from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.gemini.gemini_mgr import GeminiManager
 from tests.test_tensor.common_utils import debug_print
 
-from colossalai.gemini.update import search_chunk_configuration, ChunkManagerV2
+from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
@@ -42,12 +42,12 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
         init_device = torch.device('cpu')
     else:
         init_device = None
-    chunk_manager = ChunkManagerV2(config_dict, init_device=init_device)
+    chunk_manager = ChunkManager(config_dict, init_device=init_device)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
     optimizer = torch.optim.Adam(model.parameters())
-    optim = ZeroOptimizerV2(optimizer, model)    # initialize the link between chunk16 and chunk32
+    optim = ZeroOptimizer(optimizer, model)    # initialize the link between chunk16 and chunk32
 
     set_seed(dist.get_rank() * 3 + 128)
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):

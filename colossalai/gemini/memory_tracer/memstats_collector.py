@@ -2,7 +2,7 @@ from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.utils.memory import colo_device_memory_used, colo_device_memory_capacity
 from colossalai.utils import get_current_device
 from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.gemini.update import ChunkManagerV2
+from colossalai.gemini.chunk import ChunkManager
 
 import torch
 import time
@@ -134,7 +134,7 @@ class MemStatsCollector:
 
 class MemStatsCollectorV2(MemStatsCollector):
 
-    def __init__(self, chunk_manager: ChunkManagerV2) -> None:
+    def __init__(self, chunk_manager: ChunkManager) -> None:
         super().__init__()
         self._chunk_manager = chunk_manager
 

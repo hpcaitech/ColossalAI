@@ -20,9 +20,8 @@ from colossalai.gemini.gemini_mgr import GeminiManager
 from colossalai.tensor import ColoTensorSpec, ShardSpec, ComputePattern, ComputeSpec, ProcessGroup, ColoTensor
 from tests.test_tensor.common_utils import debug_print
 
-
 from time import time
-from colossalai.gemini.update import search_chunk_configuration, ChunkManagerV2
+from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
 
 
 def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -33,9 +32,7 @@ def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
         chunk_manager.access_chunk(chunk)
 
     for (p0, p1) in zip(model.parameters(), torch_model.parameters()):
-        assert torch.allclose(p0, p1.grad, atol=1e-3, rtol=1e-5), "{}".format(
-            torch.max(torch.abs(p0 - p1.grad)).item()
-        )
+        assert torch.allclose(p0, p1.grad, atol=1e-3, rtol=1e-5), "{}".format(torch.max(torch.abs(p0 - p1.grad)).item())
 
 
 def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
@@ -61,14 +58,10 @@ def exam_gpt_fwd_bwd(placement_policy):
         torch_p.data.copy_(p.data)
 
     world_size = torch.distributed.get_world_size()
-    config_dict = search_chunk_configuration(
-        model,
-        search_range_mb=1,
-        search_interval_byte=100
-    )
+    config_dict = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = False
-    chunk_manager = ChunkManagerV2(config_dict)
+    chunk_manager = ChunkManager(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
@@ -93,8 +86,7 @@ def exam_gpt_fwd_bwd(placement_policy):
 
         torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
         assert torch.allclose(logits, torch_logits, rtol=0), "{} {} {}".format(
-            torch.max(torch.abs(logits - torch_logits)).item(), logits, torch_logits
-        )
+            torch.max(torch.abs(logits - torch_logits)).item(), logits, torch_logits)
 
         check_grad(model, torch_model)
 
