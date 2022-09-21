@@ -3,7 +3,7 @@ import torchvision.models as tm
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.algorithms import solver_rotor, linearize
-from colossalai.fx.passes.algorithms.utils import Loss, ForwardCheck, ForwardEnable, ForwardNograd
+from colossalai.fx.passes.algorithms.operation import Loss, ForwardCheck, ForwardEnable, ForwardNograd
 import pytest
 
 try:

@@ -1,4 +1,3 @@
-from curses import nonl
 from functools import partial
 from typing import Callable, Any, Dict, Tuple
 import torch
@@ -185,6 +184,7 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphI
             out = getattr(self_obj, target)(*args_tail, **kwargs)
         else:
             out = target(*args, **kwargs)
+
         # If the output is not a floating point `torch.Tensor` or it does not
         # requires grad, then we should not run backward for this node.
         for tensor in normalize_tuple(out):
