@@ -1,7 +1,18 @@
+from colossalai.fx.profiler.memory import activation_size
 import torch
 from torch.fx import Node, Graph
 from torch.fx.graph import _Namespace
 from torch.utils._pytree import tree_map
+
+
+def normalize_tuple(x):
+    if not isinstance(x, tuple):
+        return (x,)
+    return x
+
+
+def is_autogradable(x):
+    return isinstance(x, torch.Tensor) and x.is_floating_point()
 
 
 def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
@@ -33,7 +44,7 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
         __slots__ = ['_tensor', '_node']
 
         @staticmethod
-        def __new__(cls, tensor, placeholder=False, name=None):
+        def __new__(cls, tensor, fake_device=None, placeholder=False, name=None):
             r = torch.Tensor._make_wrapper_subclass(
                 cls,
                 tensor.size(),
@@ -41,7 +52,7 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
                 storage_offset=tensor.storage_offset(),
                 dtype=tensor.dtype,
                 layout=tensor.layout,
-                device='cpu',
+                device=fake_device if fake_device is not None else tensor.device,
                 requires_grad=tensor.requires_grad)    # deceive the frontend for aten selections
             r._tensor = tensor
             if placeholder:
@@ -51,14 +62,26 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
                                             'placeholder', (graph._root,),
                                             name=namespace.create_name(name, tensor))
             # ...the real tensor is held as an element on the tensor.
+            if not r._tensor.is_meta:
+                r._tensor = r._tensor.to(torch.device('meta'))
             return r
 
         @classmethod
         def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
+            fake_device = None
 
             def unwrap(x):
-                if isinstance(x, torch.Tensor) and not hasattr(x, '_tensor'):
-                    x = MetaProxy(x)
+                if isinstance(x, MetaProxy):
+                    fake_device = x.device
+                    x = x._tensor
+                    assert x.device == torch.device('meta'), f'{x} should be on meta backend before executing {func}!'
+                elif isinstance(x, torch.Tensor):
+                    fake_device = x.device
+                    x = x.to(torch.device('meta'))
+                    assert x.device == torch.device('meta'), f'{x} should be on meta backend before executing {func}!'
+
+                assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
+                assert not isinstance(x, MetaProxy), f'{x} should no longer be MetaTensor after being unwrapped'
                 return x._tensor.to('meta') if isinstance(x, MetaProxy) else x
 
             def get_node(x):
@@ -70,6 +93,10 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
             kwargs_node = tree_map(get_node, kwargs)
             node = graph.create_node('call_function', func, args_node, kwargs_node)
 
+            if 'device' in kwargs:
+                fake_device = kwargs['device']
+                kwargs['device'] = torch.device('meta')
+
             args = tree_map(unwrap, args)
             kwargs = tree_map(unwrap, kwargs)
 
@@ -79,7 +106,13 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
             # Now, we want to continue propagating this tensor, so we rewrap Tensors in
             # our custom tensor subclass
             def wrap(x):
-                return MetaProxy(x) if isinstance(x, torch.Tensor) and not hasattr(x, '_tensor') else x
+                if isinstance(x, torch.Tensor):
+                    nonlocal fake_device
+                    assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
+                    if not x.is_meta:
+                        x = x.to(torch.device('meta'))
+                return MetaProxy(
+                    x, fake_device=fake_device) if isinstance(x, torch.Tensor) and not hasattr(x, '_tensor') else x
 
             def set_node(x):
                 x._node = node
@@ -95,5 +128,11 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
     args = tree_map(wrap, args)
     kwargs = tree_map(wrap, kwargs)
 
-    module(*args, **kwargs).sum().backward()
+    out = module(*args, **kwargs)
+
+    for tensor in normalize_tuple(out):
+        if is_autogradable(tensor) and tensor.requires_grad:
+            grad = torch.empty_like(tensor._tensor, device=torch.device('meta')) if isinstance(
+                tensor, MetaProxy) else torch.empty_like(tensor, device=torch.device('meta'))
+            torch.autograd.backward(tensor, MetaProxy(grad, fake_device=tensor.device), retain_graph=True)
     return graph
