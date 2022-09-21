@@ -508,7 +508,7 @@ class Chunk:
 
     def __repr__(self, detailed: bool = True):
         output = [
-            "AgChunk Information:\n",
+            "Chunk Information:\n",
             "\tchunk size: {}, chunk dtype: {}, process group size: {}\n".format(self.chunk_size, self.dtype,
                                                                                  self.pg_size),
             "\t# of tensors: {}, utilized size: {}, utilized percentage: {:.2f}\n".format(
