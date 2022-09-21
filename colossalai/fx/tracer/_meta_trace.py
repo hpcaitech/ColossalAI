@@ -15,7 +15,7 @@ def is_autogradable(x):
     return isinstance(x, torch.Tensor) and x.is_floating_point()
 
 
-def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
+def meta_trace(module: torch.nn.Module, fake_device=None, *args, **kwargs) -> Graph:
     """Trace forward and backward graph with MetaTensor
 
     Args:
@@ -68,16 +68,17 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
 
         @classmethod
         def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
-            fake_device = None
 
             def unwrap(x):
+                nonlocal fake_device
                 if isinstance(x, MetaProxy):
                     fake_device = x.device
                     x = x._tensor
+                    # assert not isinstance(x, MetaProxy)
                 elif isinstance(x, torch.Tensor):
                     fake_device = x.device
                     x = x.to(torch.device('meta'))
-                return x._tensor.to('meta') if isinstance(x, MetaProxy) else x
+                return x
 
             def get_node(x):
                 if isinstance(x, torch.Tensor) and not hasattr(x, '_node'):
@@ -117,7 +118,7 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
             return out
 
     def wrap(x):
-        return MetaProxy(x, True) if isinstance(x, torch.Tensor) else x
+        return MetaProxy(x, fake_device=fake_device, placeholder=True) if isinstance(x, torch.Tensor) else x
 
     args = tree_map(wrap, args)
     kwargs = tree_map(wrap, kwargs)
@@ -128,5 +129,7 @@ def meta_trace(module: torch.nn.Module, *args, **kwargs) -> Graph:
         if is_autogradable(tensor) and tensor.requires_grad:
             grad = torch.empty_like(tensor._tensor, device=torch.device('meta')) if isinstance(
                 tensor, MetaProxy) else torch.empty_like(tensor, device=torch.device('meta'))
-            torch.autograd.backward(tensor, MetaProxy(grad, fake_device=tensor.device), retain_graph=True)
+            torch.autograd.backward(tensor,
+                                    MetaProxy(grad, fake_device=tensor.device, placeholder=True),
+                                    retain_graph=True)
     return graph

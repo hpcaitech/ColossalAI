@@ -83,7 +83,6 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
     Returns:
         graph_info (GraphInfo): Meta information for the dataflow.
     """
-    print(graph.python_code('self').src)
 
     def _peak_memory(deps: Dict[Node, int]):
         peak_mem = 0
