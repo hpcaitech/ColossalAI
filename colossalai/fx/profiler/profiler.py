@@ -90,7 +90,6 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphI
                 kwargs['device'] = torch.device('meta')
 
             def unwrap(x):
-                # if x is a `nn.Parameter`, we can first wrap it with `FlopTensor`
                 nonlocal fake_device
                 if isinstance(x, MetaTensor):
                     fake_device = x.device
