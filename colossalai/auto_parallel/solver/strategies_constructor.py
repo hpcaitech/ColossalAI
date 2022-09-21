@@ -326,16 +326,16 @@ class StrategiesConstructor:
                 elif method in ELEMENTWISE_METHOD_OP:
                     unary_elementwise_handler = UnaryElementwiseHandler(node, self.device_mesh, strategies_vector)
                     unary_elementwise_handler.register_strategy()
-                    print(node, strategies_vector.predecessor_nodes[0],
-                          strategies_vector.predecessor_nodes[0].strategies_vector, strategies_vector)
-                    assert False
+                    # print(node, strategies_vector.predecessor_nodes[0],
+                    #       strategies_vector.predecessor_nodes[0].strategies_vector, strategies_vector)
+                    # assert False
                 elif method in RESHAPE_METHOD_OP:
                     reshape_handler = ReshapeHandler(node, self.device_mesh, strategies_vector)
                     reshape_handler.register_strategy()
-                    print(strategies_vector)
-                    if len(strategies_vector) == 0:
-                        print(node)
-                        assert False
+                    # print(strategies_vector)
+                    # if len(strategies_vector) == 0:
+                    #     print(node)
+                    #     assert False
                 else:
                     raise RuntimeError(f'{method} function is NOT supported now.')
             # output node
