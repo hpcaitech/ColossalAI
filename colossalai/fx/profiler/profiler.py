@@ -94,14 +94,9 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphI
                 if isinstance(x, MetaTensor):
                     fake_device = x.device
                     x = x._tensor
-                    assert x.device == torch.device('meta'), f'{x} should be on meta backend before executing {func}!'
                 elif isinstance(x, torch.Tensor) and not hasattr(x, '_tensor'):
                     fake_device = x.device
                     x = x.to(torch.device('meta'))
-                    assert x.device == torch.device('meta'), f'{x} should be on meta backend before executing {func}!'
-
-                assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
-                assert not isinstance(x, MetaTensor), f'{x} should no longer be MetaTensor after being unwrapped'
                 return x
 
             args = tree_map(unwrap, args)
@@ -127,7 +122,6 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphI
             def wrap(x):
                 if isinstance(x, torch.Tensor):
                     nonlocal fake_device
-                    assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
                     if not x.is_meta:
                         x = x.to(torch.device('meta'))
                 return FlopTensor(x, fake_device=fake_device) if isinstance(x, torch.Tensor) else x
@@ -143,7 +137,6 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphI
         fake_device = None
         if isinstance(x, MetaTensor):
             fake_device = x.device
-            assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
             x = x._tensor
             detach(x)
         return FlopTensor(x.requires_grad_(True), fake_device=fake_device) if is_autogradable(x) else x
@@ -200,10 +193,8 @@ def _profile(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphI
     def unwrap(x):
         if isinstance(x, FlopTensor):
             fake_device = x.device
-            assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
             x = x._tensor
             detach(x)
-        assert not isinstance(x, MetaTensor), f'{x} should not be a MetaTensor before being wrapped'
         return MetaTensor(x, fake_device=fake_device) if isinstance(x, torch.Tensor) else x
 
     return tree_map(unwrap, out), graph_info

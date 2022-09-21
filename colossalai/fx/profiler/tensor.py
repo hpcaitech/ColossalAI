@@ -49,14 +49,9 @@ class MetaTensor(torch.Tensor):
             if isinstance(x, MetaTensor):
                 fake_device = x.device
                 x = x._tensor
-                assert x.device == torch.device('meta'), f'{x} should be on meta backend before executing {func}!'
             elif isinstance(x, torch.Tensor):
                 fake_device = x.device
                 x = x.to(torch.device('meta'))
-                assert x.device == torch.device('meta'), f'{x} should be on meta backend before executing {func}!'
-
-            assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
-            assert not isinstance(x, MetaTensor), f'{x} should no longer be MetaTensor after being unwrapped'
             return x
 
         if 'device' in kwargs:
@@ -74,7 +69,6 @@ class MetaTensor(torch.Tensor):
         def wrap(x):
             if isinstance(x, torch.Tensor):
                 nonlocal fake_device
-                assert fake_device != torch.device('meta'), f'fake_device should be any of the physical devices!'
                 if not x.is_meta:
                     x = x.to(torch.device('meta'))
             return MetaTensor(x, fake_device=fake_device) if isinstance(x, torch.Tensor) else x
