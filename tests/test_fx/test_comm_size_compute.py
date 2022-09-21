@@ -6,7 +6,6 @@ from torch.fx import symbolic_trace
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, uniform_split_pass
 from colossalai.fx.passes.utils import get_comm_size
-from colossalai.fx.profiler import MetaTensor
 from colossalai import META_COMPATIBILITY
 import pytest
 
@@ -34,6 +33,7 @@ class MLP(torch.nn.Module):
 
 @pytest.mark.skipif(not META_COMPATIBILITY, reason='torch version is lower than 1.12.0')
 def test_comm_size_compute():
+    from colossalai.fx.profiler import MetaTensor
     model = MLP(MODEL_DIM)
     input_sample = MetaTensor(torch.rand(BATCH_SIZE, MODEL_DIM, device='meta'), fake_device='cpu')
     gm = symbolic_trace(model)

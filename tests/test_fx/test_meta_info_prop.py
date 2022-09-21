@@ -2,7 +2,6 @@ import torch
 from torch.fx import symbolic_trace
 from colossalai import META_COMPATIBILITY
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp, TensorMetadata
-from colossalai.fx.profiler import MetaTensor
 
 BATCH_SIZE = 2
 DIM_IN = 4
@@ -17,6 +16,7 @@ def meta_check(meta_info_spec: TensorMetadata, orig_tensor: torch.Tensor):
 
 
 def test_meta_info_prop():
+    from colossalai.fx.profiler import MetaTensor
     model = torch.nn.Linear(DIM_IN, DIM_OUT)
     input_sample = torch.rand(BATCH_SIZE, DIM_IN, device='meta')
     if META_COMPATIBILITY:
