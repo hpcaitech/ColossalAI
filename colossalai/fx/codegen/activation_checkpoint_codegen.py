@@ -22,13 +22,12 @@ def _gen_saved_tensors_hooks():
     Generate saved tensors hooks
     """
 
-    pack_hook = """def pack_hook(self, x):
+    pack_hook = """def pack_hook_input(self, x):
     if getattr(x, "offload", False):
         return (x.device, x.cpu())
     else:
         return x
-
-    
+ 
 def pack_hook_no_input(self, x):
     if getattr(x, "offload", True):
         return (x.device, x.cpu())
@@ -59,7 +58,7 @@ def _gen_save_tensors_hooks_context(offload_input=True) -> str:
     """
 
     if offload_input:
-        context = "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook, self.unpack_hook):\n"
+        context = "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_input, self.unpack_hook):\n"
     else:
         context = "with torch.autograd.graph.saved_tensors_hooks(self.pack_hook_no_input, self.unpack_hook):\n"
     return context
@@ -437,6 +436,7 @@ def emit_code_with_nested_activation_checkpoint(body, ckpt_func, nodes, emit_nod
                 if not is_hook_inserted:
                     pack_hook, unpack_hook = _gen_saved_tensors_hooks()
                     ckpt_func.insert(0, "\n".join([pack_hook, unpack_hook]) + "\n")
+                    is_hook_inserted = True
 
                 if offload_input and offload_bar:
                     body.append(_gen_save_on_cpu_context())
@@ -522,6 +522,7 @@ def emit_code_with_activation_checkpoint(body, ckpt_func, nodes, emit_node_func,
             if not is_hook_inserted:
                 pack_hook, unpack_hook = _gen_saved_tensors_hooks()
                 ckpt_func.insert(0, "\n".join([pack_hook, unpack_hook]) + "\n")
+                is_hook_inserted = True
 
             if offload_input and offload_bar:
                 body.append(_gen_save_on_cpu_context())
