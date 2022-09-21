@@ -8,7 +8,7 @@ from colossalai.tensor import ColoParameter
 def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) -> None:
     """Filter those parameters whose size is too large from others.
     """
-    params_size = [p.numel() for p in model.parameters()]
+    params_size = [p.numel() for p in model.parameters() if not getattr(p, '_ddp_to_ignore', False)]
     params_size_arr = np.array(params_size)
 
     std = np.std(params_size_arr)
@@ -37,6 +37,9 @@ def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in model.parameters():
         assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
+        if getattr(param, '_ddp_to_ignore', False):
+            continue
+
         param_key = param.process_group.dp_world_size()
 
         if param_key not in params_dict:
@@ -49,11 +52,11 @@ def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
 def search_chunk_configuration(
         model: nn.Module,
         search_range_mb: float,
-        search_interval_byte: int,  # hidden size is the best value for the interval
+        search_interval_byte: int,    # hidden size is the best value for the interval
         min_chunk_size_mb: float = 32,
         filter_exlarge_params: bool = True) -> Dict:
-    search_range_byte = round(search_range_mb * 1024 ** 2)
-    min_chunk_size_byte = round(min_chunk_size_mb * 1024 ** 2)
+    search_range_byte = round(search_range_mb * 1024**2)
+    min_chunk_size_byte = round(min_chunk_size_mb * 1024**2)
     assert search_range_byte >= 0
 
     params_dict = clasify_params(model)

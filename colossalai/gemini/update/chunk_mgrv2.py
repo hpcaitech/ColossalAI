@@ -34,6 +34,12 @@ class ChunkManagerV2:
 
     def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int, pin_memory: bool = False) -> None:
         """Append a tensor to a chunk.
+
+        Args:
+            tensor: the tensor appended to the chunk
+            group_type: the data type of the group
+            config_key: the key of the group's name, usually the size of the dp world
+            pin_memory: whether the chunk is pinned in the cpu memory
         """
         assert tensor not in self.tensor_chunk_map
         assert isinstance(tensor, ColoTensor), "Please feed ColoTensor to this ChunkManager"
@@ -173,17 +179,6 @@ class ChunkManagerV2:
                         chunk_list.append(chunk)
         return chunk_list
 
-    def __repr__(self) -> str:
-        msg = [
-            'Chunk Manager Information:\n',
-            'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n'
-        ]
-        for group_name, group in self.chunk_groups.items():
-            msg.append(f'Group {group_name}:\n')
-            for i, chunk in enumerate(group):
-                msg.append(f'[{i}] {chunk}\n')
-        return ''.join(msg)
-
     def get_chunks(self, tensors: Iterable[torch.Tensor]) -> Tuple[Chunk, ...]:
         """
         Get all chunks owning the input tensors.
@@ -209,6 +204,17 @@ class ChunkManagerV2:
         """
         assert tensor not in self.tensor_chunk_map
         self.total_mem[tensor.device.type] += tensor.numel() * tensor.element_size()
+
+    def __repr__(self) -> str:
+        msg = [
+            'Chunk Manager Information:\n',
+            'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n'
+        ]
+        for group_name, group in self.chunk_groups.items():
+            msg.append(f'Group {group_name}:\n')
+            for i, chunk in enumerate(group):
+                msg.append(f'[{i}] {chunk}\n')
+        return ''.join(msg)
 
     def __get_chunk_group(self, group_name: str) -> Deque:
         """Register a chunk group.
