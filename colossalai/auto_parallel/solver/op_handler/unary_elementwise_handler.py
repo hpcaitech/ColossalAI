@@ -16,7 +16,7 @@ __all__ = ['UnaryElementwiseHandler']
 
 class UnaryElementwiseHandler(OperatorHandler):
     """
-    An OperatorHandler which deals with the sharding strategies of Embedding operators(such as nn.embedding).
+    An OperatorHandler which deals with the sharding strategies of UnaryElementwiseOp.
     """
 
     def __init__(self, *args, **kwargs):
