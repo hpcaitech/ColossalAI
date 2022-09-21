@@ -16,10 +16,10 @@ def meta_check(meta_info_spec: TensorMetadata, orig_tensor: torch.Tensor):
 
 
 def test_meta_info_prop():
-    from colossalai.fx.profiler import MetaTensor
     model = torch.nn.Linear(DIM_IN, DIM_OUT)
     input_sample = torch.rand(BATCH_SIZE, DIM_IN, device='meta')
     if META_COMPATIBILITY:
+        from colossalai.fx.profiler import MetaTensor
         input_sample = MetaTensor(input_sample, fake_device='cpu')
     orig_output = model(input_sample)
     gm = symbolic_trace(model)
