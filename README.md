@@ -3,7 +3,7 @@
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
 
-   Colossal-AI: A Unified Deep Learning System for Big Model Era
+   Colossal-AI: A Unified Deep Learning System for  Big Model Era
 
    <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
    <a href="https://www.colossalai.org/"> Documentation </a> | 
