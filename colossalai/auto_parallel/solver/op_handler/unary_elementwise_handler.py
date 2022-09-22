@@ -2,6 +2,7 @@ import operator
 from functools import reduce
 import warnings
 import torch
+from colossalai.auto_parallel.solver.constants import INFINITY_COST
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from .operator_handler import OperatorHandler
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
@@ -57,7 +58,11 @@ class UnaryElementwiseHandler(OperatorHandler):
                 continue
             sharding_spec_checklist.append(input_sharding_spec)
             dim_partition_dict = deepcopy(input_sharding_spec.dim_partition_dict)
-            output_sharding_spec = self._generate_sharding_spec(self.output_data, dim_partition_dict)
+            try:
+                output_sharding_spec = self._generate_sharding_spec(self.output_data, dim_partition_dict)
+            except AssertionError as e:
+                warnings.warn(f'{e}')
+                continue
             name = f'{input_sharding_spec.sharding_sequence} -> {output_sharding_spec.sharding_sequence}'
             # TODO: use meta_info_prop to profile memory cost and compute cost
             compute_cost = self.output_data.numel()
@@ -67,7 +72,7 @@ class UnaryElementwiseHandler(OperatorHandler):
 
             # to prevent the resharding happening, set their resharding cost to inf.
             resharding_costs[self.input_node] = [
-                0 if cost == 0 else math.inf for cost in resharding_costs[self.input_node]
+                0 if cost == 0 else INFINITY_COST for cost in resharding_costs[self.input_node]
             ]
             sharding_strategy = ShardingStrategy(name,
                                                  output_sharding_spec,
