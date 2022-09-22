@@ -258,7 +258,8 @@ def no_shard_zero_decrator(is_replicated: bool = True):
 
         def _no_shard(*args, **kwargs):
             with no_shard_zero_context(is_replicated):
-                init_func(*args, **kwargs)
+                ret = init_func(*args, **kwargs)
+            return ret
 
         return _no_shard
 
