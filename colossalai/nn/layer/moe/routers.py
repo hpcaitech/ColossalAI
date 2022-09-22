@@ -152,8 +152,8 @@ class Top2Router(MoeRouter):
     """
 
     def __init__(self,
-                 capacity_factor_train: float = 1.25,
-                 capacity_factor_eval: float = 2.0,
+                 capacity_factor_train: float = 1.25 * 2,
+                 capacity_factor_eval: float = 2.0 * 2,
                  min_capacity: int = 4,
                  noisy_func: Callable = None,
                  drop_tks: bool = True):
