@@ -14,6 +14,7 @@ from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.engine.gradient_handler import MoeGradientHandler
 from colossalai.context import MOE_CONTEXT
+from colossalai.nn.loss import MoeLoss
 from colossalai.testing import assert_equal_in_group
 
 from tests.test_zero.common import CONFIG, check_grads_padding, run_fwd_bwd
@@ -26,7 +27,8 @@ def run_model_test(enable_autocast, shard_strategy_class):
     shard_strategy = shard_strategy_class()
 
     get_components_func = non_distributed_component_funcs.get_callable('no_leaf_module')
-    _, train_dataloader, _, _, criterion = get_components_func()
+    _, train_dataloader, _, _, _ = get_components_func()
+    criterion = MoeLoss(aux_weight=0.01, loss_fn=torch.nn.CrossEntropyLoss)
 
     with ZeroInitContext(target_device=torch.device('cuda', torch.cuda.current_device()),
                          shard_strategy=shard_strategy,

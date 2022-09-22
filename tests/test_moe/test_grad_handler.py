@@ -45,12 +45,12 @@ def run_test(rank, world_size, port):
 
     rank = dist.get_rank()
     torch.cuda.manual_seed(78 + rank)
-    data = torch.randn(BATCH_SIZE, DIM, device=get_current_device())
-    grad = torch.randn_like(data)
+    inputs = torch.randn(BATCH_SIZE, DIM, device=get_current_device())
+    grad = torch.randn_like(inputs)
 
-    MOE_CONTEXT.reset_loss()
-    outputs = model(data)
-    outputs.backward(grad)
+    for layer in layer_list:
+        inputs, _ = layer(inputs)
+    inputs.backward(grad)
     grad_handler.handle_gradient()
 
     assert_equal_in_group(layer_list[0].experts.experts[0].weight.grad, dist_dict[1].dp_group)
