@@ -58,15 +58,9 @@ def run_moe_zero_init(init_device_type, shard_strategy_class):
     for name, param in model.named_parameters():
         assert hasattr(param, 'colo_attr')
 
-        # the weights in the gate should be fp32
-        if 'gate' in name:
-            assert param.colo_attr.sharded_data_tensor.dtype == torch.float32
-        else:
-            assert param.colo_attr.sharded_data_tensor.dtype == torch.half
-
         # the parameters in moe experts and its gate should not be sharded
         if ('experts' in name) or ('gate' in name) or ('residual_combine' in name):
-            assert not param.colo_attr.sharded_data_tensor.is_sharded
+            assert not param.colo_attr.sharded_data_tensor.is_sharded, "`{}` parameter has problem".format(name)
         else:
             assert param.colo_attr.sharded_data_tensor.is_sharded
 
