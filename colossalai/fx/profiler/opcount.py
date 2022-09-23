@@ -1,7 +1,7 @@
 # adopted from https://github.com/facebookresearch/fvcore/blob/main/fvcore/nn/jit_handles.py
 # ideas from https://pastebin.com/AkvAyJBw
 
-from functools import reduce
+from functools import partial, reduce
 import operator
 from typing import Callable, List, Any
 from numbers import Number
@@ -147,8 +147,9 @@ def norm_flop_counter(affine_arg_index: int, input_arg_index: int) -> Callable:
     return norm_flop_jit
 
 
-def batchnorm_flop_jit(inputs: List[Any], outputs: List[Any]) -> Number:
-    training = inputs[-3]
+def batchnorm_flop_jit(inputs: List[Any], outputs: List[Any], training: bool = None) -> Number:
+    if training is None:
+        training = inputs[-3]
     assert isinstance(training, bool), "Signature of aten::batch_norm has changed!"
     if training:
         return norm_flop_counter(1, 0)(inputs, outputs)    # pyre-ignore
@@ -201,6 +202,8 @@ flop_mapping = {
     # normalization
     aten.native_batch_norm.default: batchnorm_flop_jit,
     aten.native_batch_norm_backward.default: batchnorm_flop_jit,
+    aten.cudnn_batch_norm.default: batchnorm_flop_jit,
+    aten.cudnn_batch_norm_backward.default: partial(batchnorm_flop_jit, training=True),
     aten.native_layer_norm.default: norm_flop_counter(2, 0),
     aten.native_layer_norm_backward.default: norm_flop_counter(2, 0),
 
@@ -247,12 +250,14 @@ elementwise_flop_aten = [
     aten.hardswish.default,
     aten.hardswish_.default,
     aten.hardswish_backward.default,
+    aten.hardtanh.default,
     aten.hardtanh_.default,
     aten.hardtanh_backward.default,
     aten.hardsigmoid_backward.default,
     aten.hardsigmoid.default,
     aten.gelu.default,
     aten.gelu_backward.default,
+    aten.silu.default,
     aten.silu_.default,
     aten.silu_backward.default,
     aten.sigmoid.default,
@@ -264,6 +269,10 @@ elementwise_flop_aten = [
     aten.tanh.default,
     aten.tanh_backward.default,
     aten.threshold_backward.default,
+
+    # dropout
+    aten.native_dropout.default,
+    aten.native_dropout_backward.default,
 ]
 
 for op in elementwise_flop_aten:

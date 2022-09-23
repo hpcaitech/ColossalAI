@@ -3,7 +3,8 @@ from typing import Callable, Any, Dict, Tuple
 import torch
 from torch.fx.node import Argument, Target
 from . import meta_profiler_function, meta_profiler_module
-from ..memory import activation_size, INPLACE_METHOD, NON_INPLACE_METHOD, INPLACE_OPS
+from ..memory import activation_size
+from ..constant import INPLACE_METHOD, NON_INPLACE_METHOD, INPLACE_OPS
 
 __all__ = ['profile_function', 'profile_module', 'profile_method']
 
