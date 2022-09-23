@@ -1,5 +1,6 @@
 import inspect
 import torch.nn as nn
+from colossalai.context import Config
 from torch.optim import Optimizer
 from colossalai.utils import is_no_pp_or_last_stage
 from .naive_amp import NaiveAMPOptimizer, NaiveAMPModel
@@ -7,7 +8,7 @@ from .grad_scaler import DynamicGradScaler, ConstantGradScaler
 from ._fp16_optimizer import FP16Optimizer
 
 
-def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
+def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config, use_bf16: bool = False):
     """A helper function to wrap training components with naive AMP modules. In this mode,
     we forcibly cast the model weights and inputs to FP16, and cast the model outputs to FP32 to calculate loss,
     which is equivalent to Apex O3.
@@ -15,6 +16,7 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
     Args:
         model (:class:`torch.nn.Module`): your model object
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object
+        use_bf16(:bool): use bf16(True) or fp16(False) 
         amp_config (:class:`colossalai.context.Config` or dict): configuration for naive mode amp.
 
     Returns:
@@ -32,11 +34,11 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
         module_list = []
         for chunk, m in enumerate(model):
             output_to_fp32 = is_no_pp_or_last_stage() and chunk == len(model) - 1
-            module_list.append(NaiveAMPModel(m, output_to_fp32=output_to_fp32))
+            module_list.append(NaiveAMPModel(m, use_bf16=use_bf16, output_to_fp32=output_to_fp32))
         model = nn.ModuleList(module_list)
     else:
         output_to_fp32 = is_no_pp_or_last_stage()
-        model = NaiveAMPModel(model, output_to_fp32=output_to_fp32)
+        model = NaiveAMPModel(model, use_bf16=use_bf16, output_to_fp32=output_to_fp32)
 
     use_dynamic_grad_scaler = amp_config.pop('dynamic_grad_scale', True)
     if use_dynamic_grad_scaler:
@@ -51,6 +53,8 @@ def convert_to_naive_amp(model: nn.Module, optimizer: Optimizer, amp_config):
             kwargs[param.name] = amp_config.pop(param.name)
     grad_scaler = scaler_class(**kwargs)
     optimizer = NaiveAMPOptimizer(optimizer, grad_scaler, **amp_config)
+    if use_bf16:
+        model.cuda().bfloat16()
     return model, optimizer
 
 

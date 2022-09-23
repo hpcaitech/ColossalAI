@@ -44,12 +44,13 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
 
 
 class NaiveAMPModel(nn.Module):
-    r"""A wrapper class for model to cast the model into fp16 and
+    r"""A wrapper class for model to cast the model into fp16  or bf16 and
     automatically cast the input and output
 
     Args:
         model (torch.nn.Module): torch.nn.Module to be wrapped.
         output_to_fp32 (bool, optional): Whether cast output of this module into fp32. (Default: True)
+        use_bf16(bool):Wheter to use bf16 or fp16, True->bf16, False->fp16, (Default:False)
         parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this module.
                                                                   (Default: ``ParallelMode.DATA``)
         sync_buffer (bool, optional): whether to synchronize buffer. (Default: True)
@@ -62,11 +63,13 @@ class NaiveAMPModel(nn.Module):
     def __init__(self,
                  model: nn.Module,
                  output_to_fp32: bool = True,
+                 use_bf16: bool = False,
                  parallel_mode: ParallelMode = ParallelMode.DATA,
                  sync_buffer: bool = True):
         super().__init__()
         self.model = model.half()
         self._output_to_fp32 = output_to_fp32
+        self._use_bf16 = use_bf16
         self._sync_buf = sync_buffer
 
         if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
@@ -91,8 +94,13 @@ class NaiveAMPModel(nn.Module):
             input_ = input_.half()
         return input_
 
+    def _convert_to_bf16(self, input_: Any):
+        if isinstance(input_, Tensor) and input_.dtype == torch.float32:
+            input_ = input_.bfloat16()
+        return input_
+
     def _convert_to_fp32(self, input_: Any):
-        if isinstance(input_, Tensor) and input_.dtype == torch.float16:
+        if isinstance(input_, Tensor) and (input_.dtype == torch.float16 or input_.dtype == torch.bfloat16):
             input_ = input_.float()
         return input_
 
@@ -136,11 +144,18 @@ class NaiveAMPModel(nn.Module):
             if self._first_eval_run:
                 self._first_eval_run = False
 
-        if args:
-            args = [self._convert_to_fp16(arg) for arg in args]
-        if kwargs:
-            for k, v in kwargs.items():
-                kwargs[k] = self._convert_to_fp16(v)
+        if self._use_bf16:
+            if args:
+                args = [self._convert_to_bf16(arg) for arg in args]
+            if kwargs:
+                for k, v in kwargs.items():
+                    kwargs[k] = self._convert_to_bf16(v)
+        else:
+            if args:
+                args = [self._convert_to_fp16(arg) for arg in args]
+            if kwargs:
+                for k, v in kwargs.items():
+                    kwargs[k] = self._convert_to_fp16(v)
 
         out = self.model(*args, **kwargs)
 

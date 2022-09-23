@@ -318,17 +318,27 @@ def initialize(model: nn.Module,
             "Please make sure that all parameters are the same in data parallel group.",
             ranks=[0])
 
-    # check amp and zero
+    # get amp with fp16 or bf16
     fp16_cfg = gpc.config.get('fp16', None)
+    bf16_cfg = gpc.config.get('bf16', None)
 
+    # fp16 & bf16 check conflict with ZeRO
     if fp16_cfg is not None and fp16_cfg.mode is not None and use_zero:
         raise ConfigException(
             "It is not allowed to set fp16 and zero configuration in your config file at the same time")
 
+    if bf16_cfg is not None and bf16_cfg.mode is not None and use_zero:
+        raise ConfigException(
+            "It is not allowed to set bf16 and zero configuration in your config file at the same time")
+
+    if bf16_cfg is not None and fp16_cfg is not None:
+        raise ConfigException(
+            "It is not allowed to set both bf16 and fp 16 in your config file at the same time")
+
     # clip grad norm
     clip_grad_norm = gpc.config.get('clip_grad_norm', 0.0)
 
-    # initialize amp
+    # initialize amp with fp16 & bf16
     amp_mode = None
     if fp16_cfg is not None and fp16_cfg.mode is not None:
         cfg_ = fp16_cfg.copy()
@@ -341,7 +351,20 @@ def initialize(model: nn.Module,
                                                      optimizer=optimizer,
                                                      criterion=criterion,
                                                      mode=amp_mode,
+                                                     use_bf16=False,
                                                      amp_config=cfg_)
+    elif bf16_cfg is not None and bf16_cfg.mode is not None:
+        cfg_ = bf16_cfg.copy()
+        amp_mode = cfg_.pop('mode')
+        assert amp_mode == AMP_TYPE.NAIVE, 'bf16 only support NaiveAMP currently'
+        cfg_['clip_grad_norm'] = clip_grad_norm
+        model, optimizer, criterion = convert_to_amp(model=model,
+                                                     optimizer=optimizer,
+                                                     criterion=criterion,
+                                                     mode=amp_mode,
+                                                     use_bf16=True,
+                                                     amp_config=cfg_)
+
 
     # get torch ddp config
     torch_ddp_cfg = gpc.config.get('torch_ddp', dict())

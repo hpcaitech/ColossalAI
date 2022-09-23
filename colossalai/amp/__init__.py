@@ -13,7 +13,7 @@ from .naive_amp import convert_to_naive_amp
 __all__ = ['convert_to_amp', 'convert_to_naive_amp', 'convert_to_apex_amp', 'convert_to_torch_amp', 'AMP_TYPE']
 
 
-def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mode: AMP_TYPE, amp_config: Config = None):
+def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mode: AMP_TYPE, use_bf16: bool = False, amp_config: Config = None):
     """A helper function to wrap training components with Torch AMP modules.
 
     Args:
@@ -21,6 +21,7 @@ def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mod
         optimizer (:class:`torch.optim.Optimizer`): your optimizer object.
         criterion (:class:`torch.nn.modules.loss._Loss`): your loss function object.
         mode (:class:`colossalai.amp.AMP_TYPE`): amp mode.
+        use_bf16(:bool): True-> bf16, False->fp16
         amp_config (Union[:class:`colossalai.context.Config`, dict]): configuration for different amp modes.
 
     Returns:
@@ -47,6 +48,6 @@ def convert_to_amp(model: nn.Module, optimizer: Optimizer, criterion: _Loss, mod
     elif mode == AMP_TYPE.APEX:
         model, optimizer = convert_to_apex_amp(model, optimizer, amp_config)
     elif mode == AMP_TYPE.NAIVE:
-        model, optimizer = convert_to_naive_amp(model, optimizer, amp_config)
+        model, optimizer = convert_to_naive_amp(model, optimizer, use_bf16, amp_config)
 
     return model, optimizer, criterion
