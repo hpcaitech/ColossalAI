@@ -48,22 +48,26 @@ class MetaInfoProp(torch.fx.Interpreter):
     Usage:
         BATCH_SIZE = 2
         DIM_IN = 4
+        DIM_HIDDEN = 16
         DIM_OUT = 16
-        model = torch.nn.Linear(DIM_IN, DIM_OUT)
+        model = torch.nn.Sequential(
+            torch.nn.Linear(DIM_IN, DIM_HIDDEN), 
+            torch.nn.Linear(DIM_HIDDEN, DIM_OUT),
+            )
         input_sample = torch.rand(BATCH_SIZE, DIM_IN)
-        orig_output = model(input_sample)
         gm = symbolic_trace(model)
         interp = MetaInfoProp(gm)
         interp.run(input_sample)
-        print(interp.summary())
+        print(interp.summary(format='kb'))    # don't panic if some statistics are 0.00 MB
         
         
         # output of above code is 
-        # input_1 torch.float32 torch.Size([2, 4]) 8
-        # weight torch.float32 torch.Size([16, 4]) 64
-        # bias torch.float32 torch.Size([16]) 16
-        # linear torch.float32 torch.Size([2, 16]) 32
-        # output torch.float32 torch.Size([2, 16]) 32
+        Op type      Op       Forward FLOPs    Backward FLOPs    SAVE_FWD_IN    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
+        -----------  -------  ---------------  ----------------  -------------  ---------  ---------  ---------  ---------
+        placeholder  input_1  0.00e+00 FLOPs   0.00e+00 FLOPs    False          0.00 KB    0.00 KB    0.00 KB    0.00 KB
+        call_module  _0       1.28e+02 FLOPs   2.88e+02 FLOPs    True           0.12 KB    0.00 KB    0.34 KB    0.00 KB
+        call_module  _1       5.12e+02 FLOPs   1.06e+03 FLOPs    True           0.12 KB    0.00 KB    1.19 KB    0.00 KB
+        output       output   0.00e+00 FLOPs   0.00e+00 FLOPs    True           0.00 KB    0.00 KB    0.00 KB    0.00 KB
     Args:
          module (GraphModule): The module to be executed
 
@@ -265,7 +269,7 @@ class MetaInfoProp(torch.fx.Interpreter):
                 'gb': 1024**3,
                 'tb': 1024**4,
             }
-            return f"{mem / unit_divisor_map[format.lower()]: .2f}{format.upper()}"
+            return f"{mem / unit_divisor_map[format.lower()]: .2f} {format.upper()}"
 
         def flops_repr(flop: int) -> str:
             return f"{flop:.2e} FLOPs"
