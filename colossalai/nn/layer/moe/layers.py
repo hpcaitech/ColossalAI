@@ -200,6 +200,4 @@ class MoeModule(nn.Module):
         else:
             output = moe_output
 
-        MOE_CONTEXT.add_loss(l_aux)
-
-        return output
+        return output, l_aux
