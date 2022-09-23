@@ -77,7 +77,7 @@ def _all_to_all(tensor, comm_spec):
 
 def _all_reduce(tensor, comm_spec):
     '''
-    Implement all gather operation on device mesh based on information provided by comm_spec.
+    Implement all reduce operation on device mesh based on information provided by comm_spec.
     '''
     process_groups_list = comm_spec.device_mesh.process_groups_dict[comm_spec.logical_process_axis]
     for rank_list, process_group in process_groups_list:
@@ -274,13 +274,6 @@ class CommSpec:
             self.logical_process_axis = 0
         else:
             self.device_mesh = self.sharding_spec.device_mesh
-        self.apply_func_dict = {
-            CollectiveCommPattern.GATHER_FWD_SPLIT_BWD: gather_forward_split_backward,
-            CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD: all_to_all,
-            CollectiveCommPattern.SPLIT_FWD_GATHER_BWD: split_forward_gather_backward,
-            CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD: reduce_input,
-            CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD: reduce_grad,
-        }
 
     def __repr__(self):
         res_list = ["CommSpec:("]
@@ -354,10 +347,19 @@ class CommSpec:
         Argument:
             tensor(torch.Tensor): Tensor stored in each device, which could be different in different ranks.
         '''
-        if self.comm_pattern in self.apply_func_dict:
-            tensor.data = self.apply_func_dict[self.comm_pattern](tensor, self)
+        if self.comm_pattern in pattern_to_func_dict:
+            tensor.data = pattern_to_func_dict[self.comm_pattern](tensor, self)
         else:
             tensor.data = tensor
+
+
+pattern_to_func_dict = {
+    CollectiveCommPattern.GATHER_FWD_SPLIT_BWD: gather_forward_split_backward,
+    CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD: all_to_all,
+    CollectiveCommPattern.SPLIT_FWD_GATHER_BWD: split_forward_gather_backward,
+    CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD: reduce_input,
+    CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD: reduce_grad,
+}
 
 
 @dataclass
