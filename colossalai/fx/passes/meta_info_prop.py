@@ -62,12 +62,12 @@ class MetaInfoProp(torch.fx.Interpreter):
         
         
         # output of above code is 
-        Op type      Op       Forward FLOPs    Backward FLOPs    SAVE_FWD_IN    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
+            Op type       Op    Forward FLOPs    Backward FLOPs    SAVE_FWD_IN    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
         -----------  -------  ---------------  ----------------  -------------  ---------  ---------  ---------  ---------
-        placeholder  input_1  0.00e+00 FLOPs   0.00e+00 FLOPs    False          0.00 KB    0.00 KB    0.00 KB    0.00 KB
-        call_module  _0       1.28e+02 FLOPs   2.88e+02 FLOPs    True           0.12 KB    0.00 KB    0.34 KB    0.00 KB
-        call_module  _1       5.12e+02 FLOPs   1.06e+03 FLOPs    True           0.12 KB    0.00 KB    1.19 KB    0.00 KB
-        output       output   0.00e+00 FLOPs   0.00e+00 FLOPs    True           0.00 KB    0.00 KB    0.00 KB    0.00 KB
+        placeholder  input_1          0 FLOPs           0 FLOPs          False    0.00 KB    0.00 KB    0.00 KB    0.00 KB
+        call_module       _0        128 FLOPs         288 FLOPs           True    0.12 KB    0.00 KB    0.34 KB    0.00 KB
+        call_module       _1        512 FLOPs       1,056 FLOPs           True    0.12 KB    0.00 KB    1.19 KB    0.00 KB
+             output   output          0 FLOPs           0 FLOPs           True    0.00 KB    0.00 KB    0.00 KB    0.00 KB
     Args:
          module (GraphModule): The module to be executed
 
@@ -272,7 +272,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             return f"{mem / unit_divisor_map[format.lower()]:.2f} {format.upper()}"
 
         def flops_repr(flop: int) -> str:
-            return f"{flop:.2e} FLOPs"
+            return f"{flop:,} FLOPs"
 
         for node in self.module.graph.nodes:
             node: Node
@@ -302,4 +302,4 @@ class MetaInfoProp(torch.fx.Interpreter):
             'BWD_TMP',
         ]
 
-        return tabulate(node_summaries, headers=headers)
+        return tabulate(node_summaries, headers=headers, stralign='right')
