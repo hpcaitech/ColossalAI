@@ -4,7 +4,7 @@ import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
 import pytest
 
-from colossalai.pipeline.pipeline_process_group import PipelineProcessGroup
+from colossalai.pipeline.pipeline_process_group import ppg
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from rpc_test_utils import pg_parse_args, rpc_is_initialized
@@ -26,12 +26,12 @@ def run_worker(rank, args):
     disable_existing_loggers()
     launch(dict(), rank, world_size, host, int(port), backend, verbose=False)
 
-    pg = PipelineProcessGroup(rank=rank,
-                              world_size=world_size,
-                              dp_degree=dp_degree,
-                              tp_degree=tp_degree,
-                              num_worker_threads=num_worker_threads,
-                              device=device)
+    ppg.set_global_info(rank=rank,
+                        world_size=world_size,
+                        dp_degree=dp_degree,
+                        tp_degree=tp_degree,
+                        num_worker_threads=num_worker_threads,
+                        device=device)
 
     if rpc_is_initialized():
         rpc.shutdown()

@@ -8,7 +8,12 @@ import torch.multiprocessing as mp
 import torch.distributed.rpc as rpc
 from torch.optim import SGD, Adam, RMSprop, Optimizer
 from torch._C._distributed_rpc import _is_current_rpc_agent_set
+import torch.distributed as dist
 from colorama import Back, Style
+
+from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.logging import disable_existing_loggers
+from colossalai import launch
 
 rpc_is_initialized = _is_current_rpc_agent_set
 
@@ -25,12 +30,15 @@ class RpcTestModel(nn.Module):
         self.rank = stage_id
         self.is_last_rank = stage_id == actual_stage_num - 1
         self.linear_name = f'linear_{stage_id}'
+
         if stage_id == 0:
-            setattr(self, self.linear_name, nn.Linear(feat_num, h))
+            linear = nn.Linear(feat_num, h)
         elif stage_id == actual_stage_num - 1:
-            setattr(self, self.linear_name, nn.Linear(h, 1))
+            linear = nn.Linear(h, 1)
         else:
-            setattr(self, self.linear_name, nn.Linear(h, h))
+            linear = nn.Linear(h, h)
+
+        setattr(self, self.linear_name, linear)
 
     def forward(self, x) -> torch.Tensor:
         linear: nn.Module = getattr(self, self.linear_name)
@@ -46,6 +54,8 @@ def parse_args():
     parser.add_argument('--epoch', type=int, default=1)
     parser.add_argument('--world_size', type=int, default=2)
     parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--dp_degree', type=int, default=1)
+    parser.add_argument('--tp_degree', type=int, default=1)
     parser.add_argument('--num_microbatches', type=int, default=2)
     parser.add_argument('--chunk', type=int, default=1)
     parser.add_argument('--use_checkpoint', action='store_true')
@@ -74,16 +84,24 @@ def run_worker(rank, args, master_func):
     os.environ['MASTER_ADDR'] = args.master_addr
     os.environ['MASTER_PORT'] = args.master_port
 
-    # config rpc
-    # if cuda is used, set_device_map is a must is configured
-    # for cuda is not supported in torch rpc by default
-    options = rpc.TensorPipeRpcBackendOptions(num_worker_threads=args.num_worker_threads)
-
+    device = args.device
     world_size = args.world_size
-    for rank_idx in range(world_size):
-        options.set_device_map(f'work{rank_idx}', {rank: rank_idx})
+    dp_degree = args.dp_degree
+    tp_degree = args.tp_degree
+    num_worker_threads = args.num_worker_threads
+    host = args.master_addr
+    port = args.master_port
+    backend = 'nccl' if device == 'cuda' else 'gloo'
 
-    rpc.init_rpc(name=f'work{rank}', rank=rank, world_size=world_size, rpc_backend_options=options)
+    disable_existing_loggers()
+
+    launch(dict(), rank, world_size, host, int(port), backend, verbose=False)
+    ppg.set_global_info(rank=rank,
+                        world_size=world_size,
+                        dp_degree=dp_degree,
+                        tp_degree=tp_degree,
+                        num_worker_threads=num_worker_threads,
+                        device=device)
 
     # in rpc mode, only rank 0 is needed to be coded
     if rank == 0:
