@@ -8,6 +8,7 @@ import warnings
 from functools import reduce
 import functools
 import operator
+from .constants import INFINITY_COST
 
 
 def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: DeviceMesh,
@@ -68,19 +69,16 @@ def generate_resharding_costs(nodes: List[Node],
         for strategy in input_node.strategies_vector:
             input_sharding_spec = strategy.output_sharding_spec
             assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
-            # compute the resharding cost during forward phase
-            _, _, resharding_cost_forward = shape_consistency_manager.shape_consistency(input_sharding_spec, input_spec)
+            try:
+                # compute the resharding cost
+                _, _, total_resharding_cost = shape_consistency_manager.shape_consistency(
+                    input_sharding_spec, input_spec)
 
-            if count_backward:
-                # In backward phase, we should convert grad with target_spec into input_sharding_spec
-                _, _, resharding_cost_backward = shape_consistency_manager.shape_consistency(
-                    input_spec, input_sharding_spec)
-                total_resharding_cost = resharding_cost_forward + resharding_cost_backward
-            else:
-                total_resharding_cost = resharding_cost_forward
-
-            # we need multiply the size of elem dtype to get correct communication cost
-            resharding_cost = total_resharding_cost * size_per_elem_bytes
+                # we need multiply the size of elem dtype to get correct communication cost
+                resharding_cost = total_resharding_cost * size_per_elem_bytes
+            except AssertionError as e:
+                warnings.warn(f'{e}')
+                resharding_cost = INFINITY_COST
             resharding_costs[input_node].append(resharding_cost)
     return resharding_costs
 
@@ -94,7 +92,43 @@ def exception_handler(func):
     def wrapper(*args, **kwargs):
         try:
             func(*args, **kwargs)
-        except Exception as e:
+        except AssertionError as e:
             warnings.warn(f'{e}')
 
     return wrapper
+
+
+def enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size):
+    dim_partition_list = []
+    # enumerate all the 2D sharding cases
+    for i in range(dim_size):
+        for j in range(i + 1, dim_size):
+            dim_partition_dict_0 = {i: [mesh_dim_0], j: [mesh_dim_1]}
+            dim_partition_dict_1 = {i: [mesh_dim_1], j: [mesh_dim_0]}
+            dim_partition_list.append(dim_partition_dict_0)
+            dim_partition_list.append(dim_partition_dict_1)
+    for i in range(dim_size):
+        dim_partition_dict_flatten = {i: [mesh_dim_0, mesh_dim_1]}
+        dim_partition_list.append(dim_partition_dict_flatten)
+
+    return dim_partition_list
+
+
+def enumerate_all_possible_1d_sharding(mesh_dim_0, dim_size):
+    dim_partition_list = []
+    # enumerate all the 1D sharding cases
+    for i in range(dim_size):
+        dim_partition_dict_0 = {i: [mesh_dim_0]}
+        dim_partition_list.append(dim_partition_dict_0)
+
+    return dim_partition_list
+
+
+def generate_sharding_size(dim_partition_dict, device_mesh):
+    total_sharding_size = 1
+    for mesh_dim_list in dim_partition_dict.values():
+        mesh_dim_sharding_size = [device_mesh.shape[mesh_dim] for mesh_dim in mesh_dim_list]
+        sharding_size = reduce(operator.mul, mesh_dim_sharding_size)
+        total_sharding_size *= sharding_size
+
+    return total_sharding_size

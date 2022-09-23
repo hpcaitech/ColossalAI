@@ -97,12 +97,13 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
                                                evict_strategy=self.evict_strategy)
         self.cache_weight_mgr.reorder(ids_freq_mapping, warmup_ratio)
 
-    def forward(self, input, offsets=None, per_sample_weights=None, shape_hook=None):
-        with torch.no_grad():
-            reorder_ids = self.cache_weight_mgr.prepare_ids(input)
+    def forward(self, input, offsets=None, per_sample_weights=None, shape_hook=None, cache_op=True):
+        if cache_op:
+            with torch.no_grad():
+                input = self.cache_weight_mgr.prepare_ids(input)
 
-        embeddings = F.embedding_bag(reorder_ids.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets,
-                                     self.max_norm, self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
+        embeddings = F.embedding_bag(input.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets, self.max_norm,
+                                     self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
                                      per_sample_weights, self.include_last_offset, self.padding_idx)
         if shape_hook is not None:
             embeddings = shape_hook(embeddings)

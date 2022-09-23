@@ -47,7 +47,10 @@ class OperatorHandler(ABC):
         elif self.node.op == 'call_function' and self.node.target not in NON_PARAM_FUNC_OP:
             module = None
             parameters = list(self.node.args)[1]
-            named_parameters = {'weight': parameters._meta_data}
+            if isinstance(parameters, Node):
+                named_parameters = {'weight': parameters._meta_data}
+            else:
+                named_parameters = {}
         else:
             module = None
             named_parameters = None

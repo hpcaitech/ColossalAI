@@ -24,6 +24,7 @@ class MoeExperts(nn.Module):
         self.num_local_experts, self.dist_info = MOE_CONTEXT.get_info(num_experts)
 
 
+@no_shard_zero_decrator(is_replicated=False)
 class Experts(MoeExperts):
     """A wrapper class to create experts. It will create E experts across the
     moe model parallel group, where E is the number of experts. Every expert
@@ -35,7 +36,6 @@ class Experts(MoeExperts):
         expert_args: Args used to initialize experts, the args could be found in corresponding expert class
     """
 
-    @no_shard_zero_decrator(is_replicated=False)
     def __init__(self, expert_cls: Type[nn.Module], num_experts: int, **expert_args):
         super().__init__("all_to_all", num_experts)
 
