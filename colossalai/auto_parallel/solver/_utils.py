@@ -94,7 +94,43 @@ def exception_handler(func):
     def wrapper(*args, **kwargs):
         try:
             func(*args, **kwargs)
-        except Exception as e:
+        except AssertionError as e:
             warnings.warn(f'{e}')
 
     return wrapper
+
+
+def enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size):
+    dim_partition_list = []
+    # enumerate all the 2D sharding cases
+    for i in range(dim_size):
+        for j in range(i + 1, dim_size):
+            dim_partition_dict_0 = {i: [mesh_dim_0], j: [mesh_dim_1]}
+            dim_partition_dict_1 = {i: [mesh_dim_1], j: [mesh_dim_0]}
+            dim_partition_list.append(dim_partition_dict_0)
+            dim_partition_list.append(dim_partition_dict_1)
+    for i in range(dim_size):
+        dim_partition_dict_flatten = {i: [mesh_dim_0, mesh_dim_1]}
+        dim_partition_list.append(dim_partition_dict_flatten)
+
+    return dim_partition_list
+
+
+def enumerate_all_possible_1d_sharding(mesh_dim_0, dim_size):
+    dim_partition_list = []
+    # enumerate all the 1D sharding cases
+    for i in range(dim_size):
+        dim_partition_dict_0 = {i: [mesh_dim_0]}
+        dim_partition_list.append(dim_partition_dict_0)
+
+    return dim_partition_list
+
+
+def generate_sharding_size(dim_partition_dict, device_mesh):
+    total_sharding_size = 1
+    for mesh_dim_list in dim_partition_dict.values():
+        mesh_dim_sharding_size = [device_mesh.shape[mesh_dim] for mesh_dim in mesh_dim_list]
+        sharding_size = reduce(operator.mul, mesh_dim_sharding_size)
+        total_sharding_size *= sharding_size
+
+    return total_sharding_size
