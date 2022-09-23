@@ -269,7 +269,7 @@ class MetaInfoProp(torch.fx.Interpreter):
                 'gb': 1024**3,
                 'tb': 1024**4,
             }
-            return f"{mem / unit_divisor_map[format.lower()]: .2f} {format.upper()}"
+            return f"{mem / unit_divisor_map[format.lower()]:.2f} {format.upper()}"
 
         def flops_repr(flop: int) -> str:
             return f"{flop:.2e} FLOPs"
