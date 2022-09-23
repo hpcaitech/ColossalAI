@@ -157,7 +157,7 @@ def _find_offload_regions(nodes: List[Node]):
     current_region = None
 
     for idx, node in enumerate(nodes):
-        if hasattr(node, 'activation_offload') and isinstance(getattr(node, 'activation_offload', False), list):
+        if hasattr(node, 'activation_offload') and isinstance(getattr(node, 'activation_offload', None), list):
             act_offload_label = node.activation_offload
 
             if current_region == None:
