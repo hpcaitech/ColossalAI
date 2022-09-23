@@ -1,5 +1,6 @@
 from torch.fx import Graph, Node
 from colossalai.auto_parallel.solver.op_handler.bcast_op_handler import BcastOpHandler
+from colossalai.auto_parallel.solver.op_handler.layer_norm_handler import LayerNormHandler
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
@@ -216,6 +217,15 @@ class StrategiesConstructor:
                                                              input_shardings=[input_sharding_spec])
                         strategies_vector.append(sharding_strategy)
 
+                # embedding module
+                elif submod_type in EMBEDDING_MODULE_OP:
+                    embedding_handler = EmbeddingHandler(node, self.device_mesh, strategies_vector)
+                    embedding_handler.register_strategy()
+
+                # layernorm module
+                elif submod_type in LAYERNORM_MODULE_OP:
+                    layernorm_handler = LayerNormHandler(node, self.device_mesh, strategies_vector)
+                    layernorm_handler.register_strategy()
                 # other module
                 else:
                     raise RuntimeError(f'{submod_type} module is NOT supported now.')
@@ -349,34 +359,71 @@ class StrategiesConstructor:
                 elif target == operator.getitem:
                     index = node.args[1]
                     input_tensor_node = strategies_vector.predecessor_nodes[0]
-                    for strategy in input_tensor_node.strategies_vector:
-                        input_sharding_spec = input_tensor_node.output_sharding_spec[index]
-                        assert isinstance(input_sharding_spec, ShardingSpec), f'This assertion is used to debug.'
-                        dim_partition_dict_for_output = deepcopy(input_sharding_spec.dim_partition_dict)
-                        entire_shape_output = deepcopy(input_sharding_spec.entire_shape)
-                        output_sharding_spec = ShardingSpec(self.device_mesh,
-                                                            entire_shape_output,
-                                                            dim_partition_dict=dim_partition_dict_for_output)
-                        # TODO: use meta_info_prop to profile origin memory cost and compute cost, then divide them depending on sharding spec.
-                        compute_cost = 0
-                        memory_cost = 0
-                        resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                     [input_sharding_spec])
-                        # to prevent the resharding happening, set their resharding cost to inf.
-                        resharding_costs[input_tensor_node] = [
-                            cost if cost == 0 else math.inf for cost in resharding_costs[input_tensor_node]
-                        ]
-                        sharding_strategy = ShardingStrategy(name,
-                                                             output_sharding_spec,
-                                                             compute_cost=compute_cost,
-                                                             memory_cost=memory_cost,
-                                                             resharding_costs=resharding_costs,
-                                                             input_shardings=[input_tensor_node.output_sharding_spec])
-                        strategies_vector.append(sharding_strategy)
+                    if isinstance(input_tensor_node, torch.Tensor):
+                        for strategy in input_tensor_node.strategies_vector:
+                            input_sharding_spec = strategy.output_sharding_spec[index]
+                            assert isinstance(input_sharding_spec, ShardingSpec), f'This assertion is used to debug.'
+                            dim_partition_dict_for_output = deepcopy(input_sharding_spec.dim_partition_dict)
+                            entire_shape_output = deepcopy(input_sharding_spec.entire_shape)
+                            output_sharding_spec = ShardingSpec(self.device_mesh,
+                                                                entire_shape_output,
+                                                                dim_partition_dict=dim_partition_dict_for_output)
+                            # TODO: use meta_info_prop to profile origin memory cost and compute cost, then divide them depending on sharding spec.
+                            compute_cost = 0
+                            memory_cost = 0
+                            resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                         [input_sharding_spec])
+                            # to prevent the resharding happening, set their resharding cost to inf.
+                            resharding_costs[input_tensor_node] = [
+                                cost if cost == 0 else math.inf for cost in resharding_costs[input_tensor_node]
+                            ]
+                            sharding_strategy = ShardingStrategy(
+                                name,
+                                output_sharding_spec,
+                                compute_cost=compute_cost,
+                                memory_cost=memory_cost,
+                                resharding_costs=resharding_costs,
+                                input_shardings=[input_tensor_node.output_sharding_spec])
+                            strategies_vector.append(sharding_strategy)
 
+                # torch.arange function
+                elif target == torch.arange:
+                    name = f'FULLY REPLICATED ARANGE'
+                    entire_shape_output = node._meta_data.shape
+                    dim_partition_dict_for_output = {}
+                    output_sharding_spec = ShardingSpec(self.device_mesh,
+                                                        entire_shape_output,
+                                                        dim_partition_dict=dim_partition_dict_for_output)
+                    memory_cost = node._meta_data.numel()
+                    sharding_strategy = ShardingStrategy(name,
+                                                         output_sharding_spec,
+                                                         compute_cost=0,
+                                                         memory_cost=memory_cost)
+                    strategies_vector.append(sharding_strategy)
+
+                # op list to be processed to support gpt2
+                elif target in (builtins.getattr, operator.le, torch.addmm, operator.pow, torch.where, torch.softmax,
+                                torch.nn.functional.softmax, torch.pow, torch.tanh):
+                    pass
                 # other function
                 else:
                     raise RuntimeError(f'{target} function is NOT supported now.')
+
+            # call_method node
+            if node.op == 'call_method':
+                method = getattr(node.args[0]._meta_data.__class__, node.target)
+                if method in (torch.Tensor.size, torch.Tensor.contiguous):
+                    pass
+                elif method in ELEMENTWISE_METHOD_OP:
+                    unary_elementwise_handler = UnaryElementwiseHandler(node, self.device_mesh, strategies_vector)
+                    unary_elementwise_handler.register_strategy()
+
+                elif method in RESHAPE_METHOD_OP:
+                    reshape_handler = ReshapeHandler(node, self.device_mesh, strategies_vector)
+                    reshape_handler.register_strategy()
+
+                else:
+                    raise RuntimeError(f'{method} function is NOT supported now.')
 
             # output node
             if node.op == 'output':

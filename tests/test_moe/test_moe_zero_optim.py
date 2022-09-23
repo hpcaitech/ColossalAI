@@ -94,12 +94,6 @@ def _run_test_sharded_optim_v2(cpu_offload,
     apex_model, apex_optimizer = convert_to_apex_amp(model, optim, amp_config)
     apex_grad_handler = MoeGradientHandler(model)
 
-    # Since MOE is not compatible with apex_amp now, we need to convert gate weight to fp32
-    for (n, p), zp in zip(apex_model.named_parameters(), zero_model.parameters()):
-        if 'gate' in n:
-            p.data = p.float()
-            p.data.copy_(zp.colo_attr.data_payload)
-
     for i, (data, label) in enumerate(train_dataloader):
         if i > 5:
             break

@@ -80,21 +80,20 @@ def test_cost_graph():
     gm.recompile()
     graph_analyser = GraphAnalyser(gm)
     liveness_list = graph_analyser.liveness_analysis()
-    # print(len(liveness_dict[0].unique_live_vars))
-    # assert False
     solver_options = SolverOptions(fast=True)
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
     cost_graph = CostGraph(strategies_constructor.leaf_strategies)
     cost_graph.simplify_graph()
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser, memory_budget=1620017824.0)
-    # solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
+    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
 
     ret = solver.call_solver_serialized_args()
-    print(ret)
-    strategies_list = list(ret[0])
-    print(strategies_list)
+    print(ret[0])
+    solver._recover_merged_node_strategy()
+    print(solver.last_s_val)
+    strategies_list = solver.last_s_val
+
     computation_cost = 0
     communication_cost = 0
     communication_cost_bn = 0
@@ -102,10 +101,6 @@ def test_cost_graph():
     for index, node in enumerate(graph.nodes):
         if node.op == 'call_module':
             submod = node.graph.owning_module.get_submodule(node.target)
-            if type(submod) in ELEMENTWISE_MODULE_OP:
-                input_spec = node.args[0].strategies_vector[strategies_list[index]].output_sharding_spec
-                print(node.name, input_spec)
-                continue
             if type(submod) in BATCHNORM_MODULE_OP:
                 communication_cost_bn += node.strategies_vector[strategies_list[index]].communication_cost
         print(node.name, node.strategies_vector[strategies_list[index]].name)

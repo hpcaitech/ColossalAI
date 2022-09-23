@@ -8,7 +8,7 @@ from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 from copy import deepcopy
 from typing import Dict, List
-from colossalai.auto_parallel.solver._utils import exception_handler
+from colossalai.auto_parallel.solver._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
 
 __all__ = ['BcastOpHandler']
 
@@ -110,45 +110,19 @@ class BcastOpHandler(OperatorHandler):
 
         return sharding_spec_list
 
-    def _enumerate_all_possible_2d_sharding(self, mesh_dim_0, mesh_dim_1, dim_size):
-        dim_partition_list = []
-        # enumerate all the 2D sharding cases
-        for i in range(dim_size):
-            for j in range(i + 1, dim_size):
-                dim_partition_dict_0 = {i: [mesh_dim_0], j: [mesh_dim_1]}
-                dim_partition_dict_1 = {i: [mesh_dim_1], j: [mesh_dim_0]}
-                dim_partition_list.append(dim_partition_dict_0)
-                dim_partition_list.append(dim_partition_dict_1)
-        for i in range(dim_size):
-            dim_partition_dict_flatten = {i: [mesh_dim_0, mesh_dim_1]}
-            dim_partition_list.append(dim_partition_dict_flatten)
-
-        # sharding_spec_list = self._convert_partition_dict_to_sharding_spec(dim_partition_list)
-        return dim_partition_list
-
-    def _enumerate_all_possible_1d_sharding(self, mesh_dim_0, dim_size):
-        dim_partition_list = []
-        # enumerate all the 1D sharding cases
-        for i in range(dim_size):
-            dim_partition_dict_0 = {i: [mesh_dim_0]}
-            dim_partition_list.append(dim_partition_dict_0)
-
-        # sharding_spec_list = self._convert_partition_dict_to_sharding_spec(dim_partition_list)
-        return dim_partition_list
-
     def _enumerate_all_possible_output(self, mesh_dim_0, mesh_dim_1):
         # use mesh_dim_0, mesh_dim_1 instead of constant 0, 1 in here for N-D device mesh scaliablity.
 
         output_dim_partition_list = []
         dim_size = self.output_data.dim()
         # enumerate all the 2D sharding cases
-        sharding_list_2d = self._enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size)
+        sharding_list_2d = enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size)
         output_dim_partition_list.extend(sharding_list_2d)
 
         # enumerate all the 1D sharding cases
-        sharding_list_1d_on_dim_0 = self._enumerate_all_possible_1d_sharding(mesh_dim_0, dim_size)
+        sharding_list_1d_on_dim_0 = enumerate_all_possible_1d_sharding(mesh_dim_0, dim_size)
         output_dim_partition_list.extend(sharding_list_1d_on_dim_0)
-        sharding_list_1d_on_dim_1 = self._enumerate_all_possible_1d_sharding(mesh_dim_1, dim_size)
+        sharding_list_1d_on_dim_1 = enumerate_all_possible_1d_sharding(mesh_dim_1, dim_size)
         output_dim_partition_list.extend(sharding_list_1d_on_dim_1)
 
         # add empty dict for fully replicated case
@@ -545,15 +519,13 @@ class BcastOpHandler(OperatorHandler):
             dim_size = self.output_data.dim() - 2
 
             # Both device mesh axises are uesd on batch dimensions
-            dim_partition_dicts_2d = self._enumerate_all_possible_2d_sharding(MESH_DIM_LIST[0], MESH_DIM_LIST[1],
-                                                                              dim_size)
+            dim_partition_dicts_2d = enumerate_all_possible_2d_sharding(MESH_DIM_LIST[0], MESH_DIM_LIST[1], dim_size)
             for dim_partition_dict in dim_partition_dicts_2d:
                 self._registry_no_split_strategies_for_matmul(dim_partition_dict)
 
             # Only one device mesh axis is uesd on batch dimensions
             for mesh_dim_index in [0, 1]:
-                dim_partition_dicts_1d = self._enumerate_all_possible_1d_sharding(MESH_DIM_LIST[mesh_dim_index],
-                                                                                  dim_size)
+                dim_partition_dicts_1d = enumerate_all_possible_1d_sharding(MESH_DIM_LIST[mesh_dim_index], dim_size)
                 for dim_partition_dict in dim_partition_dicts_1d:
                     self._registry_no_split_strategies_for_matmul(dim_partition_dict)
                     self._registry_1d_strategies_for_matmul(dim_partition_dict, [MESH_DIM_LIST[mesh_dim_index - 1]])
