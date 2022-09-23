@@ -408,7 +408,6 @@ def emit_code_with_nested_activation_checkpoint(body, ckpt_func, nodes, emit_nod
         offload_inputs.append(inputs)
         offload_outputs.append(outputs)
 
-    print(len(offload_regions), len(offload_inputs), len(offload_outputs))
     # this flag is to prevent repeated insert of save tensors
     # hooks definition in ckpt_func
     is_hook_inserted = False
