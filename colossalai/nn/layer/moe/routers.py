@@ -15,9 +15,10 @@ from torch.distributed import ProcessGroup
 class MoeRouter(nn.Module, ABC):
     """Base class for all MoE routers.
     Args:
-        capacity_factor_train (float, optional): Capacity factor in routing of training.
-        capacity_factor_eval (float, optional): Capacity factor in routing of evaluation.
-        min_capacity (int, optional): The minimum number of the capacity of each expert.
+        k_value (int): The value of top_k.
+        capacity_factor_train (float): Capacity factor in routing of training.
+        capacity_factor_eval (float): Capacity factor in routing of evaluation.
+        min_capacity (int): The minimum number of the capacity of each expert.
         noisy_func (:class:`typing.Callable`, optional): Noisy function used in logits.
         drop_tks (bool, optional): Whether drops tokens in evaluation
     """
@@ -45,6 +46,16 @@ class MoeRouter(nn.Module, ABC):
         capacity = max(capacity, self.min_capacity)
         assert capacity > 0
         return capacity
+
+    def set_routing_loss(self, aux_loss: torch.Tensor) -> None:
+        assert self._routing_loss is None
+        self._routing_loss = aux_loss
+
+    def pop_routing_loss(self) -> torch.Tensor:
+        assert self._routing_loss is not None
+        reservation = self._routing_loss
+        self._routing_loss = None
+        return reservation
 
 
 class Top1Router(MoeRouter):
@@ -93,17 +104,16 @@ class Top1Router(MoeRouter):
         top1_idx = torch.argmax(inputs, dim=-1)
         mask = F.one_hot(top1_idx, num_classes=num_experts).to(torch.int32)
 
-        if self.training:
-            me = torch.mean(logits, dim=0)
-            ce = torch.mean(mask.float(), dim=0)
-            l_aux = num_experts * torch.sum(me * ce)
-            MOE_CONTEXT.add_loss(l_aux)
-        elif not self.drop_tks:
+        # caculate the auxiliary loss
+        me = torch.mean(logits, dim=0)
+        ce = torch.mean(mask.float(), dim=0)
+        l_aux = num_experts * torch.sum(me * ce)
+        self.set_routing_loss(l_aux)
+
+        if not self.training and not self.drop_tks:
             max_num = torch.max(torch.sum(mask, dim=0))
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
-        else:
-            pass
 
         if self.select_policy == "random":
             rand_mask = mask * self.uniform(mask.shape)
@@ -172,17 +182,17 @@ class Top2Router(MoeRouter):
         mask2 = F.one_hot(top2_idx, num_classes=num_experts).to(torch.int32)
 
         cmask = (mask1 + mask2)    # loss: [s, e]
-        if self.training:
-            me = torch.mean(logits, dim=0)
-            ce = torch.mean(cmask.float(), dim=0)
-            l_aux = num_experts * torch.sum(me * ce) / 2.0    # div 2 to normalize it to 1
-            MOE_CONTEXT.add_loss(l_aux)
-        elif not self.drop_tks:
+
+        # caculate the auxiliary loss
+        me = torch.mean(logits, dim=0)
+        ce = torch.mean(cmask.float(), dim=0)
+        l_aux = num_experts * torch.sum(me * ce) / 2.0    # div 2 to normalize it to 1
+        self.set_routing_loss(l_aux)
+
+        if not self.training and not self.drop_tks:
             max_num = torch.max(torch.sum(cmask, dim=0))
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
-        else:
-            pass
 
         rank1 = moe_cumsum(mask1)    # rank1: [s, e]
         rank2 = moe_cumsum(mask2)
