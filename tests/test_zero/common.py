@@ -135,5 +135,5 @@ def check_sharded_model_params(model, zero_model, loose=False, reuse_fp16_shard=
         else:
             zero_p = zero_p.colo_attr.data_payload.to(p.device)
 
-        assert p.dtype == zero_p.dtype
+        assert p.dtype == zero_p.dtype, "Parameter `{}`:\n{} vs {}".format(name, p.dtype, zero_p.dtype)
         assert allclose(p, zero_p, loose=loose), f'{p} vs {zero_p}'

@@ -8,7 +8,7 @@ from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 from copy import deepcopy
 from typing import Dict, List
-from colossalai.auto_parallel.solver._utils import exception_handler
+from colossalai.auto_parallel.solver._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
 
 __all__ = ['BcastOpHandler']
 
@@ -40,6 +40,11 @@ class BcastOpHandler(OperatorHandler):
         for dim_index, _ in dim_partition_dict.items():
             if shape[dim_index] == 1:
                 processed_dim_partition_dict.pop(dim_index)
+        for dim_index, sharding_index_list in processed_dim_partition_dict.items():
+            sharding_list = [self.device_mesh.mesh_shape[sharding_index] for sharding_index in sharding_index_list]
+            sharding_size = reduce(operator.mul, sharding_list, 1)
+            assert shape[
+                dim_index] % sharding_size == 0, f'we cannot shard the {dim_index} dimension of tensor into {sharding_size} partitions.'
         sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
                                      entire_shape=shape,
                                      dim_partition_dict=processed_dim_partition_dict)
@@ -83,13 +88,9 @@ class BcastOpHandler(OperatorHandler):
                                                        entire_shape=new_entire_shape,
                                                        dim_partition_dict=new_dim_partition_dict)
 
-                # compute the resharding cost during forward phase
-                _, _, resharding_cost_forward = shape_consistency_manager.shape_consistency(
+                # compute the resharding cost
+                _, _, total_resharding_cost = shape_consistency_manager.shape_consistency(
                     input_sharding_spec, input_spec)
-
-                _, _, resharding_cost_backward = shape_consistency_manager.shape_consistency(
-                    input_spec, input_sharding_spec)
-                total_resharding_cost = resharding_cost_forward + resharding_cost_backward
 
                 # we need multiply the size of elem dtype to get correct communication cost
                 resharding_cost = total_resharding_cost * size_per_elem_bytes
@@ -102,7 +103,11 @@ class BcastOpHandler(OperatorHandler):
         sharding_spec_list = []
         check_duplicated_list = []
         for output_dim_partition_dict in dim_partition_list:
-            output_sharding_spec = self._generate_sharding_spec(self.output_data, output_dim_partition_dict)
+            try:
+                output_sharding_spec = self._generate_sharding_spec(self.output_data, output_dim_partition_dict)
+            except AssertionError as e:
+                warnings.warn(f'{e}')
+                break
             sharding_seq = output_sharding_spec.sharding_sequence
             if sharding_seq not in check_duplicated_list:
                 check_duplicated_list.append(sharding_seq)
@@ -110,45 +115,19 @@ class BcastOpHandler(OperatorHandler):
 
         return sharding_spec_list
 
-    def _enumerate_all_possible_2d_sharding(self, mesh_dim_0, mesh_dim_1, dim_size):
-        dim_partition_list = []
-        # enumerate all the 2D sharding cases
-        for i in range(dim_size):
-            for j in range(i + 1, dim_size):
-                dim_partition_dict_0 = {i: [mesh_dim_0], j: [mesh_dim_1]}
-                dim_partition_dict_1 = {i: [mesh_dim_1], j: [mesh_dim_0]}
-                dim_partition_list.append(dim_partition_dict_0)
-                dim_partition_list.append(dim_partition_dict_1)
-        for i in range(dim_size):
-            dim_partition_dict_flatten = {i: [mesh_dim_0, mesh_dim_1]}
-            dim_partition_list.append(dim_partition_dict_flatten)
-
-        # sharding_spec_list = self._convert_partition_dict_to_sharding_spec(dim_partition_list)
-        return dim_partition_list
-
-    def _enumerate_all_possible_1d_sharding(self, mesh_dim_0, dim_size):
-        dim_partition_list = []
-        # enumerate all the 1D sharding cases
-        for i in range(dim_size):
-            dim_partition_dict_0 = {i: [mesh_dim_0]}
-            dim_partition_list.append(dim_partition_dict_0)
-
-        # sharding_spec_list = self._convert_partition_dict_to_sharding_spec(dim_partition_list)
-        return dim_partition_list
-
     def _enumerate_all_possible_output(self, mesh_dim_0, mesh_dim_1):
         # use mesh_dim_0, mesh_dim_1 instead of constant 0, 1 in here for N-D device mesh scaliablity.
 
         output_dim_partition_list = []
         dim_size = self.output_data.dim()
         # enumerate all the 2D sharding cases
-        sharding_list_2d = self._enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size)
+        sharding_list_2d = enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size)
         output_dim_partition_list.extend(sharding_list_2d)
 
         # enumerate all the 1D sharding cases
-        sharding_list_1d_on_dim_0 = self._enumerate_all_possible_1d_sharding(mesh_dim_0, dim_size)
+        sharding_list_1d_on_dim_0 = enumerate_all_possible_1d_sharding(mesh_dim_0, dim_size)
         output_dim_partition_list.extend(sharding_list_1d_on_dim_0)
-        sharding_list_1d_on_dim_1 = self._enumerate_all_possible_1d_sharding(mesh_dim_1, dim_size)
+        sharding_list_1d_on_dim_1 = enumerate_all_possible_1d_sharding(mesh_dim_1, dim_size)
         output_dim_partition_list.extend(sharding_list_1d_on_dim_1)
 
         # add empty dict for fully replicated case
@@ -192,7 +171,7 @@ class BcastOpHandler(OperatorHandler):
     ##############################################
     #used to generate strategies for torch.matmul#
     ##############################################
-    # @exception_handler
+    @exception_handler
     def _registry_no_split_strategies_for_matmul(self, dim_partition_dict_for_batch_dim):
         # this dim partition dict only describes the batch dimensions, but in this scenario,
         # matrix dimensions are fully replicated, so it do not need extra process.
@@ -231,6 +210,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def _split_dim_i(self, dim_partition_dict_for_batch_dim, mesh_dim_on_matrix):
         # A batched matrix multiplication can be viewed as [b, i, k] x [b, k, j] -> [b, i, j]
         # this dim partition dict describe the batch dimensions, so we should append the matrix dimension sharding info on it.
@@ -288,6 +268,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def _split_dim_k(self, dim_partition_dict_for_batch_dim, mesh_dim_on_matrix):
         # A batched matrix multiplication can be viewed as [b, i, k] x [b, k, j] -> [b, i, j]
         # this dim partition dict describe the batch dimensions, so we should append the matrix dimension sharding info on it.
@@ -351,6 +332,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def _split_dim_j(self, dim_partition_dict_for_batch_dim, mesh_dim_on_matrix):
         # A batched matrix multiplication can be viewed as [b, i, k] x [b, k, j] -> [b, i, j]
         # this dim partition dict describe the batch dimensions, so we should append the matrix dimension sharding info on it.
@@ -416,6 +398,7 @@ class BcastOpHandler(OperatorHandler):
         self._split_dim_k(dim_partition_dict, mesh_dim_list)
         self._split_dim_j(dim_partition_dict, mesh_dim_list)
 
+    @exception_handler
     def _split_lhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         dim_partition_dict_for_lhs = {-2: [mesh_dim_0], -1: [mesh_dim_1]}
         sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_lhs)
@@ -452,6 +435,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def _split_rhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         dim_partition_dict_for_lhs = {-1: [mesh_dim_0]}
         sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_lhs)
@@ -490,6 +474,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
+    @exception_handler
     def _split_lhs_space_rhs_space(self, mesh_dim_0, mesh_dim_1):
         dim_partition_dict_for_lhs = {-2: [mesh_dim_0]}
         sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_lhs)
@@ -545,15 +530,13 @@ class BcastOpHandler(OperatorHandler):
             dim_size = self.output_data.dim() - 2
 
             # Both device mesh axises are uesd on batch dimensions
-            dim_partition_dicts_2d = self._enumerate_all_possible_2d_sharding(MESH_DIM_LIST[0], MESH_DIM_LIST[1],
-                                                                              dim_size)
+            dim_partition_dicts_2d = enumerate_all_possible_2d_sharding(MESH_DIM_LIST[0], MESH_DIM_LIST[1], dim_size)
             for dim_partition_dict in dim_partition_dicts_2d:
                 self._registry_no_split_strategies_for_matmul(dim_partition_dict)
 
             # Only one device mesh axis is uesd on batch dimensions
             for mesh_dim_index in [0, 1]:
-                dim_partition_dicts_1d = self._enumerate_all_possible_1d_sharding(MESH_DIM_LIST[mesh_dim_index],
-                                                                                  dim_size)
+                dim_partition_dicts_1d = enumerate_all_possible_1d_sharding(MESH_DIM_LIST[mesh_dim_index], dim_size)
                 for dim_partition_dict in dim_partition_dicts_1d:
                     self._registry_no_split_strategies_for_matmul(dim_partition_dict)
                     self._registry_1d_strategies_for_matmul(dim_partition_dict, [MESH_DIM_LIST[mesh_dim_index - 1]])

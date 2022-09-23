@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from torch.fx.node import Node
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Dict, List
-from ..sharding_strategy import StrategiesVector, Operand, StrategyGenerator_V2
+from ..sharding_strategy import ShardingStrategy, ShardingStrategy_V2, StrategiesVector, OperationData, StrategyGenerator_V2
 
 
 class NodeHandler(ABC):
@@ -36,7 +36,14 @@ class NodeHandler(ABC):
         for generator in self.strategy_generator:
             strategies = generator.generate(operand_mapping)
             self.strategies_vector.extend(strategies)
+
+        self.strategies_vector = map(self.post_process, self.strategies_vector)
         return self.strategies_vector
+
+    def post_process(self, strategy: ShardingStrategy_V2):
+        # tranform the strategy generated
+        # e.g. to process the sharding strategy for the transposed weights
+        return strategy
 
     @abstractmethod
     def register_strategy_generator(self) -> List[StrategyGenerator_V2]:
@@ -46,21 +53,40 @@ class NodeHandler(ABC):
         pass
 
     @abstractmethod
-    def get_operand_mapping(self) -> Dict[str, Operand]:
+    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
         """
-        Returns the mapping between the logical operand name to its physical operands.
-        A logical operand is defined by the strategy generator, for example, a matrix multiplication 
-        operation has two operands "input" and "other". For a nn.Linear module, the physical operand for "input" is
-        the module input and the physical operand for "other" is the module weight.
+        Returns the mapping between the logical operation data to its physical data.
+        A logical operation data is a data associated with an operation, which can be input and output. It is 
+        defined by the strategy generator, for example, a matrix multiplication operation has two operands "input" 
+        and "other" and one result "output". For a nn.Linear module, the physical operand for "input" is
+        the module input, the physical operand for "other" is the module weight, and the physical result for "output"
+        is the module output.
         Note that the operand name is specified by the StrategyGenerator object.
 
         For example:
 
             # for a linear layer
             mapping = {
-                "input": Operand(name=str(self.node.args[0]), type=OperandType.ARG),
-                "other": Operand(name="weight", type=OperandType.PARAM),
-                "bias": Operand(name="bias", type=OperandType.PARAM)
+                "input": Operand(name=str(self.node.args[0]), type=OperationDataType.ARG, data=self.node.args[0]._meta_data),
+                "other": Operand(name="weight", type=OperationDataType.PARAM, data=self.named_parameters['weight']),
+                "bias": Operand(name="bias", type=OperationDataType.PARAM, data=self.named_parameters['bias']),
+                "output": Operand(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data),
             }
         """
         pass
+
+
+class ModuleHandler(NodeHandler):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        # set attributes to access module parameters for convenience
+        assert self.node.graph.owning_module is not None, \
+            f'The graph is not associated with a module, please make sure it can be used to instantiate a GraphModule object.'
+        module = self.node.graph.owning_module.get_submodule(self.node.target)
+        named_parameters = list(module.named_parameters(recurse=False))
+        # convert named parameters from list to dict
+        named_parameters = {k: v for k, v in named_parameters}
+        self.module = module
+        self.named_parameters = named_parameters

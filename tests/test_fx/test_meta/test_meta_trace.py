@@ -5,7 +5,7 @@ from colossalai import META_COMPATIBILITY
 import pytest
 
 if META_COMPATIBILITY:
-    from colossalai.fx.profiler import MetaTensor
+    from colossalai.fx import meta_trace
 
 tm_models = [
     tm.vgg11,
@@ -28,21 +28,21 @@ tmm_models = [
 
 
 @pytest.mark.skipif(not META_COMPATIBILITY, reason='torch version is lower than 1.12.0')
-def test_torchvision_models():
+def test_torchvision_models_trace():
     for m in tm_models:
         model = m()
-        data = torch.rand(100000, 3, 224, 224, device='meta')
-        model(MetaTensor(data, fake_device=torch.device('cpu'))).sum().backward()
+        data = torch.rand(1000, 3, 224, 224, device='meta')
+        graph = meta_trace(model, torch.device('cpu'), data)
 
 
 @pytest.mark.skipif(not META_COMPATIBILITY, reason='torch version is lower than 1.12.0')
-def test_timm_models():
+def test_timm_models_trace():
     for m in tmm_models:
         model = m()
-        data = torch.rand(100000, 3, 224, 224, device='meta')
-        model(MetaTensor(data, fake_device=torch.device('cpu'))).sum().backward()
+        data = torch.rand(1000, 3, 224, 224, device='meta')
+        graph = meta_trace(model, torch.device('cpu'), data)
 
 
 if __name__ == '__main__':
-    test_torchvision_models()
-    test_timm_models()
+    test_torchvision_models_trace()
+    test_timm_models_trace()
