@@ -59,7 +59,6 @@ def _run_test_sharded_optim_v2(cpu_offload,
     shard_strategy = shard_strategy_class()
     if use_cpuadam and cpu_offload is False:
         return
-    MOE_CONTEXT.reset_loss()
     get_components_func = non_distributed_component_funcs.get_callable('no_leaf_module')
     _, train_dataloader, _, optimizer_class, _ = get_components_func()
     criterion = MoeLoss(aux_weight=0.01, loss_fn=torch.nn.CrossEntropyLoss)

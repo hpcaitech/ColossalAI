@@ -48,7 +48,8 @@ class MoeModel(nn.Module):
     def forward(self, x):
         x = self.test_embed(x)
         x, y = self.test_transform(x)
-        return dict(input=x, moe_loss=y)
+        MOE_CONTEXT.set_loss(y)
+        return x
 
 
 @parameterize("init_device_type", ['cpu', 'cuda'])

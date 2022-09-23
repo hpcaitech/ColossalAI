@@ -95,7 +95,8 @@ class MoeLayer(nn.Module):
             ans = torch.matmul(combine_weights, expert_output)
 
         ans = ans.reshape(inputs.shape)
-        return ans, self.router.pop_routing_loss()
+        l_aux = self.router.pop_routing_loss() if self.training else 0
+        return ans, l_aux
 
 
 class MoeModule(nn.Module):

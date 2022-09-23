@@ -147,14 +147,15 @@ class MoeContext(metaclass=SingletonMeta):
     def set_kernel_not_use(self):
         self.use_kernel_optim = False
 
-    def reset_loss(self):
-        self.aux_loss = 0
+    def set_loss(self, aux_loss):
+        assert self.aux_loss is None
+        self.aux_loss = aux_loss
 
-    def add_loss(self, loss):
-        self.aux_loss += loss
-
-    def get_loss(self):
-        return self.aux_loss
+    def pop_loss(self):
+        assert self.aux_loss is not None
+        aux_loss = self.aux_loss
+        self.aux_loss = None
+        return aux_loss
 
 
 MOE_CONTEXT = MoeContext()

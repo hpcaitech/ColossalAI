@@ -61,7 +61,6 @@ def run_model_test(enable_autocast, shard_strategy_class):
 def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     MOE_CONTEXT.setup(seed=42)
-    MOE_CONTEXT.reset_loss()
     run_model_test()
 
 
