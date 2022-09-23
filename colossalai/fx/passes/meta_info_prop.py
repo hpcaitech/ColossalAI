@@ -243,7 +243,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         """
         return super().run(*args)
 
-    def summary(self, format: str = 'MB') -> str:
+    def summary(self, unit: str = 'MB') -> str:
         """
         Summarizes the memory and FLOPs statistics of the `GraphModule` in 
         tabular format. Note that this API requires the ``tabulate`` module 
@@ -269,7 +269,7 @@ class MetaInfoProp(torch.fx.Interpreter):
                 'gb': 1024**3,
                 'tb': 1024**4,
             }
-            return f"{mem / unit_divisor_map[format.lower()]:.2f} {format.upper()}"
+            return f"{mem / unit_divisor_map[unit.lower()]:.2f} {unit.upper()}"
 
         def flops_repr(flop: int) -> str:
             return f"{flop:,} FLOPs"
