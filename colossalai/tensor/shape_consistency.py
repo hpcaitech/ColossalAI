@@ -18,11 +18,225 @@ __all__ = [
 ]
 
 
+def _all_gather(tensor, comm_spec):
+    '''
+    Implement all gather operation on device mesh based on information provided by comm_spec.
+    '''
+    process_groups_list = comm_spec.device_mesh.process_groups_dict[comm_spec.logical_process_axis]
+    for rank_list, process_group in process_groups_list:
+        if dist.get_rank() in rank_list:
+            tensor_list = [
+                torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device)
+                for _ in range(comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis])
+            ]
+            tensor = tensor
+            group = process_group
+            dist.all_gather(tensor_list, tensor, group=group)
+            output = torch.cat(tuple(tensor_list), comm_spec.gather_dim).contiguous()
+            return output
+
+
+def _split(tensor, comm_spec):
+    '''
+    Implement shard operation on device mesh based on information provided by comm_spec.
+    '''
+    process_groups_list = comm_spec.device_mesh.process_groups_dict[comm_spec.logical_process_axis]
+    for rank_list, _ in process_groups_list:
+        if dist.get_rank() in rank_list:
+            tensor = tensor
+            dim = comm_spec.shard_dim
+            length = tensor.shape[comm_spec.shard_dim] // len(rank_list)
+            start = length * rank_list.index(dist.get_rank())
+            output = torch.narrow(tensor, dim, start, length)
+            return output
+
+
+def _all_to_all(tensor, comm_spec):
+    '''
+    Implement all to all operation on device mesh based on information provided by comm_spec.
+    '''
+    process_groups_list = comm_spec.device_mesh.process_groups_dict[comm_spec.logical_process_axis]
+    for rank_list, process_group in process_groups_list:
+        if dist.get_rank() in rank_list:
+            new_shape = list(tensor.shape)
+            new_shape[comm_spec.shard_dim] = new_shape[comm_spec.shard_dim] // len(rank_list)
+            new_shape = torch.Size(new_shape)
+            output_tensor_list = [
+                torch.zeros(new_shape, dtype=tensor.dtype, device=tensor.device) for _ in range(len(rank_list))
+            ]
+            dim = comm_spec.shard_dim
+            length = tensor.shape[comm_spec.shard_dim] // len(rank_list)
+            input_tensor_list = [
+                torch.narrow(tensor, dim, length * i, length).contiguous() for i in range(len(rank_list))
+            ]
+            group = process_group
+            dist.all_to_all(output_tensor_list, input_tensor_list, group)
+            output = torch.cat(tuple(output_tensor_list), comm_spec.gather_dim).contiguous()
+            return output
+
+
+def _all_reduce(tensor, comm_spec):
+    '''
+    Implement all reduce operation on device mesh based on information provided by comm_spec.
+    '''
+    process_groups_list = comm_spec.device_mesh.process_groups_dict[comm_spec.logical_process_axis]
+    for rank_list, process_group in process_groups_list:
+        if dist.get_rank() in rank_list:
+            dist.all_reduce(tensor, op=ReduceOp.SUM, group=process_group)
+            return tensor
+
+
+class _ReduceGrad(torch.autograd.Function):
+    """
+    A customized communication operation which forward is an identity operation,
+    backward is all_reduce operation.
+
+    Args:
+        input_: input matrix.
+        comm_spec: comm_spec will give information like process group, rank list, etc.
+    """
+
+    @staticmethod
+    def symbolic(graph, input_):
+        return input_
+
+    @staticmethod
+    def forward(ctx, input_, comm_spec):
+        ctx.comm_spec = comm_spec
+        return input_
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _all_reduce(grad_output, ctx.comm_spec), None
+
+
+class _ReduceInput(torch.autograd.Function):
+    """
+    A customized communication operation which forward is all_reduce operation,
+    backward is an identity operation.
+
+    Args:
+        input_: input matrix.
+        comm_spec: comm_spec will give information like process group, rank list, etc.
+    """
+
+    @staticmethod
+    def symbolic(graph, input_):
+        return _all_reduce(input_)
+
+    @staticmethod
+    def forward(ctx, input_, comm_spec):
+        return _all_reduce(input_, comm_spec)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output, None
+
+
+class _SplitForwardGatherBackward(torch.autograd.Function):
+    """
+    A customized communication operation which forward is split operation,
+    backward is an all gather operation.
+
+    Args:
+        input_: input matrix.
+        comm_spec: comm_spec will give information like process group, rank list, etc.
+    """
+
+    @staticmethod
+    def symbolic(graph, input_):
+        return _split(input_)
+
+    @staticmethod
+    def forward(ctx, input_, comm_spec):
+        ctx.comm_spec = comm_spec
+        return _split(input_, comm_spec)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _all_gather(grad_output, ctx.comm_spec), None
+
+
+class _GatherForwardSplitBackward(torch.autograd.Function):
+    """
+    A customized communication operation which forward is an all gather operation,
+    backward is split operation.
+
+    Args:
+        input_: input matrix.
+        comm_spec: comm_spec will give information like process group, rank list, etc.
+    """
+
+    @staticmethod
+    def symbolic(graph, input_):
+        return _all_gather(input_)
+
+    @staticmethod
+    def forward(ctx, input_, comm_spec):
+        ctx.comm_spec = comm_spec
+        return _all_gather(input_, comm_spec)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return _split(grad_output, ctx.comm_spec), None
+
+
+class _AllToAll(torch.autograd.Function):
+    """
+    A customized communication operation which forward is an all to all operation,
+    backward is an all to all operation.
+
+    Args:
+        input_: input matrix.
+        comm_spec: comm_spec will give information like process group, rank list, etc.
+    """
+
+    @staticmethod
+    def symbolic(graph, input_):
+        return _all_to_all(input_)
+
+    @staticmethod
+    def forward(ctx, input_, comm_spec):
+        output = _all_to_all(input_, comm_spec)
+        comm_spec_for_backward = CommSpec(comm_pattern=comm_spec.comm_pattern,
+                                          sharding_spec=comm_spec.sharding_spec,
+                                          gather_dim=comm_spec.shard_dim,
+                                          shard_dim=comm_spec.gather_dim,
+                                          logical_process_axis=comm_spec.logical_process_axis)
+        ctx.comm_spec = comm_spec_for_backward
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_outputs):
+        return _all_to_all(grad_outputs, ctx.comm_spec), None
+
+
+def reduce_grad(input_, comm_spec):
+    return _ReduceGrad.apply(input_, comm_spec)
+
+
+def reduce_input(input_, comm_spec):
+    return _ReduceInput.apply(input_, comm_spec)
+
+
+def split_forward_gather_backward(input_, comm_spec):
+    return _SplitForwardGatherBackward.apply(input_, comm_spec)
+
+
+def gather_forward_split_backward(input_, comm_spec):
+    return _GatherForwardSplitBackward.apply(input_, comm_spec)
+
+
+def all_to_all(input_, comm_spec):
+    return _AllToAll.apply(input_, comm_spec)
+
+
 class CollectiveCommPattern(Enum):
-    ALLGATHER = 'all_gather'
-    ALLTOALL = 'all_to_all'
-    SHARD = 'shard'
-    ALLREDUCE = 'all_reduce'
+    GATHER_FWD_SPLIT_BWD = 'gather_fwd_split_bwd'
+    ALL2ALL_FWD_ALL2ALL_BWD = 'all2all_fwd_all2all_bwd'
+    SPLIT_FWD_GATHER_BWD = 'split_fwd_gather_bwd'
+    REDUCE_FWD_IDENTITY_BWD = 'all_reduce_fwd_identity_bwd'
+    IDENTITY_FWD_ALLREDUCE_BWD = 'identity_fwd_all_reduce_bwd'
 
 
 class CommSpec:
@@ -42,12 +256,19 @@ class CommSpec:
         logical_process_axis(Union(int, List[int]), Optional): The mesh_dim to implement the communication action.
     '''
 
-    def __init__(self, comm_pattern, sharding_spec, gather_dim=None, shard_dim=None, logical_process_axis=None):
+    def __init__(self,
+                 comm_pattern,
+                 sharding_spec,
+                 gather_dim=None,
+                 shard_dim=None,
+                 logical_process_axis=None,
+                 forward_only=False):
         self.comm_pattern = comm_pattern
         self.sharding_spec = sharding_spec
         self.gather_dim = gather_dim
         self.shard_dim = shard_dim
         self.logical_process_axis = logical_process_axis
+        self.forward_only = forward_only
         if isinstance(self.logical_process_axis, list):
             self.device_mesh = self.sharding_spec.device_mesh.flatten_device_mesh
             self.logical_process_axis = 0
@@ -56,21 +277,24 @@ class CommSpec:
 
     def __repr__(self):
         res_list = ["CommSpec:("]
-        if self.comm_pattern == CollectiveCommPattern.ALLGATHER:
-            res_list.append(f"comm_pattern:all_gather, ")
+        if self.comm_pattern == CollectiveCommPattern.GATHER_FWD_SPLIT_BWD:
+            res_list.append(f"comm_pattern:GATHER_FWD_SPLIT_BWD, ")
             res_list.append(f"gather_dim:{self.gather_dim}, ")
             res_list.append(f"logical_process_axis:{self.logical_process_axis})")
-        elif self.comm_pattern == CollectiveCommPattern.ALLTOALL:
-            res_list.append(f"comm_pattern:all2all, ")
+        elif self.comm_pattern == CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD:
+            res_list.append(f"comm_pattern:ALL2ALL_FWD_ALL2ALL_BWD, ")
             res_list.append(f"gather_dim:{self.gather_dim}, ")
             res_list.append(f"shard_dim:{self.shard_dim}, ")
             res_list.append(f"logical_process_axis: {self.logical_process_axis})")
-        elif self.comm_pattern == CollectiveCommPattern.SHARD:
-            res_list.append(f"comm_pattern:shard, ")
+        elif self.comm_pattern == CollectiveCommPattern.SPLIT_FWD_GATHER_BWD:
+            res_list.append(f"comm_pattern:SPLIT_FWD_GATHER_BWD, ")
             res_list.append(f"shard_dim:{self.shard_dim}, ")
             res_list.append(f"logical_process_axis:{self.logical_process_axis})")
-        elif self.comm_pattern == CollectiveCommPattern.ALLREDUCE:
-            res_list.append(f"comm_pattern:all_reduce, ")
+        elif self.comm_pattern == CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD:
+            res_list.append(f"comm_pattern:REDUCE_FWD_IDENTITY_BWD, ")
+            res_list.append(f"logical_process_axis:{self.logical_process_axis})")
+        elif self.comm_pattern == CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD:
+            res_list.append(f"comm_pattern:IDENTITY_FWD_ALLREDUCE_BWD, ")
             res_list.append(f"logical_process_axis:{self.logical_process_axis})")
 
         return ''.join(res_list)
@@ -82,16 +306,38 @@ class CommSpec:
         For shard operation, it is an on-chip operation, so the communication cost is zero. 
         '''
         comm_size = reduce(operator.mul, self.sharding_spec.get_sharded_shape_per_device(), 1)
-        if self.comm_pattern == CollectiveCommPattern.ALLGATHER:
-            return self.device_mesh.all_gather_cost(comm_size, self.logical_process_axis)
-        if self.comm_pattern == CollectiveCommPattern.ALLTOALL:
-            return self.device_mesh.all_to_all_cost(comm_size, self.logical_process_axis)
-        if self.comm_pattern == CollectiveCommPattern.ALLREDUCE:
-            return self.device_mesh.all_reduce_cost(comm_size, self.logical_process_axis)
-        if self.comm_pattern == CollectiveCommPattern.SHARD:
+        if self.comm_pattern == CollectiveCommPattern.GATHER_FWD_SPLIT_BWD:
+            forward_communication_cost = self.device_mesh.all_gather_cost(comm_size, self.logical_process_axis)
             # give a tiny cost to shard
-            return 10
-        raise RuntimeError(f"Could not find a matching CollectiveCommPattern for {self.comm_pattern}.")
+            backward_communication_cost = 10
+
+        if self.comm_pattern == CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD:
+            forward_communication_cost = self.device_mesh.all_to_all_cost(comm_size, self.logical_process_axis)
+            # grad should have same shape as input tensor
+            # all to all operation has same logical process axis as forward.
+            backward_communication_cost = self.device_mesh.all_to_all_cost(comm_size, self.logical_process_axis)
+
+        if self.comm_pattern == CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD:
+            forward_communication_cost = self.device_mesh.all_reduce_cost(comm_size, self.logical_process_axis)
+            backward_communication_cost = 0
+
+        if self.comm_pattern == CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD:
+            forward_communication_cost = 0
+            backward_communication_cost = self.device_mesh.all_reduce_cost(comm_size, self.logical_process_axis)
+
+        if self.comm_pattern == CollectiveCommPattern.SPLIT_FWD_GATHER_BWD:
+            # give a tiny cost to shard
+            forward_communication_cost = 10
+            backward_communication_cost = self.device_mesh.all_gather_cost(comm_size, self.logical_process_axis)
+        try:
+            if self.forward_only:
+                total_communication_cost = forward_communication_cost
+            else:
+                total_communication_cost = forward_communication_cost + backward_communication_cost
+        except:
+            raise RuntimeError(f"Could not find a matching CollectiveCommPattern for {self.comm_pattern}.")
+
+        return total_communication_cost
 
     def covert_spec_to_action(self, tensor):
         '''
@@ -101,62 +347,19 @@ class CommSpec:
         Argument:
             tensor(torch.Tensor): Tensor stored in each device, which could be different in different ranks.
         '''
-        process_groups_list = self.device_mesh.process_groups_dict[self.logical_process_axis]
-
-        if self.comm_pattern == CollectiveCommPattern.ALLGATHER:
-            for rank_list, process_group in process_groups_list:
-                if dist.get_rank() in rank_list:
-                    tensor_list = [
-                        torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device)
-                        for _ in range(self.device_mesh.mesh_shape[self.logical_process_axis])
-                    ]
-                    tensor = tensor
-                    group = process_group
-                    dist.all_gather(tensor_list, tensor, group=group)
-                    tensor.data = torch.cat(tuple(tensor_list), self.gather_dim)
-
-        elif self.comm_pattern == CollectiveCommPattern.SHARD:
-            for rank_list, process_group in process_groups_list:
-                if dist.get_rank() in rank_list:
-                    tensor = tensor
-                    dim = self.shard_dim
-                    length = tensor.shape[self.shard_dim] // len(rank_list)
-                    start = length * rank_list.index(dist.get_rank())
-                    tensor.data = torch.narrow(tensor, dim, start, length)
-
-        elif self.comm_pattern == CollectiveCommPattern.ALLTOALL:
-            for rank_list, process_group in process_groups_list:
-                if dist.get_rank() in rank_list:
-                    new_shape = list(tensor.shape)
-                    new_shape[self.shard_dim] = new_shape[self.shard_dim] // len(rank_list)
-                    new_shape = torch.Size(new_shape)
-                    output_tensor_list = [
-                        torch.zeros(new_shape, dtype=tensor.dtype, device=tensor.device) for _ in range(len(rank_list))
-                    ]
-                    dim = self.shard_dim
-                    length = tensor.shape[self.shard_dim] // len(rank_list)
-                    input_tensor_list = [
-                        torch.narrow(tensor, dim, length * i, length).contiguous() for i in range(len(rank_list))
-                    ]
-                    group = process_group
-                    dist.all_to_all(output_tensor_list, input_tensor_list, group)
-                    tensor.data = torch.cat(tuple(output_tensor_list), self.gather_dim)
-
-        elif self.comm_pattern == CollectiveCommPattern.ALLREDUCE:
-            # For the consistency of collective communication operation, we temporally do not
-            # allow all_reduce two different mesh dimensions in the same time.
-            # e.g.: MatMul[(R, S01), (S01, R)] -> Partial(R, R),
-            # all_reduce(Partial, logical_pg=(0, 1)) is NOT allowed, instead
-            # we need to do this in two steps:
-            # 1. all_reduce(Partial, logical_pg=1)
-            # 2. all_reduce(Partial, logical_pg=0)
-            for rank_list, process_group in process_groups_list:
-                if dist.get_rank() in rank_list:
-                    dist.all_reduce(tensor, op=ReduceOp.SUM, group=process_group)
-                    tensor.data = tensor
-
+        if self.comm_pattern in pattern_to_func_dict:
+            tensor.data = pattern_to_func_dict[self.comm_pattern](tensor, self)
         else:
             tensor.data = tensor
+
+
+pattern_to_func_dict = {
+    CollectiveCommPattern.GATHER_FWD_SPLIT_BWD: gather_forward_split_backward,
+    CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD: all_to_all,
+    CollectiveCommPattern.SPLIT_FWD_GATHER_BWD: split_forward_gather_backward,
+    CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD: reduce_input,
+    CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD: reduce_grad,
+}
 
 
 @dataclass
@@ -180,6 +383,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
 
     def __init__(self):
         self._options = None
+        self._forward_only = False
         self.total_communication_cost = 0
         self.total_transform_steps = 0
         self.cached_spec_pairs_transform_path = {}
@@ -192,6 +396,15 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
     def options(self, options_: ShapeConsistencyOptions):
         assert isinstance(options_, ShapeConsistencyOptions)
         self._options = options_
+
+    @property
+    def forward_only(self):
+        return self._forward_only
+
+    @forward_only.setter
+    def forward_only(self, value):
+        assert isinstance(value, bool)
+        self._forward_only = value
 
     def get_all_all_gather_spec(self, source_spec, orig_cost):
         '''
@@ -224,7 +437,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             device_mesh_shape: (4, 4): 0}
         '''
         valid_spec_dict = {}
-        comm_pattern = CollectiveCommPattern.ALLGATHER
+        comm_pattern = CollectiveCommPattern.GATHER_FWD_SPLIT_BWD
         for target_pair in source_spec.dim_partition_dict.items():
             shard_list = all_gather_simulator(target_pair)
             index = target_pair[0]
@@ -240,10 +453,14 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             # generate the CommSpec to record the action of source_sharding_spec->new_sharding_spec
             gather_dim = index
             logical_process_axis = target_pair[1][-1]
-            comm_spec = CommSpec(comm_pattern,
-                                 sharding_spec=source_spec,
-                                 gather_dim=gather_dim,
-                                 logical_process_axis=logical_process_axis)
+            comm_spec = CommSpec(
+                comm_pattern,
+                sharding_spec=source_spec,
+                gather_dim=gather_dim,
+            # shard_dim will be used during backward
+                shard_dim=gather_dim,
+                logical_process_axis=logical_process_axis,
+                forward_only=self.forward_only)
 
             # compute the communication cost with CommSpec
             cost = comm_spec.get_comm_cost()
@@ -288,7 +505,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             device_mesh_shape: (4, 4): 0}
         '''
         valid_spec_dict = {}
-        comm_pattern = CollectiveCommPattern.ALLTOALL
+        comm_pattern = CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD
         tensor_dims = len(source_spec.entire_shape)
         for f_index in range(tensor_dims - 1):
             for b_index in range(f_index + 1, tensor_dims):
@@ -331,7 +548,8 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                                      sharding_spec=source_spec,
                                      gather_dim=gather_dim,
                                      shard_dim=shard_dim,
-                                     logical_process_axis=logical_process_axis)
+                                     logical_process_axis=logical_process_axis,
+                                     forward_only=self.forward_only)
 
                 # compute the communication cost with CommSpec
                 cost = comm_spec.get_comm_cost()
@@ -388,7 +606,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             device_mesh_shape: (4, 4): 0}
         '''
         valid_spec_dict = {}
-        comm_pattern = CollectiveCommPattern.SHARD
+        comm_pattern = CollectiveCommPattern.SPLIT_FWD_GATHER_BWD
 
         # legal sharding dims means the mesh_id is still available to use.
         legal_sharding_dims = [i for i in range(len(source_spec.device_mesh.mesh_shape))]
@@ -415,8 +633,10 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 logical_process_axis = shard_list[-1]
                 comm_spec = CommSpec(comm_pattern,
                                      sharding_spec=source_spec,
+                                     gather_dim=shard_dim,
                                      shard_dim=shard_dim,
-                                     logical_process_axis=logical_process_axis)
+                                     logical_process_axis=logical_process_axis,
+                                     forward_only=self.forward_only)
 
                 # compute the communication cost with CommSpec
                 cost = comm_spec.get_comm_cost()

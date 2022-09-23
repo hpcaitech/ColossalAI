@@ -62,11 +62,8 @@ def compare_all(tensor: torch.Tensor, meta_tensor: torch.Tensor) -> Any:
 
 def run_and_compare(f: Union[nn.Module, Callable], x: torch.Tensor, requires_backward=False) -> Any:
     x.requires_grad = requires_backward
-    meta_x = MetaTensor(x.to('meta'))
-    if isinstance(f, nn.Module):
-        x_out, meta_out = f(x), f.to('meta')(meta_x)
-    else:
-        x_out, meta_out = f(x), f(meta_x)
+    meta_x = MetaTensor(x)
+    x_out, meta_out = f(x), f(meta_x)
     compare_all(x_out, meta_out)
     if requires_backward:
         x_out.sum().backward()

@@ -4,5 +4,9 @@ from .conv_handler import ConvHandler
 from .batch_norm_handler import BatchNormHandler
 from .reshape_handler import ReshapeHandler
 from .bcast_op_handler import BcastOpHandler
+from .unary_elementwise_handler import UnaryElementwiseHandler
 
-__all__ = ['OperatorHandler', 'DotHandler', 'ConvHandler', 'BatchNormHandler', 'ReshapeHandler', 'BcastOpHandler']
+__all__ = [
+    'OperatorHandler', 'DotHandler', 'ConvHandler', 'BatchNormHandler', 'ReshapeHandler', 'BcastOpHandler',
+    'UnaryElementwiseHandler'
+]
