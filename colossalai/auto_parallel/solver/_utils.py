@@ -8,6 +8,7 @@ import warnings
 from functools import reduce
 import functools
 import operator
+from .constants import INFINITY_COST
 
 
 def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: DeviceMesh,
@@ -68,19 +69,16 @@ def generate_resharding_costs(nodes: List[Node],
         for strategy in input_node.strategies_vector:
             input_sharding_spec = strategy.output_sharding_spec
             assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
-            # compute the resharding cost during forward phase
-            _, _, resharding_cost_forward = shape_consistency_manager.shape_consistency(input_sharding_spec, input_spec)
+            try:
+                # compute the resharding cost
+                _, _, total_resharding_cost = shape_consistency_manager.shape_consistency(
+                    input_sharding_spec, input_spec)
 
-            if count_backward:
-                # In backward phase, we should convert grad with target_spec into input_sharding_spec
-                _, _, resharding_cost_backward = shape_consistency_manager.shape_consistency(
-                    input_spec, input_sharding_spec)
-                total_resharding_cost = resharding_cost_forward + resharding_cost_backward
-            else:
-                total_resharding_cost = resharding_cost_forward
-
-            # we need multiply the size of elem dtype to get correct communication cost
-            resharding_cost = total_resharding_cost * size_per_elem_bytes
+                # we need multiply the size of elem dtype to get correct communication cost
+                resharding_cost = total_resharding_cost * size_per_elem_bytes
+            except AssertionError as e:
+                warnings.warn(f'{e}')
+                resharding_cost = INFINITY_COST
             resharding_costs[input_node].append(resharding_cost)
     return resharding_costs
 
