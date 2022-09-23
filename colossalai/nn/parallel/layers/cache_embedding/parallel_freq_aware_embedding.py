@@ -72,11 +72,19 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
                                           compute_attr=ComputePattern.TP1D)
         return ColoTensor.from_torch_tensor(weight, spec=colo_tensor_spec)
 
-    def forward(self, indices, offsets=None, per_sample_weights=None, shape_hook=None, scatter_dim=0, gather_dim=-1):
-        with torch.no_grad():
-            reorder_ids = self.cache_weight_mgr.prepare_ids(indices)
-        output_shard = F.embedding_bag(reorder_ids.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets,
-                                       self.max_norm, self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
+    def forward(self,
+                indices,
+                offsets=None,
+                per_sample_weights=None,
+                shape_hook=None,
+                scatter_dim=0,
+                gather_dim=-1,
+                cache_op: bool = True):
+        if cache_op:
+            with torch.no_grad():
+                indices = self.cache_weight_mgr.prepare_ids(indices)
+        output_shard = F.embedding_bag(indices.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets, self.max_norm,
+                                       self.norm_type, self.scale_grad_by_freq, self.mode, self.sparse,
                                        per_sample_weights, self.include_last_offset, self.padding_idx)
         if shape_hook is not None:
             output_shard = shape_hook(output_shard)

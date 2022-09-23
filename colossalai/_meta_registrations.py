@@ -175,6 +175,11 @@ def meta_hardswish(input: torch.Tensor):
     return torch.empty_like(input)
 
 
+@register_meta(aten.hardtanh.default)
+def meta_hardtanh(input: torch.Tensor, min, max):
+    return torch.empty_like(input)
+
+
 @register_meta(aten.hardswish_backward.default)
 def meta_hardswish_backward(grad_out: torch.Tensor, input: torch.Tensor):
     grad_in = torch.empty_like(input)
@@ -189,7 +194,7 @@ def meta_hardtanh_backward(grad_out: torch.Tensor, input: torch.Tensor, min_val:
 
 @register_meta(aten.roll.default)
 def meta_roll(input: torch.Tensor, shifts, dims):
-    return torch.empty_like(input)
+    return input
 
 
 @register_meta(aten.native_batch_norm.default)
@@ -211,13 +216,39 @@ def meta_bn_backward(dY: torch.Tensor, input: torch.Tensor, weight: torch.Tensor
     return dX, dgamma, dbeta
 
 
-@register_meta(aten.native_layer_norm.default)
-def meta_ln(input: torch.Tensor, normalized_shape, weight, bias, eps):
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/BatchNorm.cpp
+@register_meta(aten.cudnn_batch_norm.default)
+def meta_cudnn_bn(input: torch.Tensor, weight, bias, running_mean, running_var, training, momentum, eps):
     n_input = input.size(1)
 
     output = torch.empty_like(input)
     running_mean = torch.empty((n_input), device='meta')
     running_var = torch.empty((n_input), device='meta')
+    reserve = torch.empty((0), dtype=torch.uint8, device='meta')
+    return output, running_mean, running_var, reserve
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/BatchNorm.cpp
+# NB: CuDNN only implements the backward algorithm for batchnorm
+# in training mode (evaluation mode batchnorm has a different algorithm),
+# which is why this doesn't accept a 'training' parameter.
+@register_meta(aten.cudnn_batch_norm_backward.default)
+def meta_cudnn_bn_backward(dY: torch.Tensor, input: torch.Tensor, weight: torch.Tensor, running_mean, running_var,
+                           save_mean, save_invstd, eps, reserve):
+    dX = torch.empty_like(input)
+    dgamma = torch.empty_like(weight)
+    dbeta = torch.empty_like(weight)
+    return dX, dgamma, dbeta
+
+
+@register_meta(aten.native_layer_norm.default)
+def meta_ln(input: torch.Tensor, normalized_shape, weight, bias, eps):
+    bs = input.size(0)
+    n_input = input.size(1)
+
+    output = torch.empty_like(input)
+    running_mean = torch.empty((bs, n_input, 1), device='meta')
+    running_var = torch.empty((bs, n_input, 1), device='meta')
     return output, running_mean, running_var
 
 
@@ -338,6 +369,23 @@ def meta_embedding_dense_backward(grad_output: torch.Tensor, indices: torch.Tens
                        layout=grad_output.layout)
 
 
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/TensorCompare.cpp
 @register_meta(aten.where.self)
 def meta_where_self(condition: torch.Tensor, self: torch.Tensor, other: torch.Tensor):
-    return torch.empty_like(condition)
+    result_type = torch.result_type(self, other)
+    return torch.empty_like(self, dtype=result_type)
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Dropout.cpp
+@register_meta(aten.native_dropout.default)
+def meta_native_dropout_default(input: torch.Tensor, p: float, train: bool = False):
+    # notice that mask is bool
+    output = torch.empty_like(input)
+    mask = torch.empty_like(input, dtype=torch.bool)
+    return output, mask
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Dropout.cpp
+@register_meta(aten.native_dropout_backward.default)
+def meta_native_dropout_backward_default(grad: torch.Tensor, mask: torch.Tensor, scale: float):
+    return torch.empty_like(grad)

@@ -106,18 +106,18 @@ def test_shape_consistency():
     assert transform_path_str == '[R, S01, R]->[R, S0, R]->[S0, R, R]->[S01, R, R]'
 
     # all-gather(S01) -> S0
-    assert comm_action_sequence[0].comm_pattern == CollectiveCommPattern.ALLGATHER
+    assert comm_action_sequence[0].comm_pattern == CollectiveCommPattern.GATHER_FWD_SPLIT_BWD
     assert comm_action_sequence[0].gather_dim == 1
     assert comm_action_sequence[0].logical_process_axis == 1
 
     # all-to-all(R, S0) -> [S0, R]
-    assert comm_action_sequence[1].comm_pattern == CollectiveCommPattern.ALLTOALL
+    assert comm_action_sequence[1].comm_pattern == CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD
     assert comm_action_sequence[1].gather_dim == 1
     assert comm_action_sequence[1].shard_dim == 0
     assert comm_action_sequence[1].logical_process_axis == 0
 
     # shard(S0) -> [S01]
-    assert comm_action_sequence[2].comm_pattern == CollectiveCommPattern.SHARD
+    assert comm_action_sequence[2].comm_pattern == CollectiveCommPattern.SPLIT_FWD_GATHER_BWD
     assert comm_action_sequence[2].shard_dim == 0
     assert comm_action_sequence[2].logical_process_axis == 1
 

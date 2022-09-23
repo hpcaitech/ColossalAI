@@ -90,7 +90,7 @@ def test_reorder_with_freq():
     offset_in_chunk = torch.tensor(offset_in_chunk, dtype=torch.long, device=dev)
 
     weight = torch.rand(num_embed, 2)
-    mgr = CachedParamMgr(weight, num_chunk, use_cpu_caching=dev.type == 'cpu')
+    mgr = CachedParamMgr(weight, num_chunk)
 
     mgr.reorder(idx_map)
 
