@@ -247,7 +247,6 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager.pre_iter()
         with ParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
-        self.chunk_manager.exec_lazy_release()
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
         return outputs
@@ -259,7 +258,7 @@ class ZeroDDP(ColoDDP):
             p.grad = None
 
     def _post_backward(self):
-        self.chunk_manager.exec_lazy_release()
+        assert self.chunk_manager.accessed_mem == 0
         self._setup_grads_ptr()
         self._logger.debug(
             f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'

@@ -36,8 +36,9 @@ class CPUPlacementPolicy(PlacementPolicy):
         volume = 0
         start = time()
         for chunk in can_evict_chunks:
+            self.chunk_manager.release_chunk(chunk)
             self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
-            volume += chunk.shard_mem
+            volume += chunk.chunk_mem
         return volume, time() - start
 
 
@@ -116,8 +117,9 @@ class AutoPlacementPolicy(PlacementPolicy):
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
 
+                self.chunk_manager.release_chunk(chunk)
                 self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
-                freed_cuda_model_data += chunk.shard_mem
+                freed_cuda_model_data += chunk.chunk_mem
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError(f"Adjust layout failed! No enough CUDA memory! "
                                    f"Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}")
