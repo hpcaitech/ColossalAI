@@ -431,7 +431,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute computation cost
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
@@ -471,7 +471,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute the computation cost of this strategy
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
@@ -505,7 +505,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute the computation cost of this strategy
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
@@ -539,7 +539,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute the computation cost of this strategy
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
@@ -573,7 +573,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute the computation cost of this strategy
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
@@ -607,7 +607,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute the computation cost of this strategy
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
@@ -641,7 +641,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute the computation cost of this strategy
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
@@ -675,7 +675,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input])
+        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
 
         # compute the computation cost of this strategy
         compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape)
