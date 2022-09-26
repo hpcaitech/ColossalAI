@@ -33,12 +33,12 @@ class NodeHandler(ABC):
         Register different sharding strategies for the current node.
         """
         strategy_generators = self.get_strategy_generator()
-        operand_mapping = self.get_operation_data_mapping()
         for generator in strategy_generators:
-            strategies = generator.generate(operand_mapping)
+            strategies = generator.generate()
             self.strategies_vector.extend(strategies)
 
-        self.strategies_vector = map(self.post_process, self.strategies_vector)
+        strategies_vector = map(self.post_process, self.strategies_vector)
+        self.strategies_vector = list(strategies_vector)
         return self.strategies_vector
 
     def post_process(self, strategy: ShardingStrategy_V2):
