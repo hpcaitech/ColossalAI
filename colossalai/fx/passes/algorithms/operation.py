@@ -54,7 +54,8 @@ class Offload(Operation):
         super().__init__()
         self.index = index
         self.name = "Off"
-        if has_bar:
+        self.has_bar = has_bar
+        if self.has_bar:
             self.name += "wBar"
 
     def __repr__(self):
@@ -67,7 +68,8 @@ class Prefetch(Operation):
         super().__init__()
         self.index = index
         self.name = "Pre"
-        if has_bar:
+        self.has_bar = has_bar
+        if self.has_bar:
             self.name += "wBar"
 
     def __repr__(self):
