@@ -1,5 +1,9 @@
+from copy import deepcopy
+from typing import Optional, Union, overload
 import torch
 from torch.utils._pytree import tree_map, tree_flatten
+from torch.types import _bool, _dtype, _device
+from functools import singledispatchmethod
 
 __all__ = ['MetaTensor']
 
@@ -16,6 +20,11 @@ class MetaTensor(torch.Tensor):
 
     @staticmethod
     def __new__(cls, elem, fake_device=None):
+        # Avoid multiple wrapping
+        if isinstance(elem, MetaTensor):
+            fake_device = elem.device
+            elem = elem._tensor
+
         # The wrapping tensor (MetaTensor) shouldn't hold any
         # memory for the class in question, but it should still
         # advertise the same device as before
@@ -74,3 +83,18 @@ class MetaTensor(torch.Tensor):
             return MetaTensor(x, fake_device=fake_device) if isinstance(x, torch.Tensor) else x
 
         return tree_map(wrap, out)
+
+    @singledispatchmethod
+    def to(self, *args, **kwargs) -> torch.Tensor:
+        print(True)
+        return super().to(*args, **kwargs)
+
+    @to.register
+    def _(self, device: str, dtype: Optional[_dtype] = None, non_blocking: _bool = False, copy: _bool = False) -> torch.Tensor:
+        result = super().to(dtype, non_blocking, copy) if dtype is not None else self
+        return MetaTensor(deepcopy(result), fake_device=device)
+
+    @to.register
+    def _(self, device: _device, dtype: Optional[_dtype] = None, non_blocking: _bool = False, copy: _bool = False) -> torch.Tensor:
+        result = super().to(dtype, non_blocking, copy) if dtype is not None else self
+        return MetaTensor(deepcopy(result), fake_device=device)

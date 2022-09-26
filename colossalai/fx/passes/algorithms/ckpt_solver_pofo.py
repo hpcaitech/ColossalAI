@@ -10,6 +10,7 @@ from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Los
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 from colossalai.fx.passes.algorithms.ckpt_solver_rotor import _construct_chain, _compute_table, _rec
+from colossalai.fx.profiler import MetaTensor
 
 INF = float("inf")
 
@@ -383,6 +384,7 @@ def solver_pofo(gm: ColoGraphModule,
     mem_limit -= parameter_size(gm)
 
     # prepare data
+    data = MetaTensor(data, fake_device=next(gm.parameters()).device)
     MetaInfoProp(gm).run(data)
     chain: Chain = _construct_chain(node_list, data)
     chain = _normalize_flops(chain, flops)
