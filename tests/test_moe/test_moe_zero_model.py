@@ -4,6 +4,8 @@ import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+
+from colossalai.nn import MoeLoss
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
@@ -26,7 +28,8 @@ def run_model_test(enable_autocast, shard_strategy_class):
     shard_strategy = shard_strategy_class()
 
     get_components_func = non_distributed_component_funcs.get_callable('no_leaf_module')
-    _, train_dataloader, _, _, criterion = get_components_func()
+    _, train_dataloader, _, optimizer_class, _ = get_components_func()
+    criterion = MoeLoss(aux_weight=0.01, loss_fn=torch.nn.CrossEntropyLoss)
 
     with ZeroInitContext(target_device=torch.device('cuda', torch.cuda.current_device()),
                          shard_strategy=shard_strategy,
@@ -59,7 +62,6 @@ def run_model_test(enable_autocast, shard_strategy_class):
 def run_dist(rank, world_size, port):
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     MOE_CONTEXT.setup(seed=42)
-    MOE_CONTEXT.reset_loss()
     run_model_test()
 
 
