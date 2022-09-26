@@ -22,7 +22,7 @@ class MetaTensor(torch.Tensor):
     def __new__(cls, elem, fake_device=None):
         # Avoid multiple wrapping
         if isinstance(elem, MetaTensor):
-            fake_device = elem.device
+            fake_device = elem.device if fake_device is None else fake_device
             elem = elem._tensor
 
         # The wrapping tensor (MetaTensor) shouldn't hold any
@@ -86,7 +86,21 @@ class MetaTensor(torch.Tensor):
 
     @singledispatchmethod
     def to(self, *args, **kwargs) -> torch.Tensor:
-        print(True)
+        """An extension of `torch.Tensor.to()` to MetaTensor
+
+        Returns:
+            result (MetaTensor): MetaTensor
+
+        Usage:
+            >>> tensor = MetaTensor(torch.rand(10), fake_device='cuda:100')
+            >>> tensor.to(torch.uint8)
+            MetaTensor(tensor(..., device='meta', size=(10,), dtype=torch.uint8), fake_device='cuda:100')
+            >>> tensor.to(torch.device('cuda:42'))
+            MetaTensor(tensor(..., device='meta', size=(10,)), fake_device='cuda:42')
+            >>> tensor.to('vulkan')
+            MetaTensor(tensor(..., device='meta', size=(10,)), fake_device='vulkan')
+        """
+        # this imitates c++ function in the way of @overload
         return super().to(*args, **kwargs)
 
     @to.register
