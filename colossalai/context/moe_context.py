@@ -3,6 +3,7 @@ import torch.distributed as dist
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.tensor import ProcessGroup
 
 from typing import Tuple
 
@@ -22,41 +23,9 @@ class MoeParallelInfo:
         _check_sanity()
         self.ep_size = ep_size
         self.dp_size = dp_size
-        self.ep_group = None
-        # data parallel group for experts, since ep_group is different
-        # we may have different dp_group from get_group(ParallelMode.DATA)
-        self.dp_group = None
-
-        # Here we assume tensor parallel size = 1
-        # Otherwise, MoE can't be used
-        # Since TENSOR parallel group and DATA parallel group
-        # have been created, we can use them directly.
-        if ep_size == 1:
-            from colossalai.core import global_context as gpc
-            self.ep_group = gpc.get_group(ParallelMode.TENSOR)
-            self.dp_group = gpc.get_group(ParallelMode.DATA)
-            return
-
-        if dp_size == 1:
-            from colossalai.core import global_context as gpc
-            self.ep_group = gpc.get_group(ParallelMode.DATA)
-            self.dp_group = gpc.get_group(ParallelMode.TENSOR)
-            return
-
-        rank = dist.get_rank()
-        # Create expert parallel group
-        for i in range(dp_size):
-            ranks = [i * ep_size + j for j in range(ep_size)]
-            group = dist.new_group(ranks)
-            if rank in ranks:
-                self.ep_group = group
-
-        # Create data parallel group
-        for j in range(ep_size):
-            ranks = [i * ep_size + j for i in range(dp_size)]
-            group = dist.new_group(ranks)
-            if rank in ranks:
-                self.dp_group = group
+        self.pg = ProcessGroup(tp_degree=ep_size, dp_degree=dp_size)
+        self.ep_group = self.pg.tp_process_group()
+        self.dp_group = self.pg.dp_process_group()
 
 
 class MoeContext(metaclass=SingletonMeta):
