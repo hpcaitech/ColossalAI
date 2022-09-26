@@ -6,7 +6,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
+from colossalai.gemini import ChunkManager
 from functools import partial
 from tests.test_tensor.common_utils import tensor_equal, set_seed, tensor_shard_equal
 from tests.components_to_test.registry import non_distributed_component_funcs
@@ -21,20 +21,20 @@ from colossalai.tensor import ColoTensorSpec, ShardSpec, ComputePattern, Compute
 from tests.test_tensor.model.test_gpt2 import init_megatron_spec
 
 
-def check_param(model: ZeroDDP, torch_model: torch.nn.Module, pg: ProcessGroup):
-    zero_dict = model.state_dict(only_rank_0=False)
-    torch_dict = torch_model.state_dict()
+def check_param_equal(model, torch_model, pg: ProcessGroup):
+    for (n, p), (tn, tp) in zip(model.named_parameters(), torch_model.named_parameters()):
+        if p.storage().size() > 0:
+            assert p.dtype == torch.float16
+            assert tensor_shard_equal(tp.to(dtype=p.dtype, device=p.device), p, pg.tp_local_rank(),
+                                      pg.tp_world_size()), f'{tp} vs {p}\n{n}:\n\t{tp.shape} vs {p.shape}'
 
-    for key, value in torch_dict.items():
-        # key is 'module.model.PARAMETER', so we truncate it
-        key = key[7:]
-        if key == 'model.lm_head.weight':
-            continue
-        assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
-        temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
-        # debug_print([0], "max range: ", key, torch.max(torch.abs(value - temp_zero_value)))
-        assert tensor_shard_equal(value, temp_zero_value, pg.tp_local_rank(), pg.tp_world_size()), \
-            "parameter '{}' has problem.".format(key)
+
+def check_grad_equal(model, torch_model, pg: ProcessGroup):
+    for (n, p), (tn, tp) in zip(model.named_parameters(), torch_model.named_parameters()):
+        if p.grad is not None:
+            assert tensor_shard_equal(tp.grad.to(dtype=p.grad.dtype, device=p.grad.device), p.grad,
+                                      pg.tp_local_rank(), pg.tp_world_size()), \
+                f'{tp.grad} vs {p.grad}\n{n}:\n\t{tp.grad.shape} vs {p.grad.shape} in {pg.rank()}'
 
 
 def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
@@ -62,8 +62,10 @@ def init_1d_col_spec(model, pg: ProcessGroup):
             p.set_tensor_spec(*spec)
 
 
+@parameterize('use_chunk', [False, True])
+@parameterize('use_zero', [False, True])
 @parameterize('placement_policy', ['cuda', 'cpu'])
-def run_gpt(placement_policy, tp_init_spec_func=None):
+def run_gpt(use_chunk, use_zero, placement_policy, tp_init_spec_func=None):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -87,20 +89,15 @@ def run_gpt(placement_policy, tp_init_spec_func=None):
     if tp_init_spec_func:
         tp_init_spec_func(model, pg)
 
-    dp_world_size = pg.dp_world_size()
-    config_dict = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
-    config_dict[dp_world_size]['chunk_size'] = 5000
-    config_dict[dp_world_size]['keep_gathered'] = False
-    if placement_policy != 'cuda':
-        init_device = torch.device('cpu')
-    else:
-        init_device = None
-    chunk_manager = ChunkManager(config_dict, init_device=init_device)
+    chunk_size = ChunkManager.search_chunk_size(model, 8192, 8) if use_chunk else None
+    chunk_manager = ChunkManager(chunk_size,
+                                 pg,
+                                 enable_distributed_storage=use_zero,
+                                 init_device=GeminiManager.get_default_device(placement_policy))
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
-
-    optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=1)
+    model = ZeroDDP(model, gemini_manager)
+    optim = HybridAdam(model.parameters(), lr=1e-3)
+    optim = ZeroOptimizer(optim, model, initial_scale=1)
 
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
@@ -108,7 +105,7 @@ def run_gpt(placement_policy, tp_init_spec_func=None):
     torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
 
     print(chunk_manager)
-    check_param(model, torch_model, pg)
+    check_param_equal(model, torch_model, pg)
 
     model.eval()
     torch_model.eval()
@@ -118,13 +115,13 @@ def run_gpt(placement_policy, tp_init_spec_func=None):
         if i > 2:
             break
         input_ids_colo = ColoTensor.from_torch_tensor(input_ids, ColoTensorSpec(pg))
-        zero_logits = run_fwd_bwd(model, criterion, zero_optim, input_ids_colo, attn_mask)
+        logits = run_fwd_bwd(model, criterion, optim, input_ids_colo, attn_mask)
         torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
-        assert torch.allclose(zero_logits, torch_logits, rtol=1e-3, atol=1e-2)
-
-        zero_optim.step()
+        assert tensor_equal(logits, torch_logits)
+        check_grad_equal(model, torch_model, pg)
+        optim.step()
         torch_optim.step()
-        check_param(model, torch_model, pg)
+        check_param_equal(model, torch_model, pg)
 
 
 def run_dist(rank, world_size, port):

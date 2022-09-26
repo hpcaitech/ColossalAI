@@ -3,7 +3,7 @@ import colossalai
 import pytest
 import torch.multiprocessing as mp
 from functools import partial
-from colossalai.gemini.chunk import ChunkManager
+from colossalai.gemini.update import ChunkManagerV2
 from colossalai.testing import rerun_if_address_is_in_use, parameterize
 from colossalai.utils import free_port
 from colossalai.tensor import ProcessGroup, ColoTensor, ColoTensorSpec
@@ -19,17 +19,23 @@ CPU_MEM = {True: {True: 0, False: 0}, False: {True: 512, False: 0}}
 def exam_chunk_memory(keep_gathered, pin_memory):
     pg = ProcessGroup()
 
-    debug_print([0], "keep_gathered: {}, pin_memory: {}".format(keep_gathered, pin_memory))
+    debug_print([0], "keep_gathered: {}, pin_memory: {}".format(
+        keep_gathered, pin_memory))
 
     params = [ColoTensor(torch.rand(8, 8), spec=ColoTensorSpec(pg)) for _ in range(3)]
-    config = {2: dict(chunk_size=128, keep_gathered=keep_gathered)}
+    config = {
+        2: dict(
+            chunk_size=128,
+            keep_gathered=keep_gathered
+        )
+    }
 
-    chunk_manager = ChunkManager(config)
+    chunk_manager = ChunkManagerV2(config, pin_memory=pin_memory)
     assert chunk_manager.total_mem['cpu'] == 0
     assert chunk_manager.total_mem['cuda'] == 0
 
     for p in params:
-        chunk_manager.append_tensor(p, 'param', 2, pin_memory=pin_memory)
+        chunk_manager.append_tensor(p, 'param', 2)
     chunk_manager.close_all_groups()
     assert chunk_manager.total_mem['cpu'] == CPU_MEM[keep_gathered][pin_memory]
     assert chunk_manager.total_mem['cuda'] == CUDA_MEM_0[keep_gathered]

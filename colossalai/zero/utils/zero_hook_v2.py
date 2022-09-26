@@ -54,8 +54,8 @@ class ZeROHookV2(ParamOpHook):
 
     @contextmanager
     def switch_training_phase(self, training_phase: TrainingPhase = TrainingPhase.BACKWARD):
-        old_training_phase = self._training_phase
         try:
+            old_training_phase = self._training_phase
             self._training_phase = training_phase
             yield
         finally:

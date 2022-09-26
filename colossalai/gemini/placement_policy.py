@@ -8,7 +8,7 @@ from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import Type
 import functools
-from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.gemini import Chunk, ChunkManager
 
 
 class PlacementPolicy(ABC):
@@ -19,7 +19,7 @@ class PlacementPolicy(ABC):
         self.mem_stats_collector: Optional[MemStatsCollectorV2] = mem_stats_collector
 
     @abstractmethod
-    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
+    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> None:
         raise NotImplementedError
 
     @staticmethod
@@ -32,12 +32,12 @@ class CPUPlacementPolicy(PlacementPolicy):
     def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
-    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
+    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> int:
         volume = 0
         start = time()
         for chunk in can_evict_chunks:
-            self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
-            volume += chunk.shard_mem
+            self.chunk_manager.move_chunk(chunk, torch.device('cpu'), update_ptr=False)
+            volume += chunk.mem
         return volume, time() - start
 
 
@@ -47,7 +47,7 @@ class CUDAPlacementPolicy(PlacementPolicy):
         assert torch.cuda.is_available(), 'Cannot use CUDATensorPlacementPolicy when CUDA is not available'
         super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
 
-    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> Tuple[int, float]:
+    def evict_tensors(self, can_evict_chunks: List[Chunk], **kwargs) -> int:
         return 0, 0
 
     @staticmethod
@@ -59,8 +59,7 @@ class AutoPlacementPolicy(PlacementPolicy):
 
     need_mem_stats: bool = True
     # model data will use 1-_warmup_non_model_data_ratio CUDA memory in warmup phase
-    # you can set them by AutoPlacementPolicy.set_warmup_non_model_data_ratio()
-    # and AutoPlacementPolicy.set_steady_cuda_cap_ratio()
+    # you can set them by AutoPlacementPolicy.set_warmup_non_model_data_ratio() and AutoPlacementPolicy.set_steady_cuda_cap_ratio()
     _warmup_non_model_data_ratio: float = 0.8
     _steady_cuda_cap_ratio: float = 0.9
 
@@ -71,14 +70,14 @@ class AutoPlacementPolicy(PlacementPolicy):
                       can_evict_chunks: List[Chunk],
                       cuda_demand: int = 0,
                       warmup: bool = True,
-                      compute_list: Optional[List[Tuple[Chunk, ...]]] = None,
+                      compute_list: List[Tuple[Chunk, ...]] = [],
                       compute_idx: int = 0,
-                      **kwargs) -> Tuple[int, float]:
+                      **kwargs) -> int:
         """
         Evict tensors from CUDA device.
 
         Args:
-            can_evict_chunks (List[StatefulTensor]): the list of tensors that can be evicted.
+            hold_cuda_tensor_list (List[StatefulTensor]): the list of tensor in state of HOLD-like
             cuda_demand (int, optional): the volume of data needed on cuda device. Defaults to 0.
             warmup (bool, optional): a flag indicates whether in the phase of warmup. Defaults to True.
             compute_list (List[StatefulTensor], optional): TODO. Defaults to [].
@@ -115,12 +114,12 @@ class AutoPlacementPolicy(PlacementPolicy):
             for chunk in to_free_chunks:
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
-
-                self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
-                freed_cuda_model_data += chunk.shard_mem
+                freed_cuda_model_data += chunk.mem
+                self.chunk_manager.move_chunk(chunk, torch.device('cpu'), update_ptr=False)
             if freed_cuda_model_data < to_free_cuda_model_data:
-                raise RuntimeError(f"Adjust layout failed! No enough CUDA memory! "
-                                   f"Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}")
+                raise RuntimeError(
+                    f"Adjust layout failed! No enough CUDA memory! Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
+                )
         return freed_cuda_model_data, time() - start
 
     @staticmethod
@@ -148,7 +147,7 @@ class AutoPlacementPolicy(PlacementPolicy):
 
 
 class PlacementPolicyFactory:
-    policies: Dict[str, Type[PlacementPolicy]] = {
+    policies: Dict[str, PlacementPolicy] = {
         'cpu': CPUPlacementPolicy,
         'cuda': CUDAPlacementPolicy,
         'auto': AutoPlacementPolicy
