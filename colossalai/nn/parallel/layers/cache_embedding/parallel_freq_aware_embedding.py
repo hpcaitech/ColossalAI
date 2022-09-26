@@ -60,6 +60,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cache_ratio, ids_freq_mapping,
                              warmup_ratio, buffer_size, pin_weight, evict_strategy)
+        self.cache_op = True
 
     def _weight_alloc(self, dtype, device):
         weight = torch.empty(self.num_embeddings, self.embedding_dim_per_partition, device=device, dtype=dtype)
@@ -72,15 +73,16 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
                                           compute_attr=ComputePattern.TP1D)
         return ColoTensor.from_torch_tensor(weight, spec=colo_tensor_spec)
 
-    def forward(self,
-                indices,
-                offsets=None,
-                per_sample_weights=None,
-                shape_hook=None,
-                scatter_dim=0,
-                gather_dim=-1,
-                cache_op: bool = True):
-        if cache_op:
+    def forward(
+        self,
+        indices,
+        offsets=None,
+        per_sample_weights=None,
+        shape_hook=None,
+        scatter_dim=0,
+        gather_dim=-1,
+    ):
+        if self.cache_op:
             with torch.no_grad():
                 indices = self.cache_weight_mgr.prepare_ids(indices)
         output_shard = F.embedding_bag(indices.cuda(), self.cache_weight_mgr.cuda_cached_weight, offsets, self.max_norm,
@@ -93,6 +95,9 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
                                       scatter_dim=scatter_dim,
                                       gather_dim=gather_dim)
         return output_full
+
+    def set_cache_op(self, cache_op: bool = True):
+        self.cache_op = cache_op
 
     @classmethod
     def from_pretrained(
