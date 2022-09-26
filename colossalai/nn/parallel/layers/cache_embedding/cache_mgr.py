@@ -62,8 +62,6 @@ class CachedParamMgr(torch.nn.Module):
         self._async_copy = async_copy
 
         if self._async_copy:
-            # self.cpu_gpu_copy_stream = torch.cuda.Stream()
-            # self.gpu_cpu_copy_stream = torch.cuda.Stream()
             print('use async copy')
 
         if self._evict_strategy == EvictionStrategy.LFU:
@@ -328,7 +326,6 @@ class CachedParamMgr(torch.nn.Module):
             if self.buffer_size == 0:
                 rows_cpu = self.weight.view(self.num_embeddings, -1).index_select(0, cpu_row_idxs_copy).pin_memory()
                 evict_in_rows_gpu = torch.empty_like(rows_cpu, device=torch.cuda.current_device())
-                # with torch.cuda.stream(self.cpu_gpu_copy_stream):
                 evict_in_rows_gpu.copy_(rows_cpu, non_blocking=True)
             else:
                 raise NotImplemented
@@ -350,7 +347,6 @@ class CachedParamMgr(torch.nn.Module):
                         evict_out_rows_gpu = self.cuda_cached_weight.view(self.cuda_row_num,
                                                                           -1).index_select(0, evict_gpu_row_idxs)
                         evict_out_rows_cpu = torch.empty_like(evict_out_rows_gpu, device='cpu', pin_memory=True)
-                        # with torch.cuda.stream(self.gpu_cpu_copy_stream):
                         evict_out_rows_cpu.copy_(evict_out_rows_gpu, non_blocking=True)
                     self.cached_idx_map.index_copy_(0, invalid_idxs, backup_idxs)
 
@@ -362,7 +358,6 @@ class CachedParamMgr(torch.nn.Module):
                         evict_out_rows_gpu = self.cuda_cached_weight.view(self.cuda_row_num,
                                                                           -1).index_select(0, evict_gpu_row_idxs)
                         evict_out_rows_cpu = torch.empty_like(evict_out_rows_gpu, device='cpu', pin_memory=True)
-                        # with torch.cuda.stream(self.gpu_cpu_copy_stream):
                         evict_out_rows_cpu.copy_(evict_out_rows_gpu, non_blocking=True)
                     self.freq_cnter.index_copy_(0, invalid_idxs, backup_freqs)
 
@@ -378,7 +373,6 @@ class CachedParamMgr(torch.nn.Module):
                     # allocate tmp memory on CPU and copy rows on CUDA to CPU.
                     # TODO async gpu -> cpu
                     if self._async_copy:
-                        # torch.cuda.current_stream().wait_stream(self.gpu_cpu_copy_stream)
                         pass
                     else:
                         evict_out_rows_cpu = self.cuda_cached_weight.view(self.cuda_row_num,
@@ -407,7 +401,6 @@ class CachedParamMgr(torch.nn.Module):
             else:
                 # TODO async copy cpu -> gpu
                 if self._async_copy:
-                    # torch.cuda.current_stream().wait_stream(self.cpu_gpu_copy_stream)
                     pass
                 else:
                     evict_in_rows_gpu = self.weight.view(self.num_embeddings,
