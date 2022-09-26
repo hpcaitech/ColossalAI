@@ -7,6 +7,7 @@ from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
+from colossalai import META_COMPATIBILITY
 
 
 # this is the python compute table code from rotor
@@ -339,7 +340,6 @@ def solver_rotor(gm: ColoGraphModule,
 
     node_list = linearize(gm, cnode)
     mem_unit = mem_limit * (1.0 - eps) // mem_slots
-    from colossalai import META_COMPATIBILITY
     if META_COMPATIBILITY:
         from colossalai.fx.profiler import MetaTensor
         data = MetaTensor(data, fake_device=next(gm.parameters()).device)
