@@ -220,7 +220,7 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
     return f
 
 
-def profile_method(target: 'Target', device='meta') -> Callable:
+def profile_method(target: 'Target', device: str = 'meta') -> Callable:
     """
     Wrap a `call_method` node
     record the memory cost and FLOPs of the execution. 
@@ -238,7 +238,7 @@ def profile_method(target: 'Target', device='meta') -> Callable:
     return f
 
 
-def profile_module(module: torch.nn.Module, device='meta') -> Callable:
+def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
     """
     Wrap a `call_module` node or `torch.nn` in order to 
     record the memory cost and FLOPs of the execution.
