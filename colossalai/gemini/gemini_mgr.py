@@ -3,7 +3,7 @@ import functools
 from .memory_tracer.memstats_collector import MemStatsCollectorV2
 from typing import List, Optional, Tuple
 from time import time
-from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.gemini import Chunk, ChunkManager
 from .placement_policy import PlacementPolicyFactory
 
 
@@ -56,44 +56,37 @@ class GeminiManager:
         self._evict_time = 0
         self._comp_cuda_demand_time = 0
 
-    def adjust_layout(self, chunks: Tuple[Chunk, ...], group_type: str) -> None:
+    def adjust_layout(self, chunks: Tuple[Chunk, ...], group_name: str) -> None:
         """ Adjust the layout of statefuil tensor according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
         """
         # find stateful tensor in state COMPUTE
         start = time()
         self._record_chunks_order(chunks)
-        cuda_demand, hold_cuda_tensor_list = self._get_layout_info(self._compute_idx, self._warmup, chunks, group_type)
+        cuda_demand, hold_cuda_tensor_list = self._get_layout_info(self._compute_idx, self._warmup, chunks, group_name)
         self._layout_time += time() - start
-
-        vol, evict_time = self._placement_policy.evict_tensors(can_evict_chunks=hold_cuda_tensor_list,
+        vol, evict_time = self._placement_policy.evict_tensors(hold_cuda_tensor_list,
                                                                cuda_demand=cuda_demand,
                                                                warmup=self._warmup,
                                                                compute_list=self._compute_list,
                                                                compute_idx=self._compute_idx)
-
         self._d2h_volume += vol
         self._evict_time += evict_time
         # move COMPUTE tensors to CUDA
         self._h2d_volume += cuda_demand
 
     @functools.lru_cache(maxsize=None)
-    def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...], group_type: str):
+    def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...], group_name: str):
         start = time()
         cuda_demand = 0
         for chunk in chunks:
-            if chunk.device_type == 'cuda':
-                if chunk.is_gathered:
-                    pass
-                else:
-                    cuda_demand += chunk.chunk_mem - chunk.shard_mem
-            elif chunk.device_type == 'cpu':
-                cuda_demand += chunk.chunk_mem
-            else:
-                raise RuntimeError
+            if chunk.device_type == 'cpu' or chunk.is_empty:
+                cuda_demand += chunk.mem
         self._comp_cuda_demand_time += time() - start
-
-        can_evict_chunks = self._chunk_manager.get_cuda_movable_chunks(group_type)
+        can_evict_chunks = []
+        for chunk in self._chunk_manager.chunk_groups[group_name]:
+            if not chunk.is_empty and chunk.device_type == 'cuda' and chunk.can_move_device:
+                can_evict_chunks.append(chunk)
         return cuda_demand, can_evict_chunks
 
     def _record_chunks_order(self, chunks: Tuple[Chunk, ...]) -> None:

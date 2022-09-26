@@ -9,7 +9,7 @@ from colossalai.utils import free_port, get_current_device
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from colossalai.tensor import ColoParameter
 from colossalai.gemini import TensorState
-from colossalai.gemini.chunk import Chunk
+from colossalai.gemini.update import ChunkV2
 
 
 def dist_sum(x):
@@ -38,12 +38,14 @@ def check_euqal(param, param_cp):
 def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     world_size = torch.distributed.get_world_size()
     pg = ColoProcessGroup()
-    my_chunk = Chunk(chunk_size=1024,
-                     process_group=pg,
-                     dtype=torch.float32,
-                     init_device=init_device,
-                     keep_gathered=keep_gathered,
-                     pin_memory=pin_memory)
+    my_chunk = ChunkV2(
+        chunk_size=1024,
+        process_group=pg,
+        dtype=torch.float32,
+        init_device=init_device,
+        keep_gathered=keep_gathered,
+        pin_memory=pin_memory
+    )
 
     param_list = []
     param_cp_list = []

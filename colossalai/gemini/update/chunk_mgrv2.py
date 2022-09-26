@@ -4,19 +4,23 @@ from collections import deque
 
 from colossalai.utils import get_current_device
 from colossalai.tensor import ColoTensor
-from colossalai.gemini.chunk import ChunkFullError, TensorState, Chunk
+from colossalai.gemini.chunk import ChunkFullError, TensorState
+from colossalai.gemini.update import ChunkV2 as Chunk
 
 
-class ChunkManager:
+class ChunkManagerV2:
     """
     A manager class to manipulate the tensors in chunks.
 
     Args:
         chunk_configuration (Dict[int, Dict]): the configuration dictionary of this chunk manager.
         init_device (torch.device): optional, the device on which the chunk is initialized. The default is None.
+        pin_memory (bool): if ture, all chunks have a piece of pinned memory in CPU.
     """
 
-    def __init__(self, chunk_configuration: Dict[int, Dict], init_device: Optional[torch.device] = None) -> None:
+    def __init__(self, chunk_configuration: Dict[int, Dict],
+                 init_device: Optional[torch.device] = None,
+                 pin_memory: bool = False) -> None:
 
         self.device = init_device or get_current_device()
         self.size_config: Dict[int, int] = dict()
@@ -24,6 +28,7 @@ class ChunkManager:
         for k, v in self.kwargs_config.items():
             self.size_config[k] = v.pop('chunk_size')
             v['init_device'] = self.device
+            v['pin_memory'] = pin_memory
 
         self.chunk_groups: Dict[str, Deque] = dict()
         self.tensor_chunk_map: Dict[torch.Tensor, Chunk] = dict()
@@ -31,14 +36,8 @@ class ChunkManager:
         self.lazy_release_tensors: List[torch.Tensor] = list()
         self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
 
-    def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int, pin_memory: bool = False) -> None:
+    def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int) -> None:
         """Append a tensor to a chunk.
-
-        Args:
-            tensor: the tensor appended to the chunk
-            group_type: the data type of the group
-            config_key: the key of the group's name, usually the size of the dp world
-            pin_memory: whether the chunk is pinned in the cpu memory
         """
         assert tensor not in self.tensor_chunk_map
         assert isinstance(tensor, ColoTensor), "Please feed ColoTensor to this ChunkManager"
@@ -67,8 +66,7 @@ class ChunkManager:
                 chunk_size=chunk_size,
                 process_group=tensor.process_group,
                 dtype=tensor.dtype,
-                pin_memory=pin_memory,
-                **chunk_kwargs,
+                **chunk_kwargs
             )
 
             chunk_group.append(chunk)
@@ -89,8 +87,6 @@ class ChunkManager:
         if chunk in self.accessed_chunks:
             return
         self.__sub_memroy_usage(chunk.memory_usage)
-        if chunk.device_type == 'cpu':
-            chunk.shard_move(get_current_device())
         chunk.access_chunk()
         self.__add_memory_usage(chunk.memory_usage)
         self.accessed_chunks.add(chunk)
@@ -106,13 +102,13 @@ class ChunkManager:
             self.__add_memory_usage(chunk.memory_usage)
             self.accessed_chunks.remove(chunk)
 
-    def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False) -> None:
+    def move_chunk(self, chunk: Chunk, device: torch.device) -> None:
         """Move the shard of the chunk to the target device.
         """
         if not chunk.can_move or chunk.device_type == device.type:
             return
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.shard_move(device, force_copy)
+        chunk.shard_move(device)
         self.__add_memory_usage(chunk.memory_usage)
 
     def trans_tensor_state(self, tensor: torch.Tensor, state: TensorState) -> None:
@@ -127,7 +123,7 @@ class ChunkManager:
         if not chunk.can_reduce:
             return False
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.reduce()
+        chunk.release_chunk()
         self.__add_memory_usage(chunk.memory_usage)
         return True
 
@@ -169,14 +165,14 @@ class ChunkManager:
             self.release_chunk(chunk)
         self.lazy_release_tensors.clear()
 
-    def get_cuda_movable_chunks(self, group_type: str) -> List[Chunk]:
-        chunk_list = []
-        for group_name in self.chunk_groups:
-            if group_type in group_name:
-                for chunk in self.chunk_groups[group_name]:
-                    if chunk.device_type == 'cuda' and chunk.can_move:
-                        chunk_list.append(chunk)
-        return chunk_list
+    def __repr__(self) -> str:
+        msg = ['Chunk Manager Information:\n',
+               'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n']
+        for group_name, group in self.chunk_groups.items():
+            msg.append(f'Group {group_name}:\n')
+            for i, chunk in enumerate(group):
+                msg.append(f'[{i}] {chunk}\n')
+        return ''.join(msg)
 
     def get_chunks(self, tensors: Iterable[torch.Tensor]) -> Tuple[Chunk, ...]:
         """
@@ -204,17 +200,6 @@ class ChunkManager:
         assert tensor not in self.tensor_chunk_map
         self.total_mem[tensor.device.type] += tensor.numel() * tensor.element_size()
 
-    def __repr__(self) -> str:
-        msg = [
-            'Chunk Manager Information:\n',
-            'Total memory: ' + ', '.join([f'{k}={v}B' for k, v in self.total_mem.items()]) + '\n'
-        ]
-        for group_name, group in self.chunk_groups.items():
-            msg.append(f'Group {group_name}:\n')
-            for i, chunk in enumerate(group):
-                msg.append(f'[{i}] {chunk}\n')
-        return ''.join(msg)
-
     def __get_chunk_group(self, group_name: str) -> Deque:
         """Register a chunk group.
         """
@@ -223,9 +208,8 @@ class ChunkManager:
         return self.chunk_groups[group_name]
 
     def __close_one_chunk(self, chunk: Chunk):
-        device = get_current_device() if chunk.keep_gathered else self.device    # keep gathered chunk in cuda
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.close_chunk(device)
+        chunk.close_chunk(self.device)
         self.__add_memory_usage(chunk.memory_usage)
 
     def __sub_memroy_usage(self, usage: Dict[str, int]):
