@@ -22,6 +22,7 @@ class ConvModel(nn.Module):
         return output
 
 
+@pytest.mark.skip("temporarily skipped")
 def test_where_handler():
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
