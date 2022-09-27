@@ -6,7 +6,6 @@ from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.testing import assert_close_loose, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 
-
 import copy
 import pytest
 from functools import partial
@@ -17,6 +16,7 @@ def check_equal(a, b):
     This function checks if two tensors are equal within tolerance
     """
     assert torch.allclose(a.float(), b.float(), rtol=1e-4, atol=1e-3), f'a = {a}, b = {b}'
+
 
 
 def run_naive_bf16_amp():
@@ -36,17 +36,18 @@ def run_naive_bf16_amp():
 
         # create model
         naive_fp16_amp_model = model_builder(checkpoint=True).cuda()
-        naive_bf16_amp_model = copy.deepcopy(naive_fp16_amp_model).cuda().bfloat16()
+        naive_bf16_amp_model = copy.deepcopy(naive_fp16_amp_model)
 
         # create optimizer
         naive_bf16_amp_optimizer = optim_class(naive_bf16_amp_model.parameters(), lr=1e-3)
         naive_fp16_amp_optimizer = optim_class(naive_fp16_amp_model.parameters(), lr=1e-3)
 
-        # inject naive and naive_fp16 amp
-        naive_bf16_amp_config = dict(initial_scale=128)
+        # inject naive_bf16 and naive_fp16 amp
+        # scale set to 1
+        naive_bf16_amp_config = dict(initial_scale=1)
         naive_bf16_amp_model, naive_bf16_amp_optimizer = convert_to_naive_amp(naive_bf16_amp_model, naive_bf16_amp_optimizer, use_bf16=True,
                                                                               amp_config=naive_bf16_amp_config)
-        naive_fp16_amp_config = dict(initial_scale=128)
+        naive_fp16_amp_config = dict(initial_scale=1)
         naive_fp16_amp_model, naive_fp16_amp_optimizer = convert_to_naive_amp(naive_fp16_amp_model, naive_fp16_amp_optimizer, naive_fp16_amp_config)
 
         # create data
@@ -57,24 +58,26 @@ def run_naive_bf16_amp():
         # forward pass
         naive_bf16_amp_output = naive_bf16_amp_model(data)
         naive_fp16_amp_output = naive_fp16_amp_model(data)
-        # assert_close_loose(naive_bf16_amp_output, naive_fp16_amp_output)
+        assert_close_loose(naive_bf16_amp_output, naive_fp16_amp_output, 1e-1, 1e-1)
+
+        bf16_in = naive_bf16_amp_output.mean()
+        fp16_in = naive_fp16_amp_output.mean()
 
         # backward
-        naive_bf16_amp_optimizer.backward(naive_bf16_amp_output.mean())
-        naive_fp16_amp_optimizer.backward(naive_fp16_amp_output.mean())
+        naive_bf16_amp_optimizer.backward(bf16_in)
+        naive_fp16_amp_optimizer.backward(fp16_in)
 
         # check grad
         for naive_bf16_amp_param, naive_fp16_amp_param in zip(naive_bf16_amp_model.parameters(), naive_fp16_amp_model.parameters()):
-            assert_close_loose(naive_bf16_amp_param.grad, naive_fp16_amp_param.grad)
-
+            assert_close_loose(naive_bf16_amp_param.grad, naive_fp16_amp_param.grad, 1e-0, 1e-0)
+        
         # step
         naive_bf16_amp_optimizer.step()
         naive_fp16_amp_optimizer.step()
 
         # check updated param
         for naive_bf16_amp_param, naive_fp16_amp_param in zip(naive_bf16_amp_model.parameters(), naive_fp16_amp_model.parameters()):
-            assert_close_loose(naive_bf16_amp_param, naive_fp16_amp_param)
-
+            assert_close_loose(naive_bf16_amp_param, naive_fp16_amp_param, 1e-2, 1e-2 )
 
 def run_dist(rank, world_size, port):
     colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
