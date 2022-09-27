@@ -79,20 +79,7 @@ class CachedParamMgr(torch.nn.Module):
             self._elapsed_dict[k] = 0
 
         self._cpu_to_cuda_numel = 0
-        self._cpu_to_cuda_elpase = 0
-        self._cuda_to_cpu_elapse = 0
         self._cuda_to_cpu_numel = 0
-        self.unique_elapse = 0
-        self.prepare_rows_on_cuda = 0
-        self.evict_out_elapse = 0
-        self.evict_in_elapse = 0
-        self.non_zero_elapse = 0
-        self.evict_in_copy_elapse = 0
-        self.evict_in_index_copy_elapse = 0
-        self.evict_in_index_select_elapse = 0
-        self.find_evict_gpu_idxs_elapsed = 0
-        self.isin_elapse = 0
-        self.final_elapse = 0
 
     @contextmanager
     def timer(self, name):
@@ -270,13 +257,13 @@ class CachedParamMgr(torch.nn.Module):
 
     def print_comm_stats(self):
         if self._cuda_to_cpu_numel > 0:
-            elapsed = self._elapsed_dict["3_2_1_evict_out_gpu_to_cpu_copy"]
+            elapsed = self._elapsed_dict["3_2_2_evict_out_gpu_to_cpu_copy"]
             print(
                 f"CUDA->CPU BWD {self._cuda_to_cpu_numel * self.elem_size_in_byte / 1e6 / elapsed} MB/s {self._cuda_to_cpu_numel / 1e6} M elem"
             )
             print(f'cuda_to_cpu_elapse {elapsed} sec')
         if self._cpu_to_cuda_numel > 0:
-            elapsed = self._elapsed_dict["2_4_2_evict_in_move"]
+            elapsed = self._elapsed_dict["3_4_2_evict_in_gpu_to_cpu_copy"]
             print(
                 f"CPU->CUDA BWD {self._cpu_to_cuda_numel * self.elem_size_in_byte / 1e6 / elapsed} MB/s {self._cpu_to_cuda_numel / 1e6} M elem"
             )
@@ -423,8 +410,12 @@ class CachedParamMgr(torch.nn.Module):
                     if self._async_copy:
                         pass
                     else:
-                        evict_out_rows_cpu = self.cuda_cached_weight.view(self.cuda_row_num,
-                                                                          -1).index_select(0, evict_gpu_row_idxs).cpu()
+                        with self.timer("3_2_1_evict_out_index_select") as timer:
+                            evict_out_rows_cpu = self.cuda_cached_weight.view(self.cuda_row_num,
+                                                                              -1).index_select(0, evict_gpu_row_idxs)
+                        with self.timer("3_2_2_evict_out_gpu_to_cpu_copy") as timer:
+                            evict_out_rows_cpu = evict_out_rows_cpu.cpu()
+
                     self.weight.view(self.num_embeddings, -1).index_copy_(0, evict_info.cpu(), evict_out_rows_cpu)
 
                 self.cached_idx_map.index_fill_(0, evict_gpu_row_idxs, -1)
@@ -458,16 +449,16 @@ class CachedParamMgr(torch.nn.Module):
                 else:
                     # TODO hotspot: index select copy cpu -> gpu, cpu index?
 
-                    with self.timer("3_4_1_evict_in_index_select_elapse") as timer:
+                    with self.timer("3_4_1_evict_in_index_select") as timer:
                         # narrow index select to a subset of self.weight
                         # tmp = torch.narrow(self.weight.view(self.num_embeddings, -1), 0, min(cpu_row_idxs).cpu(), max(cpu_row_idxs) - min(cpu_row_idxs) + 1)
                         # evict_in_rows_gpu = tmp.index_select(0, cpu_row_idxs_copy - min(cpu_row_idxs).cpu())
                         evict_in_rows_gpu = self.weight.view(self.num_embeddings, -1).index_select(0, cpu_row_idxs_copy)
 
-                    with self.timer("3_4_2_evict_in_move") as timer:
+                    with self.timer("3_4_2_evict_in_gpu_to_cpu_copy") as timer:
                         evict_in_rows_gpu = evict_in_rows_gpu.cuda()
 
-                    with self.timer("3_4_3_gpu_gpu_copy") as timer:
+                    with self.timer("3_4_3_evict_in_index_copy") as timer:
                         self.cuda_cached_weight.view(self.cuda_row_num, -1).index_copy_(0, slots, evict_in_rows_gpu)
 
         with self.timer("3_4_evict_in_elapse") as timer:
@@ -524,7 +515,6 @@ class CachedParamMgr(torch.nn.Module):
         self._cuda_available_row_num += 1
 
         self._cuda_to_cpu_numel += self.embedding_dim
-        self._cuda_to_cpu_elapse += timer.elapsed
         # self.num_write_back_history[-1] += 1
         return max_cpu_row_idx
 
@@ -558,4 +548,3 @@ class CachedParamMgr(torch.nn.Module):
         self._cuda_available_row_num -= 1
 
         self._cpu_to_cuda_numel += self.embedding_dim
-        self._cpu_to_cuda_elpase += timer.elapsed
