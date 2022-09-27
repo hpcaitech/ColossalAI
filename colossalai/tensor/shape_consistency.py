@@ -235,7 +235,7 @@ class CollectiveCommPattern(Enum):
     GATHER_FWD_SPLIT_BWD = 'gather_fwd_split_bwd'
     ALL2ALL_FWD_ALL2ALL_BWD = 'all2all_fwd_all2all_bwd'
     SPLIT_FWD_GATHER_BWD = 'split_fwd_gather_bwd'
-    REDUCE_FWD_IDENTITY_BWD = 'all_reduce_fwd_identity_bwd'
+    ALLREDUCE_FWD_IDENTITY_BWD = 'all_reduce_fwd_identity_bwd'
     IDENTITY_FWD_ALLREDUCE_BWD = 'identity_fwd_all_reduce_bwd'
 
 
@@ -290,8 +290,8 @@ class CommSpec:
             res_list.append(f"comm_pattern:SPLIT_FWD_GATHER_BWD, ")
             res_list.append(f"shard_dim:{self.shard_dim}, ")
             res_list.append(f"logical_process_axis:{self.logical_process_axis})")
-        elif self.comm_pattern == CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD:
-            res_list.append(f"comm_pattern:REDUCE_FWD_IDENTITY_BWD, ")
+        elif self.comm_pattern == CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD:
+            res_list.append(f"comm_pattern:ALLREDUCE_FWD_IDENTITY_BWD, ")
             res_list.append(f"logical_process_axis:{self.logical_process_axis})")
         elif self.comm_pattern == CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD:
             res_list.append(f"comm_pattern:IDENTITY_FWD_ALLREDUCE_BWD, ")
@@ -317,7 +317,7 @@ class CommSpec:
             # all to all operation has same logical process axis as forward.
             backward_communication_cost = self.device_mesh.all_to_all_cost(comm_size, self.logical_process_axis)
 
-        if self.comm_pattern == CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD:
+        if self.comm_pattern == CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD:
             forward_communication_cost = self.device_mesh.all_reduce_cost(comm_size, self.logical_process_axis)
             backward_communication_cost = 0
 
@@ -357,7 +357,7 @@ pattern_to_func_dict = {
     CollectiveCommPattern.GATHER_FWD_SPLIT_BWD: gather_forward_split_backward,
     CollectiveCommPattern.ALL2ALL_FWD_ALL2ALL_BWD: all_to_all,
     CollectiveCommPattern.SPLIT_FWD_GATHER_BWD: split_forward_gather_backward,
-    CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD: reduce_input,
+    CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD: reduce_input,
     CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD: reduce_grad,
 }
 

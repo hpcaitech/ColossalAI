@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 from torch.fx.node import Node
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Dict, List
-from ..sharding_strategy import ShardingStrategy, ShardingStrategy_V2, StrategiesVector, OperationData, StrategyGenerator_V2
+from ..sharding_strategy import ShardingStrategy_V2, StrategiesVector, OperationData
+from ..strategy import StrategyGenerator_V2
 
 
 class NodeHandler(ABC):
@@ -26,14 +27,14 @@ class NodeHandler(ABC):
         self.successor_node = list(node.users.keys())
         self.device_mesh = device_mesh
         self.strategies_vector = strategies_vector
-        self.strategy_generator = self.register_strategy_generator()
 
     def register_strategy(self) -> StrategiesVector:
         """
         Register different sharding strategies for the current node.
         """
-        operand_mapping = self.get_operand_mapping()
-        for generator in self.strategy_generator:
+        strategy_generators = self.get_strategy_generator()
+        operand_mapping = self.get_operation_data_mapping()
+        for generator in strategy_generators:
             strategies = generator.generate(operand_mapping)
             self.strategies_vector.extend(strategies)
 
@@ -46,7 +47,7 @@ class NodeHandler(ABC):
         return strategy
 
     @abstractmethod
-    def register_strategy_generator(self) -> List[StrategyGenerator_V2]:
+    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
         """
         Define which generators should be used by this NodeHandler object.
         """
@@ -80,6 +81,8 @@ class ModuleHandler(NodeHandler):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+
+        print("created")
 
         # set attributes to access module parameters for convenience
         assert self.node.graph.owning_module is not None, \
