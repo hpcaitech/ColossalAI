@@ -56,7 +56,7 @@ class CachedParamMgr(torch.nn.Module):
         buffer_size: int = 0,
         pin_weight: bool = True,
         evict_strategy: EvictionStrategy = EvictionStrategy.LFU,
-        async_copy: bool = True,
+        async_copy: bool = False,
     ) -> None:
         super(CachedParamMgr, self).__init__()
         self.buffer_size = buffer_size
