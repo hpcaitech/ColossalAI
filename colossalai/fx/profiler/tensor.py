@@ -3,7 +3,16 @@ from typing import Optional, Union, overload
 import torch
 from torch.utils._pytree import tree_map, tree_flatten
 from torch.types import _bool, _dtype, _device
-from functools import singledispatchmethod
+
+try:
+    from functools import singledispatchmethod
+except:
+    try:
+        from singledispatchmethod import singledispatchmethod
+    except:
+        print(
+            "singledispatchmethod is not compatible with current Python version. Please try `pip install singledispatchmethod`."
+        )
 
 __all__ = ['MetaTensor']
 
