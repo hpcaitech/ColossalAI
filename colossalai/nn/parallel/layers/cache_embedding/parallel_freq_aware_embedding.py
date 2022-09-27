@@ -114,7 +114,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         cuda_row_num: int = 100_000,
         ids_freq_mapping: Optional[List[int]] = None,
         warmup_ratio: float = 0.7,
-        buffer_size: int = 50_000,
+        buffer_size: int = 0,
     ) -> 'ParallelFreqAwareEmbeddingBag':
         rows, cols = embedding.shape
         embedding_bag = cls(rows,
