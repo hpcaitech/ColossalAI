@@ -502,12 +502,12 @@ static PyMethodDef dynamic_programs_methods[] = {
 };
 
 static struct PyModuleDef dynamic_programs_module = {
-    PyModuleDef_HEAD_INIT, "c_version_dp", /* name of module */
+    PyModuleDef_HEAD_INIT, "dynamic_programs_C_version", /* name of module */
     NULL, /* module documentation, may be NULL */
     -1,   /* size of per-interpreter state of the module,
                      or -1 if the module keeps state in global variables. */
     dynamic_programs_methods};
 
-PyMODINIT_FUNC PyInit_c_version_dp(void) {
+PyMODINIT_FUNC PyInit_dynamic_programs_C_version(void) {
   return PyModule_Create(&dynamic_programs_module);
 }

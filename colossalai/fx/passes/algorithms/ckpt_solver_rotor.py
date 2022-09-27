@@ -7,11 +7,26 @@ from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
+from distutils.core import setup, Extension
 try:
-    from c_version_dp import persistent_compute_table
+    from .dynamic_programs_C_version import persistent_compute_table
     CVERSION = True
-except ImportError:
-    CVERSION = False
+except ModuleNotFoundError:
+    import subprocess
+    import os
+    print("dynamic_programs_C_version hasn't been built! Building library...")
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    result = subprocess.Popen(f'python {os.path.join(this_dir, "build_c_ext.py")} build_ext --build-lib={this_dir}',
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE,
+                              shell=True)
+    if result.wait() == 0:
+        print("dynamic_programs_C_version has been built!")
+        from .dynamic_programs_C_version import persistent_compute_table
+        CVERSION = True
+    else:
+        print("dynamic_programs_C_version built failed! Using python version!")
+        CVERSION = False
 
 
 # this is the python compute table code from rotor

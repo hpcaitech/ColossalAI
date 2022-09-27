@@ -6,7 +6,6 @@ from setuptools import find_packages, setup, Extension
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
 build_cuda_ext = True
-build_auto_ckpt_ext = True
 ext_modules = []
 
 if int(os.environ.get('NO_CUDA_EXT', '0')) == 1:
@@ -191,12 +190,6 @@ if build_cuda_ext:
 
     extra_cxx_flags = ['-std=c++14', '-lcudart', '-lcublas', '-g', '-Wno-reorder', '-fopenmp', '-march=native']
     ext_modules.append(cuda_ext_helper('cpu_adam', ['cpu_adam.cpp'], extra_cuda_flags, extra_cxx_flags))
-
-if build_auto_ckpt_ext:
-    print(os.path.join(this_dir, "colossalai/fx/passes/algorithms/dynamic_programs.c"))
-    ext_modules.append(
-        Extension("c_version_dp",
-                  sources=[os.path.join(this_dir, "colossalai/fx/passes/algorithms/dynamic_programs.c")]))
 
 setup(
     name='colossalai',
