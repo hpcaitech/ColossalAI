@@ -1,7 +1,4 @@
-from cmath import log
-from distutils.log import Log
 import operator
-import torch
 from functools import reduce
 from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
@@ -9,17 +6,148 @@ from .strategy_generator import StrategyGenerator_V2
 from typing import List
 
 
-class DotProductStrategyGenerator(StrategyGenerator_V2):
-    """TODO: to be implemented"""
-    pass
+class MatMulStrategyGenerator(StrategyGenerator_V2):
+    """
+    MatMulStrategyGenerator is a generic class to cover all matrix multiplication cases.
+    The operation data is defined as `output = input x other + bias`.
+    """
+
+    @property
+    def has_bias(self):
+        return 'bias' in self.op_data
+
+    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+        size_mapping = {
+            'input': self._compute_size_in_bytes(strategy, "input"),
+            'other': self._compute_size_in_bytes(strategy, "other"),
+            'output': self._compute_size_in_bytes(strategy, "output")
+        }
+
+        if self.has_bias:
+            bias_size = self._compute_size_in_bytes(strategy, "bias")
+            size_mapping['bias'] = bias_size
+
+        # compute fwd cost incurred
+        # fwd_cost = input + other + bias + output
+        fwd_activation_cost = sum([v for k, v in size_mapping.items() if not self.is_param(k)])
+        fwd_parameter_cost = sum([v for k, v in size_mapping.items() if self.is_param(k)])
+        fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)
+
+        # compute bwd cost incurred
+        # bwd_cost = input_grad + bias_grad
+        bwd_activation_cost = sum([v for k, v in size_mapping.items() if k in ['input', 'other', 'bias']])
+        bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=0)
+
+        # compute total cost
+        total_mem_cost = MemoryCost(activation=fwd_activation_cost + bwd_activation_cost,
+                                    parameter=fwd_parameter_cost + 0)
+        memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
+        strategy.memory_cost = memory_cost
 
 
-class MatVecStrategyGenerator(StrategyGenerator_V2):
-    """TODO: to be implemented"""
-    pass
+class DotProductStrategyGenerator(MatMulStrategyGenerator):
+
+    def validate(self) -> bool:
+        input_op_data = self.op_data['input']
+        other_op_data = self.op_data['other']
+        assert input_op_data.data.dim() == 1 and other_op_data.data.dim() == 1
+
+    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+        sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
+        fwd_compute_cost = sharded_input_shape[0]
+        bwd_compute_cost = sharded_input_shape * 2
+        compute_cost = TrainCycleItem(fwd=fwd_compute_cost,
+                                      bwd=bwd_compute_cost,
+                                      total=fwd_compute_cost + bwd_compute_cost)
+        return compute_cost
+
+    def no_split(self):
+        name = f'R = R dot R'
+        dim_partition_dict = {"input": {}, "other": {}, "output": {}, 'bias': {}}
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+        communication_action_mapping = {}
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    def split_one_dim(self, mesh_dim):
+        name = f'R = S{mesh_dim} dot S{mesh_dim}'
+
+        # get sharding spec
+        dim_partition_dict = {"input": {0: [mesh_dim]}, "other": {0: [mesh_dim]}, "output": {}, "bias": {0: [mesh_dim]}}
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+        # get communication action
+        output_comm_spec = self.get_communication_spec(
+            sharding_spec=sharding_spec_mapping['output'],
+            communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
+            logical_process_axis=mesh_dim)
+        communication_action_mapping = {"output": output_comm_spec}
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    def generate(self) -> List[ShardingStrategy_V2]:
+        strategy_list = []
+
+        # do not split dimensions for dot product
+        # R = R dot R
+        strategy_list.append(self.no_split())
+
+        # split two tensors in the same dimensions
+        # S = S dot S
+        strategy_list.append(self.split_one_dim(0))
+        strategy_list.append(self.split_one_dim(1))
+
+        return strategy_list
 
 
-class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
+class MatVecStrategyGenerator(MatMulStrategyGenerator):
+
+    def validate(self) -> bool:
+        input_op_data = self.op_data['input']
+        other_op_data = self.op_data['other']
+        assert input_op_data.data.dim() > 1 and other_op_data.data.dim() == 1
+
+    def no_split(self):
+        name = "R = R x R"
+        dim_partition_dict = {"input": {}, "other": {}, "output": {}, "bias": {}}
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping={})
+
+    def split_input_batch(self, mesh_dim):
+        name = f'S{mesh_dim}R = S{mesh_dim}R x R'
+
+        # get sharding spec
+        dim_partition_dict = {"input": {0: [mesh_dim]}, "other": {}, "output": {0: [mesh_dim]}}
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+        # get communication action
+        other_comm_spec = self.get_communication_spec(
+            sharding_spec=sharding_spec_mapping['other'],
+            communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
+            logical_process_axis=mesh_dim)
+        communication_action_mapping = {'other': other_comm_spec}
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    def generate(self) -> List[ShardingStrategy_V2]:
+        strategy_list = []
+
+        # no split
+        strategy_list.append(self.no_split())
+
+        # split the batch dim for the first tensor only
+        strategy_list.append(self.split_input_batch(0))
+        strategy_list.append(self.split_input_batch(1))
+
+        return strategy_list
+
+
+class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
 
     def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
         # C = AB
@@ -38,23 +166,6 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
                                       bwd=bwd_compute_cost,
                                       total=fwd_compute_cost + bwd_compute_cost)
         strategy.compute_cost = compute_cost
-
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        input_size = self._compute_size_in_bytes(strategy, "input")
-        other_size = self._compute_size_in_bytes(strategy, "input")
-
-        if "bias" in self.op_data:
-            bias_size = self._compute_size_in_bytes(strategy, "bias")
-        else:
-            bias_size = 0
-        output_size = self._compute_size_in_bytes(strategy, "output")
-
-        fwd_mem_cost = MemoryCost(activation=output_size, parameter=other_size + bias_size)
-        bwd_mem_cost = MemoryCost(activation=input_size + other_size + bias_size, parameter=other_size)
-        total_mem_cost = MemoryCost(activation=input_size + 2 * output_size + bias_size,
-                                    parameter=other_size + bias_size)
-        memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
-        strategy.memory_cost = memory_cost
 
     def generate(self) -> List[ShardingStrategy_V2]:
         strategies = []
@@ -104,7 +215,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
                 0: [mesh_dim_0]
             },
             "other": {
-                self.dim_q: [mesh_dim_1]
+                -1: [mesh_dim_1]
             },
             "bias": {
                 -1: [mesh_dim_1]
@@ -143,7 +254,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
                 -1: [mesh_dim_1]
             },
             "other": {
-                self.dim_p: [mesh_dim_1]
+                0: [mesh_dim_1]
             },
             "bias": {},
             "output": {
@@ -159,7 +270,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
             logical_process_axis=mesh_dim_0)
         output_comm_spec = self.get_communication_spec(
             sharding_spec=sharding_spec_mapping["output"],
-            communication_pattern=CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD,
+            communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
             logical_process_axis=mesh_dim_1)
 
         communication_action_mapping = {"input": input_comm_spec, 'output': output_comm_spec}
@@ -177,8 +288,8 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
                 -1: [mesh_dim_0]
             },
             "other": {
-                self.dim_p: [mesh_dim_0],
-                self.dim_q: [mesh_dim_1]
+                0: [mesh_dim_0],
+                -1: [mesh_dim_1]
             },
             "bias": {
                 -1: [mesh_dim_1]
@@ -192,7 +303,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
         # get communication actions
         output_comm_spec = self.get_communication_spec(
             sharding_spec=sharding_spec_mapping['output'],
-            communication_pattern=CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD,
+            communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
             logical_process_axis=mesh_dim_0)
         input_comm_spec = self.get_communication_spec(
             sharding_spec=sharding_spec_mapping['input'],
@@ -212,7 +323,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
                 -1: [mesh_dim]
             },
             "other": {
-                self.dim_p: [mesh_dim]
+                0: [mesh_dim]
             },
             "bias": {},
             "output": {},
@@ -223,7 +334,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
         # get communication action
         output_comm_spec = self.get_communication_spec(
             sharding_spec=sharding_spec_mapping['output'],
-            communication_pattern=CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD,
+            communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
             logical_process_axis=mesh_dim)
         communication_action_mapping = {'output': output_comm_spec}
         return self.get_sharding_strategy(name=name,
@@ -237,7 +348,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
         dim_partition_dict_mapping = {
             "input": {},
             "other": {
-                self.dim_q: [mesh_dim]
+                -1: [mesh_dim]
             },
             "bias": {
                 -1: [mesh_dim]
@@ -294,7 +405,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
                 -1: [mesh_dim_0, mesh_dim_1]
             },
             "other": {
-                self.dim_p: [mesh_dim_0, mesh_dim_1]
+                0: [mesh_dim_0, mesh_dim_1]
             },
             "bias": {},
             "output": {},
@@ -304,7 +415,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
         # get communication action
         output_comm_spec = self.get_communication_spec(
             sharding_spec=sharding_spec_mapping['output'],
-            communication_pattern=CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD,
+            communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
             logical_process_axis=[mesh_dim_0, mesh_dim_1])
         communication_action_mapping = {'output': output_comm_spec}
 
@@ -319,7 +430,7 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
         dim_partition_dict_mapping = {
             "input": {},
             "other": {
-                self.dim_q: [mesh_dim_0, mesh_dim_1]
+                -1: [mesh_dim_0, mesh_dim_1]
             },
             "bias": {
                 -1: [mesh_dim_0, mesh_dim_1]
@@ -359,6 +470,190 @@ class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
             assert bias_data.logical_shape[-1] == other_data.logical_shape[-1]
 
 
-class BatchedMatMulStrategyGenerator(StrategyGenerator_V2):
-    """TODO: to be implemented"""
-    pass
+class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
+    """
+    Generate sharding strategies for the batched matrix multiplication.
+
+    A batched matrix multiplication can be viewed as 
+    [b, i, k] x [b, k, j] -> [b, i, j]
+    """
+
+    def validate(self) -> bool:
+        input_op_data = self.op_data['input']
+        other_op_data = self.op_data['other']
+        assert input_op_data.data.dim() > 2 or other_op_data.data.dim() > 2
+
+    def split_one_batch_dim(self):
+        device_mesh_is_1d = True
+        if len(self.device_mesh.mesh_shape) == 1:
+            mesh_dim = 0
+        elif 1 in self.device_mesh.mesh_shape:
+            mesh_dim = self.device_mesh.mesh_shape.index(1)
+        else:
+            device_mesh_is_1d = False
+
+        if device_mesh_is_1d:
+            name = f'Sb{mesh_dim} = Sb{mesh_dim} x Sb{mesh_dim}'
+
+            # get sharding_spec
+            dim_partition_dict = {
+                "input": {
+                    0: [mesh_dim]
+                },
+                "other": {
+                    0: [mesh_dim]
+                },
+                "bias": {},
+                "output": {
+                    0: [mesh_dim]
+                }
+            }
+            sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+            # get communication actions
+            communication_action_mapping = {}
+            return self.get_sharding_strategy(name=name,
+                                              sharding_spec_mapping=sharding_spec_mapping,
+                                              communication_action_mapping=communication_action_mapping)
+        else:
+            return None
+
+    def split_two_batch_dim(self, mesh_dim_0, mesh_dim_1):
+        name = f'Sb{mesh_dim_0}{mesh_dim_1} = Sb{mesh_dim_0}{mesh_dim_1} x Sb{mesh_dim_0}{mesh_dim_1}'
+        dim_partition_dict = {
+            "input": {
+                0: [mesh_dim_0, mesh_dim_1]
+            },
+            "other": {
+                0: [mesh_dim_0, mesh_dim_1]
+            },
+            "bias": {},
+            "output": {
+                0: [mesh_dim_0, mesh_dim_1]
+            }
+        }
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+        # get communication actions
+        communication_action_mapping = {}
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    def split_batch_dim_lhs_space(self, mesh_dim_0, mesh_dim_1):
+        name = f'Sb{mesh_dim_0}Si{mesh_dim_1} = Sb{mesh_dim_0}Si{mesh_dim_1} x Sb{mesh_dim_0}'
+        dim_partition_dict = {
+            "input": {
+                0: [mesh_dim_0],
+                -2: [mesh_dim_1]
+            },
+            "other": {
+                0: [mesh_dim_0]
+            },
+            "bias": {},
+            "output": {
+                0: mesh_dim_0,
+                -2: [mesh_dim_1]
+            }
+        }
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+        # get communication actions
+        other_comm_spec = self.get_communication_spec(
+            sharding_spec=sharding_spec_mapping['other'],
+            communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
+            logical_process_axis=mesh_dim_1)
+        communication_action_mapping = {'other': other_comm_spec}
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    def split_batch_dim_rhs_space(self, mesh_dim_0, mesh_dim_1):
+        name = f'Sb{mesh_dim_0}Sj{mesh_dim_1} = Sb{mesh_dim_0}R x Sb{mesh_dim_0}Sj{mesh_dim_1}'
+        dim_partition_dict = {
+            "input": {
+                0: [mesh_dim_0]
+            },
+            "other": {
+                0: [mesh_dim_0],
+                -1: [mesh_dim_1]
+            },
+            "bias": {
+                -1: [mesh_dim_1]
+            },
+            "output": {
+                0: [mesh_dim_0],
+                -1: [mesh_dim_1]
+            }
+        }
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+        # get communication actions
+        input_comm_spec = self.get_communication_spec(
+            sharding_spec=sharding_spec_mapping['input'],
+            communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
+            logical_process_axis=mesh_dim_1)
+        communication_action_mapping = {'input': input_comm_spec}
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    def split_batch_dim_both_contract(self, mesh_dim_0, mesh_dim_1):
+        name = f'Sb{mesh_dim_0}R = Sb{mesh_dim_0}Sk{mesh_dim_1} x Sb{mesh_dim_0}Sk{mesh_dim_1}'
+        dim_partition_dict = {
+            "input": {
+                0: [mesh_dim_0],
+                -1: [mesh_dim_1]
+            },
+            "other": {
+                0: [mesh_dim_0],
+                -2: [mesh_dim_1]
+            },
+            "bias": {},
+            "output": {
+                0: [mesh_dim_0],
+                -2: [mesh_dim_1]
+            }
+        }
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+        # get communication actions
+        output_comm_spec = self.get_communication_spec(
+            sharding_spec=sharding_spec_mapping['output'],
+            communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
+            logical_process_axis=mesh_dim_1)
+        communication_action_mapping = {'output': output_comm_spec}
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    def generate(self) -> List[ShardingStrategy_V2]:
+        strategy_list = []
+
+        # split only the batch dimension
+        # Sb = Sb x Sb
+        # can be None as it is only for 1D device mesh
+        strategy = self.split_one_batch_dim()
+        if strategy:
+            strategy_list.append(strategy)
+
+        # split batch dim of two inputs and the i dim of the first tensor
+        # SbSi = SbSi x Sb
+        strategy_list.append(self.split_batch_dim_lhs_space(0, 1))
+        strategy_list.append(self.split_batch_dim_lhs_space(1, 0))
+
+        # split batch dim of two inputs and the j of the second tensor
+        # SbSj = Sb x SbSj
+        strategy_list.append(self.split_batch_dim_rhs_space(0, 1))
+        strategy_list.append(self.split_batch_dim_rhs_space(1, 0))
+
+        # split batch dim of two inputs and the k dim of two inputs
+        # Sb = SbSk x SbSk, need to all-reduce by k dim
+        strategy_list.append(self.split_batch_dim_both_contract(0, 1))
+        strategy_list.append(self.split_batch_dim_both_contract(1, 0))
+
+        # split two batch dim
+        strategy_list.append(self.split_two_batch_dim(0, 1))
+        strategy_list.append(self.split_two_batch_dim(1, 0))
+
+        return strategy_list
