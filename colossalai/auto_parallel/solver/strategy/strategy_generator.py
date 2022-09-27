@@ -7,7 +7,7 @@ from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Dict, List, Union, Any
-from ..sharding_strategy import OperationData, ShardingStrategy_V2, TrainCycleItem
+from ..sharding_strategy import OperationData, ShardingStrategy_V2, TrainCycleItem, OperationDataType
 
 
 class StrategyGenerator_V2(ABC):
@@ -20,6 +20,10 @@ class StrategyGenerator_V2(ABC):
     def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh):
         self.op_data = operation_data_mapping
         self.device_mesh = device_mesh
+
+    def is_param(self, op_data_name):
+        other_data = self.op_data[op_data_name]
+        return other_data.type == OperationDataType.PARAM
 
     def get_sharding_strategy(self, name: str, sharding_spec_mapping: Dict[str, ShardingSpec],
                               communication_action_mapping: Dict[str, CommSpec]):
@@ -80,7 +84,7 @@ class StrategyGenerator_V2(ABC):
         Compute the communication cost involved in the forward and backward iteration.
         """
 
-        comm_cost = TrainCycleItem(fwd=0, bwd=0)
+        comm_cost = TrainCycleItem(fwd=0, bwd=0, total=0)
 
         def _compute_and_add(data: OperationData, comm_spec: CommSpec):
             num_ele_in_comm = comm_spec.get_comm_cost()
@@ -92,7 +96,7 @@ class StrategyGenerator_V2(ABC):
             # TODO: comm_spec.get_comm_cost should return a TrainCycleItem instead of the total cost.
             # it works fine here because only REDUCE_FWD_IDENTITY_BWD and IDENTITY_FWD_ALLREDUCE_BWD are used,
             # so total cost is either for fwd or bwd.
-            if comm_spec.comm_pattern == CollectiveCommPattern.REDUCE_FWD_IDENTITY_BWD:
+            if comm_spec.comm_pattern == CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD:
                 comm_cost.fwd += cost
             elif comm_spec.comm_pattern == CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD:
                 comm_cost.fwd += cost
@@ -102,8 +106,11 @@ class StrategyGenerator_V2(ABC):
         # check if communication action exists
         # if so, loop over each action and compute the cost of each action
         if strategy.communication_actions is not None:
-            for operand, comm_spec in strategy.communication_actions:
+            for operand, comm_spec in strategy.communication_actions.items():
                 _compute_and_add(operand, comm_spec)
+
+        # update the total cost
+        comm_cost.total = comm_cost.fwd + comm_cost.bwd
 
         # update the communication cost attribute in-place
         strategy.communication_cost = comm_cost
@@ -146,7 +153,7 @@ class StrategyGenerator_V2(ABC):
         pass
 
     @abstractmethod
-    def validate(self, *args, **kwargs) -> bool:
+    def validate(self) -> bool:
         """
         Validate if the operands are of desired shape. 
         If True, means this generator can be used for the current operation.

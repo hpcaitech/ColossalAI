@@ -50,8 +50,16 @@ class LinearModuleHandler(ModuleHandler):
             if op_data.name == "weight":
                 assert op_data.logical_shape != op_data.data.shape
                 dim_partition_dict = sharding_spec.dim_partition_dict
+
                 # switch first and last dim of the linear module weight
-                dim_partition_dict[0], dim_partition_dict[-1] = dim_partition_dict[-1], dim_partition_dict[0]
+                first_dim_partition = dim_partition_dict.pop(-1, None)
+                last_dim_partition = dim_partition_dict.pop(0, None)
+
+                if first_dim_partition:
+                    dim_partition_dict[0] = first_dim_partition
+
+                if last_dim_partition:
+                    dim_partition_dict[-1] = last_dim_partition
 
                 # re-init the sharding spec
                 sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
@@ -111,8 +119,16 @@ class LinearFunctionHandler(NodeHandler):
             if op_data.name == str(self.node.args[1]):
                 assert op_data.logical_shape != op_data.data.shape
                 dim_partition_dict = sharding_spec.dim_partition_dict
+
                 # switch first and last dim of the linear module weight
-                dim_partition_dict[0], dim_partition_dict[-1] = dim_partition_dict[-1], dim_partition_dict[0]
+                first_dim_partition = dim_partition_dict.pop(-1, None)
+                last_dim_partition = dim_partition_dict.pop(0, None)
+
+                if first_dim_partition:
+                    dim_partition_dict[0] = first_dim_partition
+
+                if last_dim_partition:
+                    dim_partition_dict[-1] = last_dim_partition
 
                 # re-init the sharding spec
                 sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)

@@ -1,6 +1,3 @@
-from curses import meta
-from math import dist
-from xml.dom import HierarchyRequestErr
 from colossalai.fx.tracer import meta_patch
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.fx.tracer.meta_patch.patched_function import python_ops
