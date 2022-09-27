@@ -75,6 +75,12 @@ class OperationData:
         if self.logical_shape is None:
             self.logical_shape = self.data.shape
 
+    def __repr__(self) -> str:
+        return f'OperationData(name={self.name}, type={self.type})'
+
+    def __hash__(self) -> int:
+        return hash(f'{self.name}-{self.type}')
+
 
 @dataclass
 class TrainCycleItem:
