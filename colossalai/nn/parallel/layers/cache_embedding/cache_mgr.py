@@ -423,14 +423,9 @@ class CachedParamMgr(torch.nn.Module):
                     if self._async_copy:
                         pass
                     else:
-                        with self.timer("3_2_1_evict_out_index_select") as timer:
-                            evict_out_rows_cpu = self.cuda_cached_weight.view(self.cuda_row_num,
-                                                                              -1).index_select(0, evict_gpu_row_idxs)
-                        with self.timer("3_2_1_evict_out_gpu_to_cpu_copy") as timer:
-                            evict_out_rows_cpu = evict_out_rows_cpu.cpu()
-
-                    with self.timer("3_2_1_evict_out_index_copy") as timer:
-                        self.weight.view(self.num_embeddings, -1).index_copy_(0, evict_info.cpu(), evict_out_rows_cpu)
+                        evict_out_rows_cpu = self.cuda_cached_weight.view(self.cuda_row_num,
+                                                                          -1).index_select(0, evict_gpu_row_idxs).cpu()
+                    self.weight.view(self.num_embeddings, -1).index_copy_(0, evict_info.cpu(), evict_out_rows_cpu)
 
                 self.cached_idx_map.index_fill_(0, evict_gpu_row_idxs, -1)
                 self.inverted_cached_idx.index_fill_(0, evict_info, -1)
