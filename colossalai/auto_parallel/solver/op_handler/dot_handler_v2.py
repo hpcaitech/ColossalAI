@@ -2,11 +2,11 @@ import torch
 import torch.nn.functional as F
 from .node_handler import ModuleHandler, NodeHandler
 from ..sharding_strategy import ShardingStrategy_V2, OperationDataType, OperationData
-from ..strategy import LinearProjectionStrategyGenerator, StrategyGenerator_V2
+from ..strategy import LinearProjectionStrategyGenerator, StrategyGenerator_V2, BatchedMatMulStrategyGenerator
 from typing import List, Dict
 from .registry import operator_registry
 
-__all__ = ['LinearModuleHandler', 'LinearFunctionHandler']
+__all__ = ['LinearModuleHandler', 'LinearFunctionHandler', 'BMMFunctionHandler']
 
 
 @operator_registry.register(torch.nn.Linear)
@@ -133,3 +133,30 @@ class LinearFunctionHandler(NodeHandler):
                 # re-init the sharding spec
                 sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
         return strategy
+
+
+@operator_registry.register(torch.bmm)
+@operator_registry.register(torch.Tensor.bmm)
+class BMMFunctionHandler(NodeHandler):
+
+    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
+        # use transposed shape for strategies
+        # the strategies will be transformed back to its original shape in self.post_process
+        physical_input_operand = OperationData(name=str(self.node.args[0]),
+                                               type=OperationDataType.ARG,
+                                               data=self.node.args[0]._meta_data)
+
+        physical_other_operand = OperationData(name=str(self.node.args[1]),
+                                               type=OperationDataType.ARG,
+                                               data=self.node.args[1]._meta_data)
+        physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
+
+        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
+        return mapping
+
+    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+        generators = []
+        op_data_mapping = self.get_operation_data_mapping()
+        generators = []
+        generators.append(BatchedMatMulStrategyGenerator(op_data_mapping, self.device_mesh))
+        return generators

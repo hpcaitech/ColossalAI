@@ -49,11 +49,12 @@ class StrategyGenerator_V2(ABC):
         """
         results = {}
         for op_data_name, dim_partition_dict in mapping.items():
-            op_data = self.op_data[op_data_name]
-            sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                         entire_shape=op_data.logical_shape,
-                                         dim_partition_dict=dim_partition_dict)
-            results[op_data_name] = sharding_spec
+            if op_data_name in self.op_data:
+                op_data = self.op_data[op_data_name]
+                sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
+                                             entire_shape=op_data.logical_shape,
+                                             dim_partition_dict=dim_partition_dict)
+                results[op_data_name] = sharding_spec
         return results
 
     def replace_op_name_with_op_data(self, mapping: Dict[str, Any]):

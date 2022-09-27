@@ -483,6 +483,9 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
         other_op_data = self.op_data['other']
         assert input_op_data.data.dim() > 2 or other_op_data.data.dim() > 2
 
+    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+        return self.op_data['input'].data.shape[-1] * reduce(operator.mul, self.op_data['output'].data.shape)
+
     def split_one_batch_dim(self):
         device_mesh_is_1d = True
         if len(self.device_mesh.mesh_shape) == 1:
@@ -552,7 +555,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
             },
             "bias": {},
             "output": {
-                0: mesh_dim_0,
+                0: [mesh_dim_0],
                 -2: [mesh_dim_1]
             }
         }
@@ -635,25 +638,27 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
         # can be None as it is only for 1D device mesh
         strategy = self.split_one_batch_dim()
         if strategy:
+            # only for 1D device mesh
             strategy_list.append(strategy)
+        else:
+            # for 2D device mesh
+            # split batch dim of two inputs and the i dim of the first tensor
+            # SbSi = SbSi x Sb
+            strategy_list.append(self.split_batch_dim_lhs_space(0, 1))
+            strategy_list.append(self.split_batch_dim_lhs_space(1, 0))
 
-        # split batch dim of two inputs and the i dim of the first tensor
-        # SbSi = SbSi x Sb
-        strategy_list.append(self.split_batch_dim_lhs_space(0, 1))
-        strategy_list.append(self.split_batch_dim_lhs_space(1, 0))
+            # split batch dim of two inputs and the j of the second tensor
+            # SbSj = Sb x SbSj
+            strategy_list.append(self.split_batch_dim_rhs_space(0, 1))
+            strategy_list.append(self.split_batch_dim_rhs_space(1, 0))
 
-        # split batch dim of two inputs and the j of the second tensor
-        # SbSj = Sb x SbSj
-        strategy_list.append(self.split_batch_dim_rhs_space(0, 1))
-        strategy_list.append(self.split_batch_dim_rhs_space(1, 0))
+            # split batch dim of two inputs and the k dim of two inputs
+            # Sb = SbSk x SbSk, need to all-reduce by k dim
+            strategy_list.append(self.split_batch_dim_both_contract(0, 1))
+            strategy_list.append(self.split_batch_dim_both_contract(1, 0))
 
-        # split batch dim of two inputs and the k dim of two inputs
-        # Sb = SbSk x SbSk, need to all-reduce by k dim
-        strategy_list.append(self.split_batch_dim_both_contract(0, 1))
-        strategy_list.append(self.split_batch_dim_both_contract(1, 0))
-
-        # split two batch dim
-        strategy_list.append(self.split_two_batch_dim(0, 1))
-        strategy_list.append(self.split_two_batch_dim(1, 0))
+            # split two batch dim
+            strategy_list.append(self.split_two_batch_dim(0, 1))
+            strategy_list.append(self.split_two_batch_dim(1, 0))
 
         return strategy_list
