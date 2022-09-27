@@ -505,7 +505,7 @@ static struct PyModuleDef dynamic_programs_module = {
     PyModuleDef_HEAD_INIT, "c_version_dp", /* name of module */
     NULL, /* module documentation, may be NULL */
     -1,   /* size of per-interpreter state of the module,
-             or -1 if the module keeps state in global variables. */
+                     or -1 if the module keeps state in global variables. */
     dynamic_programs_methods};
 
 PyMODINIT_FUNC PyInit_c_version_dp(void) {
