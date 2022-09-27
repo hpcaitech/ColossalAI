@@ -55,7 +55,7 @@ class CachedParamMgr(torch.nn.Module):
         cuda_row_num: int = 0,
         buffer_size: int = 0,
         pin_weight: bool = True,
-        evict_strategy: EvictionStrategy = EvictionStrategy.LFU,
+        evict_strategy: EvictionStrategy = EvictionStrategy.DATASET,
         async_copy: bool = False,
     ) -> None:
         super(CachedParamMgr, self).__init__()
