@@ -64,7 +64,8 @@ class OperatorHandler(ABC):
         """
         pass
 
-    def _generate_memory_cost(self, dim_partition_dict_for_output, dim_partition_dict_for_weight):
+    def _generate_memory_cost(self, dim_partition_dict_for_output, dim_partition_dict_for_weight,
+                              sharding_spec_for_input):
         '''
         Compute the memory cost per device with this specific strategy.
 
@@ -102,9 +103,21 @@ class OperatorHandler(ABC):
             weight_sharding_size *= self.device_mesh.shape[mesh_dim]
         weight_memory_cost = weight_numel / weight_sharding_size * size_per_elem_bytes
 
-        total_memory_cost = activation_memory_cost + weight_memory_cost
+        # compute the memory cost of input grad
+        input_grad_numel = self.input_data.numel()
+        input_grad_sharding_size = 1
+        input_grad_mesh_dims = []
+        for sharding_dim, mesh_dims in sharding_spec_for_input.items():
+            input_grad_mesh_dims.extend(mesh_dims)
+        for mesh_dim in input_grad_mesh_dims:
+            input_grad_sharding_size *= self.device_mesh.shape[mesh_dim]
+        input_grad_memory_cost = input_grad_numel / input_grad_sharding_size * size_per_elem_bytes
 
-        return total_memory_cost, activation_memory_cost, weight_memory_cost
+        memory_cost_forward = activation_memory_cost + weight_memory_cost
+        memory_cost_backward = input_grad_memory_cost + weight_memory_cost
+
+        return (memory_cost_forward,
+                memory_cost_backward), activation_memory_cost, weight_memory_cost, input_grad_memory_cost
 
     def _generate_resharding_costs(self, sharding_specs):
         # The resharding_cost of weight is counted due to sharing weight cases.
