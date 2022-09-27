@@ -8,6 +8,12 @@ from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
+import time
+try:
+    from c_version_dp import persistent_compute_table
+    CVERSION = True
+except ImportError:
+    CVERSION = False
 
 
 # this is the python compute table code from rotor
@@ -345,7 +351,10 @@ def solver_rotor(gm: ColoGraphModule,
 
     chain: Chain = _construct_chain(node_list, data)
     chain._discretize(mem_unit)
-    opt_table = _compute_table(chain, mem_slots)
+    if CVERSION:
+        opt_table = persistent_compute_table(chain, mem_slots)
+    else:
+        opt_table = _compute_table(chain, mem_slots)
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
     _annotate_from_sequence(sequence, node_list)
 
