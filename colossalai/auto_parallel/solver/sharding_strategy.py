@@ -49,9 +49,10 @@ class OperationDataType(Enum):
     """
     An operation can come from the argument list of an operator or the parameter list of a module.
     """
-    ARG = 0
-    PARAM = 1
-    OUTPUT = 2
+    INPUT = 0
+    ARG = 1
+    PARAM = 2
+    OUTPUT = 3
 
 
 @dataclass
