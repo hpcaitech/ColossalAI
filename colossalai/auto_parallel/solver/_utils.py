@@ -79,7 +79,7 @@ def generate_resharding_costs(nodes: List[Node],
                     input_sharding_spec, input_spec)
 
                 # we need multiply the size of elem dtype to get correct communication cost
-                resharding_cost = total_resharding_cost * size_per_elem_bytes
+                resharding_cost = total_resharding_cost["total"] * size_per_elem_bytes
             except AssertionError as e:
                 warnings.warn(f'{e}')
                 resharding_cost = INFINITY_COST
