@@ -82,8 +82,6 @@ class ModuleHandler(NodeHandler):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        print("created")
-
         # set attributes to access module parameters for convenience
         assert self.node.graph.owning_module is not None, \
             f'The graph is not associated with a module, please make sure it can be used to instantiate a GraphModule object.'
