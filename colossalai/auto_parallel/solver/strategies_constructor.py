@@ -442,11 +442,7 @@ class StrategiesConstructor_V2:
         """
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
-            input_nodes_len = 0
-            for check_node in strategies_vector.predecessor_nodes:
-                if isinstance(check_node._meta_data, torch.Tensor):
-                    input_nodes_len += 1
-            # input_nodes_len = len(strategies_vector.predecessor_nodes)
+
             # placeholder node
             if node.op == 'placeholder':
                 # TODO: implement placeholder node handler
