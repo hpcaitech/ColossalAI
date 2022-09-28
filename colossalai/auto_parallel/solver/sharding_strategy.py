@@ -7,6 +7,7 @@ from functools import reduce
 
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from typing import Dict, List, Union, Tuple, Any
 from torch.fx.node import Node
 from .constants import *
@@ -48,9 +49,10 @@ class OperationDataType(Enum):
     """
     An operation can come from the argument list of an operator or the parameter list of a module.
     """
-    ARG = 0
-    PARAM = 1
-    OUTPUT = 2
+    INPUT = 0
+    ARG = 1
+    PARAM = 2
+    OUTPUT = 3
 
 
 @dataclass
@@ -74,6 +76,12 @@ class OperationData:
         if self.logical_shape is None:
             self.logical_shape = self.data.shape
 
+    def __repr__(self) -> str:
+        return f'OperationData(name={self.name}, type={self.type})'
+
+    def __hash__(self) -> int:
+        return hash(f'{self.name}-{self.type}')
+
 
 @dataclass
 class TrainCycleItem:
@@ -90,18 +98,12 @@ class TrainCycleItem:
     total: Any
 
 
-class CommunicationType(Enum):
-    FWD_ALL_REDUCE = 0
-    BWD_ALL_REDUCE = 1
-
-
 @dataclass
-class CommunicationAction:
+class MemoryCost:
     """
-    The actions 
     """
-    type: CommunicationType
-    mesh_dim: int
+    activation: int = 0
+    parameter: int = 0
 
 
 @dataclass
@@ -126,7 +128,7 @@ class ShardingStrategy_V2:
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None
     input_resharding_costs: Dict[OperationData, List[float]] = None
-    communication_actions: Dict[OperationData, List[CommunicationAction]] = None
+    communication_actions: Dict[OperationData, CommSpec] = None
 
     @property
     def input_sharding_specs(self) -> Dict[OperationData, ShardingSpec]:
@@ -150,79 +152,6 @@ class ShardingStrategy_V2:
     def _get_sharding_spec(self, operation_data_type: OperationDataType):
         specs = {k: v for k, v in self.sharding_specs.items() if k.type == operation_data_type}
         return specs
-
-
-class StrategyGenerator_V2(ABC):
-    """
-    StrategyGenerator is used to generate the same group of sharding strategies. 
-
-    TODO: remove the original strategy_generator.py after refactoring
-    """
-
-    def __init__(self, device_mesh: DeviceMesh):
-        self.device_mesh = device_mesh
-
-    def update_communication_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """
-        Compute the communication cost involved in the forward and backward iteration.
-        """
-
-        comm_cost = TrainCycleItem(fwd=0, bwd=0)
-
-        def _compute_and_add(data: OperationData, action: CommunicationAction):
-            sharded_shape = strategy.sharding_specs[data].get_sharded_shape_per_device()
-            dtype = operand.data.dtype
-            size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-            num_bytes = size_per_elem_bytes * reduce(operator.mul, sharded_shape)
-            cost = self.device_mesh.all_reduce_cost(num_bytes=num_bytes, mesh_dim=action.mesh_dim)
-
-            # compute the fwd
-            if action.type == CommunicationType.FWD_ALL_REDUCE:
-                comm_cost.fwd += cost
-            elif action.type == CommunicationType.BWD_ALL_REDUCE:
-                comm_cost.fwd += cost
-            else:
-                raise ValueError(f"Found unknown CommunicationType {action.type}")
-
-        # check if communication action exists
-        # if so, loop over each action and compute the cost of each action
-        if strategy.communication_actions is not None:
-            for operand, actions in strategy.communication_actions:
-                for action in actions:
-                    _compute_and_add(operand, action)
-
-        # update the communication cost attribute in-place
-        strategy.communication_cost = comm_cost
-        return strategy
-
-    @abstractmethod
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """
-        Customize this method to compute the computation flops.
-        """
-        pass
-
-    @abstractmethod
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """
-        Customize this method to compute the memory cost in bytes.
-        """
-        pass
-
-    @abstractmethod
-    def generate(self, operand_mapping: Dict[str, OperationData]) -> List[ShardingStrategy_V2]:
-        """
-        Generate all possible sharding strategies for this operation.
-        """
-        pass
-
-    @abstractmethod
-    def validate(self, *args, **kwargs) -> bool:
-        """
-        Validate if the operands are of desired shape. 
-        If True, means this generator can be used for the current operation.
-        """
-        pass
 
 
 class StrategiesVector(list):
