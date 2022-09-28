@@ -129,6 +129,7 @@ class ShardingStrategy_V2:
     memory_cost: TrainCycleItem = None
     input_resharding_costs: Dict[OperationData, List[float]] = None
     communication_actions: Dict[OperationData, CommSpec] = None
+    resharding_costs: Dict[OperationData, Dict[ShardingSpec, TrainCycleItem]] = None
 
     @property
     def input_sharding_specs(self) -> Dict[OperationData, ShardingSpec]:
@@ -152,6 +153,18 @@ class ShardingStrategy_V2:
     def _get_sharding_spec(self, operation_data_type: OperationDataType):
         specs = {k: v for k, v in self.sharding_specs.items() if k.type == operation_data_type}
         return specs
+
+    def get_op_data_by_name(self, name: str):
+        for op_data in self.sharding_specs.keys():
+            if op_data.name == name:
+                return op_data
+        raise KeyError(f"Could not find the OperationData with name {name}")
+
+    def get_sharding_spec_by_name(self, name: str):
+        for op_data, sharding_spec in self.sharding_specs.items():
+            if op_data.name == name:
+                return sharding_spec
+        raise KeyError(f"Could not find the ShardingSpec for OperationData with name {name}")
 
 
 class StrategiesVector(list):
