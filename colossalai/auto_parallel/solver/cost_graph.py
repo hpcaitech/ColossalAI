@@ -31,7 +31,7 @@ class CostGraph:
 
     def _remove_invalid_node(self, node, attr_name):
         remove_list = []
-        target_node_list = getattr(node, attr_name, None)
+        target_node_list = getattr(node, attr_name, [])
         for target_node in target_node_list:
             if target_node not in self.nodes:
                 remove_list.append(target_node)
@@ -98,11 +98,11 @@ class CostGraph:
         # build merge_map
         merge_map = {}
         for src_index, strategy in enumerate(src_node.strategies_vector):
-            min_cost = INFINITY_COST + 1
+            min_cost = INFINITY_COST
             lowest_cost_index = -1
             for dst_index, dst_strategy in enumerate(dst_node.strategies_vector):
                 resharding_cost = dst_strategy.resharding_costs[src_node][src_index]
-                if resharding_cost < min_cost:
+                if resharding_cost <= min_cost:
                     min_cost = resharding_cost
                     lowest_cost_index = dst_index
             merge_map[src_index] = lowest_cost_index
