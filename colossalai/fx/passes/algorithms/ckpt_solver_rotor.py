@@ -5,9 +5,7 @@ from colossalai.fx.profiler import activation_size, parameter_size
 import math
 from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
-from distutils.core import setup, Extension
 try:
     from .dynamic_programs_C_version import persistent_compute_table
     CVERSION = True
@@ -342,7 +340,8 @@ def solver_rotor(gm: ColoGraphModule,
                  mem_limit: int,
                  mem_slots: int = 500,
                  cnode: List[str] = None,
-                 eps: float = 0.0) -> ColoGraphModule:
+                 eps: float = 0.0,
+                 force_python: bool = False) -> ColoGraphModule:
     """solver that automatically find activation checkpoint in rotor's manner
 
     Args:
@@ -352,6 +351,7 @@ def solver_rotor(gm: ColoGraphModule,
         mem_slots (int, optional): number of slots for discretizing memory budget. Defaults to 500.
         cnode (List[Node], optional): common node list for linearize. Defaults to None.
         eps (float): epsilon for memory decay. Defaults to 0.0
+        force_python (bool): force to use python version of dynamic programs
 
     Returns:
         ColoGraphModule: annotated ColoGraphModuled with __sequence__ attribute
@@ -365,7 +365,7 @@ def solver_rotor(gm: ColoGraphModule,
 
     chain: Chain = _construct_chain(node_list, data)
     chain._discretize(mem_unit)
-    if CVERSION:
+    if CVERSION and not force_python:
         opt_table = persistent_compute_table(chain, mem_slots)
     else:
         opt_table = _compute_table(chain, mem_slots)
