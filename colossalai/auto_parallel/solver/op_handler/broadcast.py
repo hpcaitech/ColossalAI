@@ -34,10 +34,7 @@ def get_broadcast_shape(shape1: torch.Size, shape2: torch.Size) -> List[int]:
     min_common_dim = min(len(shape1), len(shape2))
     dims = []
     for s1, s2 in zip(shape1_reverse, shape2_reverse):
-        if s1 == 1 or s2 == 1 or s1 == s2:
-            dims.append(max(s1, s2))
-        else:
-            raise Exception("Invalid dims")
+        dims.append(max(s1, s2))
 
     # append the remaining dims
     dims.extend(shape1_reverse[min_common_dim:])
@@ -48,7 +45,7 @@ def get_broadcast_shape(shape1: torch.Size, shape2: torch.Size) -> List[int]:
 def recover_sharding_spec_for_broadcast_shape(logical_sharding_spec: ShardingSpec, logical_shape: torch.Size,
                                               physical_shape: torch.Size) -> ShardingSpec:
     """
-    This function computes the sharding spec for the physical shape of a tensor.
+    This function computes the sharding spec for the physical shape of a broadcast tensor.
 
     Args:
         logical_sharding_spec (ShardingSpec): the sharding spec for the broadcast tensor
