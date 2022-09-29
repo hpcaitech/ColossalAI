@@ -11,8 +11,6 @@ from colossalai.fx.passes.algorithms.operation import Sequence
 from colossalai.core import global_context as gpc
 from colossalai.utils import free_port
 import pytest
-import time
-import numpy as np
 from colossalai import META_COMPATIBILITY
 if META_COMPATIBILITY:
     from colossalai.fx.profiler.tensor import MetaTensor
