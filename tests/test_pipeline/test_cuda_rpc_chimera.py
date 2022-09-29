@@ -22,10 +22,9 @@ def run_master(args):
 
     epoch = args.epoch
     device = args.device
-    stage_num = 4
+    stage_num = args.world_size
     chunk = 1
-    num_microbatches = 4
-    actual_stage_num = 4
+    num_microbatches = args.num_microbatches
     use_checkpoint = False
 
     sample_num = 1024
@@ -78,6 +77,4 @@ def run_master(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    args.world_size = 4
-    args.num_microbatches = 4
     rpc_run(args, run_master)
