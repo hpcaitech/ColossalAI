@@ -24,7 +24,7 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
     """
 
     if isinstance(input_, Node):
-        assert hasattr(input_, '_meta_data'), f'The given node has not attribte _meta_data'
+        assert hasattr(input_, '_meta_data'), f'The given node has no attribte _meta_data'
         meta_tensor = input_._meta_data
         assert meta_tensor is not None, "The given node's _meta_data attribute is None"
         shape = meta_tensor.shape
@@ -47,7 +47,8 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
 def generate_resharding_costs(nodes: List[Node],
                               sharding_specs: List[ShardingSpec],
                               count_backward: Optional[bool] = True,
-                              dtype: Optional[torch.dtype] = None):
+                              dtype: Optional[torch.dtype] = None,
+                              index=None):
     '''
     Compute the resharding costs with this specific strategy.
 
@@ -68,6 +69,9 @@ def generate_resharding_costs(nodes: List[Node],
         resharding_costs[input_node] = []
         for strategy in input_node.strategies_vector:
             input_sharding_spec = strategy.output_sharding_spec
+            if not isinstance(input_sharding_spec, ShardingSpec):
+                assert isinstance(input_sharding_spec, list), 'only ShardingSpec or List[ShardingSpec] is expected.'
+                input_sharding_spec = input_sharding_spec[index]
             assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
             try:
                 # compute the resharding cost
