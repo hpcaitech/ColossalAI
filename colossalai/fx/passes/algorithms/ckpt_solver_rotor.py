@@ -6,25 +6,6 @@ import math
 from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
-try:
-    from .dynamic_programs_C_version import persistent_compute_table
-    CVERSION = True
-except ModuleNotFoundError:
-    import subprocess
-    import os
-    print("dynamic_programs_C_version hasn't been built! Building library...")
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    result = subprocess.Popen(f'python {os.path.join(this_dir, "build_c_ext.py")} build_ext --build-lib={this_dir}',
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              shell=True)
-    if result.wait() == 0:
-        print("dynamic_programs_C_version has been built!")
-        from .dynamic_programs_C_version import persistent_compute_table
-        CVERSION = True
-    else:
-        print("dynamic_programs_C_version built failed! Using python version!")
-        CVERSION = False
 
 
 # this is the python compute table code from rotor
@@ -357,18 +338,51 @@ def solver_rotor(gm: ColoGraphModule,
         ColoGraphModule: annotated ColoGraphModuled with __sequence__ attribute
     """
 
-    node_list = linearize(gm, cnode)
-    mem_unit = mem_limit * (1.0 - eps) // mem_slots
+    # try to import C version solver if force_python is not set
+    if not force_python:
+        try:
+            from .dynamic_programs_C_version import persistent_compute_table
+            CVERSION = True
+
+        # build module if module not found
+        except ModuleNotFoundError:
+            import subprocess
+            import os
+            print("dynamic_programs_C_version hasn't been built! Building library...")
+            this_dir = os.path.dirname(os.path.abspath(__file__))
+            result = subprocess.Popen(
+                f'python {os.path.join(this_dir, "build_c_ext.py")} build_ext --build-lib={this_dir}',
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=True)
+            if result.wait() == 0:
+                print("dynamic_programs_C_version has been built!")
+                from .dynamic_programs_C_version import persistent_compute_table
+                CVERSION = True
+            else:
+                print("dynamic_programs_C_version built failed! Using python version!")
+                CVERSION = False
+
+    # check if metainfoprop is done
     if any(len(node.meta) == 0 for node in gm.graph.nodes):
         raise RuntimeError(
             "Nodes meta information hasn't been prepared! Please run MetaInfoProp before calling solver!")
 
+    # linearize the graph
+    node_list = linearize(gm, cnode)
+
+    # construct chain
+    mem_unit = mem_limit * (1.0 - eps) // mem_slots
     chain: Chain = _construct_chain(node_list, data)
     chain._discretize(mem_unit)
+
+    # use C version if possible
     if CVERSION and not force_python:
         opt_table = persistent_compute_table(chain, mem_slots)
     else:
         opt_table = _compute_table(chain, mem_slots)
+
+    # found sequence
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
     _annotate_from_sequence(sequence, node_list)
 
