@@ -2,29 +2,29 @@ from colossalai.fx.tracer.meta_patch.patched_module import linear
 import torch
 import torch.nn as nn
 from colossalai.fx import ColoTracer, ColoGraphModule
-from colossalai.auto_parallel.solver.op_handler.batch_norm_handler_v2 import BatchNormModuleHandler
+from colossalai.auto_parallel.solver.op_handler.layer_norm_handler_v2 import LayerNormModuleHandler
 from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 
 
-def test_bn_module_handler():
-    model = nn.Sequential(nn.BatchNorm2d(16).to('meta'))
+def test_ln_module_handler():
+    model = nn.Sequential(nn.LayerNorm(16).to('meta'))
     tracer = ColoTracer()
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
     #     %_0 : [#users=1] = call_module[target=0](args = (%input_1,), kwargs = {})
     #     return _0
-    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 16, 64, 64).to('meta')})
+    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 16).to('meta')})
     gm = ColoGraphModule(model, graph)
     physical_mesh_id = torch.arange(0, 4)
 
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
-    bn_mod_node = list(graph.nodes)[1]
-    strategies_vector = StrategiesVector(bn_mod_node)
+    ln_mod_node = list(graph.nodes)[1]
+    strategies_vector = StrategiesVector(ln_mod_node)
 
     # build handler
-    handler = BatchNormModuleHandler(node=bn_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
+    handler = LayerNormModuleHandler(node=ln_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
     # check operation data mapping
     mapping = handler.get_operation_data_mapping()
@@ -37,9 +37,9 @@ def test_bn_module_handler():
 
     assert mapping['input'].name == "input_1"
     assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([4, 16, 64, 64])
+    assert mapping['input'].data.shape == torch.Size([4, 16])
     assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 16, 64, 64])
+    assert mapping['input'].logical_shape == torch.Size([4, 16])
 
     assert mapping['other'].name == "weight"
     assert mapping['other'].data.is_meta
@@ -55,33 +55,22 @@ def test_bn_module_handler():
 
     assert mapping['output'].name == "_0"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 16, 64, 64])
+    assert mapping['output'].data.shape == torch.Size([4, 16])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
     strategies_vector = handler.register_strategy()
     strategy_name_list = [val.name for val in strategies_vector]
 
-    # RS = RS x S
-    assert 'RS0 = RS0 x S0' in strategy_name_list
-    assert 'RS1 = RS1 x S1' in strategy_name_list
+    # SR = SR x R
+    assert '[S0, R] = [S0, R] x [R]' in strategy_name_list
+    assert '[S1, R] = [S1, R] x [R]' in strategy_name_list
 
     # RR = RR x R
     assert 'RR = RR x R' in strategy_name_list
 
-    # RS01 = RS01 x S01
-    assert 'RS01 = RS01 x S01' in strategy_name_list
-
-    # SR = SR x R WITH SYNC_BN
-    assert 'S0R = S0R x R WITH SYNC_BN' in strategy_name_list
-    assert 'S1R = S1R x R WITH SYNC_BN' in strategy_name_list
-
-    # SS = SS x S WITH SYNC_BN
-    assert 'S0S1 = S0S1 x S1 WITH SYNC_BN' in strategy_name_list
-    assert 'S1S0 = S1S0 x S0 WITH SYNC_BN' in strategy_name_list
-
-    # S01R = S01R x R WITH SYNC_BN
-    assert 'S01R = S01R x R WITH SYNC_BN' in strategy_name_list
+    # S01R = S01R x R
+    assert '[S01, R] = [S01, R] x [R]' in strategy_name_list
 
 
 if __name__ == '__main__':
-    test_bn_module_handler()
+    test_ln_module_handler()
