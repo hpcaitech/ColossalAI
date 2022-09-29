@@ -4,6 +4,7 @@ from colossalai.auto_parallel.solver.op_handler.layer_norm_handler import LayerN
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.auto_parallel.solver.op_handler.registry import operator_registry
 from .options import SolverOptions
 from . import ShardingStrategy, StrategiesVector
 from .op_handler import *
@@ -15,6 +16,8 @@ import operator
 from typing import Dict, List
 from ._utils import generate_sharding_spec, generate_resharding_costs
 import builtins
+
+__all__ = ['StrategiesConstructor', 'StrategiesConstructor_V2']
 
 
 class StrategiesConstructor:
@@ -49,6 +52,7 @@ class StrategiesConstructor:
                 name_checklist.append(strategy.name)
             else:
                 remove_list.append(strategy)
+
         for strategy in remove_list:
             strategies_vector.remove(strategy)
 
@@ -210,6 +214,21 @@ class StrategiesConstructor:
                     linear_handler = DotHandler(node, self.device_mesh, strategies_vector)
                     linear_handler.register_strategy()
 
+                # where function
+                elif target == torch.where:
+                    if input_nodes_len == 1:
+                        # both of x and y are scalar
+                        pass
+
+                    elif input_nodes_len == 2:
+                        # one of x or y is type of scalar
+                        pass
+
+                    else:
+                        # general case
+                        where_handler = WhereHandler(node, self.device_mesh, strategies_vector)
+                        where_handler.register_strategy()
+
                 # reshape function
                 elif target in RESHAPE_FUNC_OP:
                     # use ReshapeHandler to create sharding strategies for rehsape node
@@ -218,9 +237,8 @@ class StrategiesConstructor:
 
                 # element-wise function
                 elif target in ELEMENTWISE_FUNC_OP or (target in BCAST_FUNC_OP and input_nodes_len == 1):
-                    if isinstance(node._meta_data, torch.Tensor):
-                        unary_elementwise_handler = UnaryElementwiseHandler(node, self.device_mesh, strategies_vector)
-                        unary_elementwise_handler.register_strategy()
+                    unary_elementwise_handler = UnaryElementwiseHandler(node, self.device_mesh, strategies_vector)
+                    unary_elementwise_handler.register_strategy()
 
                 # bcast op
                 elif target in BCAST_FUNC_OP:
@@ -287,32 +305,34 @@ class StrategiesConstructor:
                 elif target == operator.getitem:
                     index = node.args[1]
                     input_tensor_node = strategies_vector.predecessor_nodes[0]
-                    if isinstance(input_tensor_node, torch.Tensor):
-                        for strategy in input_tensor_node.strategies_vector:
+                    for strategy in input_tensor_node.strategies_vector:
+                        if isinstance(strategy.output_sharding_spec, ShardingSpec):
+                            input_sharding_spec = strategy.output_sharding_spec
+                        else:
                             input_sharding_spec = strategy.output_sharding_spec[index]
-                            assert isinstance(input_sharding_spec, ShardingSpec), f'This assertion is used to debug.'
-                            dim_partition_dict_for_output = deepcopy(input_sharding_spec.dim_partition_dict)
-                            entire_shape_output = deepcopy(input_sharding_spec.entire_shape)
-                            output_sharding_spec = ShardingSpec(self.device_mesh,
-                                                                entire_shape_output,
-                                                                dim_partition_dict=dim_partition_dict_for_output)
-                            # TODO: use meta_info_prop to profile origin memory cost and compute cost, then divide them depending on sharding spec.
-                            compute_cost = 0
-                            memory_cost = 0
-                            resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
-                                                                         [input_sharding_spec])
-                            # to prevent the resharding happening, set their resharding cost to inf.
-                            resharding_costs[input_tensor_node] = [
-                                cost if cost == 0 else math.inf for cost in resharding_costs[input_tensor_node]
-                            ]
-                            sharding_strategy = ShardingStrategy(
-                                name,
-                                output_sharding_spec,
-                                compute_cost=compute_cost,
-                                memory_cost=memory_cost,
-                                resharding_costs=resharding_costs,
-                                input_shardings=[input_tensor_node.output_sharding_spec])
-                            strategies_vector.append(sharding_strategy)
+                        assert isinstance(input_sharding_spec, ShardingSpec), f'This assertion is used to debug.'
+                        dim_partition_dict_for_output = deepcopy(input_sharding_spec.dim_partition_dict)
+                        entire_shape_output = deepcopy(input_sharding_spec.entire_shape)
+                        output_sharding_spec = ShardingSpec(self.device_mesh,
+                                                            entire_shape_output,
+                                                            dim_partition_dict=dim_partition_dict_for_output)
+                        # TODO: use meta_info_prop to profile origin memory cost and compute cost, then divide them depending on sharding spec.
+                        compute_cost = 0
+                        memory_cost = 0
+                        resharding_costs = generate_resharding_costs(strategies_vector.predecessor_nodes,
+                                                                     [input_sharding_spec],
+                                                                     index=index)
+                        # to prevent the resharding happening, set their resharding cost to inf.
+                        resharding_costs[input_tensor_node] = [
+                            cost if cost == 0 else INFINITY_COST for cost in resharding_costs[input_tensor_node]
+                        ]
+                        sharding_strategy = ShardingStrategy(name,
+                                                             output_sharding_spec,
+                                                             compute_cost=compute_cost,
+                                                             memory_cost=memory_cost,
+                                                             resharding_costs=resharding_costs,
+                                                             input_shardings=[strategy.output_sharding_spec])
+                        strategies_vector.append(sharding_strategy)
 
                 # torch.arange function
                 elif target == torch.arange:
@@ -330,8 +350,7 @@ class StrategiesConstructor:
                     strategies_vector.append(sharding_strategy)
 
                 # op list to be processed to support gpt2
-                elif target in (builtins.getattr, operator.le, torch.addmm, operator.pow, torch.where, torch.softmax,
-                                torch.nn.functional.softmax, torch.pow, torch.tanh):
+                elif target in (builtins.getattr, operator.le, torch.addmm):
                     pass
                 # other function
                 else:
@@ -340,7 +359,7 @@ class StrategiesConstructor:
             # call_method node
             if node.op == 'call_method':
                 method = getattr(node.args[0]._meta_data.__class__, node.target)
-                if method in (torch.Tensor.size, torch.Tensor.contiguous):
+                if method in (torch.Tensor.size,):
                     pass
                 elif method in ELEMENTWISE_METHOD_OP:
                     unary_elementwise_handler = UnaryElementwiseHandler(node, self.device_mesh, strategies_vector)
@@ -394,3 +413,100 @@ class StrategiesConstructor:
             setattr(node, 'strategies_vector', strategies_vector)
             self.leaf_strategies.append(strategies_vector)
             self.strategy_map[node] = strategies_vector
+
+
+        # remove no strategy nodes
+        remove_list = []
+        for strategies_vector in self.leaf_strategies:
+            if len(strategies_vector) == 0:
+                remove_list.append(strategies_vector.node)
+        for node in remove_list:
+            if node.strategies_vector in self.leaf_strategies:
+                self.leaf_strategies.remove(node.strategies_vector)
+            if node in self.strategy_map:
+                self.strategy_map.pop(node)
+
+
+class StrategiesConstructor_V2:
+    """
+    StrategiesConstructor is used to construct the parallelization plan for the model execution.
+
+    Args:
+        graph (Graph): a Graph object used for analysis and strategy generation.
+        device_mesh (DeviceMesh): a DeviceMesh object which contains the meta information about the cluster.
+        solver_options (SolverOptions): a SolverOptions object which specifies the preferences for plan searching.
+    """
+
+    def __init__(self, graph: Graph, device_mesh: DeviceMesh, solver_options: SolverOptions):
+        self.graph = graph
+        assert graph.owning_module is not None, 'The given graph is not associated with a owning_module'
+        self.root_module = self.graph.owning_module
+        self.nodes = list(graph.nodes)
+        self.device_mesh = device_mesh
+        self.leaf_strategies = []
+        self.strategy_map = {}
+        self.solver_options = solver_options
+
+    def remove_duplicated_strategy(self, strategies_vector):
+        '''
+        In build_strategies_and_cost method, we may produce some duplicated strategies.
+        In this method, we will remove the duplicated strategies depending on the strategies name.
+        Note that this operation is in-place.
+        '''
+        name_checklist = []
+        remove_list = []
+        for strategy in strategies_vector:
+            if strategy.name not in name_checklist:
+                name_checklist.append(strategy.name)
+            else:
+                remove_list.append(strategy)
+        for strategy in remove_list:
+            strategies_vector.remove(strategy)
+
+    def build_strategies_and_cost(self):
+        """
+        This method is to build the strategy vector for each node in the computation graph.
+        """
+        for node in self.nodes:
+            strategies_vector = StrategiesVector(node)
+
+            # placeholder node
+            if node.op == 'placeholder':
+                # TODO: implement placeholder node handler
+                pass
+
+            # get_attr node
+            elif node.op == 'get_attr':
+                # TODO: implement getattr node handler
+                pass
+
+            # call_module node
+            elif node.op == 'call_module':
+                target = node.target
+                submod = self.root_module.get_submodule(target)
+                submod_type = type(submod)
+                handler = operator_registry.get(submod_type)(node, self.device_mesh, strategies_vector)
+                handler.register_strategy()
+
+            # call_function node
+            elif node.op == 'call_function':
+                target = node.target
+                handler = operator_registry.get(target)(node, self.device_mesh, strategies_vector)
+                handler.register_strategy()
+
+            # call_method node
+            elif node.op == 'call_method':
+                method = getattr(node.args[0]._meta_data.__class__, node.target)
+                handler = operator_registry.get(method)(node, self.device_mesh, strategies_vector)
+                handler.register_strategy()
+
+            # output node
+            elif node.op == 'output':
+                # TODO: implement output node handler
+                pass
+
+            self.remove_duplicated_strategy(strategies_vector)
+            setattr(node, 'strategies_vector', strategies_vector)
+            self.leaf_strategies.append(strategies_vector)
+            self.strategy_map[node] = strategies_vector
+
