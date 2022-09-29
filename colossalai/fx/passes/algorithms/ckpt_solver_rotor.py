@@ -350,7 +350,7 @@ def solver_rotor(gm: ColoGraphModule,
         except ModuleNotFoundError:
             import subprocess
             import os
-            logger.info("dynamic_programs_C_version hasn't been built! Building library...", ranks=0)
+            logger.info("dynamic_programs_C_version hasn't been built! Building library...", ranks=[0])
             this_dir = os.path.dirname(os.path.abspath(__file__))
             result = subprocess.Popen(
                 f'python {os.path.join(this_dir, "build_c_ext.py")} build_ext --build-lib={this_dir}',
