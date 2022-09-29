@@ -66,6 +66,9 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
         self._preprocess(_weight, cuda_row_num, ids_freq_mapping, warmup_ratio, buffer_size, pin_weight)
         self.cache_op = True
 
+    def set_cache_mgr_async_copy(self, flag):
+        self.cache_weight_mgr._async_copy = flag
+
     def _weight_alloc(self, dtype, device):
         weight = torch.empty(self.num_embeddings, self.embedding_dim, dtype=dtype, device=device)
         with torch.no_grad():

@@ -1,9 +1,14 @@
+import colorsys
 from .operator_handler import OperatorHandler
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from copy import deepcopy
 import math
+from colossalai.auto_parallel.solver._utils import exception_handler
+import warnings
+import torch
+from ..constants import INFINITY_COST
 
 
 class ReshapeHandler(OperatorHandler):
@@ -19,6 +24,7 @@ class ReshapeHandler(OperatorHandler):
     def _generate_compute_cost(self, *args, **kwargs):
         return super()._generate_compute_cost(*args, **kwargs)
 
+    @exception_handler
     def register_strategy(self):
         # TODO: add strategies with more output sharding specs other than only fully replicated.
         input_node = self.strategies_vector.predecessor_nodes[0]
@@ -37,11 +43,23 @@ class ReshapeHandler(OperatorHandler):
                 continue
             sharding_spec_checklist.append(input_sharding_spec)
             dim_partition_dict_for_output = {}
-            output_sharding_spec = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+            if isinstance(self.output_data, tuple):
+                dim_partition_dict_for_output = [{} for _ in range(len(self.output_data))]
+            try:
+                if isinstance(self.output_data, tuple):
+                    output_sharding_spec = []
+                    for output, dim_partition_dict in zip(self.output_data, dim_partition_dict_for_output):
+                        output_sharding_spec.append(self._generate_sharding_spec(output, dim_partition_dict))
+                else:
+                    output_sharding_spec = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+            except AssertionError as e:
+                warnings.warn(f'{e}')
+                continue
             name = f'{input_sharding_spec.sharding_sequence} -> FULLY REPLICATED'
             # TODO: use meta_info_prop to profile memory cost and compute cost
             compute_cost = 0
-            memory_cost = self.node._meta_data.numel()
+            # consider node._meta_data is in type of tuple
+            memory_cost = 0
 
             # compute the communication cost, in reshape op, the communication happens during casting the input sharding spec to fully replicating.
             dim_partition_dict_for_replicate_input = {}
@@ -56,7 +74,7 @@ class ReshapeHandler(OperatorHandler):
             resharding_costs = self._generate_resharding_costs([input_sharding_spec])
 
             # to prevent the resharding happening, set their resharding cost to inf.
-            resharding_costs[input_node] = [0 if cost == 0 else math.inf for cost in resharding_costs[input_node]]
+            resharding_costs[input_node] = [0 if cost == 0 else INFINITY_COST for cost in resharding_costs[input_node]]
             sharding_strategy = ShardingStrategy(name,
                                                  output_sharding_spec,
                                                  compute_cost=compute_cost,

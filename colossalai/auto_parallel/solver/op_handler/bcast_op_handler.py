@@ -93,7 +93,7 @@ class BcastOpHandler(OperatorHandler):
                     input_sharding_spec, input_spec)
 
                 # we need multiply the size of elem dtype to get correct communication cost
-                resharding_cost = total_resharding_cost * size_per_elem_bytes
+                resharding_cost = total_resharding_cost["total"] * size_per_elem_bytes
                 resharding_costs[input_node].append(resharding_cost)
 
         return resharding_costs
