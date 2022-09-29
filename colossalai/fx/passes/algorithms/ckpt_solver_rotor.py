@@ -6,6 +6,7 @@ import math
 from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
+from colossalai.logging import get_dist_logger
 
 
 # this is the python compute table code from rotor
@@ -339,6 +340,7 @@ def solver_rotor(gm: ColoGraphModule,
     """
 
     # try to import C version solver if force_python is not set
+    logger = get_dist_logger()
     if not force_python:
         try:
             from .dynamic_programs_C_version import persistent_compute_table
@@ -348,7 +350,7 @@ def solver_rotor(gm: ColoGraphModule,
         except ModuleNotFoundError:
             import subprocess
             import os
-            print("dynamic_programs_C_version hasn't been built! Building library...")
+            logger.info("dynamic_programs_C_version hasn't been built! Building library...", ranks=0)
             this_dir = os.path.dirname(os.path.abspath(__file__))
             result = subprocess.Popen(
                 f'python {os.path.join(this_dir, "build_c_ext.py")} build_ext --build-lib={this_dir}',
@@ -356,12 +358,14 @@ def solver_rotor(gm: ColoGraphModule,
                 stderr=subprocess.PIPE,
                 shell=True)
             if result.wait() == 0:
-                print("dynamic_programs_C_version has been built!")
+                logger.info("dynamic_programs_C_version has been built!", ranks=[0])
                 from .dynamic_programs_C_version import persistent_compute_table
                 CVERSION = True
             else:
-                print("dynamic_programs_C_version built failed! Using python version!")
+                logger.info("dynamic_programs_C_version built failed! Using python version!", ranks=[0])
                 CVERSION = False
+    else:
+        CVERSION = False
 
     # check if metainfoprop is done
     if any(len(node.meta) == 0 for node in gm.graph.nodes):
@@ -378,9 +382,11 @@ def solver_rotor(gm: ColoGraphModule,
 
     # use C version if possible
     if CVERSION and not force_python:
+        logger.info("Using C version rotor solver!", ranks=[0])
         opt_table = persistent_compute_table(chain, mem_slots)
     else:
         opt_table = _compute_table(chain, mem_slots)
+        logger.info("Using python version rotor solver!", ranks=[0])
 
     # found sequence
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
