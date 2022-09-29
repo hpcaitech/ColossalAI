@@ -53,7 +53,11 @@ def _profile_concrete(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...
         out (Tuple[Any, ...]): The argument value that was retrieved.
         meta_info (GraphInfo): The memory cost and FLOPs estimated with `MetaTensor`.
     """
-    raise NotImplementedError
+    graphinfo = GraphInfo()
+
+    # detach input from the graph
+    args = tree_map(detach, args)
+    kwargs = tree_map(detach, kwargs)
 
 
 def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphInfo]:
