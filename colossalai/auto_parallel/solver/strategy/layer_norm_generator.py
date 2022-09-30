@@ -1,6 +1,5 @@
 import operator
 from functools import reduce
-from turtle import forward
 from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 from .strategy_generator import StrategyGenerator_V2
