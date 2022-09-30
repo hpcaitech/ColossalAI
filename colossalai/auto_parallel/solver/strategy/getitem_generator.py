@@ -102,6 +102,11 @@ class TensorStrategyGenerator(GetItemStrategyGenerator):
 
             strategy_list.append(strategy)
 
+        for strategy in strategy_list:
+            self.update_communication_cost(strategy)
+            self.update_compute_cost(strategy)
+            self.update_memory_cost(strategy)
+
         return strategy_list
 
 
@@ -133,5 +138,10 @@ class TensorTupleStrategyGenerator(GetItemStrategyGenerator):
                                                   communication_action_mapping=communication_action_mapping)
 
             strategy_list.append(strategy)
+
+        for strategy in strategy_list:
+            self.update_communication_cost(strategy)
+            self.update_compute_cost(strategy)
+            self.update_memory_cost(strategy)
 
         return strategy_list

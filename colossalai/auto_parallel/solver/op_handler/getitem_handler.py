@@ -21,7 +21,7 @@ class GetItemHandler(NodeHandler):
         if isinstance(self.node.args[0]._meta_data, torch.Tensor):
             generators.append(TensorStrategyGenerator(op_data_mapping, self.device_mesh, self.node.args[0]))
         else:
-            generators.append(TensorTupleStrategyGenerator(op_data_mapping, self.device_mesh))
+            generators.append(TensorTupleStrategyGenerator(op_data_mapping, self.device_mesh, self.node.args[0]))
 
         return generators
 
