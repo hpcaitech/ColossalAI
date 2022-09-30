@@ -224,14 +224,16 @@ class ZeroDDP(ColoDDP):
         # TODO: get param order and filter unused params
         for p in module.parameters():
             assert isinstance(p, ColoParameter)
+            dp_world_size = p.process_group.dp_world_size()
+
             if getattr(p, '_ddp_to_ignore', False):
-                p.data = p.half()
+                p.data = p.data.half()
                 continue
 
-            dp_world_size = p.process_group.dp_world_size()
-            fp32_data = p.float().data
-            p.data = p.half()
+            fp32_data = p.data.float()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
+            p.data = p.data.half()
+
             self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
             self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size, pin_memory)
             self.fp32_params.append(fp32_p)

@@ -87,7 +87,8 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 # detaching tensor is necessary for optimizers.
                 requires_grad = param.requires_grad
                 # TODO(jiaruifang) we initialize a Default PG memory
-                colo_param = ColoParameter(param.to(self._device), requires_grad=requires_grad)
+                colo_param = ColoParameter(param.to(device=self._device, dtype=torch.float16),
+                                           requires_grad=requires_grad)
                 # add mapping record
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)

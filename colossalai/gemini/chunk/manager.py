@@ -158,6 +158,7 @@ class ChunkManager:
         for chunk in self.accessed_chunks:
             if chunk.can_release:
                 chunk_list.append(chunk)
+        chunk_list.sort(key=lambda x: x.count_id)
         return chunk_list
 
     def get_chunks(self, tensors: Iterable[torch.Tensor]) -> Tuple[Chunk, ...]:

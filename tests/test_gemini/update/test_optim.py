@@ -48,7 +48,7 @@ def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
     return logits
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
+@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 def exam_gpt_fwd_bwd(placement_policy):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
