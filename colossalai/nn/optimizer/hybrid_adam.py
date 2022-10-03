@@ -68,7 +68,9 @@ class HybridAdam(NVMeOptimizer):
                  weight_decay=0,
                  adamw_mode=True,
                  nvme_offload_fraction: float = 0.0,
-                 nvme_offload_dir: Optional[str] = None):
+                 nvme_offload_dir: Optional[str] = None,
+                 use_bf16: bool = False
+                 ):
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(HybridAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
@@ -78,9 +80,8 @@ class HybridAdam(NVMeOptimizer):
             import colossal_C
         except ImportError:
             raise ImportError('Please install colossalai from source code to use HybridAdam')
-
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
-
+        self.use_bf16 = use_bf16
         self.gpu_adam_op = colossal_C.multi_tensor_adam
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
@@ -99,13 +100,12 @@ class HybridAdam(NVMeOptimizer):
 
                 if p.grad is None:
                     continue
-
+                
                 state = self.state[p]
-
                 target_device = p.device
+
                 if len(state) == 0:
                     state['step'] = 0
-
                     # gradient momentums
                     state['exp_avg'] = torch.zeros_like(p, dtype=torch.float, device=target_device)
                     # gradient variances
@@ -115,14 +115,16 @@ class HybridAdam(NVMeOptimizer):
                 state['step'] += 1
                 group_step = state['step']
                 beta1, beta2 = group['betas']
-
+                
                 if target_device.type == 'cpu':
                     assert state['exp_avg'].device.type == 'cpu', "exp_avg should stay on cpu"
                     assert state['exp_avg_sq'].device.type == 'cpu', "exp_avg should stay on cpu"
                     self._pre_update(p, 'exp_avg', 'exp_avg_sq')
+                    
                     self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'], group['weight_decay'],
                                           group['bias_correction'], p.data, p.grad.data, state['exp_avg'],
                                           state['exp_avg_sq'], -1)
+
                     self._post_update(p, 'exp_avg', 'exp_avg_sq')
 
                 elif target_device.type == 'cuda':
