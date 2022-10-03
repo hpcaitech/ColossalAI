@@ -1,20 +1,17 @@
 from copy import deepcopy
-from typing import Optional, Union, overload
+from typing import Optional
 import torch
 from torch.utils._pytree import tree_map, tree_flatten
 from torch.types import _bool, _dtype, _device
-
-try:
-    from functools import singledispatchmethod
-except:
-    try:
-        from singledispatchmethod import singledispatchmethod
-    except:
-        print(
-            "singledispatchmethod is not compatible with current Python version. Please try `pip install singledispatchmethod`."
-        )
+import uuid
 
 __all__ = ['MetaTensor']
+
+
+def set_uuid(x):
+    if isinstance(x, torch.Tensor):
+        if not hasattr(x, 'uuid'):
+            setattr(x, 'uuid', uuid.uuid4())
 
 
 class MetaTensor(torch.Tensor):
@@ -51,6 +48,7 @@ class MetaTensor(torch.Tensor):
         if not r._tensor.is_meta:
             r._tensor = r._tensor.to(torch.device('meta'))
         # only tensor not on `meta` should be copied to `meta`
+        set_uuid(r._tensor)
         return r
 
     def __repr__(self):
@@ -93,7 +91,6 @@ class MetaTensor(torch.Tensor):
 
         return tree_map(wrap, out)
 
-    @singledispatchmethod
     def to(self, *args, **kwargs) -> torch.Tensor:
         """An extension of `torch.Tensor.to()` to MetaTensor
 
@@ -110,14 +107,13 @@ class MetaTensor(torch.Tensor):
             MetaTensor(tensor(..., device='meta', size=(10,)), fake_device='vulkan')
         """
         # this imitates c++ function in the way of @overload
-        return super().to(*args, **kwargs)
-
-    @to.register
-    def _(self, device: str, dtype: Optional[_dtype] = None, non_blocking: _bool = False, copy: _bool = False) -> torch.Tensor:
-        result = super().to(dtype, non_blocking, copy) if dtype is not None else self
-        return MetaTensor(deepcopy(result), fake_device=device)
-
-    @to.register
-    def _(self, device: _device, dtype: Optional[_dtype] = None, non_blocking: _bool = False, copy: _bool = False) -> torch.Tensor:
-        result = super().to(dtype, non_blocking, copy) if dtype is not None else self
-        return MetaTensor(deepcopy(result), fake_device=device)
+        device = None
+        for arg in args:
+            if isinstance(arg, str) or isinstance(arg, _device):
+                device = arg
+        if 'device' in kwargs:
+            device = kwargs['device']
+        result = super().to(*args, **kwargs)
+        if device is not None:
+            result = MetaTensor(deepcopy(result), fake_device=device)
+        return result

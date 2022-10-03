@@ -1,5 +1,5 @@
 import torch
-from torch.fx import Node
+from torch.fx import Node, GraphModule
 from typing import Union, Dict, List, Tuple
 from . import META_COMPATIBILITY
 
@@ -21,7 +21,7 @@ def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     elif isinstance(out, dict):
         value_list = [v for _, v in out.items()]
         act_size += activation_size(value_list)
-    elif isinstance(out, tuple) or isinstance(out, list):
+    elif isinstance(out, tuple) or isinstance(out, list) or isinstance(out, set):
         for element in out:
             act_size += activation_size(element)
     return act_size
@@ -40,6 +40,22 @@ def parameter_size(mod: torch.nn.Module) -> int:
     for param in mod.parameters():
         param_size += param.numel() * torch.tensor([], dtype=param.dtype).element_size()
     return param_size
+
+
+def calculate_fwd_tmp(n: Node):
+    return activation_size(n.meta["fwd_tmp"])
+
+
+def calculate_fwd_out(n: Node):
+
+    def intersect(a, b):
+        return {k: a[k] for k in a if k in b}
+
+    fwd_in = dict()
+    for u in n.users:
+        fwd_in.update({x.uuid: x for x in u.meta["fwd_in"] if isinstance(x, torch.Tensor) and hasattr(x, 'uuid')})
+    fwd_out = {x.uuid: x for x in n.meta["fwd_out"] if isinstance(x, torch.Tensor) and hasattr(x, 'uuid')}
+    return activation_size(intersect(fwd_in, fwd_out))
 
 
 def is_inplace(n: Node):

@@ -144,9 +144,11 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
 
     def pack(x):
         global cache
-        if isinstance(x, FlopTensor) and not x._tensor.data_ptr in cache:
-            x._node.meta['saved_tensor'] += [x]
-            cache.add(x._tensor.data_ptr)
+        if isinstance(x, FlopTensor) and not x._tensor.uuid in cache:
+            tensor = x._tensor.detach()
+            tensor.uuid = x._tensor.uuid
+            x._node.meta['saved_tensor'] += [tensor]
+            cache.add(x._tensor.uuid)
         return x
 
     def unpack(x):
@@ -165,16 +167,25 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
 
         # If the output is not a floating point `torch.Tensor` or it does not
         # requires grad, then we should not run backward for this node.
-        for tensor in normalize_tuple(out):
-            if is_autogradable(tensor) and tensor.requires_grad:
-                phase = Phase.BACKWARD
-                grad = torch.empty_like(tensor._tensor, device=torch.device('meta')) if isinstance(
-                    tensor, FlopTensor) else torch.empty_like(tensor, device=torch.device('meta'))
-                torch.autograd.backward(tensor, FlopTensor(grad, fake_device=tensor.device), retain_graph=True)
+        if all(map(lambda x: is_autogradable(x) and x.requires_grad, normalize_tuple(out))):
+            phase = Phase.BACKWARD
+            grad_out = [torch.zeros_like(t) for t in normalize_tuple(out)]
+            torch.autograd.backward(
+                out,
+                grad_out,
+            )
 
     graph_info = autograd_graph_analysis(subgraph)
     graph_info.fwd_flop, graph_info.bwd_flop = flop_count[Phase.FORWARD], flop_count[Phase.BACKWARD]
-    graph_info.fwd_mem_out = activation_size(out)
+
+    def extract_tensor(x: Any):
+        if isinstance(x, MetaTensor):
+            tensor = x._tensor.detach()
+            tensor.uuid = x._tensor.uuid
+            return tensor
+        return x
+
+    graph_info.fwd_out = list(map(extract_tensor, normalize_tuple(out)))
 
     def unwrap(x):
         return MetaTensor(x) if isinstance(x, torch.Tensor) else x
@@ -210,7 +221,7 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
             out, meta = _profile_concrete(func, *args, **kwargs)
         if inplace:
             if target in [torch.nn.functional.relu]:
-                meta.save_fwd_in = False
+                meta.fwd_in = []
                 meta.bwd_mem_out = 0
         return out, meta
 
@@ -267,7 +278,7 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
             # super-dainiu: experiments on mobilenet_v2 shows that `torch.nn.ReLU`
             # is the only inplace activation function that discard its input.
             if type(module) in [torch.nn.ReLU]:
-                meta.save_fwd_in = False
+                meta.fwd_in = []
                 meta.bwd_mem_out = 0
         return out, meta
 
