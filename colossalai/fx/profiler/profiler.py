@@ -5,7 +5,7 @@ from torch.fx import Graph, Node
 from torch.fx.node import Argument, Target
 from torch.utils._pytree import tree_map
 from .dataflow import autograd_graph_analysis, is_phase, Phase, GraphInfo
-from .memory import activation_size
+from .memory import activation_size, parameter_size
 from .constant import ALIAS_ATEN
 from .tensor import MetaTensor
 from .opcount import flop_mapping
@@ -333,9 +333,7 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
         inplace = getattr(module, 'inplace', False)
 
         # calculate parameter size
-        param_size = 0
-        for param in module.parameters():
-            param_size += param.numel() * param.element_size()
+        param_size = parameter_size(module)
 
         if inplace:
             module.inplace = False
