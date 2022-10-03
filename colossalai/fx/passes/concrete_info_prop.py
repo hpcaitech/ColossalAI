@@ -41,9 +41,9 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
 @compatibility(is_backward_compatible=True)
 class ConcreteInfoProp(torch.fx.Interpreter):
     """
-    Execute an FX graph Node-by-Node with meta tensor and
-    record the memory usage, FLOPs, and type of the result
-    into the corresponding node.
+    Execute an FX graph Node-by-Node with concrete tensor and record the memory
+    usage, execution time of forward and backward, and type of the result into
+    the corresponding node.
 
     Usage:
         BATCH_SIZE = 2
@@ -53,21 +53,21 @@ class ConcreteInfoProp(torch.fx.Interpreter):
         model = torch.nn.Sequential(
             torch.nn.Linear(DIM_IN, DIM_HIDDEN), 
             torch.nn.Linear(DIM_HIDDEN, DIM_OUT),
-            )
-        input_sample = torch.rand(BATCH_SIZE, DIM_IN)
+            ).cuda()
+        input_sample = torch.rand(BATCH_SIZE, DIM_IN, device="cuda")
         gm = symbolic_trace(model)
-        interp = MetaInfoProp(gm)
+        interp = ConcreteInfoProp(gm)
         interp.run(input_sample)
-        print(interp.summary(format='kb'))    # don't panic if some statistics are 0.00 MB
+        print(interp.summary(unit='kb'))    
         
         
-        # output of above code is 
-            Op type       Op    Forward FLOPs    Backward FLOPs    SAVE_FWD_IN    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
-        -----------  -------  ---------------  ----------------  -------------  ---------  ---------  ---------  ---------
-        placeholder  input_1          0 FLOPs           0 FLOPs          False    0.00 KB    0.00 KB    0.00 KB    0.00 KB
-        call_module       _0        128 FLOPs         288 FLOPs           True    0.12 KB    0.00 KB    0.34 KB    0.00 KB
-        call_module       _1        512 FLOPs       1,056 FLOPs           True    0.12 KB    0.00 KB    1.19 KB    0.00 KB
-             output   output          0 FLOPs           0 FLOPs           True    0.00 KB    0.00 KB    0.00 KB    0.00 KB
+        output of above code is 
+        Op type       Op             Forward time             Backward time    SAVE_FWD_IN    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
+        -----------  -------  -----------------------  ------------------------  -------------  ---------  ---------  ---------  ---------
+        placeholder  input_1                    0.0 s                     0.0 s          False    0.00 KB    0.00 KB    0.00 KB    0.00 KB
+        call_module       _0  0.0003993511199951172 s     0.00706791877746582 s          False    0.50 KB    0.00 KB    0.03 KB    0.66 KB
+        call_module       _1   6.29425048828125e-05 s  0.00018286705017089844 s          False    0.50 KB    0.00 KB    0.12 KB    0.81 KB
+             output   output                    0.0 s                     0.0 s           True    0.00 KB    0.00 KB    0.00 KB    0.00 KB
     Args:
          module (GraphModule): The module to be executed
 
@@ -129,7 +129,7 @@ class ConcreteInfoProp(torch.fx.Interpreter):
 
         Returns:
             result (Any): The argument value that was retrieved
-            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
+            meta_info (MetaInfo): The memory cost and forward & backward time.
         """
         return super().placeholder(target, args, kwargs), GraphInfo()
 
@@ -166,7 +166,7 @@ class ConcreteInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
+            meta_info (MetaInfo): The memory cost and forward & backward time.
         """
         assert not isinstance(target, str)
         return profile_function(target, "cuda:0")(*args, **kwargs)
@@ -185,7 +185,7 @@ class ConcreteInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
+            meta_info (MetaInfo): The memory cost and forward & backward time.
         """
         return profile_method(target, "cuda:0")(*args, **kwargs)
 
@@ -203,7 +203,7 @@ class ConcreteInfoProp(torch.fx.Interpreter):
 
         Return
             result (Any): The argument value that was retrieved
-            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
+            meta_info (MetaInfo): The memory cost and forward & backward time.
         """
         # Retrieve executed args and kwargs values from the environment
         # Execute the method and return the result
@@ -226,7 +226,7 @@ class ConcreteInfoProp(torch.fx.Interpreter):
 
         Return:
             result (Any): The argument value that was retrieved
-            meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
+            meta_info (MetaInfo): The memory cost and forward & backward time.
         """
         return args[0], GraphInfo(save_fwd_in=True)
 
