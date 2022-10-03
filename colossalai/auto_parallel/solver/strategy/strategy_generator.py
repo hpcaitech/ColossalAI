@@ -91,27 +91,17 @@ class StrategyGenerator_V2(ABC):
             num_ele_in_comm = comm_spec.get_comm_cost()
             dtype = operand.data.dtype
             size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-            cost = size_per_elem_bytes * num_ele_in_comm
-
-            # compute the fwd
-            # TODO: comm_spec.get_comm_cost should return a TrainCycleItem instead of the total cost.
-            # it works fine here because only REDUCE_FWD_IDENTITY_BWD and IDENTITY_FWD_ALLREDUCE_BWD are used,
-            # so total cost is either for fwd or bwd.
-            if comm_spec.comm_pattern == CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD:
-                comm_cost.fwd += cost
-            elif comm_spec.comm_pattern == CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD:
-                comm_cost.fwd += cost
-            else:
-                raise ValueError(f"Found unknown CommunicationType {comm_spec.comm_pattern}")
+            for phase, cost in num_ele_in_comm.items():
+                num_ele_in_comm[phase] = num_ele_in_comm[phase] * size_per_elem_bytes
+            comm_cost.fwd += num_ele_in_comm['forward']
+            comm_cost.bwd += num_ele_in_comm['backward']
+            comm_cost.total += num_ele_in_comm['total']
 
         # check if communication action exists
         # if so, loop over each action and compute the cost of each action
         if strategy.communication_actions is not None:
             for operand, comm_spec in strategy.communication_actions.items():
                 _compute_and_add(operand, comm_spec)
-
-        # update the total cost
-        comm_cost.total = comm_cost.fwd + comm_cost.bwd
 
         # update the communication cost attribute in-place
         strategy.communication_cost = comm_cost

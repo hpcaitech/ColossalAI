@@ -19,6 +19,7 @@ class BMMTorchFunctionModule(nn.Module):
         return torch.bmm(x1, x2)
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
 def test_2d_device_mesh(module):
 
@@ -89,6 +90,7 @@ def test_2d_device_mesh(module):
     assert 'Sb1R = Sb1Sk0 x Sb1Sk0' in strategy_name_list
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
 def test_1d_device_mesh(module):
     model = module()
