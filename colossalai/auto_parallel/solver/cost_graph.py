@@ -1,6 +1,7 @@
 from typing import List
 import math
 from torch.fx.node import Node
+from colossalai.auto_parallel.solver.constants import INFINITY_COST
 
 
 class CostGraph:
@@ -19,6 +20,7 @@ class CostGraph:
 
     def __init__(self, leaf_strategies, simplify=True):
         self.leaf_strategies = leaf_strategies
+        self.nodes = [strategies_vector.node for strategies_vector in self.leaf_strategies]
         # stores number of strategies in each node
         self.node_lens = {strategies_vector.node: len(strategies_vector) for strategies_vector in self.leaf_strategies}
         # extra_node_costs will store the extra costs introduced by merging nodes
@@ -26,6 +28,15 @@ class CostGraph:
         self.following_dict = {}
         self.simplify = simplify
         self._build_cost_graph()
+
+    def _remove_invalid_node(self, node, attr_name):
+        remove_list = []
+        target_node_list = getattr(node, attr_name, [])
+        for target_node in target_node_list:
+            if target_node not in self.nodes:
+                remove_list.append(target_node)
+        for element in remove_list:
+            target_node_list.remove(element)
 
     def _build_cost_graph(self):
         '''
@@ -39,6 +50,8 @@ class CostGraph:
             # build edge_cost
             dst_node = strategies_vector.node
             for src_node in strategies_vector.predecessor_nodes:
+                if src_node not in self.nodes:
+                    continue
                 node_pair = (src_node, dst_node)
                 # src_index = strategies_vector.predecessor_nodes.index(src_node)
                 edge_cost = {}
@@ -49,6 +62,8 @@ class CostGraph:
             # add parents and children attribute to node
             setattr(dst_node, 'parents', strategies_vector.predecessor_nodes)
             setattr(dst_node, 'children', strategies_vector.successor_nodes)
+            self._remove_invalid_node(dst_node, 'parents')
+            self._remove_invalid_node(dst_node, 'children')
 
             if self.simplify and strategies_vector.check_merge():
                 for followed_node in strategies_vector.predecessor_nodes:
@@ -83,11 +98,11 @@ class CostGraph:
         # build merge_map
         merge_map = {}
         for src_index, strategy in enumerate(src_node.strategies_vector):
-            min_cost = math.inf
+            min_cost = INFINITY_COST
             lowest_cost_index = -1
             for dst_index, dst_strategy in enumerate(dst_node.strategies_vector):
                 resharding_cost = dst_strategy.resharding_costs[src_node][src_index]
-                if resharding_cost < min_cost:
+                if resharding_cost <= min_cost:
                     min_cost = resharding_cost
                     lowest_cost_index = dst_index
             merge_map[src_index] = lowest_cost_index
