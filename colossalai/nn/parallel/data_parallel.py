@@ -208,25 +208,43 @@ class ZeroDDP(ColoDDP):
     def __init__(self,
                  module: torch.nn.Module,
                  gemini_manager: GeminiManager,
-                 force_outputs_fp32: bool = False) -> None:
+                 force_outputs_fp32: bool = False,
+                 use_bf16: bool = False
+                 ) -> None:
         super().__init__(module, process_group=gemini_manager.chunk_manager.process_group)
         self.gemini_manager = gemini_manager
         self.chunk_manager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
+        self.use_bf16 = use_bf16
         self.param_op_hook = ZeROHookV2(gemini_manager)
         self.fp32_params: List[ColoParameter] = []
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
-        self.chunk_manager.create_group('fp16_param', force_data_on_cuda=True)
+        # change here
+        if self.use_bf16:
+            self.chunk_manager.create_group('bf16_param', force_data_on_cuda=True)
+        else:
+            self.chunk_manager.create_group('fp16_param', force_data_on_cuda=True)
+        # end here
         self.chunk_manager.create_group('fp32_param')
         # TODO: get param order and filter unused params
         for p in module.parameters():
+            # change here
             if getattr(p, '_ddp_to_ignore', False):
-                p.data = p.half()
+                if self.use_bf16:
+                    p.data = p.bfloat16()
+                else:
+                    p.data = p.half()
                 continue
             fp32_p = p.float().detach()
-            p.data = p.half()
-            self.chunk_manager.append_tensor(p, 'fp16_param')
+            
+            if self.use_bf16:
+                p.data = p.bfloat16()
+                self.chunk_manager.append_tensor(p, 'bf16_param')
+            else:
+                p.data = p.half()
+                self.chunk_manager.append_tensor(p, 'fp16_param')
+            # end here
             self.chunk_manager.append_tensor(fp32_p, 'fp32_param')
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
@@ -234,7 +252,12 @@ class ZeroDDP(ColoDDP):
         self._logger = get_dist_logger()
 
     def forward(self, *args, **kwargs):
-        args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
+        # change here
+        if self.use_bf16:
+            args, kwargs = _cast_float(args, torch.bfloat16), _cast_float(kwargs, torch.bfloat16)
+        else:
+            args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
+        # end here
         self.module.zero_grad(set_to_none=True)
         self.gemini_manager.pre_iter()
         with ParamOpHookManager.use_hooks(self.param_op_hook):
@@ -350,7 +373,7 @@ class ZeroDDP(ColoDDP):
             for tensor in chunk.get_tensors():
                 rec_p = torch.empty([0])
                 if record_flag:
-                    rec_p = tensor.cpu()    # move the whole tensor to CPU mem
+                    rec_p = tensor.cpu()  # move the whole tensor to CPU mem
                 assert tensor not in param_to_save_data
                 param_to_save_data[tensor] = rec_p
             # release the actual memory of the chunk
@@ -406,7 +429,7 @@ class ZeroDDP(ColoDDP):
         state_dict = state_dict.copy()
         if metadata is not None:
             # mypy isn't aware that "_metadata" exists in state_dict
-            state_dict._metadata = metadata    # type: ignore[attr-defined]
+            state_dict._metadata = metadata  # type: ignore[attr-defined]
 
         prefix = ''
         local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
@@ -499,8 +522,12 @@ class ZeroDDP(ColoDDP):
         for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
             if p is not None:
                 load(name, fp32_p, partial(load_fp32_p, fp32_p))
-        self.chunk_manager.copy_chunk_group('fp16_param', 'fp32_param')
-
+        # change here
+        if self.use_bf16:
+            self.chunk_manager.copy_chunk_group('bf16_param', 'fp32_param')
+        else:
+            self.chunk_manager.copy_chunk_group('fp16_param', 'fp32_param')
+        # end here
         for name, buf in persistent_buffers.items():
             if buf is not None:
                 load(name, buf, buf.copy_)
@@ -526,4 +553,9 @@ class ZeroDDP(ColoDDP):
         for buffer in self.module.buffers():
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
-                buffer.data = buffer.half()
+                #change here
+                if self.use_bf16:
+                    buffer.data = buffer.bfloat16()
+                else:
+                    buffer.data = buffer.half()
+                # end here
