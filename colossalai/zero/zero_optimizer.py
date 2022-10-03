@@ -56,16 +56,18 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  backoff_factor: float = 0.5,
                  growth_interval: int = 1000,
                  hysteresis: int = 2,
-                 max_scale: float = 2**32):
+                 max_scale: float = 2**32
+                 ):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
         self.module = module
+        self.use_bf16 = optim.use_bf16
         self.gemini_manager = module.gemini_manager
         self.chunk_manager = self.gemini_manager.chunk_manager
         self.optim_state = OptimState.UNSCALED
-        self.fp16_param_to_fp32_param: Dict[torch.Tensor, torch.Tensor] = {}
+        self.bf_fp16_param_to_fp32_param: Dict[torch.Tensor, torch.Tensor] = {}
         for p, fp32_p in zip(module.parameters(), module.fp32_params):
-            self.fp16_param_to_fp32_param[p] = fp32_p
+            self.bf_fp16_param_to_fp32_param[p] = fp32_p
 
         # Grad scaler
         self.grad_scaler = DynamicGradScaler(initial_scale=initial_scale,
@@ -94,12 +96,17 @@ class ZeroOptimizer(ColossalaiOptimizer):
         for group in self.optim.param_groups:
             for p in group['params']:
                 if not self.module.chunk_manager.get_chunk(p).is_empty:
-                    p.data = self.fp16_param_to_fp32_param[p]
+                    p.data = self.bf_fp16_param_to_fp32_param[p]
                 else:
                     assert p.grad is None
 
-    def _update_fp16_params(self):
-        self.module.chunk_manager.copy_chunk_group('fp16_param', 'fp32_param')
+    def _update_bf_fp16_params(self):
+        # change here
+        if self.use_bf16:
+            self.module.chunk_manager.copy_chunk_group('bf16_param', 'fp32_param')
+        else:
+            self.module.chunk_manager.copy_chunk_group('fp16_param', 'fp32_param')
+        # end here
 
     def _check_overflow(self):
         # clear previous overflow record
@@ -136,13 +143,13 @@ class ZeroOptimizer(ColossalaiOptimizer):
         if found_inf:
             self._logger.info(f'Found overflow. Skip step')
             self.zero_grad()
-            self._update_fp16_params()
+            self._update_bf_fp16_params()
             return
         self._update_params_ptr()
         ret = self.optim.step(*args, **kwargs)
         self._register_states()
         self.zero_grad()
-        self._update_fp16_params()
+        self._update_bf_fp16_params()
         return ret
 
     def compute_grad_norm(self, norm_type: float = 2.0) -> float:
@@ -197,22 +204,40 @@ class ZeroOptimizer(ColossalaiOptimizer):
             available_cuda_margin_mem = self.gemini_manager.cuda_margin_mem * self.gpu_margin_mem_ratio
             fp32_params_available_cuda_margin_mem = available_cuda_margin_mem / self.optim.num_fp32_shards_per_param
             fp32_params_used_cuda_margin_mem = 0
-            for fp16_param_chunk, fp32_param_chunk in zip(self.chunk_manager.chunk_groups['fp16_param'],
-                                                          self.chunk_manager.chunk_groups['fp32_param']):
-                if fp32_param_chunk.is_empty:
-                    continue
-                if fp32_params_used_cuda_margin_mem + fp32_param_chunk.mem < fp32_params_available_cuda_margin_mem:
-                    self.chunk_manager.move_chunk(fp32_param_chunk, get_current_device())
-                    # stores grad now
-                    self.chunk_manager.move_chunk(fp16_param_chunk, get_current_device())
-                    self.module._set_chunk_grad_device(fp16_param_chunk, get_current_device())
-                    fp32_params_used_cuda_margin_mem += fp32_param_chunk.mem
-                    for p in fp16_param_chunk.get_tensors():
-                        state = self.optim.state[p]
-                        for k, v in state.items():
-                            if isinstance(v, torch.Tensor):
-                                state[k] = v.to(get_current_device())
-
+            # change here
+            if self.use_bf16:
+                for bf16_param_chunk, fp32_param_chunk in zip(self.chunk_manager.chunk_groups['bf16_param'],
+                                                              self.chunk_manager.chunk_groups['fp32_param']):
+                    if fp32_param_chunk.is_empty:
+                        continue
+                    if fp32_params_used_cuda_margin_mem + fp32_param_chunk.mem < fp32_params_available_cuda_margin_mem:
+                        self.chunk_manager.move_chunk(fp32_param_chunk, get_current_device())
+                        # stores grad now
+                        self.chunk_manager.move_chunk(bf16_param_chunk, get_current_device())
+                        self.module._set_chunk_grad_device(bf16_param_chunk, get_current_device())
+                        fp32_params_used_cuda_margin_mem += fp32_param_chunk.mem
+                        for p in bf16_param_chunk.get_tensors():
+                            state = self.optim.state[p]
+                            for k, v in state.items():
+                                if isinstance(v, torch.Tensor):
+                                    state[k] = v.to(get_current_device())
+            else:
+                for fp16_param_chunk, fp32_param_chunk in zip(self.chunk_manager.chunk_groups['fp16_param'],
+                                                              self.chunk_manager.chunk_groups['fp32_param']):
+                    if fp32_param_chunk.is_empty:
+                        continue
+                    if fp32_params_used_cuda_margin_mem + fp32_param_chunk.mem < fp32_params_available_cuda_margin_mem:
+                        self.chunk_manager.move_chunk(fp32_param_chunk, get_current_device())
+                        # stores grad now
+                        self.chunk_manager.move_chunk(fp16_param_chunk, get_current_device())
+                        self.module._set_chunk_grad_device(fp16_param_chunk, get_current_device())
+                        fp32_params_used_cuda_margin_mem += fp32_param_chunk.mem
+                        for p in fp16_param_chunk.get_tensors():
+                            state = self.optim.state[p]
+                            for k, v in state.items():
+                                if isinstance(v, torch.Tensor):
+                                    state[k] = v.to(get_current_device())
+            #end here
             self.module._setup_grads_ptr()
 
     def _register_states_(self):
@@ -313,7 +338,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         state = defaultdict(dict)
         for k, v in state_dict['state'].items():
             if k in id_map:
-                param = self.fp16_param_to_fp32_param[id_map[k]]
+                param = self.bf_fp16_param_to_fp32_param[id_map[k]]
                 if param.storage().size() > 0:
                     state[param] = cast(param, deepcopy(v))
             else:
