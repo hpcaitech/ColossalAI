@@ -182,6 +182,8 @@ class StrategiesVector(list):
         # fetch its input and output nodes
         # TODO: placeholder input nodes
         self.predecessor_nodes = list(node._input_nodes.keys())
+        if self.node.op == 'output':
+            self.predecessor_nodes = list(node._input_nodes.keys())[:1]
         self.successor_nodes = list(node.users.keys())
 
     def check_merge(self):
