@@ -28,7 +28,12 @@ class ZeROHookV2(ParamOpHook):
             self._chunk_manager.trans_tensor_state(p, TensorState.COMPUTE)
         self._chunk_manager.exec_lazy_release()
         self._gemini_manager.sample_overall_data()
-        self._gemini_manager.adjust_layout(chunks, 'fp16_param')
+        #change here
+        if torch.bfloat16 in [chunk.dtype for chunk in chunks]:
+            self._gemini_manager.adjust_layout(chunks, 'bf16_param')
+        else:
+            self._gemini_manager.adjust_layout(chunks, 'fp16_param')
+        # end here
         for chunk in chunks:
             self._chunk_manager.access_chunk(chunk)
         self._gemini_manager.sample_model_data()
