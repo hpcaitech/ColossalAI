@@ -92,7 +92,11 @@ def _profile_concrete(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...
         bwd_time1 = time.time()
         graphinfo.bwd_time = bwd_time1 - bwd_time0
         mem_stamp1 = torch.cuda.max_memory_allocated()
+
+        # calculate bwd memory stats
+        # NOTE: the module should add param to bwd_mem_out for bwd_mem_tmp calculation
         graphinfo.bwd_mem_out = activation_size(args) + activation_size(kwargs)
+        graphinfo.bwd_mem_out += parameter_size(target.__self__) if hasattr(target.__self__, "parameters") else 0
         graphinfo.bwd_mem_tmp = mem_stamp1 - mem_stamp0 - graphinfo.bwd_mem_out
 
     else:
@@ -122,7 +126,11 @@ def _profile_concrete(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...
         bwd_time1 = time.time()
         graphinfo.bwd_time = bwd_time1 - bwd_time0
         mem_stamp1 = torch.cuda.max_memory_allocated()
+
+        # calculate bwd memory stats
+        # NOTE: the module should add param to bwd_mem_out for bwd_mem_tmp calculation
         graphinfo.bwd_mem_out = activation_size(args) + activation_size(kwargs)
+        graphinfo.bwd_mem_out += parameter_size(target.__self__) if hasattr(target.__self__, "parameters") else 0
         graphinfo.bwd_mem_tmp = mem_stamp1 - mem_stamp0 - graphinfo.bwd_mem_out
 
     return tree_map(detach_variables, out), graphinfo
@@ -286,6 +294,17 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
         else:
             out, meta = _profile_concrete(func, *args, **kwargs)
 
+        # find the grad for parameter in args and kwargs
+        param_size = 0
+
+        def get_param_size(x):
+            if isinstance(x, torch.nn.parameter):
+                param_size += activation_size(x)
+
+        tree_map(get_param_size, args)
+        tree_map(get_param_size, kwargs)
+
+        meta.bwd_mem_out -= param_size
         return out, meta
 
     f.__name__ = target.__name__
@@ -349,7 +368,7 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
             out, meta = _profile_concrete(func, *args, **kwargs)
 
         # grad for param will not be counted
-        meta.bwd_mem_tmp -= param_size
+        meta.bwd_mem_out -= param_size
         return out, meta
 
     f.__name__ = module.__class__.__name__
