@@ -4,6 +4,7 @@ import torch
 from torch.utils._pytree import tree_map, tree_flatten
 from torch.types import _bool, _dtype, _device
 import uuid
+from .constant import ALIAS_ATEN
 
 __all__ = ['MetaTensor']
 
@@ -79,6 +80,11 @@ class MetaTensor(torch.Tensor):
 
         # run aten for backend=CPU but actually on backend=Meta
         out = func(*args, **kwargs)
+
+        # here we keep the uuid of input because ALIAS_ATEN do not generate a physical copy
+        # of the input
+        if func in ALIAS_ATEN:
+            setattr(out, 'uuid', args[0].uuid)
 
         # Now, we want to continue propagating this tensor, so we rewrap Tensors in
         # our custom tensor subclass
