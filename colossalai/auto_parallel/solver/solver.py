@@ -45,8 +45,8 @@ class Solver:
         self.strategies_constructor = strategies_constructor
         self.cost_graph = cost_graph
         self.graph_analyser = graph_analyser
-        self.nodes = list(self.graph.nodes)
         self.leaf_strategies = self.strategies_constructor.leaf_strategies
+        self.nodes = [strategies_vector.node for strategies_vector in self.leaf_strategies]
         self.strategy_map = self.strategies_constructor.strategy_map
         self.memory_budget = memory_budget
         self.solution_numbers = solution_numbers
@@ -67,7 +67,7 @@ class Solver:
         Therefore, the index of those strategies are copied from the previous node. This method is used to recover the strategy index of those merged
         node.
         '''
-        for node_index, node in enumerate(self.graph.nodes):
+        for node_index, node in enumerate(self.nodes):
             if node.strategies_vector.check_merge():
                 # the merged node has only one input, and its strategies follow the input sharding strategy
                 input_strategies_vector = node.args[0].strategies_vector
@@ -297,7 +297,8 @@ class Solver:
                 num_edges += 1
                 e.append(LpVariable.matrix(f"e[{i},{j}]", (range(len(s[i]) * len(s[j])),), cat="Binary"))
             assert len(e[idx]) == len(r[idx])
-
+        for element in s:
+            assert len(element) > 0
         # 2. Set initial value
         ######################################
         # set a initial value for warm start #
@@ -317,12 +318,14 @@ class Solver:
         ###################################################################
         obj = 0
         for i in range(node_nums):
+            assert len(s[i]) == len(c[i])
             obj += lpDot(s[i], c[i]) + lpDot(s[i], d[i])
 
         #############################################
         # computing the edge cost(resharding cost)  #
         #############################################
         for i in range(len(E)):
+            assert len(e[i]) == len(r[i])
             obj += lpDot(e[i], r[i])
 
         prob += obj

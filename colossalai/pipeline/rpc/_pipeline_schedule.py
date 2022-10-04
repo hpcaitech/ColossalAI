@@ -44,7 +44,8 @@ class FillDrainPipelineEngine(PipelineEngineBase):
                  chunk: int = 1,
                  criterion: Callable = None,
                  metric: Callable = None,
-                 checkpoint: bool = False) -> None:
+                 checkpoint: bool = False,
+                 data_process_func: Callable = None) -> None:
 
         if chunk > 1:
             assert num_microbatches % stage_num == 0, \
@@ -52,7 +53,7 @@ class FillDrainPipelineEngine(PipelineEngineBase):
         use_1F1B = False
 
         super().__init__(FillDrainWorker, partition_fn, stage_num, num_microbatches, device, use_1F1B, chunk, criterion,
-                         metric, checkpoint)
+                         metric, checkpoint, data_process_func)
 
 
 class OneFOneBWorker(WorkerBase):
@@ -103,7 +104,8 @@ class OneFOneBPipelineEngine(PipelineEngineBase):
                  chunk: int = 1,
                  criterion: Callable = None,
                  metric: Callable = None,
-                 checkpoint: bool = False) -> None:
+                 checkpoint: bool = False,
+                 data_process_func: Callable = None) -> None:
 
         if chunk > 1:
             assert num_microbatches % stage_num == 0, \
@@ -112,7 +114,7 @@ class OneFOneBPipelineEngine(PipelineEngineBase):
         use_1F1B = True
 
         super().__init__(OneFOneBWorker, partition_fn, stage_num, num_microbatches, device, use_1F1B, chunk, criterion,
-                         metric, checkpoint)
+                         metric, checkpoint, data_process_func)
 
 
 class ChimeraWorker(WorkerBase):
@@ -227,9 +229,9 @@ class ChimeraWorker(WorkerBase):
         if step_index == 1:
             ppg.chimera_step_lock.acquire()
 
-        print(f'rank_{self.pp_rank} before all reduce')
+        # print(f'rank_{self.pp_rank} before all reduce')
         dist.all_reduce_coalesced(grads, group=all_reduce_group, async_op=False)
-        print(f'rank_{self.pp_rank} after  all reduce')
+        # print(f'rank_{self.pp_rank} after  all reduce')
 
         if step_index == 0:
             ppg.chimera_step_lock.release()
@@ -244,7 +246,8 @@ class ChimeraPipelineEngine(PipelineEngineBase):
                  device: str,
                  criterion: Callable = None,
                  metric: Callable = None,
-                 checkpoint: bool = False) -> None:
+                 checkpoint: bool = False,
+                 data_process_func: Callable = None) -> None:
 
         assert num_microbatches % stage_num == 0, \
             "In Chimera, num_microbatches must be the multiply of stage_num!"
@@ -252,7 +255,7 @@ class ChimeraPipelineEngine(PipelineEngineBase):
         chunk = 1
 
         super().__init__(ChimeraWorker, partition_fn, stage_num, num_microbatches, device, use_1F1B, chunk, criterion,
-                         metric, checkpoint)
+                         metric, checkpoint, data_process_func)
 
     def _consume_constraint(self, microbatch_id: int, forward_only: bool, ret_future: Dict[PyRRef, List[Future]],
                             input_pp_ranks: List[PyRRef], output_pp_ranks: List[PyRRef]):
@@ -330,6 +333,7 @@ class ChimeraPipelineEngine(PipelineEngineBase):
             for microbatch_id in range(self.num_microbatches):
                 offset = (microbatch_id % 2) * stage_num
                 ret = ret_future[pp_rank + offset][microbatch_id].wait()
+                ret = [ret] if isinstance(ret, torch.Tensor) else ret
                 worker_forward_result[microbatch_id] = ret
 
             worker_forward_result = list(zip(*worker_forward_result))

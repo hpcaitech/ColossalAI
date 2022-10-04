@@ -48,7 +48,7 @@ def test_linear_module_handler():
     assert mapping['bias'].data.is_meta
     assert mapping['bias'].data.shape == torch.Size([32])
     assert mapping['bias'].type == OperationDataType.PARAM
-    assert mapping['other'].logical_shape == torch.Size([16, 32])
+    assert mapping['bias'].logical_shape == torch.Size([32])
 
     assert mapping['output'].name == "_0"
     assert mapping['output'].data.is_meta

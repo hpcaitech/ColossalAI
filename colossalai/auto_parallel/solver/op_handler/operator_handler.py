@@ -121,7 +121,13 @@ class OperatorHandler(ABC):
 
     def _generate_resharding_costs(self, sharding_specs):
         # The resharding_cost of weight is counted due to sharing weight cases.
-        dtype = self.node._meta_data.dtype
+        if hasattr(self.node._meta_data, 'dtype'):
+            dtype = self.node._meta_data.dtype
+        else:
+            assert isinstance(self.node._meta_data,
+                              tuple), f'Only torch.Tensor, torch.fx.Node and tuple of torch.Tensor is expected'
+            dtype = self.node._meta_data[0].dtype
+
         nodes = self.predecessor_node
         return generate_resharding_costs(nodes=nodes,
                                          sharding_specs=sharding_specs,
