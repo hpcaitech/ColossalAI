@@ -131,5 +131,5 @@ def test_ckpt_solver_torch11():
 
 if __name__ == '__main__':
     _run_ckpt_solver(rank=0)
-    # test_ckpt_solver()
-    # test_ckpt_solver_torch11()
+    test_ckpt_solver()
+    test_ckpt_solver_torch11()
