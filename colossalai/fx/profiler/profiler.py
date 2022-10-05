@@ -16,6 +16,9 @@ __all__ = ['profile_function', 'profile_module', 'profile_method']
 # track duplicated tensors between nodes
 cache = set()
 
+# a global identifier for inplace ops
+do_not_cache = False
+
 
 def normalize_tuple(x):
     if not isinstance(x, tuple):
@@ -143,12 +146,13 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
     kwargs = tree_map(wrap, kwargs)
 
     def pack(x):
-        global cache
+        global cache, do_not_cache
         if isinstance(x, FlopTensor) and not x._tensor.uuid in cache:
             tensor = x._tensor.detach()
             tensor.uuid = x._tensor.uuid
             x._node.meta['saved_tensor'] += [tensor]
-            cache.add(x._tensor.uuid)
+            if not do_not_cache:
+                cache.add(x._tensor.uuid)
         return x
 
     def unpack(x):
@@ -168,8 +172,8 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
         # If the output is not a floating point `torch.Tensor` or it does not
         # requires grad, then we should not run backward for this node.
         if all(map(lambda x: is_autogradable(x) and x.requires_grad, normalize_tuple(out))):
-            phase = Phase.BACKWARD
             grad_out = [torch.zeros_like(t) for t in normalize_tuple(out)]
+            phase = Phase.BACKWARD
             torch.autograd.backward(
                 out,
                 grad_out,
@@ -212,8 +216,10 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
 
         # If there is an argument that this `call_function` is inplace, we should
         # still run the profiling but discard some results regarding `target`
+        global do_not_cache
         inplace = kwargs.get('inplace', False)
-        if inplace:
+        if inplace or target in [torch.nn.functional.relu]:
+            do_not_cache = True
             kwargs['inplace'] = False
         if device == 'meta':
             out, meta = _profile_meta(func, *args, **kwargs)
@@ -222,7 +228,10 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
         if inplace:
             if target in [torch.nn.functional.relu]:
                 meta.fwd_in = []
+                meta.fwd_tmp = []
                 meta.bwd_mem_out = 0
+            kwargs['inplace'] = True
+        do_not_cache = False
         return out, meta
 
     f.__name__ = target.__name__
@@ -267,8 +276,10 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
 
         # If there is an argument that this `call_module` is inplace, we should
         # still run the profiling but discard some results regarding `module`.
+        global do_not_cache
         inplace = getattr(module, 'inplace', False)
-        if inplace:
+        if inplace or type(module) in [torch.nn.ReLU]:
+            do_not_cache = True
             module.inplace = False
         if device == 'meta':
             out, meta = _profile_meta(func, *args, **kwargs)
@@ -279,7 +290,10 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
             # is the only inplace activation function that discard its input.
             if type(module) in [torch.nn.ReLU]:
                 meta.fwd_in = []
+                meta.fwd_tmp = []
                 meta.bwd_mem_out = 0
+            module.inplace = True
+        do_not_cache = False
         return out, meta
 
     f.__name__ = module.__class__.__name__

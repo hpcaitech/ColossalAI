@@ -5,7 +5,7 @@ from torch.fx.node import Node, Argument, Target
 from torch.utils._pytree import tree_map
 from typing import Any, List, Tuple, NamedTuple, Dict
 from torch.fx._compatibility import compatibility
-from colossalai.fx.profiler import GraphInfo, profile_function, profile_module, profile_method, activation_size, calculate_fwd_out, calculate_fwd_tmp
+from colossalai.fx.profiler import GraphInfo, profile_function, profile_module, profile_method, activation_size, calculate_fwd_out, calculate_fwd_tmp, calculate_fwd_in
 
 
 @compatibility(is_backward_compatible=True)
@@ -101,7 +101,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         n.meta['tensor_meta'] = tensor_meta
         n.meta = {**n.meta, **asdict(meta_info)}    # extend MetaInfo to `n.meta`
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', activation_size(n.meta.get('fwd_tmp', 0)) + activation_size(n.meta.get('fwd_out', 0)))
+        setattr(n, 'node_size', activation_size(n.meta.get('fwd_in', 0)) + activation_size(n.meta.get('fwd_tmp', 0)))
         n.meta['type'] = type(result)
 
         # retain the autograd graph
@@ -275,12 +275,12 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         for node in self.module.graph.nodes:
             node: Node
-            print(node.meta["fwd_out"])
             node_summaries.append([
                 node.op,
                 str(node),
                 flops_repr(node.meta['fwd_flop']),
                 flops_repr(node.meta['bwd_flop']),
+                mem_repr(calculate_fwd_in(node)),
                 mem_repr(calculate_fwd_out(node)),
                 mem_repr(calculate_fwd_tmp(node)),
                 mem_repr(node.meta['bwd_mem_out']),
@@ -294,6 +294,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             'Op',
             'Forward FLOPs',
             'Backward FLOPs',
+            'FWD_IN',
             'FWD_OUT',
             'FWD_TMP',
             'BWD_OUT',

@@ -42,11 +42,50 @@ def parameter_size(mod: torch.nn.Module) -> int:
     return param_size
 
 
-def calculate_fwd_tmp(n: Node):
-    return activation_size(n.meta["fwd_tmp"])
+def calculate_fwd_in(n: Node) -> int:
+    """A helper function to calculate `fwd_in`
+
+    Args:
+        n (Node): a node from the graph
+
+    Returns:
+        fwd_in (int): the result of `fwd_in`
+    """
+    return activation_size(n.meta["fwd_in"])
 
 
-def calculate_fwd_out(n: Node):
+def calculate_fwd_tmp(n: Node) -> int:
+    """A helper function to calculate `fwd_tmp`
+    Currently, `torch.nn.ReLU` behaves weirdly, so we have to patch it for accuracy.
+
+    Args:
+        n (Node): a node from the graph
+
+    Returns:
+        fwd_tmp (int): the result of `fwd_tmp`
+    """
+
+    def is_relu_node(n: Node) -> bool:
+        if n.op == 'call_function':
+            return n.target not in [torch.nn.functional.relu]
+        elif n.op == 'call_module':
+            return type(n.graph.owning_module.get_submodule(n.target)) not in [torch.nn.ReLU]
+        return False
+
+    if is_relu_node(n):
+        return activation_size(n.meta["fwd_tmp"])
+    return 0
+
+
+def calculate_fwd_out(n: Node) -> int:
+    """A helper function to calculate `fwd_out`
+
+    Args:
+        n (Node): a node from the graph
+
+    Returns:
+        fwd_out (int): the result of `fwd_out`
+    """
 
     def intersect(a, b):
         return {k: a[k] for k in a if k in b}

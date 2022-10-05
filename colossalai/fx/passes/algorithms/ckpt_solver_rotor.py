@@ -1,7 +1,8 @@
 from typing import List, Tuple
+from colossalai.fx.profiler.memory import calculate_fwd_in
 from torch.fx import Node
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.profiler import activation_size, parameter_size
+from colossalai.fx.profiler import activation_size, parameter_size, calculate_fwd_out, calculate_fwd_tmp
 import math
 from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
@@ -123,9 +124,7 @@ def _fwd_xbar(node: List[Node]) -> int:
 
     xbar = 0
     for n in node:
-        xbar += n.meta['fwd_mem_tmp']
-        if any(map(lambda x: x.meta['save_fwd_in'], n.users)):
-            xbar += n.meta['fwd_mem_out']
+        xbar += calculate_fwd_tmp(n) + calculate_fwd_out(n)
     return xbar
 
 
@@ -183,9 +182,7 @@ def _get_bwd_mem_tmp(node: List[Node]) -> int:
             if v > 0:
                 deps_size += k.meta['bwd_mem_out']
             if v == float('-inf'):
-                deps_size -= k.meta['fwd_mem_tmp']
-                if any(map(lambda x: x.meta['save_fwd_in'], k.users)):
-                    deps_size -= k.meta['fwd_mem_out']
+                deps_size -= calculate_fwd_tmp(k) + calculate_fwd_out(k)
 
         return deps_size
 
@@ -218,7 +215,7 @@ def _construct_chain(node_list: List[List[Node]], input) -> Chain:
     for idx, node in enumerate(node_list):
         fwd_time.append(_fwd_time(node))
         bwd_time.append(_bwd_time(node))
-        x_sizes.append(node[-1].meta['fwd_mem_out'])
+        x_sizes.append(calculate_fwd_out(node[-1]))
         xbar_sizes.append(max(x_sizes[-1], _fwd_xbar(node)))
         tmp_bwd.append(_get_bwd_mem_tmp(node))
 
