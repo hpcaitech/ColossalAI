@@ -113,7 +113,7 @@ def _run_ckpt_solver_torch11(rank):
             MetaInfoProp(gm).run(data)
             gm.graph._python_code = python_code_with_activation_checkpoint.__get__(graph)
             if solver == solver_rotor:
-                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
+                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500, force_python=True)
             else:
                 gm = solver(gm)
             assert _is_graph_linearized(gm), f"Solver {solver} did not solve {model_cls} in a linearized manner."

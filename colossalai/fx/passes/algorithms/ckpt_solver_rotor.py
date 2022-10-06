@@ -164,6 +164,21 @@ def _bwd_time(node: List[Node]) -> int:
     return bwd_time
 
 
+def _get_fwd_mem_tmp(node: List[Node]) -> int:
+    """Get the forward temp memory of a node
+    This could be done by subtracting the saved activation from all output of a node
+
+    Args:
+        node (List[Node]): List of torch.fx Node,
+        indicates a node in linearized graph
+
+    Returns:
+        int: forward temp memory, unit Byte
+    """
+    n = node[-1]
+    return activation_size(n.meta['fwd_out']) - calculate_fwd_out(n)
+
+
 def _get_bwd_mem_tmp(node: List[Node]) -> int:
     """Get the backward temp memory of a node
 
@@ -208,8 +223,7 @@ def _construct_chain(node_list: List[List[Node]], input) -> Chain:
     bwd_time = []
     xbar_sizes = [activation_size(input)]
     x_sizes = [activation_size(input)]
-    # currently we can't get the temp memory needed in fwd
-    tmp_fwd = [0] * len(node_list)
+    tmp_fwd = []
     tmp_bwd = []
 
     for idx, node in enumerate(node_list):
@@ -217,6 +231,7 @@ def _construct_chain(node_list: List[List[Node]], input) -> Chain:
         bwd_time.append(_bwd_time(node))
         x_sizes.append(calculate_fwd_out(node[-1]))
         xbar_sizes.append(max(x_sizes[-1], _fwd_xbar(node)))
+        tmp_fwd.append(_get_fwd_mem_tmp(node))
         tmp_bwd.append(_get_bwd_mem_tmp(node))
 
     bwd_time.append(0)
