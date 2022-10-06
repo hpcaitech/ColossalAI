@@ -227,7 +227,9 @@ class MetaInfoProp(torch.fx.Interpreter):
             result (Any): The argument value that was retrieved
             meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
-        return args[0], GraphInfo(fwd_in=[args[0]._tensor])
+        if hasattr(args[0], '_tensor'):
+            return args[0], GraphInfo(fwd_in=[args[0]._tensor])
+        return args[0], GraphInfo(save_fwd_in=True)
 
     def propagate(self, *args):
         """

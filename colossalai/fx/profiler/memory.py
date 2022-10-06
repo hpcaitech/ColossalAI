@@ -3,7 +3,9 @@ from torch.fx import Node, GraphModule
 from typing import Union, Dict, List, Tuple
 from . import META_COMPATIBILITY
 
-__all__ = ['activation_size', 'parameter_size', 'is_inplace']
+__all__ = [
+    'activation_size', 'parameter_size', 'is_inplace', "calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"
+]
 
 
 def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
@@ -67,12 +69,12 @@ def calculate_fwd_tmp(n: Node) -> int:
 
     def is_relu_node(n: Node) -> bool:
         if n.op == 'call_function':
-            return n.target not in [torch.nn.functional.relu]
+            return n.target in [torch.nn.functional.relu]
         elif n.op == 'call_module':
-            return type(n.graph.owning_module.get_submodule(n.target)) not in [torch.nn.ReLU]
+            return type(n.graph.owning_module.get_submodule(n.target)) in [torch.nn.ReLU]
         return False
 
-    if is_relu_node(n):
+    if not is_relu_node(n):
         return activation_size(n.meta["fwd_tmp"])
     return 0
 
