@@ -1,3 +1,4 @@
+import sys
 from typing import List, Tuple
 from torch.fx import Node
 from colossalai.fx.graph_module import ColoGraphModule
@@ -353,10 +354,13 @@ def solver_rotor(gm: ColoGraphModule,
             logger.info("dynamic_programs_C_version hasn't been built! Building library...", ranks=[0])
             this_dir = os.path.dirname(os.path.abspath(__file__))
             result = subprocess.Popen(
-                f'python {os.path.join(this_dir, "build_c_ext.py")} build_ext --build-lib={this_dir}',
+                [
+                    f"{sys.executable}", f"{os.path.join(this_dir, 'build_c_ext.py')}", "build_ext",
+                    f"--build-lib={this_dir}"
+                ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                shell=True)
+            )
             if result.wait() == 0:
                 logger.info("dynamic_programs_C_version has been built!", ranks=[0])
                 from .dynamic_programs_C_version import persistent_compute_table
