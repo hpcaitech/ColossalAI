@@ -80,9 +80,6 @@ def exam_load_state_dict(placement_policy, keep_gathered):
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
-    optimizer = torch.optim.Adam(model.parameters())
-    optim = ZeroOptimizer(optimizer, model)    # initialize the link between chunk16 and chunk32
-
     torch_dict = torch_model.state_dict()
     model.load_state_dict(torch_dict, strict=False)
     zero_dict = model.state_dict(only_rank_0=False)

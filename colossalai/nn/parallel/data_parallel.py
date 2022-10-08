@@ -237,8 +237,14 @@ class ZeroDDP(ColoDDP):
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
         self.chunk_manager.close_all_groups()
-
         self._cast_buffers()
+
+        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        for p, fp32_p in zip(params_list, self.fp32_params):
+            chunk_16 = self.chunk_manager.get_chunk(p)
+            chunk_32 = self.chunk_manager.get_chunk(fp32_p)
+            chunk_32.init_pair(chunk_16)
+
         self._logger = get_dist_logger()
 
     def forward(self, *args, **kwargs):
