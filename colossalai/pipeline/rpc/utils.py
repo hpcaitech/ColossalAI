@@ -20,7 +20,8 @@ def pytree_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] =
     Args:
         obj (:class:`Any`): object to process
         fn (:class:`Callable`): a function to process subobject in obj
-        process_types(:class: `type | tuple[type]`): types to determine the type to process
+        process_types (:class: `type | tuple[type]`): types to determine the type to process
+        map_all (:class: `bool`): if map_all is True, then any type of element will use fn 
 
     Returns:
         :class:`Any`: returns have the same structure of `obj` and type in process_types after map of `fn` 
@@ -57,6 +58,20 @@ def split_batch(batch: Any, start, stop, device: str):
 
 def type_detail(obj):
     return pytree_map(obj, lambda x: type(x), map_all=True)
+
+
+def pytree_filter(fn, obj, process_types):
+    if obj is None:
+        return None
+
+    filters = []
+
+    def condition_append(obj):
+        if fn(obj):
+            filters.append(obj)
+
+    pytree_map(obj, fn=condition_append, process_types=process_types)
+    return filters
 
 
 def get_real_args_kwargs(args_or_kwargs):

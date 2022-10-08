@@ -110,7 +110,7 @@ class OneFOneBPipelineEngine(PipelineEngineBase):
         if chunk > 1:
             assert num_microbatches % stage_num == 0, \
                 "if you use interleaving strategy, make sure 'num_microbatches' is a multiple of stage_num!"
-        assert num_microbatches > stage_num * chunk, "num_microbatches must be greater than stage_num * chunk"
+        # assert num_microbatches > stage_num * chunk, "num_microbatches must be greater than stage_num * chunk"
         use_1F1B = True
 
         super().__init__(OneFOneBWorker, partition_fn, stage_num, num_microbatches, device, use_1F1B, chunk, criterion,

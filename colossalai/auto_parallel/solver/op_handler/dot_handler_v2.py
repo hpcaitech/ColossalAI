@@ -1,46 +1,12 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from .node_handler import ModuleHandler, NodeHandler
-from ..sharding_strategy import ShardingStrategy_V2, StrategyGenerator_V2, OperationDataType, OperationData
+from ..sharding_strategy import ShardingStrategy_V2, OperationDataType, OperationData
+from ..strategy import LinearProjectionStrategyGenerator, StrategyGenerator_V2, BatchedMatMulStrategyGenerator
 from typing import List, Dict
 from .registry import operator_registry
 
-__all__ = ['LinearModuleHandler']
-
-
-class DotProductStrategyGenerator(StrategyGenerator_V2):
-    """TODO: to be implemented"""
-    pass
-
-
-class MatVecStrategyGenerator(StrategyGenerator_V2):
-    """TODO: to be implemented"""
-    pass
-
-
-class LinearProjectionStrategyGenerator(StrategyGenerator_V2):
-
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """TODO: to be implemented"""
-        pass
-
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """TODO: to be implemented"""
-        pass
-
-    def generate(self, operand_mapping: Dict[str, OperationData]) -> List[ShardingStrategy_V2]:
-        """TODO: to be implemented"""
-        pass
-
-    def validate(self, *args, **kwargs) -> bool:
-        """TODO: to be implemented"""
-        pass
-
-
-class BatchedMatMulStrategyGenerator(StrategyGenerator_V2):
-    """TODO: to be implemented"""
-    pass
+__all__ = ['LinearModuleHandler', 'LinearFunctionHandler', 'BMMFunctionHandler']
 
 
 @operator_registry.register(torch.nn.Linear)
@@ -49,9 +15,10 @@ class LinearModuleHandler(ModuleHandler):
     A LinearModuleHandler which deals with the sharding strategies for nn.Linear module.
     """
 
-    def register_strategy_generator(self) -> List[StrategyGenerator_V2]:
+    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+        op_data_mapping = self.get_operation_data_mapping()
         generators = []
-        generators.append(LinearProjectionStrategyGenerator(self.device_mesh))
+        generators.append(LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh))
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -83,8 +50,16 @@ class LinearModuleHandler(ModuleHandler):
             if op_data.name == "weight":
                 assert op_data.logical_shape != op_data.data.shape
                 dim_partition_dict = sharding_spec.dim_partition_dict
+
                 # switch first and last dim of the linear module weight
-                dim_partition_dict[0], dim_partition_dict[-1] = dim_partition_dict[-1], dim_partition_dict[0]
+                first_dim_partition = dim_partition_dict.pop(-1, None)
+                last_dim_partition = dim_partition_dict.pop(0, None)
+
+                if first_dim_partition:
+                    dim_partition_dict[0] = first_dim_partition
+
+                if last_dim_partition:
+                    dim_partition_dict[-1] = last_dim_partition
 
                 # re-init the sharding spec
                 sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
@@ -97,9 +72,10 @@ class LinearFunctionHandler(NodeHandler):
     A LinearModuleHandler which deals with the sharding strategies for nn.Linear module.
     """
 
-    def register_strategy_generator(self) -> List[StrategyGenerator_V2]:
+    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+        op_data_mapping = self.get_operation_data_mapping()
         generators = []
-        generators.append(LinearProjectionStrategyGenerator(self.device_mesh))
+        generators.append(LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh))
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -108,8 +84,15 @@ class LinearFunctionHandler(NodeHandler):
         physical_input_operand = OperationData(name=str(self.node.args[0]),
                                                type=OperationDataType.ARG,
                                                data=self.node.args[0]._meta_data)
+
+        # check if the other operand is a parameter
+        if isinstance(self.node.args[1]._meta_data, torch.nn.parameter.Parameter):
+            data_type = OperationDataType.PARAM
+        else:
+            data_type = OperationDataType.ARG
+
         physical_other_operand = OperationData(name=str(self.node.args[1]),
-                                               type=OperationDataType.ARG,
+                                               type=data_type,
                                                data=self.node.args[1]._meta_data,
                                                logical_shape=self.node.args[1]._meta_data.shape[::-1])
         physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
@@ -117,8 +100,13 @@ class LinearFunctionHandler(NodeHandler):
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
         if self.node.args[2] is not None:
+            # check if the other operand is a parameter
+            if isinstance(self.node.args[2]._meta_data, torch.nn.parameter.Parameter):
+                data_type = OperationDataType.PARAM
+            else:
+                data_type = OperationDataType.ARG
             physical_bias_operand = OperationData(name=str(self.node.args[2]),
-                                                  type=OperationDataType.ARG,
+                                                  type=data_type,
                                                   data=self.node.args[2]._meta_data)
             mapping['bias'] = physical_bias_operand
         return mapping
@@ -131,9 +119,44 @@ class LinearFunctionHandler(NodeHandler):
             if op_data.name == str(self.node.args[1]):
                 assert op_data.logical_shape != op_data.data.shape
                 dim_partition_dict = sharding_spec.dim_partition_dict
+
                 # switch first and last dim of the linear module weight
-                dim_partition_dict[0], dim_partition_dict[-1] = dim_partition_dict[-1], dim_partition_dict[0]
+                first_dim_partition = dim_partition_dict.pop(-1, None)
+                last_dim_partition = dim_partition_dict.pop(0, None)
+
+                if first_dim_partition:
+                    dim_partition_dict[0] = first_dim_partition
+
+                if last_dim_partition:
+                    dim_partition_dict[-1] = last_dim_partition
 
                 # re-init the sharding spec
                 sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
         return strategy
+
+
+@operator_registry.register(torch.bmm)
+@operator_registry.register(torch.Tensor.bmm)
+class BMMFunctionHandler(NodeHandler):
+
+    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
+        # use transposed shape for strategies
+        # the strategies will be transformed back to its original shape in self.post_process
+        physical_input_operand = OperationData(name=str(self.node.args[0]),
+                                               type=OperationDataType.ARG,
+                                               data=self.node.args[0]._meta_data)
+
+        physical_other_operand = OperationData(name=str(self.node.args[1]),
+                                               type=OperationDataType.ARG,
+                                               data=self.node.args[1]._meta_data)
+        physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
+
+        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
+        return mapping
+
+    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+        generators = []
+        op_data_mapping = self.get_operation_data_mapping()
+        generators = []
+        generators.append(BatchedMatMulStrategyGenerator(op_data_mapping, self.device_mesh))
+        return generators
