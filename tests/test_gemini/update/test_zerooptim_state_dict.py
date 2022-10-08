@@ -13,6 +13,7 @@ from tests.test_tensor.common_utils import set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.zero import ZeroOptimizer
+from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize
 from colossalai.gemini.gemini_mgr import GeminiManager
 from tests.test_tensor.common_utils import debug_print
@@ -46,10 +47,11 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
-    optimizer = torch.optim.Adam(model.parameters())
-    optim = ZeroOptimizer(optimizer, model)    # initialize the link between chunk16 and chunk32
+    optimizer = HybridAdam(model.parameters())
+    optim = ZeroOptimizer(optimizer, model, initial_scale=32)    # initialize the link between chunk16 and chunk32
 
     set_seed(dist.get_rank() * 3 + 128)
+    model.train()
     for i, (input_ids, attn_mask) in enumerate(train_dataloader):
         if i > 0:
             break
@@ -58,9 +60,23 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
         logits = logits.float()
         loss = criterion(logits, input_ids)
         optim.backward(loss)
+        optim.step()
 
     optim_state_dict = optim.state_dict()
     optim.load_state_dict(optim_state_dict)
+    new_state = optim.state_dict()['state']
+    org_state = optim_state_dict['state']
+
+    for k, v in org_state.items():
+        w = new_state[k]
+        for n, m in v.items():
+            if isinstance(m, torch.Tensor):
+                o = w[n]
+                if m.device != o.device:
+                    o = o.to(m.device)
+                assert torch.equal(m, o)
+            else:
+                assert m == w[n]
 
 
 def run_dist(rank, world_size, port):
