@@ -1,6 +1,6 @@
 import torch
 from colossalai.utils.checkpoint_io.meta import ParamDistMeta
-from colossalai.utils.checkpoint_io.distributed import unflatten_zero_param, gather_tp_param
+from colossalai.utils.checkpoint_io.distributed import unflatten_zero_param, gather_tp_param, merge_param
 
 
 def test_unflatten_zero_param_even() -> None:
@@ -51,6 +51,26 @@ def test_gather_tp_param_2d_reverse() -> None:
     assert torch.equal(orig_tensor, gathered_tensor)
 
 
+def test_merge_param_hybrid() -> None:
+    dist_metas = [
+        ParamDistMeta(i % 2,
+                      2,
+                      i // 2,
+                      6,
+                      tp_shard_dims=[1, 0],
+                      tp_num_parts=[3, 2],
+                      zero_numel=4,
+                      zero_orig_shape=[2, 2]) for i in range(12)
+    ]
+    orig_tensor = torch.rand(4, 6)
+    tensors = [
+        chunk for tl in orig_tensor.chunk(2, 0) for t in tl.chunk(3, 1)
+        for chunk in t.contiguous().reshape(-1).split([1, 3])
+    ]
+    merged_tensor = merge_param(tensors, dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
+
+
 if __name__ == '__main__':
     test_unflatten_zero_param_even()
     test_unflatten_zero_param_uneven()
@@ -58,3 +78,4 @@ if __name__ == '__main__':
     test_gather_tp_param_1d_col()
     test_gather_tp_param_2d()
     test_gather_tp_param_2d_reverse()
+    test_merge_param_hybrid()

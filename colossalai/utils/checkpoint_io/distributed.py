@@ -2,11 +2,12 @@ import torch
 from numpy import prod
 from torch import Tensor
 from typing import List, Optional
+from collections import defaultdict
 from .meta import ParamDistMeta, ParamRedistMeta
 
 
 def unflatten_zero_param(tensors: List[Tensor], dist_metas: List[ParamDistMeta]) -> Tensor:
-    assert len(tensors) > 0 and len(dist_metas) > 0
+    assert len(tensors) > 0 and len(dist_metas) > 0 and len(tensors) == len(dist_metas)
     for dist_meta in dist_metas[1:]:
         assert dist_meta.zero_meta == dist_metas[0].zero_meta, 'Expect all params have the same zero meta.'
     if not dist_metas[0].used_zero:
@@ -20,7 +21,7 @@ def unflatten_zero_param(tensors: List[Tensor], dist_metas: List[ParamDistMeta])
 
 
 def gather_tp_param(tensors: List[Tensor], dist_metas: List[ParamDistMeta]) -> Tensor:
-    assert len(tensors) > 0 and len(dist_metas) > 0
+    assert len(tensors) > 0 and len(dist_metas) > 0 and len(tensors) == len(dist_metas)
     for dist_meta in dist_metas[1:]:
         assert dist_meta.tp_meta == dist_metas[0].tp_meta, 'Expect all params have the same tp meta.'
     for t in tensors[1:]:
@@ -39,6 +40,37 @@ def gather_tp_param(tensors: List[Tensor], dist_metas: List[ParamDistMeta]) -> T
         tensors = buffer
     assert len(tensors) == 1
     return tensors[0]
+
+
+def validate_parallel_info(dist_metas: List[ParamDistMeta]) -> None:
+    assert len(dist_metas) > 0
+    # check world size
+    for dist_meta in dist_metas[1:]:
+        assert dist_meta.dp_world_size == dist_metas[
+            0].dp_world_size, 'Expect all dist meta have the same dp_world_size'
+        assert dist_meta.tp_world_size == dist_metas[
+            0].tp_world_size, 'Expect all dist meta have the same tp_world_size'
+    # check rank
+    rank_list = [(dist_meta.dp_rank, dist_meta.tp_rank) for dist_meta in dist_metas]
+    assert len(rank_list) == len(set(rank_list)), 'Expect ranks are not replicated'
+
+
+def merge_param(tensors: List[Tensor], dist_metas: List[ParamDistMeta]) -> Tensor:
+    assert len(tensors) > 0 and len(dist_metas) > 0 and len(tensors) == len(dist_metas)
+    # validate parallel info
+    validate_parallel_info(dist_metas)
+    unflattened_tensors = []
+    # group zero params by tp rank
+    tensor_dict = defaultdict(list)
+    dist_meta_dict = defaultdict(list)
+    for t, dist_meta in zip(tensors, dist_metas):
+        tensor_dict[dist_meta.tp_rank].append(t)
+        dist_meta_dict[dist_meta.tp_rank].append(dist_meta)
+    assert len(tensor_dict
+              ) == dist_metas[0].tp_world_size, f'Expect {dist_metas[0].tp_world_size} ranks, got {len(tensor_dict)}'
+    for tp_rank in tensor_dict.keys():
+        unflattened_tensors.append(unflatten_zero_param(tensor_dict[tp_rank], dist_meta_dict[tp_rank]))
+    return gather_tp_param(unflattened_tensors, [dist_meta_list[0] for dist_meta_list in dist_meta_dict.values()])
 
 
 def split_tp_param(tensor: Tensor, redist_meta: ParamDistMeta) -> List[Tensor]:
