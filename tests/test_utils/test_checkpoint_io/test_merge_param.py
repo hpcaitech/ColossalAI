@@ -14,7 +14,6 @@ def test_unflatten_zero_param_even() -> None:
 def test_unflatten_zero_param_uneven() -> None:
     dist_metas = [ParamDistMeta(i, 4, 0, 1, zero_numel=16, zero_orig_shape=[4, 4]) for i in range(1, 3)]
     orig_tensor = torch.rand(4, 4)
-    # tensors = [orig_tensor.reshape(-1)[:13], orig_tensor.reshape(-1)[13:]]
     tensors = orig_tensor.reshape(-1).split([13, 3])
     unflattened_tensor = unflatten_zero_param(tensors, dist_metas)
     assert torch.equal(orig_tensor, unflattened_tensor)
