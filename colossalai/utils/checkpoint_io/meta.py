@@ -10,11 +10,11 @@ class ParamDistMeta:
     tp_rank: int
     tp_world_size: int
     # tp info
-    tp_shard_dims: Optional[List[int]]
-    tp_num_parts: Optional[List[int]]
+    tp_shard_dims: Optional[List[int]] = None
+    tp_num_parts: Optional[List[int]] = None
     # zero info
-    zero_numel: Optional[int]
-    zero_orig_shape: Optional[List[int]]
+    zero_numel: Optional[int] = None
+    zero_orig_shape: Optional[List[int]] = None
 
     @property
     def used_tp(self) -> bool:
@@ -43,11 +43,11 @@ class ParamRedistMeta:
     dp_world_size: int
     tp_world_size: int
     # tp info
-    tp_shard_dims: Optional[List[int]]
-    tp_num_parts: Optional[List[int]]
+    tp_shard_dims: Optional[List[int]] = None
+    tp_num_parts: Optional[List[int]] = None
     # zero info
-    zero_start_dp_rank: Optional[int]
-    zero_offsets: Optional[List[int]]
+    zero_start_dp_rank: Optional[int] = None
+    zero_offsets: Optional[List[int]] = None
 
     @property
     def used_tp(self) -> bool:
