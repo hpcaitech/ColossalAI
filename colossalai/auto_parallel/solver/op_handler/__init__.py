@@ -7,8 +7,11 @@ from .bcast_op_handler import BcastOpHandler
 from .embedding_handler import EmbeddingHandler
 from .unary_elementwise_handler import UnaryElementwiseHandler
 from .dot_handler_v2 import LinearFunctionHandler, LinearModuleHandler
+from .layer_norm_handler_v2 import LayerNormModuleHandler
+from .batch_norm_handler_v2 import BatchNormModuleHandler
 
 __all__ = [
     'OperatorHandler', 'DotHandler', 'ConvHandler', 'BatchNormHandler', 'ReshapeHandler', 'BcastOpHandler',
-    'UnaryElementwiseHandler', 'EmbeddingHandler', 'LinearFunctionHandler', 'LinearModuleHandler'
+    'UnaryElementwiseHandler', 'EmbeddingHandler', 'LinearFunctionHandler', 'LinearModuleHandler',
+    'LayerNormModuleHandler', 'BatchNormModuleHandler'
 ]

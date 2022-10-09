@@ -2,7 +2,7 @@ from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.utils.memory import colo_device_memory_used, colo_device_memory_capacity
 from colossalai.utils import get_current_device
 from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.gemini import ChunkManager
+from colossalai.gemini.chunk import ChunkManager
 
 import torch
 import time

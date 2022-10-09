@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from functools import partial
 from typing import Dict
 from torch.fx import Graph, Node
 from .memory import activation_size, is_inplace
@@ -33,8 +34,10 @@ class GraphInfo:
                             -------------------------------
     ============================================================================
     Attributes:
-        fwd_flop (int): The forward FLOPs of a certain node
+        fwd_flop (int): The forward FLOPs of a certain node.
+        fwd_time (float): The real forward time (s) of a certain node.
         bwd_flop (int): The backward FLOPs of a certain node.
+        bwd_time (float): The real backward time (s) of a certain node.
         save_fwd_in (bool): The decision variable of whether to save the fwd_mem_out of parent nodes.
         fwd_mem_tmp (int): See the above illustration.
         fwd_mem_out (int): See the above illustration.
@@ -42,7 +45,9 @@ class GraphInfo:
         bwd_mem_out (int): See the above illustration.
     """
     fwd_flop: int = 0
+    fwd_time: float = 0.0
     bwd_flop: int = 0
+    bwd_time: float = 0.0
     save_fwd_in: bool = False
     fwd_mem_tmp: int = 0
     fwd_mem_out: int = 0
