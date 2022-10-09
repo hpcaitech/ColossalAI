@@ -8,6 +8,8 @@ from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Dict, List, Union, Any
 from ..sharding_strategy import OperationData, ShardingStrategy_V2, TrainCycleItem, OperationDataType
+from torch.fx import Node
+import copy
 
 
 class StrategyGenerator_V2(ABC):
@@ -72,10 +74,6 @@ class StrategyGenerator_V2(ABC):
         """
         A factory method to produce a CommSpec object.
         """
-        # use flatten device mesh the same action is applied to two axes
-        if isinstance(logical_process_axis, list) and len(logical_process_axis) == 2:
-            sharding_spec.device_mesh = sharding_spec.device_mesh.flatten()
-            logical_process_axis = 0
         return CommSpec(comm_pattern=communication_pattern,
                         sharding_spec=sharding_spec,
                         logical_process_axis=logical_process_axis)
@@ -150,3 +148,17 @@ class StrategyGenerator_V2(ABC):
         If True, means this generator can be used for the current operation.
         """
         pass
+
+
+class FollowingStrategyGenerator(StrategyGenerator_V2):
+    """
+    FollowingStrategyGenerator is used to generate the sharding strategies which depends on its predecessor node. 
+
+    TODO: remove the original strategy_generator.py after refactoring
+    """
+
+    def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh,
+                 predecessor_node: Node):
+        self.op_data = operation_data_mapping
+        self.device_mesh = device_mesh
+        self.predecessor_node = predecessor_node
