@@ -9,6 +9,8 @@ def test_unflatten_zero_param_even() -> None:
     tensors = list(orig_tensor.reshape(-1).chunk(4))
     unflattened_tensor = unflatten_zero_param(tensors, dist_metas)
     assert torch.equal(orig_tensor, unflattened_tensor)
+    merged_tensor = merge_param(tensors, dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
 
 
 def test_unflatten_zero_param_uneven() -> None:
@@ -17,6 +19,8 @@ def test_unflatten_zero_param_uneven() -> None:
     tensors = orig_tensor.reshape(-1).split([13, 3])
     unflattened_tensor = unflatten_zero_param(tensors, dist_metas)
     assert torch.equal(orig_tensor, unflattened_tensor)
+    merged_tensor = merge_param(tensors, dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
 
 
 def test_gather_tp_param_1d_row() -> None:
@@ -25,6 +29,8 @@ def test_gather_tp_param_1d_row() -> None:
     tensors = [t.contiguous() for t in orig_tensor.chunk(4, 0)]
     gathered_tensor = gather_tp_param(tensors, dist_metas)
     assert torch.equal(orig_tensor, gathered_tensor)
+    merged_tensor = merge_param(tensors, dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
 
 
 def test_gather_tp_param_1d_col() -> None:
@@ -33,6 +39,8 @@ def test_gather_tp_param_1d_col() -> None:
     tensors = [t.contiguous() for t in orig_tensor.chunk(4, 1)]
     gathered_tensor = gather_tp_param(tensors, dist_metas)
     assert torch.equal(orig_tensor, gathered_tensor)
+    merged_tensor = merge_param(tensors, dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
 
 
 def test_gather_tp_param_2d() -> None:
@@ -41,6 +49,8 @@ def test_gather_tp_param_2d() -> None:
     tensors = [t.contiguous() for tl in orig_tensor.chunk(2, 0) for t in tl.chunk(3, 1)]
     gathered_tensor = gather_tp_param(tensors, dist_metas)
     assert torch.equal(orig_tensor, gathered_tensor)
+    merged_tensor = merge_param(tensors, dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
 
 
 def test_gather_tp_param_2d_reverse() -> None:
@@ -49,6 +59,8 @@ def test_gather_tp_param_2d_reverse() -> None:
     tensors = [t.contiguous() for tl in orig_tensor.chunk(2, 0) for t in tl.chunk(3, 1)]
     gathered_tensor = gather_tp_param(tensors, dist_metas)
     assert torch.equal(orig_tensor, gathered_tensor)
+    merged_tensor = merge_param(tensors, dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
 
 
 def test_merge_param_hybrid() -> None:
@@ -71,6 +83,13 @@ def test_merge_param_hybrid() -> None:
     assert torch.equal(orig_tensor, merged_tensor)
 
 
+def test_merge_param_dummy() -> None:
+    dist_metas = [ParamDistMeta(0, 1, 0, 1)]
+    orig_tensor = torch.rand(4, 6)
+    merged_tensor = merge_param([orig_tensor], dist_metas)
+    assert torch.equal(orig_tensor, merged_tensor)
+
+
 if __name__ == '__main__':
     test_unflatten_zero_param_even()
     test_unflatten_zero_param_uneven()
@@ -79,3 +98,4 @@ if __name__ == '__main__':
     test_gather_tp_param_2d()
     test_gather_tp_param_2d_reverse()
     test_merge_param_hybrid()
+    test_merge_param_dummy()
