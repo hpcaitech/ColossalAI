@@ -117,7 +117,7 @@ class TensorTupleStrategyGenerator(GetItemStrategyGenerator):
 
     def generate(self):
         strategy_list = []
-        index = self.op_data["other"].data
+        index = self.op_data["index"].data
 
         for strategy in self.predecessor_node.strategies_vector:
             # the sharding spec for input in this case is a tuple of ShardingSpec.

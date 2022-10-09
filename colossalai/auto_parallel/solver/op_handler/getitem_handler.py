@@ -18,7 +18,7 @@ class GetItemHandler(NodeHandler):
     def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
-        if isinstance(self.node.args[0]._meta_data, torch.Tensor):
+        if isinstance(op_data_mapping["input"].data, torch.Tensor):
             generators.append(TensorStrategyGenerator(op_data_mapping, self.device_mesh, self.node.args[0]))
         else:
             generators.append(TensorTupleStrategyGenerator(op_data_mapping, self.device_mesh, self.node.args[0]))
@@ -34,6 +34,6 @@ class GetItemHandler(NodeHandler):
         physical_other_operand = OperationData(name="index", type=OperationDataType.ARG, data=self.node.args[1])
         physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
 
-        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
+        mapping = {"input": physical_input_operand, "index": physical_other_operand, "output": physical_output}
 
         return mapping

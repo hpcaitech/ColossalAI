@@ -68,9 +68,9 @@ def test_getitem_function_handler():
     assert mapping['input'].type == OperationDataType.ARG
     assert mapping['input'].logical_shape == torch.Size([4, 4, 62, 62])
 
-    assert mapping['other'].name == "index"
-    assert isinstance(mapping['other'].data, int)
-    assert mapping['other'].type == OperationDataType.ARG
+    assert mapping['index'].name == "index"
+    assert isinstance(mapping['index'].data, int)
+    assert mapping['index'].type == OperationDataType.ARG
 
     assert mapping['output'].name == "getitem"
     assert mapping['output'].data.is_meta
