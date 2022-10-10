@@ -29,7 +29,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
         assert input_op_data.dim() in (3, 4,
                                        5), f'We suppose the dim of input fed into conv op should in range of [3, 5].'
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
+    def update_compute_cost(self, strategy: ShardingStrategy_V2):
         '''
         Compute the computation cost per device with this specific strategy.
 
@@ -67,9 +67,9 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
         total_compute_cost = forward_compute_cost + backward_compute_cost
 
         compute_cost = TrainCycleItem(fwd=forward_compute_cost, bwd=backward_compute_cost, total=total_compute_cost)
-        return compute_cost
+        strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_memory_cost(self, strategy: ShardingStrategy_V2):
         forward_size_mapping = {
             'input': self._compute_size_in_bytes(strategy, "input"),
             'other': self._compute_size_in_bytes(strategy, "other"),
