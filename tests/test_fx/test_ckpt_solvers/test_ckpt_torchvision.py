@@ -77,11 +77,11 @@ def _run_ckpt_solver(rank):
             m = model_cls(num_classes=5)
             graph = tracer.trace(root=m)
             gm = ColoGraphModule(copy.deepcopy(m), graph, m.__class__.__name__)
-            MetaInfoProp(gm).run(MetaTensor(data, fake_device='cpu'))
+            MetaInfoProp(gm.cuda()).run(MetaTensor(data, fake_device='cuda'))
             codegen = ActivationCheckpointCodeGen()
             gm.graph.set_codegen(codegen)
             if solver == solver_rotor:
-                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500, force_python=True)
+                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
             else:
                 gm = solver(gm)
             assert _is_graph_linearized(gm), f"Solver {solver} did not solve {model_cls} in a linearized manner."
