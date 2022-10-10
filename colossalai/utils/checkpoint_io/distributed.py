@@ -101,5 +101,13 @@ def flatten_zero_param(tensor: Tensor, redist_meta: ParamRedistMeta) -> List[Opt
     for i, offset in enumerate(offsets[:-1]):
         end = offsets[i + 1]
         tensors.append(tensor.view(-1)[offset:end])
+    if len(tensors) < redist_meta.dp_world_size:
+        tensors.extend([None] * (redist_meta.dp_world_size - len(tensors)))
     assert len(tensors) == redist_meta.dp_world_size
+    return tensors
+
+
+def unmerge_param(tensor: Tensor, redist_meta: ParamRedistMeta) -> List[List[Optional[Tensor]]]:
+    tensors = split_tp_param(tensor, redist_meta)
+    tensors = [flatten_zero_param(t, redist_meta) for t in tensors]
     return tensors
