@@ -64,6 +64,7 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         The function to call at the end of the constructor of each module.
         NOTE() The module may be passed to this function multiple times.
         """
+
         # iterate over the positional arguments
         # to check if an argument is a torch Module
         # if found any torch Module, replace it with its layer spec

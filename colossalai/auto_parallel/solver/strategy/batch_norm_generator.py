@@ -86,12 +86,12 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
         # compute bwd cost incurred
         # bwd_cost = input_grad + other_grad + bias_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
-        bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
-        bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_activation_cost)
+        bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
+        bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
 
         # compute total cost
         total_mem_cost = MemoryCost(activation=fwd_activation_cost + bwd_activation_cost,
-                                    parameter=fwd_parameter_cost + bwd_activation_cost)
+                                    parameter=fwd_parameter_cost + bwd_parameter_cost)
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
@@ -287,5 +287,10 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
 
         # S01R = S01R x R WITH SYNC_BN
         strategy_list.append(self.split_input_batch_1d(0, 1))
+
+        for strategy in strategy_list:
+            self.update_communication_cost(strategy)
+            self.update_compute_cost(strategy)
+            self.update_memory_cost(strategy)
 
         return strategy_list

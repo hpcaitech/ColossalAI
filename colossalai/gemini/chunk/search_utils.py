@@ -1,3 +1,4 @@
+import math
 from typing import Dict, List
 import numpy as np
 import torch.nn as nn
@@ -7,7 +8,7 @@ from colossalai.tensor import ColoParameter
 def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) -> None:
     """Filter those parameters whose size is too large from others.
     """
-    params_size = [p.numel() for p in model.parameters()]
+    params_size = [p.numel() for p in model.parameters() if not getattr(p, '_ddp_to_ignore', False)]
     params_size_arr = np.array(params_size)
 
     std = np.std(params_size_arr)
@@ -36,6 +37,9 @@ def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in model.parameters():
         assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
+        if getattr(param, '_ddp_to_ignore', False):
+            continue
+
         param_key = param.process_group.dp_world_size()
 
         if param_key not in params_dict:
@@ -47,13 +51,13 @@ def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
 
 def search_chunk_configuration(
         model: nn.Module,
-        search_range_mb: int,
+        search_range_mb: float,
         search_interval_byte: int,    # hidden size is the best value for the interval
-        min_chunk_size_mb: int = 32,
-        filter_exlarge_params: bool = True):
-    search_range_byte = search_range_mb * 1024**2
-    min_chunk_size_byte = min_chunk_size_mb * 1024**2
-    assert search_range_byte % search_interval_byte == 0
+        min_chunk_size_mb: float = 32,
+        filter_exlarge_params: bool = True) -> Dict:
+    search_range_byte = round(search_range_mb * 1024**2)
+    min_chunk_size_byte = round(min_chunk_size_mb * 1024**2)
+    assert search_range_byte >= 0
 
     params_dict = clasify_params(model)
     config_dict: Dict[int, Dict] = dict()
@@ -75,11 +79,12 @@ def search_chunk_configuration(
     max_size = min_chunk_size_byte
     for key in size_dict:
         max_size = max(max_size, max(size_dict[key]))
+    start_size = int(math.ceil(max_size / search_interval_byte) * search_interval_byte)
 
     min_chunk_waste = float('+inf')
-    best_chunk_size = max_size
+    best_chunk_size = start_size
 
-    for chunk_size in range(max_size, max_size + search_range_byte + 1, search_interval_byte):
+    for chunk_size in range(start_size, start_size + search_range_byte + 1, search_interval_byte):
         temp_waste = 0
         for key in size_dict:
             temp_waste += _get_unused_byte(size_dict[key], chunk_size)
