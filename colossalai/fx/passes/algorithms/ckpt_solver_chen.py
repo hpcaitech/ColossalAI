@@ -2,6 +2,7 @@ from typing import List, Set, Tuple
 import torch
 from torch.fx import GraphModule, Node
 import math
+from colossalai.fx.profiler import calculate_fwd_in, calculate_fwd_tmp
 
 __all__ = ['chen_greedy']
 CKPT_OP = ['call_module', 'call_method', 'call_function', 'get_attr']
@@ -74,10 +75,10 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
         prev_idx = 2
         for (idx, n) in enumerate(gm.graph.nodes):
             n: Node
-            temp += n.meta['fwd_mem_out'] + n.meta['fwd_mem_tmp']
+            temp += calculate_fwd_in(n) + calculate_fwd_tmp(n)
             y = max(y, temp)
             if temp > b and n in ckpt_nodes:
-                x += n.meta['fwd_mem_out']
+                x += calculate_fwd_in(n)
                 temp = 0
                 ckpt_intv.append((prev_idx, idx + 1))
                 prev_idx = idx + 1
