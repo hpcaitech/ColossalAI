@@ -27,6 +27,7 @@ class CheckpointWriter(ABC):
               name: str,
               model: Module,
               optimizer: Optional[Optimizer] = None,
+              param_to_os: Optional[Dict[str, int]] = None,
               dist_meta: Optional[Dict[str, ParamDistMeta]] = None,
               **kwargs: Any) -> None:
         pass
