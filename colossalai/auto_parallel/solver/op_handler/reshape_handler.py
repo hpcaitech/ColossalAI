@@ -69,6 +69,7 @@ class ReshapeHandler(OperatorHandler):
             shape_consistency_manager = ShapeConsistencyManager()
             _, _, communication_cost = shape_consistency_manager.shape_consistency(input_sharding_spec,
                                                                                    replicate_input_sharding_spec)
+            communication_cost = communication_cost["total"]
 
             # generate resharding cost
             resharding_costs = self._generate_resharding_costs([input_sharding_spec])
