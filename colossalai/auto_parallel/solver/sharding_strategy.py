@@ -63,24 +63,27 @@ class OperationData:
     Args:
         name (str): the name of the operation-related data
         type (OperationDataType): the type of the operation data
-        data (torch.Tensor): the value for this data, usually it is a meta tensor.
+        data (Any): the value for this data, usually it is a meta tensor.
         logical_shape (Tuple[int]): the logical shape of the data, it can be different from the its actual shape in memory.
     """
     name: str
     type: OperationDataType
-    data: torch.Tensor
+    data: Any
     logical_shape: Tuple[int] = None
 
     def __post_init__(self):
         # if no logical shape is specified, use the data shape as the logical shape
-        if self.logical_shape is None:
+        if self.logical_shape is None and isinstance(self.data, torch.Tensor):
             self.logical_shape = self.data.shape
 
     def __repr__(self) -> str:
         return f'OperationData(name={self.name}, type={self.type})'
 
+    def __eq__(self, other) -> bool:
+        return other.name == self.name
+
     def __hash__(self) -> int:
-        return hash(f'{self.name}-{self.type}')
+        return hash(f'{self.name}')
 
 
 @dataclass
@@ -123,7 +126,7 @@ class ShardingStrategy_V2:
                                                   strategy.(default to None)
     """
     name: str
-    sharding_specs: Dict[OperationData, ShardingSpec] = None
+    sharding_specs: Dict[OperationData, Union[ShardingSpec, Tuple[ShardingSpec]]] = None
     compute_cost: TrainCycleItem = None
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None

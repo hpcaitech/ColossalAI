@@ -1,12 +1,11 @@
 from dataclasses import asdict
-from colossalai.fx.profiler import GraphInfo
 import torch
 import torch.fx
 from torch.fx.node import Node, Argument, Target
 from torch.utils._pytree import tree_map
 from typing import Any, List, Tuple, NamedTuple, Dict
 from torch.fx._compatibility import compatibility
-from colossalai.fx.profiler import profile_function, profile_module, profile_method, activation_size
+from colossalai.fx.profiler import GraphInfo, profile_function, profile_module, profile_method, activation_size, calculate_fwd_out, calculate_fwd_tmp, calculate_fwd_in
 
 
 @compatibility(is_backward_compatible=True)
@@ -62,12 +61,12 @@ class MetaInfoProp(torch.fx.Interpreter):
         
         
         # output of above code is 
-            Op type       Op    Forward FLOPs    Backward FLOPs    SAVE_FWD_IN    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
-        -----------  -------  ---------------  ----------------  -------------  ---------  ---------  ---------  ---------
-        placeholder  input_1          0 FLOPs           0 FLOPs          False    0.00 KB    0.00 KB    0.00 KB    0.00 KB
-        call_module       _0        128 FLOPs         288 FLOPs           True    0.12 KB    0.00 KB    0.34 KB    0.00 KB
-        call_module       _1        512 FLOPs       1,056 FLOPs           True    0.12 KB    0.00 KB    1.19 KB    0.00 KB
-             output   output          0 FLOPs           0 FLOPs           True    0.00 KB    0.00 KB    0.00 KB    0.00 KB
+            Op type       Op    Forward FLOPs    Backward FLOPs    FWD_OUT    FWD_TMP    BWD_OUT    BWD_TMP
+        -----------  -------  ---------------  ----------------  ---------  ---------  ---------  ---------
+        placeholder  input_1          0 FLOPs           0 FLOPs    0.00 KB    0.00 KB    0.00 KB    0.00 KB
+        call_module       _0        128 FLOPs         288 FLOPs    0.12 KB    0.00 KB    0.34 KB    0.00 KB
+        call_module       _1        512 FLOPs       1,056 FLOPs    0.12 KB    0.00 KB    1.19 KB    0.00 KB
+             output   output          0 FLOPs           0 FLOPs    0.00 KB    0.00 KB    0.00 KB    0.00 KB
     Args:
          module (GraphModule): The module to be executed
 
@@ -102,7 +101,7 @@ class MetaInfoProp(torch.fx.Interpreter):
         n.meta['tensor_meta'] = tensor_meta
         n.meta = {**n.meta, **asdict(meta_info)}    # extend MetaInfo to `n.meta`
         # TODO: the attribute node_size should be removed in the future
-        setattr(n, 'node_size', n.meta.get('fwd_mem_tmp', 0) + n.meta.get('fwd_mem_out', 0))
+        setattr(n, 'node_size', activation_size(n.meta.get('fwd_in', 0)) + activation_size(n.meta.get('fwd_tmp', 0)))
         n.meta['type'] = type(result)
 
         # retain the autograd graph
@@ -228,6 +227,8 @@ class MetaInfoProp(torch.fx.Interpreter):
             result (Any): The argument value that was retrieved
             meta_info (MetaInfo): The memory cost and FLOPs estimated with `MetaTensor`.
         """
+        if hasattr(args[0], '_tensor'):
+            return args[0], GraphInfo(fwd_in=[args[0]._tensor])
         return args[0], GraphInfo(save_fwd_in=True)
 
     def propagate(self, *args):
@@ -281,9 +282,9 @@ class MetaInfoProp(torch.fx.Interpreter):
                 str(node),
                 flops_repr(node.meta['fwd_flop']),
                 flops_repr(node.meta['bwd_flop']),
-                node.meta['save_fwd_in'],
-                mem_repr(node.meta['fwd_mem_out']),
-                mem_repr(node.meta['fwd_mem_tmp']),
+                mem_repr(calculate_fwd_in(node)),
+                mem_repr(calculate_fwd_out(node)),
+                mem_repr(calculate_fwd_tmp(node)),
                 mem_repr(node.meta['bwd_mem_out']),
                 mem_repr(node.meta['bwd_mem_tmp']),
             ])
@@ -295,7 +296,7 @@ class MetaInfoProp(torch.fx.Interpreter):
             'Op',
             'Forward FLOPs',
             'Backward FLOPs',
-            'SAVE_FWD_IN',
+            'FWD_IN',
             'FWD_OUT',
             'FWD_TMP',
             'BWD_OUT',

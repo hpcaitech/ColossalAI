@@ -165,7 +165,7 @@ def test_conv_function_handler():
     assert mapping['output'].data.shape == torch.Size([4, 16, 64, 64])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
-    strategies_vector = handler.register_strategy()
+    handler.register_strategy()
     strategy_name_list = [val.name for val in strategies_vector]
 
     # SS = SR x RS
