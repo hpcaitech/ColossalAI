@@ -1,46 +1,64 @@
-# xxx.pt -> global checkpoint
-# xxx.chunk0.pt -> global checkpoint chunk
-# xxx.chunk0.0.pt -> checkpoint chunk for process 0
-
-import os
-import re
-from typing import List
-import argparse
-
-DIST_CHUNK_PAT = re.compile(r'(.+)\.chunk\d+\.\d+\.pt')
-GLOBAL_CHUNK_PAT = re.compile(r'(.+)\.chunk\d+\.pt')
-DIST_CHUNK_TEMPLATE = '{}\.chunk\d+\.\d+\.pt'
-GLOBAL_CHUNK_TEMPLATE = '{}\.chunk\d+\.pt'
+from typing import List, Optional, Dict, Any
+from torch import Tensor
+from torch.optim import Optimizer
 
 
-def extract_checkpoint_template(path: str) -> str:
-    filename = os.path.split(path)[1]
-    res = DIST_CHUNK_PAT.match(filename)
-    if res:
-        return DIST_CHUNK_TEMPLATE.format(res[1])
-    res = GLOBAL_CHUNK_PAT.match(filename)
-    if res:
-        return GLOBAL_CHUNK_TEMPLATE.format(res[1])
-    return filename
+def get_param_to_os(model_state_dict: Dict[str, Tensor], optimizer: Optimizer) -> Dict[str, int]:
+    # ensure all params in optimizer are in model state dict
+    params_set = set(id(p) for p in model_state_dict.values())
+    for p in optimizer.param_groups['params']:
+        assert id(p) in params_set
+    param_mappings = {}
+    start_index = 0
+
+    def get_group_mapping(group):
+        nonlocal start_index
+        param_mappings.update(
+            {id(p): i for i, p in enumerate(group['params'], start_index) if id(p) not in param_mappings})
+        start_index += len(group['params'])
+
+    for g in optimizer.param_groups:
+        get_group_mapping(g)
+    return {k: param_mappings[id(p)] for k, p in model_state_dict.items()}
 
 
-def find_checkpoints(path: str) -> List[str]:
-    if not os.path.isfile(path):
-        raise OSError(f'{path} is not a file')
-    checkpoint_template = extract_checkpoint_template(path)
-    file_dir = os.path.dirname(path)
-    targets = []
-    for name in os.listdir(file_dir):
-        target_path = os.path.join(file_dir, name)
-        if not os.path.isfile(target_path):
-            continue
-        if re.match(checkpoint_template, name):
-            targets.append(target_path)
-    return targets
+def compute_optimizer_state_size(state: Dict[str, Any]) -> int:
+    size = 0
+    for v in state.values():
+        if isinstance(v, Tensor):
+            size += v.numel() * v.element_size()
+    return size
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('path')
-    args = parser.parse_args()
-    print(find_checkpoints(args.path))
+def shard_checkpoint(max_shard_size: int,
+                     model_state_dict: Dict[str, Tensor],
+                     optimizer_state_dict: Optional[dict] = None,
+                     param_to_os: Optional[dict] = None) -> List[dict]:
+    has_optimizer: bool = False
+    if optimizer_state_dict is not None:
+        assert param_to_os is not None
+        os_to_param = {v: k for k, v in param_to_os.items()}
+        for os_key in optimizer_state_dict['state'].keys():
+            assert os_key in os_to_param
+            assert os_to_param[os_key] in model_state_dict
+        has_optimizer = True
+    shards = []
+    buffer = {'model': {}}
+    if has_optimizer:
+        buffer['optimizer'] = {'state': {}, 'param_groups': optimizer_state_dict['param_groups']}
+    buffer_size = 0
+    for k, tensor in model_state_dict.items():
+        if buffer_size >= max_shard_size:
+            shards.append(buffer)
+            buffer = {'model': {}}
+            if has_optimizer:
+                buffer['optimizer'] = {'state': {}}
+            buffer_size = 0
+        buffer['model'][k] = tensor
+        buffer_size += tensor.numel() * tensor.element_size()
+        if has_optimizer:
+            buffer['optimizer']['state'][param_to_os[k]] = optimizer_state_dict['state'][param_to_os[k]]
+            buffer_size += compute_optimizer_state_size(optimizer_state_dict['state'][param_to_os[k]])
+    if len(buffer['model']) > 0:
+        shards.append(buffer)
+    return shards
