@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -121,16 +122,12 @@ class ShardingStrategy_V2:
         communication_cost (TrainCycleItem): Communication cost to complete this strategy. (default to None)
         memory_cost (TrainCycleItem): Memory cost of the output node using this strategy. (default to None)
         input_sharding_specs (List(ShardingSpec)): The ShardingSpecs of the input nodes.
-        input_resharding_costs (Dict[int, List[float]]): resharding_cost[i][j] means the cost of i-th argument in the output node argument list
-                                                  with j-th strategy in its strategies_vector transforms to sharding spec wanted in this
-                                                  strategy.(default to None)
     """
     name: str
     sharding_specs: Dict[OperationData, Union[ShardingSpec, Tuple[ShardingSpec]]] = None
     compute_cost: TrainCycleItem = None
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None
-    input_resharding_costs: Dict[OperationData, List[float]] = None
     communication_actions: Dict[OperationData, CommSpec] = None
     resharding_costs: Dict[OperationData, Dict[ShardingSpec, TrainCycleItem]] = None
 
@@ -168,6 +165,26 @@ class ShardingStrategy_V2:
             if op_data.name == name:
                 return sharding_spec
         raise KeyError(f"Could not find the ShardingSpec for OperationData with name {name}")
+
+    def clone(self):
+
+        def _deepcopy_dict_vals(data: Dict):
+            return {k: deepcopy(v) for k, v in data.items()}
+
+        sharding_specs = _deepcopy_dict_vals(self.sharding_specs) if self.sharding_specs else None
+        communication_actions = _deepcopy_dict_vals(self.communication_actions) if self.communication_actions else None
+        resharding_costs = _deepcopy_dict_vals(self.resharding_costs) if self.resharding_costs else None
+        compute_cost = deepcopy(self.compute_cost)
+        communication_cost = deepcopy(self.communication_cost)
+        memory_cost = deepcopy(self.memory_cost)
+
+        return ShardingStrategy_V2(name=self.name,
+                                   sharding_specs=sharding_specs,
+                                   compute_cost=compute_cost,
+                                   communication_cost=communication_cost,
+                                   memory_cost=memory_cost,
+                                   communication_actions=communication_actions,
+                                   resharding_costs=resharding_costs)
 
 
 class StrategiesVector(list):
