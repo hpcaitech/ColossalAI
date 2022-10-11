@@ -6,10 +6,11 @@ from .unary_elementwise_generator import UnaryElementwiseGenerator
 from .getitem_generator import GetItemStrategyGenerator, TensorStrategyGenerator, TensorTupleStrategyGenerator
 from .layer_norm_generator import LayerNormGenerator
 from .reshape_generator import ReshapeGenerator
+from .normal_pooling_generator import NormalPoolStrategyGenerator
 
 __all__ = [
     'StrategyGenerator_V2', 'DotProductStrategyGenerator', 'MatVecStrategyGenerator',
     'LinearProjectionStrategyGenerator', 'BatchedMatMulStrategyGenerator', 'ConvStrategyGenerator',
     'UnaryElementwiseGenerator', 'BatchNormStrategyGenerator', 'GetItemStrategyGenerator', 'TensorStrategyGenerator',
-    'TensorTupleStrategyGenerator', 'LayerNormGenerator', 'ReshapeGenerator'
+    'TensorTupleStrategyGenerator', 'LayerNormGenerator', 'ReshapeGenerator', 'NormalPoolStrategyGenerator'
 ]
