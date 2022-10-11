@@ -2,7 +2,7 @@ import operator
 from functools import reduce
 from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
-from .strategy_generator import StrategyGenerator_V2
+from .strategy_generator import StrategyGenerator_V2, FollowingStrategyGenerator
 from typing import List
 from .._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
 import copy
@@ -60,7 +60,7 @@ class WhereGenerator(StrategyGenerator_V2):
 
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
-        name = f'{sharding_spec_mapping["output"].sharding_sequence}'
+        name = f'{sharding_spec_mapping["output"].sharding_sequence} = {sharding_spec_mapping["condition"].sharding_sequence} x {sharding_spec_mapping["x"].sharding_sequence} x {sharding_spec_mapping["y"].sharding_sequence}'
         communication_action_mapping = {}
 
         strategy = self.get_sharding_strategy(name=name,
