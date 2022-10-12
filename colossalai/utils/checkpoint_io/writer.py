@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from torch.optim import Optimizer
 from torch.nn import Module
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from .meta import ParamDistMeta
-from .utils import get_param_to_os, shard_checkpoint
-from .constant import CHECKPOINT_PREFIX, CHECKPOINT_FILE_NAME
+from .utils import get_param_to_os, shard_checkpoint, get_paired_os
+from .constant import CKPT_PAT, MODEL_CKPT_FILE_NAME, OPTIM_CKPT_FILE_NAME, META_CKPT_FILE_NAME, OTHER_CKPT_FILE_NAME, GLOBAL_META_FILE_NAME
 import torch.distributed as dist
 import torch
 import os
@@ -36,14 +36,17 @@ class CheckpointWriter(ABC):
                          model: Module,
                          optimizer: Optional[Optimizer] = None,
                          param_to_os: Optional[Dict[str, int]] = None,
-                         dist_meta: Optional[Dict[str, ParamDistMeta]] = None,
-                         **kwargs: Any) -> List[dict]:
+                         dist_meta: Optional[Dict[str, ParamDistMeta]] = None) -> Tuple[List[dict], List[dict], dict]:
         if not self.save_global:
             assert dist_meta is not None, 'Expect dist_meta is not None, when not saving global'
         model_state_dict = model.state_dict()
         optimizer_state_dict = optimizer.state_dict() if optimizer else None
+        meta = {'dist_meta': dist_meta}
         if optimizer:
             param_to_os = param_to_os or get_param_to_os(model_state_dict)
+            paired_os = get_paired_os(model_state_dict, optimizer_state_dict, param_to_os)
+            meta['param_to_os'] = param_to_os
+            meta['paired_os'] = paired_os
         if not self.save_global:
             # filter dp replicated params
             model_state_dict = {
@@ -55,23 +58,16 @@ class CheckpointWriter(ABC):
                     for k in model_state_dict.items()
                     if dist_meta[k].used_zero or dist_meta[k].dp_rank == 0
                 }
-        checkpoints = []
         if len(model_state_dict) == 0:
             warnings.warn('model state dict is empty, checkpoint is not saved', category=RuntimeWarning)
-            return checkpoints
+            return [], [], meta
         if self.max_size <= 0:
-            checkpoint = {'model': model_state_dict}
-            if optimizer is not None:
-                checkpoint['optimizer'] = optimizer_state_dict
-            checkpoints.append(checkpoint)
+            model_checkpoints = [model_state_dict]
+            optimizer_checkpoints = [optimizer_state_dict] if optimizer else []
         else:
-            checkpoints = shard_checkpoint(self.max_size, model_state_dict, optimizer_state_dict, param_to_os)
-        if dist_meta is not None:
-            checkpoints[0]['dist_meta'] = dist_meta
-        if optimizer:
-            checkpoints[0]['param_to_os'] = param_to_os
-        checkpoints[0].update(kwargs)
-        return checkpoints
+            model_checkpoints, optimizer_checkpoints = shard_checkpoint(self.max_size, model_state_dict,
+                                                                        optimizer_state_dict, param_to_os)
+        return model_checkpoints, optimizer_checkpoints, meta
 
 
 class DiskCheckpointWriter(CheckpointWriter):
@@ -81,16 +77,16 @@ class DiskCheckpointWriter(CheckpointWriter):
             os.makedirs(dir_name)
         assert os.path.isdir(dir_name), f'"{dir_name}" is not a directory'
         for file_name in os.listdir(dir_name):
-            if file_name.startswith(CHECKPOINT_PREFIX):
+            if CKPT_PAT.match(file_name):
                 if self.overwrite:
                     os.remove(os.path.join(dir_name, file_name))
                 else:
                     raise RuntimeError(f'Cannot save checkpoint, because it already exists. (overwrite = False)')
 
-    def get_checkpoint_names(self, n_shards: int) -> List[str]:
+    def get_checkpoint_names(self, n_shards: int, base_name: str) -> List[str]:
         checkpoint_names = []
         for i in range(n_shards):
-            checkpoint_name = CHECKPOINT_FILE_NAME
+            checkpoint_name = base_name
             if not self.save_global:
                 checkpoint_name = checkpoint_name.replace(
                     '.bin', f'rank{dist.get_rank()+1:05d}-of-{dist.get_world_size():05d}.bin')
@@ -98,6 +94,10 @@ class DiskCheckpointWriter(CheckpointWriter):
                 checkpoint_name = checkpoint_name.replace('.bin', f'shard{i+1:05d}-of-{n_shards:05d}.bin')
             checkpoint_names.append(checkpoint_name)
         return checkpoint_names
+
+    def save_checkpoints(self, dir_name: str, checkpoints: List[dict], checkpoint_names: List[str]) -> None:
+        for checkpoint, checkpoint_name in zip(checkpoints, checkpoint_names):
+            torch.save(checkpoint, os.path.join(dir_name, checkpoint_name))
 
     def write(self,
               dir_name: str,
@@ -107,8 +107,19 @@ class DiskCheckpointWriter(CheckpointWriter):
               dist_meta: Optional[Dict[str, ParamDistMeta]] = None,
               **kwargs: Any) -> None:
         self.setup(dir_name)
-        checkpoints = self.build_checkpoint(model, optimizer, param_to_os, dist_meta, **kwargs)
-        if len(checkpoints) == 0:
-            return
-        for checkpoint, checkpoint_name in zip(checkpoints, self.get_checkpoint_names(len(checkpoints))):
-            torch.save(checkpoint, os.path.join(dir_name, checkpoint_name))
+        # save global info
+        if self.save_global or dist.get_rank() == 0:
+            global_meta = {'meta': self.get_checkpoint_names(1, META_CKPT_FILE_NAME)}
+            torch.save(global_meta, GLOBAL_META_FILE_NAME)
+            torch.save(kwargs, OTHER_CKPT_FILE_NAME)
+
+        model_checkpoints, optimizer_checkpoints, meta = self.build_checkpoint(model, optimizer, param_to_os, dist_meta)
+        if len(model_checkpoints) > 0:
+            model_checkpoint_names = self.get_checkpoint_names(len(model_checkpoints), MODEL_CKPT_FILE_NAME)
+            meta['model'] = model_checkpoint_names
+            self.save_checkpoints(dir_name, model_checkpoints, model_checkpoint_names)
+        if len(optimizer_checkpoints) > 0:
+            optimizer_checkpoint_names = self.get_checkpoint_names(len(optimizer_checkpoints), OPTIM_CKPT_FILE_NAME)
+            meta['optimizer'] = optimizer_checkpoint_names
+            self.save_checkpoints(dir_name, optimizer_checkpoints, optimizer_checkpoint_names)
+        torch.save(meta, self.get_checkpoint_names(1, META_CKPT_FILE_NAME))

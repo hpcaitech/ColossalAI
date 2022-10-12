@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from torch import Tensor
 from torch.optim import Optimizer
 
@@ -33,7 +33,7 @@ def compute_optimizer_state_size(state: Dict[str, Any]) -> int:
 def shard_checkpoint(max_shard_size: int,
                      model_state_dict: Dict[str, Tensor],
                      optimizer_state_dict: Optional[dict] = None,
-                     param_to_os: Optional[dict] = None) -> List[dict]:
+                     param_to_os: Optional[dict] = None) -> Tuple[List[dict], List[dict]]:
     has_optimizer: bool = False
     if optimizer_state_dict is not None:
         assert param_to_os is not None
@@ -42,23 +42,44 @@ def shard_checkpoint(max_shard_size: int,
             assert os_key in os_to_param
             assert os_to_param[os_key] in model_state_dict
         has_optimizer = True
-    shards = []
-    buffer = {'model': {}}
-    if has_optimizer:
-        buffer['optimizer'] = {'state': {}, 'param_groups': optimizer_state_dict['param_groups']}
+    model_shards = []
+    buffer = {}
     buffer_size = 0
     for k, tensor in model_state_dict.items():
         if buffer_size >= max_shard_size:
-            shards.append(buffer)
-            buffer = {'model': {}}
-            if has_optimizer:
-                buffer['optimizer'] = {'state': {}}
+            model_shards.append(buffer)
+            buffer = {}
             buffer_size = 0
-        buffer['model'][k] = tensor
+        buffer[k] = tensor
         buffer_size += tensor.numel() * tensor.element_size()
-        if has_optimizer:
-            buffer['optimizer']['state'][param_to_os[k]] = optimizer_state_dict['state'][param_to_os[k]]
-            buffer_size += compute_optimizer_state_size(optimizer_state_dict['state'][param_to_os[k]])
-    if len(buffer['model']) > 0:
-        shards.append(buffer)
-    return shards
+    if len(buffer) > 0:
+        model_shards.append(buffer)
+    if not has_optimizer:
+        return model_shards, []
+    optimizer_shards = []
+    buffer = {'state': {}, 'param_groups': optimizer_state_dict['param_groups']}
+    buffer_size = 0
+    for k, state in optimizer_state_dict['state'].items():
+        if buffer_size >= max_shard_size:
+            optimizer_shards.append(buffer)
+            buffer = {'state': {}}
+            buffer_size = 0
+        buffer['state'][k] = state
+        buffer_size += compute_optimizer_state_size(state)
+    if len(buffer['state']) > 0:
+        optimizer_shards.append(buffer)
+    return model_shards, optimizer_shards
+
+
+def get_paired_os(model_state_dict: Dict[str, Tensor], optimizer_state_dict: dict, param_to_os: Dict[str, int]) -> dict:
+    os_to_param = {v: k for k, v in param_to_os.items()}
+    paired_os = {}
+    for idx, state in optimizer_state_dict['state']:
+        paired_os[idx] = {}
+        p = model_state_dict[os_to_param[idx]]
+        for k, v in state.items():
+            if isinstance(v, Tensor) and v.shape == p.shape:
+                paired_os[idx][k] = True
+            else:
+                paired_os[idx][k] = False
+    return paired_os
