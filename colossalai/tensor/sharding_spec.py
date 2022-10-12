@@ -6,6 +6,8 @@ from enum import Enum
 from functools import reduce
 import operator
 
+__all__ = ['_DimSpec', 'ShardingException', 'ShardingSpec']
+
 ALLGATHER_COST = 20
 SHARD_COST = 5
 STEP_PENALTY = 6
@@ -134,6 +136,10 @@ class _DimSpec:
         '''
         difference = self.difference_dict[(str(self), str(other))]
         return difference
+
+
+class ShardingException(Exception):
+    pass
 
 
 class ShardingSpec:
