@@ -1,6 +1,9 @@
 from typing import List, Optional, Dict, Any, Tuple
 from torch import Tensor
 from torch.optim import Optimizer
+from torch.nn import Module
+from .meta import ParamDistMeta
+import warnings
 
 
 def get_param_to_os(model_state_dict: Dict[str, Tensor], optimizer: Optimizer) -> Dict[str, int]:
@@ -83,3 +86,42 @@ def get_paired_os(model_state_dict: Dict[str, Tensor], optimizer_state_dict: dic
             else:
                 paired_os[idx][k] = False
     return paired_os
+
+
+def build_checkpoints(save_global: bool,
+                      max_size: int,
+                      model: Module,
+                      optimizer: Optional[Optimizer] = None,
+                      param_to_os: Optional[Dict[str, int]] = None,
+                      dist_meta: Optional[Dict[str, ParamDistMeta]] = None) -> Tuple[List[dict], List[dict], dict]:
+    if not save_global:
+        assert dist_meta is not None, 'Expect dist_meta is not None, when not saving global'
+    model_state_dict = model.state_dict()
+    optimizer_state_dict = optimizer.state_dict() if optimizer else None
+    meta = {'dist_meta': dist_meta}
+    if optimizer:
+        param_to_os = param_to_os or get_param_to_os(model_state_dict)
+        paired_os = get_paired_os(model_state_dict, optimizer_state_dict, param_to_os)
+        meta['param_to_os'] = param_to_os
+        meta['paired_os'] = paired_os
+    if not save_global:
+        # filter dp replicated params
+        model_state_dict = {
+            k: v for k, v in model_state_dict.items() if dist_meta[k].used_zero or dist_meta[k].dp_rank == 0
+        }
+        if optimizer:
+            optimizer_state_dict['state'] = {
+                param_to_os[k]: optimizer_state_dict['state'][param_to_os[k]]
+                for k in model_state_dict.items()
+                if dist_meta[k].used_zero or dist_meta[k].dp_rank == 0
+            }
+    if len(model_state_dict) == 0:
+        warnings.warn('model state dict is empty, checkpoint is not saved', category=RuntimeWarning)
+        return [], [], meta
+    if max_size <= 0:
+        model_checkpoints = [model_state_dict]
+        optimizer_checkpoints = [optimizer_state_dict] if optimizer else []
+    else:
+        model_checkpoints, optimizer_checkpoints = shard_checkpoint(max_size, model_state_dict, optimizer_state_dict,
+                                                                    param_to_os)
+    return model_checkpoints, optimizer_checkpoints, meta
