@@ -109,9 +109,9 @@ class NormalPoolStrategyGenerator(StrategyGenerator_V2):
             strategy = self._generate_strategy_with_dim_partition(dim_partition)
             strategy_list.append(strategy)
 
-        # for strategy in strategy_list:
-        #     self.update_communication_cost(strategy)
-        #     self.update_compute_cost(strategy)
-        #     self.update_memory_cost(strategy)
+        for strategy in strategy_list:
+            self.update_communication_cost(strategy)
+            self.update_compute_cost(strategy)
+            self.update_memory_cost(strategy)
 
         return strategy_list
