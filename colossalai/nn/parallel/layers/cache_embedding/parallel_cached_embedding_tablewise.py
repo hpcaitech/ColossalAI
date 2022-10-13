@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
-from .freq_aware_embedding import FreqAwareEmbeddingBag
+from .cached_embedding import CachedEmbeddingBag
 from .cache_mgr import EvictionStrategy
 from .embedding_config import TablewiseEmbeddingBagConfig
 from colossalai.tensor import ProcessGroup
@@ -12,9 +12,9 @@ from typing import List
 import time
 
 
-class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
+class ParallelCachedEmbeddingBagTablewise(CachedEmbeddingBag):
     """
-    all tables assigned to this class instance are managed by a single FreqAwareEmbeddingBag.
+    all tables assigned to this class instance are managed by a single CachedEmbeddingBag.
     Those parameters in TablewiseEmbeddingBagConfig are ignored: cuda_row_num, buffer_size, initial_weight.
     """
 
@@ -62,7 +62,7 @@ class ParallelFreqAwareEmbeddingBagTablewise(FreqAwareEmbeddingBag):
         self.cache_ratio = cache_ratio
         # table-associate cache
         cuda_row_num = int(cache_ratio * self.num_embeddings)
-        super(ParallelFreqAwareEmbeddingBagTablewise,
+        super(ParallelCachedEmbeddingBagTablewise,
               self).__init__(self.num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cache_ratio, ids_freq_mapping,
                              warmup_ratio, buffer_size, pin_weight, evict_strategy)

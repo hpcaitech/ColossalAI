@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from typing import List, Optional, Iterator, Tuple
 
-from .freq_aware_embedding import FreqAwareEmbeddingBag
+from .cached_embedding import CachedEmbeddingBag
 from colossalai.nn._ops._utils import dual_all_to_all
 
 from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor
@@ -28,7 +28,7 @@ def get_partition(embedding_dim, rank, world_size) -> Tuple[int, int, bool]:
     return offset, offset + size_list[rank], False
 
 
-class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
+class ParallelCachedEmbeddingBag(CachedEmbeddingBag):
 
     def __init__(self,
                  num_embeddings,
@@ -56,7 +56,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
             embedding_dim, self.rank, self.world_size)
         self.embedding_dim_per_partition = self.partition_end_index - self.partition_start_index
 
-        super(ParallelFreqAwareEmbeddingBag,
+        super(ParallelCachedEmbeddingBag,
               self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type, scale_grad_by_freq,
                              sparse, _weight, mode, include_last_offset, dtype, device, cache_ratio, ids_freq_mapping,
                              warmup_ratio, buffer_size, pin_weight, evict_strategy)
@@ -115,7 +115,7 @@ class ParallelFreqAwareEmbeddingBag(FreqAwareEmbeddingBag):
         ids_freq_mapping: Optional[List[int]] = None,
         warmup_ratio: float = 0.7,
         buffer_size: int = 0,
-    ) -> 'ParallelFreqAwareEmbeddingBag':
+    ) -> 'ParallelCachedEmbeddingBag':
         rows, cols = embedding.shape
         embedding_bag = cls(rows,
                             cols,

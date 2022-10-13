@@ -3,7 +3,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.profiler import record_function
 
-from .freq_aware_embedding import FreqAwareEmbeddingBag
+from .cached_embedding import CachedEmbeddingBag
 
 from colossalai.tensor import ProcessGroup
 from colossalai.nn._ops._utils import dual_all_to_all_tablewise
@@ -14,9 +14,9 @@ from typing import List
 import abc
 
 
-class ParallelFreqAwareEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
+class ParallelCachedEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
     """
-    every table assigned to this class instance is managed by a FreqAwareEmbeddingBag.
+    every table assigned to this class instance is managed by a CachedEmbeddingBag.
     """
 
     def __init__(self,
@@ -34,7 +34,7 @@ class ParallelFreqAwareEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
                  warmup_ratio=0.7,
                  pin_weight=False,
                  evict_strategy: EvictionStrategy = EvictionStrategy.LFU):
-        super(ParallelFreqAwareEmbeddingBagTablewiseSpiltCache, self).__init__()
+        super(ParallelCachedEmbeddingBagTablewiseSpiltCache, self).__init__()
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.rank_of_tables = [config.assigned_rank for config in embedding_bag_config_list]
@@ -49,31 +49,31 @@ class ParallelFreqAwareEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
         self.include_last_offset = include_last_offset
         self.pg = ProcessGroup(tp_degree=self.world_size)
 
-        # prepare FreqAwareEmbeddingBag list
+        # prepare CachedEmbeddingBag list
 
-        self.freq_aware_embedding_bag_list: nn.ModuleList = nn.ModuleList()
+        self.cached_embedding_bag_list: nn.ModuleList = nn.ModuleList()
         for config in embedding_bag_config_list:
             if config.assigned_rank != self.rank:
                 continue
-            self.freq_aware_embedding_bag_list.append(
-                FreqAwareEmbeddingBag(num_embeddings=config.num_embeddings,
-                                      embedding_dim=embedding_dim,
-                                      padding_idx=padding_idx,
-                                      max_norm=max_norm,
-                                      norm_type=norm_type,
-                                      scale_grad_by_freq=scale_grad_by_freq,
-                                      sparse=sparse,
-                                      _weight=config.initial_weight,
-                                      mode=mode,
-                                      include_last_offset=include_last_offset,
-                                      dtype=dtype,
-                                      device=device,
-                                      cuda_row_num=config.cuda_row_num,
-                                      ids_freq_mapping=config.ids_freq_mapping,
-                                      warmup_ratio=warmup_ratio,
-                                      buffer_size=config.buffer_size,
-                                      pin_weight=pin_weight,
-                                      evict_strategy=evict_strategy))
+            self.cached_embedding_bag_list.append(
+                CachedEmbeddingBag(num_embeddings=config.num_embeddings,
+                                   embedding_dim=embedding_dim,
+                                   padding_idx=padding_idx,
+                                   max_norm=max_norm,
+                                   norm_type=norm_type,
+                                   scale_grad_by_freq=scale_grad_by_freq,
+                                   sparse=sparse,
+                                   _weight=config.initial_weight,
+                                   mode=mode,
+                                   include_last_offset=include_last_offset,
+                                   dtype=dtype,
+                                   device=device,
+                                   cuda_row_num=config.cuda_row_num,
+                                   ids_freq_mapping=config.ids_freq_mapping,
+                                   warmup_ratio=warmup_ratio,
+                                   buffer_size=config.buffer_size,
+                                   pin_weight=pin_weight,
+                                   evict_strategy=evict_strategy))
 
         # prepare list shape for all_to_all output
         self.embedding_dim_per_rank = [0 for i in range(self.world_size)]
@@ -109,8 +109,8 @@ class ParallelFreqAwareEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
                 if per_sample_weights != None:
                     local_per_sample_weights = per_sample_weights[indices_start_position:indices_end_position]
             with record_function("(tablewise) tablewise forward"):
-                local_output_list.append(self.freq_aware_embedding_bag_list[i](local_indices, local_offsets,
-                                                                               local_per_sample_weights))
+                local_output_list.append(self.cached_embedding_bag_list[i](local_indices, local_offsets,
+                                                                           local_per_sample_weights))
 
         # get result of shape = (batch_size, (len(assigned_table_list)*embedding_dim))
         local_output = torch.cat(local_output_list, 1)
@@ -126,13 +126,13 @@ class ParallelFreqAwareEmbeddingBagTablewiseSpiltCache(abc.ABC, nn.Module):
     def element_size(self):
         if len(self.assigned_table_list) == 0:
             return 0
-        return self.freq_aware_embedding_bag_list[0].cache_weight_mgr.weight.element_size()
+        return self.cached_embedding_bag_list[0].cache_weight_mgr.weight.element_size()
 
     def print_comm_stats_(self):
         cuda_to_cpu_elem_num = 0
         cpu_to_cuda_elem_num = 0
-        for freq_aware_embedding_bag in self.freq_aware_embedding_bag_list:
-            cuda_to_cpu_elem_num += freq_aware_embedding_bag.cache_weight_mgr._cuda_to_cpu_numel
-            cpu_to_cuda_elem_num += freq_aware_embedding_bag.cache_weight_mgr._cpu_to_cuda_numel
+        for cached_embedding_bag in self.cached_embedding_bag_list:
+            cuda_to_cpu_elem_num += cached_embedding_bag.cache_weight_mgr._cuda_to_cpu_numel
+            cpu_to_cuda_elem_num += cached_embedding_bag.cache_weight_mgr._cpu_to_cuda_numel
         print(f"CUDA->CPU num: {cuda_to_cpu_elem_num / 1e6} M elem")
         print(f"CPU->CUDA num: {cpu_to_cuda_elem_num / 1e6} M elem")
