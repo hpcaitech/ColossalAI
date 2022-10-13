@@ -53,9 +53,16 @@ class StrategyGenerator_V2(ABC):
         for op_data_name, dim_partition_dict in mapping.items():
             if op_data_name in self.op_data:
                 op_data = self.op_data[op_data_name]
-                sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                             entire_shape=op_data.logical_shape,
-                                             dim_partition_dict=dim_partition_dict)
+                if isinstance(op_data.data, tuple) and isinstance(op_data.data[0], torch.Tensor):
+                    sharding_spec = []
+                    for output, dim_partition_dict_element in zip(op_data.data, dim_partition_dict):
+                        sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
+                                                     entire_shape=output.shape,
+                                                     dim_partition_dict=dim_partition_dict_element)
+                else:
+                    sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
+                                                 entire_shape=op_data.logical_shape,
+                                                 dim_partition_dict=dim_partition_dict)
                 results[op_data_name] = sharding_spec
         return results
 

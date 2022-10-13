@@ -23,7 +23,7 @@ class LayerNormGenerator(StrategyGenerator_V2):
     def validate(self) -> bool:
         return super().validate()
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
+    def update_compute_cost(self, strategy: ShardingStrategy_V2):
         '''
         Compute the computation cost per device with this specific strategy.
 
@@ -52,9 +52,9 @@ class LayerNormGenerator(StrategyGenerator_V2):
             backward_compute_cost += bias_compute_cost
         total_compute_cost = forward_compute_cost + backward_compute_cost
         compute_cost = TrainCycleItem(fwd=forward_compute_cost, bwd=backward_compute_cost, total=total_compute_cost)
-        return compute_cost
+        strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
+    def update_memory_cost(self, strategy: ShardingStrategy_V2):
         '''
         Compute the memory cost per device with this specific strategy.
         '''
@@ -103,6 +103,9 @@ class LayerNormGenerator(StrategyGenerator_V2):
         total_mesh_dim_list = []
         for mesh_dim_list in dim_partition.values():
             total_mesh_dim_list.extend(mesh_dim_list)
+        # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
+        if len(total_mesh_dim_list) == 1:
+            total_mesh_dim_list = total_mesh_dim_list[0]
         communication_action_mapping = {}
 
         other_comm_spec = self.get_communication_spec(

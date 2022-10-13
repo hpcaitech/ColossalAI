@@ -16,7 +16,6 @@ ELEMENTWISE_FUNC_OP = [
     torch.multiply,
     torch.nn.functional.relu,
     torch.nn.functional.dropout,
-    torch.flatten,
     # softmax should not be here
     torch.nn.functional.softmax
 ]

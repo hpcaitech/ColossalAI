@@ -28,10 +28,11 @@ class GetItemStrategyGenerator(FollowingStrategyGenerator):
     def validate(self) -> bool:
         return super().validate()
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
-        return TrainCycleItem(fwd=10, bwd=10, total=20)
+    def update_compute_cost(self, strategy: ShardingStrategy_V2):
+        compute_cost = TrainCycleItem(fwd=10, bwd=10, total=20)
+        strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
+    def update_memory_cost(self, strategy: ShardingStrategy_V2):
         '''
         Compute the memory cost per device with this specific strategy.
         '''
@@ -59,7 +60,6 @@ class GetItemStrategyGenerator(FollowingStrategyGenerator):
                                     parameter=fwd_parameter_cost + bwd_parameter_cost)
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
-        return super().update_memory_cost(strategy)
 
 
 class TensorStrategyGenerator(GetItemStrategyGenerator):

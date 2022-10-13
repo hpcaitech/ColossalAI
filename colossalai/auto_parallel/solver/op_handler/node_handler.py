@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from torch.fx.node import Node
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from typing import Dict, List
+from typing import Dict, List, Union
 from ..sharding_strategy import ShardingStrategy_V2, StrategiesVector, OperationData, TrainCycleItem
 from ..strategy import StrategyGenerator_V2
 
@@ -72,17 +72,27 @@ class NodeHandler(ABC):
         for generator in strategy_generators:
             strategies = generator.generate()
 
+            # postprocess a strategy
+            # postprocess can produce one strategy or multiple strategies
+            post_processed_strategies_map = map(self.post_process, strategies)
+            post_processed_strategies = []
+
+            for strategy in post_processed_strategies_map:
+                if isinstance(strategy, (list, tuple)):
+                    post_processed_strategies.extend(strategy)
+                else:
+                    post_processed_strategies.append(strategy)
+
             # compute the resharding costs based on the previous node
             # strategies if specified
             if compute_resharding_cost:
-                strategies = list(map(self.update_resharding_cost, strategies))
-            self.strategies_vector.extend(strategies)
+                post_processed_strategies = list(map(self.update_resharding_cost, post_processed_strategies))
 
-        strategies_vector = map(self.post_process, self.strategies_vector)
-        self.strategies_vector = list(strategies_vector)
+            self.strategies_vector.extend(post_processed_strategies)
+
         return self.strategies_vector
 
-    def post_process(self, strategy: ShardingStrategy_V2):
+    def post_process(self, strategy: ShardingStrategy_V2) -> Union[ShardingStrategy_V2, List[ShardingStrategy_V2]]:
         # tranform the strategy generated
         # e.g. to process the sharding strategy for the transposed weights
         return strategy

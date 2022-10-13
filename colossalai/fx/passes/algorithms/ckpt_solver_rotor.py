@@ -1,13 +1,17 @@
 import sys
 from typing import List, Tuple
+from colossalai.fx.profiler.memory import calculate_fwd_in
 from torch.fx import Node
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.profiler import activation_size, parameter_size
+from colossalai.fx.profiler import activation_size, parameter_size, calculate_fwd_out, calculate_fwd_tmp
 import math
 from .linearize import linearize
 from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 from colossalai.logging import get_dist_logger
+
+# global vairable to indicate whether the solver is failed
+SOLVER_FAILED = False
 
 
 # this is the python compute table code from rotor
@@ -86,9 +90,17 @@ def _rec(chain: Chain, lmin, lmax, cmem, opt_table):
     opt, what = opt_table
     sequence = Sequence(Function("Persistent", lmax - lmin, cmem))
     if opt[cmem][lmin][lmax] == float("inf"):
-        raise ValueError("Can not process this chain from index {lmin} to {lmax} with memory {cmem}".format(lmin=lmin,
-                                                                                                            lmax=lmax,
-                                                                                                            cmem=cmem))
+        # using logger to annonce that the solver is failed
+        logger = get_dist_logger()
+        logger.info("Can not process this chain from index {lmin} to {lmax} with memory {cmem}".format(lmin=lmin,
+                                                                                                       lmax=lmax,
+                                                                                                       cmem=cmem))
+
+        # set global indicater SOLVER_FAILED to True
+        global SOLVER_FAILED
+        SOLVER_FAILED = True
+        return sequence
+
     if lmin == lmax:
         if lmin == chain.length:
             sequence.insert(Loss())
@@ -124,9 +136,7 @@ def _fwd_xbar(node: List[Node]) -> int:
 
     xbar = 0
     for n in node:
-        xbar += n.meta['fwd_mem_tmp']
-        if any(map(lambda x: x.meta['save_fwd_in'], n.users)):
-            xbar += n.meta['fwd_mem_out']
+        xbar += calculate_fwd_tmp(n) + calculate_fwd_out(n)
     return xbar
 
 
@@ -166,6 +176,21 @@ def _bwd_time(node: List[Node]) -> int:
     return bwd_time
 
 
+def _get_fwd_mem_tmp(node: List[Node]) -> int:
+    """Get the forward temp memory of a node
+    This could be done by subtracting the saved activation from all output of a node
+
+    Args:
+        node (List[Node]): List of torch.fx Node,
+        indicates a node in linearized graph
+
+    Returns:
+        int: forward temp memory, unit Byte
+    """
+    n = node[-1]
+    return activation_size(n.meta['fwd_out']) - calculate_fwd_out(n)
+
+
 def _get_bwd_mem_tmp(node: List[Node]) -> int:
     """Get the backward temp memory of a node
 
@@ -184,9 +209,7 @@ def _get_bwd_mem_tmp(node: List[Node]) -> int:
             if v > 0:
                 deps_size += k.meta['bwd_mem_out']
             if v == float('-inf'):
-                deps_size -= k.meta['fwd_mem_tmp']
-                if any(map(lambda x: x.meta['save_fwd_in'], k.users)):
-                    deps_size -= k.meta['fwd_mem_out']
+                deps_size -= calculate_fwd_tmp(k) + calculate_fwd_out(k)
 
         return deps_size
 
@@ -212,15 +235,15 @@ def _construct_chain(node_list: List[List[Node]], input) -> Chain:
     bwd_time = []
     xbar_sizes = [activation_size(input)]
     x_sizes = [activation_size(input)]
-    # currently we can't get the temp memory needed in fwd
-    tmp_fwd = [0] * len(node_list)
+    tmp_fwd = []
     tmp_bwd = []
 
     for idx, node in enumerate(node_list):
         fwd_time.append(_fwd_time(node))
         bwd_time.append(_bwd_time(node))
-        x_sizes.append(node[-1].meta['fwd_mem_out'])
+        x_sizes.append(calculate_fwd_out(node[-1]))
         xbar_sizes.append(max(x_sizes[-1], _fwd_xbar(node)))
+        tmp_fwd.append(_get_fwd_mem_tmp(node))
         tmp_bwd.append(_get_bwd_mem_tmp(node))
 
     bwd_time.append(0)
@@ -394,9 +417,18 @@ def solver_rotor(gm: ColoGraphModule,
 
     # found sequence
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
-    _annotate_from_sequence(sequence, node_list)
+
+    # if solver failed, we don't need to annotate the graph
+    if not SOLVER_FAILED:
+        _annotate_from_sequence(sequence, node_list)
 
     # set __sequence__ attribute to GraphModule
-    setattr(gm, "__sequence__", sequence)
+    if SOLVER_FAILED:
+        setattr(gm, "__sequence__", None)
+    else:
+        setattr(gm, "__sequence__", sequence)
+
+    # set __opttable__ attribute to GraphModule
+    setattr(gm, "__opttable__", opt_table[0])
     gm.recompile()
     return gm
