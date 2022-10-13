@@ -65,6 +65,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         growth_interval (float, optional): growth_interval used by DynamicGradScaler. Defaults to 1000.
         hysteresis (float, optional): hysteresis used by DynamicGradScaler. Defaults to 2.
         max_scale (int, optional): max_scale used by DynamicGradScaler. Defaults to 2**32.
+        use_bf16 (bool, optional):wheter to use bf16 dtype. Defaults to False.
         dp_process_group (Optional[ProcessGroup], optional): data paralle process group. Defaults to None.
         mp_process_group (Optional[ProcessGroup], optional): model paralle process group. Defaults to None.
 
@@ -83,6 +84,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                  growth_interval: int = 1000,
                  hysteresis: int = 2,
                  max_scale: float = 2**32,
+                 use_bf16: bool = False,
                  dp_process_group: Optional[ProcessGroup] = None,
                  mp_process_group: Optional[ProcessGroup] = None,
                  verbose: bool = False) -> None:
@@ -92,7 +94,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
         super().__init__(optimizer)
         self.shard_strategy = sharded_model.shard_strategy
         self.model: ShardedModelV2 = sharded_model
-
+        self.use_bf16 = use_bf16
         self.gpu_margin_mem_ratio: float = float(gpu_margin_mem_ratio)
         assert 0.0 <= self.gpu_margin_mem_ratio <= 1.0, f'gpu_margin_mem_ratio must >=0.0 and <=1.0'
         # Only move fp32 shards from CPU to GPU when user allows and inner optimizer is valid
@@ -355,7 +357,10 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 torch.empty(p.data.shape, dtype=p.colo_attr.data_payload.dtype, device=p.colo_attr.data_payload.device))
 
         # TODO() optimize this line CPU (fp32) -> GPU (fp16)
-        p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
+        if self.use_bf16:
+            p.colo_attr.sharded_data_tensor.payload_copy(p.bfloat16().detach())
+        else:
+            p.colo_attr.sharded_data_tensor.payload_copy(p.half().detach())
         p.colo_attr.set_data_none()
 
         if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:

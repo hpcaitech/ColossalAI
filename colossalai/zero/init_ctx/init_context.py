@@ -57,6 +57,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         shard_param (bool, optional): Is param sharded after exiting the context. Defaults to False.
         default_dtype (torch.dtype, optional): If it's not None, parameters will be initialized as ``default_dtype`` then converted to fp16.
         model_numel_tensor (torch.Tensor, optional): A tensor which will store the number of elements of model. Defaults to torch.zeros(1, dtype=torch.int).
+        use_bf16:(bool, optional):Whether to use bfloat16 data-type
     """
 
     def __init__(self,
@@ -65,7 +66,9 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
                  seed: int = 2**10 - 1,
                  shard_param: bool = False,
                  default_dtype: Optional[torch.dtype] = None,
-                 model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.long)):
+                 model_numel_tensor: torch.Tensor = torch.zeros(1, dtype=torch.long),
+                 use_bf16: bool = False
+                 ):
 
         super().__init__(default_dtype=default_dtype)
         self.shard_strategy = shard_strategy
@@ -73,6 +76,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         self.model_numel_tensor = model_numel_tensor
         self.seed = seed
         self.dp_process_group = gpc.get_group(ParallelMode.DATA)
+        self.use_bf16 = use_bf16
 
         self.config = ZeroContextConfig(target_device=target_device, replicated=True, shard_param=shard_param)
 
@@ -186,7 +190,10 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         self.top_module = module
 
         def half_fn(t: torch.Tensor):
-            return t.half() if t.is_floating_point() else t
+            if self.use_bf16:
+                return t.bfloat16() if t.is_floating_point() else t
+            else:
+                return t.half() if t.is_floating_point() else t
 
         for param in module.parameters(recurse=False):
             # avoid adapting a param to ShardedParam twice

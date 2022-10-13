@@ -24,7 +24,7 @@ from colossalai.gemini.stateful_tensor import TensorState
 from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicyFactory, TensorPlacementPolicy
 
-from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
+from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_bf16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
                      get_gradient_predivide_factor)
 
 try:
@@ -77,11 +77,14 @@ class ShardedModelV2(nn.Module):
                  tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
                  reuse_fp16_shard: bool = False,
+                 use_bf16: bool = False,
                  *args,
                  **kwargs):
         assert not isinstance(module, ShardedModelV2), 'Nested ShardedModelV2 is not supported.'
         super().__init__()
         self.logger = get_dist_logger()
+        if use_bf16:
+            module = module.cuda().bfloat16()
 
         # We force users to use ZeroInitContext
         for submodule in module.modules():
@@ -110,6 +113,7 @@ class ShardedModelV2(nn.Module):
         self.world_size = dist.get_world_size(self.process_group)
         self.rank = dist.get_rank(self.process_group)
         self.shard_strategy = shard_strategy
+        self.use_bf16 = use_bf16
 
         self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
@@ -224,8 +228,14 @@ class ShardedModelV2(nn.Module):
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._pre_forward_operations()
-        args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
+
+        if self.use_bf16:
+            args, kwargs = cast_float_arguments(cast_tensor_to_bf16, *args, **kwargs)
+        else:
+            args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
+
         outputs = self.module(*args, **kwargs)
+
         self._post_forward_operations()
         return outputs
 
@@ -561,3 +571,4 @@ class ShardedModelV2(nn.Module):
     def __iter__(self):
         assert isinstance(self.module, nn.ModuleList)
         return iter(self.module)
+        
