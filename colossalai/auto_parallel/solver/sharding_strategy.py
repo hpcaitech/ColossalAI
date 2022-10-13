@@ -129,7 +129,7 @@ class ShardingStrategy_V2:
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None
     communication_actions: Dict[OperationData, CommSpec] = None
-    resharding_costs: Dict[OperationData, Dict[ShardingSpec, TrainCycleItem]] = None
+    resharding_costs: Dict[Node, List[TrainCycleItem]] = None
 
     @property
     def input_sharding_specs(self) -> Dict[OperationData, ShardingSpec]:

@@ -7,13 +7,15 @@ from .getitem_generator import GetItemStrategyGenerator, TensorStrategyGenerator
 from .layer_norm_generator import LayerNormGenerator
 from .where_generator import WhereGenerator
 from .reshape_generator import ReshapeGenerator
-# from .normal_pooling_generator import NormalPoolStrategyGenerator
+from .normal_pooling_generator import NormalPoolStrategyGenerator
 from .placeholder_generator import PlaceholderGenerator
 from .output_generator import OutputGenerator
+
 
 __all__ = [
     'StrategyGenerator_V2', 'DotProductStrategyGenerator', 'MatVecStrategyGenerator',
     'LinearProjectionStrategyGenerator', 'BatchedMatMulStrategyGenerator', 'ConvStrategyGenerator',
     'UnaryElementwiseGenerator', 'BatchNormStrategyGenerator', 'GetItemStrategyGenerator', 'TensorStrategyGenerator',
-    'TensorTupleStrategyGenerator', 'LayerNormGenerator', 'ReshapeGenerator', 'PlaceholderGenerator', 'OutputGenerator'
+    'TensorTupleStrategyGenerator', 'LayerNormGenerator', 'ReshapeGenerator', 'PlaceholderGenerator', 'OutputGenerator', 
+    'WhereGenerator', 'ReshapeGenerator', 'NormalPoolStrategyGenerator'
 ]

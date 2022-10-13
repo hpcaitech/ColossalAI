@@ -47,13 +47,13 @@ def test_getitem_function_handler():
     conv_handler = ConvFunctionHandler(node=conv_mod_node,
                                        device_mesh=device_mesh,
                                        strategies_vector=conv_strategies_vector)
-    conv_handler.register_strategy()
+    conv_handler.register_strategy(compute_resharding_cost=False)
     setattr(conv_mod_node, 'strategies_vector', conv_strategies_vector)
     getitem_handler = GetItemHandler(node=getitem_mod_node,
                                      device_mesh=device_mesh,
                                      strategies_vector=getitem_strategies_vector)
 
-    getitem_handler.register_strategy()
+    getitem_handler.register_strategy(compute_resharding_cost=False)
     # check operation data mapping
     mapping = getitem_handler.get_operation_data_mapping()
 

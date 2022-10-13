@@ -169,3 +169,15 @@ class FollowingStrategyGenerator(StrategyGenerator_V2):
         self.op_data = operation_data_mapping
         self.device_mesh = device_mesh
         self.predecessor_node = predecessor_node
+
+
+class OutputStrategyGenerator(StrategyGenerator_V2):
+    """
+    OutputStrategyGenerator is used to generate the sharding strategies for Output Node.
+    """
+
+    def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh,
+                 predecessor_nodes: List[Node]):
+        self.op_data = operation_data_mapping
+        self.device_mesh = device_mesh
+        self.predecessor_nodes = predecessor_nodes

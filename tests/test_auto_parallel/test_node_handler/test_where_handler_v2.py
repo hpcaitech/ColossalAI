@@ -75,7 +75,7 @@ def test_where_handler():
     assert mapping['output'].data.shape == torch.Size([4, 4, 64, 64])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
-    handler.register_strategy()
+    handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
     # 4*3 + 4*3/2*2 + 1
     assert len(strategy_name_list) == 25
