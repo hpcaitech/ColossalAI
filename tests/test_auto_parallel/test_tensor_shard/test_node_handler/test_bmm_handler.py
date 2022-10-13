@@ -5,6 +5,7 @@ from colossalai.fx import ColoTracer, ColoGraphModule
 from colossalai.auto_parallel.solver.node_handler.dot_handler import BMMFunctionHandler
 from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class BMMTensorMethodModule(nn.Module):
@@ -19,7 +20,7 @@ class BMMTorchFunctionModule(nn.Module):
         return torch.bmm(x1, x2)
 
 
-@pytest.mark.skip
+@run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.parametrize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
 def test_2d_device_mesh(module):
 
@@ -90,7 +91,7 @@ def test_2d_device_mesh(module):
     assert 'Sb1R = Sb1Sk0 x Sb1Sk0' in strategy_name_list
 
 
-@pytest.mark.skip
+@run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.parametrize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
 def test_1d_device_mesh(module):
     model = module()

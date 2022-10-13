@@ -15,6 +15,7 @@ from torchvision.models import resnet34, resnet50
 from colossalai.auto_parallel.tensor_shard.deprecated.constants import *
 from colossalai.auto_parallel.tensor_shard.deprecated.graph_analysis import GraphAnalyser
 from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class MLP(torch.nn.Module):
@@ -34,7 +35,7 @@ class MLP(torch.nn.Module):
         return x
 
 
-@pytest.mark.skip("for higher testing speed")
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_cost_graph():
     physical_mesh_id = torch.arange(0, 8)
     mesh_shape = (2, 4)

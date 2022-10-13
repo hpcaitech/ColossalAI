@@ -6,9 +6,10 @@ from colossalai.auto_parallel.solver.node_handler.normal_pooling_handler import 
 from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 import pytest
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
-@pytest.mark.skip("for higher testing speed")
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_norm_pool_handler():
     model = nn.Sequential(nn.MaxPool2d(4, padding=1).to('meta'))
     tracer = ColoTracer()
