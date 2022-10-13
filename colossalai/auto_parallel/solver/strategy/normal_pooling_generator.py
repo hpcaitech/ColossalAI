@@ -52,7 +52,7 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
         total_compute_cost = forward_compute_cost + backward_compute_cost
 
         compute_cost = TrainCycleItem(fwd=forward_compute_cost, bwd=backward_compute_cost, total=total_compute_cost)
-        return compute_cost
+        strategy.compute_cost = compute_cost
 
     def update_memory_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         forward_size_mapping = {
