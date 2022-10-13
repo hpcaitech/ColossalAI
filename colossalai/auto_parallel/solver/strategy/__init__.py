@@ -1,4 +1,4 @@
-from .strategy_generator import StrategyGenerator_V2
+from .strategy_generator import StrategyGenerator
 from .matmul_strategy_generator import DotProductStrategyGenerator, MatVecStrategyGenerator, LinearProjectionStrategyGenerator, BatchedMatMulStrategyGenerator
 from .conv_strategy_generator import ConvStrategyGenerator
 from .batch_norm_generator import BatchNormStrategyGenerator
@@ -11,11 +11,10 @@ from .normal_pooling_generator import NormalPoolStrategyGenerator
 from .placeholder_generator import PlaceholderGenerator
 from .output_generator import OutputGenerator
 
-
 __all__ = [
-    'StrategyGenerator_V2', 'DotProductStrategyGenerator', 'MatVecStrategyGenerator',
-    'LinearProjectionStrategyGenerator', 'BatchedMatMulStrategyGenerator', 'ConvStrategyGenerator',
-    'UnaryElementwiseGenerator', 'BatchNormStrategyGenerator', 'GetItemStrategyGenerator', 'TensorStrategyGenerator',
-    'TensorTupleStrategyGenerator', 'LayerNormGenerator', 'ReshapeGenerator', 'PlaceholderGenerator', 'OutputGenerator', 
-    'WhereGenerator', 'ReshapeGenerator', 'NormalPoolStrategyGenerator'
+    'StrategyGenerator', 'DotProductStrategyGenerator', 'MatVecStrategyGenerator', 'LinearProjectionStrategyGenerator',
+    'BatchedMatMulStrategyGenerator', 'ConvStrategyGenerator', 'UnaryElementwiseGenerator',
+    'BatchNormStrategyGenerator', 'GetItemStrategyGenerator', 'TensorStrategyGenerator', 'TensorTupleStrategyGenerator',
+    'LayerNormGenerator', 'ReshapeGenerator', 'PlaceholderGenerator', 'OutputGenerator', 'WhereGenerator',
+    'ReshapeGenerator', 'NormalPoolStrategyGenerator'
 ]

@@ -1,13 +1,13 @@
 from audioop import bias
 import operator
 from functools import reduce
-from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
+from ..sharding_strategy import ShardingStrategy, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
-from .strategy_generator import StrategyGenerator_V2
+from .strategy_generator import StrategyGenerator
 from typing import List
 
 
-class MatMulStrategyGenerator(StrategyGenerator_V2):
+class MatMulStrategyGenerator(StrategyGenerator):
     """
     MatMulStrategyGenerator is a generic class to cover all matrix multiplication cases.
     The operation data is defined as `output = input x other + bias`.
@@ -17,7 +17,7 @@ class MatMulStrategyGenerator(StrategyGenerator_V2):
     def has_bias(self):
         return 'bias' in self.op_data
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_memory_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         size_mapping = {
             'input': self._compute_size_in_bytes(strategy, "input"),
             'other': self._compute_size_in_bytes(strategy, "other"),
@@ -53,7 +53,7 @@ class DotProductStrategyGenerator(MatMulStrategyGenerator):
         other_op_data = self.op_data['other']
         assert input_op_data.data.dim() == 1 and other_op_data.data.dim() == 1
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
         fwd_compute_cost = sharded_input_shape[0]
         bwd_compute_cost = sharded_input_shape * 2
@@ -88,7 +88,7 @@ class DotProductStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self) -> List[ShardingStrategy_V2]:
+    def generate(self) -> List[ShardingStrategy]:
         strategy_list = []
 
         # do not split dimensions for dot product
@@ -139,7 +139,7 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self) -> List[ShardingStrategy_V2]:
+    def generate(self) -> List[ShardingStrategy]:
         strategy_list = []
 
         # no split
@@ -154,7 +154,7 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
 
 class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         # C = AB
         # C: [M, N], A: [M, P], B: [P, N]
         # fwd cost = MNP (only count mul)
@@ -172,7 +172,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                       total=fwd_compute_cost + bwd_compute_cost)
         strategy.compute_cost = compute_cost
 
-    def generate(self) -> List[ShardingStrategy_V2]:
+    def generate(self) -> List[ShardingStrategy]:
         strategies = []
 
         # SS = SR x RS
@@ -500,7 +500,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
         other_op_data = self.op_data['other']
         assert input_op_data.data.dim() > 2 or other_op_data.data.dim() > 2
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         return self.op_data['input'].data.shape[-1] * reduce(operator.mul, self.op_data['output'].data.shape)
 
     def split_one_batch_dim(self, mesh_dim):
@@ -645,7 +645,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self) -> List[ShardingStrategy_V2]:
+    def generate(self) -> List[ShardingStrategy]:
         strategy_list = []
         device_mesh_is_1d = True
         if len(self.device_mesh.mesh_shape) == 2 and 1 not in self.device_mesh.mesh_shape:

@@ -1,7 +1,7 @@
 import torch
 from .node_handler import NodeHandler
-from ..sharding_strategy import ShardingStrategy_V2, OperationDataType, OperationData, StrategiesVector
-from colossalai.auto_parallel.solver.strategy import StrategyGenerator_V2
+from ..sharding_strategy import ShardingStrategy, OperationDataType, OperationData, StrategiesVector
+from colossalai.auto_parallel.solver.strategy import StrategyGenerator
 from colossalai.auto_parallel.solver.strategy.output_generator import OutputGenerator
 from typing import List, Dict
 from .registry import operator_registry
@@ -14,7 +14,7 @@ class OuputHandler(NodeHandler):
     A OuputHandler which deals with the sharding strategies for Output Node.
     """
 
-    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
         generators.append(OutputGenerator(op_data_mapping, self.device_mesh, self.predecessor_node))

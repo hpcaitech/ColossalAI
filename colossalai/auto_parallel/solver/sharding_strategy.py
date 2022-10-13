@@ -111,7 +111,7 @@ class MemoryCost:
 
 
 @dataclass
-class ShardingStrategy_V2:
+class ShardingStrategy:
     """
     ShardingStrategy is a dataclass to store the meta information on tensor sharding for a node.
 
@@ -178,13 +178,13 @@ class ShardingStrategy_V2:
         communication_cost = deepcopy(self.communication_cost)
         memory_cost = deepcopy(self.memory_cost)
 
-        return ShardingStrategy_V2(name=self.name,
-                                   sharding_specs=sharding_specs,
-                                   compute_cost=compute_cost,
-                                   communication_cost=communication_cost,
-                                   memory_cost=memory_cost,
-                                   communication_actions=communication_actions,
-                                   resharding_costs=resharding_costs)
+        return ShardingStrategy(name=self.name,
+                                sharding_specs=sharding_specs,
+                                compute_cost=compute_cost,
+                                communication_cost=communication_cost,
+                                memory_cost=memory_cost,
+                                communication_actions=communication_actions,
+                                resharding_costs=resharding_costs)
 
 
 class StrategiesVector(list):

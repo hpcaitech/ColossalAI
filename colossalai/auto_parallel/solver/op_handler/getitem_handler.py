@@ -1,7 +1,7 @@
 import torch
 from .node_handler import NodeHandler
-from ..sharding_strategy import ShardingStrategy_V2, OperationDataType, OperationData, StrategiesVector
-from ..strategy import TensorStrategyGenerator, TensorTupleStrategyGenerator, StrategyGenerator_V2
+from ..sharding_strategy import ShardingStrategy, OperationDataType, OperationData, StrategiesVector
+from ..strategy import TensorStrategyGenerator, TensorTupleStrategyGenerator, StrategyGenerator
 from typing import List, Dict
 from .registry import operator_registry
 import operator
@@ -15,7 +15,7 @@ class GetItemHandler(NodeHandler):
     A GetItemHandler which deals with the sharding strategies for operator.getitem.
     """
 
-    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
         if isinstance(op_data_mapping["input"].data, torch.Tensor):

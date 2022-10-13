@@ -1,8 +1,8 @@
 import operator
 from functools import reduce
-from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
+from ..sharding_strategy import ShardingStrategy, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
-from .strategy_generator import StrategyGenerator_V2
+from .strategy_generator import StrategyGenerator
 from typing import List
 from .._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
 import copy
@@ -10,7 +10,7 @@ import copy
 __all__ = ['LayerNormGenerator']
 
 
-class LayerNormGenerator(StrategyGenerator_V2):
+class LayerNormGenerator(StrategyGenerator):
     """
     LayerNormGenerator is a generic class to generate strategies for LayerNorm operation.
     The operation data is defined as `output = input x other + bias`.
@@ -23,7 +23,7 @@ class LayerNormGenerator(StrategyGenerator_V2):
     def validate(self) -> bool:
         return super().validate()
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2):
+    def update_compute_cost(self, strategy: ShardingStrategy):
         '''
         Compute the computation cost per device with this specific strategy.
 
@@ -54,7 +54,7 @@ class LayerNormGenerator(StrategyGenerator_V2):
         compute_cost = TrainCycleItem(fwd=forward_compute_cost, bwd=backward_compute_cost, total=total_compute_cost)
         strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2):
+    def update_memory_cost(self, strategy: ShardingStrategy):
         '''
         Compute the memory cost per device with this specific strategy.
         '''

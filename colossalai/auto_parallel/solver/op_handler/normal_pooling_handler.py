@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
 from .node_handler import ModuleHandler, NodeHandler
-from ..sharding_strategy import ShardingStrategy_V2, OperationDataType, OperationData
-from ..strategy import NormalPoolStrategyGenerator, StrategyGenerator_V2
+from ..sharding_strategy import ShardingStrategy, OperationDataType, OperationData
+from ..strategy import NormalPoolStrategyGenerator, StrategyGenerator
 from typing import List, Dict
 from .registry import operator_registry
 
@@ -20,7 +20,7 @@ class NormPoolingHandler(ModuleHandler):
     A NormPoolingHandler which deals with the sharding strategies for nn.MaxPoolxd module.
     """
 
-    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
         generators.append(NormalPoolStrategyGenerator(op_data_mapping, self.device_mesh))

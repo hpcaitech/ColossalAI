@@ -1,6 +1,6 @@
 import operator
 from functools import reduce
-from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
+from ..sharding_strategy import ShardingStrategy, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 from .strategy_generator import OutputStrategyGenerator
 from typing import List
@@ -18,11 +18,11 @@ class OutputGenerator(OutputStrategyGenerator):
     def validate(self) -> bool:
         return super().validate()
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2):
+    def update_compute_cost(self, strategy: ShardingStrategy):
         compute_cost = TrainCycleItem(fwd=10, bwd=10, total=20)
         strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2):
+    def update_memory_cost(self, strategy: ShardingStrategy):
         '''
         Compute the memory cost per device with this specific strategy.
         '''

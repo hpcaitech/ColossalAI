@@ -1,8 +1,8 @@
 import operator
 from functools import reduce
-from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
+from ..sharding_strategy import ShardingStrategy, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
-from .strategy_generator import StrategyGenerator_V2
+from .strategy_generator import StrategyGenerator
 from typing import List
 from .._utils import exception_handler
 import copy
@@ -10,7 +10,7 @@ import copy
 __all__ = ['BatchNormStrategyGenerator']
 
 
-class BatchNormStrategyGenerator(StrategyGenerator_V2):
+class BatchNormStrategyGenerator(StrategyGenerator):
     """
     A StrategyGenerator which deals with the sharding strategies of batch normalization.
 
@@ -37,7 +37,7 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
         assert input_op_data.dim() in (3, 4,
                                        5), f'We suppose the dim of input fed into conv op should in range of [3, 5].'
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2):
+    def update_compute_cost(self, strategy: ShardingStrategy):
         '''
         Compute the computation cost per device with this specific strategy.
 
@@ -64,7 +64,7 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
         compute_cost = TrainCycleItem(fwd=forward_compute_cost, bwd=backward_compute_cost, total=total_compute_cost)
         strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2):
+    def update_memory_cost(self, strategy: ShardingStrategy):
         forward_size_mapping = {
             'input': self._compute_size_in_bytes(strategy, "input"),
             'other': self._compute_size_in_bytes(strategy, "other"),

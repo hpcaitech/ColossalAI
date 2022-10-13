@@ -1,181 +1,87 @@
-import operator
-from functools import reduce
-import warnings
 import torch
-from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.tensor.sharding_spec import ShardingSpec
-from copy import deepcopy
-from typing import Dict, List
-from colossalai.auto_parallel.solver._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
+from .node_handler import NodeHandler
+from ..sharding_strategy import ShardingStrategy, OperationDataType, OperationData, StrategiesVector
+from ..strategy import WhereGenerator, StrategyGenerator
+from .broadcast import recover_sharding_spec_for_broadcast_shape
+from typing import List, Dict
+from .registry import operator_registry
+import operator
+import copy
 
 __all__ = ['WhereHandler']
 
 
-class WhereHandler(OperatorHandler):
+@operator_registry.register(torch.where)
+class WhereHandler(NodeHandler):
     """
-    An OperatorHandler which deals with the sharding strategies of torch.where.
+    A WhereHandler which deals with the sharding strategies for torch.where.
     """
 
-    def __init__(self, *args, **kwargs):
-        # TODO: x or y could be scalar
-        super().__init__(*args, **kwargs)
-        assert len(self.predecessor_node) == 3
-        self.condition_data = self.predecessor_node[0]._meta_data
-        self.x_data = self.predecessor_node[1]._meta_data
-        self.y_data = self.predecessor_node[2]._meta_data
-        self.condition = self.predecessor_node[0]
-        self.x = self.predecessor_node[1]
-        self.y = self.predecessor_node[2]
-        self.output_data = self.node._meta_data
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
+        logical_op_data_mapping, _ = self.get_operation_data_mapping()
+        generators = []
+        generators.append(WhereGenerator(logical_op_data_mapping, self.device_mesh))
+        return generators
 
-    def _generate_sharding_spec(self, input_: torch.Tensor, dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
-        shape = list(input_.shape)
+    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
+        # use transposed shape for strategies
+        # the strategies will be transformed back to its original shape in self.post_process
+        physical_condition_operand = OperationData(name=str(self.node.args[0]),
+                                                   type=OperationDataType.ARG,
+                                                   data=self.node.args[0]._meta_data)
+        physical_x_operand = OperationData(name=str(self.node.args[1]),
+                                           type=OperationDataType.ARG,
+                                           data=self.node.args[1]._meta_data)
+        physical_y_operand = OperationData(name=str(self.node.args[2]),
+                                           type=OperationDataType.ARG,
+                                           data=self.node.args[2]._meta_data)
+        physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
+        physical_mapping = {
+            "condition": physical_condition_operand,
+            "x": physical_x_operand,
+            "y": physical_y_operand,
+            "output": physical_output
+        }
+        logical_shape_for_all = self.node._meta_data.shape
+        logical_mapping = {}
+        for key, physical_operand in physical_mapping.items():
+            logical_mapping[key] = self.convert_physical_operand_to_logical_operand(physical_operand,
+                                                                                    logical_shape_for_all)
 
-        # padding the shape to the same length as output_data
-        while len(shape) < self.output_data.dim():
-            shape.insert(0, 1)
-        shape = torch.Size(shape)
+        return logical_mapping, physical_mapping
 
-        # if the sharding happens on a size one dimension, we should record it as R.
-        processed_dim_partition_dict = deepcopy(dim_partition_dict)
-        for dim_index, _ in dim_partition_dict.items():
-            if shape[dim_index] == 1:
-                processed_dim_partition_dict.pop(dim_index)
-        for dim_index, sharding_index_list in processed_dim_partition_dict.items():
-            sharding_list = [self.device_mesh.mesh_shape[sharding_index] for sharding_index in sharding_index_list]
-            sharding_size = reduce(operator.mul, sharding_list, 1)
-            assert shape[
-                dim_index] % sharding_size == 0, f'we cannot shard the {dim_index} dimension of tensor into {sharding_size} partitions.'
-        sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                     entire_shape=shape,
-                                     dim_partition_dict=processed_dim_partition_dict)
+    def convert_physical_operand_to_logical_operand(self, physical_operand, target_shape):
+        logical_operand = copy.deepcopy(physical_operand)
+        logical_operand.logical_shape = target_shape
+        return logical_operand
 
-        return sharding_spec
+    def register_strategy(self, compute_resharding_cost: bool = False) -> StrategiesVector:
+        """
+        Register different sharding strategies for the current node.
+        """
+        strategy_generators = self.get_strategy_generator()
 
-    def _generate_compute_cost(self, total_sharding_size):
-        lhs_matrix_shape = self.lhs_data.shape[-2:]
-        rhs_matrix_shape = self.rhs_data.shape[-2:]
-        batch_dimensions_shape = self.output_data.shape[:-2]
-        batch_dimensions_product = reduce(operator.mul, batch_dimensions_shape, 1)
-        compute_cost = reduce(
-            operator.mul, lhs_matrix_shape) * rhs_matrix_shape[0] * batch_dimensions_product * 2 / total_sharding_size
-        return compute_cost
+        for generator in strategy_generators:
+            strategies = generator.generate()
+            strategies_vector = map(self.post_process, strategies)
+            # compute the resharding costs based on the previous node
+            # strategies if specified
+            if compute_resharding_cost:
+                strategies = list(map(self.update_resharding_cost, strategies))
+            self.strategies_vector.extend(strategies)
 
-    def _generate_resharding_costs(self, sharding_specs):
-        # The resharding_cost of weight is counted due to sharing weight cases.
-        dtype = self.node._meta_data.dtype
-        nodes = self.predecessor_node
-        resharding_costs = {}
-        size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
+        self.strategies_vector = list(strategies_vector)
+        return self.strategies_vector
 
-        # shape consistency manager is a singleton class
-        shape_consistency_manager = ShapeConsistencyManager()
-
-        for input_node, input_spec in zip(nodes, sharding_specs):
-            resharding_costs[input_node] = []
-            for strategy in input_node.strategies_vector:
-                input_sharding_spec = strategy.output_sharding_spec
-                assert isinstance(input_sharding_spec, ShardingSpec), f'The input node should NOT be a tuple of tensor.'
-                # if the input shape is smaller than the target input, we will fill the input to the same length as target.
-                # Then, use the padded input sharding spec to compute the resharding cost.
-                if len(input_sharding_spec.entire_shape) < len(input_spec.entire_shape):
-                    new_entire_shape = list(input_sharding_spec.entire_shape)
-                    while len(new_entire_shape) < len(input_spec.entire_shape):
-                        new_entire_shape.insert(0, 1)
-                    new_entire_shape = torch.Size(new_entire_shape)
-                    new_device_mesh = input_sharding_spec.device_mesh
-                    new_dim_partition_dict = input_sharding_spec.dim_partition_dict
-                    input_sharding_spec = ShardingSpec(device_mesh=new_device_mesh,
-                                                       entire_shape=new_entire_shape,
-                                                       dim_partition_dict=new_dim_partition_dict)
-
-                # compute the resharding cost
-                _, _, total_resharding_cost = shape_consistency_manager.shape_consistency(
-                    input_sharding_spec, input_spec)
-
-                # we need multiply the size of elem dtype to get correct communication cost
-                resharding_cost = total_resharding_cost * size_per_elem_bytes
-                resharding_costs[input_node].append(resharding_cost)
-
-        return resharding_costs
-
-    def _convert_partition_dict_to_sharding_spec(self, dim_partition_list):
-
-        sharding_spec_list = []
-        check_duplicated_list = []
-        for output_dim_partition_dict in dim_partition_list:
-            try:
-                output_sharding_spec = self._generate_sharding_spec(self.output_data, output_dim_partition_dict)
-            except AssertionError as e:
-                warnings.warn(f'{e}')
-                break
-            sharding_seq = output_sharding_spec.sharding_sequence
-            if sharding_seq not in check_duplicated_list:
-                check_duplicated_list.append(sharding_seq)
-                sharding_spec_list.append(output_sharding_spec)
-
-        return sharding_spec_list
-
-    def _enumerate_all_possible_output(self, mesh_dim_0, mesh_dim_1):
-        # use mesh_dim_0, mesh_dim_1 instead of constant 0, 1 in here for N-D device mesh scaliablity.
-
-        output_dim_partition_list = []
-        dim_size = self.output_data.dim()
-        # enumerate all the 2D sharding cases
-        sharding_list_2d = enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, dim_size)
-        output_dim_partition_list.extend(sharding_list_2d)
-
-        # enumerate all the 1D sharding cases
-        sharding_list_1d_on_dim_0 = enumerate_all_possible_1d_sharding(mesh_dim_0, dim_size)
-        output_dim_partition_list.extend(sharding_list_1d_on_dim_0)
-        sharding_list_1d_on_dim_1 = enumerate_all_possible_1d_sharding(mesh_dim_1, dim_size)
-        output_dim_partition_list.extend(sharding_list_1d_on_dim_1)
-
-        # add empty dict for fully replicated case
-        output_dim_partition_list.append({})
-        output_sharding_spec_list = self._convert_partition_dict_to_sharding_spec(output_dim_partition_list)
-
-        return output_sharding_spec_list
-
-    @exception_handler
-    def _register_strategy(self, output_sharding_spec):
-        dim_partition_dict_for_input = output_sharding_spec.dim_partition_dict
-        sharding_spec_for_condition = self._generate_sharding_spec(self.condition_data, dim_partition_dict_for_input)
-        sharding_spec_for_x = self._generate_sharding_spec(self.x_data, dim_partition_dict_for_input)
-        sharding_spec_for_y = self._generate_sharding_spec(self.y_data, dim_partition_dict_for_input)
-
-        name = f'{output_sharding_spec.sharding_sequence} = {sharding_spec_for_condition.sharding_sequence} x {sharding_spec_for_x.sharding_sequence} x {sharding_spec_for_y.sharding_sequence}'
-        dim_partition_dict_for_output = output_sharding_spec.dim_partition_dict
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs(
-            [sharding_spec_for_condition, sharding_spec_for_x, sharding_spec_for_y])
-
-        # compute the computation cost of this strategy
-        sharding_dims = []
-        for mesh_dims in dim_partition_dict_for_output.values():
-            for mesh_dim in mesh_dims:
-                sharding_dims.append(self.device_mesh.shape[mesh_dim])
-        sharding_size = reduce(operator.mul, sharding_dims, 1)
-        memory_cost = self.output_data.numel() / sharding_size
-        compute_cost = memory_cost
-        communication_cost = 0
-
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=output_sharding_spec,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_condition, sharding_spec_for_x,
-                                                                sharding_spec_for_y))
-
-        self.strategies_vector.append(sharding_strategies)
-
-    def register_strategy(self) -> StrategiesVector:
-        MESH_DIM_LIST = [0, 1]
-        output_sharding_specs = self._enumerate_all_possible_output(MESH_DIM_LIST[0], MESH_DIM_LIST[1])
-        for output_sharding_spec in output_sharding_specs:
-            self._register_strategy(output_sharding_spec)
+    def post_process(self, strategy: ShardingStrategy):
+        logical_op_data_mapping, physical_op_data_mapping = self.get_operation_data_mapping()
+        for key in logical_op_data_mapping.keys():
+            logical_sharding_spec = strategy.sharding_specs[logical_op_data_mapping[key]]
+            logical_shape = logical_op_data_mapping[key].logical_shape
+            physical_shape = physical_op_data_mapping[key].logical_shape
+            physical_sharding_spec = recover_sharding_spec_for_broadcast_shape(logical_sharding_spec, logical_shape,
+                                                                               physical_shape)
+            strategy.sharding_specs.pop(logical_op_data_mapping[key])
+            strategy.sharding_specs[physical_op_data_mapping[key]] = physical_sharding_spec
+        strategy.name = f"{strategy.sharding_specs[physical_op_data_mapping['output']].sharding_sequence} = {strategy.sharding_specs[physical_op_data_mapping['condition']].sharding_sequence} x {strategy.sharding_specs[physical_op_data_mapping['x']].sharding_sequence} x {strategy.sharding_specs[physical_op_data_mapping['y']].sharding_sequence}"
+        return strategy

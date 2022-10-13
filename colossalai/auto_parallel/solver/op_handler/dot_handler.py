@@ -1,753 +1,208 @@
-import operator
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
-from ..constants import LINEAR_FUNC_OP, LINEAR_MODULE_OP
-from functools import reduce
-from colossalai.auto_parallel.solver._utils import exception_handler
-from enum import Enum
-from .strategy_generator import StrategyGenerator, IntermediateStrategy
-from typing import List
+from colossalai.tensor.sharding_spec import ShardingException
+from .node_handler import ModuleHandler, NodeHandler
+from ..sharding_strategy import ShardingStrategy, OperationDataType, OperationData
+from ..strategy import LinearProjectionStrategyGenerator, StrategyGenerator, BatchedMatMulStrategyGenerator
+from typing import List, Dict, Union
+from .registry import operator_registry
+from copy import deepcopy
+from .utils import switch_partition_dim, update_partition_dim
 
-__all__ = ['DotHandler']
+__all__ = ['LinearModuleHandler', 'LinearFunctionHandler', 'BMMFunctionHandler']
 
 
-class DotProductStrategyGenerator(StrategyGenerator):
+@operator_registry.register(torch.nn.Linear)
+class LinearModuleHandler(ModuleHandler):
     """
-    DotProductStrategyGenerator is used to generate the sharding strategies for two 1D tensors in dot product computation.
-    This is created for torch.matmul where two tensors are 1D tensors. As torch.matmul does not include a bias argument, so we
-    do not consider bias here.
-    """
-
-    def validate(self, input, other):
-        assert input.dim() == 1 and other.dim() == 1
-
-    def no_split(self):
-        name = f'R = R dot R'
-        dim_partition_dict = {"input": {}, "other": {}, "output": {}}
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def split_one_dim(self, mesh_dim):
-        name = f'S{mesh_dim} = S{mesh_dim} dot S{mesh_dim}'
-        dim_partition_dict = {"input": {0: [mesh_dim]}, "other": {0: [mesh_dim]}, "output": {}}
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict, all_reduce_axis=[mesh_dim])
-
-    def generate(self) -> List[IntermediateStrategy]:
-        strategy_list = []
-
-        # do not split dimensions for dot product
-        # R = R dot R
-        strategy_list.append(self.no_split())
-
-        # split two tensors in the same dimensions
-        # S = S dot S
-        strategy_list.append(self.split_one_dim(0))
-        strategy_list.append(self.split_one_dim(1))
-
-        return strategy_list
-
-
-class MatVecStrategyGenerator(StrategyGenerator):
-
-    def validate(self, input, other) -> bool:
-        assert input.dim() > 1 and other.dim() == 1
-
-    def no_split(self):
-        name = "R = R x R"
-        dim_partition_dict = {"input": {}, "other": {}, "output": {}}
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def split_input_batch(self, mesh_dim):
-        name = f'S{mesh_dim}R = S{mesh_dim}R x R'
-        dim_partition_dict = {"input": {0: [mesh_dim]}, "other": {}, "output": {0: [mesh_dim]}}
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def generate(self) -> List[IntermediateStrategy]:
-        strategy_list = []
-
-        # no split
-        strategy_list.append(self.no_split())
-
-        # split the batch dim for the first tensor only
-        strategy_list.append(self.split_input_batch(0))
-        strategy_list.append(self.split_input_batch(1))
-
-        return strategy_list
-
-
-class MatMulStrategyGenerator(StrategyGenerator):
-    """
-    MatMulStrategyGenerator is used to generate the sharding strategies when the second tensor is 
-    a 2D tensor. This is used for nn.Linear, F.linear, torch.matmul and torch.addmm.
-
-    A matmul can be formulated as [n, p] x [p, q] = [n, q]
-
-    Args:
-        is_linear (bool): whether this generator is used for nn.Linear and F.linear. 
-            This will incur extra transformation of the dim partitioning as the weight is transposed.
+    A LinearModuleHandler which deals with the sharding strategies for nn.Linear module.
     """
 
-    def __init__(self, is_linear: bool, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.is_linear = is_linear
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
+        op_data_mapping = self.get_operation_data_mapping()
+        generators = []
+        generators.append(LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh))
+        return generators
 
-        # as the weight for the linear module is transposed, we can compute
-        # the correponding dimension indexfor convenience
-        if is_linear:
-            self.dim_q = 0
-            self.dim_p = 1
+    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
+        # use transposed shape for strategies
+        # the strategies will be transformed back to its original shape in self.post_process
+        input_meta_data = self.node.args[0]._meta_data
+        input_logical_shape = input_meta_data.view(-1, input_meta_data.shape[-1]).shape
+        physical_input_operand = OperationData(name=str(self.node.args[0]),
+                                               type=OperationDataType.ARG,
+                                               data=input_meta_data,
+                                               logical_shape=input_logical_shape)
+        physical_other_operand = OperationData(name="weight",
+                                               type=OperationDataType.PARAM,
+                                               data=self.named_parameters['weight'],
+                                               logical_shape=self.named_parameters['weight'].shape[::-1])
+        output_meta_data = self.node._meta_data
+        output_logical_shape = output_meta_data.view(-1, output_meta_data.shape[-1]).shape
+        physical_output = OperationData(name=str(self.node),
+                                        type=OperationDataType.OUTPUT,
+                                        data=output_meta_data,
+                                        logical_shape=output_logical_shape)
+
+        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
+
+        if self.named_parameters['bias'] is not None:
+            physical_bias_operand = OperationData(name="bias",
+                                                  type=OperationDataType.PARAM,
+                                                  data=self.named_parameters['bias'])
+            mapping['bias'] = physical_bias_operand
+        return mapping
+
+    def post_process(self, strategy: ShardingStrategy) -> Union[ShardingStrategy, List[ShardingStrategy]]:
+        """
+        Convert the sharding spec from the logical shape to the physical shape.
+        """
+        # switch the dimensions of the transposed weight
+        for op_data, sharding_spec in strategy.input_sharding_specs.items():
+            if op_data.name == "weight":
+                assert op_data.logical_shape != op_data.data.shape
+                switch_partition_dim(sharding_spec, 0, -1)
+
+        # create multiple sharding strategies for the inputs
+        # as input can be multi-dimensinal and the partition dim is only 2D,
+        # we need to map the partition at dim 0 to one of the first few dimensions of the input
+        sharding_strategies = []
+        input_op_data = strategy.get_op_data_by_name(str(self.node.args[0]))
+        output_op_data = strategy.get_op_data_by_name(str(self.node))
+        num_input_dims = input_op_data.data.dim()
+        input_sharding_spec = strategy.get_sharding_spec_by_name(input_op_data.name)
+
+        if 0 in input_sharding_spec.dim_partition_dict:
+            for i in range(num_input_dims - 1):
+                new_strategy = strategy.clone()
+                input_sharding_spec = new_strategy.get_sharding_spec_by_name(input_op_data.name)
+                output_sharding_spec = new_strategy.get_sharding_spec_by_name(output_op_data.name)
+                try:
+                    update_partition_dim(sharding_spec=input_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=input_op_data.data.shape,
+                                         inplace=True)
+                    update_partition_dim(sharding_spec=output_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=output_op_data.data.shape,
+                                         inplace=True)
+                    sharding_strategies.append(new_strategy)
+                except ShardingException:
+                    pass
         else:
-            self.dim_q = 1
-            self.dim_p = 0
+            sharding_strategies.append(strategy)
 
-    def validate(self, input, other, bias) -> bool:
-        # make sure the second tensor is a 2D tensor
-        assert input.dim() > 0 and other.dim() == 2
+        return sharding_strategies
 
-        # make sure bias is of the same dimension
-        if self.is_linear:
-            assert bias is None or bias.shape[-1] == other.shape[0]
+
+@operator_registry.register(F.linear)
+class LinearFunctionHandler(NodeHandler):
+    """
+    A LinearModuleHandler which deals with the sharding strategies for nn.Linear module.
+    """
+
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
+        op_data_mapping = self.get_operation_data_mapping()
+        generators = []
+        generators.append(LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh))
+        return generators
+
+    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
+        # use transposed shape for strategies
+        # the strategies will be transformed back to its original shape in self.post_process
+        physical_input_operand = OperationData(name=str(self.node.args[0]),
+                                               type=OperationDataType.ARG,
+                                               data=self.node.args[0]._meta_data)
+
+        # check if the other operand is a parameter
+        if isinstance(self.node.args[1]._meta_data, torch.nn.parameter.Parameter):
+            data_type = OperationDataType.PARAM
         else:
-            assert bias is None or bias.shape[-1] == other.shape[1]
+            data_type = OperationDataType.ARG
 
-    def split_lhs_space_rhs_space(self, mesh_dim_0, mesh_dim_1):
-        # handle case SS = SR x RS
-        name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
+        physical_other_operand = OperationData(name=str(self.node.args[1]),
+                                               type=data_type,
+                                               data=self.node.args[1]._meta_data,
+                                               logical_shape=self.node.args[1]._meta_data.shape[::-1])
+        physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
 
-        dim_partition_dict = {
-            "input": {
-                0: [mesh_dim_0]
-            },
-            "other": {
-                self.dim_q: [mesh_dim_1]
-            },
-            "bias": {
-                -1: [mesh_dim_1]
-            },
-            "output": {
-                0: [mesh_dim_0],
-                -1: [mesh_dim_1]
-            },
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
+        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
-    def split_lhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
-        # handle the case SR = SS x SR
-        name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
-        dim_partition_dict = {
-            "input": {
-                0: [mesh_dim_0],
-                -1: [mesh_dim_1]
-            },
-            "other": {
-                self.dim_p: [mesh_dim_1]
-            },
-            "bias": {},
-            "output": {
-                0: [mesh_dim_0]
-            },
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict, all_reduce_axis=[mesh_dim_1])
+        if self.node.args[2] is not None:
+            # check if the other operand is a parameter
+            if isinstance(self.node.args[2]._meta_data, torch.nn.parameter.Parameter):
+                data_type = OperationDataType.PARAM
+            else:
+                data_type = OperationDataType.ARG
+            physical_bias_operand = OperationData(name=str(self.node.args[2]),
+                                                  type=data_type,
+                                                  data=self.node.args[2]._meta_data)
+            mapping['bias'] = physical_bias_operand
+        return mapping
 
-    def split_rhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
-        name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
-        dim_partition_dict = {
-            "input": {
-                -1: [mesh_dim_0]
-            },
-            "other": {
-                self.dim_p: [mesh_dim_0],
-                self.dim_q: [mesh_dim_1]
-            },
-            "bias": {
-                -1: [mesh_dim_1]
-            },
-            "output": {
-                -1: [mesh_dim_1]
-            },
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
+    def post_process(self, strategy: ShardingStrategy):
+        """
+        Convert the sharding spec of the weight parameter back to its original shape.
+        """
+        for op_data, sharding_spec in strategy.input_sharding_specs.items():
+            if op_data.name == str(self.node.args[1]):
+                assert op_data.logical_shape != op_data.data.shape
+                switch_partition_dim(sharding_spec, 0, -1)
 
-    def recompute_split_both_contract(self, mesh_dim):
-        name = f'RR = RS{mesh_dim} x S{mesh_dim}R'
-        dim_partition_dict = {
-            "input": {
-                -1: [mesh_dim]
-            },
-            "other": {
-                self.dim_p: [mesh_dim]
-            },
-            "bias": {},
-            "output": {},
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict, all_reduce_axis=[mesh_dim])
+        # create multiple sharding strategies for the inputs
+        # as input can be multi-dimensinal and the partition dim is only 2D,
+        # we need to map the partition at dim 0 to one of the first few dimensions of the input
+        sharding_strategies = []
+        input_op_data = strategy.get_op_data_by_name(str(self.node.args[0]))
+        output_op_data = strategy.get_op_data_by_name(str(self.node))
+        num_input_dims = input_op_data.data.dim()
+        input_sharding_spec = strategy.get_sharding_spec_by_name(input_op_data.name)
 
-    def split_rhs_space_only(self, mesh_dim):
-        name = f'RS{mesh_dim} = RR x RS{mesh_dim}'
-        dim_partition_dict = {
-            "input": {},
-            "other": {
-                self.dim_q: [mesh_dim]
-            },
-            "bias": {
-                -1: [mesh_dim]
-            },
-            "output": {
-                -1: [mesh_dim]
-            },
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict, all_reduce_axis=[mesh_dim])
-
-    def split_lhs_1st_dim_1d(self, mesh_dim_0, mesh_dim_1):
-        name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
-        dim_partition_dict = {
-            "input": {
-                0: [mesh_dim_0, mesh_dim_1]
-            },
-            "other": {},
-            "bias": {},
-            "output": {
-                0: [mesh_dim_0, mesh_dim_1]
-            },
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def split_lhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
-        name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
-        dim_partition_dict = {
-            "input": {
-                -1: [mesh_dim_0, mesh_dim_1]
-            },
-            "other": {
-                self.dim_p: [mesh_dim_0, mesh_dim_1]
-            },
-            "bias": {},
-            "output": {},
-        }
-        return IntermediateStrategy(name=name,
-                                    dim_partition_dict=dim_partition_dict,
-                                    all_reduce_axis=[mesh_dim_0, mesh_dim_1])
-
-    def split_rhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
-        name = f'RS{mesh_dim_0}{mesh_dim_1} = RR x RS{mesh_dim_0}{mesh_dim_1}'
-
-        dim_partition_dict = {
-            "input": {},
-            "other": {
-                self.dim_q: [mesh_dim_0, mesh_dim_1]
-            },
-            "bias": {
-                -1: [mesh_dim_0, mesh_dim_1]
-            },
-            "output": {
-                -1: [mesh_dim_0, mesh_dim_1]
-            },
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-
-class BatchedMatMulStrategyGenerator(StrategyGenerator):
-    """
-    Generate sharding strategies for the batched matrix multiplication.
-
-    A batched matrix multiplication can be viewed as 
-    [b, i, k] x [b, k, j] -> [b, i, j]
-    """
-
-    def __init__(self, is_torch_bmm: bool, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.is_torch_bmm = is_torch_bmm
-
-    def validate(self, input, other, bias) -> bool:
-        if self.is_torch_bmm:
-            assert input.shape == other.shape
-            assert input.dim() > 2
-            assert other.shape[-1] == bias.shape[0]
+        if 0 in input_sharding_spec.dim_partition_dict:
+            for i in range(num_input_dims - 1):
+                new_strategy = strategy.clone()
+                input_sharding_spec = new_strategy.get_sharding_spec_by_name(input_op_data.name)
+                output_sharding_spec = new_strategy.get_sharding_spec_by_name(output_op_data.name)
+                try:
+                    update_partition_dim(sharding_spec=input_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=input_op_data.data.shape,
+                                         inplace=True)
+                    update_partition_dim(sharding_spec=output_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=output_op_data.data.shape,
+                                         inplace=True)
+                    sharding_strategies.append(new_strategy)
+                except ShardingException:
+                    pass
         else:
-            # TODO: validate these inputs are broadcastable
-            pass
-
-    def split_one_batch_dim(self):
-        if 1 in self.device_mesh.mesh_shape:
-            mesh_dim = self.device_mesh.mesh_shape.index(1)
-            name = f'Sb{mesh_dim} = Sb{mesh_dim} x Sb{mesh_dim}'
-            dim_partition_dict = {
-                "input": {
-                    0: [mesh_dim]
-                },
-                "other": {
-                    0: [mesh_dim]
-                },
-                "bias": {},
-                "output": {
-                    0: [mesh_dim]
-                }
-            }
-            return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-        else:
-            return None
-
-    def split_two_batch_dim(self, mesh_dim_0, mesh_dim_1):
-        name = f'Sb{mesh_dim_0}{mesh_dim_1} = Sb{mesh_dim_0}{mesh_dim_1} x Sb{mesh_dim_0}{mesh_dim_1}'
-        dim_partition_dict = {
-            "input": {
-                0: [mesh_dim_0, mesh_dim_1]
-            },
-            "other": {
-                0: [mesh_dim_0, mesh_dim_1]
-            },
-            "bias": {},
-            "output": {
-                0: [mesh_dim_0, mesh_dim_1]
-            }
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def split_one_batch_dim(self, mesh_dim):
-        name = f'Sb{mesh_dim} = Sb{mesh_dim} x Sb{mesh_dim}'
-        dim_partition_dict = {"input": {0: [mesh_dim]}, "other": {0: [mesh_dim]}, "bias": {}, "output": {0: [mesh_dim]}}
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def split_batch_dim_lhs_space(self, mesh_dim_0, mesh_dim_1):
-        name = f'Sb{mesh_dim_0}Si{mesh_dim_1} = Sb{mesh_dim_0}Si{mesh_dim_1} x Sb{mesh_dim_0}'
-        dim_partition_dict = {
-            "input": {
-                0: [mesh_dim_0],
-                -2: [mesh_dim_1]
-            },
-            "other": {
-                0: [mesh_dim_0]
-            },
-            "bias": {},
-            "output": {
-                0: mesh_dim_0,
-                -2: [mesh_dim_1]
-            }
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def split_batch_dim_rhs_space(self, mesh_dim_0, mesh_dim_1):
-        name = f'Sb{mesh_dim_0}Sj{mesh_dim_1} = Sb{mesh_dim_0}R x Sb{mesh_dim_0}Sj{mesh_dim_1}'
-        dim_partition_dict = {
-            "input": {
-                0: [mesh_dim_0]
-            },
-            "other": {
-                0: [mesh_dim_0],
-                -1: [mesh_dim_1]
-            },
-            "bias": {
-                -1: [mesh_dim_1]
-            },
-            "output": {
-                0: [mesh_dim_0],
-                -1: [mesh_dim_1]
-            }
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict)
-
-    def split_batch_dim_both_contract(self, mesh_dim_0, mesh_dim_1):
-        name = f'Sb{mesh_dim_0}R = Sb{mesh_dim_0}Sk{mesh_dim_1} x Sb{mesh_dim_0}Sk{mesh_dim_1}'
-        dim_partition_dict = {
-            "input": {
-                0: [mesh_dim_0],
-                -1: [mesh_dim_1]
-            },
-            "other": {
-                0: [mesh_dim_0],
-                -2: [mesh_dim_1]
-            },
-            "bias": {},
-            "output": {
-                0: [mesh_dim_0],
-                -2: [mesh_dim_1]
-            }
-        }
-        return IntermediateStrategy(name=name, dim_partition_dict=dim_partition_dict, all_reduce_axis=[mesh_dim_1])
-
-    def generate(self) -> List[IntermediateStrategy]:
-        strategy_list = []
-
-        # split only the batch dimension
-        # Sb = Sb x Sb
-        # can be None as it is only for 1D device mesh
-        strategy = self.split_one_batch_dim()
-        if strategy:
-            strategy_list.append(strategy)
-
-        # split batch dim of two inputs and the i dim of the first tensor
-        # SbSi = SbSi x Sb
-        strategy_list.append(self.split_batch_dim_lhs_space(0, 1))
-        strategy_list.append(self.split_batch_dim_lhs_space(1, 0))
-
-        # split batch dim of two inputs and the j of the second tensor
-        # SbSj = Sb x SbSj
-        strategy_list.append(self.split_batch_dim_rhs_space(0, 1))
-        strategy_list.append(self.split_batch_dim_rhs_space(1, 0))
-
-        # split batch dim of two inputs and the k dim of two inputs
-        # Sb = SbSk x SbSk, need to all-reduce by k dim
-        strategy_list.append(self.split_batch_dim_both_contract(0, 1))
-        strategy_list.append(self.split_batch_dim_both_contract(1, 0))
-
-        # split two batch dim
-        strategy_list.append(self.split_two_batch_dim(0, 1))
-        strategy_list.append(self.split_two_batch_dim(1, 0))
-
-        return strategy_list
-
-
-class DotHandler(OperatorHandler):
-    """
-    A OperatorHandler which deals with the sharding strategies for nn.Linear and F.linear.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.input_data = self.predecessor_node[0]._meta_data
-        self.weight = self.module_named_parameters['weight']
-        self.output_data = self.node._meta_data
-
-    def _generate_compute_cost(self, input_shape, weight_shape, total_sharding_size):
-        # TODO: consider bias addition
-        compute_cost = reduce(operator.mul, input_shape) * weight_shape[0] * 2 // total_sharding_size
-        return compute_cost
-
-    @exception_handler
-    def split_lhs_space_rhs_space(self, mesh_dim_0, mesh_dim_1):
-        # handle case SS = SR x RS
-        name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
-
-        dim_partition_dict_for_input = {0: [mesh_dim_0]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        # linear layer weight is transposed during init
-        dim_partition_dict_for_weight = {0: [mesh_dim_1]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute computation cost
-        total_sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-
-        # compute the communication cost
-        communication_cost_activation_backward = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim_1)
-        communication_cost_weight_backward = self.device_mesh.all_reduce_cost(weight_memory_cost, mesh_dim_0)
-        communication_cost = communication_cost_activation_backward + communication_cost_weight_backward
-
-        # create and register strategy
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    @exception_handler
-    def split_lhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
-        # handle the case SR = SS x SR
-        name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
-
-        dim_partition_dict_for_input = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        # since weight of the linear layer is transposed
-        # the actual dim to be sharded is 1
-        dim_partition_dict_for_weight = {1: [mesh_dim_1]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {0: [mesh_dim_0]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute the computation cost of this strategy
-        total_sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-
-        # compute the communication cost of this strategy
-        communication_cost_activation_forward = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim_1)
-        communication_cost_grad_backward = self.device_mesh.all_reduce_cost(weight_memory_cost, mesh_dim_0)
-        communication_cost = communication_cost_activation_forward + communication_cost_grad_backward
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    @exception_handler
-    def split_rhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
-        name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
-
-        dim_partition_dict_for_input = {1: [mesh_dim_0]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        dim_partition_dict_for_weight = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {1: [mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute the computation cost of this strategy
-        total_sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-
-        # compute the communication cost of this strategy
-        communication_cost_activation_forward = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim_0)
-        communication_cost_activation_backward = self.device_mesh.all_reduce_cost(input_grad_memory_cost, mesh_dim_1)
-        communication_cost = communication_cost_activation_backward + communication_cost_activation_forward
-
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    @exception_handler
-    def recompute_split_both_contract(self, mesh_dim):
-        name = f'RR = RS{mesh_dim} x S{mesh_dim}R'
-
-        dim_partition_dict_for_input = {1: [mesh_dim]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        dim_partition_dict_for_weight = {1: [mesh_dim]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute the computation cost of this strategy
-        total_sharding_size = self.device_mesh.shape[mesh_dim]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-
-        # compute the communication cost of this strategy
-        communication_cost = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim)
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    @exception_handler
-    def split_rhs_space_only(self, mesh_dim):
-        name = f'RS{mesh_dim} = RR x RS{mesh_dim}'
-
-        dim_partition_dict_for_input = {}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        dim_partition_dict_for_weight = {0: [mesh_dim]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {1: [mesh_dim]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute the computation cost of this strategy
-        total_sharding_size = self.device_mesh.shape[mesh_dim]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-
-        # compute the communication cost of this strategy
-        communication_cost_activation_backward = self.device_mesh.all_reduce_cost(input_grad_memory_cost, mesh_dim)
-        communication_cost = communication_cost_activation_backward
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    @exception_handler
-    def split_lhs_1st_dim_1d(self, mesh_dim_0, mesh_dim_1):
-        name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
-
-        dim_partition_dict_for_input = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        dim_partition_dict_for_weight = {}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute the computation cost of this strategy
-        total_sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-
-        # compute the communication cost of this strategy
-        communication_cost_weight_backward = self.device_mesh.flatten_device_mesh.all_reduce_cost(weight_memory_cost, 0)
-        communication_cost = communication_cost_weight_backward
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    @exception_handler
-    def split_lhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
-        name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
-
-        dim_partition_dict_for_input = {1: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        dim_partition_dict_for_weight = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute the computation cost of this strategy
-        total_sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-
-        # compute the communication cost of this strategy
-        communication_cost_forward_activation = self.device_mesh.flatten_device_mesh.all_reduce_cost(
-            activation_memory_cost, 0)
-        communication_cost = communication_cost_forward_activation
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    @exception_handler
-    def split_rhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
-        name = f'RS{mesh_dim_0}{mesh_dim_1} = RR x RS{mesh_dim_0}{mesh_dim_1}'
-
-        dim_partition_dict_for_input = {}
-        sharding_spec_for_input = self._generate_sharding_spec(self.input_data, dim_partition_dict_for_input)
-
-        dim_partition_dict_for_weight = {1: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
-
-        dim_partition_dict_for_output = {1: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
-
-        # generate resharding cost for this strategy
-        resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
-
-        # compute the computation cost of this strategy
-        total_sharding_size = self.device_mesh.shape[mesh_dim_0] * self.device_mesh.shape[mesh_dim_1]
-        compute_cost = self._generate_compute_cost(self.input_data.shape, self.weight.shape, total_sharding_size)
-
-        # compute the memory cost of this strategy
-        toatl_memory_cost, activation_memory_cost, weight_memory_cost, input_grad_memory_cost = self._generate_memory_cost(
-            dim_partition_dict_for_output, dim_partition_dict_for_weight, dim_partition_dict_for_input)
-        # compute the communication cost of this strategy
-        communication_cost_activation_backward = self.device_mesh.flatten_device_mesh.all_reduce_cost(
-            input_grad_memory_cost, 0)
-        communication_cost = communication_cost_activation_backward
-        sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
-                                               compute_cost=compute_cost,
-                                               communication_cost=communication_cost,
-                                               memory_cost=toatl_memory_cost,
-                                               resharding_costs=resharding_costs,
-                                               input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
-        self.strategies_vector.append(sharding_strategies)
-
-    def register_strategy(self) -> StrategiesVector:
-        '''
-        Generate every possible strategies for a linear node, and record all strategies into the strategies_vector.
-
-        Output:
-
-        '''
-        # SS = SR x RS
-        self.split_lhs_space_rhs_space(0, 1)
-        self.split_lhs_space_rhs_space(1, 0)
-
-        # SR = SS x SR
-        self.split_lhs_space_both_contract(0, 1)
-        self.split_lhs_space_both_contract(1, 0)
-
-        # RS = RS x SS
-        self.split_rhs_space_both_contract(0, 1)
-        self.split_rhs_space_both_contract(1, 0)
-
-        # RR= RS x SR
-        self.recompute_split_both_contract(0)
-        self.recompute_split_both_contract(1)
-
-        # RS = RR x RS
-        self.split_rhs_space_only(0)
-        self.split_rhs_space_only(1)
-
-        # S01R = S01R x RR
-        self.split_lhs_1st_dim_1d(0, 1)
-
-        # RR = RS01 x S01R
-        self.split_lhs_2nd_dim_1d(0, 1)
-
-        # RS01 = RR x RS01
-        self.split_rhs_2nd_dim_1d(0, 1)
-
-        return self.strategies_vector
+            sharding_strategies.append(strategy)
+
+        return strategy
+
+
+@operator_registry.register(torch.bmm)
+@operator_registry.register(torch.Tensor.bmm)
+class BMMFunctionHandler(NodeHandler):
+
+    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
+        # use transposed shape for strategies
+        # the strategies will be transformed back to its original shape in self.post_process
+        physical_input_operand = OperationData(name=str(self.node.args[0]),
+                                               type=OperationDataType.ARG,
+                                               data=self.node.args[0]._meta_data)
+
+        physical_other_operand = OperationData(name=str(self.node.args[1]),
+                                               type=OperationDataType.ARG,
+                                               data=self.node.args[1]._meta_data)
+        physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
+
+        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
+        return mapping
+
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
+        generators = []
+        op_data_mapping = self.get_operation_data_mapping()
+        generators = []
+        generators.append(BatchedMatMulStrategyGenerator(op_data_mapping, self.device_mesh))
+        return generators

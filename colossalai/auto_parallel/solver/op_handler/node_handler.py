@@ -3,8 +3,8 @@ from torch.fx.node import Node
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from typing import Dict, List, Union
-from ..sharding_strategy import ShardingStrategy_V2, StrategiesVector, OperationData, TrainCycleItem
-from ..strategy import StrategyGenerator_V2
+from ..sharding_strategy import ShardingStrategy, StrategiesVector, OperationData, TrainCycleItem
+from ..strategy import StrategyGenerator
 from .._utils import generate_resharding_costs
 
 
@@ -30,7 +30,7 @@ class NodeHandler(ABC):
         self.device_mesh = device_mesh
         self.strategies_vector = strategies_vector
 
-    def update_resharding_cost(self, strategy: ShardingStrategy_V2) -> None:
+    def update_resharding_cost(self, strategy: ShardingStrategy) -> None:
         """
         Compute the resharding costs and save the costs in the ShardingStrategy object.
         """
@@ -97,13 +97,13 @@ class NodeHandler(ABC):
 
         return self.strategies_vector
 
-    def post_process(self, strategy: ShardingStrategy_V2) -> Union[ShardingStrategy_V2, List[ShardingStrategy_V2]]:
+    def post_process(self, strategy: ShardingStrategy) -> Union[ShardingStrategy, List[ShardingStrategy]]:
         # tranform the strategy generated
         # e.g. to process the sharding strategy for the transposed weights
         return strategy
 
     @abstractmethod
-    def get_strategy_generator(self) -> List[StrategyGenerator_V2]:
+    def get_strategy_generator(self) -> List[StrategyGenerator]:
         """
         Define which generators should be used by this NodeHandler object.
         """
