@@ -163,7 +163,7 @@ class LayerNormGenerator(StrategyGenerator_V2):
 
     def generate(self):
         '''
-        Generate every possible strategies for a BatchNorm node, and record all strategies into the strategies_vector.
+        Generate every possible strategies for a LayerNorm node, and record all strategies into the strategies_vector.
         '''
         strategy_list = []
         input_data_dim = len(self.op_data["input"].logical_shape)

@@ -10,6 +10,9 @@ from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Los
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 from colossalai.logging import get_dist_logger
 
+# global vairable to indicate whether the solver is failed
+SOLVER_FAILED = False
+
 
 # this is the python compute table code from rotor
 # https://gitlab.inria.fr/hiepacs/rotor
@@ -87,9 +90,17 @@ def _rec(chain: Chain, lmin, lmax, cmem, opt_table):
     opt, what = opt_table
     sequence = Sequence(Function("Persistent", lmax - lmin, cmem))
     if opt[cmem][lmin][lmax] == float("inf"):
-        raise ValueError("Can not process this chain from index {lmin} to {lmax} with memory {cmem}".format(lmin=lmin,
-                                                                                                            lmax=lmax,
-                                                                                                            cmem=cmem))
+        # using logger to annonce that the solver is failed
+        logger = get_dist_logger()
+        logger.info("Can not process this chain from index {lmin} to {lmax} with memory {cmem}".format(lmin=lmin,
+                                                                                                       lmax=lmax,
+                                                                                                       cmem=cmem))
+
+        # set global indicater SOLVER_FAILED to True
+        global SOLVER_FAILED
+        SOLVER_FAILED = True
+        return sequence
+
     if lmin == lmax:
         if lmin == chain.length:
             sequence.insert(Loss())
@@ -406,9 +417,18 @@ def solver_rotor(gm: ColoGraphModule,
 
     # found sequence
     sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
-    _annotate_from_sequence(sequence, node_list)
+
+    # if solver failed, we don't need to annotate the graph
+    if not SOLVER_FAILED:
+        _annotate_from_sequence(sequence, node_list)
 
     # set __sequence__ attribute to GraphModule
-    setattr(gm, "__sequence__", sequence)
+    if SOLVER_FAILED:
+        setattr(gm, "__sequence__", None)
+    else:
+        setattr(gm, "__sequence__", sequence)
+
+    # set __opttable__ attribute to GraphModule
+    setattr(gm, "__opttable__", opt_table[0])
     gm.recompile()
     return gm
