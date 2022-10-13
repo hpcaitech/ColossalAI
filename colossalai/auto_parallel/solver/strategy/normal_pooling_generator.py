@@ -1,14 +1,14 @@
 import operator
 from functools import reduce
-from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
+from ..sharding_strategy import ShardingStrategy, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
-from .strategy_generator import StrategyGenerator_V2
+from .strategy_generator import StrategyGenerator
 from typing import List
 from .._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
 import copy
 
 
-class NormalPoolStrategyGenerator(StrategyGenerator_V2):
+class NormalPoolStrategyGenerator(StrategyGenerator):
     """
     NormalPoolStrategyGenerator is a generic class to generate strategies for pool operation like MaxPoolxd.
     The reason we call this normal pool is AvgPoolxd and MaxPoolxd are taking the kernel size element from image,
@@ -26,7 +26,7 @@ class NormalPoolStrategyGenerator(StrategyGenerator_V2):
         assert input_op_data.dim() in (3, 4,
                                        5), f'We suppose the dim of input fed into Pool op should in range of [3, 5].'
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
+    def update_compute_cost(self, strategy: ShardingStrategy) -> TrainCycleItem:
         '''
         Compute the computation cost per device with this specific strategy.
 
@@ -54,7 +54,7 @@ class NormalPoolStrategyGenerator(StrategyGenerator_V2):
         compute_cost = TrainCycleItem(fwd=forward_compute_cost, bwd=backward_compute_cost, total=total_compute_cost)
         return compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_memory_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         forward_size_mapping = {
             'input': self._compute_size_in_bytes(strategy, "input"),
             'output': self._compute_size_in_bytes(strategy, "output")
@@ -101,7 +101,7 @@ class NormalPoolStrategyGenerator(StrategyGenerator_V2):
 
         return dim_partition_list
 
-    def generate(self) -> List[ShardingStrategy_V2]:
+    def generate(self) -> List[ShardingStrategy]:
         strategy_list = []
 
         dim_partition_list = self.enumerate_all_possible_batch_dimensions_dim_partition(0, 1)

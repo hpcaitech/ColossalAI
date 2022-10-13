@@ -1,8 +1,8 @@
 import operator
 from functools import reduce
-from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
+from ..sharding_strategy import ShardingStrategy, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
-from .strategy_generator import StrategyGenerator_V2, FollowingStrategyGenerator
+from .strategy_generator import StrategyGenerator, FollowingStrategyGenerator
 from typing import List
 from .._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
 import copy
@@ -10,7 +10,7 @@ import copy
 __all__ = ['WhereGenerator']
 
 
-class WhereGenerator(StrategyGenerator_V2):
+class WhereGenerator(StrategyGenerator):
     """
     WhereGenerator is a generic class to generate strategies for Where operation.
     """
@@ -18,11 +18,11 @@ class WhereGenerator(StrategyGenerator_V2):
     def validate(self) -> bool:
         return super().validate()
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2):
+    def update_compute_cost(self, strategy: ShardingStrategy):
         compute_cost = TrainCycleItem(fwd=10, bwd=10, total=20)
         strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2):
+    def update_memory_cost(self, strategy: ShardingStrategy):
         '''
         Compute the memory cost per device with this specific strategy.
         '''

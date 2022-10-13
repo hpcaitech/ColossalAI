@@ -1,0 +1,7 @@
+test_batch_norm_handler.py
+test_bcast_handler.py
+test_bcast_matmul.py
+test_conv_handler.py
+test_dot_handler.py
+test_layer_norm_handler.py
+test_reshape_handler.py
