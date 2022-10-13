@@ -58,7 +58,7 @@ def test_bn_module_handler():
     assert mapping['output'].data.shape == torch.Size([4, 16, 64, 64])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
-    strategies_vector = handler.register_strategy()
+    strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
     # RS = RS x S

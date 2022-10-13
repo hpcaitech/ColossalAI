@@ -46,13 +46,13 @@ def test_reshape_handler():
     conv_handler = ConvFunctionHandler(node=conv_mod_node,
                                        device_mesh=device_mesh,
                                        strategies_vector=conv_strategies_vector)
-    conv_handler.register_strategy()
+    conv_handler.register_strategy(compute_resharding_cost=False)
     setattr(conv_mod_node, 'strategies_vector', conv_strategies_vector)
     reshape_handler = ReshapeHandler(node=reshape_node,
                                      device_mesh=device_mesh,
                                      strategies_vector=reshape_strategies_vector)
 
-    reshape_handler.register_strategy()
+    reshape_handler.register_strategy(compute_resharding_cost=False)
 
     # check operation data mapping
     mapping = reshape_handler.get_operation_data_mapping()

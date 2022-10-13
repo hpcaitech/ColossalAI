@@ -57,7 +57,7 @@ def test_linear_module_handler():
     assert mapping['output'].type == OperationDataType.OUTPUT
     assert mapping['output'].logical_shape == torch.Size([16, 32])
 
-    strategies_vector = handler.register_strategy()
+    strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
     # one strategy will be converted to different physical sharding spec
     assert len(strategy_name_list) > 8
@@ -138,7 +138,7 @@ def test_linear_function_handler():
     assert mapping['output'].data.shape == torch.Size([4, 32])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
-    strategies_vector = handler.register_strategy()
+    strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
     # one strategy will be converted to different physical sharding spec
     assert len(strategy_name_list) > 8

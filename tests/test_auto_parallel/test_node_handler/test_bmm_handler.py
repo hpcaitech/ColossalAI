@@ -68,7 +68,7 @@ def test_2d_device_mesh(module):
     assert mapping['output'].data.shape == torch.Size([4, 8, 8])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
-    strategies_vector = handler.register_strategy()
+    strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
 
     # one batch dim
@@ -138,7 +138,7 @@ def test_1d_device_mesh(module):
     assert mapping['output'].data.shape == torch.Size([4, 8, 8])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
-    strategies_vector = handler.register_strategy()
+    strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
     assert len(strategy_name_list) == 1
     # one batch dim
