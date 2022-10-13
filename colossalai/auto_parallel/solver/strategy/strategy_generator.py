@@ -7,12 +7,12 @@ from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Dict, List, Union, Any
-from ..sharding_strategy import OperationData, ShardingStrategy_V2, TrainCycleItem, OperationDataType
+from ..sharding_strategy import OperationData, ShardingStrategy, TrainCycleItem, OperationDataType
 from torch.fx import Node
 import copy
 
 
-class StrategyGenerator_V2(ABC):
+class StrategyGenerator(ABC):
     """
     StrategyGenerator is used to generate the same group of sharding strategies. 
 
@@ -38,9 +38,7 @@ class StrategyGenerator_V2(ABC):
         """
         sharding_specs = self.replace_op_name_with_op_data(sharding_spec_mapping)
         communication_actions = self.replace_op_name_with_op_data(communication_action_mapping)
-        return ShardingStrategy_V2(name=name,
-                                   sharding_specs=sharding_specs,
-                                   communication_actions=communication_actions)
+        return ShardingStrategy(name=name, sharding_specs=sharding_specs, communication_actions=communication_actions)
 
     def to_sharding_spec_mapping(self, mapping: Dict[str, Dict[int, List[int]]]):
         """
@@ -85,7 +83,7 @@ class StrategyGenerator_V2(ABC):
                         sharding_spec=sharding_spec,
                         logical_process_axis=logical_process_axis)
 
-    def update_communication_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_communication_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """
         Compute the communication cost involved in the forward and backward iteration.
         """
@@ -113,20 +111,20 @@ class StrategyGenerator_V2(ABC):
         return strategy
 
     @abstractmethod
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """
         Customize this method to compute the computation flops.
         """
         pass
 
     @abstractmethod
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
+    def update_memory_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """
         Customize this method to compute the memory cost in bytes.
         """
         pass
 
-    def _compute_size_in_bytes(self, strategy: ShardingStrategy_V2, key: str):
+    def _compute_size_in_bytes(self, strategy: ShardingStrategy, key: str):
         """
         Compute the size of a tensor in bytes.
         
@@ -142,7 +140,7 @@ class StrategyGenerator_V2(ABC):
         return reduce(operator.mul, sharded_shape) * size_per_elem_bytes
 
     @abstractmethod
-    def generate(self) -> List[ShardingStrategy_V2]:
+    def generate(self) -> List[ShardingStrategy]:
         """
         Generate all possible sharding strategies for this operation.
         """
@@ -157,7 +155,7 @@ class StrategyGenerator_V2(ABC):
         pass
 
 
-class FollowingStrategyGenerator(StrategyGenerator_V2):
+class FollowingStrategyGenerator(StrategyGenerator):
     """
     FollowingStrategyGenerator is used to generate the sharding strategies which depends on its predecessor node. 
 
@@ -171,7 +169,7 @@ class FollowingStrategyGenerator(StrategyGenerator_V2):
         self.predecessor_node = predecessor_node
 
 
-class OutputStrategyGenerator(StrategyGenerator_V2):
+class OutputStrategyGenerator(StrategyGenerator):
     """
     OutputStrategyGenerator is used to generate the sharding strategies for Output Node.
     """

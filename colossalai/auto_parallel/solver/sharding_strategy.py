@@ -13,37 +13,7 @@ from typing import Dict, List, Union, Tuple, Any
 from torch.fx.node import Node
 from .constants import *
 
-__all__ = ['ShardingStrategy', 'StrategiesVector']
-
-
-@dataclass
-class ShardingStrategy:
-    '''
-    ShardingStrategy is a structure containing sharding strategies of inputs and output of this node
-    and costs information using in solver.
-
-    Argument:
-        name(str): express the sharding strategies in string, such as 'S0S1 = S0R x RS1'.
-        output_sharding_spec(ShardingSpec): ShardingSpec of the output node.
-        compute_cost(float): Computation cost to complete this strategy.(default to 0)
-        communication_cost(float): Communication cost to complete this strategy.(default to 0)
-        memory_cost(float): Memory cost of the output node using this strategy.(default to 0)
-        resharding_costs(Dict[int, List[float]]): resharding_cost[i][j] means the cost of i-th argument in the output node argument list
-                                                  with j-th strategy in its strategies_vector transforms to sharding spec wanted in this
-                                                  strategy.(default to None)
-        input_shardings(List(ShardingSpec)): The ShardingSpecs of the input nodes.
-    '''
-
-    name: str
-    # TODO: output of fx node,such as torch.var_mean, could be a tuple, so we cannot simply suppose it is a tensor.
-    output_sharding_spec: Union[ShardingSpec, Tuple[ShardingSpec]]
-    compute_cost: float = 0.
-    communication_cost: float = 0.
-    memory_cost: float = 0.
-    resharding_costs: Dict[Node, List[float]] = None
-    # sometimes the input node could be a tuple of nodes, but most of op won't accept tuple of node as input.
-    # Therefore, we could process them at the specific op(operator.getitem)
-    input_shardings: List[ShardingSpec] = None
+__all__ = ['OperationDataType', 'OperationData', 'TrainCycleItem', 'MemoryCost', 'ShardingStrategy', 'StrategiesVector']
 
 
 class OperationDataType(Enum):
@@ -111,7 +81,7 @@ class MemoryCost:
 
 
 @dataclass
-class ShardingStrategy_V2:
+class ShardingStrategy:
     """
     ShardingStrategy is a dataclass to store the meta information on tensor sharding for a node.
 
@@ -178,13 +148,13 @@ class ShardingStrategy_V2:
         communication_cost = deepcopy(self.communication_cost)
         memory_cost = deepcopy(self.memory_cost)
 
-        return ShardingStrategy_V2(name=self.name,
-                                   sharding_specs=sharding_specs,
-                                   compute_cost=compute_cost,
-                                   communication_cost=communication_cost,
-                                   memory_cost=memory_cost,
-                                   communication_actions=communication_actions,
-                                   resharding_costs=resharding_costs)
+        return ShardingStrategy(name=self.name,
+                                sharding_specs=sharding_specs,
+                                compute_cost=compute_cost,
+                                communication_cost=communication_cost,
+                                memory_cost=memory_cost,
+                                communication_actions=communication_actions,
+                                resharding_costs=resharding_costs)
 
 
 class StrategiesVector(list):
