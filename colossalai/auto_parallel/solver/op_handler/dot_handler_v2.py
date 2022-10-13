@@ -1,10 +1,13 @@
 import torch
 import torch.nn.functional as F
+from colossalai.tensor.sharding_spec import ShardingException
 from .node_handler import ModuleHandler, NodeHandler
 from ..sharding_strategy import ShardingStrategy_V2, OperationDataType, OperationData
 from ..strategy import LinearProjectionStrategyGenerator, StrategyGenerator_V2, BatchedMatMulStrategyGenerator
-from typing import List, Dict
+from typing import List, Dict, Union
 from .registry import operator_registry
+from copy import deepcopy
+from .utils import switch_partition_dim, update_partition_dim
 
 __all__ = ['LinearModuleHandler', 'LinearFunctionHandler', 'BMMFunctionHandler']
 
@@ -24,14 +27,22 @@ class LinearModuleHandler(ModuleHandler):
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
         # use transposed shape for strategies
         # the strategies will be transformed back to its original shape in self.post_process
+        input_meta_data = self.node.args[0]._meta_data
+        input_logical_shape = input_meta_data.view(-1, input_meta_data.shape[-1]).shape
         physical_input_operand = OperationData(name=str(self.node.args[0]),
                                                type=OperationDataType.ARG,
-                                               data=self.node.args[0]._meta_data)
+                                               data=input_meta_data,
+                                               logical_shape=input_logical_shape)
         physical_other_operand = OperationData(name="weight",
                                                type=OperationDataType.PARAM,
                                                data=self.named_parameters['weight'],
                                                logical_shape=self.named_parameters['weight'].shape[::-1])
-        physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
+        output_meta_data = self.node._meta_data
+        output_logical_shape = output_meta_data.view(-1, output_meta_data.shape[-1]).shape
+        physical_output = OperationData(name=str(self.node),
+                                        type=OperationDataType.OUTPUT,
+                                        data=output_meta_data,
+                                        logical_shape=output_logical_shape)
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
@@ -42,28 +53,46 @@ class LinearModuleHandler(ModuleHandler):
             mapping['bias'] = physical_bias_operand
         return mapping
 
-    def post_process(self, strategy: ShardingStrategy_V2):
+    def post_process(self, strategy: ShardingStrategy_V2) -> Union[ShardingStrategy_V2, List[ShardingStrategy_V2]]:
         """
-        Convert the sharding spec of the weight parameter back to its original shape.
+        Convert the sharding spec from the logical shape to the physical shape.
         """
+        # switch the dimensions of the transposed weight
         for op_data, sharding_spec in strategy.input_sharding_specs.items():
             if op_data.name == "weight":
                 assert op_data.logical_shape != op_data.data.shape
-                dim_partition_dict = sharding_spec.dim_partition_dict
+                switch_partition_dim(sharding_spec, 0, -1)
 
-                # switch first and last dim of the linear module weight
-                first_dim_partition = dim_partition_dict.pop(-1, None)
-                last_dim_partition = dim_partition_dict.pop(0, None)
+        # create multiple sharding strategies for the inputs
+        # as input can be multi-dimensinal and the partition dim is only 2D,
+        # we need to map the partition at dim 0 to one of the first few dimensions of the input
+        sharding_strategies = []
+        input_op_data = strategy.get_op_data_by_name(str(self.node.args[0]))
+        output_op_data = strategy.get_op_data_by_name(str(self.node))
+        num_input_dims = input_op_data.data.dim()
+        input_sharding_spec = strategy.get_sharding_spec_by_name(input_op_data.name)
 
-                if first_dim_partition:
-                    dim_partition_dict[0] = first_dim_partition
+        if 0 in input_sharding_spec.dim_partition_dict:
+            for i in range(num_input_dims - 1):
+                new_strategy = strategy.clone()
+                input_sharding_spec = new_strategy.get_sharding_spec_by_name(input_op_data.name)
+                output_sharding_spec = new_strategy.get_sharding_spec_by_name(output_op_data.name)
+                try:
+                    update_partition_dim(sharding_spec=input_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=input_op_data.data.shape,
+                                         inplace=True)
+                    update_partition_dim(sharding_spec=output_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=output_op_data.data.shape,
+                                         inplace=True)
+                    sharding_strategies.append(new_strategy)
+                except ShardingException:
+                    pass
+        else:
+            sharding_strategies.append(strategy)
 
-                if last_dim_partition:
-                    dim_partition_dict[-1] = last_dim_partition
-
-                # re-init the sharding spec
-                sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
-        return strategy
+        return sharding_strategies
 
 
 @operator_registry.register(F.linear)
@@ -118,20 +147,37 @@ class LinearFunctionHandler(NodeHandler):
         for op_data, sharding_spec in strategy.input_sharding_specs.items():
             if op_data.name == str(self.node.args[1]):
                 assert op_data.logical_shape != op_data.data.shape
-                dim_partition_dict = sharding_spec.dim_partition_dict
+                switch_partition_dim(sharding_spec, 0, -1)
 
-                # switch first and last dim of the linear module weight
-                first_dim_partition = dim_partition_dict.pop(-1, None)
-                last_dim_partition = dim_partition_dict.pop(0, None)
+        # create multiple sharding strategies for the inputs
+        # as input can be multi-dimensinal and the partition dim is only 2D,
+        # we need to map the partition at dim 0 to one of the first few dimensions of the input
+        sharding_strategies = []
+        input_op_data = strategy.get_op_data_by_name(str(self.node.args[0]))
+        output_op_data = strategy.get_op_data_by_name(str(self.node))
+        num_input_dims = input_op_data.data.dim()
+        input_sharding_spec = strategy.get_sharding_spec_by_name(input_op_data.name)
 
-                if first_dim_partition:
-                    dim_partition_dict[0] = first_dim_partition
+        if 0 in input_sharding_spec.dim_partition_dict:
+            for i in range(num_input_dims - 1):
+                new_strategy = strategy.clone()
+                input_sharding_spec = new_strategy.get_sharding_spec_by_name(input_op_data.name)
+                output_sharding_spec = new_strategy.get_sharding_spec_by_name(output_op_data.name)
+                try:
+                    update_partition_dim(sharding_spec=input_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=input_op_data.data.shape,
+                                         inplace=True)
+                    update_partition_dim(sharding_spec=output_sharding_spec,
+                                         dim_mapping={0: i},
+                                         physical_shape=output_op_data.data.shape,
+                                         inplace=True)
+                    sharding_strategies.append(new_strategy)
+                except ShardingException:
+                    pass
+        else:
+            sharding_strategies.append(strategy)
 
-                if last_dim_partition:
-                    dim_partition_dict[-1] = last_dim_partition
-
-                # re-init the sharding spec
-                sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
         return strategy
 
 

@@ -1,10 +1,13 @@
 from torch.fx import Graph, Node
 from colossalai.auto_parallel.solver.op_handler.bcast_op_handler import BcastOpHandler
 from colossalai.auto_parallel.solver.op_handler.layer_norm_handler import LayerNormHandler
+from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy_V2
 from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.auto_parallel.solver.op_handler.registry import operator_registry
+from colossalai.auto_parallel.solver.op_handler.placeholder_handler import PlacehodlerHandler
+from colossalai.auto_parallel.solver.op_handler.output_handler import OuputHandler
 from .options import SolverOptions
 from . import ShardingStrategy, StrategiesVector
 from .op_handler import *
@@ -414,7 +417,6 @@ class StrategiesConstructor:
             self.leaf_strategies.append(strategies_vector)
             self.strategy_map[node] = strategies_vector
 
-
         # remove no strategy nodes
         remove_list = []
         for strategies_vector in self.leaf_strategies:
@@ -456,6 +458,10 @@ class StrategiesConstructor_V2:
         name_checklist = []
         remove_list = []
         for strategy in strategies_vector:
+            if strategy is None:
+                print(strategies_vector.node.name)
+                print(strategies_vector)
+                assert False
             if strategy.name not in name_checklist:
                 name_checklist.append(strategy.name)
             else:
@@ -469,16 +475,32 @@ class StrategiesConstructor_V2:
         """
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
-
             # placeholder node
             if node.op == 'placeholder':
-                # TODO: implement placeholder node handler
-                pass
+                placeholder_handler = PlacehodlerHandler(node, self.device_mesh, strategies_vector)
+                placeholder_handler.register_strategy()
 
             # get_attr node
-            elif node.op == 'get_attr':
-                # TODO: implement getattr node handler
-                pass
+            if node.op == 'get_attr':
+                # Same as placeholder nodes, if solver_options.fast is True, we just let them in
+                # fully replicate status, then strategies of following node will be treated equally due
+                # to replicate status has no resharding cost to other status. At the same time, the searching
+                # space is smaller than enumerating all the possible sharding spec for the get_attr node.
+                # Otherwise, all the possible sharding spec for the get_attr node will be enumerated.
+                if self.solver_options.fast:
+                    # create sharding strategy for get_attr
+                    name = 'Replica Attribute'
+                    dim_partition_dict = {}
+                    output_sharding_spec = generate_sharding_spec(node, self.device_mesh, dim_partition_dict)
+                    # TODO: use meta_info_prop to profile memory cost
+                    memory_cost = 0
+                    sharding_strategy_attribute = ShardingStrategy(name, output_sharding_spec, memory_cost=memory_cost)
+                    strategies_vector.append(sharding_strategy_attribute)
+
+            # # get_attr node
+            # elif node.op == 'get_attr':
+            #     # TODO: implement getattr node handler
+            #     pass
 
             # call_module node
             elif node.op == 'call_module':
@@ -502,11 +524,13 @@ class StrategiesConstructor_V2:
 
             # output node
             elif node.op == 'output':
-                # TODO: implement output node handler
-                pass
+                output_handler = OuputHandler(node, self.device_mesh, strategies_vector)
+                output_handler.register_strategy()
 
+            if len(strategies_vector) <= 0:
+                print(node.name)
+            assert len(strategies_vector) > 0
             self.remove_duplicated_strategy(strategies_vector)
             setattr(node, 'strategies_vector', strategies_vector)
             self.leaf_strategies.append(strategies_vector)
             self.strategy_map[node] = strategies_vector
-

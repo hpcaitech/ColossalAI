@@ -37,7 +37,7 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
         assert input_op_data.dim() in (3, 4,
                                        5), f'We suppose the dim of input fed into conv op should in range of [3, 5].'
 
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
+    def update_compute_cost(self, strategy: ShardingStrategy_V2):
         '''
         Compute the computation cost per device with this specific strategy.
 
@@ -62,9 +62,9 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
             backward_compute_cost += bias_compute_cost
         total_compute_cost = forward_compute_cost + backward_compute_cost
         compute_cost = TrainCycleItem(fwd=forward_compute_cost, bwd=backward_compute_cost, total=total_compute_cost)
-        return compute_cost
+        strategy.compute_cost = compute_cost
 
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> TrainCycleItem:
+    def update_memory_cost(self, strategy: ShardingStrategy_V2):
         forward_size_mapping = {
             'input': self._compute_size_in_bytes(strategy, "input"),
             'other': self._compute_size_in_bytes(strategy, "other"),
@@ -86,12 +86,12 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
         # compute bwd cost incurred
         # bwd_cost = input_grad + other_grad + bias_grad
         bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
-        bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
-        bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_activation_cost)
+        bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
+        bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
 
         # compute total cost
         total_mem_cost = MemoryCost(activation=fwd_activation_cost + bwd_activation_cost,
-                                    parameter=fwd_parameter_cost + bwd_activation_cost)
+                                    parameter=fwd_parameter_cost + bwd_parameter_cost)
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
@@ -287,5 +287,10 @@ class BatchNormStrategyGenerator(StrategyGenerator_V2):
 
         # S01R = S01R x R WITH SYNC_BN
         strategy_list.append(self.split_input_batch_1d(0, 1))
+
+        for strategy in strategy_list:
+            self.update_communication_cost(strategy)
+            self.update_compute_cost(strategy)
+            self.update_memory_cost(strategy)
 
         return strategy_list

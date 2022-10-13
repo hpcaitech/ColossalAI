@@ -8,6 +8,8 @@ from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from typing import Dict, List, Union, Any
 from ..sharding_strategy import OperationData, ShardingStrategy_V2, TrainCycleItem, OperationDataType
+from torch.fx import Node
+import copy
 
 
 class StrategyGenerator_V2(ABC):
@@ -51,9 +53,16 @@ class StrategyGenerator_V2(ABC):
         for op_data_name, dim_partition_dict in mapping.items():
             if op_data_name in self.op_data:
                 op_data = self.op_data[op_data_name]
-                sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                             entire_shape=op_data.logical_shape,
-                                             dim_partition_dict=dim_partition_dict)
+                if isinstance(op_data.data, tuple) and isinstance(op_data.data[0], torch.Tensor):
+                    sharding_spec = []
+                    for output, dim_partition_dict_element in zip(op_data.data, dim_partition_dict):
+                        sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
+                                                     entire_shape=output.shape,
+                                                     dim_partition_dict=dim_partition_dict_element)
+                else:
+                    sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
+                                                 entire_shape=op_data.logical_shape,
+                                                 dim_partition_dict=dim_partition_dict)
                 results[op_data_name] = sharding_spec
         return results
 
@@ -72,10 +81,6 @@ class StrategyGenerator_V2(ABC):
         """
         A factory method to produce a CommSpec object.
         """
-        # use flatten device mesh the same action is applied to two axes
-        if isinstance(logical_process_axis, list) and len(logical_process_axis) == 2:
-            sharding_spec.device_mesh = sharding_spec.device_mesh.flatten()
-            logical_process_axis = 0
         return CommSpec(comm_pattern=communication_pattern,
                         sharding_spec=sharding_spec,
                         logical_process_axis=logical_process_axis)
@@ -150,3 +155,29 @@ class StrategyGenerator_V2(ABC):
         If True, means this generator can be used for the current operation.
         """
         pass
+
+
+class FollowingStrategyGenerator(StrategyGenerator_V2):
+    """
+    FollowingStrategyGenerator is used to generate the sharding strategies which depends on its predecessor node. 
+
+    TODO: remove the original strategy_generator.py after refactoring
+    """
+
+    def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh,
+                 predecessor_node: Node):
+        self.op_data = operation_data_mapping
+        self.device_mesh = device_mesh
+        self.predecessor_node = predecessor_node
+
+
+class OutputStrategyGenerator(StrategyGenerator_V2):
+    """
+    OutputStrategyGenerator is used to generate the sharding strategies for Output Node.
+    """
+
+    def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh,
+                 predecessor_nodes: List[Node]):
+        self.op_data = operation_data_mapping
+        self.device_mesh = device_mesh
+        self.predecessor_nodes = predecessor_nodes

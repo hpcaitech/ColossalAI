@@ -40,7 +40,7 @@ class ConvModuleHandler(ModuleHandler):
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
-        if self.named_parameters['bias'] is not None:
+        if "bias" in self.named_parameters:
             physical_bias_operand = OperationData(name="bias",
                                                   type=OperationDataType.PARAM,
                                                   data=self.named_parameters['bias'])
@@ -53,7 +53,6 @@ class ConvModuleHandler(ModuleHandler):
         """
         for op_data, sharding_spec in strategy.input_sharding_specs.items():
             if op_data.name == "weight":
-                assert op_data.logical_shape != op_data.data.shape
                 dim_partition_dict = sharding_spec.dim_partition_dict
 
                 # switch first and second dim of the conv module weight

@@ -3,8 +3,7 @@ from enum import Enum
 from typing import List, Any, Tuple, Dict, Callable
 from functools import partial
 from abc import ABC, abstractmethod
-import sys
-import os
+import math
 import inspect
 
 import torch
@@ -12,12 +11,13 @@ from torch import nn
 import torch.distributed.rpc as rpc
 from torch.futures import Future
 from torch._C._distributed_rpc import PyRRef
+
 from torch import autograd
 from torch import optim
 
 from colossalai.pipeline.pipeline_process_group import ppg
 from colossalai.pipeline.rpc.utils import (color_debug, tensor_shape_list, get_batch_lengths, split_batch, type_detail,
-                                           pytree_map, get_real_args_kwargs, use_color_debug)
+                                           pytree_map, pytree_filter, get_real_args_kwargs, use_color_debug)
 
 
 class Phase(Enum):
@@ -469,6 +469,7 @@ class WorkerBase(ABC):
 
             else:
                 consume_result = self.module_partition(*args, **kwargs)
+
                 # print(f'model{self.pp_rank + 1}(param_sum: {sum([p.sum().item() for p in self.module_partition.parameters()])}) input sum: {args[0].sum().item()} forward output sum: {consume_result.sum().item()}', )
 
                 if is_last_stage and self.criterion:
@@ -495,7 +496,6 @@ class WorkerBase(ABC):
                                                                                     stage_input_kwargs,
                                                                                     stage_outputs,
                                                                                     checkpoint=use_checkpoint)
-
             # if not forward_only, do the backward
             if not forward_only:
                 if is_last_stage:    # if it is the last stage, trigger backward automatic
@@ -521,19 +521,19 @@ class WorkerBase(ABC):
             if use_checkpoint:
                 stage_outputs = [self.module_partition(*stage_input_args, **stage_input_kwargs)]
 
-            # take tensor only (for only tensor can do backward)
-            stage_outputs_tensors = []
-            pytree_map(stage_outputs, stage_outputs_tensors.append, process_types=torch.Tensor)
-
             # overlap recompute and future.wait
-            grad_tensors = get_real_args_kwargs(args)
+            if not is_last_stage:
+                grad_tensors = get_real_args_kwargs(args)
+            else:
+                grad_tensors = None
 
-            # print('rank', self.pp_rank, tensor_shape_list(stage_outputs_tensors), tensor_shape_list(grad_tensors))
-            autograd.backward(stage_outputs_tensors, grad_tensors=grad_tensors)
+            # take tensor only (for only tensor can do backward)
+            stage_outputs = pytree_filter(lambda x: x.requires_grad, stage_outputs, process_types=torch.Tensor)
+            grad_tensors = pytree_filter(lambda x: x is not None, grad_tensors, process_types=torch.Tensor)
+
+            autograd.backward(stage_outputs, grad_tensors=grad_tensors)
 
             # collect grad of input tensor
-            # there is a hypothesis that node in kwargs cann't be an non-leaf node in graph
-            # so we don't need to save the grad of node in kwargs.
             consume_result = []
             if not is_first_stage:
                 pytree_map(stage_input_args, lambda x: consume_result.append(x.grad), process_types=torch.Tensor)
@@ -829,13 +829,16 @@ class PipelineEngineBase(ABC, nn.Module):
 
     def forward_backward(self, batch: torch.Tensor, labels: torch.Tensor = None, forward_only: bool = False):
         batch_lengths = get_batch_lengths(batch)
+        batch_length = batch_lengths[0]
 
         if labels is not None and not forward_only:
             assert hasattr(
                 self, 'optimizer_class'), "call `initialize_optimizer` to initialize optimizer before forward_backward"
 
         num_microbatches = self.num_microbatches
-        microbatch_size = batch_lengths[0] // num_microbatches
+
+        assert batch_length >= num_microbatches, "num_microbatches is greater than the size of a batch, which is illegal"
+        microbatch_size = math.ceil(batch_length / num_microbatches)
         device = self.device
 
         # If Chimera mode is used, then rank of down pipeline is excluded from 'input_pp_ranks' or 'output_pp_ranks'
@@ -850,7 +853,7 @@ class PipelineEngineBase(ABC, nn.Module):
             # to prevent exceed of wait limitations
             self._consume_constraint(microbatch_id, forward_only, input_pp_ranks, output_pp_ranks, ret_future)
             batch_start = microbatch_size * microbatch_id
-            batch_end = batch_start + microbatch_size
+            batch_end = min(batch_start + microbatch_size, batch_length)
 
             # set input
             microbatch = split_batch(batch, batch_start, batch_end, device)

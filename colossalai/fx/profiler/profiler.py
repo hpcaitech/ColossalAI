@@ -18,6 +18,9 @@ __all__ = ['profile_function', 'profile_module', 'profile_method']
 # track duplicated tensors between nodes
 cache = set()
 
+# a global identifier for inplace ops
+do_not_cache = False
+
 
 def normalize_tuple(x):
     if not isinstance(x, tuple):
@@ -223,10 +226,13 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
     kwargs = tree_map(wrap, kwargs)
 
     def pack(x):
-        global cache
-        if isinstance(x, FlopTensor) and not x._tensor.data_ptr in cache:
-            x._node.meta['saved_tensor'] += [x]
-            cache.add(x._tensor.data_ptr)
+        global cache, do_not_cache
+        if isinstance(x, FlopTensor) and not x._tensor.uuid in cache:
+            tensor = x._tensor.detach()
+            tensor.uuid = x._tensor.uuid
+            x._node.meta['saved_tensor'] += [tensor]
+            if not do_not_cache:
+                cache.add(x._tensor.uuid)
         return x
 
     def unpack(x):
@@ -245,16 +251,25 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
 
         # If the output is not a floating point `torch.Tensor` or it does not
         # requires grad, then we should not run backward for this node.
-        for tensor in normalize_tuple(out):
-            if is_autogradable(tensor) and tensor.requires_grad:
-                phase = Phase.BACKWARD
-                grad = torch.empty_like(tensor._tensor, device=torch.device('meta')) if isinstance(
-                    tensor, FlopTensor) else torch.empty_like(tensor, device=torch.device('meta'))
-                torch.autograd.backward(tensor, FlopTensor(grad, fake_device=tensor.device), retain_graph=True)
+        if all(map(lambda x: is_autogradable(x) and x.requires_grad, normalize_tuple(out))):
+            grad_out = [torch.zeros_like(t) for t in normalize_tuple(out)]
+            phase = Phase.BACKWARD
+            torch.autograd.backward(
+                out,
+                grad_out,
+            )
 
     graph_info = autograd_graph_analysis(subgraph)
     graph_info.fwd_flop, graph_info.bwd_flop = flop_count[Phase.FORWARD], flop_count[Phase.BACKWARD]
-    graph_info.fwd_mem_out = activation_size(out)
+
+    def extract_tensor(x: Any):
+        if isinstance(x, MetaTensor):
+            tensor = x._tensor.detach()
+            tensor.uuid = x._tensor.uuid
+            return tensor
+        return x
+
+    graph_info.fwd_out = list(map(extract_tensor, normalize_tuple(out)))
 
     def unwrap(x):
         return MetaTensor(x) if isinstance(x, torch.Tensor) else x
@@ -279,31 +294,38 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
 
-        # If there is an argument that this `call_function` is inplace, we should
-        # still run the profiling but discard some results regarding `target`
-        inplace = kwargs.get('inplace', False)
-        if inplace:
-            kwargs['inplace'] = False
-        if device == 'meta':
-            out, meta = _profile_meta(func, *args, **kwargs)
-
-            # currently we set the fwd_mem_tmp of ReLU to zero
-            if target in [torch.nn.functional.relu]:
-                meta.save_fwd_in = False
-                meta.bwd_mem_out = 0
-                meta.fwd_mem_tmp = 0
-        else:
-            out, meta = _profile_concrete(func, *args, **kwargs)
-
         # find the grad for parameter in args and kwargs
         param_size = 0
 
         def get_param_size(x):
+            nonlocal param_size
             if isinstance(x, Parameter):
                 param_size += activation_size(x)
 
         tree_map(get_param_size, args)
         tree_map(get_param_size, kwargs)
+
+        # If there is an argument that this `call_function` is inplace, we should
+        # still run the profiling but discard some results regarding `target`
+        global do_not_cache
+        inplace = kwargs.get('inplace', False)
+        if inplace or target in [torch.nn.functional.relu]:
+            do_not_cache = True
+            kwargs['inplace'] = False
+        if device == 'meta':
+            out, meta = _profile_meta(func, *args, **kwargs)
+            # currently we set the fwd_mem_tmp of ReLU to zero
+            if target in [torch.nn.functional.relu]:
+                meta.fwd_in = []
+                meta.fwd_tmp = []
+                meta.bwd_mem_out = 0
+                meta.fwd_mem_tmp = 0
+        else:
+            out, meta = _profile_concrete(func, *args, **kwargs)
+
+        if inplace:
+            kwargs['inplace'] = True
+        do_not_cache = False
 
         meta.bwd_mem_out -= param_size
         return out, meta
@@ -348,25 +370,30 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
 
     def f(*args: Tuple[Argument, ...], **kwargs: Dict[str, Any]) -> Any:
 
-        # If there is an argument that this `call_module` is inplace, we should
-        # still run the profiling but discard some results regarding `module`.
-        inplace = getattr(module, 'inplace', False)
-
         # calculate parameter size
         param_size = parameter_size(module)
 
-        if inplace:
+        # If there is an argument that this `call_module` is inplace, we should
+        # still run the profiling but discard some results regarding `module`.
+        global do_not_cache
+
+        inplace = getattr(module, 'inplace', False)
+        if inplace or type(module) in [torch.nn.ReLU]:
+            do_not_cache = True
             module.inplace = False
         if device == 'meta':
             out, meta = _profile_meta(func, *args, **kwargs)
-
-            # currently we set the fwd_mem_tmp of ReLU to zero
-            if type(module) in [torch.nn.modules.activation.ReLU]:
-                meta.save_fwd_in = False
+            # currently we set the fwd_tmp of ReLU to []
+            if type(module) in [torch.nn.ReLU]:
+                meta.fwd_in = []
+                meta.fwd_tmp = []
                 meta.bwd_mem_out = 0
-                meta.fwd_mem_tmp = 0
         else:
             out, meta = _profile_concrete(func, *args, **kwargs)
+        if inplace:
+
+            module.inplace = True
+        do_not_cache = False
 
         # grad for param will not be counted
         meta.bwd_mem_out -= param_size
