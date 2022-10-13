@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from typing import List, Optional, Iterator, Tuple
 
-from .freq_aware_embedding import CachedEmbeddingBag
+from .cached_embedding import CachedEmbeddingBag
 from colossalai.nn._ops._utils import dual_all_to_all
 
 from colossalai.tensor import ColoParameter, ShardSpec, ComputePattern, ProcessGroup, ColoTensorSpec, ColoTensor

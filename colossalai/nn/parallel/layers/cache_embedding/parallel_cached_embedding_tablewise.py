@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
-from .freq_aware_embedding import CachedEmbeddingBag
+from .cached_embedding import CachedEmbeddingBag
 from .cache_mgr import EvictionStrategy
 from .embedding_config import TablewiseEmbeddingBagConfig
 from colossalai.tensor import ProcessGroup
