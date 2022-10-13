@@ -6,11 +6,12 @@ from .meta import ParamDistMeta
 import warnings
 
 
-def get_param_to_os(model_state_dict: Dict[str, Tensor], optimizer: Optimizer) -> Dict[str, int]:
+def get_param_to_os(model: Module, optimizer: Optimizer) -> Dict[str, int]:
     # ensure all params in optimizer are in model state dict
-    params_set = set(id(p) for p in model_state_dict.values())
-    for p in optimizer.param_groups['params']:
-        assert id(p) in params_set
+    params_set = set(id(p) for p in model.parameters())
+    for group in optimizer.param_groups:
+        for p in group['params']:
+            assert id(p) in params_set
     param_mappings = {}
     start_index = 0
 
@@ -22,7 +23,7 @@ def get_param_to_os(model_state_dict: Dict[str, Tensor], optimizer: Optimizer) -
 
     for g in optimizer.param_groups:
         get_group_mapping(g)
-    return {k: param_mappings[id(p)] for k, p in model_state_dict.items()}
+    return {k: param_mappings[id(p)] for k, p in model.named_parameters()}
 
 
 def compute_optimizer_state_size(state: Dict[str, Any]) -> int:
@@ -77,7 +78,7 @@ def shard_checkpoint(max_shard_size: int,
 def get_paired_os(model_state_dict: Dict[str, Tensor], optimizer_state_dict: dict, param_to_os: Dict[str, int]) -> dict:
     os_to_param = {v: k for k, v in param_to_os.items()}
     paired_os = {}
-    for idx, state in optimizer_state_dict['state']:
+    for idx, state in optimizer_state_dict['state'].items():
         paired_os[idx] = {}
         p = model_state_dict[os_to_param[idx]]
         for k, v in state.items():
@@ -88,19 +89,17 @@ def get_paired_os(model_state_dict: Dict[str, Tensor], optimizer_state_dict: dic
     return paired_os
 
 
-def build_checkpoints(save_global: bool,
-                      max_size: int,
+def build_checkpoints(max_size: int,
                       model: Module,
                       optimizer: Optional[Optimizer] = None,
                       param_to_os: Optional[Dict[str, int]] = None,
                       dist_meta: Optional[Dict[str, ParamDistMeta]] = None) -> Tuple[List[dict], List[dict], dict]:
-    if not save_global:
-        assert dist_meta is not None, 'Expect dist_meta is not None, when not saving global'
+    save_global = dist_meta is None
     model_state_dict = model.state_dict()
     optimizer_state_dict = optimizer.state_dict() if optimizer else None
     meta = {'dist_meta': dist_meta}
     if optimizer:
-        param_to_os = param_to_os or get_param_to_os(model_state_dict)
+        param_to_os = param_to_os or get_param_to_os(model, optimizer)
         paired_os = get_paired_os(model_state_dict, optimizer_state_dict, param_to_os)
         meta['param_to_os'] = param_to_os
         meta['paired_os'] = paired_os

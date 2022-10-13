@@ -18,17 +18,18 @@ def save(path: str,
          **kwargs: Any):
     assert backend == 'disk'
     if dist.is_initialized():
-        save_global = False
         rank = dist.get_rank()
         world_size = dist.get_world_size()
+        assert dist_meta is not None
     else:
-        save_global = True
         rank = 0
         world_size = 1
+        # global doesn't need dist_meta
+        dist_meta = None
     writer = DiskCheckpointWriter(path, overwrite, rank, world_size)
     max_shard_size = int(max_shard_size_gb * 1024**3)
-    model_checkpoints, optimizer_checkpoints, meta_checkpoint = build_checkpoints(save_global, max_shard_size, model,
-                                                                                  optimizer, param_to_os, dist_meta)
+    model_checkpoints, optimizer_checkpoints, meta_checkpoint = build_checkpoints(max_shard_size, model, optimizer,
+                                                                                  param_to_os, dist_meta)
     checkpoints, checkpoint_names = writer.process_checkpoint(model_checkpoints, optimizer_checkpoints, meta_checkpoint,
                                                               **kwargs)
     writer.setup()
