@@ -4,10 +4,9 @@ import torch.nn as nn
 import pytest
 
 from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.auto_parallel.solver.strategies_constructor import StrategiesConstructor
+from colossalai.auto_parallel.solver.strategies_constructor import StrategiesConstructor, StrategiesConstructor_V2
 from colossalai.auto_parallel.solver.cost_graph import CostGraph
 from copy import deepcopy
 from colossalai.auto_parallel.solver import Solver
@@ -81,7 +80,7 @@ def test_cost_graph():
     graph_analyser = GraphAnalyser(gm)
     liveness_list = graph_analyser.liveness_analysis()
     solver_options = SolverOptions(fast=True)
-    strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
+    strategies_constructor = StrategiesConstructor_V2(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
     cost_graph = CostGraph(strategies_constructor.leaf_strategies)
@@ -90,7 +89,7 @@ def test_cost_graph():
 
     ret = solver.call_solver_serialized_args()
     print(ret[0])
-    solver._recover_merged_node_strategy()
+    # solver._recover_merged_node_strategy()
     print(solver.last_s_val)
     strategies_list = solver.last_s_val
 
@@ -102,14 +101,14 @@ def test_cost_graph():
         if node.op == 'call_module':
             submod = node.graph.owning_module.get_submodule(node.target)
             if type(submod) in BATCHNORM_MODULE_OP:
-                communication_cost_bn += node.strategies_vector[strategies_list[index]].communication_cost
+                communication_cost_bn += node.strategies_vector[strategies_list[index]].communication_cost.total
         print(node.name, node.strategies_vector[strategies_list[index]].name)
-        computation_cost += node.strategies_vector[strategies_list[index]].compute_cost
-        communication_cost += node.strategies_vector[strategies_list[index]].communication_cost
-        node_memory_cost = node.strategies_vector[strategies_list[index]].memory_cost
+        computation_cost += node.strategies_vector[strategies_list[index]].compute_cost.total
+        communication_cost += node.strategies_vector[strategies_list[index]].communication_cost.total
+        node_memory_cost = node.strategies_vector[strategies_list[index]].memory_cost.total
         if isinstance(node_memory_cost, tuple):
             node_memory_cost = node_memory_cost[0]
-        memory_cost += node_memory_cost
+        memory_cost += node_memory_cost.activation + node_memory_cost.parameter
 
     print(f'computation cost is {computation_cost}')
     print(f'communication cost is {communication_cost}')

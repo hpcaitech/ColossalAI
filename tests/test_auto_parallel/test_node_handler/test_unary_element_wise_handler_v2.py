@@ -48,13 +48,13 @@ def test_elementwise_handler():
     conv_handler = ConvFunctionHandler(node=conv_mod_node,
                                        device_mesh=device_mesh,
                                        strategies_vector=conv_strategies_vector)
-    conv_handler.register_strategy()
+    conv_handler.register_strategy(compute_resharding_cost=False)
     setattr(conv_mod_node, 'strategies_vector', conv_strategies_vector)
     relu_handler = UnaryElementwiseHandler(node=relu_mod_node,
                                            device_mesh=device_mesh,
                                            strategies_vector=relu_strategies_vector)
 
-    relu_handler.register_strategy()
+    relu_handler.register_strategy(compute_resharding_cost=False)
 
     # check operation data mapping
     mapping = relu_handler.get_operation_data_mapping()
