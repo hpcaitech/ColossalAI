@@ -319,6 +319,8 @@ class Solver:
         obj = 0
         for i in range(node_nums):
             assert len(s[i]) == len(c[i])
+            assert len(s[i]) == len(d[i])
+
             obj += lpDot(s[i], c[i]) + lpDot(s[i], d[i])
 
         #############################################

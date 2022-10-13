@@ -3,14 +3,15 @@ import torch
 import torch.nn as nn
 from colossalai.fx import ColoTracer, ColoGraphModule
 from colossalai.auto_parallel.solver.op_handler.dot_handler_v2 import LinearModuleHandler, LinearFunctionHandler
-from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
+from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector, ShardingStrategy_V2
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.sharding_spec import ShardingSpec
 
 
 def test_linear_module_handler():
     model = nn.Sequential(nn.Linear(16, 32).to('meta'))
     tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 16).to('meta')})
+    graph = tracer.trace(model, meta_args={"input": torch.rand(2, 2, 4, 16).to('meta')})
     gm = ColoGraphModule(model, graph)
     physical_mesh_id = torch.arange(0, 4)
 
@@ -34,9 +35,9 @@ def test_linear_module_handler():
 
     assert mapping['input'].name == "input_1"
     assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([4, 16])
+    assert mapping['input'].data.shape == torch.Size([2, 2, 4, 16])
     assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 16])
+    assert mapping['input'].logical_shape == torch.Size([16, 16])
 
     assert mapping['other'].name == "weight"
     assert mapping['other'].data.is_meta
@@ -52,11 +53,14 @@ def test_linear_module_handler():
 
     assert mapping['output'].name == "_0"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 32])
+    assert mapping['output'].data.shape == torch.Size([2, 2, 4, 32])
     assert mapping['output'].type == OperationDataType.OUTPUT
+    assert mapping['output'].logical_shape == torch.Size([16, 32])
 
     strategies_vector = handler.register_strategy()
     strategy_name_list = [val.name for val in strategies_vector]
+    # one strategy will be converted to different physical sharding spec
+    assert len(strategy_name_list) > 8
 
     # SS = SR x RS
     assert 'S0S1 = S0R x RS1' in strategy_name_list
@@ -77,6 +81,19 @@ def test_linear_module_handler():
     # RS= RR x RS
     assert 'RS0 = RR x RS0' in strategy_name_list
     assert 'RS1 = RR x RS1' in strategy_name_list
+
+    for strategy in strategies_vector:
+        strategy: ShardingStrategy_V2
+        input_sharding_spec = strategy.get_sharding_spec_by_name('input_1')
+        weight_sharding_spec = strategy.get_sharding_spec_by_name('weight')
+        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('_0')
+
+        # make sure the sharding matches across different operation data
+        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert weight_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
+        assert weight_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[-1]
+        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
 def test_linear_function_handler():
@@ -123,6 +140,8 @@ def test_linear_function_handler():
 
     strategies_vector = handler.register_strategy()
     strategy_name_list = [val.name for val in strategies_vector]
+    # one strategy will be converted to different physical sharding spec
+    assert len(strategy_name_list) > 8
 
     # SS = SR x RS
     assert 'S0S1 = S0R x RS1' in strategy_name_list
@@ -143,6 +162,19 @@ def test_linear_function_handler():
     # RS= RR x RS
     assert 'RS0 = RR x RS0' in strategy_name_list
     assert 'RS1 = RR x RS1' in strategy_name_list
+
+    for strategy in strategies_vector:
+        strategy: ShardingStrategy_V2
+        input_sharding_spec = strategy.get_sharding_spec_by_name('input_1')
+        weight_sharding_spec = strategy.get_sharding_spec_by_name('weight')
+        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('linear')
+
+        # make sure the sharding matches across different operation data
+        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert weight_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
+        assert weight_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[-1]
+        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
 if __name__ == '__main__':

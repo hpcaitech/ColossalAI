@@ -94,13 +94,16 @@ static PyObject* persistent_compute_table(PyObject* self, PyObject* args) {
         OPT(m, i, i) = INFINITY;
 
   for (long m = 0; m <= mmax; ++m)
-    for (long i = 0; i <= chain_length; ++i) {
-      long maxCostFWD = 0;
-      for (long l = i + 1; l <= chain_length; ++l) {
-        long mmin = cw[l + 1] + cw[i + 1] + fwd_tmp[i];
-        if (l > i + 1) {
-          maxCostFWD = fmaxl(maxCostFWD, cw[l - 1] + cw[l] + fwd_tmp[l - 1]);
-          mmin = fmaxl(mmin, cw[l + 1] + maxCostFWD);
+    for (long d = 1; d <= chain_length; ++d) {
+      for (long i = 0; i <= chain_length - d; ++i) {
+        long idx = i + d;
+        long mmin = cw[idx + 1] + cw[i + 1] + fwd_tmp[i];
+        if (idx > i + 1) {
+          long maxCostFWD = 0;
+          for (long j = i + 1; j < idx; j++) {
+            maxCostFWD = fmaxl(maxCostFWD, cw[j] + cw[j + 1] + fwd_tmp[j]);
+          }
+          mmin = fmaxl(mmin, cw[idx + 1] + maxCostFWD);
         }
         if ((m >= mmin)) {
           long bestLeaf = -1;
@@ -108,10 +111,10 @@ static PyObject* persistent_compute_table(PyObject* self, PyObject* args) {
           double bestLeafCost = INFINITY;
           /// sumFw + OPT(m-cw[i+1], i+1, l) + OPT(m, i, i); // Value for j =
           /// i+1
-          for (long j = i + 1; j <= l; ++j) {
+          for (long j = i + 1; j <= idx; ++j) {
             sumFw += fw[j - 1];
             if (m >= cw[j]) {
-              double cost = sumFw + OPT(m - cw[j], j, l) + OPT(m, i, j - 1);
+              double cost = sumFw + OPT(m - cw[j], j, idx) + OPT(m, i, j - 1);
               if (cost < bestLeafCost) {
                 bestLeafCost = cost;
                 bestLeaf = j;
@@ -120,16 +123,16 @@ static PyObject* persistent_compute_table(PyObject* self, PyObject* args) {
           }
           double chainCost = INFINITY;
           if (m >= cbw[i + 1])
-            chainCost = OPT(m, i, i) + OPT(m - cbw[i + 1], i + 1, l);
+            chainCost = OPT(m, i, i) + OPT(m - cbw[i + 1], i + 1, idx);
           if (bestLeafCost <= chainCost) {
-            OPT(m, i, l) = bestLeafCost;
-            WHAT(m, i, l) = bestLeaf;
+            OPT(m, i, idx) = bestLeafCost;
+            WHAT(m, i, idx) = bestLeaf;
           } else {
-            OPT(m, i, l) = chainCost;
-            WHAT(m, i, l) = -1;
+            OPT(m, i, idx) = chainCost;
+            WHAT(m, i, idx) = -1;
           }
         } else
-          OPT(m, i, l) = INFINITY;
+          OPT(m, i, idx) = INFINITY;
       }
     }
 

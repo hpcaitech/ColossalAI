@@ -4,15 +4,14 @@ from ..sharding_strategy import ShardingStrategy_V2, TrainCycleItem, MemoryCost
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 from .strategy_generator import FollowingStrategyGenerator
 from typing import List
-from .._utils import exception_handler
 import copy
 
-__all__ = ['UnaryElementwiseGenerator']
+__all__ = ['ReshapeGenerator']
 
 
-class UnaryElementwiseGenerator(FollowingStrategyGenerator):
+class ReshapeGenerator(FollowingStrategyGenerator):
     """
-    UnaryElementwiseGenerator which deals with the sharding strategies of UnaryElementwiseOp.
+    ReshapeGenerator which deals with the sharding strategies of Reshape Op, such as torch.Tensor.permute.
     """
 
     def validate(self) -> bool:
@@ -53,15 +52,19 @@ class UnaryElementwiseGenerator(FollowingStrategyGenerator):
 
     def generate(self):
         strategy_list = []
-        # For element-wise function, we keep the sharding spec of output node same as
-        # the input. Therefore, the different strategies of input node with same
-        # output sharding spec will generate same strategy for element-wise function.
+        # For reshape function, to keep the computing correctness we keep the sharding
+        # spec of input is fully replicated. In addition, we will keep the output in
+        # replica status and let the successor node choose the way to resharding the
+        # output node. Therefore, the different strategies of input node with same
+        # output sharding spec will generate same strategy for reshape function.
         for index, strategy in enumerate(self.predecessor_node.strategies_vector):
             dim_partition_dict_mapping = {}
             communication_action_mapping = {}
             input_sharding_spec = strategy.output_sharding_specs[self.op_data["input"]]
             dim_partition_dict_for_input = input_sharding_spec.dim_partition_dict
-            dim_partition_dict_for_output = copy.deepcopy(dim_partition_dict_for_input)
+            dim_partition_dict_for_output = {}
+            if isinstance(self.op_data["output"].data, tuple):
+                dim_partition_dict_for_output = [{} for _ in range(len(self.op_data["output"].data))]
             dim_partition_dict_mapping = {
                 "input": dim_partition_dict_for_input,
                 "output": dim_partition_dict_for_output,
@@ -70,7 +73,20 @@ class UnaryElementwiseGenerator(FollowingStrategyGenerator):
             # add index into name to pass the duplicated check
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
-            name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
+            name = f'{sharding_spec_mapping["input"].sharding_sequence} -> FULLY REPLICATED_{index}'
+
+            total_mesh_dim_list = []
+            for mesh_dim_list in dim_partition_dict_for_input.values():
+                total_mesh_dim_list.extend(mesh_dim_list)
+            # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
+            if len(total_mesh_dim_list) == 1:
+                total_mesh_dim_list = total_mesh_dim_list[0]
+
+            input_comm_spec = self.get_communication_spec(
+                sharding_spec=sharding_spec_mapping["input"],
+                communication_pattern=CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
+                logical_process_axis=total_mesh_dim_list)
+            communication_action_mapping["input"] = input_comm_spec
             strategy = self.get_sharding_strategy(name=name,
                                                   sharding_spec_mapping=sharding_spec_mapping,
                                                   communication_action_mapping=communication_action_mapping)
