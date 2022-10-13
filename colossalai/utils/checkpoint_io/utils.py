@@ -111,7 +111,7 @@ def build_checkpoints(max_size: int,
         if optimizer:
             optimizer_state_dict['state'] = {
                 param_to_os[k]: optimizer_state_dict['state'][param_to_os[k]]
-                for k in model_state_dict.items()
+                for k in model_state_dict.keys()
                 if dist_meta[k].used_zero or dist_meta[k].dp_rank == 0
             }
     if len(model_state_dict) == 0:
