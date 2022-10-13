@@ -60,7 +60,7 @@ class DiskCheckpointReader(CheckpointReader):
         while True:
             shards = {}
             for i, meta in enumerate(self.meta_list):
-                model_checkpoint_names = meta['model']
+                model_checkpoint_names = meta.get('model', [])
                 if indices[i] < len(model_checkpoint_names):
                     shards[i] = self.read(model_checkpoint_names[indices[i]])
                     indices[i] += 1
@@ -75,7 +75,7 @@ class DiskCheckpointReader(CheckpointReader):
         while True:
             shards = {}
             for i, meta in enumerate(self.meta_list):
-                optimizer_checkpoint_names = meta['optimizer']
+                optimizer_checkpoint_names = meta.get('optimizer', [])
                 if indices[i] < len(optimizer_checkpoint_names):
                     shards[i] = self.read(optimizer_checkpoint_names[indices[i]])
                     if indices[i] == 0:
