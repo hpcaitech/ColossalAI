@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from colossalai.fx import ColoTracer, ColoGraphModule
 from colossalai.auto_parallel.solver.op_handler.conv_handler_v2 import ConvFunctionHandler
-from colossalai.auto_parallel.solver.op_handler.reshape_handler_v2 import ReshapeHandler
+from colossalai.auto_parallel.solver.op_handler.reshape_handler_v2 import ReshapeHandler_V2
 from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 
@@ -48,9 +48,9 @@ def test_reshape_handler():
                                        strategies_vector=conv_strategies_vector)
     conv_handler.register_strategy(compute_resharding_cost=False)
     setattr(conv_mod_node, 'strategies_vector', conv_strategies_vector)
-    reshape_handler = ReshapeHandler(node=reshape_node,
-                                     device_mesh=device_mesh,
-                                     strategies_vector=reshape_strategies_vector)
+    reshape_handler = ReshapeHandler_V2(node=reshape_node,
+                                        device_mesh=device_mesh,
+                                        strategies_vector=reshape_strategies_vector)
 
     reshape_handler.register_strategy(compute_resharding_cost=False)
 

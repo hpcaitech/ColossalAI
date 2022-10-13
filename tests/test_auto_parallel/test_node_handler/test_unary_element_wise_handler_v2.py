@@ -2,7 +2,7 @@ from colossalai.fx.tracer.meta_patch.patched_module import linear
 import torch
 import torch.nn as nn
 from colossalai.fx import ColoTracer, ColoGraphModule
-from colossalai.auto_parallel.solver.op_handler.unary_elementwise_handler_v2 import UnaryElementwiseHandler
+from colossalai.auto_parallel.solver.op_handler.unary_elementwise_handler_v2 import UnaryElementwiseHandler_V2
 from colossalai.auto_parallel.solver.op_handler.conv_handler_v2 import ConvFunctionHandler
 from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
@@ -50,9 +50,9 @@ def test_elementwise_handler():
                                        strategies_vector=conv_strategies_vector)
     conv_handler.register_strategy(compute_resharding_cost=False)
     setattr(conv_mod_node, 'strategies_vector', conv_strategies_vector)
-    relu_handler = UnaryElementwiseHandler(node=relu_mod_node,
-                                           device_mesh=device_mesh,
-                                           strategies_vector=relu_strategies_vector)
+    relu_handler = UnaryElementwiseHandler_V2(node=relu_mod_node,
+                                              device_mesh=device_mesh,
+                                              strategies_vector=relu_strategies_vector)
 
     relu_handler.register_strategy(compute_resharding_cost=False)
 

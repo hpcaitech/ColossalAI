@@ -5,8 +5,10 @@ from colossalai.fx import ColoTracer, ColoGraphModule
 from colossalai.auto_parallel.solver.op_handler.normal_pooling_handler import NormPoolingHandler
 from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
+import pytest
 
 
+@pytest.mark.skip("for higher testing speed")
 def test_norm_pool_handler():
     model = nn.Sequential(nn.MaxPool2d(4, padding=1).to('meta'))
     tracer = ColoTracer()
