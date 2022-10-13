@@ -95,7 +95,8 @@ def exception_handler(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
-            func(*args, **kwargs)
+            rst = func(*args, **kwargs)
+            return rst
         except AssertionError as e:
             warnings.warn(f'{e}')
 

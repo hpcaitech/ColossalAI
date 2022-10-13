@@ -6,12 +6,12 @@ from typing import List, Dict
 from .registry import operator_registry
 import operator
 
-__all__ = ['UnaryElementwiseHandler']
+__all__ = ['UnaryElementwiseHandler_V2']
 
 
 @operator_registry.register(torch.abs)
 @operator_registry.register(torch.nn.ReLU)
-class UnaryElementwiseHandler(NodeHandler):
+class UnaryElementwiseHandler_V2(NodeHandler):
     """
     A UnaryElementwiseHandler which deals with the sharding strategies for UnaryElementwise Op.
     """

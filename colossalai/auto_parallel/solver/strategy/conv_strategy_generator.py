@@ -5,6 +5,7 @@ from colossalai.tensor.shape_consistency import CollectiveCommPattern
 from .strategy_generator import StrategyGenerator_V2
 from typing import List
 from .._utils import exception_handler
+import warnings
 import copy
 
 
@@ -100,6 +101,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
+    @exception_handler
     def split_input_batch_weight_out_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
 
@@ -146,6 +148,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def split_input_batch(self, mesh_dim_0):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}R x RR'
 
@@ -182,6 +185,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def split_input_both_dim_weight_in_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
 
@@ -228,6 +232,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def split_input_in_channel_weight_both_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
 
@@ -267,6 +272,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def split_input_in_channel_weight_in_channel(self, mesh_dim_0):
         name = f'RR = RS{mesh_dim_0} x S{mesh_dim_0}R'
 
@@ -297,6 +303,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def split_weight_out_channel(self, mesh_dim_0):
         name = f'RS{mesh_dim_0} = RR x RS{mesh_dim_0}'
 
@@ -329,6 +336,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def non_split(self):
         name = f'RR = RR x RR'
 
@@ -347,6 +355,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping={})
 
+    @exception_handler
     def split_1d_parallel_on_input_batch(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
 
@@ -384,6 +393,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def split_1d_parallel_on_in_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
         dim_partition_dict_mapping = {
@@ -413,6 +423,7 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @exception_handler
     def split_1d_parallel_on_out_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_0}{mesh_dim_1} = RR x RS{mesh_dim_0}{mesh_dim_1}'
         dim_partition_dict_mapping = {
@@ -482,10 +493,20 @@ class ConvStrategyGenerator(StrategyGenerator_V2):
         # RS01 = RR x RS01
         strategies.append(self.split_1d_parallel_on_out_channel(0, 1))
 
+        rm_list = [strategy for strategy in strategies if strategy is None]
+        for rm_element in rm_list:
+            strategies.remove(rm_element)
+        illegal_strategy_list = []
         # update mete info on cost
         for strategy in strategies:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
+            try:
+                self.update_communication_cost(strategy)
+                self.update_compute_cost(strategy)
+                self.update_memory_cost(strategy)
+            except AssertionError as e:
+                illegal_strategy_list.append(strategy)
+                warnings.warn(f'{e}')
+        for strategy in illegal_strategy_list:
+            strategies.remove(strategy)
 
         return strategies

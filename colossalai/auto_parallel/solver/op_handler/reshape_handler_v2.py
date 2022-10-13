@@ -6,12 +6,13 @@ from typing import List, Dict
 from .registry import operator_registry
 import operator
 
-__all__ = ['ReshapeHandler']
+__all__ = ['ReshapeHandler_V2']
 
 
 @operator_registry.register(torch.reshape)
+@operator_registry.register(torch.flatten)
 @operator_registry.register(torch.Tensor.permute)
-class ReshapeHandler(NodeHandler):
+class ReshapeHandler_V2(NodeHandler):
     """
     A ReshapeHandler which deals with the sharding strategies for Reshape Op, such as torch.reshape.
     """
