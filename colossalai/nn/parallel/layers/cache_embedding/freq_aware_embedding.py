@@ -7,10 +7,10 @@ from .cache_mgr import CachedParamMgr, EvictionStrategy
 from torch.nn.parameter import Parameter
 
 
-class FreqAwareEmbeddingBag(BaseEmbeddingBag):
-    """FreqAwareEmbeddingBag
+class CachedEmbeddingBag(BaseEmbeddingBag):
+    """CachedEmbeddingBag
 
-    Frequency Aware Embedding. Apply a GPU-based software cache approaches to dynamically manage the embedding table in the CPU and GPU memory space.
+    Cached Embedding. Apply a GPU-based software cache approaches to dynamically manage the embedding table in the CPU and GPU memory space.
     It can leverage the id's frequency statistics of the target dataset, by passing a frequency list to param `ids_freq_mapping`.
     You can also apply a navie LFU cache eviction strategy by setting `evict_strategy` as EvictionStrategy.LFU.
 
@@ -54,8 +54,8 @@ class FreqAwareEmbeddingBag(BaseEmbeddingBag):
                  buffer_size: int = 0,
                  pin_weight: bool = False,
                  evict_strategy: EvictionStrategy = EvictionStrategy.LFU):
-        super(FreqAwareEmbeddingBag, self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type,
-                                                    scale_grad_by_freq, sparse, mode, include_last_offset)
+        super(CachedEmbeddingBag, self).__init__(num_embeddings, embedding_dim, padding_idx, max_norm, norm_type,
+                                                 scale_grad_by_freq, sparse, mode, include_last_offset)
 
         assert cache_ratio <= 1.0, f"cache ratio {cache_ratio} must less than 1.0"
         self.evict_strategy = evict_strategy

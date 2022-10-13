@@ -352,7 +352,8 @@ class CachedParamMgr(torch.nn.Module):
 
             # move sure the cuda rows will not be evicted!
             with record_function("(cache) prepare_rows_on_cuda"):
-                self._prepare_rows_on_cuda(comm_cpu_row_idxs)
+                with self.timer("prepare_rows_on_cuda") as timer:
+                    self._prepare_rows_on_cuda(comm_cpu_row_idxs)
 
             self.evict_backlist = torch.tensor([], device=cpu_row_idxs.device, dtype=cpu_row_idxs.dtype)
 
