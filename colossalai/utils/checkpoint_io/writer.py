@@ -77,8 +77,7 @@ class DiskCheckpointWriter(CheckpointWriter):
             checkpoint_names.extend(optimizer_checkpoint_names)
         checkpoints.append(meta_checkpoint)
         checkpoint_names.append(self.get_checkpoint_names(1, META_CKPT_FILE_NAME))
-        checkpoint_names = [os.path.join(self.base_name, name) for name in checkpoint_names]
         return checkpoints, checkpoint_names
 
     def write(self, name: str, state_dict: dict) -> None:
-        torch.save(state_dict, name)
+        torch.save(state_dict, os.path.join(self.base_name, name))
