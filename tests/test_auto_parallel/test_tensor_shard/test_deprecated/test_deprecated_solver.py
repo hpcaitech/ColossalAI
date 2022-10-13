@@ -12,6 +12,7 @@ from colossalai.auto_parallel.tensor_shard.deprecated.graph_analysis import Grap
 from copy import deepcopy
 from colossalai.auto_parallel.tensor_shard.deprecated import Solver
 from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class ConvModel(nn.Module):
@@ -33,7 +34,7 @@ class ConvModel(nn.Module):
         return x
 
 
-@pytest.mark.skip("for higher testing speed")
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_solver():
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

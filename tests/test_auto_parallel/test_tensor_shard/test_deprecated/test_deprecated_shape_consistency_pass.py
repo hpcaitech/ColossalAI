@@ -18,6 +18,7 @@ from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.passes.experimental.adding_shape_consistency_pass import shape_consistency_pass, solution_annotatation_pass
 from colossalai.auto_parallel.tensor_shard.deprecated import Solver
 from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class ConvModel(nn.Module):
@@ -72,7 +73,7 @@ def check_apply(rank, world_size, port):
     assert output.equal(origin_output)
 
 
-@pytest.mark.skip("for higher testing speed")
+@run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_apply():
