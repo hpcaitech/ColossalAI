@@ -1,7 +1,8 @@
 import torch
 from .node_handler import NodeHandler
 from ..sharding_strategy import ShardingStrategy_V2, OperationDataType, OperationData, StrategiesVector
-from ..strategy import OutputGenerator, StrategyGenerator_V2
+from colossalai.auto_parallel.solver.strategy import StrategyGenerator_V2
+from colossalai.auto_parallel.solver.strategy.output_generator import OutputGenerator
 from typing import List, Dict
 from .registry import operator_registry
 
