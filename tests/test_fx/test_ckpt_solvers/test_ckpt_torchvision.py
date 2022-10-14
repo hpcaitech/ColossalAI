@@ -13,6 +13,9 @@ from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 import pytest
+from colossalai import META_COMPATIBILITY
+if META_COMPATIBILITY:
+    from colossalai.fx.profiler.tensor import MetaTensor
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -74,7 +77,7 @@ def _run_ckpt_solver(rank):
             m = model_cls(num_classes=5)
             graph = tracer.trace(root=m)
             gm = ColoGraphModule(copy.deepcopy(m), graph, m.__class__.__name__)
-            MetaInfoProp(gm).run(data)
+            MetaInfoProp(gm.cuda()).run(MetaTensor(data, fake_device='cuda'))
             codegen = ActivationCheckpointCodeGen()
             gm.graph.set_codegen(codegen)
             if solver == solver_rotor:
@@ -89,7 +92,6 @@ def _run_ckpt_solver(rank):
 
 
 @pytest.mark.skipif(not with_codegen, reason='torch version is lower than 1.12.0')
-@pytest.mark.skip('TODO: refactor ckpt solvers')
 def test_ckpt_solver():
     mp.spawn(_run_ckpt_solver, nprocs=1)
 
@@ -111,7 +113,7 @@ def _run_ckpt_solver_torch11(rank):
             MetaInfoProp(gm).run(data)
             gm.graph._python_code = python_code_with_activation_checkpoint.__get__(graph)
             if solver == solver_rotor:
-                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500)
+                gm = solver(gm, data, mem_limit=500 * 1024 * 1024, mem_slots=500, force_python=True)
             else:
                 gm = solver(gm)
             assert _is_graph_linearized(gm), f"Solver {solver} did not solve {model_cls} in a linearized manner."
@@ -129,5 +131,5 @@ def test_ckpt_solver_torch11():
 
 if __name__ == '__main__':
     _run_ckpt_solver(rank=0)
-    # test_ckpt_solver()
-    # test_ckpt_solver_torch11()
+    test_ckpt_solver()
+    test_ckpt_solver_torch11()

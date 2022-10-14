@@ -64,10 +64,9 @@ class ZeroOptimizer(ColossalaiOptimizer):
         self.param_to_chunk32: Dict[Parameter, Chunk] = dict()
         self.chunk16_set: Set[Chunk] = set()
 
-        for p, fp32_p in zip(module.parameters(), module.fp32_params):
+        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        for p, fp32_p in zip(params_list, module.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
-            chunk_32 = self.chunk_manager.get_chunk(fp32_p)
-            chunk_32.init_pair(chunk_16)
             if chunk_16 not in self.chunk16_set:
                 self.chunk16_set.add(chunk_16)
 

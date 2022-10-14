@@ -12,7 +12,6 @@ from functools import partial
 from tests.test_tensor.common_utils import set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.nn.parallel import ZeroDDP
-from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.gemini.gemini_mgr import GeminiManager
 from tests.test_tensor.common_utils import debug_print
@@ -79,9 +78,6 @@ def exam_load_state_dict(placement_policy, keep_gathered):
     chunk_manager = ChunkManager(config_dict, init_device=init_device)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
-
-    optimizer = torch.optim.Adam(model.parameters())
-    optim = ZeroOptimizer(optimizer, model)    # initialize the link between chunk16 and chunk32
 
     torch_dict = torch_model.state_dict()
     model.load_state_dict(torch_dict, strict=False)

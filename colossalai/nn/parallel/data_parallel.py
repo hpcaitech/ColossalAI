@@ -224,7 +224,6 @@ class ZeroDDP(ColoDDP):
         # TODO: get param order and filter unused params
         for p in module.parameters():
             assert isinstance(p, ColoParameter)
-            dp_world_size = p.process_group.dp_world_size()
 
             if getattr(p, '_ddp_to_ignore', False):
                 p.data = p.data.half()
@@ -234,13 +233,20 @@ class ZeroDDP(ColoDDP):
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             p.data = p.data.half()
 
+            dp_world_size = p.process_group.dp_world_size()
             self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
             self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size, pin_memory)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
         self.chunk_manager.close_all_groups()
-
         self._cast_buffers()
+
+        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        for p, fp32_p in zip(params_list, self.fp32_params):
+            chunk_16 = self.chunk_manager.get_chunk(p)
+            chunk_32 = self.chunk_manager.get_chunk(fp32_p)
+            chunk_32.init_pair(chunk_16)
+
         self._logger = get_dist_logger()
 
     def forward(self, *args, **kwargs):

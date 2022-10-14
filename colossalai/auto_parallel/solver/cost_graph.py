@@ -1,6 +1,7 @@
 from typing import List
 import math
 from torch.fx.node import Node
+from colossalai.auto_parallel.solver.constants import INFINITY_COST
 
 
 class CostGraph:
@@ -17,15 +18,26 @@ class CostGraph:
         simplify(bool, optional): The generated cost graph will be simplified if it is true. (default to True)
     '''
 
-    def __init__(self, leaf_strategies, simplify=True):
+    def __init__(self, leaf_strategies, simplify=True, forward_only=False):
         self.leaf_strategies = leaf_strategies
+        self.nodes = [strategies_vector.node for strategies_vector in self.leaf_strategies]
         # stores number of strategies in each node
         self.node_lens = {strategies_vector.node: len(strategies_vector) for strategies_vector in self.leaf_strategies}
         # extra_node_costs will store the extra costs introduced by merging nodes
         self.extra_node_costs = {}
         self.following_dict = {}
         self.simplify = simplify
+        self.forward_only = forward_only
         self._build_cost_graph()
+
+    def _remove_invalid_node(self, node, attr_name):
+        remove_list = []
+        target_node_list = getattr(node, attr_name, [])
+        for target_node in target_node_list:
+            if target_node not in self.nodes:
+                remove_list.append(target_node)
+        for element in remove_list:
+            target_node_list.remove(element)
 
     def _build_cost_graph(self):
         '''
@@ -39,16 +51,24 @@ class CostGraph:
             # build edge_cost
             dst_node = strategies_vector.node
             for src_node in strategies_vector.predecessor_nodes:
+                if src_node not in self.nodes:
+                    continue
                 node_pair = (src_node, dst_node)
                 # src_index = strategies_vector.predecessor_nodes.index(src_node)
                 edge_cost = {}
                 for i in range(len(strategies_vector)):
                     for j in range(len(src_node.strategies_vector)):
-                        edge_cost[(j, i)] = strategies_vector[i].resharding_costs[src_node][j]
+                        resharding_cost_item = strategies_vector[i].resharding_costs[src_node][j]
+                        if self.forward_only:
+                            edge_cost[(j, i)] = resharding_cost_item.fwd
+                        else:
+                            edge_cost[(j, i)] = resharding_cost_item.total
                 self.edge_costs[node_pair] = edge_cost
             # add parents and children attribute to node
             setattr(dst_node, 'parents', strategies_vector.predecessor_nodes)
             setattr(dst_node, 'children', strategies_vector.successor_nodes)
+            self._remove_invalid_node(dst_node, 'parents')
+            self._remove_invalid_node(dst_node, 'children')
 
             if self.simplify and strategies_vector.check_merge():
                 for followed_node in strategies_vector.predecessor_nodes:
@@ -83,11 +103,15 @@ class CostGraph:
         # build merge_map
         merge_map = {}
         for src_index, strategy in enumerate(src_node.strategies_vector):
-            min_cost = math.inf
+            min_cost = INFINITY_COST
             lowest_cost_index = -1
             for dst_index, dst_strategy in enumerate(dst_node.strategies_vector):
-                resharding_cost = dst_strategy.resharding_costs[src_node][src_index]
-                if resharding_cost < min_cost:
+                resharding_cost_item = dst_strategy.resharding_costs[src_node][src_index]
+                if self.forward_only:
+                    resharding_cost = resharding_cost_item.fwd
+                else:
+                    resharding_cost = resharding_cost_item.total
+                if resharding_cost <= min_cost:
                     min_cost = resharding_cost
                     lowest_cost_index = dst_index
             merge_map[src_index] = lowest_cost_index
@@ -97,7 +121,12 @@ class CostGraph:
         for src_index, strategy in enumerate(src_node.strategies_vector):
             target_strate_index = merge_map[src_index]
             target_strategy = dst_node.strategies_vector[target_strate_index]
-            self.extra_node_costs[src_node][src_index] += target_strategy.resharding_costs[src_node][src_index]
+            resharding_cost_item = target_strategy.resharding_costs[src_node][src_index]
+            if self.forward_only:
+                resharding_cost_to_add = resharding_cost_item.fwd
+            else:
+                resharding_cost_to_add = resharding_cost_item.total
+            self.extra_node_costs[src_node][src_index] += resharding_cost_to_add
             if dst_node in self.extra_node_costs:
                 self.extra_node_costs[src_node][src_index] += self.extra_node_costs[dst_node][target_strate_index]
 

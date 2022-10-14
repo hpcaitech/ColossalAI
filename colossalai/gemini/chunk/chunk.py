@@ -436,6 +436,8 @@ class Chunk:
             self.optim_sync_flag = True
             self.cpu_vis_flag = False
         else:
+            # optim_sync_flag is set to False
+            # see shard_move function for more details
             assert friend_chunk.device_type == 'cpu'
             assert self.device_type == 'cpu'
             self.optim_sync_flag = False

@@ -1,3 +1,4 @@
+from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 import torch
 import torchvision.models as tm
 from colossalai.fx import ColoTracer
@@ -5,6 +6,9 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.algorithms import solver_rotor, linearize
 from colossalai.fx.passes.algorithms.operation import Loss, ForwardCheck, ForwardEnable, ForwardNograd
 import pytest
+from colossalai import META_COMPATIBILITY
+if META_COMPATIBILITY:
+    from colossalai.fx.profiler.tensor import MetaTensor
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -15,7 +19,7 @@ except:
     with_codegen = False
 
 
-@pytest.mark.skip(reason='TODO: modify calculations in rotor')
+@pytest.mark.skip(reason='TODO: modify the logger')
 @pytest.mark.skipif(not with_codegen, reason="torch version is lower than 1.12.0")
 def test_linearize():
     MODEL_DICT = {tm.resnet18: [2100, 3000], tm.densenet121: [8100, 17000]}
@@ -26,6 +30,7 @@ def test_linearize():
             graph = tracer.trace(model)
             graph.set_codegen(ActivationCheckpointCodeGen())
             gm = ColoGraphModule(model, graph, model.__class__.__name__)
+            MetaInfoProp(gm).run(MetaTensor(torch.rand(128, 3, 224, 224, device="meta"), fake_device='cpu'))
             node_list = linearize(gm)
             gm = solver_rotor(gm, data=torch.rand(128, 3, 224, 224, device="meta"), mem_limit=budget * 1024**2)
             op_list = gm.__sequence__.list_operations()

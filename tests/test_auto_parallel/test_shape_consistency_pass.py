@@ -15,9 +15,10 @@ from colossalai.auto_parallel.solver.strategies_constructor import StrategiesCon
 
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.passes.experimental.adding_shape_consistency_pass import shape_consistency_pass, solution_annotatation_pass
-from colossalai.auto_parallel.solver import Solver
+from colossalai.fx.passes.experimental.adding_shape_consistency_pass_v2 import shape_consistency_pass, solution_annotatation_pass
+from colossalai.auto_parallel.solver.solver import Solver_V2
 from colossalai.auto_parallel.solver.options import SolverOptions
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class ConvModel(nn.Module):
@@ -39,7 +40,7 @@ def check_apply(rank, world_size, port):
     mesh_shape = (2, 2)
     # [[0, 1]
     #  [2, 3]]
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=False)
     entire_shape = torch.Size((4, 4, 8, 8))
 
     tracer = ColoTracer()
@@ -60,9 +61,10 @@ def check_apply(rank, world_size, port):
     cost_graph = CostGraph(strategies_constructor.leaf_strategies)
     cost_graph.simplify_graph()
     graph_analyser = GraphAnalyser(gm)
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
+    solver = Solver_V2(gm.graph, strategies_constructor, cost_graph, graph_analyser)
     ret = solver.call_solver_serialized_args()
     solution = list(ret[0])
+    device_mesh.process_groups_dict = device_mesh.create_process_groups_for_logical_mesh()
     sharding_spec_dict, origin_spec_dict = solution_annotatation_pass(gm, solution, device_mesh)
     shape_consistency_pass(gm)
     gm.recompile()
@@ -72,7 +74,7 @@ def check_apply(rank, world_size, port):
     assert output.equal(origin_output)
 
 
-@pytest.mark.skip("for higher testing speed")
+@run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_apply():

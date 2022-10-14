@@ -14,6 +14,7 @@ if META_COMPATIBILITY:
         aten.transpose.int,
         aten.view.default,
         aten._unsafe_view.default,
+        aten._reshape_alias.default,
     ]
 
     INPLACE_NEW = [

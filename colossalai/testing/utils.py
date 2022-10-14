@@ -193,11 +193,12 @@ def skip_if_not_enough_gpus(min_gpus: int):
     """
 
     def _wrap_func(f):
+
         def _execute_by_gpu_num(*args, **kwargs):
             num_avail_gpu = torch.cuda.device_count()
             if num_avail_gpu >= min_gpus:
                 f(*args, **kwargs)
+
         return _execute_by_gpu_num
 
     return _wrap_func
-
