@@ -1,10 +1,10 @@
 import operator
 from copy import deepcopy
 from functools import reduce
-from turtle import up
 from typing import Dict
 
 import torch
+
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 __all__ = [
