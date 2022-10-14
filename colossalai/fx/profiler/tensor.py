@@ -1,7 +1,18 @@
+from copy import deepcopy
+from typing import Optional
 import torch
 from torch.utils._pytree import tree_map, tree_flatten
+from torch.types import _bool, _dtype, _device
+import uuid
+from .constant import ALIAS_ATEN
 
 __all__ = ['MetaTensor']
+
+
+def set_uuid(x):
+    if isinstance(x, torch.Tensor):
+        if not hasattr(x, 'uuid'):
+            setattr(x, 'uuid', uuid.uuid4())
 
 
 class MetaTensor(torch.Tensor):
@@ -16,6 +27,11 @@ class MetaTensor(torch.Tensor):
 
     @staticmethod
     def __new__(cls, elem, fake_device=None):
+        # Avoid multiple wrapping
+        if isinstance(elem, MetaTensor):
+            fake_device = elem.device if fake_device is None else fake_device
+            elem = elem._tensor
+
         # The wrapping tensor (MetaTensor) shouldn't hold any
         # memory for the class in question, but it should still
         # advertise the same device as before
@@ -33,6 +49,7 @@ class MetaTensor(torch.Tensor):
         if not r._tensor.is_meta:
             r._tensor = r._tensor.to(torch.device('meta'))
         # only tensor not on `meta` should be copied to `meta`
+        set_uuid(r._tensor)
         return r
 
     def __repr__(self):
@@ -64,6 +81,11 @@ class MetaTensor(torch.Tensor):
         # run aten for backend=CPU but actually on backend=Meta
         out = func(*args, **kwargs)
 
+        # here we keep the uuid of input because ALIAS_ATEN do not generate a physical copy
+        # of the input
+        if func in ALIAS_ATEN:
+            setattr(out, 'uuid', args[0].uuid)
+
         # Now, we want to continue propagating this tensor, so we rewrap Tensors in
         # our custom tensor subclass
         def wrap(x):
@@ -74,3 +96,30 @@ class MetaTensor(torch.Tensor):
             return MetaTensor(x, fake_device=fake_device) if isinstance(x, torch.Tensor) else x
 
         return tree_map(wrap, out)
+
+    def to(self, *args, **kwargs) -> torch.Tensor:
+        """An extension of `torch.Tensor.to()` to MetaTensor
+
+        Returns:
+            result (MetaTensor): MetaTensor
+
+        Usage:
+            >>> tensor = MetaTensor(torch.rand(10), fake_device='cuda:100')
+            >>> tensor.to(torch.uint8)
+            MetaTensor(tensor(..., device='meta', size=(10,), dtype=torch.uint8), fake_device='cuda:100')
+            >>> tensor.to(torch.device('cuda:42'))
+            MetaTensor(tensor(..., device='meta', size=(10,)), fake_device='cuda:42')
+            >>> tensor.to('vulkan')
+            MetaTensor(tensor(..., device='meta', size=(10,)), fake_device='vulkan')
+        """
+        # this imitates c++ function in the way of @overload
+        device = None
+        for arg in args:
+            if isinstance(arg, str) or isinstance(arg, _device):
+                device = arg
+        if 'device' in kwargs:
+            device = kwargs['device']
+        result = super().to(*args, **kwargs)
+        if device is not None:
+            result = MetaTensor(deepcopy(result), fake_device=device)
+        return result

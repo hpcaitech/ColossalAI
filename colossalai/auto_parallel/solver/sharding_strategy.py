@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -7,50 +8,22 @@ from functools import reduce
 
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from typing import Dict, List, Union, Tuple, Any
 from torch.fx.node import Node
 from .constants import *
 
-__all__ = ['ShardingStrategy', 'StrategiesVector']
-
-
-@dataclass
-class ShardingStrategy:
-    '''
-    ShardingStrategy is a structure containing sharding strategies of inputs and output of this node
-    and costs information using in solver.
-
-    Argument:
-        name(str): express the sharding strategies in string, such as 'S0S1 = S0R x RS1'.
-        output_sharding_spec(ShardingSpec): ShardingSpec of the output node.
-        compute_cost(float): Computation cost to complete this strategy.(default to 0)
-        communication_cost(float): Communication cost to complete this strategy.(default to 0)
-        memory_cost(float): Memory cost of the output node using this strategy.(default to 0)
-        resharding_costs(Dict[int, List[float]]): resharding_cost[i][j] means the cost of i-th argument in the output node argument list
-                                                  with j-th strategy in its strategies_vector transforms to sharding spec wanted in this
-                                                  strategy.(default to None)
-        input_shardings(List(ShardingSpec)): The ShardingSpecs of the input nodes.
-    '''
-
-    name: str
-    # TODO: output of fx node,such as torch.var_mean, could be a tuple, so we cannot simply suppose it is a tensor.
-    output_sharding_spec: Union[ShardingSpec, Tuple[ShardingSpec]]
-    compute_cost: float = 0.
-    communication_cost: float = 0.
-    memory_cost: float = 0.
-    resharding_costs: Dict[Node, List[float]] = None
-    # sometimes the input node could be a tuple of nodes, but most of op won't accept tuple of node as input.
-    # Therefore, we could process them at the specific op(operator.getitem)
-    input_shardings: List[ShardingSpec] = None
+__all__ = ['OperationDataType', 'OperationData', 'TrainCycleItem', 'MemoryCost', 'ShardingStrategy', 'StrategiesVector']
 
 
 class OperationDataType(Enum):
     """
     An operation can come from the argument list of an operator or the parameter list of a module.
     """
-    ARG = 0
-    PARAM = 1
-    OUTPUT = 2
+    INPUT = 0
+    ARG = 1
+    PARAM = 2
+    OUTPUT = 3
 
 
 @dataclass
@@ -61,18 +34,27 @@ class OperationData:
     Args:
         name (str): the name of the operation-related data
         type (OperationDataType): the type of the operation data
-        data (torch.Tensor): the value for this data, usually it is a meta tensor.
+        data (Any): the value for this data, usually it is a meta tensor.
         logical_shape (Tuple[int]): the logical shape of the data, it can be different from the its actual shape in memory.
     """
     name: str
     type: OperationDataType
-    data: torch.Tensor
+    data: Any
     logical_shape: Tuple[int] = None
 
     def __post_init__(self):
         # if no logical shape is specified, use the data shape as the logical shape
-        if self.logical_shape is None:
+        if self.logical_shape is None and isinstance(self.data, torch.Tensor):
             self.logical_shape = self.data.shape
+
+    def __repr__(self) -> str:
+        return f'OperationData(name={self.name}, type={self.type})'
+
+    def __eq__(self, other) -> bool:
+        return other.name == self.name
+
+    def __hash__(self) -> int:
+        return hash(f'{self.name}')
 
 
 @dataclass
@@ -90,22 +72,16 @@ class TrainCycleItem:
     total: Any
 
 
-class CommunicationType(Enum):
-    FWD_ALL_REDUCE = 0
-    BWD_ALL_REDUCE = 1
+@dataclass
+class MemoryCost:
+    """
+    """
+    activation: int = 0
+    parameter: int = 0
 
 
 @dataclass
-class CommunicationAction:
-    """
-    The actions 
-    """
-    type: CommunicationType
-    mesh_dim: int
-
-
-@dataclass
-class ShardingStrategy_V2:
+class ShardingStrategy:
     """
     ShardingStrategy is a dataclass to store the meta information on tensor sharding for a node.
 
@@ -116,17 +92,14 @@ class ShardingStrategy_V2:
         communication_cost (TrainCycleItem): Communication cost to complete this strategy. (default to None)
         memory_cost (TrainCycleItem): Memory cost of the output node using this strategy. (default to None)
         input_sharding_specs (List(ShardingSpec)): The ShardingSpecs of the input nodes.
-        input_resharding_costs (Dict[int, List[float]]): resharding_cost[i][j] means the cost of i-th argument in the output node argument list
-                                                  with j-th strategy in its strategies_vector transforms to sharding spec wanted in this
-                                                  strategy.(default to None)
     """
     name: str
-    sharding_specs: Dict[OperationData, ShardingSpec] = None
+    sharding_specs: Dict[OperationData, Union[ShardingSpec, Tuple[ShardingSpec]]] = None
     compute_cost: TrainCycleItem = None
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None
-    input_resharding_costs: Dict[OperationData, List[float]] = None
-    communication_actions: Dict[OperationData, List[CommunicationAction]] = None
+    communication_actions: Dict[OperationData, CommSpec] = None
+    resharding_costs: Dict[Node, List[TrainCycleItem]] = None
 
     @property
     def input_sharding_specs(self) -> Dict[OperationData, ShardingSpec]:
@@ -151,78 +124,37 @@ class ShardingStrategy_V2:
         specs = {k: v for k, v in self.sharding_specs.items() if k.type == operation_data_type}
         return specs
 
+    def get_op_data_by_name(self, name: str):
+        for op_data in self.sharding_specs.keys():
+            if op_data.name == name:
+                return op_data
+        raise KeyError(f"Could not find the OperationData with name {name}")
 
-class StrategyGenerator_V2(ABC):
-    """
-    StrategyGenerator is used to generate the same group of sharding strategies. 
+    def get_sharding_spec_by_name(self, name: str):
+        for op_data, sharding_spec in self.sharding_specs.items():
+            if op_data.name == name:
+                return sharding_spec
+        raise KeyError(f"Could not find the ShardingSpec for OperationData with name {name}")
 
-    TODO: remove the original strategy_generator.py after refactoring
-    """
+    def clone(self):
 
-    def __init__(self, device_mesh: DeviceMesh):
-        self.device_mesh = device_mesh
+        def _deepcopy_dict_vals(data: Dict):
+            return {k: deepcopy(v) for k, v in data.items()}
 
-    def update_communication_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """
-        Compute the communication cost involved in the forward and backward iteration.
-        """
+        sharding_specs = _deepcopy_dict_vals(self.sharding_specs) if self.sharding_specs else None
+        communication_actions = _deepcopy_dict_vals(self.communication_actions) if self.communication_actions else None
+        resharding_costs = _deepcopy_dict_vals(self.resharding_costs) if self.resharding_costs else None
+        compute_cost = deepcopy(self.compute_cost)
+        communication_cost = deepcopy(self.communication_cost)
+        memory_cost = deepcopy(self.memory_cost)
 
-        comm_cost = TrainCycleItem(fwd=0, bwd=0)
-
-        def _compute_and_add(data: OperationData, action: CommunicationAction):
-            sharded_shape = strategy.sharding_specs[data].get_sharded_shape_per_device()
-            dtype = operand.data.dtype
-            size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-            num_bytes = size_per_elem_bytes * reduce(operator.mul, sharded_shape)
-            cost = self.device_mesh.all_reduce_cost(num_bytes=num_bytes, mesh_dim=action.mesh_dim)
-
-            # compute the fwd
-            if action.type == CommunicationType.FWD_ALL_REDUCE:
-                comm_cost.fwd += cost
-            elif action.type == CommunicationType.BWD_ALL_REDUCE:
-                comm_cost.fwd += cost
-            else:
-                raise ValueError(f"Found unknown CommunicationType {action.type}")
-
-        # check if communication action exists
-        # if so, loop over each action and compute the cost of each action
-        if strategy.communication_actions is not None:
-            for operand, actions in strategy.communication_actions:
-                for action in actions:
-                    _compute_and_add(operand, action)
-
-        # update the communication cost attribute in-place
-        strategy.communication_cost = comm_cost
-        return strategy
-
-    @abstractmethod
-    def update_compute_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """
-        Customize this method to compute the computation flops.
-        """
-        pass
-
-    @abstractmethod
-    def update_memory_cost(self, strategy: ShardingStrategy_V2) -> ShardingStrategy_V2:
-        """
-        Customize this method to compute the memory cost in bytes.
-        """
-        pass
-
-    @abstractmethod
-    def generate(self, operand_mapping: Dict[str, OperationData]) -> List[ShardingStrategy_V2]:
-        """
-        Generate all possible sharding strategies for this operation.
-        """
-        pass
-
-    @abstractmethod
-    def validate(self, *args, **kwargs) -> bool:
-        """
-        Validate if the operands are of desired shape. 
-        If True, means this generator can be used for the current operation.
-        """
-        pass
+        return ShardingStrategy(name=self.name,
+                                sharding_specs=sharding_specs,
+                                compute_cost=compute_cost,
+                                communication_cost=communication_cost,
+                                memory_cost=memory_cost,
+                                communication_actions=communication_actions,
+                                resharding_costs=resharding_costs)
 
 
 class StrategiesVector(list):
@@ -240,6 +172,8 @@ class StrategiesVector(list):
         # fetch its input and output nodes
         # TODO: placeholder input nodes
         self.predecessor_nodes = list(node._input_nodes.keys())
+        if self.node.op == 'output':
+            self.predecessor_nodes = list(node._input_nodes.keys())[:1]
         self.successor_nodes = list(node.users.keys())
 
     def check_merge(self):

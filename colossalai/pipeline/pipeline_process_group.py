@@ -50,6 +50,7 @@ class PipelineProcessGroup:
         self.is_initialize = True
 
         # lock
+        self.initialise_lock = threading.Lock()
         self.chimera_lock = threading.Lock()
 
     def _initialize_process_group(self):
