@@ -55,7 +55,6 @@ class MoeContext(metaclass=SingletonMeta):
         return self.has_setup
 
     def setup(self, seed: int, use_kernel_optim: bool = True):
-
         assert not self.is_initialized, "MoE distributed context shouldn't be set up again"
         _check_sanity()
         assert torch.cuda.is_available(), "MoE requires to enable CUDA first"
@@ -93,8 +92,8 @@ class MoeContext(metaclass=SingletonMeta):
         gt_flag = num_experts % self.max_ep_size == 0    # check whether num_experts is greater
         lt_flag = self.max_ep_size % num_experts == 0    # check whether num_experts is less
 
-        assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number"\
-                            " is not a multiple of ep size or vice versa."
+        assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number" \
+                                   " is not a multiple of ep size or vice versa."
 
         # If the number of experts is greater than maximum expert parallel size. a.k.a ep_size,
         # there are multiple experts in each GPU and each GPU has different experts

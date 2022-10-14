@@ -12,7 +12,6 @@ from functools import partial
 from tests.test_tensor.common_utils import set_seed
 from tests.components_to_test.registry import non_distributed_component_funcs
 from colossalai.nn.parallel import ZeroDDP
-from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.gemini.gemini_mgr import GeminiManager
 from tests.test_tensor.common_utils import debug_print

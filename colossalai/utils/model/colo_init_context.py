@@ -33,7 +33,10 @@ def ColoModulize(module):
 
 class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
-    def __init__(self, lazy_memory_allocate: bool = False, device: torch.device = torch.device('cpu')):
+    def __init__(self,
+                 lazy_memory_allocate: bool = False,
+                 device: torch.device = torch.device('cpu'),
+                 dtype: torch.dtype = torch.float):
         """
         Args:
             lazy_memory_allocate (bool, optional): whether to allocate memory for the parameter tensors. Defaults to False.
@@ -42,6 +45,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         super().__init__()
         self._lazy_memory_allocate = lazy_memory_allocate
         self._device = device
+        self._dtype = dtype
 
         self._register_colo_modules()
 
@@ -87,7 +91,8 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 # detaching tensor is necessary for optimizers.
                 requires_grad = param.requires_grad
                 # TODO(jiaruifang) we initialize a Default PG memory
-                colo_param = ColoParameter(param.to(self._device), requires_grad=requires_grad)
+                colo_param = ColoParameter(param.to(device=self._device, dtype=self._dtype),
+                                           requires_grad=requires_grad)
                 # add mapping record
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)

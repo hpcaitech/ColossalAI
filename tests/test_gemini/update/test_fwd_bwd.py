@@ -11,17 +11,13 @@ from functools import partial
 from tests.test_tensor.common_utils import tensor_equal, set_seed, tensor_shard_equal
 from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
+from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
 from colossalai.nn.parallel import ZeroDDP
-from colossalai.nn.optimizer import HybridAdam
-from colossalai.zero import ZeroOptimizer
 from colossalai.testing import parameterize
 from colossalai.amp import convert_to_apex_amp
 from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.tensor import ColoTensorSpec, ShardSpec, ComputePattern, ComputeSpec, ProcessGroup, ColoTensor
+from colossalai.tensor import ProcessGroup
 from tests.test_tensor.common_utils import debug_print
-
-from time import time
-from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
 
 
 def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -44,7 +40,7 @@ def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
     return logits
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
+@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 def exam_gpt_fwd_bwd(placement_policy):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
