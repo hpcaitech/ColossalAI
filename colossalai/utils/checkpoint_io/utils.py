@@ -34,6 +34,65 @@ def compute_optimizer_state_size(state: Dict[str, Any]) -> int:
     return size
 
 
+class ModelCheckpointSharder:
+
+    def __init__(self, max_shard_size: int) -> None:
+        self.max_shard_size = max_shard_size
+        self.buffer: Dict[str, Tensor] = {}
+        self.buffer_size: int = 0
+
+    def append(self, key: str, tensor: Tensor) -> Optional[dict]:
+        retval = None
+        if self.buffer_size >= self.max_shard_size:
+            retval = self.buffer
+            self.buffer = {}
+            self.buffer_size = 0
+        self.buffer[key] = tensor
+        self.buffer_size += tensor.numel() * tensor.element_size()
+        return retval
+
+    def extend(self, state_dict: Dict[str, Tensor]) -> List[dict]:
+        shards = []
+        for key, tensor in state_dict.items():
+            shard = self.append(key, tensor)
+            if shard is not None:
+                shards.append(shard)
+        return shards
+
+    def complete(self) -> Optional[dict]:
+        return self.buffer if len(self.buffer) > 0 else None
+
+
+class OptimizerCheckpointSharder:
+
+    def __init__(self, max_shard_size: int, param_groups: dict) -> None:
+        self.max_shard_size = max_shard_size
+        self.buffer: Dict[str, dict] = {'state': {}, 'param_groups': param_groups}
+        self.buffer_size: int = 0
+        self.returned_first: bool = False
+
+    def append(self, key: int, state: dict) -> Optional[dict]:
+        retval = None
+        if self.buffer_size >= self.max_shard_size:
+            retval = self.buffer
+            self.buffer = {'state': {}}
+            self.buffer_size = 0
+        self.buffer['state'][key] = state
+        self.buffer_size += compute_optimizer_state_size(state)
+        return retval
+
+    def extend(self, state_dict: Dict[str, dict]) -> List[dict]:
+        shards = []
+        for key, state in state_dict['state'].items():
+            shard = self.append(key, state)
+            if shard is not None:
+                shards.append(shard)
+        return shards
+
+    def complete(self) -> Optional[dict]:
+        return self.buffer if len(self.buffer['state']) > 0 else None
+
+
 def shard_checkpoint(max_shard_size: int,
                      model_state_dict: Dict[str, Tensor],
                      optimizer_state_dict: Optional[dict] = None,
@@ -46,32 +105,18 @@ def shard_checkpoint(max_shard_size: int,
             assert os_key in os_to_param
             assert os_to_param[os_key] in model_state_dict
         has_optimizer = True
-    model_shards = []
-    buffer = {}
-    buffer_size = 0
-    for k, tensor in model_state_dict.items():
-        if buffer_size >= max_shard_size:
-            model_shards.append(buffer)
-            buffer = {}
-            buffer_size = 0
-        buffer[k] = tensor
-        buffer_size += tensor.numel() * tensor.element_size()
-    if len(buffer) > 0:
-        model_shards.append(buffer)
+    model_sharder = ModelCheckpointSharder(max_shard_size)
+    model_shards = model_sharder.extend(model_state_dict)
+    remaining_shard = model_sharder.complete()
+    if remaining_shard is not None:
+        model_shards.append(remaining_shard)
     if not has_optimizer:
         return model_shards, []
-    optimizer_shards = []
-    buffer = {'state': {}, 'param_groups': optimizer_state_dict['param_groups']}
-    buffer_size = 0
-    for k, state in optimizer_state_dict['state'].items():
-        if buffer_size >= max_shard_size:
-            optimizer_shards.append(buffer)
-            buffer = {'state': {}}
-            buffer_size = 0
-        buffer['state'][k] = state
-        buffer_size += compute_optimizer_state_size(state)
-    if len(buffer['state']) > 0:
-        optimizer_shards.append(buffer)
+    optimizer_sharder = OptimizerCheckpointSharder(max_shard_size, optimizer_state_dict['param_groups'])
+    optimizer_shards = optimizer_sharder.extend(optimizer_state_dict)
+    remaining_shard = optimizer_sharder.complete()
+    if remaining_shard is not None:
+        optimizer_shards.append(remaining_shard)
     return model_shards, optimizer_shards
 
 
