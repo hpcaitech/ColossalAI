@@ -10,6 +10,7 @@ class CheckpointReader(ABC):
     def __init__(self, base_name: str) -> None:
         super().__init__()
         self.base_name = base_name
+        self.meta_list = []
 
     @abstractmethod
     def read(self, name: str) -> dict:
@@ -37,7 +38,6 @@ class DiskCheckpointReader(CheckpointReader):
     def __init__(self, base_name: str) -> None:
         super().__init__(base_name)
         assert os.path.isdir(base_name), f'"{base_name}" is not a directory'
-        self.meta_list = []
         global_meta = self.read(GLOBAL_META_FILE_NAME)
         for meta_file_name in global_meta['meta']:
             meta = self.read(meta_file_name)
