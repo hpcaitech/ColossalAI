@@ -22,10 +22,6 @@ class BatchNormStrategyGenerator(StrategyGenerator):
     In this generator, both methods will be considered.
     """
 
-    @property
-    def has_bias(self):
-        return 'bias' in self.op_data
-
     def validate(self) -> bool:
         '''
         In sanity check, we need make sure the input data having correct dimension size.
