@@ -54,8 +54,9 @@ def _is_graph_linearized(gm: GraphModule):
 def check_backward_consistency(m: torch.nn.Module, gm: GraphModule, solver: Callable[[GraphModule], GraphModule],
                                model_cls: Callable[[], torch.nn.Module]):
     criterion = torch.nn.MSELoss()
-    data = torch.rand(2, 3, 32, 32)
-    label = torch.rand(2, 5)
+    m.cuda()
+    data = torch.rand(2, 3, 32, 32).cuda()
+    label = torch.rand(2, 5).cuda()
     loss = criterion(m(data), label)
     loss.backward()
     loss = criterion(gm(data), label)
@@ -77,7 +78,7 @@ def _run_ckpt_solver(rank):
             m = model_cls(num_classes=5)
             graph = tracer.trace(root=m)
             gm = ColoGraphModule(copy.deepcopy(m), graph, m.__class__.__name__)
-            MetaInfoProp(gm.cuda()).run(MetaTensor(data, fake_device='cuda'))
+            MetaInfoProp(gm.cuda()).run(MetaTensor(data).cuda())
             codegen = ActivationCheckpointCodeGen()
             gm.graph.set_codegen(codegen)
             if solver == solver_rotor:
