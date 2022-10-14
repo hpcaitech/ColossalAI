@@ -52,7 +52,7 @@ def prepare_model_optim():
 def test_overwrite():
     model = DummyModel()
     with TemporaryDirectory() as dir_name:
-        with open(os.path.join(dir_name, MODEL_CKPT_FILE_NAME), 'a') as f:
+        with open(os.path.join(dir_name, MODEL_CKPT_FILE_NAME.replace('.bin', '-shard0.bin')), 'a') as f:
             pass
         with pytest.raises(RuntimeError, match=r'Save error: Checkpoint ".+" exists\. \(overwrite = False\)'):
             save(dir_name, model)
@@ -66,11 +66,11 @@ def test_save_global():
         global_meta = torch.load(os.path.join(dir_name, GLOBAL_META_FILE_NAME))
         assert len(global_meta['meta']) == 1 and global_meta['meta'][0] == META_CKPT_FILE_NAME
         meta = torch.load(os.path.join(dir_name, META_CKPT_FILE_NAME))
-        assert len(meta['model']) == 1 and meta['model'][0] == MODEL_CKPT_FILE_NAME
-        assert len(meta['optimizer']) == 1 and meta['optimizer'][0] == OPTIM_CKPT_FILE_NAME
-        model_state_dict = torch.load(os.path.join(dir_name, MODEL_CKPT_FILE_NAME))
+        assert len(meta['model']) == 1
+        assert len(meta['optimizer']) == 1
+        model_state_dict = torch.load(os.path.join(dir_name, meta['model'][0]))
         check_model_state_dict(model.state_dict(), model_state_dict)
-        optimizer_state_dict = torch.load(os.path.join(dir_name, OPTIM_CKPT_FILE_NAME))
+        optimizer_state_dict = torch.load(os.path.join(dir_name, meta['optimizer'][0]))
         check_optim_state_dict(optimizer.state_dict(), optimizer_state_dict)
         other_state_dict = torch.load(os.path.join(dir_name, OTHER_CKPT_FILE_NAME))
         assert len(other_state_dict) == 0

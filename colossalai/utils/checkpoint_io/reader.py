@@ -20,15 +20,15 @@ class CheckpointReader(ABC):
         pass
 
     @abstractmethod
-    def load_model(self) -> Generator[Dict[int, dict]]:
+    def load_model(self) -> Generator[Dict[int, dict], None, None]:
         pass
 
     @abstractmethod
-    def load_optimizer(self) -> Generator[Dict[int, dict]]:
+    def load_optimizer(self) -> Generator[Dict[int, dict], None, None]:
         pass
 
     @abstractmethod
-    def load_other(self) -> dict:
+    def load_others(self) -> dict:
         pass
 
 
@@ -55,7 +55,7 @@ class DiskCheckpointReader(CheckpointReader):
         dist_meta_list, param_to_os_list, paired_os_list = zip(*meta_infos)
         return list(dist_meta_list), list(param_to_os_list), list(paired_os_list)
 
-    def load_model(self) -> Generator[Dict[int, dict]]:
+    def load_model(self) -> Generator[Dict[int, dict], None, None]:
         indices = [0] * len(self.meta_list)
         while True:
             shards = {}
@@ -69,7 +69,7 @@ class DiskCheckpointReader(CheckpointReader):
             else:
                 break
 
-    def load_optimizer(self) -> Generator[Dict[int, dict]]:
+    def load_optimizer(self) -> Generator[Dict[int, dict], None, None]:
         indices = [0] * len(self.meta_list)
         param_groups = []
         while True:
@@ -88,5 +88,5 @@ class DiskCheckpointReader(CheckpointReader):
             else:
                 break
 
-    def load_other(self) -> dict:
+    def load_others(self) -> dict:
         return self.read(OTHER_CKPT_FILE_NAME)
