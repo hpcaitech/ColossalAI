@@ -1,10 +1,12 @@
-from colossalai.fx.tracer.meta_patch.patched_module import linear
 import torch
 import torch.nn as nn
-from colossalai.fx import ColoTracer, ColoGraphModule
-from colossalai.auto_parallel.solver.node_handler.batch_norm_handler import BatchNormModuleHandler
-from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
+
+from colossalai.auto_parallel.tensor_shard.node_handler.batch_norm_handler import \
+    BatchNormModuleHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx import ColoGraphModule, ColoTracer
+from colossalai.fx.tracer.meta_patch.patched_module import linear
 
 
 def test_bn_module_handler():

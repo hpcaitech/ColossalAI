@@ -1,7 +1,8 @@
-import torch.nn as nn
 import torch
-from colossalai.auto_parallel.solver.graph_analysis import GraphAnalyser
-from colossalai.fx import ColoTracer, ColoGraphModule
+import torch.nn as nn
+
+from colossalai.auto_parallel.tensor_shard.solver import GraphAnalyser
+from colossalai.fx import ColoGraphModule, ColoTracer
 
 
 class LinearModel(nn.Module):

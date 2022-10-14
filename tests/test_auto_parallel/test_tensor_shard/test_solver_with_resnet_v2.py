@@ -1,20 +1,13 @@
 import torch
 from torch.fx import GraphModule
-import torch.nn as nn
-import pytest
+from torchvision.models import resnet50
 
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.auto_parallel.solver.sharding_strategy import ShardingStrategy, StrategiesVector
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
+from colossalai.auto_parallel.tensor_shard.solver import (CostGraph, GraphAnalyser, Solver, SolverOptions,
+                                                          StrategiesConstructor)
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.auto_parallel.solver.strategies_constructor import StrategiesConstructor
-from colossalai.auto_parallel.solver.cost_graph import CostGraph
-from copy import deepcopy
-from colossalai.auto_parallel.solver.solver import Solver
-from torchvision.models import resnet34, resnet50
-from colossalai.auto_parallel.solver.constants import *
-from colossalai.auto_parallel.solver.graph_analysis import GraphAnalyser
-from colossalai.auto_parallel.solver.options import SolverOptions
+from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
