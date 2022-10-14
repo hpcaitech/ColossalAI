@@ -1,4 +1,4 @@
-from ... import META_COMPATIBILITY
+from .. import META_COMPATIBILITY
 if META_COMPATIBILITY:
     from .opcount import flop_mapping
     from .tensor import MetaTensor
