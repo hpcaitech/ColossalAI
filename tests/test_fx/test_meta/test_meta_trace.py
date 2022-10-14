@@ -1,7 +1,7 @@
 import torchvision.models as tm
 import timm.models as tmm
 import torch
-from colossalai import META_COMPATIBILITY
+from colossalai.fx import META_COMPATIBILITY
 import pytest
 
 if META_COMPATIBILITY:

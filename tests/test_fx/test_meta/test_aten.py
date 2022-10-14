@@ -2,7 +2,7 @@ from typing import Any, Callable, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from colossalai import META_COMPATIBILITY
+from colossalai.fx import META_COMPATIBILITY
 
 import pytest
 

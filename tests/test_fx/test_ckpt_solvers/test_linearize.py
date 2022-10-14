@@ -6,7 +6,7 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.algorithms import solver_rotor, linearize
 from colossalai.fx.passes.algorithms.operation import Loss, ForwardCheck, ForwardEnable, ForwardNograd
 import pytest
-from colossalai import META_COMPATIBILITY
+from colossalai.fx import META_COMPATIBILITY
 if META_COMPATIBILITY:
     from colossalai.fx.profiler.tensor import MetaTensor
 

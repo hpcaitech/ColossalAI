@@ -1,6 +1,6 @@
 import torch
 from torch.fx import symbolic_trace
-from colossalai import META_COMPATIBILITY
+from colossalai.fx import META_COMPATIBILITY
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp, TensorMetadata
 
 BATCH_SIZE = 2
