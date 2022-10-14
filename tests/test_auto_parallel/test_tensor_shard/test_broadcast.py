@@ -1,7 +1,9 @@
 import torch
-from colossalai.auto_parallel.solver.node_handler.broadcast import is_broadcastable, get_broadcast_shape, recover_sharding_spec_for_broadcast_shape
-from colossalai.tensor.sharding_spec import ShardingSpec
+
+from colossalai.auto_parallel.tensor_shard.utils import (get_broadcast_shape, is_broadcastable,
+                                                         recover_sharding_spec_for_broadcast_shape)
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.sharding_spec import ShardingSpec
 
 
 def test_is_broadcastable():

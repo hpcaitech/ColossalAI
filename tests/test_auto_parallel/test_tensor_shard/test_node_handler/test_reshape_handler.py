@@ -1,10 +1,13 @@
 import torch
 import torch.nn as nn
-from colossalai.fx import ColoTracer, ColoGraphModule
-from colossalai.auto_parallel.solver.node_handler.conv_handler import ConvFunctionHandler
-from colossalai.auto_parallel.solver.node_handler.reshape_handler import ReshapeHandler
-from colossalai.auto_parallel.solver.sharding_strategy import OperationData, OperationDataType, StrategiesVector
+
+from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import \
+    ConvFunctionHandler
+from colossalai.auto_parallel.tensor_shard.node_handler.reshape_handler import \
+    ReshapeHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx import ColoGraphModule, ColoTracer
 
 
 class ReshapeModel(nn.Module):
