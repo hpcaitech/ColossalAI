@@ -24,6 +24,13 @@ class StrategyGenerator(ABC):
         self.op_data = operation_data_mapping
         self.device_mesh = device_mesh
 
+    @property
+    def has_bias(self):
+        """
+        A utility method to check for the existence of bias operand for convenience.
+        """
+        return 'bias' in self.op_data
+
     def is_param(self, op_data_name):
         other_data = self.op_data[op_data_name]
         return other_data.type == OperationDataType.PARAM

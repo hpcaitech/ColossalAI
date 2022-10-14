@@ -17,10 +17,6 @@ class ConvStrategyGenerator(StrategyGenerator):
     The operation data is defined as `output = input x other + bias`.
     """
 
-    @property
-    def has_bias(self):
-        return 'bias' in self.op_data
-
     def validate(self) -> bool:
         '''
         In sanity check, we need make sure the input data having correct dimension size.
