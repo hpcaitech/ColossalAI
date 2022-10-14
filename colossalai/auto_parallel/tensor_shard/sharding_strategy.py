@@ -20,7 +20,8 @@ class OperationDataType(Enum):
     INPUT = 0
     ARG = 1
     PARAM = 2
-    OUTPUT = 3
+    BUFFER = 3
+    OUTPUT = 4
 
 
 @dataclass

@@ -52,6 +52,14 @@ class DeviceMesh:
         if self.need_flatten:
             self.flatten_device_mesh = self.flatten()
 
+    # def __deepcopy__(self, memo):
+    #     obj = DeviceMesh(self.physical_mesh_id, self.mesh_shape, self.mesh_alpha, self.mesh_beta, init_process_group=False, need_flatten=False)
+    #     if hasattr(self, 'process_groups_dict'):
+    #         obj.process_groups_dict = self.process_groups_dict
+    #     if hasattr(self, 'flatten_device_mesh'):
+    #         obj.flatten_device_mesh = self.flatten_device_mesh
+    #     return obj
+
     @property
     def shape(self):
         return self.mesh_shape

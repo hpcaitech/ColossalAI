@@ -146,7 +146,10 @@ class ModuleHandler(NodeHandler):
             f'The graph is not associated with a module, please make sure it can be used to instantiate a GraphModule object.'
         module = self.node.graph.owning_module.get_submodule(self.node.target)
         named_parameters = list(module.named_parameters(recurse=False))
+        named_buffers = list(module.named_buffers(recurse=False))
         # convert named parameters from list to dict
         named_parameters = {k: v for k, v in named_parameters}
+        named_buffers = {k: v for k, v in named_buffers}
         self.module = module
         self.named_parameters = named_parameters
+        self.named_buffers = named_buffers
