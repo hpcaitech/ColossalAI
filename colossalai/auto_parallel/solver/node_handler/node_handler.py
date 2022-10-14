@@ -90,8 +90,8 @@ class NodeHandler(ABC):
             # compute the resharding costs based on the previous node
             # strategies if specified
             if compute_resharding_cost:
-                updated_strategies = map(self.update_resharding_cost, strategies)
-                strategies = list(updated_strategies)
+                updated_strategies = map(self.update_resharding_cost, post_processed_strategies)
+                post_processed_strategies = list(updated_strategies)
 
             self.strategies_vector.extend(post_processed_strategies)
 

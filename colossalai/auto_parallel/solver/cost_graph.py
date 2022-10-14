@@ -58,9 +58,6 @@ class CostGraph:
                 edge_cost = {}
                 for i in range(len(strategies_vector)):
                     for j in range(len(src_node.strategies_vector)):
-                        if strategies_vector[i].resharding_costs is None:
-                            print(strategies_vector.node.name)
-                            assert False
                         resharding_cost_item = strategies_vector[i].resharding_costs[src_node][j]
                         if self.forward_only:
                             edge_cost[(j, i)] = resharding_cost_item.fwd
