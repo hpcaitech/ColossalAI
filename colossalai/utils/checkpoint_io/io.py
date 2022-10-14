@@ -32,6 +32,5 @@ def save(path: str,
                                                                                   param_to_os, dist_meta)
     checkpoints, checkpoint_names = writer.process_checkpoint(model_checkpoints, optimizer_checkpoints, meta_checkpoint,
                                                               **kwargs)
-    writer.setup()
     for checkpoint, checkpoint_name in zip(checkpoints, checkpoint_names):
         writer.write(checkpoint_name, checkpoint)
