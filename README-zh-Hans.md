@@ -148,6 +148,11 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 请访问我们的 [文档](https://www.colossalai.org/) 和 [例程](https://github.com/hpcaitech/ColossalAI-Examples) 以了解详情。
 
+
+### 推荐系统模型
+- [Cached Embedding](https://github.com/hpcaitech/FreqCacheEmbedding), 使用软件Cache实现Embeddings，用更少GPU显存训练更大的模型。
+
+
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 单GPU训练样例展示
