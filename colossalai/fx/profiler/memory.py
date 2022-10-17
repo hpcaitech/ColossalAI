@@ -1,7 +1,9 @@
+from typing import Dict, List, Tuple, Union
+
 import torch
-from torch.fx import Node, GraphModule
+from torch.fx import GraphModule, Node
 from torch.fx._compatibility import compatibility
-from typing import Union, Dict, List, Tuple
+
 from . import META_COMPATIBILITY
 
 __all__ = [

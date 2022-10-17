@@ -1,17 +1,19 @@
+import time
 from functools import partial
-from typing import Callable, Any, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
+
 import torch
-from torch.nn.parameter import Parameter
 from torch.fx import Graph, Node
 from torch.fx._compatibility import compatibility
 from torch.fx.node import Argument, Target
+from torch.nn.parameter import Parameter
 from torch.utils._pytree import tree_map
-from .dataflow import autograd_graph_analysis, is_phase, Phase, GraphInfo
-from .memory import activation_size, parameter_size
+
 from .constant import ALIAS_ATEN
-from .tensor import MetaTensor
+from .dataflow import GraphInfo, Phase, autograd_graph_analysis, is_phase
+from .memory import activation_size, parameter_size
 from .opcount import flop_mapping
-import time
+from .tensor import MetaTensor
 
 __all__ = ['profile_function', 'profile_module', 'profile_method']
 

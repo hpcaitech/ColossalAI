@@ -1,10 +1,11 @@
 # adopted from https://github.com/facebookresearch/fvcore/blob/main/fvcore/nn/jit_handles.py
 # ideas from https://pastebin.com/AkvAyJBw
 
-from functools import partial, reduce
 import operator
-from typing import Callable, List, Any
+from functools import partial, reduce
 from numbers import Number
+from typing import Any, Callable, List
+
 import torch
 
 aten = torch.ops.aten

@@ -1,8 +1,9 @@
 # for PyTorch 1.11 compatibility uses
+from typing import Dict, List, Tuple, Union
+
 import torch
-from torch.fx import Node, GraphModule
+from torch.fx import GraphModule, Node
 from torch.fx._compatibility import compatibility
-from typing import Union, Dict, List, Tuple
 
 __all__ = ["calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"]
 

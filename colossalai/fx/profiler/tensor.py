@@ -1,10 +1,12 @@
+import uuid
 from copy import deepcopy
 from typing import Optional
+
 import torch
 from torch.fx._compatibility import compatibility
-from torch.utils._pytree import tree_map, tree_flatten
-from torch.types import _bool, _dtype, _device
-import uuid
+from torch.types import _bool, _device, _dtype
+from torch.utils._pytree import tree_flatten, tree_map
+
 from .constant import ALIAS_ATEN
 
 __all__ = ['MetaTensor']
