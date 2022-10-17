@@ -1,9 +1,11 @@
+from typing import Callable
+
 import torch
 
 from . import META_COMPATIBILITY
 
 
-def compatibility(is_backward_compatible: bool = False):
+def compatibility(is_backward_compatible: bool = False) -> Callable:
     """A decorator to make a function compatible with different versions of PyTorch.
 
     Args:
@@ -29,7 +31,7 @@ def compatibility(is_backward_compatible: bool = False):
     return decorator
 
 
-def check_meta_compatibility():
+def check_meta_compatibility() -> bool:
     """Check the meta compatibility. Normally it should be called before importing some of the `colossalai.fx`
     modules. If the meta compatibility is not satisfied, the `colossalai.fx` modules will be replaced by its
     experimental counterparts.
