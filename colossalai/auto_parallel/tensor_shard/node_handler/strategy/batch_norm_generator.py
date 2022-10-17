@@ -308,6 +308,12 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # RS01 = RS01 x S01
         strategy_list.append(self.split_input_channel_1d(0, 1))
 
+        # The strategies with SYNC_BN are temporarily commented,
+        # because it requires some additional passes to keep runtime
+        # computation correctness.
+
+        # TODO: The strategies below should be uncommented after runtime
+        # passes ready.
         # SR = SR x R WITH SYNC_BN
         # strategy_list.append(self.split_input_batch(0))
         # strategy_list.append(self.split_input_batch(1))
