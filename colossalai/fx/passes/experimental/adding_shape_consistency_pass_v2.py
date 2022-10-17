@@ -36,16 +36,19 @@ def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int], de
             for name, param in target_module.named_parameters():
                 origin_sharding_spec = ShardingSpec(device_mesh, param.shape, {})
                 setattr(param, 'sharding_spec', origin_sharding_spec)
-                target_weight_sharding_spec = node.best_strategy.get_sharding_spec_by_name(name)
-                apply(param, target_weight_sharding_spec)
+                target_sharding_spec = node.best_strategy.get_sharding_spec_by_name(name)
+                apply(param, target_sharding_spec)
+
+            for name, buffer in target_module.named_buffers():
+                origin_sharding_spec = ShardingSpec(device_mesh, buffer.shape, {})
+                setattr(buffer, 'sharding_spec', origin_sharding_spec)
+                target_sharding_spec = node.best_strategy.get_sharding_spec_by_name(name)
+                apply(buffer, target_sharding_spec)
 
     # the dict to get input sharding specs of user node
     sharding_spec_convert_dict = {}
     for index, node in enumerate(nodes):
         target_sharding_specs = []
-        if node.name == 'bn1':
-            print(node.strategies_vector.successor_nodes)
-            assert False
         for user_node in node.strategies_vector.successor_nodes:
             # node_index = user_node.strategies_vector.predecessor_nodes.index(node)
             # target_sharding_spec = user_node.best_strategy.input_shardings[node_index]
