@@ -34,6 +34,4 @@ def check_meta_compatibility():
     Returns:
         bool: The meta compatibility
     """
-    if not META_COMPATIBILITY:
-        print(f'_meta_registrations seems to be incompatible with PyTorch {torch.__version__}.')
     return META_COMPATIBILITY

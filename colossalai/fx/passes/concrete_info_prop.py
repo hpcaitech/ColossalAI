@@ -4,8 +4,7 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 import torch
 import torch.fx
 from colossalai.fx._compatibility import compatibility
-from colossalai.fx.profiler import (GraphInfo, activation_size, profile_function, profile_method, profile_module)
-from torch.fx.graph_module import GraphModule
+from colossalai.fx.profiler import (GraphInfo, profile_function, profile_method, profile_module)
 from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_flatten
 
