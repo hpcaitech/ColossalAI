@@ -13,7 +13,7 @@ def assert_not_equal(a: Tensor, b: Tensor):
 
 
 def assert_close(a: Tensor, b: Tensor, rtol: float = 1e-5, atol: float = 1e-8):
-    assert torch.allclose(a.cuda().float(), b.cuda().float(), rtol=rtol, atol=atol), f'expected a and b to be close but they are not, {a} vs {b}'
+    assert torch.allclose(a.to(torch.float), b.to(torch.float), rtol=rtol, atol=atol), f'expected a and b to be close but they are not, {a} vs {b}'
 
 
 def assert_close_loose(a: Tensor, b: Tensor, rtol: float = 1e-3, atol: float = 1e-3):

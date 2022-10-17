@@ -8,6 +8,7 @@ from torch import Tensor
 from typing import Any
 from torch.optim import Optimizer
 from torch.distributed import ReduceOp
+from torch import dtype
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
 from colossalai.nn.optimizer import ColossalaiOptimizer
@@ -50,7 +51,7 @@ class NaiveAMPModel(nn.Module):
     Args:
         model (torch.nn.Module): torch.nn.Module to be wrapped.
         output_to_fp32 (bool, optional): Whether cast output of this module into fp32. (Default: True)
-        use_bf16(bool):Wheter to use bf16 or fp16, True->bf16, False->fp16, (Default:False)
+        precision_type(:class:`torch.tensor.dtype):precision type(bf16 or fp16), (Default:float16)
         parallel_mode (:class:`colossalai.context.ParallelMode`): Parallel group mode used in this module.
                                                                   (Default: ``ParallelMode.DATA``)
         sync_buffer (bool, optional): whether to synchronize buffer. (Default: True)
@@ -63,13 +64,13 @@ class NaiveAMPModel(nn.Module):
     def __init__(self,
                  model: nn.Module,
                  output_to_fp32: bool = True,
-                 use_bf16: bool = False,
+                 precision_type: dtype = torch.float16,
                  parallel_mode: ParallelMode = ParallelMode.DATA,
                  sync_buffer: bool = True):
         super().__init__()
         self.model = model.half()
         self._output_to_fp32 = output_to_fp32
-        self._use_bf16 = use_bf16
+        self._precision_type = precision_type
         self._sync_buf = sync_buffer
 
         if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode) > 1:
@@ -144,13 +145,13 @@ class NaiveAMPModel(nn.Module):
             if self._first_eval_run:
                 self._first_eval_run = False
 
-        if self._use_bf16:
+        if self._precision_type==torch.bfloat16:
             if args:
                 args = [self._convert_to_bf16(arg) for arg in args]
             if kwargs:
                 for k, v in kwargs.items():
                     kwargs[k] = self._convert_to_bf16(v)
-        else:
+        elif self._precision_type==torch.float16:
             if args:
                 args = [self._convert_to_fp16(arg) for arg in args]
             if kwargs:

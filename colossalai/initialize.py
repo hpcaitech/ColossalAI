@@ -351,7 +351,7 @@ def initialize(model: nn.Module,
                                                      optimizer=optimizer,
                                                      criterion=criterion,
                                                      mode=amp_mode,
-                                                     use_bf16=False,
+                                                     precision_type=torch.float16,
                                                      amp_config=cfg_)
     elif bf16_cfg is not None and bf16_cfg.mode is not None:
         cfg_ = bf16_cfg.copy()
@@ -362,7 +362,7 @@ def initialize(model: nn.Module,
                                                      optimizer=optimizer,
                                                      criterion=criterion,
                                                      mode=amp_mode,
-                                                     use_bf16=True,
+                                                     precision_type=torch.bfloat16,
                                                      amp_config=cfg_)
 
 
