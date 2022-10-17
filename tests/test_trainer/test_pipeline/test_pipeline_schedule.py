@@ -19,16 +19,10 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet18
 
-
 BATCH_SIZE = 8
 
-CONFIG=dict(
-    NUM_MICRO_BATCHES=2,
-    parallel = dict(
-        pipeline=dict(size=2),
-        tensor=dict(size=1, mode=None)
-    )
-)
+CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=dict(size=2), tensor=dict(size=1, mode=None)))
+
 
 def run_schedule(rank, world_size, port):
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')

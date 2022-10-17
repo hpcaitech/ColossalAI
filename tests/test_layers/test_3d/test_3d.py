@@ -38,6 +38,7 @@ def check_layer():
     check_loss()
     check_vocab_parallel_loss()
 
+
 def check_layer_and_operation(rank, world_size, port):
     disable_existing_loggers()
     launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')

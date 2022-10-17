@@ -336,7 +336,7 @@ def check_classifier_no_given_weight():
     layer.weight.data.copy_(W)
     # W.requires_grad = True
 
-    B_shape = (OUTPUT_SIZE, )
+    B_shape = (OUTPUT_SIZE,)
     B_master = torch.randint(5, B_shape, dtype=dtype, device=device)
     torch.distributed.broadcast(B_master, src=0)
     # B = torch.chunk(B_master, DEPTH, dim=0)[j]
@@ -572,7 +572,7 @@ def check_loss():
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
     out_master = torch.randn(out_shape, dtype=dtype, device=device)
-    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, ), dtype=torch.long, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
     out = torch.chunk(out_master, DEPTH, dim=0)[i]
@@ -607,7 +607,7 @@ def check_vocab_parallel_loss():
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
     out_master = torch.randn(out_shape, dtype=dtype, device=device)
-    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, ), dtype=torch.long, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
     out = torch.chunk(out_master, DEPTH, dim=0)[i]
