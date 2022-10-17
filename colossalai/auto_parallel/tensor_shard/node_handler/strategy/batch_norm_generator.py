@@ -77,9 +77,11 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
         # fwd_cost = input + other + bias + output
-        fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
-        fwd_parameter_and_buffer_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
-        fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_and_buffer_cost)
+        fwd_activation_cost = sum(
+            [v for k, v in forward_size_mapping.items() if not self.is_param(k) and not self.is_buffer(k)])
+        fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
+        fwd_buffer_cost = sum([v for k, v in forward_size_mapping.items() if self.is_buffer(k)])
+        fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost, buffer=fwd_buffer_cost)
 
         # compute bwd cost incurred
         # bwd_cost = input_grad + other_grad + bias_grad
@@ -90,7 +92,8 @@ class BatchNormStrategyGenerator(StrategyGenerator):
 
         # compute total cost
         total_mem_cost = MemoryCost(activation=fwd_activation_cost + bwd_activation_cost,
-                                    parameter=fwd_parameter_and_buffer_cost + bwd_parameter_cost)
+                                    parameter=fwd_parameter_cost + bwd_parameter_cost,
+                                    buffer=fwd_buffer_cost)
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 

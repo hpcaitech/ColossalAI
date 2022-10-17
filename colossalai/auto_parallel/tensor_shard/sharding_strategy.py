@@ -81,6 +81,7 @@ class MemoryCost:
     """
     activation: int = 0
     parameter: int = 0
+    buffer: int = 0
 
 
 @dataclass
