@@ -153,6 +153,9 @@ distributed training and inference in a few lines.
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
 
+### Recommendation System Models
+- [Cached Embedding](https://github.com/hpcaitech/FreqCacheEmbedding), utilize software cache to train larger embedding tables with a smaller GPU memory budget.
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Single GPU Training Demo

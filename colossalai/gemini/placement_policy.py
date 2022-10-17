@@ -36,8 +36,9 @@ class CPUPlacementPolicy(PlacementPolicy):
         volume = 0
         start = time()
         for chunk in can_evict_chunks:
+            self.chunk_manager.release_chunk(chunk)
             self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
-            volume += chunk.shard_mem
+            volume += chunk.chunk_mem
         return volume, time() - start
 
 
@@ -116,8 +117,9 @@ class AutoPlacementPolicy(PlacementPolicy):
                 if freed_cuda_model_data >= to_free_cuda_model_data:
                     break
 
+                self.chunk_manager.release_chunk(chunk)
                 self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
-                freed_cuda_model_data += chunk.shard_mem
+                freed_cuda_model_data += chunk.chunk_mem
             if freed_cuda_model_data < to_free_cuda_model_data:
                 raise RuntimeError(f"Adjust layout failed! No enough CUDA memory! "
                                    f"Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}")
@@ -147,11 +149,74 @@ class AutoPlacementPolicy(PlacementPolicy):
         AutoPlacementPolicy._steady_cuda_cap_ratio = ratio
 
 
+class ConstPlacementPolicy(PlacementPolicy):
+
+    need_mem_stats: bool = False
+    _accessed_memory_boundary = 512 * 1024**2
+
+    def __init__(self, chunk_manager: ChunkManager, mem_stats_collector: Optional[MemStatsCollectorV2] = None) -> None:
+        super().__init__(chunk_manager, mem_stats_collector=mem_stats_collector)
+
+    def evict_tensors(self,
+                      can_evict_chunks: List[Chunk],
+                      cuda_demand: int = 0,
+                      warmup: bool = True,
+                      compute_list: Optional[List[Tuple[Chunk, ...]]] = None,
+                      compute_idx: int = 0,
+                      **kwargs) -> Tuple[int, float]:
+        """
+        See the docstrings in the class `AutoPlacementPolicy`.
+        """
+        start = time()
+        used_accessed_memory = self.chunk_manager.accessed_mem
+        avail_accessed_memory = ConstPlacementPolicy._accessed_memory_boundary - used_accessed_memory
+        freed_accessed_memory = 0
+
+        if avail_accessed_memory < cuda_demand:
+            to_free_memory = cuda_demand - avail_accessed_memory
+            to_free_chunks = can_evict_chunks
+
+            if not warmup:
+                # sort all chunks
+                to_free_chunks = self._sort_can_evict_chunks(tuple(to_free_chunks), compute_idx, tuple(compute_list))
+
+            for chunk in to_free_chunks:
+                if freed_accessed_memory >= to_free_memory:
+                    break
+
+                self.chunk_manager.release_chunk(chunk)
+                self.chunk_manager.move_chunk(chunk, torch.device('cpu'))
+                freed_accessed_memory += chunk.chunk_mem
+
+            if freed_accessed_memory < to_free_memory:
+                raise RuntimeError(f"Adjust layout failed! No enough CUDA memory! "
+                                   f"Need {to_free_memory}, freed {freed_accessed_memory}")
+        return freed_accessed_memory, time() - start
+
+    @staticmethod
+    @functools.lru_cache(maxsize=None)
+    def _sort_can_evict_chunks(can_evict_chunks: tuple, compute_idx: int, compute_list: tuple) -> list:
+        next_compute_idx = {chunk: len(compute_list) for chunk in can_evict_chunks}
+        for i in range(len(compute_list) - 1, compute_idx, -1):
+            for chunk in compute_list[i]:
+                if chunk in next_compute_idx:
+                    next_compute_idx[chunk] = i
+        next_compute_idx = sorted(next_compute_idx.items(), key=lambda pair: pair[1], reverse=True)
+        return [t for (t, idx) in next_compute_idx]
+
+    @staticmethod
+    def set_const_memory_boundary(cuda_memory_mb: int) -> None:
+        boundary = int(cuda_memory_mb * 1024**2)
+        assert boundary > 0
+        ConstPlacementPolicy._accessed_memory_boundary = boundary
+
+
 class PlacementPolicyFactory:
     policies: Dict[str, Type[PlacementPolicy]] = {
         'cpu': CPUPlacementPolicy,
         'cuda': CUDAPlacementPolicy,
-        'auto': AutoPlacementPolicy
+        'auto': AutoPlacementPolicy,
+        'const': ConstPlacementPolicy
     }
 
     @staticmethod
