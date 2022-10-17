@@ -1,25 +1,15 @@
-from typing import List, Any, Tuple, Dict, Callable, Type, Union
+import argparse
 import os
 import warnings
-import argparse
+from typing import Any, Callable, Dict, List, Tuple, Type, Union
 
 import torch
-import torch.multiprocessing as mp
-from torch.futures import Future
 import torch.distributed.rpc as rpc
-from torch._C._distributed_rpc import _is_current_rpc_agent_set
-from colorama import Back, Style
-
+import torch.multiprocessing as mp
 from colossalai.initialize import launch
 from colossalai.pipeline.pipeline_process_group import ppg
-
-# config for debug and test
-use_color_debug = False
-
-
-def color_debug(text, prefix=' ', color='blue'):
-    color = color.upper()
-    print(getattr(Back, color), prefix, Style.RESET_ALL, text)
+from torch._C._distributed_rpc import _is_current_rpc_agent_set
+from torch.futures import Future
 
 
 def pytree_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] = (), map_all: bool = False) -> Any:
