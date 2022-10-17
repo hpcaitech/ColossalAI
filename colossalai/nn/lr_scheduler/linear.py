@@ -24,5 +24,5 @@ class LinearWarmupLR(_LRScheduler):
         if self.last_epoch < self.warmup_steps:
             return [(self.last_epoch + 1) / (self.warmup_steps + 1) * lr for lr in self.base_lrs]
         else:
-            return [(self.total_steps - self.last_epoch) / (self.total_steps - self.warmup_steps) * lr for lr in
-                    self.base_lrs]
+            return [(self.total_steps - self.last_epoch) / (self.total_steps - self.warmup_steps) * lr
+                    for lr in self.base_lrs]
