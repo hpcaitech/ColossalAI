@@ -1,4 +1,4 @@
-from .. import check_meta_compatibility
+from .._compatibility import check_meta_compatibility
 
 if check_meta_compatibility():
     from .memory import calculate_fwd_in, calculate_fwd_out, calculate_fwd_tmp

@@ -1,20 +1,23 @@
-from typing import Callable
 import copy
 import re
+from typing import Callable
+
+import colossalai
+import pytest
 import torch
 import torch.multiprocessing as mp
 import torchvision.models as tm
-from torch.fx import GraphModule
-import colossalai
-from colossalai.fx import ColoTracer
-from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
-from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-import pytest
-from colossalai.fx import META_COMPATIBILITY
-if META_COMPATIBILITY:
+from colossalai.fx import ColoTracer
+from colossalai.fx._compatibility import check_meta_compatibility
+from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
+from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.utils import free_port
+from torch.fx import GraphModule
+
+is_compatible = check_meta_compatibility()
+if is_compatible:
     from colossalai.fx.profiler.tensor import MetaTensor
 
 try:

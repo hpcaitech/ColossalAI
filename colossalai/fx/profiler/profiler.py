@@ -9,7 +9,7 @@ from torch.nn.parameter import Parameter
 from torch.utils._pytree import tree_map
 
 from .._compatibility import compatibility
-from .constant import ALIAS_ATEN
+from .constants import ALIAS_ATEN
 from .dataflow import GraphInfo, Phase, autograd_graph_analysis, is_phase
 from .memory import activation_size, parameter_size
 from .opcount import flop_mapping

@@ -116,7 +116,7 @@ def is_inplace(n: Node):
     if n.op == "call_function":
         inplace = n.kwargs.get("inplace", False)
         if check_meta_compatibility():
-            from .constant import ALIAS_ATEN
+            from .constants import ALIAS_ATEN
             if n.target in ALIAS_ATEN:
                 inplace = True
     elif n.op == "call_module":

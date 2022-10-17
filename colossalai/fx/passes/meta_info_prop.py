@@ -3,9 +3,9 @@ from typing import Any, Dict, List, NamedTuple, Tuple
 
 import torch
 import torch.fx
+from colossalai.fx._compatibility import compatibility
 from colossalai.fx.profiler import (GraphInfo, activation_size, calculate_fwd_in, calculate_fwd_out, calculate_fwd_tmp,
                                     profile_function, profile_method, profile_module)
-from torch.fx._compatibility import compatibility
 from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_map
 
@@ -39,7 +39,7 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
     return TensorMetadata(shape, dtype, requires_grad, stride, numel, is_tensor)
 
 
-@compatibility(is_backward_compatible=False)
+@compatibility(is_backward_compatible=True)
 class MetaInfoProp(torch.fx.Interpreter):
     """
     Execute an FX graph Node-by-Node with meta tensor and
