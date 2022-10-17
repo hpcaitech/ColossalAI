@@ -226,6 +226,7 @@ flop_mapping = {
     aten._adaptive_avg_pool3d.default: elementwise_flop_counter(1, 0),
     aten._adaptive_avg_pool3d_backward.default: elementwise_flop_counter(0, 1),
     aten.embedding_dense_backward.default: elementwise_flop_counter(0, 1),
+    aten.embedding.default: elementwise_flop_counter(1, 0),
 }
 
 elementwise_flop_aten = [
@@ -304,10 +305,12 @@ zero_flop_aten = [
     aten.transpose.int,
     aten._to_copy.default,
     aten.unsqueeze.default,
+    aten.unbind.int,
     aten._unsafe_view.default,
     aten.view.default,
     aten.where.self,
     aten.zero_.default,
+    aten.zeros_like.default,
 ]
 
 for op in zero_flop_aten:

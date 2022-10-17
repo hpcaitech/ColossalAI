@@ -6,11 +6,11 @@ from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils import free_port
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.gemini import ChunkManager
+from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
 from functools import partial
 from colossalai.nn.parallel import ColoDDP, ZeroDDP
 from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Callable
+from typing import Callable, Type
 import torch.distributed as dist
 import os
 import random
@@ -32,10 +32,9 @@ def init_ddp(module: torch.nn.Module) -> ColoDDP:
     return ColoDDP(module, process_group=pg)
 
 
-def init_ddpv2(module: torch.nn.Module, use_chunk: bool = False) -> ZeroDDP:
-    pg = ProcessGroup()
-    chunk_size = ChunkManager.search_chunk_size(module, 64, 2) if use_chunk else None
-    chunk_manager = ChunkManager(chunk_size, pg)
+def init_ddpv2(module: torch.nn.Module) -> ZeroDDP:
+    chunk_config = search_chunk_configuration(module, 4, 1024)
+    chunk_manager = ChunkManager(chunk_config)
     gemini_manager = GeminiManager('cuda', chunk_manager)
     return ZeroDDP(module, gemini_manager)
 
@@ -51,7 +50,7 @@ class Net(torch.nn.Module):
         return self.fc2(self.fc1(x))
 
 
-def run_fwd_bwd(ddp_cls: ColoDDP, init_ddp_func: Callable[[torch.nn.Module], ColoDDP]):
+def run_fwd_bwd(ddp_cls: Type[ColoDDP], init_ddp_func: Callable[[torch.nn.Module], ColoDDP]):
     with ColoInitContext(device=get_current_device()):
         model = Net().cuda()
     w1 = model.fc1.weight
@@ -62,8 +61,14 @@ def run_fwd_bwd(ddp_cls: ColoDDP, init_ddp_func: Callable[[torch.nn.Module], Col
     logits = model(x)
     loss = torch.sum(logits)
     model.backward(loss)
+
+    if ddp_cls is ZeroDDP:
+        w1s_grad = w1
+    else:
+        w1s_grad = w1.grad
+
     w1_grads = [torch.empty_like(w1) for _ in range(dist.get_world_size())]
-    dist.all_gather(w1_grads, w1.grad)
+    dist.all_gather(w1_grads, w1s_grad)
     assert torch.equal(w1_grads[0], w1_grads[1])
     w2_grads = [torch.empty_like(w2) for _ in range(dist.get_world_size())]
     dist.all_gather(w2_grads, w2.grad)
@@ -74,8 +79,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     set_seed(dist.get_rank())
     run_fwd_bwd(ColoDDP, init_ddp)
-    run_fwd_bwd(ZeroDDP, partial(init_ddpv2, use_chunk=False))
-    run_fwd_bwd(ZeroDDP, partial(init_ddpv2, use_chunk=True))
+    run_fwd_bwd(ZeroDDP, init_ddpv2)
 
 
 @pytest.mark.dist

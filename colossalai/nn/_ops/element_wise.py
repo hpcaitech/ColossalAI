@@ -18,6 +18,8 @@ def register_elementwise_op(op):
 
         output = op(input_tensor, *args, **kwargs)
         if isinstance(input_tensor, ColoTensor):
+            if isinstance(output, str):
+                return output
             if not isinstance(output, torch.Tensor):
                 raise NotImplementedError
             return ColoTensor.from_torch_tensor(output,
