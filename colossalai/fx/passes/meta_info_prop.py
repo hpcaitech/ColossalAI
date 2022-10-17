@@ -37,7 +37,7 @@ def _extract_tensor_metadata(result: torch.Tensor) -> TensorMetadata:
     return TensorMetadata(shape, dtype, requires_grad, stride, numel, is_tensor)
 
 
-@compatibility(is_backward_compatible=True)
+@compatibility(is_backward_compatible=False)
 class MetaInfoProp(torch.fx.Interpreter):
     """
     Execute an FX graph Node-by-Node with meta tensor and

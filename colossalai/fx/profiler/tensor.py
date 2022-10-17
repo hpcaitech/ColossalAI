@@ -1,6 +1,7 @@
 from copy import deepcopy
 from typing import Optional
 import torch
+from torch.fx._compatibility import compatibility
 from torch.utils._pytree import tree_map, tree_flatten
 from torch.types import _bool, _dtype, _device
 import uuid
@@ -15,6 +16,7 @@ def set_uuid(x):
             setattr(x, 'uuid', uuid.uuid4())
 
 
+@compatibility(is_backward_compatible=False)
 class MetaTensor(torch.Tensor):
     """
     A wrapping tensor that hacks `torch.autograd` without patching more `torch.ops.aten` ops.

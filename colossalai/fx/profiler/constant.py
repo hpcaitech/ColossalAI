@@ -8,7 +8,6 @@ if META_COMPATIBILITY:
     aten = torch.ops.aten
 
     ALIAS_ATEN = [
-    # inplace reshaping
         aten.detach.default,
         aten.t.default,
         aten.transpose.int,
@@ -35,7 +34,7 @@ if META_COMPATIBILITY:
         aten.clone.default,
     ]
 
-    __all__ += ['INPLACE_ATEN', 'INPLACE_MATH_ATEN', 'CLONE_ATEN']
+    __all__ += ['ALIAS_ATEN', 'INPLACE_NEW', 'INPLACE_MATH_ATEN', 'CLONE_ATEN']
 
 else:
     # TODO fill out the inplace ops

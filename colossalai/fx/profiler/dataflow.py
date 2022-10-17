@@ -3,6 +3,7 @@ from enum import Enum
 from functools import partial
 from typing import Dict, List
 from torch.fx import Graph, Node
+from torch.fx._compatibility import compatibility
 from .memory import activation_size, is_inplace
 
 
@@ -12,6 +13,7 @@ class Phase(Enum):
     PLACEHOLDER = 2
 
 
+@compatibility(is_backward_compatible=True)
 @dataclass
 class GraphInfo:
     """
@@ -69,6 +71,7 @@ def is_phase(n: Node, phase: Phase) -> bool:
     return n.meta['phase'] == phase
 
 
+@compatibility(is_backward_compatible=False)
 def autograd_graph_analysis(graph: Graph) -> GraphInfo:
     """Analyze the autograd node dependencies and find out the memory usage.
     Basically the input graph should have all nodes marked for keyword `phase`.

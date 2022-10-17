@@ -1,5 +1,6 @@
 import torch
 from torch.fx import Node, GraphModule
+from torch.fx._compatibility import compatibility
 from typing import Union, Dict, List, Tuple
 from . import META_COMPATIBILITY
 
@@ -8,6 +9,7 @@ __all__ = [
 ]
 
 
+@compatibility(is_backward_compatible=True)
 def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     """Calculate activation size of a node.
 
@@ -29,6 +31,7 @@ def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     return act_size
 
 
+@compatibility(is_backward_compatible=True)
 def parameter_size(mod: torch.nn.Module) -> int:
     """Calculate parameter size of a node.
 
