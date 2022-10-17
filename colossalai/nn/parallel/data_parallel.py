@@ -1,6 +1,7 @@
 import torch
 import itertools
 import torch.distributed as dist
+from torch import dtype
 from functools import partial
 from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
 from colossalai.tensor.param_op_hook import ParamOpHookManager
@@ -212,13 +213,13 @@ class ZeroDDP(ColoDDP):
                  gemini_manager: GeminiManager,
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
-                 use_bf16: bool = False) -> None:
+                 precision_type: dtype = torch.float16) -> None:
         super().__init__(module, process_group=ColoProcessGroup())
 
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
-        self.use_bf16 = use_bf16
+        self.precision_type = precision_type
         self.param_op_hook = ZeROHookV2(gemini_manager)
         self.fp32_params: List[ColoTensor] = []
         self.overflow_counter = 0
@@ -228,18 +229,18 @@ class ZeroDDP(ColoDDP):
         for p in module.parameters():
             assert isinstance(p, ColoParameter)
             if getattr(p, '_ddp_to_ignore', False):
-                if self.use_bf16:
+                if self.precision_type == torch.bfloat16:
                     p.data = p.bfloat16()
-                else:
+                elif self.precision_type == torch.float16:
                     p.data = p.half()
                 continue
 
             dp_world_size = p.process_group.dp_world_size()
             fp32_data = p.float().data
-            if self.use_bf16:
+            if self.precision_type == torch.bfloat16:
                 p.data = p.bfloat16()
                 self.chunk_manager.append_tensor(p, 'bf16_param', dp_world_size, pin_memory)
-            else:
+            elif self.precision_type == torch.float16:
                 p.data = p.half()
                 self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
@@ -259,9 +260,9 @@ class ZeroDDP(ColoDDP):
 
     def forward(self, *args, **kwargs):
         # change here
-        if self.use_bf16:
+        if self.precision_type == torch.bfloat16:
             args, kwargs = _cast_float(args, torch.bfloat16), _cast_float(kwargs, torch.bfloat16)
-        else:
+        elif self.precision_type == torch.float16:
             args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         # end here
         self.module.zero_grad(set_to_none=True)
@@ -572,8 +573,8 @@ class ZeroDDP(ColoDDP):
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
                 #change here
-                if self.use_bf16:
+                if self.precision_type == torch.bfloat16:
                     buffer.data = buffer.bfloat16()
-                else:
+                elif self.precision_type == torch.float16:
                     buffer.data = buffer.half()
                 # end here

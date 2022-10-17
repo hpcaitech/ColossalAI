@@ -58,7 +58,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
         self.module = module
-        self.use_bf16 = optim.use_bf16
+        self.precision_type = optim.precision_type
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
         self.optim_state = OptimState.UNSCALED

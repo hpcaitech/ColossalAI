@@ -6,6 +6,10 @@ import itertools
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed import ProcessGroup
+from torch.nn.parameter import Parameter
+from torch import dtype
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.gemini.ophooks import register_ophooks_recursively
@@ -17,8 +21,6 @@ from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollector
 from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
 from colossalai.gemini.tensor_utils import colo_model_data_move_to_cpu
 from colossalai.gemini.stateful_tensor import TensorState
 from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
@@ -61,6 +63,7 @@ class ShardedModelV2(nn.Module):
             Defaults to 'cuda'.
         gradient_predivide_factor (Optional[float], optional): Gradient is divived by this value before reduce-scatter. Defaults to 1.0.
         reuse_fp16_shard (bool, optional): Whether to reuse fp16 shard for param and grad. 
+        precision_type(dtype,optional):Whether to use bf16 or fp16 shard for param and grad.
             Enabling this can reduce GPU memory usage, but you have to make sure you disable it when using gradient accumulation. 
             In this mode, grad will be fp16. Make sure your optimizer supports mixed precision (fp32 param and fp16 grad). 
             We find that PyTorch's optimizers don't support mixed precision, 
@@ -77,13 +80,13 @@ class ShardedModelV2(nn.Module):
                  tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
                  reuse_fp16_shard: bool = False,
-                 use_bf16: bool = False,
+                 precision_type: dtype = torch.float16,
                  *args,
                  **kwargs):
         assert not isinstance(module, ShardedModelV2), 'Nested ShardedModelV2 is not supported.'
         super().__init__()
         self.logger = get_dist_logger()
-        if use_bf16:
+        if precision_type == torch.bfloat16:
             module = module.cuda().bfloat16()
 
         # We force users to use ZeroInitContext
@@ -113,7 +116,7 @@ class ShardedModelV2(nn.Module):
         self.world_size = dist.get_world_size(self.process_group)
         self.rank = dist.get_rank(self.process_group)
         self.shard_strategy = shard_strategy
-        self.use_bf16 = use_bf16
+        self.precision_type = precision_type
 
         self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
@@ -229,9 +232,9 @@ class ShardedModelV2(nn.Module):
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._pre_forward_operations()
 
-        if self.use_bf16:
+        if self.precision_type == torch.bfloat16:
             args, kwargs = cast_float_arguments(cast_tensor_to_bf16, *args, **kwargs)
-        else:
+        elif self.precision_type == torch.float16:
             args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
 
         outputs = self.module(*args, **kwargs)

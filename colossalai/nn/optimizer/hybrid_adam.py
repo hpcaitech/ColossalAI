@@ -1,5 +1,5 @@
 import torch
-
+from torch import dtype
 from colossalai.utils import multi_tensor_applier
 from colossalai.registry import OPTIMIZERS
 from typing import Optional
@@ -69,7 +69,7 @@ class HybridAdam(NVMeOptimizer):
                  adamw_mode=True,
                  nvme_offload_fraction: float = 0.0,
                  nvme_offload_dir: Optional[str] = None,
-                 use_bf16: bool = False
+                 precision_type: dtype = torch.float16
                  ):
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
@@ -81,7 +81,7 @@ class HybridAdam(NVMeOptimizer):
         except ImportError:
             raise ImportError('Please install colossalai from source code to use HybridAdam')
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
-        self.use_bf16 = use_bf16
+        self.precision_type = precision_type
         self.gpu_adam_op = colossal_C.multi_tensor_adam
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
