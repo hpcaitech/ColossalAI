@@ -20,8 +20,11 @@ def compatibility(is_backward_compatible: bool = False):
             if is_backward_compatible:
                 return func
             else:
-                return lambda *args, **kwargs: print(
-                    f'{func} seems to be incompatible with PyTorch {torch.__version__}.')
+
+                def wrapper(*args, **kwargs):
+                    raise RuntimeError(f'Function `{func.__name__}` is not compatible with PyTorch {torch.__version__}')
+
+                return wrapper
 
     return decorator
 
