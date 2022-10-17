@@ -22,6 +22,7 @@ from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from torchvision.models import resnet34, resnet50
 from colossalai.auto_parallel.tensor_shard.constants import *
 from colossalai.testing import assert_close_loose, assert_close
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 seed = 128
 cudnn_benchmark = False
@@ -158,6 +159,7 @@ def check_apply_bottleneck(rank, world_size, port):
     assert output.equal(origin_output)
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_apply():
