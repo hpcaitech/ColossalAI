@@ -18,10 +18,6 @@ class LayerNormGenerator(StrategyGenerator):
     The operation data is defined as `output = input x other + bias`.
     """
 
-    @property
-    def has_bias(self):
-        return 'bias' in self.op_data
-
     def validate(self) -> bool:
         return super().validate()
 
