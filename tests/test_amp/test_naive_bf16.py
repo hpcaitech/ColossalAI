@@ -36,17 +36,17 @@ def run_naive_bf16_amp():
 
         # create model
         naive_fp16_amp_model = model_builder(checkpoint=True).cuda()
-        naive_bf16_amp_model = copy.deepcopy(naive_fp16_amp_model).cuda().bfloat16()
+        naive_bf16_amp_model = copy.deepcopy(naive_fp16_amp_model)
 
         # create optimizer
         naive_bf16_amp_optimizer = optim_class(naive_bf16_amp_model.parameters(), lr=1e-3)
         naive_fp16_amp_optimizer = optim_class(naive_fp16_amp_model.parameters(), lr=1e-3)
 
         # inject naive and naive_fp16 amp
-        naive_bf16_amp_config = dict(initial_scale=128)
-        naive_bf16_amp_model, naive_bf16_amp_optimizer = convert_to_naive_amp(naive_bf16_amp_model, naive_bf16_amp_optimizer, use_bf16=True,
+        naive_bf16_amp_config = dict(initial_scale=1)
+        naive_bf16_amp_model, naive_bf16_amp_optimizer = convert_to_naive_amp(naive_bf16_amp_model, naive_bf16_amp_optimizer, precision_type=torch.bfloat16,
                                                                               amp_config=naive_bf16_amp_config)
-        naive_fp16_amp_config = dict(initial_scale=128)
+        naive_fp16_amp_config = dict(initial_scale=1)
         naive_fp16_amp_model, naive_fp16_amp_optimizer = convert_to_naive_amp(naive_fp16_amp_model, naive_fp16_amp_optimizer, naive_fp16_amp_config)
 
         # create data
@@ -57,7 +57,7 @@ def run_naive_bf16_amp():
         # forward pass
         naive_bf16_amp_output = naive_bf16_amp_model(data)
         naive_fp16_amp_output = naive_fp16_amp_model(data)
-        # assert_close_loose(naive_bf16_amp_output, naive_fp16_amp_output)
+        assert_close_loose(naive_bf16_amp_output, naive_fp16_amp_output, 1e-1, 1e-1)
 
         # backward
         naive_bf16_amp_optimizer.backward(naive_bf16_amp_output.mean())
@@ -65,7 +65,7 @@ def run_naive_bf16_amp():
 
         # check grad
         for naive_bf16_amp_param, naive_fp16_amp_param in zip(naive_bf16_amp_model.parameters(), naive_fp16_amp_model.parameters()):
-            assert_close_loose(naive_bf16_amp_param.grad, naive_fp16_amp_param.grad)
+            assert_close_loose(naive_bf16_amp_param.grad, naive_fp16_amp_param.grad, 1, 1)
 
         # step
         naive_bf16_amp_optimizer.step()
@@ -73,7 +73,7 @@ def run_naive_bf16_amp():
 
         # check updated param
         for naive_bf16_amp_param, naive_fp16_amp_param in zip(naive_bf16_amp_model.parameters(), naive_fp16_amp_model.parameters()):
-            assert_close_loose(naive_bf16_amp_param, naive_fp16_amp_param)
+            assert_close_loose(naive_bf16_amp_param, naive_fp16_amp_param, 1e-2, 1e-2)
 
 
 def run_dist(rank, world_size, port):

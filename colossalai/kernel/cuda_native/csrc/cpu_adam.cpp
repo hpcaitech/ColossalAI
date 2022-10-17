@@ -447,7 +447,8 @@ void Adam_Optimizer::step(size_t step, float lr, float beta1, float beta2,
   this->update_state(lr, epsilon, weight_decay, bias_correction);
   this->Step_8(params_ptr, grads_ptr, exp_avg_ptr, exp_avg_sq_ptr,
                params_c.numel(), (params.options().dtype() != c10::ScalarType::Float),
-               (grads.options().dtype() != c10::ScalarType::Float));
+               (grads.options().dtype() != c10::ScalarType::Float),
+               loss_scale);
 }
 
 namespace py = pybind11;
