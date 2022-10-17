@@ -2,9 +2,8 @@ from typing import Dict, List, Tuple, Union
 
 import torch
 from torch.fx import GraphModule, Node
-from torch.fx._compatibility import compatibility
 
-from . import META_COMPATIBILITY
+from .._compatibility import check_meta_compatibility, compatibility
 
 __all__ = [
     'activation_size', 'parameter_size', 'is_inplace', "calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"
@@ -116,7 +115,7 @@ def is_inplace(n: Node):
     inplace = False
     if n.op == "call_function":
         inplace = n.kwargs.get("inplace", False)
-        if META_COMPATIBILITY:
+        if check_meta_compatibility():
             from .constant import ALIAS_ATEN
             if n.target in ALIAS_ATEN:
                 inplace = True

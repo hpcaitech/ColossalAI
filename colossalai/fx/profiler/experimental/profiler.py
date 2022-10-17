@@ -2,12 +2,12 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Tuple
 
 import torch
-from torch.fx._compatibility import compatibility
 from torch.fx.node import Argument, Target
 
-from ..constant import INPLACE_METHOD, INPLACE_OPS, NON_INPLACE_METHOD
+from ..._compatibility import compatibility
 from ..memory import activation_size
-from . import meta_profiler_function, meta_profiler_module
+from .constants import INPLACE_METHOD, INPLACE_OPS, NON_INPLACE_METHOD
+from .registry import meta_profiler_function, meta_profiler_module
 
 __all__ = ['profile_function', 'profile_module', 'profile_method']
 

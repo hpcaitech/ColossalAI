@@ -4,8 +4,8 @@ from functools import partial
 from typing import Dict, List
 
 from torch.fx import Graph, Node
-from torch.fx._compatibility import compatibility
 
+from .._compatibility import compatibility
 from .memory import activation_size, is_inplace
 
 

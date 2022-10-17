@@ -3,7 +3,8 @@ from typing import Dict, List, Tuple, Union
 
 import torch
 from torch.fx import GraphModule, Node
-from torch.fx._compatibility import compatibility
+
+from ..._compatibility import compatibility
 
 __all__ = ["calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"]
 

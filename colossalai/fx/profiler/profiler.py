@@ -4,11 +4,11 @@ from typing import Any, Callable, Dict, Tuple
 
 import torch
 from torch.fx import Graph, Node
-from torch.fx._compatibility import compatibility
 from torch.fx.node import Argument, Target
 from torch.nn.parameter import Parameter
 from torch.utils._pytree import tree_map
 
+from .._compatibility import compatibility
 from .constant import ALIAS_ATEN
 from .dataflow import GraphInfo, Phase, autograd_graph_analysis, is_phase
 from .memory import activation_size, parameter_size
