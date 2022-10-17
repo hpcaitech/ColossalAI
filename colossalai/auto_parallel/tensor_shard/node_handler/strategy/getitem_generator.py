@@ -19,10 +19,6 @@ class GetItemStrategyGenerator(FollowingStrategyGenerator):
         3. args_0._meta_data: Tuple[torch.Tensor], args_1._meta_data: int
     """
 
-    @property
-    def has_bias(self):
-        return 'bias' in self.op_data
-
     def validate(self) -> bool:
         return super().validate()
 

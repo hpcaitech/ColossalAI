@@ -11,7 +11,6 @@ from colossalai.fx.tracer.meta_patch.patched_module import linear
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_norm_pool_handler():
     model = nn.Sequential(nn.MaxPool2d(4, padding=1).to('meta'))
     tracer = ColoTracer()
@@ -50,7 +49,7 @@ def test_norm_pool_handler():
     assert mapping['output'].data.shape == torch.Size([4, 4, 16, 16])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
-    strategies_vector = handler.register_strategy()
+    strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
     assert len(strategy_name_list) == 9
 
