@@ -1,10 +1,10 @@
 from typing import Dict, List, Tuple, Union
 
 import torch
-from colossalai.fx.profiler.constants import RELU_LIKE_MOD, RELU_LIKE_OPS
 from torch.fx import GraphModule, Node
 
 from .._compatibility import compatibility, is_compatible_with_meta
+from .constants import RELU_LIKE_MOD, RELU_LIKE_OPS
 
 __all__ = [
     'activation_size', 'parameter_size', 'is_inplace', "calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"
