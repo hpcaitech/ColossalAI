@@ -40,6 +40,8 @@ def _get_unused_byte(size_list: List[int], chunk_size: int) -> int:
 
 
 def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
+    """Clasify each parameter by its size of DP group.
+    """
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in model.parameters():
         assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
