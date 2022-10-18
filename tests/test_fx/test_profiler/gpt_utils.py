@@ -1,3 +1,8 @@
+import torch
+import torch.nn as nn
+from transformers import GPT2Config, GPT2LMHeadModel
+
+
 class GPTLMModel(nn.Module):
 
     def __init__(self,

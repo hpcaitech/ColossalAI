@@ -1,22 +1,19 @@
-from time import sleep, time
-import copy
-from typing import Tuple, List, Union, Optional
-from colossalai.fx.profiler.memory import activation_size, calculate_fwd_tmp, is_inplace, calculate_fwd_out
-from colossalai.fx.tracer.tracer import ColoTracer
+from typing import Optional, Tuple, Union
+
+import pytest
 import torch
-import torch.nn as nn
-import torchvision.models as tm
-from torch.fx import symbolic_trace
 import torch.fx
-from torch.optim import Adam
-from torch.nn import CrossEntropyLoss
+import torchvision.models as tm
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import MetaTensor, parameter_size
+from colossalai.fx.profiler.memory import calculate_fwd_out, calculate_fwd_tmp
+from colossalai.fx.tracer.tracer import ColoTracer
+from gpt_utils import get_data, gpt2_medium
+from torch.fx import symbolic_trace
 
-from gpt_utils import GPTLMModel, gpt2_medium, get_data, GPTLMLoss, gpt2_xl
-
-BATCH_SIZE = 16
-NUM_STEPS = 1
+TM_BATCH_SIZE = 64
+GPT_BATCH_SIZE = 8
+NUM_STEPS = 5
 
 
 def extract_forward_mem(gm: torch.fx.GraphModule):
@@ -50,10 +47,10 @@ def test_tm_forward(gm: torch.fx.GraphModule):
     param_mem = -torch.cuda.memory_allocated(device="cuda:0") / 1024**2
     gm.cuda()
     param_mem += torch.cuda.memory_allocated(device="cuda:0") / 1024**2
-    optimizer = Adam(gm.parameters(), lr=1e-3)
     gm.train()
     for n in range(NUM_STEPS):
-        data, _ = gen_tm_data(BATCH_SIZE, (3, 224, 224))
+        torch.cuda.reset_peak_memory_stats()
+        data, _ = gen_tm_data(TM_BATCH_SIZE, (3, 224, 224))
 
         # If we need to dive deep into the memory usage by
         # inspecting `saved_tensor_hooks`
@@ -73,157 +70,104 @@ def test_tm_forward(gm: torch.fx.GraphModule):
         #
         # with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
         #    output = gm(data)
+        # print(f'Memory estimation by saved_tensor_hooks: {fwd_mem / 1024**2}')
         # =====================================================
+
         output = gm(data)
-        optimizer.zero_grad()
         forward_mem += torch.cuda.memory_allocated(device="cuda:0") / 1024**2 / NUM_STEPS
+        del output
     return forward_mem, param_mem
 
 
-def test_gpt_forward(gm: torch.fx.GraphModule, num_steps: int = 5):
-
-    def get_gpu_mem():
-        result = torch.cuda.max_memory_allocated() / 1024**2
-        torch.cuda.reset_peak_memory_stats()
-        return result
-
-    # get_gpu_mem()   # reset
-    forward_mem = 0
-    param_mem = 0
-    gm = gpt2_medium()
-    gm.train()
+def test_gpt_forward(gm: torch.fx.GraphModule):
+    torch.cuda.reset_peak_memory_stats()
+    forward_mem = -torch.cuda.memory_allocated(device="cuda:0") / 1024**2
+    param_mem = -torch.cuda.memory_allocated(device="cuda:0") / 1024**2
     gm.cuda()
-    param_mem += get_gpu_mem()
-    time_0 = time()
-    # criterion = GPTLMLoss()
-    # optimizer = Adam(gm.parameters(), lr=1e-3)
-    for n in range(num_steps):
-        data, mask = get_data(8, 1024, 50257, device='cuda')
-        fwd_mem = 0
-        unpack_mem = 0
-        i = 0
-        cache = set()
+    param_mem += torch.cuda.memory_allocated(device="cuda:0") / 1024**2
+    for n in range(NUM_STEPS):
+        torch.cuda.reset_peak_memory_stats()
+        data, mask = get_data(GPT_BATCH_SIZE, 1024, 50257, device='cuda:0')
 
-        def pack(x):
-            if isinstance(x, torch.Tensor):
-                nonlocal i
-                nonlocal fwd_mem
-                fwd_mem += activation_size(x)
-            # if isinstance(x, torch.Tensor):
-            # print(type(x), activation_size(x), x.shape, x.dtype)
-            return x
+        # If we need to dive deep into the memory usage by
+        # inspecting `saved_tensor_hooks`
 
-        def unpack(x):
-            nonlocal unpack_mem
-            unpack_mem += activation_size(x)
-            return x
+        # =====================================================
+        # fwd_mem = 0
+        # cache = set()
+        # def pack(x):
+        #     if isinstance(x, torch.Tensor):
+        #         nonlocal fwd_mem, cache
+        #         if x.data_ptr() not in cache:
+        #             fwd_mem += activation_size(x)
+        #             cache.add(x.data_ptr())
+        #     return x
+        # def unpack(x):
+        #     return x
+        #
+        # with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
+        #    output = gm(data, mask)
+        # print(f'Memory estimation by saved_tensor_hooks: {fwd_mem / 1024**2}')
+        # =====================================================
 
-        with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
-            output = gm(data, mask)
-        forward_mem += get_gpu_mem() / num_steps
-        # optimizer.zero_grad()
-        # loss = criterion(output, data)
-        # loss.backward()
-        # optimizer.step()
-        get_gpu_mem()    # reset
-        print((fwd_mem) // 1024**2 + param_mem, unpack_mem / 1024**2)
-    print(time() - time_0)
+        output = gm(data, mask)
+        forward_mem += torch.cuda.memory_allocated(device="cuda:0") / 1024**2 / NUM_STEPS
+        del output
     return forward_mem, param_mem
 
 
+@pytest.mark.skip("Test for performance, no need for CI")
 def test_meta_info_prop():
     for m in [
             tm.alexnet, tm.resnet18, tm.resnet34, tm.resnet50, tm.resnet101, tm.resnet152, tm.densenet121,
             tm.densenet161, tm.densenet169, tm.densenet201, tm.convnext_tiny, tm.convnext_small, tm.convnext_base,
-            tm.convnext_large, tm.wide_resnet50_2, tm.wide_resnet101_2
+            tm.convnext_large, tm.wide_resnet50_2, tm.wide_resnet101_2, tm.regnet_x_16gf, tm.mnasnet0_5,
+            tm.efficientnet_b0, tm.shufflenet_v2_x0_5, tm.shufflenet_v2_x1_0, tm.shufflenet_v2_x1_5,
+            tm.shufflenet_v2_x2_0, tm.mobilenet_v2, tm.mobilenet_v3_small, tm.mobilenet_v3_large, tm.resnext50_32x4d,
+            tm.resnext101_32x8d, tm.resnext101_64x4d, tm.vit_b_16, tm.vit_b_32, tm.vit_h_14, tm.vit_l_16, tm.vit_l_32,
+            tm.vgg11, tm.vgg11_bn, tm.vgg13, tm.vgg13_bn, tm.vgg16, tm.vgg16_bn, tm.vgg19, tm.vgg19_bn
     ]:
-        # for M in [tm.regnet_x_16gf, tm.mnasnet0_5, tm.efficientnet_b0]:
-        # for M in [tm.convnext_tiny]:
-        # for M in [tm.shufflenet_v2_x0_5, tm.shufflenet_v2_x1_0, tm.shufflenet_v2_x1_5, tm.shufflenet_v2_x2_0]:
-        # for M in [tm.shufflenet_v2_x0_5]:
-        # for M in [MyNet]:
-        # for M in [tm.mobilenet_v2, tm.mobilenet_v3_small, tm.mobilenet_v3_large]:
-        # for M in [tm.mobilenet_v3_small]:
-        # for M in [gpt2_medium]:
-        # for M in [tm.resnext50_32x4d, tm.resnext101_32x8d, tm.resnext101_64x4d]:
-        # for M in [tm.vit_b_16, tm.vit_b_32, tm.vit_h_14, tm.vit_l_16, tm.vit_l_32]:
-        # for M in [tm.vit_b_16]:
-        # for M in [tm.vgg11]:
-        model = m()
+        model = m().cuda()
         model.train()
-        data = MetaTensor(torch.rand(int(BATCH_SIZE), 3, 224, 224, device='meta'), fake_device='cuda')
+        data = MetaTensor(torch.rand(int(TM_BATCH_SIZE), 3, 224, 224, device='meta'), fake_device='cuda:0')
         gm = symbolic_trace(model)
-        gm: torch.fx.GraphModule
-        # gm.graph.print_tabular()
-        # graph = meta_trace(gm, data)
-        # print(graph.python_code('self').src)
-        interp = MetaInfoProp(gm.cuda())
-        time_0 = time()
-        interp.run(data)
-        # print(interp.summary())
-        print(time() - time_0)
+        interp = MetaInfoProp(gm)
+        interp.propagate(data)
         gm.cpu()
 
-        meta_forward_mem, meta_param_mem = _forward_mem(gm)
-        fwd_flop, bwd_flop = _forward_flops(gm)
-        time_0 = time()
-        concrete_forward_mem, concrete_param_mem = test_forward(gm, num_steps=1)
-        print(time() - time_0)
+        meta_forward_mem, meta_param_mem = extract_forward_mem(gm)
+        fwd_flop, bwd_flop = extract_forward_flops(gm)
+        concrete_forward_mem, concrete_param_mem = test_tm_forward(gm)
 
         print(
-            f'|{M}|{meta_forward_mem:.3f} MB|{meta_param_mem:.3f} MB|{concrete_forward_mem:.3f} MB|{concrete_param_mem:.3f} MB|fwd_flop={fwd_flop / 1e9:.3f}GFLOPs|bwd_flop={bwd_flop / 1e9:.3f}GFLOPs|'
+            f'|{m.__name__}|{meta_forward_mem:.3f} MB|{meta_param_mem:.3f} MB|{concrete_forward_mem:.3f} MB|{concrete_param_mem:.3f} MB|fwd_flop={fwd_flop / 1e9:.3f}GFLOPs|bwd_flop={bwd_flop / 1e9:.3f}GFLOPs|'
         )
-        # sleep(2)
         del model, gm
 
 
+@pytest.mark.skip("Test for performance, no need for CI")
 def test_gpt_meta_info_prop():
-    # for M in [tm.resnet18, tm.resnet34, tm.resnet50, tm.resnet101, tm.resnet152]:
-    # for M in [tm.resnet18]:
-    # for M in [tm.densenet121, tm.densenet161, tm.densenet169, tm.densenet201]:
-    # for M in [tm.convnext_tiny, tm.convnext_small, tm.convnext_base, tm.convnext_large]:
-    # for M in [tm.wide_resnet50_2, tm.wide_resnet101_2]:
-    # for M in [tm.regnet_x_16gf, tm.mnasnet0_5, tm.efficientnet_b0]:
-    # for M in [tm.convnext_tiny]:
-    # for M in [tm.shufflenet_v2_x0_5, tm.shufflenet_v2_x1_0, tm.shufflenet_v2_x1_5, tm.shufflenet_v2_x2_0]:
-    # for M in [tm.shufflenet_v2_x0_5]:
-    # for M in [MyNet]:
-    # for M in [tm.mobilenet_v2, tm.mobilenet_v3_small, tm.mobilenet_v3_large]:
-    for M in [gpt2_medium]:
-        # for M in [tm.resnext50_32x4d, tm.resnext101_32x8d, tm.resnext101_64x4d]:
-        # for M in [tm.vit_b_16, tm.vit_b_32, tm.vit_h_14, tm.vit_l_16, tm.vit_l_32]:
-        # for M in [tm.vit_b_16]:
-        model = M().cuda()
+    for m in [gpt2_medium]:
+        model = m().cuda()
         model.train()
-        data, mask = get_data(8, 1024, 50257, device='meta')
-        print(activation_size((data, mask)) / 1024**2)
+        data, mask = get_data(GPT_BATCH_SIZE, 1024, 50257, device='meta')
         graph = ColoTracer().trace(model, meta_args={'input_ids': data, 'attention_mask': mask})
         gm = torch.fx.GraphModule(model, graph)
-        # gm = symbolic_trace(model)
-        gm: torch.fx.GraphModule
-        # gm.graph.print_tabular()
-        # gm_meta = copy.deepcopy(gm).to('meta')
-        # graph = meta_trace(gm, data, mask)
-        # print(graph.python_code('self').src)
-        interp = MetaInfoProp(gm.cuda())
-        time_0 = time()
-        interp.run(MetaTensor(data, fake_device='cuda:0'), MetaTensor(mask, fake_device='cuda:0'))
-        print(time() - time_0)
-        # print(interp.summary())
+        interp = MetaInfoProp(gm)
+        interp.propagate(MetaTensor(data, fake_device='cuda:0'), MetaTensor(mask, fake_device='cuda:0'))
         model.cpu()
 
-        fwd_flop, bwd_flop = _forward_flops(gm)
+        fwd_flop, bwd_flop = extract_forward_flops(gm)
 
-        concrete_forward_mem, concrete_param_mem = test_gpt_forward(gm, num_steps=1)
-        meta_forward_mem, meta_param_mem = _forward_mem(gm)
+        concrete_forward_mem, concrete_param_mem = test_gpt_forward(gm)
+        meta_forward_mem, meta_param_mem = extract_forward_mem(gm)
 
         print(
-            f'|{M}|{meta_forward_mem:.3f} MB|{meta_param_mem:.3f} MB|{concrete_forward_mem:.3f} MB|{concrete_param_mem:.3f} MB|fwd_flop={fwd_flop / 1e9:.3f}GFLOPs|bwd_flop={bwd_flop / 1e9:.3f}GFLOPs|'
+            f'|{m.__name__}|{meta_forward_mem:.3f} MB|{meta_param_mem:.3f} MB|{concrete_forward_mem:.3f} MB|{concrete_param_mem:.3f} MB|fwd_flop={fwd_flop / 1e9:.3f}GFLOPs|bwd_flop={bwd_flop / 1e9:.3f}GFLOPs|'
         )
-        # sleep(2)
-        del model
+        del model, gm
 
 
 if __name__ == '__main__':
-    # test_meta_info_prop()
+    test_meta_info_prop()
     test_gpt_meta_info_prop()
