@@ -1,4 +1,10 @@
-from .initialize import (initialize, launch, launch_from_openmpi, launch_from_slurm, launch_from_torch,
-                         get_default_parser)
+from .initialize import (
+    get_default_parser,
+    initialize,
+    launch,
+    launch_from_openmpi,
+    launch_from_slurm,
+    launch_from_torch,
+)
 
-__version__ = '0.1.10'
+__version__ = '0.1.11'
