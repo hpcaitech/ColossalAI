@@ -1,6 +1,7 @@
 import copy
 import operator
 from functools import reduce
+from typing import List
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
 from colossalai.auto_parallel.tensor_shard.utils import (enumerate_all_possible_1d_sharding,
@@ -159,7 +160,7 @@ class LayerNormGenerator(StrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         '''
         Generate every possible strategies for a LayerNorm node, and record all strategies into the strategies_vector.
         '''
@@ -178,11 +179,5 @@ class LayerNormGenerator(StrategyGenerator):
 
         # RR = RR x R
         strategy_list.append(self.non_split())
-        # update mete info on cost
-
-        for strategy in strategy_list:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
 
         return strategy_list

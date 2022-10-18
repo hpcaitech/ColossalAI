@@ -1,14 +1,18 @@
 import operator
-from functools import reduce
 import warnings
+from copy import deepcopy
+from functools import reduce
+from typing import Dict, List
+
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import (enumerate_all_possible_1d_sharding,
+                                                                     enumerate_all_possible_2d_sharding,
+                                                                     ignore_sharding_exception)
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
-from copy import deepcopy
-from typing import Dict, List
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
+
+from .operator_handler import OperatorHandler
 
 __all__ = ['BcastOpHandler']
 
@@ -136,7 +140,7 @@ class BcastOpHandler(OperatorHandler):
 
         return output_sharding_spec_list
 
-    @exception_handler
+    @ignore_sharding_exception
     def _register_strategy(self, output_sharding_spec):
         dim_partition_dict_for_input = output_sharding_spec.dim_partition_dict
         sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_input)
@@ -171,7 +175,7 @@ class BcastOpHandler(OperatorHandler):
     ##############################################
     #used to generate strategies for torch.matmul#
     ##############################################
-    @exception_handler
+    @ignore_sharding_exception
     def _registry_no_split_strategies_for_matmul(self, dim_partition_dict_for_batch_dim):
         # this dim partition dict only describes the batch dimensions, but in this scenario,
         # matrix dimensions are fully replicated, so it do not need extra process.
@@ -210,7 +214,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def _split_dim_i(self, dim_partition_dict_for_batch_dim, mesh_dim_on_matrix):
         # A batched matrix multiplication can be viewed as [b, i, k] x [b, k, j] -> [b, i, j]
         # this dim partition dict describe the batch dimensions, so we should append the matrix dimension sharding info on it.
@@ -268,7 +272,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def _split_dim_k(self, dim_partition_dict_for_batch_dim, mesh_dim_on_matrix):
         # A batched matrix multiplication can be viewed as [b, i, k] x [b, k, j] -> [b, i, j]
         # this dim partition dict describe the batch dimensions, so we should append the matrix dimension sharding info on it.
@@ -332,7 +336,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def _split_dim_j(self, dim_partition_dict_for_batch_dim, mesh_dim_on_matrix):
         # A batched matrix multiplication can be viewed as [b, i, k] x [b, k, j] -> [b, i, j]
         # this dim partition dict describe the batch dimensions, so we should append the matrix dimension sharding info on it.
@@ -398,7 +402,7 @@ class BcastOpHandler(OperatorHandler):
         self._split_dim_k(dim_partition_dict, mesh_dim_list)
         self._split_dim_j(dim_partition_dict, mesh_dim_list)
 
-    @exception_handler
+    @ignore_sharding_exception
     def _split_lhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         dim_partition_dict_for_lhs = {-2: [mesh_dim_0], -1: [mesh_dim_1]}
         sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_lhs)
@@ -435,7 +439,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def _split_rhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         dim_partition_dict_for_lhs = {-1: [mesh_dim_0]}
         sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_lhs)
@@ -474,7 +478,7 @@ class BcastOpHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def _split_lhs_space_rhs_space(self, mesh_dim_0, mesh_dim_1):
         dim_partition_dict_for_lhs = {-2: [mesh_dim_0]}
         sharding_spec_for_lhs = self._generate_sharding_spec(self.lhs_data, dim_partition_dict_for_lhs)

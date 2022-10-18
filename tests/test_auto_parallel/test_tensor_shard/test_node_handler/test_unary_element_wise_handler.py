@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import \
     ConvFunctionHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.unary_elementwise_handler import \

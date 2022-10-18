@@ -4,13 +4,12 @@ from functools import reduce
 from typing import Any, Dict, List, Union
 
 import torch
-from torch.fx import Node
-
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, ShardingStrategy,
                                                                      TrainCycleItem)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
+from torch.fx import Node
 
 
 class StrategyGenerator(ABC):
@@ -23,6 +22,9 @@ class StrategyGenerator(ABC):
     def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh):
         self.op_data = operation_data_mapping
         self.device_mesh = device_mesh
+
+        # validate the whether operation data is of desired value
+        self.validate()
 
     @property
     def has_bias(self):
@@ -102,9 +104,9 @@ class StrategyGenerator(ABC):
 
         comm_cost = TrainCycleItem(fwd=0, bwd=0, total=0)
 
-        def _compute_and_add(data: OperationData, comm_spec: CommSpec):
+        def _compute_and_add(op_data: OperationData, comm_spec: CommSpec):
             num_ele_in_comm = comm_spec.get_comm_cost()
-            dtype = operand.data.dtype
+            dtype = op_data.data.dtype
             size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
             for phase, cost in num_ele_in_comm.items():
                 num_ele_in_comm[phase] = num_ele_in_comm[phase] * size_per_elem_bytes
@@ -151,11 +153,30 @@ class StrategyGenerator(ABC):
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
         return reduce(operator.mul, sharded_shape) * size_per_elem_bytes
 
-    @abstractmethod
     def generate(self) -> List[ShardingStrategy]:
         """
         Generate all possible sharding strategies for this operation.
         """
+        strategies = self.collate_strategies()
+
+        # some strategies may be None as ignore_sharding_exception may return None
+        # when ShardingSpecException occurs.
+        # thus, remove those None values
+        strategies = [strategy for strategy in strategies if strategy]
+
+        # update the costs
+        # update mete info on cost
+        # these update methods are all in-place, the default method will do nothing
+        # the cost info will only be added if the child class overrides these methods
+        for strategy in strategies:
+            self.update_communication_cost(strategy)
+            self.update_compute_cost(strategy)
+            self.update_memory_cost(strategy)
+
+        return strategies
+
+    @abstractmethod
+    def collate_strategies(self) -> List[ShardingStrategy]:
         pass
 
     @abstractmethod

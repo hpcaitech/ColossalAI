@@ -1,4 +1,5 @@
 import copy
+from typing import List
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
@@ -49,7 +50,7 @@ class ReshapeGenerator(FollowingStrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
         # For reshape function, to keep the computing correctness we keep the sharding
         # spec of input is fully replicated. In addition, we will keep the output in
