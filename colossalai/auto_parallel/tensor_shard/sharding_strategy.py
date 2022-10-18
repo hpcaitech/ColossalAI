@@ -4,11 +4,12 @@ from enum import Enum
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
-from colossalai.tensor.shape_consistency import CommSpec
-from colossalai.tensor.sharding_spec import ShardingSpec
 from torch.fx.node import Node
 
-from .constants import (BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP)
+from colossalai.tensor.shape_consistency import CommSpec
+from colossalai.tensor.sharding_spec import ShardingSpec
+
+from .constants import BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP
 
 __all__ = ['OperationDataType', 'OperationData', 'TrainCycleItem', 'MemoryCost', 'ShardingStrategy', 'StrategiesVector']
 
@@ -84,6 +85,23 @@ class MemoryCost:
     buffer: int = 0
 
 
+class CommType(Enum):
+    """
+    CommType describes the sequential order of a communication action and a computation action.
+    """
+    BEFORE = 0
+    AFTER = 1
+    HOOK = 2
+    IMPLICIT = 3
+
+
+@dataclass
+class CommAction:
+    comm_spec: CommSpec = None
+    comm_type: CommType = None
+    arg_index: int = -1
+
+
 @dataclass
 class ShardingStrategy:
     """
@@ -102,7 +120,7 @@ class ShardingStrategy:
     compute_cost: TrainCycleItem = None
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None
-    communication_actions: Dict[OperationData, CommSpec] = None
+    communication_actions: Dict[OperationData, CommAction] = None
     resharding_costs: Dict[Node, List[TrainCycleItem]] = None
 
     @property
