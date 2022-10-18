@@ -1,22 +1,20 @@
-import pytest
-import colossalai
-import torch
-import torch.multiprocessing as mp
-import torch.distributed as dist
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-
 from functools import partial
-from tests.test_tensor.common_utils import set_seed
-from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.nn.parallel import ZeroDDP
-from colossalai.testing import parameterize
-from colossalai.gemini.gemini_mgr import GeminiManager
-from tests.test_tensor.common_utils import debug_print
 
-from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
+import pytest
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+
+import colossalai
+from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
+from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.nn.parallel import ZeroDDP
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
+from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.test_tensor.common_utils import debug_print, set_seed
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
@@ -34,7 +32,7 @@ def exam_state_dict(placement_policy, keep_gathered):
         torch_p.data.copy_(p.data)
 
     world_size = torch.distributed.get_world_size()
-    config_dict = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = keep_gathered
     chunk_manager = ChunkManager(config_dict)
@@ -67,7 +65,7 @@ def exam_load_state_dict(placement_policy, keep_gathered):
     torch_model = model_builder()    # get a different model
 
     world_size = torch.distributed.get_world_size()
-    config_dict = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     config_dict[world_size]['chunk_size'] = 5000
     config_dict[world_size]['keep_gathered'] = keep_gathered
 

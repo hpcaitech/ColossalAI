@@ -1,14 +1,20 @@
 import math
-from typing import Dict, List
+from typing import Dict, List, Tuple
+
 import numpy as np
 import torch.nn as nn
+
 from colossalai.tensor import ColoParameter
+
+
+def in_ddp(param: nn.Parameter) -> bool:
+    return not getattr(param, '_ddp_to_ignore', False)
 
 
 def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) -> None:
     """Filter those parameters whose size is too large from others.
     """
-    params_size = [p.numel() for p in model.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+    params_size = [p.numel() for p in model.parameters() if in_ddp(p)]
     params_size_arr = np.array(params_size)
 
     std = np.std(params_size_arr)
@@ -34,10 +40,12 @@ def _get_unused_byte(size_list: List[int], chunk_size: int) -> int:
 
 
 def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
+    """Clasify each parameter by its size of DP group.
+    """
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in model.parameters():
         assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
-        if getattr(param, '_ddp_to_ignore', False):
+        if not in_ddp(param):
             continue
 
         param_key = param.process_group.dp_world_size()
@@ -54,7 +62,7 @@ def search_chunk_configuration(
         search_range_mb: float,
         search_interval_byte: int,    # hidden size is the best value for the interval
         min_chunk_size_mb: float = 32,
-        filter_exlarge_params: bool = True) -> Dict:
+        filter_exlarge_params: bool = True) -> Tuple[Dict, int]:
     search_range_byte = round(search_range_mb * 1024**2)
     min_chunk_size_byte = round(min_chunk_size_mb * 1024**2)
     assert search_range_byte >= 0
@@ -97,4 +105,4 @@ def search_chunk_configuration(
             continue
         config_dict[key] = dict(chunk_size=best_chunk_size, keep_gathered=False)
 
-    return config_dict
+    return config_dict, min_chunk_waste
