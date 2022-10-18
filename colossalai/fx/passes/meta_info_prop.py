@@ -1,11 +1,13 @@
 from dataclasses import asdict
+from typing import Any, Dict, List, NamedTuple, Tuple
+
 import torch
 import torch.fx
-from torch.fx.node import Node, Argument, Target
+from colossalai.fx._compatibility import compatibility
+from colossalai.fx.profiler import (GraphInfo, activation_size, calculate_fwd_in, calculate_fwd_out, calculate_fwd_tmp,
+                                    profile_function, profile_method, profile_module)
+from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_map
-from typing import Any, List, Tuple, NamedTuple, Dict
-from torch.fx._compatibility import compatibility
-from colossalai.fx.profiler import GraphInfo, profile_function, profile_module, profile_method, activation_size, calculate_fwd_out, calculate_fwd_tmp, calculate_fwd_in
 
 
 @compatibility(is_backward_compatible=True)

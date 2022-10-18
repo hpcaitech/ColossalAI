@@ -1,13 +1,16 @@
+from typing import Dict, List, Tuple, Union
+
 import torch
-from torch.fx import Node, GraphModule
-from typing import Union, Dict, List, Tuple
-from . import META_COMPATIBILITY
+from torch.fx import GraphModule, Node
+
+from .._compatibility import compatibility, is_compatible_with_meta
 
 __all__ = [
     'activation_size', 'parameter_size', 'is_inplace', "calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"
 ]
 
 
+@compatibility(is_backward_compatible=True)
 def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     """Calculate activation size of a node.
 
@@ -29,6 +32,7 @@ def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     return act_size
 
 
+@compatibility(is_backward_compatible=True)
 def parameter_size(mod: torch.nn.Module) -> int:
     """Calculate parameter size of a node.
 
@@ -111,8 +115,8 @@ def is_inplace(n: Node):
     inplace = False
     if n.op == "call_function":
         inplace = n.kwargs.get("inplace", False)
-        if META_COMPATIBILITY:
-            from .constant import ALIAS_ATEN
+        if is_compatible_with_meta():
+            from .constants import ALIAS_ATEN
             if n.target in ALIAS_ATEN:
                 inplace = True
     elif n.op == "call_module":

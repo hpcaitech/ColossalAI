@@ -36,7 +36,30 @@ class BatchNormModuleHandler(ModuleHandler):
                                                logical_shape=self.named_parameters['weight'].shape)
         physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
 
-        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
+        physical_running_mean_operand = OperationData(name="running_mean",
+                                                      type=OperationDataType.BUFFER,
+                                                      data=self.named_buffers['running_mean'],
+                                                      logical_shape=self.named_buffers['running_mean'].shape)
+
+        physical_running_var_operand = OperationData(name="running_var",
+                                                     type=OperationDataType.BUFFER,
+                                                     data=self.named_buffers['running_var'],
+                                                     logical_shape=self.named_buffers['running_var'].shape)
+
+        physical_num_batches_tracked_operand = OperationData(
+            name="num_batches_tracked",
+            type=OperationDataType.BUFFER,
+            data=self.named_buffers['num_batches_tracked'],
+            logical_shape=self.named_buffers['num_batches_tracked'].shape)
+
+        mapping = {
+            "input": physical_input_operand,
+            "other": physical_other_operand,
+            "output": physical_output,
+            "running_mean": physical_running_mean_operand,
+            "running_var": physical_running_var_operand,
+            "num_batches_tracked": physical_num_batches_tracked_operand
+        }
 
         if self.named_parameters['bias'] is not None:
             physical_bias_operand = OperationData(name="bias",

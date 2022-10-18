@@ -169,10 +169,7 @@ class Solver:
                 else:
                     communication_costs.append(origin_communication_cost)
                 memory_costs.append(memory_cost)
-                # if isinstance(memory_cost, tuple):
-                #     memory_costs.append(memory_cost[0])
-                # else:
-                #     memory_costs.append(memory_cost)
+
         compute_costs = np.array(compute_costs)
         communication_costs = np.array(communication_costs)
         memory_costs = np.array(memory_costs)

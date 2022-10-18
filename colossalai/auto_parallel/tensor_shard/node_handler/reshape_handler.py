@@ -13,6 +13,7 @@ __all__ = ['ReshapeHandler']
 @operator_registry.register(torch.reshape)
 @operator_registry.register(torch.flatten)
 @operator_registry.register(torch.Tensor.permute)
+@operator_registry.register(torch.nn.AdaptiveAvgPool2d)
 class ReshapeHandler(NodeHandler):
     """
     A ReshapeHandler which deals with the sharding strategies for Reshape Op, such as torch.reshape.

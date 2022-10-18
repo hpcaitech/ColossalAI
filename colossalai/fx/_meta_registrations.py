@@ -1,7 +1,10 @@
 # meta patch from https://github.com/pytorch/pytorch/blob/master/torch/_meta_registrations.py
 # should be activated for PyTorch version 1.12.0 and below
+# refer to https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
+# for more meta_registrations
 
 from typing import List, Optional, Tuple, Union
+
 import torch
 from torch.utils._pytree import tree_map
 
@@ -31,6 +34,7 @@ def register_meta(op, register_dispatcher=True):
     return wrapper
 
 
+# ============================== Convolutions ======================================
 # https://github.com/pytorch/pytorch/pull/79834
 @register_meta(aten.convolution.default)
 def meta_conv(
@@ -165,6 +169,18 @@ def meta_conv_backward(grad_output: torch.Tensor, input: torch.Tensor, weight: t
     return torch.empty_like(input), torch.empty_like(weight), torch.empty((bias_sizes), device='meta')
 
 
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/AdaptiveAveragePooling.cpp
+@register_meta(aten._adaptive_avg_pool2d_backward.default)
+def meta_adaptive_avg_pool2d_backward(
+    grad_output: torch.Tensor,
+    input: torch.Tensor,
+):
+    grad_input = torch.empty_like(input)
+    return grad_input
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Activation.cpp
+# ============================== Activations =======================================
 @register_meta(aten.relu.default)
 def meta_relu(input: torch.Tensor):
     return torch.empty_like(input)
@@ -192,11 +208,8 @@ def meta_hardtanh_backward(grad_out: torch.Tensor, input: torch.Tensor, min_val:
     return grad_in
 
 
-@register_meta(aten.roll.default)
-def meta_roll(input: torch.Tensor, shifts, dims):
-    return input
-
-
+# ============================== Normalization =====================================
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/BatchNorm.cpp
 @register_meta(aten.native_batch_norm.default)
 def meta_bn(input: torch.Tensor, weight, bias, running_mean, running_var, training, momentum, eps):
     n_input = input.size(1)
@@ -207,6 +220,7 @@ def meta_bn(input: torch.Tensor, weight, bias, running_mean, running_var, traini
     return output, running_mean, running_var
 
 
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/BatchNorm.cpp
 @register_meta(aten.native_batch_norm_backward.default)
 def meta_bn_backward(dY: torch.Tensor, input: torch.Tensor, weight: torch.Tensor, running_mean, running_var, save_mean,
                      save_invstd, train, eps, output_mask):
@@ -241,6 +255,7 @@ def meta_cudnn_bn_backward(dY: torch.Tensor, input: torch.Tensor, weight: torch.
     return dX, dgamma, dbeta
 
 
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/layer_norm.cpp
 @register_meta(aten.native_layer_norm.default)
 def meta_ln(input: torch.Tensor, normalized_shape, weight, bias, eps):
     bs = input.size(0)
@@ -252,6 +267,7 @@ def meta_ln(input: torch.Tensor, normalized_shape, weight, bias, eps):
     return output, running_mean, running_var
 
 
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/layer_norm.cpp
 @register_meta(aten.native_layer_norm_backward.default)
 def meta_ln_backward(dY: torch.Tensor, input: torch.Tensor, normalized_shape, mean, rstd, weight, bias,
                      grad_input_mask):
@@ -261,13 +277,18 @@ def meta_ln_backward(dY: torch.Tensor, input: torch.Tensor, normalized_shape, me
     return dX, dgamma, dbeta
 
 
-@register_meta(aten._adaptive_avg_pool2d_backward.default)
-def meta_adaptive_avg_pool2d_backward(
-    grad_output: torch.Tensor,
-    input: torch.Tensor,
-):
-    grad_input = torch.empty_like(input)
-    return torch.empty_like(input)
+# ================================== Misc ==========================================
+#https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
+@register_meta(aten.roll.default)
+def meta_roll(input: torch.Tensor, shifts, dims):
+    return input
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/TensorCompare.cpp
+@register_meta(aten.where.self)
+def meta_where_self(condition: torch.Tensor, self: torch.Tensor, other: torch.Tensor):
+    result_type = torch.result_type(self, other)
+    return torch.empty_like(self, dtype=result_type)
 
 
 @register_meta(aten.index.Tensor)
@@ -360,6 +381,8 @@ def meta_index_Tensor(self, indices):
     return self.new_empty(before_shape + replacement_shape + after_shape)
 
 
+# ============================== Embedding =========================================
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Embedding.cpp
 @register_meta(aten.embedding_dense_backward.default)
 def meta_embedding_dense_backward(grad_output: torch.Tensor, indices: torch.Tensor, num_weights, padding_idx,
                                   scale_grad_by_freq):
@@ -369,13 +392,7 @@ def meta_embedding_dense_backward(grad_output: torch.Tensor, indices: torch.Tens
                        layout=grad_output.layout)
 
 
-# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/TensorCompare.cpp
-@register_meta(aten.where.self)
-def meta_where_self(condition: torch.Tensor, self: torch.Tensor, other: torch.Tensor):
-    result_type = torch.result_type(self, other)
-    return torch.empty_like(self, dtype=result_type)
-
-
+# ============================== Dropout ===========================================
 # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Dropout.cpp
 @register_meta(aten.native_dropout.default)
 def meta_native_dropout_default(input: torch.Tensor, p: float, train: bool = False):

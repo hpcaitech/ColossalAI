@@ -1,13 +1,17 @@
-import torch
-import torch.nn as nn
 import colossalai
 import colossalai.nn as col_nn
-from torch.fx import symbolic_trace
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, uniform_split_pass
-from colossalai.fx.passes.utils import get_comm_size
-from colossalai import META_COMPATIBILITY
 import pytest
+import torch
+import torch.nn as nn
+from colossalai.fx._compatibility import is_compatible_with_meta
+from colossalai.fx.passes.adding_split_node_pass import (split_with_split_nodes_pass, uniform_split_pass)
+from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.fx.passes.utils import get_comm_size
+from torch.fx import symbolic_trace
+
+is_compatible = is_compatible_with_meta()
+if is_compatible:
+    from colossalai.fx.profiler import MetaTensor
 
 MODEL_DIM = 16
 BATCH_SIZE = 8
@@ -31,12 +35,12 @@ class MLP(torch.nn.Module):
         return x
 
 
-@pytest.mark.skipif(not META_COMPATIBILITY, reason='torch version is lower than 1.12.0')
 def test_comm_size_compute():
-    from colossalai.fx.profiler import MetaTensor
     model = MLP(MODEL_DIM)
-    input_sample = MetaTensor(torch.rand(BATCH_SIZE, MODEL_DIM, device='meta'), fake_device='cpu')
+    input_sample = torch.rand(BATCH_SIZE, MODEL_DIM, device='meta')
     gm = symbolic_trace(model)
+    if is_compatible:
+        input_sample = MetaTensor(input_sample, fake_device=next(gm.parameters()).device)
     MetaInfoProp(gm).run(input_sample)
     annotated_model = uniform_split_pass(gm, PIPELINE_SIZE)
     split_model, split_submodules = split_with_split_nodes_pass(annotated_model)
