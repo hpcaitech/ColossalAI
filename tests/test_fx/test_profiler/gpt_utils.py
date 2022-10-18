@@ -42,12 +42,6 @@ class GPTLMLoss(nn.Module):
         return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
 
-def get_data(batch_size, seq_len, vocab_size, device='cpu'):
-    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
-    attention_mask = torch.ones_like(input_ids, device=device)
-    return input_ids, attention_mask
-
-
 def gpt2_medium(checkpoint=False):
     return GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=checkpoint)
 

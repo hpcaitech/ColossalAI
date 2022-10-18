@@ -8,7 +8,7 @@ from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import MetaTensor, parameter_size
 from colossalai.fx.profiler.memory import calculate_fwd_out, calculate_fwd_tmp
 from colossalai.fx.tracer.tracer import ColoTracer
-from gpt_utils import get_data, gpt2_medium
+from gpt_utils import gpt2_medium, gpt2_xl
 from torch.fx import symbolic_trace
 
 TM_BATCH_SIZE = 64
@@ -41,7 +41,13 @@ def gen_tm_data(batch_size: int, shape: Tuple[int, int, int], device='cuda'):
     return data, label
 
 
-def test_tm_forward(gm: torch.fx.GraphModule):
+def gen_gpt_data(batch_size, seq_len, vocab_size, device='cpu'):
+    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=device)
+    attention_mask = torch.ones_like(input_ids, device=device)
+    return input_ids, attention_mask
+
+
+def run_tm_forward(gm: torch.fx.GraphModule):
     torch.cuda.reset_peak_memory_stats()
     forward_mem = -torch.cuda.memory_allocated(device="cuda:0") / 1024**2
     param_mem = -torch.cuda.memory_allocated(device="cuda:0") / 1024**2
@@ -79,7 +85,7 @@ def test_tm_forward(gm: torch.fx.GraphModule):
     return forward_mem, param_mem
 
 
-def test_gpt_forward(gm: torch.fx.GraphModule):
+def run_gpt_forward(gm: torch.fx.GraphModule):
     torch.cuda.reset_peak_memory_stats()
     forward_mem = -torch.cuda.memory_allocated(device="cuda:0") / 1024**2
     param_mem = -torch.cuda.memory_allocated(device="cuda:0") / 1024**2
@@ -87,7 +93,7 @@ def test_gpt_forward(gm: torch.fx.GraphModule):
     param_mem += torch.cuda.memory_allocated(device="cuda:0") / 1024**2
     for n in range(NUM_STEPS):
         torch.cuda.reset_peak_memory_stats()
-        data, mask = get_data(GPT_BATCH_SIZE, 1024, 50257, device='cuda:0')
+        data, mask = gen_gpt_data(GPT_BATCH_SIZE, 1024, 50257, device='cuda:0')
 
         # If we need to dive deep into the memory usage by
         # inspecting `saved_tensor_hooks`
@@ -137,7 +143,7 @@ def test_meta_info_prop():
 
         meta_forward_mem, meta_param_mem = extract_forward_mem(gm)
         fwd_flop, bwd_flop = extract_forward_flops(gm)
-        concrete_forward_mem, concrete_param_mem = test_tm_forward(gm)
+        concrete_forward_mem, concrete_param_mem = run_tm_forward(gm)
 
         print(
             f'|{m.__name__}|{meta_forward_mem:.3f} MB|{meta_param_mem:.3f} MB|{concrete_forward_mem:.3f} MB|{concrete_param_mem:.3f} MB|fwd_flop={fwd_flop / 1e9:.3f}GFLOPs|bwd_flop={bwd_flop / 1e9:.3f}GFLOPs|'
@@ -150,7 +156,7 @@ def test_gpt_meta_info_prop():
     for m in [gpt2_medium]:
         model = m().cuda()
         model.train()
-        data, mask = get_data(GPT_BATCH_SIZE, 1024, 50257, device='meta')
+        data, mask = gen_gpt_data(GPT_BATCH_SIZE, 1024, 50257, device='meta')
         graph = ColoTracer().trace(model, meta_args={'input_ids': data, 'attention_mask': mask})
         gm = torch.fx.GraphModule(model, graph)
         interp = MetaInfoProp(gm)
@@ -159,7 +165,7 @@ def test_gpt_meta_info_prop():
 
         fwd_flop, bwd_flop = extract_forward_flops(gm)
 
-        concrete_forward_mem, concrete_param_mem = test_gpt_forward(gm)
+        concrete_forward_mem, concrete_param_mem = run_gpt_forward(gm)
         meta_forward_mem, meta_param_mem = extract_forward_mem(gm)
 
         print(
