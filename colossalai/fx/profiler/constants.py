@@ -1,6 +1,6 @@
 import torch
 
-__all__ = ['ALIAS_ATEN', 'INPLACE_NEW', 'INPLACE_MATH_ATEN', 'CLONE_ATEN']
+__all__ = ['ALIAS_ATEN', 'INPLACE_NEW', 'INPLACE_MATH_ATEN', 'CLONE_ATEN', 'RELU_LIKE_OPS', 'RELU_LIKE_MOD']
 
 aten = torch.ops.aten
 
@@ -30,3 +30,10 @@ INPLACE_MATH_ATEN = [
 CLONE_ATEN = [
     aten.clone.default,
 ]
+
+RELU_LIKE_OPS = [
+    torch.nn.functional.relu,
+    torch.nn.functional.softmax,
+]
+
+RELU_LIKE_MOD = [torch.nn.ReLU, torch.nn.Softmax]

@@ -8,6 +8,7 @@ from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import MetaTensor, parameter_size
 from colossalai.fx.profiler.memory import calculate_fwd_out, calculate_fwd_tmp
 from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from gpt_utils import gpt2_medium, gpt2_xl
 from torch.fx import symbolic_trace
 
@@ -122,7 +123,7 @@ def run_gpt_forward(gm: torch.fx.GraphModule):
     return forward_mem, param_mem
 
 
-@pytest.mark.skip("Test for performance, no need for CI")
+@run_on_environment_flag(name='FX_PROFILER')
 def test_meta_info_prop():
     for m in [
             tm.alexnet, tm.resnet18, tm.resnet34, tm.resnet50, tm.resnet101, tm.resnet152, tm.densenet121,
@@ -151,7 +152,7 @@ def test_meta_info_prop():
         del model, gm
 
 
-@pytest.mark.skip("Test for performance, no need for CI")
+@run_on_environment_flag(name='FX_PROFILER')
 def test_gpt_meta_info_prop():
     for m in [gpt2_medium]:
         model = m().cuda()
