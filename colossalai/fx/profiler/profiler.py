@@ -272,7 +272,8 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
             tensor = x._tensor.detach()
             tensor.uuid = x._tensor.uuid
             return tensor
-        return x
+        if not isinstance(x, torch.finfo):
+            return x
 
     graph_info.fwd_out = list(map(extract_tensor, normalize_tuple(out)))
 

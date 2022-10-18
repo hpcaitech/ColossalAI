@@ -73,9 +73,9 @@ def calculate_fwd_tmp(n: Node) -> int:
 
     def is_relu_node(n: Node) -> bool:
         if n.op == 'call_function':
-            return n.target in [torch.nn.functional.relu]
+            return n.target in [torch.nn.functional.relu, torch.nn.functional.softmax]
         elif n.op == 'call_module':
-            return type(n.graph.owning_module.get_submodule(n.target)) in [torch.nn.ReLU]
+            return type(n.graph.owning_module.get_submodule(n.target)) in [torch.nn.ReLU, torch.nn.Softmax]
         return False
 
     if not is_relu_node(n):
