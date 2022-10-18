@@ -5,22 +5,34 @@ from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import Parameter
+
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils.checkpointing import (broadcast_state_dict, gather_tensor_parallel_state_dict,
-                                            partition_tensor_parallel_state_dict)
+from colossalai.utils.checkpointing import (
+    broadcast_state_dict,
+    gather_tensor_parallel_state_dict,
+    partition_tensor_parallel_state_dict,
+)
 from colossalai.utils.cuda import get_current_device
-from torch import Tensor
-from torch.nn import Parameter
 
 from ..base_layer import ParallelLayer
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
-from ._operation import (Matmul_AB_2p5D, Matmul_ABT_2p5D, add_bias_2p5d, all_gather_tensor_2p5d, classifier_2p5d,
-                         layernorm_2p5d, reduce_scatter_tensor_2p5d, split_batch_2p5d)
+from ._operation import (
+    Matmul_AB_2p5D,
+    Matmul_ABT_2p5D,
+    add_bias_2p5d,
+    all_gather_tensor_2p5d,
+    classifier_2p5d,
+    layernorm_2p5d,
+    reduce_scatter_tensor_2p5d,
+    split_batch_2p5d,
+)
 from ._utils import assert_tesseract_initialization, get_tesseract_dim_dep_from_env
 
 
@@ -254,7 +266,7 @@ class LayerNorm2p5D(ParallelLayer):
         self.tesseract_dim, _ = get_tesseract_dim_dep_from_env()
 
         # partitioning dimension
-        self.partitioned_partition = divide(normalized_shape, self.tesseract_dim)    # *
+        self.partitioned_partition = divide(normalized_shape, self.tesseract_dim)  # *
 
         # create parameters
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
@@ -357,16 +369,16 @@ class LayerNorm2p5D(ParallelLayer):
 
     def forward(self, x: Tensor) -> Tensor:
         with torch.no_grad():
-            E_x = torch.sum(x, dim=-1, keepdim=True)    # [b/q, s, 1]
+            E_x = torch.sum(x, dim=-1, keepdim=True)  # [b/q, s, 1]
             torch.distributed.all_reduce(E_x, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_ROW))
             E_x /= self.normalized_shape
 
             # Var_x in the block below is the sum of input^2
-            Var_x = torch.sum(x * x, dim=-1, keepdim=True)    # [b/q, s, 1]
+            Var_x = torch.sum(x * x, dim=-1, keepdim=True)  # [b/q, s, 1]
             torch.distributed.all_reduce(Var_x, group=gpc.get_group(ParallelMode.PARALLEL_2P5D_ROW))
             Var_x /= self.normalized_shape
 
-            Var_x = Var_x - E_x * E_x    # variance of x [b/q, s, 1]
+            Var_x = Var_x - E_x * E_x  # variance of x [b/q, s, 1]
             # this time 1/sqrt(Var_x + epsilon)
             Var_x = 1.0 / torch.sqrt(Var_x + self.variance_epsilon)
 
@@ -589,7 +601,7 @@ class PatchEmbedding2p5D(ParallelLayer):
 
         output = F.conv2d(input_, weight, bias, stride=self.patch_size)
         if self.flatten:
-            output = output.flatten(2).transpose(1, 2)    # BCHW -> BNC
+            output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
 
         cls_token = all_gather_tensor_2p5d(self.cls_token, -1, ParallelMode.PARALLEL_2P5D_COL)
         pos_embed = all_gather_tensor_2p5d(self.pos_embed, -1, ParallelMode.PARALLEL_2P5D_COL)

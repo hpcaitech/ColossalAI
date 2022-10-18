@@ -1,8 +1,10 @@
-from colossalai.gemini.paramhooks import BaseParamHookMgr
-from torch import nn
+import copy
+
 import torch
 import torch.nn.functional as F
-import copy
+from torch import nn
+
+from colossalai.gemini.paramhooks import BaseParamHookMgr
 
 
 class SubNet(nn.Module):

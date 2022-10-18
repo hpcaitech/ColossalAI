@@ -1,9 +1,11 @@
+from typing import Dict, Optional
+
 import torch
 import torch.distributed as dist
-from colossalai.tensor import ColoTensor
+
 from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.tensor import ColoTensor
 from colossalai.utils.checkpoint.utils import gather_tensor, scatter_tensor
-from typing import Optional, Dict
 
 
 def save_checkpoint(path: str,
@@ -27,7 +29,7 @@ def save_checkpoint(path: str,
     # save the dist context about the tensors in a new dict, while still maintain the original dict.
     for k, v in model_state.items():
         if isinstance(v, ColoTensor):
-            gather_tensor(v)    # gather shared tensors to rank0
+            gather_tensor(v)  # gather shared tensors to rank0
             # don't recover tensors in rank0, since the dict is only a copy of model
 
     if rank == 0:

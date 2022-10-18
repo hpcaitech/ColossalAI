@@ -1,8 +1,8 @@
 import torch
-import torch.nn as nn
-from colossalai.fx import ColoTracer
 from torch.fx import GraphModule
 from torch.utils.checkpoint import checkpoint
+
+from colossalai.fx import ColoTracer
 
 
 class MLP(torch.nn.Module):

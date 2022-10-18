@@ -1,6 +1,7 @@
-from colossalai.fx import ColoTracer
 import torch
-from torch.fx import GraphModule, Tracer
+from torch.fx import GraphModule
+
+from colossalai.fx import ColoTracer
 
 
 def trace_and_compare(model, data_gen, need_meta=False, need_concrete=False, kwargs_transform=False):

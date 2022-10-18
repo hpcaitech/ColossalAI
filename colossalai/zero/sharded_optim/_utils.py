@@ -1,11 +1,13 @@
 import math
+
 import torch
+import torch.distributed as dist
 from torch._six import inf
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-from colossalai.core import global_context as gpc
+
 from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.utils import is_model_parallel_parameter
-import torch.distributed as dist
 
 
 def flatten(input_):

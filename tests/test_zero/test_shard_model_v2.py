@@ -3,21 +3,21 @@
 
 from functools import partial
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+from common import CONFIG, check_grads_padding, run_fwd_bwd
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+import colossalai
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
+from colossalai.zero.shard_utils import BucketTensorShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from tests.components_to_test.registry import non_distributed_component_funcs
-from torch.nn.parallel import DistributedDataParallel as DDP
-
-from common import CONFIG, check_grads_padding, run_fwd_bwd
 
 
 @parameterize("enable_autocast", [True])

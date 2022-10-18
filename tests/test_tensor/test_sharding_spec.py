@@ -1,6 +1,7 @@
 import torch
-from colossalai.tensor.sharding_spec import _DimSpec, ShardingSpec
+
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.sharding_spec import ShardingSpec
 
 
 def test_sharding_spec():

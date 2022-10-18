@@ -1,14 +1,14 @@
+import functools
 from abc import ABC, abstractmethod
 from time import time
-from typing import List, Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple, Type
+
 import torch
+
+from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollectorV2
 from colossalai.utils import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
-
-from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollectorV2
-from typing import Type
-import functools
-from colossalai.gemini.chunk import Chunk, ChunkManager
 
 
 class PlacementPolicy(ABC):

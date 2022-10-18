@@ -1,15 +1,17 @@
+from enum import Enum
+from typing import Dict, Set, Tuple
+
 import torch
 import torch.distributed as dist
-from enum import Enum
-from torch.optim import Optimizer
 from torch.nn import Parameter
-from colossalai.nn.parallel.data_parallel import ZeroDDP
-from typing import Dict, Tuple, Set
+from torch.optim import Optimizer
+
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.gemini.chunk import Chunk, ChunkManager
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.utils import get_current_device, disposable
-from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.nn.parallel.data_parallel import ZeroDDP
+from colossalai.utils import disposable, get_current_device
 
 
 class OptimState(Enum):

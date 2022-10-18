@@ -1,10 +1,9 @@
 import uuid
 from copy import deepcopy
-from typing import Optional
 
 import torch
-from torch.types import _bool, _device, _dtype
-from torch.utils._pytree import tree_flatten, tree_map
+from torch.types import _device
+from torch.utils._pytree import tree_map
 
 from .._compatibility import compatibility
 from .constants import ALIAS_ATEN
@@ -47,7 +46,7 @@ class MetaTensor(torch.Tensor):
             dtype=elem.dtype,
             layout=elem.layout,
             device=fake_device if fake_device is not None else elem.device,
-            requires_grad=elem.requires_grad)    # deceive the frontend for aten selections
+            requires_grad=elem.requires_grad)  # deceive the frontend for aten selections
         r._tensor = elem
         # ...the real tensor is held as an element on the tensor.
         if not r._tensor.is_meta:

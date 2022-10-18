@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
+
 from colossalai.nn import CheckpointModule
-from .utils.dummy_data_generator import DummyDataGenerator
-from .registry import non_distributed_component_funcs
 from colossalai.utils.cuda import get_current_device
+
+from .registry import non_distributed_component_funcs
+from .utils.dummy_data_generator import DummyDataGenerator
+
 
 class SimpleNet(CheckpointModule):
     """
@@ -27,7 +30,6 @@ class SimpleNet(CheckpointModule):
         x = self.ln2(x)
         x = self.classifier(x)
         return x
-
 
 
 class DummyDataLoader(DummyDataGenerator):

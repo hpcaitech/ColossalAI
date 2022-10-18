@@ -1,10 +1,11 @@
-import torch
-from typing import Optional, Dict, Deque, Set, List, Tuple, Iterable
 from collections import deque
+from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 
-from colossalai.utils import get_current_device
+import torch
+
+from colossalai.gemini.chunk import Chunk, ChunkFullError, TensorState
 from colossalai.tensor import ColoTensor
-from colossalai.gemini.chunk import ChunkFullError, TensorState, Chunk
+from colossalai.utils import get_current_device
 
 
 class ChunkManager:
@@ -206,7 +207,7 @@ class ChunkManager:
         return self.chunk_groups[group_name]
 
     def __close_one_chunk(self, chunk: Chunk):
-        device = get_current_device() if chunk.keep_gathered else self.device    # keep gathered chunk in cuda
+        device = get_current_device() if chunk.keep_gathered else self.device  # keep gathered chunk in cuda
         self.__sub_memroy_usage(chunk.memory_usage)
         chunk.close_chunk(device)
         self.__add_memory_usage(chunk.memory_usage)

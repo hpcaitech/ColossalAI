@@ -6,8 +6,12 @@ from typing import Any, Dict, List, Union
 import torch
 from torch.fx import Node
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, ShardingStrategy,
-                                                                     TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    OperationData,
+    OperationDataType,
+    ShardingStrategy,
+    TrainCycleItem,
+)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
@@ -127,14 +131,12 @@ class StrategyGenerator(ABC):
         """
         Customize this method to compute the computation flops.
         """
-        pass
 
     @abstractmethod
     def update_memory_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """
         Customize this method to compute the memory cost in bytes.
         """
-        pass
 
     def _compute_size_in_bytes(self, strategy: ShardingStrategy, key: str):
         """
@@ -156,7 +158,6 @@ class StrategyGenerator(ABC):
         """
         Generate all possible sharding strategies for this operation.
         """
-        pass
 
     @abstractmethod
     def validate(self) -> bool:
@@ -164,7 +165,6 @@ class StrategyGenerator(ABC):
         Validate if the operands are of desired shape. 
         If True, means this generator can be used for the current operation.
         """
-        pass
 
 
 class FollowingStrategyGenerator(StrategyGenerator):

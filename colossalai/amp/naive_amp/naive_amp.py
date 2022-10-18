@@ -1,17 +1,20 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import torch
-import torch.nn as nn
-import torch.distributed as dist
-from torch import Tensor
 from typing import Any
-from torch.optim import Optimizer
-from torch.distributed import ReduceOp
-from colossalai.core import global_context as gpc
-from colossalai.context import ParallelMode
-from colossalai.nn.optimizer import ColossalaiOptimizer
+
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+from torch import Tensor
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+from torch.distributed import ReduceOp
+from torch.optim import Optimizer
+
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.nn.optimizer import ColossalaiOptimizer
+
 from ._fp16_optimizer import FP16Optimizer
 
 

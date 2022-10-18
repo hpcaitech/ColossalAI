@@ -1,17 +1,9 @@
-import math
-import operator
-from copy import deepcopy
-from typing import Dict, List
+from torch.fx import Graph
 
-import torch
-from torch.fx import Graph, Node
-
-from colossalai.auto_parallel.tensor_shard.node_handler import (OuputHandler, PlacehodlerHandler, operator_registry)
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (ShardingStrategy, StrategiesVector)
-from colossalai.auto_parallel.tensor_shard.utils import (generate_resharding_costs, generate_sharding_spec)
+from colossalai.auto_parallel.tensor_shard.node_handler import OuputHandler, PlacehodlerHandler, operator_registry
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingStrategy, StrategiesVector
+from colossalai.auto_parallel.tensor_shard.utils import generate_sharding_spec
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.tensor.sharding_spec import ShardingSpec
 
 from .options import SolverOptions
 

@@ -1,11 +1,13 @@
-import torch.nn.functional as F
-from typing import Optional
-from ._utils import GeneralTensor, convert_to_colo_tensor
-from colossalai.tensor.op_wrapper import colo_op_impl
-from ._utils import reduce_input, reduce_grad
-from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ReplicaSpec, ColoTensorSpec
-from colossalai.tensor.sharding_spec import ShardingSpec
 from copy import deepcopy
+from typing import Optional
+
+import torch.nn.functional as F
+
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ReplicaSpec, ShardSpec
+from colossalai.tensor.op_wrapper import colo_op_impl
+from colossalai.tensor.sharding_spec import ShardingSpec
+
+from ._utils import GeneralTensor, convert_to_colo_tensor, reduce_grad, reduce_input
 
 
 def colo_linear_1drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
@@ -70,11 +72,11 @@ def colo_linear_imp(input_tensor: GeneralTensor,
 
     # Add communication logic before and after linear call.
     ret_tensor = None
-    if not weight.has_compute_spec():    # No Model Parallel Applied
+    if not weight.has_compute_spec():  # No Model Parallel Applied
         assert weight.is_replicate(), 'Invalid weight spec for native Linear op'
         assert bias is None or bias.is_replicate(), 'Invalid bias spec for native Linear op'
         ret_tensor = ColoTensor.from_torch_tensor(F.linear(input_tensor, weight, bias), spec=ColoTensorSpec(pg))
-    elif weight.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+    elif weight.has_compute_pattern(ComputePattern.TP1D):  # Single Model Parallel Applied
         if weight.is_shard_1dcol() and (bias is None or bias.is_replicate()):
             mode = 'row'
         elif weight.is_shard_1drow() and (bias is None or bias.is_shard_1drow() or bias.is_shard_1dcol()):

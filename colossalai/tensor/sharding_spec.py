@@ -1,10 +1,8 @@
-import torch
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, shard_simulator
-from copy import deepcopy
-from enum import Enum
-from functools import reduce
 import operator
+from copy import deepcopy
+from functools import reduce
+
+import torch
 
 __all__ = ['_DimSpec', 'ShardingException', 'ShardingSpec']
 

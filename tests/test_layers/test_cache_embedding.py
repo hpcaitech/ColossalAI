@@ -1,20 +1,24 @@
-import pytest
+import random
 from functools import partial
+from typing import List
 
 import numpy as np
-import random
-
+import pytest
 import torch
 import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.utils import free_port
+from colossalai.nn.parallel.layers import (
+    CachedEmbeddingBag,
+    CachedParamMgr,
+    EvictionStrategy,
+    ParallelCachedEmbeddingBag,
+    ParallelCachedEmbeddingBagTablewise,
+    TablewiseEmbeddingBagConfig,
+)
+from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.tensor import ColoParameter, ProcessGroup, ShardSpec, ComputePattern, ComputeSpec, \
-    ColoTensor, ColoTensorSpec
-from colossalai.nn.parallel.layers import CachedParamMgr, CachedEmbeddingBag, ParallelCachedEmbeddingBag, EvictionStrategy, \
-    ParallelCachedEmbeddingBagTablewise, TablewiseEmbeddingBagConfig
-from typing import List
+from colossalai.utils import free_port
 
 NUM_EMBED, EMBED_DIM = 10, 8
 BATCH_SIZE = 8
@@ -183,11 +187,11 @@ def test_lfu_strategy(init_freq: bool):
     # check strategy
     Bag.forward(torch.tensor([0, 1, 2], device="cuda:0"), offsets)
     Bag.forward(torch.tensor([0, 1, 2], device="cuda:0"), offsets)
-    Bag.forward(torch.tensor([3], device="cuda:0"), offsets)    # miss, evict 1
-    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)    # hit
-    Bag.forward(torch.tensor([4], device="cuda:0"), offsets)    # miss, evict 3
-    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)    # hit
-    Bag.forward(torch.tensor([0], device="cuda:0"), offsets)    # hit
+    Bag.forward(torch.tensor([3], device="cuda:0"), offsets)  # miss, evict 1
+    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)  # hit
+    Bag.forward(torch.tensor([4], device="cuda:0"), offsets)  # miss, evict 3
+    Bag.forward(torch.tensor([2], device="cuda:0"), offsets)  # hit
+    Bag.forward(torch.tensor([0], device="cuda:0"), offsets)  # hit
 
     assert torch.allclose(torch.Tensor(Bag.cache_weight_mgr.num_hits_history[-6:]), torch.Tensor([3, 0, 1, 0, 1, 1])), \
         "LFU strategy behavior failed"

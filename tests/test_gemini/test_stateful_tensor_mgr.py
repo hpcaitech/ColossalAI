@@ -1,21 +1,21 @@
-import torch
-import colossalai
+from functools import partial
+from typing import List
+
 import pytest
+import torch
 import torch.multiprocessing as mp
+from torch.nn.parameter import Parameter
+
+import colossalai
+from colossalai.gemini import StatefulTensorMgr
+from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER, MemStatsCollector
+from colossalai.gemini.stateful_tensor import TensorState
+from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.gemini.memory_tracer import MemStatsCollector
-from colossalai.gemini.memory_tracer import GLOBAL_MODEL_DATA_TRACER
 from colossalai.utils.memory import colo_set_process_memory_fraction
 from colossalai.zero.sharded_param.sharded_param import ShardedParamV2
-from colossalai.gemini.stateful_tensor import TensorState
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from torch.nn.parameter import Parameter
-from typing import List
-from functools import partial
-
-from colossalai.gemini import StatefulTensorMgr
-from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
 
 
 class Net(torch.nn.Module):

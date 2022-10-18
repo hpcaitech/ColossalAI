@@ -1,6 +1,5 @@
-import transformers
 import torch
-import pytest
+import transformers
 from utils import trace_model_and_compare_output
 
 BATCH_SIZE = 2

@@ -1,5 +1,6 @@
-import click
 import subprocess
+
+import click
 import torch
 from torch.utils.cpp_extension import CUDA_HOME
 
@@ -17,7 +18,6 @@ def check_installation():
 
 def _check_cuda_extension_installed():
     try:
-        import colossal_C
         is_cuda_extension_installed = u'\u2713'
     except ImportError:
         is_cuda_extension_installed = 'x'

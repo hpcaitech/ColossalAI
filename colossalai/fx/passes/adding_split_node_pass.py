@@ -1,7 +1,5 @@
 import torch
 
-from torch.fx import symbolic_trace
-from torch.fx.node import Node
 from colossalai.fx.passes.split_module import split_module
 
 

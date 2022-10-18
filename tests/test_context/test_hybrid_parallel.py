@@ -3,17 +3,18 @@
 
 from functools import partial
 from pathlib import Path
+
 import pytest
 import torch
 import torch.multiprocessing as mp
 
 from colossalai import launch
+from colossalai.context import reset_seeds
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.utils import free_port
-from colossalai.context import reset_seeds
 from colossalai.global_variables import tensor_parallel_env as tp_env
 from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 
 CONFIG_PATH_LIST = list(Path(__file__).parent.glob('configs/*.py'))
 

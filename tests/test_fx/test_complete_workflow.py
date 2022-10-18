@@ -1,16 +1,16 @@
-import colossalai
-import torch
-import torch.nn as nn
-import pytest
-import torch.multiprocessing as mp
-import torch.distributed as dist
-from colossalai.testing import rerun_if_address_is_in_use
 from functools import partial
+
+import pytest
+import torch
+import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.fx import ColoTracer
-from colossalai.utils.model.lazy_init_context import LazyInitContext
 from colossalai.fx.passes.shard_1d_pass import transformer_mlp_pass
-from colossalai.utils import free_port
 from colossalai.tensor import ProcessGroup
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.model.lazy_init_context import LazyInitContext
 
 
 class MLP(torch.nn.Module):

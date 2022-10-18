@@ -2,10 +2,10 @@
 # -*- encoding: utf-8 -*-
 
 from abc import ABC, abstractmethod
+from typing import Callable, Iterable
 
 import torch
 
-from typing import Iterable, Callable
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device
 
@@ -83,7 +83,6 @@ class BaseSchedule(ABC):
     def pre_processing(self, engine):
         """To perform actions before running the schedule.
         """
-        pass
 
     @abstractmethod
     def forward_backward_step(self,
@@ -101,7 +100,6 @@ class BaseSchedule(ABC):
             return_loss (bool, optional): If False, the loss won't be returned.
             return_output_label (bool, optional): If False, the output and label won't be returned.
         """
-        pass
 
     @staticmethod
     def _call_engine(engine, inputs):

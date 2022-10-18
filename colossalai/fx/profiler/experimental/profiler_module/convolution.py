@@ -1,8 +1,10 @@
+import math
 import operator
 from functools import reduce
-import math
 from typing import Tuple
+
 import torch
+
 from ..registry import meta_profiler_module
 
 
@@ -93,7 +95,7 @@ def torch_nn_convtranspose1d(self: torch.nn.ConvTranspose1d, input: torch.Tensor
     macs_per_elem = reduce(operator.mul, self.kernel_size) * c_in // self.groups
     num_elem = reduce(
         operator.mul, input.shape
-    )    # see https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/profiling/flops_profiler/profiler.py#L604
+    )  # see https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/profiling/flops_profiler/profiler.py#L604
     macs = macs_per_elem * num_elem
     flops = 2 * macs
     if self.bias is not None:

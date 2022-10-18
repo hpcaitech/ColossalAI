@@ -1,6 +1,8 @@
-import torch
 from enum import Enum, auto
 from typing import List
+
+import torch
+
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 __all__ = ['BroadcastType', 'is_broadcastable', 'get_broadcast_shape', 'recover_sharding_spec_for_broadcast_shape']

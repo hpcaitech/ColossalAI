@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Union, List
+from typing import List, Union
+
 from colossalai.core import global_context as gpc
 
 

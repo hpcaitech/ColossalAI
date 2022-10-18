@@ -1,7 +1,8 @@
-import torch
-
 from typing import Iterator, Tuple, Union
+
+import torch
 import torch.nn as nn
+
 from colossalai.tensor.colo_tensor import ColoTensor
 
 

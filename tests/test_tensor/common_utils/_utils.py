@@ -1,11 +1,13 @@
 import os
 import random
+
 import numpy as np
 import torch
 import torch.distributed as dist
-from colossalai.core import global_context as gpc
+
 from colossalai.context import ParallelMode
-from colossalai.tensor import ShardSpec, ComputeSpec, ComputePattern
+from colossalai.core import global_context as gpc
+from colossalai.tensor import ComputePattern, ComputeSpec, ShardSpec
 
 
 def set_seed(seed):

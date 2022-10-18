@@ -4,12 +4,23 @@
 import time
 
 import torch
+
 from colossalai.constants import INPUT_GROUP_3D, OUTPUT_GROUP_3D, WEIGHT_GROUP_3D
 from colossalai.core import global_context
 from colossalai.logging import get_dist_logger
-from colossalai.nn import (Classifier3D, CrossEntropyLoss3D, Embedding3D, LayerNorm3D, Linear3D, PatchEmbedding3D,
-                           VanillaClassifier, VanillaPatchEmbedding, VocabParallelClassifier3D,
-                           VocabParallelCrossEntropyLoss3D, VocabParallelEmbedding3D)
+from colossalai.nn import (
+    Classifier3D,
+    CrossEntropyLoss3D,
+    Embedding3D,
+    LayerNorm3D,
+    Linear3D,
+    PatchEmbedding3D,
+    VanillaClassifier,
+    VanillaPatchEmbedding,
+    VocabParallelClassifier3D,
+    VocabParallelCrossEntropyLoss3D,
+    VocabParallelEmbedding3D,
+)
 from colossalai.nn.layer.parallel_3d._utils import get_parallel_mode_from_env
 from colossalai.utils import get_current_device, print_rank_0
 
@@ -784,7 +795,7 @@ def check_loss():
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
     out_master = torch.randn(out_shape, dtype=dtype, device=device)
-    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, ), dtype=torch.long, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
     out = torch.chunk(out_master, DEPTH, dim=0)[i]
@@ -837,7 +848,7 @@ def check_vocab_parallel_loss():
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
     out_master = torch.randn(out_shape, dtype=dtype, device=device)
-    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, ), dtype=torch.long, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
     out = torch.chunk(out_master, DEPTH, dim=0)[i]

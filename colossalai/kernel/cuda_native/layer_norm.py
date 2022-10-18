@@ -2,12 +2,13 @@
       https://github.com/NVIDIA/apex
    with some changes. """
 
-import numbers
-import torch
-from torch.nn.parameter import Parameter
-from torch.nn import init
-from torch.cuda.amp import custom_fwd, custom_bwd
 import importlib
+import numbers
+
+import torch
+from torch.cuda.amp import custom_bwd, custom_fwd
+from torch.nn import init
+from torch.nn.parameter import Parameter
 
 global colossal_layer_norm_cuda
 colossal_layer_norm_cuda = None

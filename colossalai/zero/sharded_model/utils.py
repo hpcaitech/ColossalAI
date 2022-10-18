@@ -1,7 +1,8 @@
-import torch
-from colossalai.zero.sharded_model import ShardedModelV2
-
 import copy
+
+import torch
+
+from colossalai.zero.sharded_model import ShardedModelV2
 
 
 def col_model_deepcopy(sharded_model: ShardedModelV2, other_model: torch.nn.Module):

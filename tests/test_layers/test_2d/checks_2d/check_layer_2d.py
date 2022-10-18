@@ -1,12 +1,23 @@
 import torch
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn import (Classifier2D, CrossEntropyLoss2D, Embedding2D, LayerNorm2D, Linear2D, PatchEmbedding2D,
-                           VanillaClassifier, VanillaPatchEmbedding, VocabParallelClassifier2D,
-                           VocabParallelCrossEntropyLoss2D, VocabParallelEmbedding2D)
+from colossalai.nn import (
+    Classifier2D,
+    CrossEntropyLoss2D,
+    Embedding2D,
+    LayerNorm2D,
+    Linear2D,
+    PatchEmbedding2D,
+    VanillaClassifier,
+    VanillaPatchEmbedding,
+    VocabParallelClassifier2D,
+    VocabParallelCrossEntropyLoss2D,
+    VocabParallelEmbedding2D,
+)
 from colossalai.utils import get_current_device, print_rank_0
 
-from .common import (BATCH_SIZE, DEPTH, HIDDEN_SIZE, IMG_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal)
+from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, IMG_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 
 
 def check_linear():
@@ -336,7 +347,7 @@ def check_classifier_no_given_weight():
     layer.weight.data.copy_(W)
     # W.requires_grad = True
 
-    B_shape = (OUTPUT_SIZE, )
+    B_shape = (OUTPUT_SIZE,)
     B_master = torch.randint(5, B_shape, dtype=dtype, device=device)
     torch.distributed.broadcast(B_master, src=0)
     # B = torch.chunk(B_master, DEPTH, dim=0)[j]
@@ -572,7 +583,7 @@ def check_loss():
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
     out_master = torch.randn(out_shape, dtype=dtype, device=device)
-    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, ), dtype=torch.long, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
     out = torch.chunk(out_master, DEPTH, dim=0)[i]
@@ -607,7 +618,7 @@ def check_vocab_parallel_loss():
 
     out_shape = (BATCH_SIZE, NUM_CLASSES)
     out_master = torch.randn(out_shape, dtype=dtype, device=device)
-    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE, ), dtype=torch.long, device=device)
+    target_master = torch.randint(NUM_CLASSES, (BATCH_SIZE,), dtype=torch.long, device=device)
     torch.distributed.broadcast(out_master, src=0)
     torch.distributed.broadcast(target_master, src=0)
     out = torch.chunk(out_master, DEPTH, dim=0)[i]

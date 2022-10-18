@@ -3,8 +3,12 @@ from typing import Dict, List, Union
 
 from torch.fx.node import Node
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, ShardingStrategy, StrategiesVector,
-                                                                     TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    OperationData,
+    ShardingStrategy,
+    StrategiesVector,
+    TrainCycleItem,
+)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 
@@ -110,7 +114,6 @@ class NodeHandler(ABC):
         """
         Define which generators should be used by this NodeHandler object.
         """
-        pass
 
     @abstractmethod
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -133,7 +136,6 @@ class NodeHandler(ABC):
                 "output": Operand(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data),
             }
         """
-        pass
 
 
 class ModuleHandler(NodeHandler):

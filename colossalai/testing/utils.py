@@ -1,8 +1,9 @@
 import re
-import torch
-from typing import Callable, List, Any
 from functools import partial
 from inspect import signature
+from typing import Any, Callable, List
+
+import torch
 from packaging import version
 
 

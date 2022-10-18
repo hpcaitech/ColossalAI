@@ -1,7 +1,7 @@
 from typing import Dict, List, Tuple, Union
 
 import torch
-from torch.fx import GraphModule, Node
+from torch.fx import Node
 
 from .._compatibility import compatibility, is_compatible_with_meta
 

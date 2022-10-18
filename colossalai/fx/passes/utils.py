@@ -1,7 +1,8 @@
+from typing import Dict
+
 import torch
-from typing import Dict, Set
-from torch.fx.node import Node, map_arg
 from torch.fx.graph import Graph
+from torch.fx.node import Node, map_arg
 
 
 def get_comm_size(prev_partition, next_partition):

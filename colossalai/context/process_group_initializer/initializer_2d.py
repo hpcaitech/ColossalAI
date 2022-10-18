@@ -2,10 +2,11 @@ import math
 
 import torch.distributed as dist
 
-from colossalai.registry import DIST_GROUP_INITIALIZER
-from .process_group_initializer import ProcessGroupInitializer
-from ..parallel_mode import ParallelMode
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.registry import DIST_GROUP_INITIALIZER
+
+from ..parallel_mode import ParallelMode
+from .process_group_initializer import ProcessGroupInitializer
 
 
 def _check_summa_env_var(summa_dim):

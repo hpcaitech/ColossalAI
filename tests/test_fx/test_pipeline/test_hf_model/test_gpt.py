@@ -1,6 +1,5 @@
-import transformers
 import torch
-import pytest
+import transformers
 from hf_utils import split_model_and_compare_output
 
 BATCH_SIZE = 64
@@ -15,7 +14,7 @@ def test_gpt():
         transformers.GPT2LMHeadModel,
         transformers.GPT2DoubleHeadsModel,
         transformers.GPT2ForTokenClassification,
-    # transformers.GPT2ForSequenceClassification, # not supported yet
+        # transformers.GPT2ForSequenceClassification, # not supported yet
     ]
     config = transformers.GPT2Config(n_position=64, n_layer=4, n_head=8)
 

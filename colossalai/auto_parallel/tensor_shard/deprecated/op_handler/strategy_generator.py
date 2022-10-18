@@ -1,6 +1,7 @@
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from typing import List, Dict
+from dataclasses import dataclass
+from typing import Dict, List
+
 from colossalai.device.device_mesh import DeviceMesh
 
 __all__ = ['IntermediateStrategy', 'StrategyGenerator']
@@ -34,7 +35,6 @@ class StrategyGenerator(ABC):
     def generate(self) -> List[IntermediateStrategy]:
         """
         """
-        pass
 
     @abstractmethod
     def validate(self, *args, **kwargs) -> bool:
@@ -42,4 +42,3 @@ class StrategyGenerator(ABC):
         Validate if the operands are of desired shape. 
         If True, means this generator can be used for the current operation.
         """
-        pass

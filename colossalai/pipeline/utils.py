@@ -1,10 +1,11 @@
 import heapq
 import inspect
+from typing import List
+
 import torch
 
 from colossalai.logging import get_dist_logger
 from colossalai.nn.layer.utils import CheckpointModule
-from typing import List
 
 
 def _binary_partition(weights: List, start: int, end: int):

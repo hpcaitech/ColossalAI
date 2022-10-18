@@ -3,9 +3,10 @@
 import torch.distributed as dist
 
 from colossalai.registry import DIST_GROUP_INITIALIZER
+
+from ..parallel_mode import ParallelMode
 from .initializer_tensor import Initializer_Tensor
 from .process_group_initializer import ProcessGroupInitializer
-from ..parallel_mode import ParallelMode
 
 
 @DIST_GROUP_INITIALIZER.register_module

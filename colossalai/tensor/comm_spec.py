@@ -1,8 +1,9 @@
-import torch
-from enum import Enum
-import torch.distributed as dist
-from functools import reduce
 import operator
+from enum import Enum
+from functools import reduce
+
+import torch
+import torch.distributed as dist
 from torch.distributed import ReduceOp
 
 __all__ = [

@@ -1,14 +1,14 @@
-import torch
-from torch.fx.graph_module import GraphModule
-from typing import Callable, List, Dict, Any, Optional
-from torch.fx._compatibility import compatibility
-from packaging import version
-from colossalai.fx.passes.meta_info_prop import TensorMetadata
 import inspect
-from typing import List
+from typing import Any, Callable, Dict, List, Optional
+
+import torch
+from packaging import version
+from torch.fx._compatibility import compatibility
+from torch.fx.graph_module import GraphModule
+
+from colossalai.fx.passes.adding_split_node_pass import balanced_split_pass, pipe_split
+from colossalai.fx.passes.meta_info_prop import TensorMetadata
 from colossalai.fx.passes.split_module import Partition
-from colossalai.fx.passes.adding_split_node_pass import pipe_split, balanced_split_pass
-from torch.fx.node import Node
 
 
 def customized_split_pass_for_gpt2(gm: torch.fx.GraphModule, pp_size: int, partition_list: List[int]):
@@ -202,8 +202,7 @@ def split_module_for_gpt2_test(
             if n.op != 'placeholder' and n._fx_partition > partition_name:
                 n._fx_partition = partition_name
 
-    def record_cross_partition_use(def_node: torch.fx.node.Node,
-                                   use_node: Optional[torch.fx.node.Node]):    # noqa: B950
+    def record_cross_partition_use(def_node: torch.fx.node.Node, use_node: Optional[torch.fx.node.Node]):  # noqa: B950
         def_partition_name = getattr(def_node, '_fx_partition', None)
         use_partition_name = getattr(use_node, '_fx_partition', None)
         if def_partition_name != use_partition_name:
@@ -256,7 +255,7 @@ def split_module_for_gpt2_test(
             node._fx_partition = partition_name
 
         torch.fx.graph.map_arg(node.args, lambda def_node: record_cross_partition_use(def_node, node))
-        torch.fx.graph.map_arg(node.kwargs, lambda def_node: record_cross_partition_use(def_node, node))    # noqa: B950
+        torch.fx.graph.map_arg(node.kwargs, lambda def_node: record_cross_partition_use(def_node, node))  # noqa: B950
 
     # find partitions with no dependencies
     root_partitions: List[str] = []
@@ -343,13 +342,13 @@ def split_module_for_gpt2_test(
 
         # Set correct output values
         output_vals = tuple(partition.environment[orig_nodes[name]] for name in partition.outputs)
-        output_vals = output_vals[0] if len(output_vals) == 1 else output_vals    # type: ignore[assignment]
+        output_vals = output_vals[0] if len(output_vals) == 1 else output_vals  # type: ignore[assignment]
         partition.graph.output(output_vals)
 
         # Construct GraphModule for this partition
         submod_name = f'submod_{partition_name}'
         base_mod_attrs[submod_name] = torch.fx.graph_module.GraphModule(partition.targets,
-                                                                        partition.graph)    # noqa: B950
+                                                                        partition.graph)  # noqa: B950
 
         # Emit call in base graph to this submodule
         output_val = base_mod_graph.call_module(submod_name, tuple(base_mod_env[name] for name in partition.inputs))
@@ -357,7 +356,7 @@ def split_module_for_gpt2_test(
             # Unpack multiple return values from submodule
             output_val_proxy = torch.fx.proxy.Proxy(output_val)
             for i, output_name in enumerate(partition.outputs):
-                base_mod_env[output_name] = output_val_proxy[i].node    # type: ignore[index]
+                base_mod_env[output_name] = output_val_proxy[i].node  # type: ignore[index]
         else:
             if not partition.outputs:
                 continue
@@ -365,6 +364,6 @@ def split_module_for_gpt2_test(
 
     for node in m.graph.nodes:
         if node.op == 'output':
-            base_mod_graph.output(torch.fx.graph.map_arg(node.args[0], lambda n: base_mod_env[n.name]))    # noqa: B950
+            base_mod_graph.output(torch.fx.graph.map_arg(node.args[0], lambda n: base_mod_env[n.name]))  # noqa: B950
 
     return torch.fx.graph_module.GraphModule(base_mod_attrs, base_mod_graph)

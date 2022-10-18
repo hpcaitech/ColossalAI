@@ -1,12 +1,21 @@
 import torch
 import torch.distributed as dist
+from torch.nn import Parameter
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.nn import (Classifier1D, Embedding1D, Linear1D_Col, Linear1D_Row, VanillaClassifier,
-                           VocabParallelClassifier1D, VocabParallelCrossEntropyLoss1D, VocabParallelEmbedding1D)
+from colossalai.nn import (
+    Classifier1D,
+    Embedding1D,
+    Linear1D_Col,
+    Linear1D_Row,
+    VanillaClassifier,
+    VocabParallelClassifier1D,
+    VocabParallelCrossEntropyLoss1D,
+    VocabParallelEmbedding1D,
+)
 from colossalai.utils import get_current_device, print_rank_0
-from torch.nn import Parameter
 
 from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 

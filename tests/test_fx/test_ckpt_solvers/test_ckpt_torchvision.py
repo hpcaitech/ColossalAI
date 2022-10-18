@@ -2,11 +2,13 @@ import copy
 import re
 from typing import Callable
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torchvision.models as tm
+from torch.fx import GraphModule
+
+import colossalai
 from colossalai.core import global_context as gpc
 from colossalai.fx import ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
@@ -14,7 +16,6 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.utils import free_port
-from torch.fx import GraphModule
 
 if is_compatible_with_meta():
     from colossalai.fx.profiler.tensor import MetaTensor

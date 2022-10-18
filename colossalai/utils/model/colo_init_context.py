@@ -1,10 +1,13 @@
-from .utils import InsertPostInitMethodToModuleSubClasses
-import torch
-from colossalai.tensor import ColoTensor, ColoParameter
-from colossalai.nn.parallel.layers import register_colo_module, \
-    ColoLinear, ColoEmbedding
-from torch import nn
 from typing import Iterator, Tuple, Union
+
+import torch
+from torch import nn
+
+from colossalai.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
+from colossalai.tensor import ColoParameter, ColoTensor
+
+from .utils import InsertPostInitMethodToModuleSubClasses
+
 # find named_params includes replica
 
 
@@ -71,16 +74,15 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 continue
 
             split = name.rfind('.')
-            if split >= 0:    # param in submodule
+            if split >= 0:  # param in submodule
                 module_name = name[:split]
                 param_name = name[split + 1:]
             else:
-                module_name = ''    # param in current module
+                module_name = ''  # param in current module
                 param_name = name
             name_list.append((module_name, param_name))
 
-        replaced_tensors = dict(
-        )    # record mapping between (torch.Tensor, ColoTensor) to distinguish the same reference
+        replaced_tensors = dict()  # record mapping between (torch.Tensor, ColoTensor) to distinguish the same reference
         for module_name, param_name in name_list:
             submodule = module.get_submodule(module_name)
             param = submodule.get_parameter(param_name)

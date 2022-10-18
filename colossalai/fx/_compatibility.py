@@ -3,7 +3,6 @@ from typing import Callable
 import torch
 
 try:
-    from . import _meta_registrations
     META_COMPATIBILITY = True
 except:
     META_COMPATIBILITY = False

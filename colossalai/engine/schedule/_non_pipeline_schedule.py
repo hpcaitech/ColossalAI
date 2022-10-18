@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import Iterable
+import inspect
+from typing import Callable, Iterable
 
 import torch
-import inspect
-from ._base_schedule import BaseSchedule
+
 from colossalai.utils import conditional_context
-from typing import Callable
+
+from ._base_schedule import BaseSchedule
 
 
 class NonPipelineSchedule(BaseSchedule):

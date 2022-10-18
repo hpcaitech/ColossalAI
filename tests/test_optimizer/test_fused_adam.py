@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from torch.optim.adam import Adam
 from torch.optim import AdamW
+from torch.optim.adam import Adam
 
 from colossalai.nn.optimizer.fused_adam import FusedAdam
 from colossalai.testing import parameterize

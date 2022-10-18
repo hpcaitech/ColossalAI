@@ -1,7 +1,5 @@
-from colossalai.fx.profiler.memory import activation_size
 import torch
-from torch.fx import Node, Graph
-from torch.fx.graph import _Namespace
+from torch.fx import Graph, Node
 from torch.utils._pytree import tree_map
 
 
@@ -53,7 +51,7 @@ def meta_trace(module: torch.nn.Module, fake_device=None, *args, **kwargs) -> Gr
                 dtype=tensor.dtype,
                 layout=tensor.layout,
                 device=fake_device if fake_device is not None else tensor.device,
-                requires_grad=tensor.requires_grad)    # deceive the frontend for aten selections
+                requires_grad=tensor.requires_grad)  # deceive the frontend for aten selections
             r._tensor = tensor
             if placeholder:
                 if name is None:

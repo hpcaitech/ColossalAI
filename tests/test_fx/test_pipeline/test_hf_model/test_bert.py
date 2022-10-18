@@ -1,6 +1,5 @@
-import transformers
 import torch
-import pytest
+import transformers
 from hf_utils import split_model_and_compare_output
 
 BATCH_SIZE = 2

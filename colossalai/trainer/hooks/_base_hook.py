@@ -20,22 +20,18 @@ class BaseHook(ABC):
     def after_hook_is_attached(self, trainer):
         """Actions after hooks are attached to trainer.
         """
-        pass
 
     def before_train(self, trainer):
         """Actions before training.
         """
-        pass
 
     def after_train(self, trainer):
         """Actions after training.
         """
-        pass
 
     def before_train_iter(self, trainer):
         """Actions before running a training iteration.
         """
-        pass
 
     def after_train_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a training iteration.
@@ -46,42 +42,34 @@ class BaseHook(ABC):
            label (:class:`torch.Tensor`): Labels of the input data.
            loss (:class:`torch.Tensor`): Loss between the output and input data.
         """
-        pass
 
     def before_train_epoch(self, trainer):
         """Actions before starting a training epoch.
         """
-        pass
 
     def after_train_epoch(self, trainer):
         """Actions after finishing a training epoch.
         """
-        pass
 
     def before_test(self, trainer):
         """Actions before evaluation.
         """
-        pass
 
     def after_test(self, trainer):
         """Actions after evaluation.
         """
-        pass
 
     def before_test_epoch(self, trainer):
         """Actions before starting a testing epoch.
         """
-        pass
 
     def after_test_epoch(self, trainer):
         """Actions after finishing a testing epoch.
         """
-        pass
 
     def before_test_iter(self, trainer):
         """Actions before running a testing iteration.
         """
-        pass
 
     def after_test_iter(self, trainer, output: Tensor, label: Tensor, loss: Tensor):
         """Actions after running a testing iteration.
@@ -92,7 +80,6 @@ class BaseHook(ABC):
            label (:class:`torch.Tensor`): Labels of the input data
            loss (:class:`torch.Tensor`): Loss between the output and input data
         """
-        pass
 
     def init_runner_states(self, trainer, key, val):
         """Initializes trainer's state.

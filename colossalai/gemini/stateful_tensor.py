@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
+
 import torch
-from typing import Union
 
 from colossalai.gemini.gemini_context import GeminiMemoryManager
 
@@ -31,7 +31,7 @@ class StatefulTensor(object):
     def __init__(self, maybe_tensor: Optional[torch.Tensor], state: Optional[TensorState] = TensorState.HOLD) -> None:
         self._state = state
         self._payload = None
-        self._payload_size = 0    # byte size of current payload
+        self._payload_size = 0  # byte size of current payload
 
         StatefulTensor.GST_MGR.register_new_instance()
 
@@ -47,7 +47,7 @@ class StatefulTensor(object):
 
     def data_ptr(self):
         if self._payload is None:
-            return 0    # if a tensor has no storage, 0 should be returned
+            return 0  # if a tensor has no storage, 0 should be returned
         return self._payload.data_ptr()
 
     def set_null(self) -> None:

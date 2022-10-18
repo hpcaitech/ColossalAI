@@ -1,15 +1,16 @@
 from functools import partial
+
 import pytest
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.initialize import launch
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.logging import disable_existing_loggers
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager, CollectiveCommPattern
+from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 
 
 def check_apply(rank, world_size, port):

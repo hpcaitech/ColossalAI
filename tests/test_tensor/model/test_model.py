@@ -1,20 +1,25 @@
-import pytest
 from functools import partial
+
+import pytest
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.tensor.colo_parameter import ColoParameter
 import colossalai
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ColoTensor, ProcessGroup
 from colossalai.nn.optimizer import ColossalaiOptimizer
-
+from colossalai.tensor import ColoTensor, ProcessGroup
+from colossalai.tensor.colo_parameter import ColoParameter
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import tensor_shard_equal, check_equal, set_seed, \
-    split_param_row_tp1d, split_param_col_tp1d
+from tests.test_tensor.common_utils import (
+    check_equal,
+    set_seed,
+    split_param_col_tp1d,
+    split_param_row_tp1d,
+    tensor_shard_equal,
+)
 
 
 def run_1d_hybrid_tp(model_name):

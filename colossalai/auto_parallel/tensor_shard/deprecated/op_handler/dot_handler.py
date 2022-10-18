@@ -1,15 +1,12 @@
 import operator
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
-from ..constants import LINEAR_FUNC_OP, LINEAR_MODULE_OP
 from functools import reduce
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler
-from enum import Enum
-from .strategy_generator import StrategyGenerator, IntermediateStrategy
 from typing import List
+
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
+
+from .operator_handler import OperatorHandler
+from .strategy_generator import IntermediateStrategy, StrategyGenerator
 
 __all__ = ['DotHandler']
 

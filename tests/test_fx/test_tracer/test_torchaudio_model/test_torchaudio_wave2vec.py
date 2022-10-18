@@ -1,3 +1,4 @@
+import pytest
 import torch
 from torchaudio.models.wav2vec2 import (
     hubert_base,
@@ -8,7 +9,6 @@ from torchaudio.models.wav2vec2 import (
     wav2vec2_large_lv60k,
 )
 from torchaudio_utils import trace_and_compare
-import pytest
 
 MODEL_LIST = [
     hubert_base,

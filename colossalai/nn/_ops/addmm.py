@@ -1,9 +1,9 @@
 import torch
+
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ReplicaSpec, ShardSpec
 from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ComputePattern, ComputePattern, ComputeSpec, ColoTensor
-from colossalai.tensor import distspec, ColoTensorSpec, ShardSpec, ReplicaSpec
-from ._utils import GeneralTensor, Number, convert_to_colo_tensor
-from ._utils import reduce_input, reduce_grad
+
+from ._utils import GeneralTensor, Number, convert_to_colo_tensor, reduce_grad, reduce_input
 
 
 def colo_addmm_1Drow(input_tensor: ColoTensor, mat1: ColoTensor, mat2: ColoTensor, beta: Number,
@@ -66,13 +66,12 @@ def colo_addmm(input_tensor: GeneralTensor,
 
     # Add communication logic before and after linear call.
     ret_tensor = None
-    if not mat2.has_compute_spec():    # No Model Parallel Applied
+    if not mat2.has_compute_spec():  # No Model Parallel Applied
         assert mat2.is_replicate(), 'Invalid mat2 spec for native addmm op'
         assert input_tensor.is_replicate(), 'Invalid input spec for native addmm op'
-        ret_tensor = ColoTensor.from_torch_tensor(
-            tensor=torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha),
-            spec=ColoTensorSpec(mat2.get_process_group()))
-    elif mat2.has_compute_pattern(ComputePattern.TP1D):    # Single Model Parallel Applied
+        ret_tensor = ColoTensor.from_torch_tensor(tensor=torch.addmm(input_tensor, mat1, mat2, beta=beta, alpha=alpha),
+                                                  spec=ColoTensorSpec(mat2.get_process_group()))
+    elif mat2.has_compute_pattern(ComputePattern.TP1D):  # Single Model Parallel Applied
         if mat2.is_shard_1drow() and input_tensor.is_replicate():
             mode = 'row'
         elif mat2.is_shard_1dcol() and (input_tensor.is_shard_1dcol() or input_tensor.is_shard_1drow()):

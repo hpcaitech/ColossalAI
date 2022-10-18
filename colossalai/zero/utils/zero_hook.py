@@ -2,17 +2,15 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+
+from colossalai.gemini.memory_tracer import MemStatsCollector
+from colossalai.gemini.ophooks import BaseOpHook
+from colossalai.gemini.stateful_tensor import TensorState
+from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
 from colossalai.logging import get_dist_logger
 from colossalai.registry import OPHOOKS
-
 from colossalai.utils import get_current_device
-
 from colossalai.zero.shard_utils import BaseShardStrategy
-from colossalai.gemini.ophooks import BaseOpHook
-
-from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.gemini.memory_tracer import MemStatsCollector
-from colossalai.gemini.stateful_tensor import TensorState
 
 
 @OPHOOKS.register_module

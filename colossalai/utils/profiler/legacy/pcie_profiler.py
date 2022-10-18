@@ -1,7 +1,9 @@
 from pathlib import Path
-from torch.autograd.profiler import profile
-from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwidth
 from typing import List
+
+from torch.autograd.profiler import profile
+
+from .prof_utils import BaseProfiler, _format_bandwidth, _format_memory, _format_time
 
 
 def _get_size(dtype: str):

@@ -1,6 +1,8 @@
-from colossalai.context.singleton_meta import SingletonMeta
+from typing import Optional, Tuple
+
 import torch
-from typing import Tuple, Optional
+
+from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.logging import DistributedLogger
 
 

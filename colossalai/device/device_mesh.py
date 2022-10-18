@@ -1,6 +1,6 @@
-from functools import reduce
 import operator
-import torch
+from functools import reduce
+
 import torch.distributed as dist
 
 

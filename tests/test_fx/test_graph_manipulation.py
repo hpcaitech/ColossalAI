@@ -1,9 +1,7 @@
-import colossalai
 import torch
-from colossalai.fx.passes.utils import get_leaf, get_top, assign_bfs_level_to_nodes
+
 from colossalai.fx import ColoTracer
-from torch.fx import GraphModule
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp, TensorMetadata
+from colossalai.fx.passes.utils import assign_bfs_level_to_nodes, get_leaf, get_top
 
 
 class MLP(torch.nn.Module):

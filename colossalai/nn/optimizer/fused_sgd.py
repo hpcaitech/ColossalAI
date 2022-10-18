@@ -81,6 +81,7 @@ class FusedSGD(Optimizer):
 
         if multi_tensor_applier.available:
             import colossal_C
+
             # Skip buffer
             self._dummy_overflow_buf = torch.tensor([0],
                                                     dtype=torch.int,

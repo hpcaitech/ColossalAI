@@ -3,16 +3,18 @@
 # modified from https://github.com/pytorch/pytorch/blob/master/torch/cuda/amp/grad_scaler.py
 # to support tensor parallel
 
-import torch
-from collections import defaultdict, abc
 import warnings
+from collections import abc, defaultdict
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
-from colossalai.context import ParallelMode
+
+import torch
 import torch.distributed as dist
-from colossalai.core import global_context as gpc
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from packaging import version
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+
+from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
 
 
 class _MultiDeviceReplicator(object):
@@ -212,7 +214,7 @@ class GradScaler(object):
 
         # https://stackoverflow.com/questions/5029934/defaultdict-of-defaultdict
         # Google says mypy struggles with defaultdicts type annotations.
-        per_device_and_dtype_grads = defaultdict(lambda: defaultdict(list))    # type: ignore[var-annotated]
+        per_device_and_dtype_grads = defaultdict(lambda: defaultdict(list))  # type: ignore[var-annotated]
         with torch.no_grad():
             for group in optimizer.param_groups:
                 for param in group["params"]:
@@ -389,14 +391,14 @@ class GradScaler(object):
         if new_scale is not None:
             # Accept a new user-defined scale.
             if isinstance(new_scale, float):
-                self._scale.fill_(new_scale)    # type: ignore[union-attr]
+                self._scale.fill_(new_scale)  # type: ignore[union-attr]
             else:
                 reason = "new_scale should be a float or a 1-element torch.cuda.FloatTensor with requires_grad=False."
                 # type: ignore[attr-defined]
                 assert isinstance(new_scale, torch.cuda.FloatTensor), reason
                 assert new_scale.numel() == 1, reason
                 assert new_scale.requires_grad is False, reason
-                self._scale.copy_(new_scale)    # type: ignore[union-attr]
+                self._scale.copy_(new_scale)  # type: ignore[union-attr]
         else:
             # Consume shared inf/nan data collected from optimizers to update the scale.
             # If all found_inf tensors are on the same device as self._scale, this operation is asynchronous.

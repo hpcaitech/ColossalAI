@@ -3,17 +3,17 @@
 
 import os
 import os.path as osp
-
 from typing import List
+
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.registry import HOOKS
 from colossalai.logging import DistributedLogger
-from colossalai.utils import report_memory_usage, is_dp_rank_0, \
-    is_tp_rank_0, is_no_pp_or_last_stage, MultiTimer
+from colossalai.registry import HOOKS
+from colossalai.trainer.hooks._metric_hook import ThroughputMetric
+from colossalai.utils import MultiTimer, is_dp_rank_0, is_no_pp_or_last_stage, is_tp_rank_0, report_memory_usage
+
 from ._base_hook import BaseHook
 from ._commons_ import _format_number
-from colossalai.trainer.hooks._metric_hook import ThroughputMetric
 
 
 class LogByEpochHook(BaseHook):
@@ -276,7 +276,7 @@ class LogMemoryByEpochHook(LogByEpochHook):
             interval: int = 1,
             priority: int = 10,
             log_eval: bool = True,
-            report_cpu: bool = False,    # no reference
+            report_cpu: bool = False,  # no reference
     ) -> None:
         super().__init__(logger=logger, interval=interval, priority=priority)
         self._log_eval = log_eval

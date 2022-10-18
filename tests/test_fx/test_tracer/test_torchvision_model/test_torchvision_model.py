@@ -2,8 +2,9 @@ import torch
 import torchvision
 import torchvision.models as tm
 from packaging import version
-from colossalai.fx import ColoTracer
 from torch.fx import GraphModule
+
+from colossalai.fx import ColoTracer
 
 
 def test_torchvision_models():

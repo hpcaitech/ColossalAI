@@ -1,15 +1,16 @@
-import torch
 from functools import partial
+
 import pytest
+import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.distributed import ReduceOp
 
 from colossalai.core import global_context as gpc
-from colossalai.initialize import launch
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.initialize import launch
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 
 
 def check_layer(rank, world_size, port):

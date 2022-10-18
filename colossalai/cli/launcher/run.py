@@ -1,12 +1,15 @@
-import click
-import sys
 import os
-import torch
-from colossalai.context import Config
-from .multinode_runner import MultiNodeRunner
-from .hostinfo import HostInfo, HostInfoList
+import sys
 from typing import List
+
+import click
+import torch
 from packaging import version
+
+from colossalai.context import Config
+
+from .hostinfo import HostInfo, HostInfoList
+from .multinode_runner import MultiNodeRunner
 
 # Constants that define our syntax
 NODE_SEP = ','

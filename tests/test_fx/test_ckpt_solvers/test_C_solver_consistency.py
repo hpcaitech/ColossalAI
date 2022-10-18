@@ -1,11 +1,12 @@
 import copy
 
-import colossalai
 import pytest
 import torch
 import torch.fx
 import torch.multiprocessing as mp
 import torchvision.models as tm
+
+import colossalai
 from colossalai.core import global_context as gpc
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
@@ -21,7 +22,6 @@ try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
     withcodegen = True
 except:
-    from colossalai.fx.codegen import python_code_with_activation_checkpoint
     withcodegen = False
 
 

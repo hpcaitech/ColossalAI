@@ -1,9 +1,11 @@
+import operator
+
 import torch
 import torch.nn as nn
-import operator
+
 from colossalai.tensor import ProcessGroup
-from colossalai.tensor.distspec import ShardSpec
 from colossalai.tensor.compute_spec import ComputePattern, ComputeSpec
+from colossalai.tensor.distspec import ShardSpec
 
 ELEMENTWISE_MODULE_OP = [torch.nn.Dropout, torch.nn.ReLU]
 ELEMENTWISE_FUNC_OP = [

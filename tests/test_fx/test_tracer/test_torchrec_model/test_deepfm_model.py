@@ -1,14 +1,11 @@
-from colossalai.fx.tracer import meta_patch
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.fx.tracer.meta_patch.patched_function import python_ops
 import torch
-from torchrec.sparse.jagged_tensor import KeyedTensor, KeyedJaggedTensor
-from torchrec.modules.embedding_modules import EmbeddingBagCollection
-from torchrec.modules.embedding_configs import EmbeddingBagConfig
-from torchrec.models import deepfm, dlrm
-import colossalai.fx as fx
-import pdb
 from torch.fx import GraphModule
+from torchrec.models import deepfm
+from torchrec.modules.embedding_configs import EmbeddingBagConfig
+from torchrec.modules.embedding_modules import EmbeddingBagCollection
+from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, KeyedTensor
+
+from colossalai.fx.tracer.tracer import ColoTracer
 
 BATCH = 2
 SHAPE = 10

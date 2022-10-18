@@ -1,16 +1,11 @@
-import torch
-from dataclasses import dataclass
-from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
-from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, shard_simulator
-from enum import Enum
-from copy import deepcopy
-from typing import Dict, List, Optional, Tuple, Union
-from colossalai.context.singleton_meta import SingletonMeta
-import torch.distributed as dist
 import math
-from functools import reduce
-import operator
-from torch.distributed import ReduceOp
+from copy import deepcopy
+from dataclasses import dataclass
+
+from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, shard_simulator
+
 from .comm_spec import *
 
 __all__ = ['ShapeConsistencyManager', 'ShapeConsistencyOptions', 'set_shape_consistency_options']
@@ -22,7 +17,6 @@ class ShapeConsistencyOptions:
     ShapeConsistencyOptions is a dataclass which specifies the preferences for shape consistency.
     """
     # TODO: shape consistency option is not implemented yet
-    pass
 
 
 def set_shape_consistency_options(options: ShapeConsistencyOptions):
@@ -111,7 +105,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 comm_pattern,
                 sharding_spec=source_spec,
                 gather_dim=gather_dim,
-            # shard_dim will be used during backward
+                # shard_dim will be used during backward
                 shard_dim=gather_dim,
                 logical_process_axis=logical_process_axis,
                 forward_only=self.forward_only)

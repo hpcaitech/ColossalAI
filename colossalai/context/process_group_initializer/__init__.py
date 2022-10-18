@@ -3,10 +3,10 @@ from .initializer_2d import Initializer_2D
 from .initializer_2p5d import Initializer_2p5D
 from .initializer_3d import Initializer_3D
 from .initializer_data import Initializer_Data
+from .initializer_model import Initializer_Model
 from .initializer_pipeline import Initializer_Pipeline
 from .initializer_sequence import Initializer_Sequence
 from .initializer_tensor import Initializer_Tensor
-from .initializer_model import Initializer_Model
 from .process_group_initializer import ProcessGroupInitializer
 
 __all__ = [

@@ -1,9 +1,10 @@
 import gc
 import inspect
+from collections import defaultdict
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from typing import Optional
-from collections import defaultdict
 
 LINE_WIDTH = 108
 LINE = '-' * LINE_WIDTH + '\n'

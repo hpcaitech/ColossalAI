@@ -1,13 +1,15 @@
+import inspect
+import random
+
+import numpy as np
 import torch
 import torchvision
 import torchvision.models as tm
-from colossalai.fx import ColoTracer
-from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
-from torch.fx import GraphModule
 from packaging import version
-import random
-import numpy as np
-import inspect
+from torch.fx import GraphModule
+
+from colossalai.fx import ColoTracer
+from colossalai.fx.passes.adding_split_node_pass import balanced_split_pass, split_with_split_nodes_pass
 
 MANUAL_SEED = 0
 random.seed(MANUAL_SEED)

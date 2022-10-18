@@ -1,17 +1,15 @@
+import copy
+from functools import partial
+
+import pytest
 import torch
-import colossalai
 import torch.multiprocessing as mp
-from colossalai.amp import convert_to_naive_amp, convert_to_apex_amp
-from tests.components_to_test.registry import non_distributed_component_funcs
+
+import colossalai
+from colossalai.amp import convert_to_apex_amp, convert_to_naive_amp
 from colossalai.testing import assert_close_loose, rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.amp import convert_to_naive_amp, convert_to_apex_amp
-
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-import copy
-import pytest
-from functools import partial
 
 
 def check_equal(a, b):

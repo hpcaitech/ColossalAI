@@ -1,12 +1,13 @@
 import math
+from typing import Type
 
 import torch
 import torch.nn as nn
+
 from colossalai.context import ParallelMode, seed
-from colossalai.utils import get_current_device
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.utils import get_current_device
 from colossalai.zero.init_ctx import no_shard_zero_decrator
-from typing import Type
 
 
 class MoeExperts(nn.Module):
@@ -90,7 +91,7 @@ class FFNExperts(MoeExperts):
         for param in self.parameters():
             param.__setattr__('moe_info', self.dist_info)
 
-    def forward(self, inputs):    # inputs [g, el, c, h]
+    def forward(self, inputs):  # inputs [g, el, c, h]
 
         el = inputs.size(1)
         h = inputs.size(-1)
@@ -106,7 +107,7 @@ class FFNExperts(MoeExperts):
 
         out_model = torch.baddbmm(self.b2, out_inter, self.w2)
         with seed(ParallelMode.TENSOR):
-            outputs = self.drop(out_model)    # outputs [el, gc, h]
+            outputs = self.drop(out_model)  # outputs [el, gc, h]
 
         outputs = outputs.reshape(inshape)
         outputs = outputs.transpose(0, 1).contiguous()
@@ -150,7 +151,7 @@ class TPExperts(MoeExperts):
         self.w2.__setattr__('moe_info', self.dist_info)
         self.b1.__setattr__('moe_info', self.dist_info)
 
-    def forward(self, inputs):    # inputs [g, e, c, h]
+    def forward(self, inputs):  # inputs [g, e, c, h]
 
         e = inputs.size(1)
         h = inputs.size(-1)
@@ -165,8 +166,8 @@ class TPExperts(MoeExperts):
             out_inter = self.drop(out_act)
 
         out_model = torch.baddbmm(self.b2, out_inter, self.w2)
-        outputs = self.drop(out_model)    # outputs [e, gc, h]
+        outputs = self.drop(out_model)  # outputs [e, gc, h]
 
         outputs = outputs.reshape(inshape)
         outputs = outputs.transpose(0, 1).contiguous()
-        return outputs    # outputs [g, e, c, h]
+        return outputs  # outputs [g, e, c, h]

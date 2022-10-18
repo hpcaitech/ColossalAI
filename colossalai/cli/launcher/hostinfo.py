@@ -1,4 +1,3 @@
-from typing import List
 import socket
 
 
@@ -34,7 +33,7 @@ class HostInfo:
         """
 
         if port is None:
-            port = 22    # no port specified, lets just use the ssh port
+            port = 22  # no port specified, lets just use the ssh port
         hostname = socket.getfqdn(hostname)
         if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
             return True

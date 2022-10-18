@@ -1,16 +1,18 @@
 from functools import partial
+
 import pytest
 import torch
-import torch.nn as nn
-import torch.multiprocessing as mp
 import torch.distributed as dist
+import torch.multiprocessing as mp
+import torch.nn as nn
+
 import colossalai
-from colossalai.utils import free_port, get_current_device
-from colossalai.nn.layer.moe import Top1Router, UniformNoiseGenerator, MoeLayer, Experts
 from colossalai.context.moe_context import MOE_CONTEXT
-from colossalai.utils.moe import sync_moe_model_param
 from colossalai.engine.gradient_handler import MoeGradientHandler
+from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, UniformNoiseGenerator
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
+from colossalai.utils.moe import sync_moe_model_param
 
 BATCH_SIZE = 4
 DIM = 16
@@ -22,7 +24,7 @@ def run_test(rank, world_size, port):
     expert_module = nn.Linear
     expert_factor = dict(in_features=DIM, out_features=DIM, device=get_current_device())
 
-    MOE_CONTEXT.setup(42)    # MOE initialization
+    MOE_CONTEXT.setup(42)  # MOE initialization
     noisy_func = UniformNoiseGenerator()
     router = Top1Router(noisy_func=noisy_func)
     num_experts_list = [1, 2, 4]

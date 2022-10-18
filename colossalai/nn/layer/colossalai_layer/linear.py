@@ -1,9 +1,10 @@
-import math
 import inspect
+import math
 from typing import Callable
 
-from colossalai.utils import get_current_device
 from torch import dtype, nn
+
+from colossalai.utils import get_current_device
 
 from ... import init as init
 from ..parallel_1d import *
@@ -82,7 +83,7 @@ class Linear(ColossalaiModule):
             linear_cls = _parallel_linear[tensor_parallel]
             gather_output = kwargs.pop('gather_output', None)
             if 'gather_output' in inspect.signature(
-                    linear_cls.__init__).parameters.keys():    # gather_out arg is available
+                    linear_cls.__init__).parameters.keys():  # gather_out arg is available
                 kwargs['gather_output'] = gather_output
             layer = linear_cls(
                 in_features,

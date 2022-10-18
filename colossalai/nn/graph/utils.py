@@ -1,8 +1,10 @@
 import functools
-import torch
-from colossalai.tensor import ColoTensor
 from typing import Callable, List
+
+import torch
+
 from colossalai.nn._ops._utils import convert_to_colo_tensor
+from colossalai.tensor import ColoTensor
 
 
 def register_colo_graph(input_pos: List[int], param_pos: List[int]) -> Callable:
@@ -18,7 +20,7 @@ def register_colo_graph(input_pos: List[int], param_pos: List[int]) -> Callable:
     """
 
     def register_colo_graph_decorator(func):
-        from colossalai.nn.graph import GraphOpNode, GraphGlobalEnv
+        from colossalai.nn.graph import GraphGlobalEnv, GraphOpNode
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):

@@ -1,17 +1,19 @@
 import os
 import warnings
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
+
 import torch
 import torch.nn as nn
 from torch.nn.modules.module import _addindent
-from typing import Type, Dict, List, Any, Union, Optional, Set
-from pathlib import Path
+
 try:
-    from torch.fx.graph_module import GraphModule, _EvalCacheLoader, _WrappedCall, _exec_with_source, _forward_from_src
-    from torch.fx.graph import Graph, _PyTreeCodeGen, _is_from_torch, _custom_builtins, PythonCode
+    from torch.fx.graph import Graph, PythonCode, _PyTreeCodeGen
+    from torch.fx.graph_module import GraphModule, _exec_with_source, _forward_from_src, _WrappedCall
     COLOGM = True
 except:
-    from torch.fx.graph_module import GraphModule
     from torch.fx.graph import Graph
+    from torch.fx.graph_module import GraphModule
     COLOGM = False
 
 if COLOGM:
@@ -74,7 +76,7 @@ if COLOGM:
             cls_call = cls.__call__ if "__call__" in vars(cls) else None
 
             if '_wrapped_call' not in vars(cls):
-                cls._wrapped_call = _WrappedCall(cls, cls_call)    # type: ignore[attr-defined]
+                cls._wrapped_call = _WrappedCall(cls, cls_call)  # type: ignore[attr-defined]
 
             def call_wrapped(self, *args, **kwargs):
                 return self._wrapped_call(self, *args, **kwargs)

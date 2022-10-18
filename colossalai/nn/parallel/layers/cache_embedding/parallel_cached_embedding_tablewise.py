@@ -1,15 +1,15 @@
+from typing import List
+
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
-from .cached_embedding import CachedEmbeddingBag
-from .cache_mgr import EvictionStrategy
-from .embedding_config import TablewiseEmbeddingBagConfig
-from colossalai.tensor import ProcessGroup
 from colossalai.nn._ops._utils import dual_all_to_all_tablewise
+from colossalai.tensor import ProcessGroup
 
-from typing import List
-import time
+from .cache_mgr import EvictionStrategy
+from .cached_embedding import CachedEmbeddingBag
+from .embedding_config import TablewiseEmbeddingBagConfig
 
 
 class ParallelCachedEmbeddingBagTablewise(CachedEmbeddingBag):
@@ -128,7 +128,7 @@ class ParallelCachedEmbeddingBagTablewise(CachedEmbeddingBag):
         if per_sample_weights != None:
             local_per_sample_weights_list: List(torch.Tensor) = []
 
-        offset_pre_end = 0    # local_offsets trick
+        offset_pre_end = 0  # local_offsets trick
         for i, handle_table in enumerate(self.assigned_table_list):
             indices_start_position = offsets[batch_size * handle_table]
             if (not self.include_last_offset) and (batch_size * (handle_table + 1) >= indices.shape[0]):

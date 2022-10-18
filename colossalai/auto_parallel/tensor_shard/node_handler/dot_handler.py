@@ -1,16 +1,15 @@
-from copy import deepcopy
 from typing import Dict, List, Union
 
 import torch
 import torch.nn.functional as F
 
-from colossalai.auto_parallel.tensor_shard.utils import (switch_partition_dim, update_partition_dim)
+from colossalai.auto_parallel.tensor_shard.utils import switch_partition_dim, update_partition_dim
 from colossalai.tensor.sharding_spec import ShardingException
 
-from ..sharding_strategy import (OperationData, OperationDataType, ShardingStrategy)
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
 from .node_handler import ModuleHandler, NodeHandler
 from .registry import operator_registry
-from .strategy import (BatchedMatMulStrategyGenerator, LinearProjectionStrategyGenerator, StrategyGenerator)
+from .strategy import BatchedMatMulStrategyGenerator, LinearProjectionStrategyGenerator, StrategyGenerator
 
 __all__ = ['LinearModuleHandler', 'LinearFunctionHandler', 'BMMFunctionHandler']
 

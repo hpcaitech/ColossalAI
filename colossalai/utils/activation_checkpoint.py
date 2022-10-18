@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import weakref
+
 import torch
 from torch.utils.checkpoint import check_backward_validity, detach_variable
 
-from colossalai.context.random import get_states, get_current_mode, set_seed_states, set_mode, sync_states
-from .cuda import get_current_device
+from colossalai.context.random import get_current_mode, get_states, set_mode, set_seed_states, sync_states
 
-import weakref
+from .cuda import get_current_device
 
 
 def copy_to_device(obj, device):

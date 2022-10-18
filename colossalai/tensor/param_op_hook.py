@@ -1,9 +1,11 @@
-import torch
-from contextlib import contextmanager
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Any
-from colossalai.tensor.colo_tensor import ColoTensor
+from contextlib import contextmanager
+from typing import Any, List, Tuple
+
+import torch
+
 from colossalai.tensor import ColoTensorSpec
+from colossalai.tensor.colo_tensor import ColoTensor
 
 
 class ParamOpHook(ABC):

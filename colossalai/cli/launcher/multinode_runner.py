@@ -1,8 +1,10 @@
-import fabric
-from .hostinfo import HostInfo, HostInfoList
 from multiprocessing import Pipe, Process
 from multiprocessing import connection as mp_connection
+
 import click
+import fabric
+
+from .hostinfo import HostInfo, HostInfoList
 
 
 def run_on_host(hostinfo: HostInfo, workdir: str, recv_conn: mp_connection.Connection,

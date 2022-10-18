@@ -1,17 +1,14 @@
-import torch
-from torch.fx import GraphModule
-import torch.nn as nn
-import pytest
-
-from colossalai.fx.proxy import ColoProxy
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
-from colossalai.auto_parallel.tensor_shard.deprecated.op_handler.conv_handler import CONV_STRATEGIES_LIST
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
-from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
 from copy import deepcopy
+
+import torch
+import torch.nn as nn
+from torch.fx import GraphModule
+
+from colossalai.auto_parallel.tensor_shard.deprecated.op_handler.conv_handler import CONV_STRATEGIES_LIST
+from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
+from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.tracer.tracer import ColoTracer
 
 
 class ConvModel(nn.Module):

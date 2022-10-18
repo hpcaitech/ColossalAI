@@ -1,16 +1,16 @@
-from lib2to3 import pgen2
-import colossalai
-import torch
+from functools import partial
+
 import pytest
+import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
+
+import colossalai
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup
+from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from functools import partial
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.sharding_spec import ShardingSpec
-from colossalai.tensor import ColoTensor, ColoParameter, ProcessGroup
-from colossalai.nn._ops._utils import gather_forward_split_backward
 
 
 def run_dist(rank, world_size, port):

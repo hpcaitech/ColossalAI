@@ -1,25 +1,23 @@
 from functools import partial
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
 
+import colossalai
+from colossalai.context import MOE_CONTEXT
+from colossalai.engine.gradient_handler import MoeGradientHandler
 from colossalai.nn import MoeLoss
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.testing import assert_equal_in_group, parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
+from colossalai.zero.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.engine.gradient_handler import MoeGradientHandler
-from colossalai.context import MOE_CONTEXT
-from colossalai.testing import assert_equal_in_group
-
-from tests.test_zero.common import CONFIG, check_grads_padding, run_fwd_bwd
 from tests.test_moe.test_moe_zero_init import MoeModel
+from tests.test_zero.common import CONFIG, check_grads_padding, run_fwd_bwd
 
 
 @parameterize("enable_autocast", [False])

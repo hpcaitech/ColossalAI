@@ -1,5 +1,6 @@
-from setuptools import setup, Extension
 import os
+
+from setuptools import Extension, setup
 
 this_dir = os.path.dirname(os.path.abspath(__file__))
 ext_modules = [Extension(

@@ -1,12 +1,14 @@
-import numpy as np
-import torch
-from torch.profiler import record_function
-from typing import List, Optional
-from contexttimer import Timer
-from .copyer import LimitBuffIndexCopyer
-from enum import Enum
 import sys
 from contextlib import contextmanager
+from enum import Enum
+from typing import List, Optional
+
+import numpy as np
+import torch
+from contexttimer import Timer
+from torch.profiler import record_function
+
+from .copyer import LimitBuffIndexCopyer
 
 
 class EvictionStrategy(Enum):

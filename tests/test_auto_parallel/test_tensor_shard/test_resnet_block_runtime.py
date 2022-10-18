@@ -1,28 +1,27 @@
 from functools import partial
+
 import pytest
 import torch
 import torch.multiprocessing as mp
-from torch.fx import GraphModule
 import torch.nn as nn
-import pytest
-from colossalai import device
-from colossalai.initialize import launch
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.logging import disable_existing_loggers
-from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.fx.passes.experimental.adding_shape_consistency_pass_v2 import shape_consistency_pass, solution_annotatation_pass
-from colossalai.auto_parallel.tensor_shard.solver.options import SolverOptions
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.auto_parallel.tensor_shard.solver.strategies_constructor import StrategiesConstructor
+from torch.fx import GraphModule
+
 from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
-from copy import deepcopy
+from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
+from colossalai.auto_parallel.tensor_shard.solver.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
-from torchvision.models import resnet34, resnet50
-from colossalai.auto_parallel.tensor_shard.constants import *
-from colossalai.testing import assert_close_loose, assert_close
+from colossalai.auto_parallel.tensor_shard.solver.strategies_constructor import StrategiesConstructor
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.passes.experimental.adding_shape_consistency_pass_v2 import (
+    shape_consistency_pass,
+    solution_annotatation_pass,
+)
+from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.initialize import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.utils import free_port
 
 seed = 128
 cudnn_benchmark = False

@@ -3,7 +3,7 @@
 # refer to https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
 # for more meta_registrations
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 import torch
 from torch.utils._pytree import tree_map
@@ -159,7 +159,7 @@ def meta_conv(
         shape_out = calc_conv_nd_return_shape(dims, kernel_size, stride, padding, dilation)
     out = input_tensor.new_empty((input_tensor.shape[0], out_channels, *shape_out))
     mem_fmt = pick_memory_format()
-    out = out.to(memory_format=mem_fmt)    # type: ignore[call-overload]
+    out = out.to(memory_format=mem_fmt)  # type: ignore[call-overload]
     return out
 
 
@@ -317,7 +317,7 @@ def meta_index_Tensor(self, indices):
     indices = result
     assert len(indices) <= self.ndim, f"too many indices for tensor of dimension {self.ndim} (got {len(indices)})"
     # expand_outplace
-    import torch._refs as refs    # avoid import cycle in mypy
+    import torch._refs as refs  # avoid import cycle in mypy
 
     indices = list(refs._maybe_broadcast(*indices))
     # add missing null tensors

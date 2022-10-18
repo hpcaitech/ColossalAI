@@ -3,6 +3,7 @@ from typing import Any, Callable, Union
 import pytest
 import torch
 import torch.nn as nn
+
 from colossalai.fx._compatibility import is_compatible_with_meta
 
 if is_compatible_with_meta():
@@ -11,7 +12,7 @@ if is_compatible_with_meta():
 aten = torch.ops.aten
 
 registered_meta = {
-    ('aten.convolution.default', True): [    # (aten ops, requires_backward)
+    ('aten.convolution.default', True): [  # (aten ops, requires_backward)
         (nn.Conv1d(in_channels=3, out_channels=4, kernel_size=2, padding=1, dilation=2), torch.rand(2, 3, 4)),
         (nn.Conv2d(in_channels=3, out_channels=4, kernel_size=2, padding=1, dilation=2), torch.rand(2, 3, 4, 4)),
         (nn.Conv3d(in_channels=3, out_channels=4, kernel_size=2, padding=1, dilation=2), torch.rand(2, 3, 4, 4, 4)),

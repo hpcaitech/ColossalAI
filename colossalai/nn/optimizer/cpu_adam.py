@@ -1,9 +1,11 @@
 import math
+from typing import Optional
+
 import torch
 
 from colossalai.registry import OPTIMIZERS
+
 from .nvme_optimizer import NVMeOptimizer
-from typing import Optional
 
 
 @OPTIMIZERS.register_module

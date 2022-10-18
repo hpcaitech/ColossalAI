@@ -4,8 +4,9 @@
 import pytest
 import torch
 import torch.nn.functional as F
+
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.context.random import add_seed, seed, set_mode, reset_seeds
+from colossalai.context.random import add_seed, reset_seeds, seed, set_mode
 from colossalai.utils.activation_checkpoint import checkpoint
 
 

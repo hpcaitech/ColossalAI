@@ -1,8 +1,9 @@
 import math
 from typing import Callable
 
-from colossalai.utils import get_current_device
 from torch import dtype, nn
+
+from colossalai.utils import get_current_device
 
 from ... import init as init
 from ..parallel_1d import Embedding1D, PatchEmbedding1D, VocabParallelEmbedding1D

@@ -4,13 +4,15 @@
 from typing import Optional, Tuple
 
 import torch
-from colossalai.communication import (all_gather, all_reduce, broadcast, reduce, reduce_scatter)
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
-from ._utils import get_parallel_mode_from_env
+
+from colossalai.communication import all_gather, all_reduce, broadcast, reduce, reduce_scatter
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+
+from ._utils import get_parallel_mode_from_env
 
 
 class _Linear3D(torch.autograd.Function):

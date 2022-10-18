@@ -1,9 +1,10 @@
+from typing import List, Optional, Tuple
+
 import torch
-from typing import Optional, Tuple
-from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
-from colossalai.gemini.tensor_utils import colo_tensor_mem_usage
+
 from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
-from typing import List
+from colossalai.gemini.tensor_utils import colo_tensor_mem_usage
+from colossalai.zero.sharded_param.sharded_tensor import ShardedTensor
 
 EMPTY_TENSOR_DICT = {}
 

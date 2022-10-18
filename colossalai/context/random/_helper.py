@@ -7,8 +7,8 @@ from contextlib import contextmanager
 import torch.cuda
 from torch import Tensor
 
-from .seed_manager import SeedManager
 from ..parallel_mode import ParallelMode
+from .seed_manager import SeedManager
 
 _SEED_MANAGER = SeedManager()
 

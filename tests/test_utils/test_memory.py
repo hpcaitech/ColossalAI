@@ -1,12 +1,12 @@
+from functools import partial
+
 import pytest
+import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils.memory import colo_set_process_memory_fraction, colo_device_memory_capacity
 from colossalai.utils import free_port
-
-from functools import partial
-import torch.multiprocessing as mp
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.memory import colo_device_memory_capacity, colo_set_process_memory_fraction
 
 
 def _run_colo_set_process_memory_fraction_and_colo_device_memory_capacity():

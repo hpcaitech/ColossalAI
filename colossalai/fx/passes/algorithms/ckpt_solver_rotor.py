@@ -1,14 +1,15 @@
 import sys
 from typing import List, Tuple
-from colossalai.fx.profiler.memory import calculate_fwd_in
+
 from torch.fx import Node
-from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.profiler import activation_size, parameter_size, calculate_fwd_out, calculate_fwd_tmp
-import math
-from .linearize import linearize
-from .operation import ForwardCheck, ForwardEnable, ForwardNograd, Backward, Loss, Chain, Sequence, Function
+
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
+from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.fx.profiler import activation_size, calculate_fwd_out, calculate_fwd_tmp
 from colossalai.logging import get_dist_logger
+
+from .linearize import linearize
+from .operation import Backward, Chain, ForwardCheck, ForwardEnable, ForwardNograd, Function, Loss, Sequence
 
 # global vairable to indicate whether the solver is failed
 SOLVER_FAILED = False
@@ -25,10 +26,10 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
                            (False, j) if the optimal choice is a leaf checkpoint of length j
     The computation uses dynamic programming"""
 
-    fw = chain.fweight + [0]    ## forward time
-    bw = chain.bweight    ## backward time, not used
-    cw = chain.cweight + [0]    ## size of x (and of y)
-    cbw = chain.cbweight + [0]    ## size of xbar
+    fw = chain.fweight + [0]  ## forward time
+    bw = chain.bweight  ## backward time, not used
+    cw = chain.cweight + [0]  ## size of x (and of y)
+    cbw = chain.cbweight + [0]  ## size of xbar
     fwd_mem_tmp = chain.fwd_mem_tmp + [0]
     bwd_mem_tmp = chain.bwd_mem_tmp + [0]
 
@@ -42,7 +43,7 @@ def _compute_table(chain: Chain, mmax) -> Tuple:
         for i in range(chain.length + 1):
             #lmax-lmin = 0
             limit = max(cw[i + 1] + cbw[i + 1] + fwd_mem_tmp[i], cw[i + 1] + cbw[i + 1] + bwd_mem_tmp[i])
-            if m >= limit:    ## Equation (1)
+            if m >= limit:  ## Equation (1)
                 opt[m][i][i] = fw[i] + bw[i]
             else:
                 opt[m][i][i] = float("inf")
@@ -224,7 +225,7 @@ def _get_bwd_mem_tmp(node: List[Node]) -> int:
             if child in deps:
                 deps[child] -= 1
                 if deps[child] <= 0:
-                    deps[child] = float('-inf')    # free
+                    deps[child] = float('-inf')  # free
 
     return bwd_mem_tmp
 
@@ -372,8 +373,8 @@ def solver_rotor(gm: ColoGraphModule,
 
         # build module if module not found
         except ModuleNotFoundError:
-            import subprocess
             import os
+            import subprocess
             logger.info("dynamic_programs_C_version hasn't been built! Building library...", ranks=[0])
             this_dir = os.path.dirname(os.path.abspath(__file__))
             result = subprocess.Popen(

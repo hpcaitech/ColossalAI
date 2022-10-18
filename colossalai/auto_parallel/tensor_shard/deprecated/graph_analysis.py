@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from torch.fx.node import Node
+from typing import List
+
 from torch.fx.graph import Graph
 from torch.fx.graph_module import GraphModule
-from collections import OrderedDict as ODict
-from typing import List, OrderedDict, Union, Any
+from torch.fx.node import Node
+
 from colossalai.fx.passes.utils import get_node_module
 
 __all__ = ['LiveVariable', 'LiveVariableVector', 'LiveStage', 'GraphAnalyser']

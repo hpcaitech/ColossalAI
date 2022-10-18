@@ -3,6 +3,7 @@ from typing import List
 from torch.optim.lr_scheduler import MultiStepLR as _MultiStepLR
 
 from colossalai.registry import LR_SCHEDULERS
+
 from .delayed import WarmupScheduler
 
 

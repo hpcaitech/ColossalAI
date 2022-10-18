@@ -1,14 +1,37 @@
-import colossalai
+from typing import Any, Dict, Iterable, List, Tuple
+
 import torch
-from typing import List, Callable, Any, Tuple, Dict, Iterable
+
+import colossalai
 
 try:
-    from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
-    from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, CodeGen, _origin_type_map, inplace_methods, _CustomBuiltin
+    from torch.fx.graph import (
+        CodeGen,
+        PythonCode,
+        _custom_builtins,
+        _CustomBuiltin,
+        _format_target,
+        _is_from_torch,
+        _Namespace,
+        _origin_type_map,
+        inplace_methods,
+        magic_methods,
+    )
+    from torch.fx.node import Argument, Node, _get_qualified_name, _type_repr, map_arg
     CODEGEN_AVAILABLE = True
 except:
-    from torch.fx.graph import _Namespace, PythonCode, _custom_builtins, _is_from_torch, _format_target, magic_methods, _origin_type_map, _format_args, _CustomBuiltin
-    from torch.fx.node import Node, Argument, map_arg, _type_repr, _get_qualified_name
+    from torch.fx.graph import (
+        PythonCode,
+        _custom_builtins,
+        _CustomBuiltin,
+        _format_args,
+        _format_target,
+        _is_from_torch,
+        _Namespace,
+        _origin_type_map,
+        magic_methods,
+    )
+    from torch.fx.node import Argument, Node, _get_qualified_name, _type_repr, map_arg
     CODEGEN_AVAILABLE = False
 
 if CODEGEN_AVAILABLE:
@@ -622,7 +645,7 @@ if CODEGEN_AVAILABLE:
 
                 Returns: the global name that should be used to reference 'obj' in generated source.
                 """
-                if _is_from_torch(obj) and obj != torch.device:    # to support registering torch.device
+                if _is_from_torch(obj) and obj != torch.device:  # to support registering torch.device
                     # HACK: workaround for how torch custom ops are registered. We
                     # can't import them like normal modules so they must retain their
                     # fully qualified name.
@@ -857,7 +880,7 @@ else:
 
             Returns: the global name that should be used to reference 'obj' in generated source.
             """
-            if _is_from_torch(obj) and obj != torch.device:    # to support registering torch.device
+            if _is_from_torch(obj) and obj != torch.device:  # to support registering torch.device
                 # HACK: workaround for how torch custom ops are registered. We
                 # can't import them like normal modules so they must retain their
                 # fully qualified name.
@@ -1014,7 +1037,7 @@ else:
             has_orig_self = (orig_args[0] == 'self')
             if has_orig_self:
                 free_vars.insert(0, 'self')
-            if len(free_vars) > 0:    # pytree has placeholders in it
+            if len(free_vars) > 0:  # pytree has placeholders in it
                 body.insert(
                     0,
                     f"{', '.join(free_vars)}, = fx_pytree.tree_flatten_spec([{', '.join(orig_args)}], self._in_spec)\n")

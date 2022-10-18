@@ -1,10 +1,12 @@
 import operator
 from functools import reduce
-import warnings
+
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
+
 from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
+
+from .operator_handler import OperatorHandler
 
 __all__ = ['ConvHandler']
 

@@ -1,16 +1,10 @@
-from copy import deepcopy
 from dataclasses import dataclass
-from abc import ABC, abstractmethod
-from enum import Enum
-import operator
-import torch
-from functools import reduce
+from typing import Dict, List, Tuple, Union
 
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.sharding_spec import ShardingSpec
-from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
-from typing import Dict, List, Union, Tuple, Any
 from torch.fx.node import Node
+
+from colossalai.tensor.sharding_spec import ShardingSpec
+
 from .constants import *
 
 __all__ = ['ShardingStrategy', 'StrategiesVector']

@@ -1,7 +1,8 @@
 import torch
 import torch.distributed as dist
+
 from colossalai.tensor import ColoTensor, ColoTensorSpec
-from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
+from colossalai.tensor.distspec import DistPlacementPattern, _DistSpec
 
 
 def robust_broadcast(tensor):
@@ -34,7 +35,7 @@ def gather_tensor(colo_tensor: ColoTensor) -> None:
         dist.barrier()
 
     if dist.get_rank() == 0:
-        setattr(colo_tensor, 'save_ready', True)    # set saving signitrue
+        setattr(colo_tensor, 'save_ready', True)  # set saving signitrue
 
 
 def scatter_tensor(colo_tensor: ColoTensor, dist_spec: _DistSpec) -> None:

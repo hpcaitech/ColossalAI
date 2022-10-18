@@ -1,24 +1,24 @@
 from enum import Enum
-from os import stat
 from typing import Dict, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer
-from colossalai.gemini.tensor_utils import (colo_model_data_tensor_move_inline, colo_tensor_mem_usage)
-from colossalai.zero.sharded_model import ShardedModelV2
-from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 from torch import Tensor
 from torch.distributed import ProcessGroup
 from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
-from colossalai.gemini.stateful_tensor import (StatefulTensor, TensorState)
+
+from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.gemini.stateful_tensor import StatefulTensor, TensorState
 from colossalai.gemini.tensor_placement_policy import AutoTensorPlacementPolicy
+from colossalai.gemini.tensor_utils import colo_model_data_tensor_move_inline, colo_tensor_mem_usage
+from colossalai.logging import get_dist_logger
+from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.zero.sharded_model import ShardedModelV2
+from colossalai.zero.sharded_model._utils import cast_tensor_to_fp32
 
 
 class OptimState(Enum):
@@ -260,7 +260,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
                 else:
                     # release saved gradient
                     p.colo_attr.saved_grad.set_null()
-        self.model.overflow_counter = 0    # set overflow counter to zero
+        self.model.overflow_counter = 0  # set overflow counter to zero
 
     def sync_grad(self):
         pass
@@ -360,7 +360,7 @@ class ShardedOptimizerV2(ColossalaiOptimizer):
 
         if p.colo_attr.keep_not_shard and p.colo_attr.is_replicated:
             # We gather full fp16 param here
-            p.colo_attr.sharded_data_tensor.is_sharded = True    # since only gradient is sharded, we should set to True
+            p.colo_attr.sharded_data_tensor.is_sharded = True  # since only gradient is sharded, we should set to True
             self.shard_strategy.gather([p.colo_attr.sharded_data_tensor], self.dp_process_group)
 
         self.master_params[p].trans_state(TensorState.HOLD)

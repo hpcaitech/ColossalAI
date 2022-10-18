@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.fx import GraphModule
+
 from colossalai.fx import ColoTracer as Tracer
 
 

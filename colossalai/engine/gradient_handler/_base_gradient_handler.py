@@ -22,4 +22,3 @@ class BaseGradientHandler(ABC):
         """A method to accumulate gradients across different parallel groups. Users should
         write their own functions or just use the functions in pre-defined subclasses.
         """
-        pass

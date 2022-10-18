@@ -1,7 +1,9 @@
 import torch
 import torch.nn.functional as F
-from colossalai.utils import get_current_device
+
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.utils import get_current_device
+
 from .experts import FFNExperts, TPExperts
 
 

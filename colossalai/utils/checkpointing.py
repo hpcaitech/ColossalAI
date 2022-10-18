@@ -3,9 +3,11 @@ from itertools import chain
 
 import torch
 import torch.distributed as dist
+
+from colossalai.constants import IS_TENSOR_PARALLEL
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.constants import IS_TENSOR_PARALLEL
+
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
 except ImportError:

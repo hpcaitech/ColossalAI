@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+import functools
 import os
 import random
 import socket
 from pathlib import Path
-from typing import Callable, List, Union, Dict, Optional
-import functools
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 from torch._six import inf
@@ -16,17 +16,18 @@ try:
 except:
     pass
 
+from collections import defaultdict
 from contextlib import contextmanager
 
 import torch.distributed as dist
-from colossalai.constants import (IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES)
+
+from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
-from .multi_tensor_apply import multi_tensor_applier
-
 from colossalai.tensor import ColoParameter, ProcessGroup
-from collections import defaultdict
+
+from .multi_tensor_apply import multi_tensor_applier
 
 
 def print_rank_0(msg: str, logger=None):
@@ -135,7 +136,7 @@ def _calc_l2_norm(grads):
             colossal_C.multi_tensor_l2norm,
             dummy_overflow_buf,
             [grads],
-            False    # no per-parameter norm
+            False  # no per-parameter norm
         )
     return norm
 

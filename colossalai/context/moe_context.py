@@ -1,11 +1,10 @@
+from typing import Tuple
+
 import torch
 import torch.distributed as dist
 
-from colossalai.context.parallel_mode import ParallelMode
 from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.tensor import ProcessGroup
-
-from typing import Tuple
 
 
 def _check_sanity():
@@ -89,8 +88,8 @@ class MoeContext(metaclass=SingletonMeta):
             number of local experts, the MoeParallelInfo of the current ep_size
         """
 
-        gt_flag = num_experts % self.max_ep_size == 0    # check whether num_experts is greater
-        lt_flag = self.max_ep_size % num_experts == 0    # check whether num_experts is less
+        gt_flag = num_experts % self.max_ep_size == 0  # check whether num_experts is greater
+        lt_flag = self.max_ep_size % num_experts == 0  # check whether num_experts is less
 
         assert gt_flag or lt_flag, "Automatic experts placement dose not not support expert number" \
                                    " is not a multiple of ep size or vice versa."

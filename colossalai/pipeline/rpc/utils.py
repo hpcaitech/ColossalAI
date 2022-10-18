@@ -1,15 +1,16 @@
 import argparse
 import os
 import warnings
-from typing import Any, Callable, Dict, List, Tuple, Type, Union
+from typing import Any, Callable, Tuple, Type, Union
 
 import torch
 import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
-from colossalai.initialize import launch
-from colossalai.pipeline.pipeline_process_group import ppg
 from torch._C._distributed_rpc import _is_current_rpc_agent_set
 from torch.futures import Future
+
+from colossalai.initialize import launch
+from colossalai.pipeline.pipeline_process_group import ppg
 
 
 def pytree_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] = (), map_all: bool = False) -> Any:

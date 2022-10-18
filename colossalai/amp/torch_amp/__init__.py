@@ -1,9 +1,12 @@
-import torch.nn as nn
-from torch.optim import Optimizer
-from torch.nn.modules.loss import _Loss
-from colossalai.context import Config
-from .torch_amp import TorchAMPOptimizer, TorchAMPModel, TorchAMPLoss
 from typing import Optional
+
+import torch.nn as nn
+from torch.nn.modules.loss import _Loss
+from torch.optim import Optimizer
+
+from colossalai.context import Config
+
+from .torch_amp import TorchAMPLoss, TorchAMPModel, TorchAMPOptimizer
 
 
 def convert_to_torch_amp(model: nn.Module,

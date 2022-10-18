@@ -1,10 +1,10 @@
-import torch
-
 from typing import Optional
 
+import torch
+
+from colossalai.tensor import ColoTensorSpec
 from colossalai.tensor.colo_tensor import ColoTensor
 from colossalai.tensor.const import TensorType
-from colossalai.tensor import ColoTensorSpec
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 
 

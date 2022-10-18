@@ -6,6 +6,7 @@ from typing import Callable
 
 import torch
 import torch.distributed as dist
+
 from colossalai.communication import all_reduce
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
@@ -42,20 +43,17 @@ class Metric(ABC):
         """Resets the metric to it's initial state.
         By default, this is called at the start of each epoch.
         """
-        pass
 
     @abstractmethod
     def update(self, *args, **kwargs) -> None:
         """Updates the metric's state using the passed batch output.
         By default, this is called once for each batch.
         """
-        pass
 
     @abstractmethod
     def get_last_step_value(self) -> float:
         """Returns the metric value in the last iteration.
         """
-        pass
 
     @abstractmethod
     def get_accumulated_value(self):
@@ -65,7 +63,6 @@ class Metric(ABC):
         :return: the actual quantity of interest
         :rtype: Any
         """
-        pass
 
     @staticmethod
     @abstractmethod
@@ -75,7 +72,6 @@ class Metric(ABC):
         :return: The result of comparison
         :rtype: bool
         """
-        pass
 
 
 class LossMetric(Metric):

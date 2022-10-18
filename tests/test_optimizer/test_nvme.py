@@ -1,7 +1,8 @@
 import pytest
 import torch
-from tests.components_to_test.registry import non_distributed_component_funcs
+
 from colossalai.nn.optimizer import CPUAdam, HybridAdam
+from tests.components_to_test.registry import non_distributed_component_funcs
 
 
 def move_some_params_to_cuda(model, torch_model):

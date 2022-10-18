@@ -1,12 +1,11 @@
+import json
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from time import sleep, time
-import json
 
 import torch
 
-from colossalai.utils import colo_device_memory_used
-from colossalai.utils import get_current_device
+from colossalai.utils import colo_device_memory_used, get_current_device
 
 
 class MemoryMonitor:

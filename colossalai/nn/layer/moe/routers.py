@@ -1,15 +1,15 @@
 import math
 from abc import ABC
+from typing import Callable, Optional
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
-from colossalai.utils import get_current_device
-from colossalai.context import MOE_CONTEXT
-from colossalai.nn.layer.moe._operation import moe_cumsum
-from typing import Callable, Optional
 from torch.distributed import ProcessGroup
+
+from colossalai.nn.layer.moe._operation import moe_cumsum
+from colossalai.utils import get_current_device
 
 
 class MoeRouter(nn.Module, ABC):
@@ -171,7 +171,7 @@ class Top2Router(MoeRouter):
             inputs = self.noisy_func(inputs)
 
         assert inputs.dtype == torch.float
-        logits = F.softmax(inputs, dim=-1)    # logits: [s, e]
+        logits = F.softmax(inputs, dim=-1)  # logits: [s, e]
         num_experts = logits.size(-1)
         capacity = self.get_capacity(logits.shape)
 
@@ -181,12 +181,12 @@ class Top2Router(MoeRouter):
         top2_idx = torch.argmax(logits_except1, dim=-1)
         mask2 = F.one_hot(top2_idx, num_classes=num_experts).to(torch.int32)
 
-        cmask = (mask1 + mask2)    # loss: [s, e]
+        cmask = (mask1 + mask2)  # loss: [s, e]
 
         # caculate the auxiliary loss
         me = torch.mean(logits, dim=0)
         ce = torch.mean(cmask.float(), dim=0)
-        l_aux = num_experts * torch.sum(me * ce) / 2.0    # div 2 to normalize it to 1
+        l_aux = num_experts * torch.sum(me * ce) / 2.0  # div 2 to normalize it to 1
         self.set_routing_loss(l_aux)
 
         if not self.training and not self.drop_tks:
@@ -194,7 +194,7 @@ class Top2Router(MoeRouter):
             dist.all_reduce(max_num, op=dist.ReduceOp.MAX, group=ep_group)
             capacity = max_num.item()
 
-        rank1 = moe_cumsum(mask1)    # rank1: [s, e]
+        rank1 = moe_cumsum(mask1)  # rank1: [s, e]
         rank2 = moe_cumsum(mask2)
         rank2 += torch.sum(mask1, dim=-2, keepdim=True)
 

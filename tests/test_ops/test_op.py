@@ -1,14 +1,15 @@
-import torch
-import pytest
-import colossalai
-import torch.nn.functional as F
-import torch.multiprocessing as mp
 from functools import partial
-from colossalai.tensor import ColoTensor, ProcessGroup, ColoTensorSpec, ShardSpec
-from colossalai.utils import get_current_device
+
+import pytest
+import torch
+import torch.multiprocessing as mp
+import torch.nn.functional as F
 from torch.nn import Parameter
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup, ShardSpec
 from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.utils import free_port, get_current_device
 
 
 def _run_layer_norm():

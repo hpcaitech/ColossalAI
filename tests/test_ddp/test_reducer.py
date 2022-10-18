@@ -1,14 +1,16 @@
-import pytest
-import colossalai
-import torch
-import torch.multiprocessing as mp
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
 from functools import partial
-from colossalai.nn.parallel.reducer import Reducer
+
+import pytest
+import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 from torch.distributed.distributed_c10d import _get_default_group
+
+import colossalai
+from colossalai.nn.parallel.reducer import Reducer
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
 
 REDUCE_CNT = 0
 

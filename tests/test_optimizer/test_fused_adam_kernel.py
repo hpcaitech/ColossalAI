@@ -1,8 +1,6 @@
-from numpy import dtype
-import torch
-import torch.nn as nn
-
 import math
+
+import torch
 
 from colossalai.testing import parameterize
 from colossalai.utils import multi_tensor_applier
@@ -80,8 +78,8 @@ def test_adam(adamw, step, p_dtype, g_dtype):
             beta2,
             eps,
             weight_decay,
-            p_copy,    # fp32 data
-            g_copy,    # fp32 grad
+            p_copy,  # fp32 data
+            g_copy,  # fp32 grad
             m_copy,
             v_copy,
             adamw,

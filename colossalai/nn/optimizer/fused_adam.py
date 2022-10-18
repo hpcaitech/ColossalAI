@@ -66,6 +66,7 @@ class FusedAdam(torch.optim.Optimizer):
         self.set_grad_none = set_grad_none
         if multi_tensor_applier.available:
             import colossal_C
+
             # Skip buffer
             self._dummy_overflow_buf = torch.cuda.IntTensor([0])
             self.multi_tensor_adam = colossal_C.multi_tensor_adam

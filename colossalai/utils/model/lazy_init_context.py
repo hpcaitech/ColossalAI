@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import inspect
+import types
+from typing import List
+
 import torch
 import torch.nn as nn
-from colossalai.tensor import ColoParameter, ColoTensor
 
-import types
-import inspect
-from typing import List, Callable
+from colossalai.tensor import ColoParameter, ColoTensor
 from colossalai.utils.model.utils import substitute_init_recursively
 
 

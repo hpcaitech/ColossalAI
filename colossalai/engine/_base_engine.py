@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import List, Iterable
+from typing import Iterable, List, Optional, Type
+
+from torch import Tensor
 from torch.nn import Module
 from torch.nn.modules.loss import _Loss
 
-from colossalai.logging import get_dist_logger
-from torch import Tensor
-from colossalai.gemini.ophooks import register_ophooks_recursively, BaseOpHook
-from colossalai.engine.schedule import BaseSchedule, NonPipelineSchedule, PipelineSchedule, InterleavedPipelineSchedule
-from typing import Optional, Type
 from colossalai.engine.gradient_handler import BaseGradientHandler
+from colossalai.engine.schedule import BaseSchedule, InterleavedPipelineSchedule, NonPipelineSchedule, PipelineSchedule
+from colossalai.gemini.ophooks import BaseOpHook, register_ophooks_recursively
 from colossalai.logging import get_dist_logger
 
 
@@ -70,7 +69,7 @@ class Engine:
         self._logger = get_dist_logger()
 
         # state
-        self.training = True    # default
+        self.training = True  # default
 
         # build gradient handler
         if gradient_handlers:

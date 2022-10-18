@@ -1,7 +1,6 @@
-import torch
 import timm.models as tm
+import torch
 from timm_utils import split_model_and_compare_output
-import pytest
 
 
 def test_timm_models_without_control_flow():

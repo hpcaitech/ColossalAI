@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from colossalai.nn import CheckpointModule
-from .utils import DummyDataGenerator
+
 from .registry import non_distributed_component_funcs
+from .utils import DummyDataGenerator
 
 
 class SubNet(nn.Module):

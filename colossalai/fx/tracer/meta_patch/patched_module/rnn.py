@@ -1,6 +1,6 @@
 import torch
+
 from ..registry import meta_patched_module
-from typing import Optional
 
 
 @meta_patched_module.register(torch.nn.GRU)

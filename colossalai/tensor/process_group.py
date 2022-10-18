@@ -1,7 +1,9 @@
-import torch
 from typing import List, Optional
-from colossalai.logging import get_dist_logger
+
+import torch
+
 from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.logging import get_dist_logger
 
 
 class PyTorchProcessGroupDict(metaclass=SingletonMeta):
@@ -63,7 +65,7 @@ class ProcessGroup:
             self._rank_list = list(range(torch.distributed.get_world_size()))
         else:
             self._rank_list = ranks
-            self._rank_list.sort()    # ensure that the list is in order
+            self._rank_list.sort()  # ensure that the list is in order
 
         self._world_size = len(self._rank_list)
 

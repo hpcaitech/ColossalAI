@@ -3,15 +3,14 @@ import os
 import warnings
 
 import torch
-import torch.distributed as dist
 import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
+from torch import nn
+from torch._C._distributed_rpc import _is_current_rpc_agent_set
+
 from colossalai import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.pipeline.pipeline_process_group import ppg
-from torch import nn
-from torch._C._distributed_rpc import _is_current_rpc_agent_set
-from torch.optim import SGD, Adam, Optimizer, RMSprop
 
 rpc_is_initialized = _is_current_rpc_agent_set
 

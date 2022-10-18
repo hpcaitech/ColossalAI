@@ -1,13 +1,16 @@
 import inspect
-from pathlib import Path
 from functools import partial
-import torch
-from torch.autograd.profiler import profile
-import torch.distributed as dist
-from torch.distributed import ReduceOp
-from colossalai.utils import get_current_device
-from .prof_utils import BaseProfiler, _format_time, _format_memory, _format_bandwidth
+from pathlib import Path
 from typing import List, Optional
+
+import torch
+import torch.distributed as dist
+from torch.autograd.profiler import profile
+from torch.distributed import ReduceOp
+
+from colossalai.utils import get_current_device
+
+from .prof_utils import BaseProfiler, _format_bandwidth, _format_memory, _format_time
 
 
 def _get_code_location(depth: int):

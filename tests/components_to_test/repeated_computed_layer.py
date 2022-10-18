@@ -2,9 +2,11 @@
 
 import torch
 import torch.nn as nn
+
 from colossalai.nn import CheckpointModule
-from .utils.dummy_data_generator import DummyDataGenerator
+
 from .registry import non_distributed_component_funcs
+from .utils.dummy_data_generator import DummyDataGenerator
 
 
 class NetWithRepeatedlyComputedLayers(CheckpointModule):

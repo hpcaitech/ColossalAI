@@ -1,6 +1,8 @@
+from typing import Tuple, Union
+
 import torch
+
 from colossalai.gemini.stateful_tensor import StatefulTensor
-from typing import Union, Tuple
 
 
 def colo_tensor_mem_usage(tensor: Union[torch.Tensor, StatefulTensor]) -> Tuple[int, int]:

@@ -1,13 +1,15 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.dot_handler import (LinearFunctionHandler, LinearModuleHandler)
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, ShardingStrategy,
-                                                                     StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler.dot_handler import LinearFunctionHandler, LinearModuleHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    OperationData,
+    OperationDataType,
+    ShardingStrategy,
+    StrategiesVector,
+)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.fx.tracer.meta_patch.patched_module import linear
-from colossalai.tensor.sharding_spec import ShardingSpec
 
 
 def test_linear_module_handler():

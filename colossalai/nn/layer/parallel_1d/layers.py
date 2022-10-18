@@ -7,25 +7,34 @@ from typing import Callable, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor
+from torch.nn.parameter import Parameter
+
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.kernel import LayerNorm
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils.checkpointing import (broadcast_state_dict, gather_tensor_parallel_state_dict,
-                                            partition_tensor_parallel_state_dict)
+from colossalai.utils.checkpointing import (
+    broadcast_state_dict,
+    gather_tensor_parallel_state_dict,
+    partition_tensor_parallel_state_dict,
+)
 from colossalai.utils.cuda import get_current_device
-from torch import Tensor
-from torch.nn.parameter import Parameter
-from ..vanilla import VanillaPatchEmbedding, VanillaLayerNorm
 
 from ..base_layer import ParallelLayer
 from ..colossalai_layer._utils import ColossalaiModule
 from ..utils import divide, set_tensor_parallel_attribute_by_partition
-from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
-                     split_forward_gather_backward)
+from ..vanilla import VanillaLayerNorm, VanillaPatchEmbedding
+from ._utils import (
+    gather_forward_split_backward,
+    get_parallel_input,
+    reduce_grad,
+    reduce_input,
+    set_parallel_input,
+    split_forward_gather_backward,
+)
 
 
 @LAYERS.register_module

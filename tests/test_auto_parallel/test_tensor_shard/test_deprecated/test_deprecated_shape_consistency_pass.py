@@ -1,24 +1,27 @@
 from functools import partial
+
 import pytest
 import torch
 import torch.multiprocessing as mp
-from torch.fx import GraphModule
 import torch.nn as nn
-import pytest
-from colossalai.initialize import launch
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.logging import disable_existing_loggers
+from torch.fx import GraphModule
+
+from colossalai.auto_parallel.tensor_shard.deprecated import Solver
 from colossalai.auto_parallel.tensor_shard.deprecated.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.deprecated.graph_analysis import GraphAnalyser
-from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
-
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.passes.experimental.adding_shape_consistency_pass import shape_consistency_pass, solution_annotatation_pass
-from colossalai.auto_parallel.tensor_shard.deprecated import Solver
 from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
+from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.passes.experimental.adding_shape_consistency_pass import (
+    shape_consistency_pass,
+    solution_annotatation_pass,
+)
+from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.initialize import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.utils import free_port
 
 
 class ConvModel(nn.Module):

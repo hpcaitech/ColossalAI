@@ -23,4 +23,3 @@ class ConstantGradScaler(BaseGradScaler):
         Args:
             overflow (bool): whether overflow occurs
         """
-        pass

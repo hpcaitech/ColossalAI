@@ -1,7 +1,8 @@
 from pathlib import Path
-from typing import Union
-from colossalai.engine import Engine
+
 from torch.utils.tensorboard import SummaryWriter
+
+from colossalai.engine import Engine
 from colossalai.gemini.ophooks import MemTracerOpHook
 from colossalai.utils.profiler.legacy.prof_utils import BaseProfiler
 

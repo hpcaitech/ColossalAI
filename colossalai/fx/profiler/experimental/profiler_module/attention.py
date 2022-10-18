@@ -1,5 +1,7 @@
 from typing import Optional, Tuple
+
 import torch
+
 from ..registry import meta_profiler_module
 
 
@@ -44,14 +46,14 @@ def torch_nn_msa(self: torch.nn.MultiheadAttention,
     flops += qlen * qdim
 
     # Initial projections
-    flops += 2 * ((qlen * qdim * qdim)    # QW
-                  + (klen * kdim * kdim)    # KW
-                  + (vlen * vdim * vdim)    # VW
+    flops += 2 * ((qlen * qdim * qdim)  # QW
+                  + (klen * kdim * kdim)  # KW
+                  + (vlen * vdim * vdim)  # VW
                  )
 
-    macs += ((qlen * qdim * qdim)    # QW
-             + (klen * kdim * kdim)    # KW
-             + (vlen * vdim * vdim)    # VW
+    macs += ((qlen * qdim * qdim)  # QW
+             + (klen * kdim * kdim)  # KW
+             + (vlen * vdim * vdim)  # VW
             )
 
     if self.in_proj_bias is not None:
@@ -62,12 +64,12 @@ def torch_nn_msa(self: torch.nn.MultiheadAttention,
     v_head_dim = vdim // num_heads
 
     head_flops = (
-        2 * (qlen * klen * qk_head_dim)    # QK^T
-        + (qlen * klen)    # softmax
-        + 2 * (qlen * klen * v_head_dim)    # AV
+        2 * (qlen * klen * qk_head_dim)  # QK^T
+        + (qlen * klen)  # softmax
+        + 2 * (qlen * klen * v_head_dim)  # AV
     )
-    head_macs = ((qlen * klen * qk_head_dim)    # QK^T
-                 + 2 * (qlen * klen * v_head_dim)    # AV
+    head_macs = ((qlen * klen * qk_head_dim)  # QK^T
+                 + 2 * (qlen * klen * v_head_dim)  # AV
                 )
 
     flops += num_heads * head_flops

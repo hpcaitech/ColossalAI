@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-from typing import List, Tuple, Union, Any
-import pickle
 import io
+import pickle
+from typing import Any, List, Tuple, Union
 
 import torch
 import torch.distributed as dist
-from torch.distributed import distributed_c10d as c10d
 from torch.distributed import ProcessGroupNCCL
+from torch.distributed import distributed_c10d as c10d
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
@@ -123,8 +123,8 @@ def _broadcast_object_list(object_list: List[Any], src: int, dst: int, device=No
     if local_rank == src:
         object_tensor = torch.cat(tensor_list)
     else:
-        object_tensor = torch.empty(    # type: ignore[call-overload]
-            torch.sum(object_sizes_tensor).item(),    # type: ignore[arg-type]
+        object_tensor = torch.empty(  # type: ignore[call-overload]
+            torch.sum(object_sizes_tensor).item(),  # type: ignore[arg-type]
             dtype=torch.uint8,
         )
 

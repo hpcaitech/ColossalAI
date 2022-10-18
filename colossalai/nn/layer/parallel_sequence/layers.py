@@ -2,20 +2,19 @@
 # -*- encoding: utf-8 -*-
 
 import math
-import colossalai
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 
+from colossalai.context import seed
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.nn.layer.parallel_sequence._operation import RingQK, RingAV
-from colossalai.registry import LAYERS
-from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
 from colossalai.kernel import FusedScaleMaskSoftmax
-from colossalai.context import seed
+from colossalai.kernel.cuda_native.scaled_softmax import AttnMaskType
+from colossalai.nn.layer.parallel_sequence._operation import RingAV, RingQK
+from colossalai.registry import LAYERS
 
 
 @LAYERS.register_module
@@ -125,8 +124,8 @@ class TransformerSelfAttentionRing(nn.Module):
 
         # attention_scores: [batch_size * num_heads, sub_seq_len, seq_len]
         attention_scores = RingQK.apply(
-            query_layer.transpose(0, 1).contiguous(),    # [batch_size * num_heads, sub_seq_len, head_size]
-            key_layer.transpose(0, 1).contiguous(),    # [batch_size * num_heads, sub_seq_len, head_size],
+            query_layer.transpose(0, 1).contiguous(),  # [batch_size * num_heads, sub_seq_len, head_size]
+            key_layer.transpose(0, 1).contiguous(),  # [batch_size * num_heads, sub_seq_len, head_size],
             batch_size,
             self.num_attention_heads,
             sub_seq_length)

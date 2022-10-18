@@ -1,10 +1,11 @@
+from typing import Iterator, List, Optional, Tuple, Union
+
 import torch
 import torch.nn.functional as F
-from typing import List, Optional, Iterator, Tuple, Union
+from torch.nn.parameter import Parameter
 
 from .base_embedding import BaseEmbeddingBag
 from .cache_mgr import CachedParamMgr, EvictionStrategy
-from torch.nn.parameter import Parameter
 
 
 class CachedEmbeddingBag(BaseEmbeddingBag):

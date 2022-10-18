@@ -1,5 +1,7 @@
-from typing import List, Any
+from typing import Any, List
+
 from torch.fx import GraphModule, Node
+
 from colossalai.fx.profiler import is_inplace
 
 # Common nodes are type of nodes that could be seen as attributes and remain

@@ -1,7 +1,7 @@
-import torch
-from torchaudio_utils import trace_and_compare
-from torchaudio.models import Emformer, Conformer
 import pytest
+import torch
+from torchaudio.models import Conformer, Emformer
+from torchaudio_utils import trace_and_compare
 
 
 def test_conformer():

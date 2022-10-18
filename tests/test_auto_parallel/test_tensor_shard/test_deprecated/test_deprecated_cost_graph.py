@@ -1,15 +1,12 @@
-from pickletools import optimize
 import torch
-from torch.fx import GraphModule
 import torch.nn as nn
-import pytest
+from torch.fx import GraphModule
 
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
 from colossalai.auto_parallel.tensor_shard.deprecated.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
-from copy import deepcopy
+from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.tracer.tracer import ColoTracer
 
 
 class ConvModel(nn.Module):

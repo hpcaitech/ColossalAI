@@ -1,31 +1,38 @@
 import functools
-from collections import OrderedDict
-from typing import Any, Optional, Iterator, Tuple
-from copy import deepcopy
 import itertools
+from collections import OrderedDict
+from typing import Any, Iterator, Optional, Tuple
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed import ProcessGroup
+from torch.nn.parameter import Parameter
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.gemini.ophooks import register_ophooks_recursively
-from colossalai.zero.utils import ZeroHook
-from colossalai.gemini.paramhooks import BaseParamHookMgr
-from colossalai.logging import get_dist_logger
-from colossalai.utils import get_current_device, disposable
 from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollector
+from colossalai.gemini.ophooks import register_ophooks_recursively
+from colossalai.gemini.paramhooks import BaseParamHookMgr
+from colossalai.gemini.stateful_tensor import TensorState
+from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
+from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicy, TensorPlacementPolicyFactory
+from colossalai.gemini.tensor_utils import colo_model_data_move_to_cpu
+from colossalai.logging import get_dist_logger
+from colossalai.utils import disposable, get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
-from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
-from colossalai.gemini.tensor_utils import colo_model_data_move_to_cpu
-from colossalai.gemini.stateful_tensor import TensorState
-from colossalai.gemini.stateful_tensor_mgr import StatefulTensorMgr
-from colossalai.gemini.tensor_placement_policy import TensorPlacementPolicyFactory, TensorPlacementPolicy
+from colossalai.zero.utils import ZeroHook
 
-from ._utils import (cast_float_arguments, cast_tensor_to_fp16, cast_tensor_to_fp32, chunk_and_pad, free_storage,
-                     get_gradient_predivide_factor)
+from ._utils import (
+    cast_float_arguments,
+    cast_tensor_to_fp16,
+    cast_tensor_to_fp32,
+    chunk_and_pad,
+    free_storage,
+    get_gradient_predivide_factor,
+)
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
@@ -546,7 +553,7 @@ class ShardedModelV2(nn.Module):
             for key in state_dict.keys():
                 if key.startswith(prefix) and key != extra_state_key:
                     input_name = key[len(prefix):]
-                    input_name = input_name.split('.', 1)[0]    # get the name of param/buffer/child
+                    input_name = input_name.split('.', 1)[0]  # get the name of param/buffer/child
                     if input_name not in self._modules and input_name not in local_state:
                         unexpected_keys.append(key)
 

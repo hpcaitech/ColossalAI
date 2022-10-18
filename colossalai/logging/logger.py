@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import colossalai
+import inspect
 import logging
 from pathlib import Path
-from typing import Union, List
-import inspect
+from typing import List, Union
 
+import colossalai
 from colossalai.context.parallel_mode import ParallelMode
 
 try:

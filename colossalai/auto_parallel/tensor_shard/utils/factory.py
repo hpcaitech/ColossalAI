@@ -4,10 +4,11 @@ from functools import reduce
 from typing import Dict, List, Optional, Union
 
 import torch
+from torch.fx.node import Node
+
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
-from torch.fx.node import Node
 
 from ..constants import INFINITY_COST
 

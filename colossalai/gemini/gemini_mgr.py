@@ -1,9 +1,12 @@
-import torch
 import functools
-from .memory_tracer.memstats_collector import MemStatsCollectorV2
-from typing import List, Optional, Tuple
 from time import time
+from typing import List, Optional, Tuple
+
+import torch
+
 from colossalai.gemini.chunk import Chunk, ChunkManager
+
+from .memory_tracer.memstats_collector import MemStatsCollectorV2
 from .placement_policy import PlacementPolicyFactory
 
 

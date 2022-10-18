@@ -1,8 +1,6 @@
 # for PyTorch 1.11 compatibility uses
-from typing import Dict, List, Tuple, Union
 
-import torch
-from torch.fx import GraphModule, Node
+from torch.fx import Node
 
 from ..._compatibility import compatibility
 

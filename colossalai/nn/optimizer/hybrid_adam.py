@@ -1,8 +1,10 @@
+from typing import Optional
+
 import torch
 
-from colossalai.utils import multi_tensor_applier
 from colossalai.registry import OPTIMIZERS
-from typing import Optional
+from colossalai.utils import multi_tensor_applier
+
 from .nvme_optimizer import NVMeOptimizer
 
 
@@ -74,8 +76,8 @@ class HybridAdam(NVMeOptimizer):
         super(HybridAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
         try:
-            import cpu_adam
             import colossal_C
+            import cpu_adam
         except ImportError:
             raise ImportError('Please install colossalai from source code to use HybridAdam')
 

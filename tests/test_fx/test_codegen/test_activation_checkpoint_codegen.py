@@ -1,14 +1,14 @@
-import torch
-import torch.nn.functional as F
 import pytest
+import torch
 import torch.multiprocessing as mp
+import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
-from torch.fx import GraphModule
-from colossalai.fx import ColoTracer
+
 import colossalai
-from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
+from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.utils import free_port
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen

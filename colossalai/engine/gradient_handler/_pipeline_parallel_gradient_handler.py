@@ -4,9 +4,10 @@ from collections import defaultdict
 
 import torch
 import torch.distributed as dist
+from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
+
 from colossalai.core import global_context as gpc
 from colossalai.registry import GRADIENT_HANDLER
-from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 
 from ._base_gradient_handler import BaseGradientHandler
 

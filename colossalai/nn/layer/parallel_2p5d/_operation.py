@@ -2,12 +2,13 @@ from typing import Any, Tuple
 
 import torch
 import torch.distributed as dist
-from colossalai.communication.collective import (all_gather, all_reduce, reduce_scatter)
+from torch import Tensor
+from torch.cuda.amp import custom_bwd, custom_fwd
+
+from colossalai.communication.collective import all_gather, all_reduce, reduce_scatter
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
-from torch import Tensor
-from torch.cuda.amp import custom_bwd, custom_fwd
 
 
 def get_parallel_group(parallel_mode: ParallelMode):

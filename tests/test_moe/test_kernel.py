@@ -1,15 +1,17 @@
 from functools import partial
+
 import pytest
 import torch
-import torch.nn as nn
 import torch.multiprocessing as mp
+import torch.nn as nn
+
 import colossalai
 from colossalai.context import ParallelMode
-from colossalai.core import global_context as gpc
-from colossalai.utils import free_port, get_current_device
-from colossalai.nn.layer.moe import Top1Router, Top2Router, MoeLayer, Experts
 from colossalai.context.moe_context import MOE_CONTEXT
+from colossalai.core import global_context as gpc
+from colossalai.nn.layer.moe import Experts, MoeLayer, Top1Router, Top2Router
 from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
 
 BATCH_SIZE = 16
 NUM_EXPERTS = 4
@@ -27,9 +29,9 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     local_rank = gpc.get_local_rank(ParallelMode.GLOBAL)
 
-    MOE_CONTEXT.setup(42)    # MOE environment initialization
+    MOE_CONTEXT.setup(42)  # MOE environment initialization
     MOE_CONTEXT.reset_loss()
-    torch.manual_seed(rs + local_rank)    # set each process has different random seed
+    torch.manual_seed(rs + local_rank)  # set each process has different random seed
 
     # get randomized data
     tokens = torch.randn(BATCH_SIZE, hidden_size, dtype=data_type, device=get_current_device(), requires_grad=True)
@@ -47,7 +49,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     old_out, _ = layer(tokens)
     ech = old_out.shape
     grad = torch.randn(ech, device=get_current_device())
-    old_out.backward(grad)    # get gradient
+    old_out.backward(grad)  # get gradient
 
     # save all results
     o_tk_grad = tokens.grad.data.clone()
@@ -58,7 +60,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
     layer.gate_weight.grad.zero_()
 
     layer.use_kernel = True
-    new_out, _ = layer(tokens)    # get ouputs through colossal kernel
+    new_out, _ = layer(tokens)  # get ouputs through colossal kernel
 
     if data_type == torch.float32:
         check_equal(old_out, new_out)
@@ -66,7 +68,7 @@ def run_routing(rank, world_size, port, rs=2, hidden_size=128, data_type=torch.f
         check_equal(old_out, new_out, 1e-2)
     # forward function passed
 
-    new_out.backward(grad)    # get new type gradient
+    new_out.backward(grad)  # get new type gradient
     n_tk_grad = tokens.grad.data.clone()
     n_gt_grad = layer.gate_weight.grad.data.clone()
 

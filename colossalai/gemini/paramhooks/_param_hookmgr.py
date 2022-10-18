@@ -1,6 +1,7 @@
-from typing import Callable, List
-import torch
 import functools
+from typing import Callable, List
+
+import torch
 
 
 class BaseParamHookMgr(object):
@@ -22,7 +23,7 @@ class BaseParamHookMgr(object):
         ```
         """
         if not torch.is_grad_enabled():
-            return    # don't register grad hooks if grad isn't enabled
+            return  # don't register grad hooks if grad isn't enabled
         for p in self._param_list:
             if p.requires_grad and not hasattr(p, '_base_param_hook'):
                 handle = p.register_hook(functools.partial(hook_call, p))

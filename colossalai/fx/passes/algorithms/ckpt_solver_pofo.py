@@ -2,19 +2,28 @@ import copy
 import math
 from typing import List, Tuple
 
-import torch
+from torch.fx import Node
+
 from colossalai.fx import is_compatible_with_meta
-from colossalai.fx.codegen.activation_checkpoint_codegen import \
-    _find_nested_ckpt_regions
+from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.algorithms.ckpt_solver_rotor import (_compute_table, _construct_chain, _rec)
+from colossalai.fx.passes.algorithms.ckpt_solver_rotor import _compute_table, _construct_chain, _rec
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import parameter_size
-from torch.fx import GraphModule, Node
 
 from .linearize import linearize
-from .operation import (Backward, Chain, ForwardCheck, ForwardEnable, ForwardNograd, Function, Loss, Offload, Prefetch,
-                        Sequence)
+from .operation import (
+    Backward,
+    Chain,
+    ForwardCheck,
+    ForwardEnable,
+    ForwardNograd,
+    Function,
+    Loss,
+    Offload,
+    Prefetch,
+    Sequence,
+)
 
 INF = float("inf")
 

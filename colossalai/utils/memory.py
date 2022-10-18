@@ -1,14 +1,14 @@
-import torch
 import gc
-import psutil
 from collections import namedtuple
 
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.utils import get_current_device
-from colossalai.core import global_context as gpc
-from colossalai.context.parallel_mode import ParallelMode
-from colossalai.logging import get_dist_logger
+import psutil
+import torch
 from packaging import version
+
+from colossalai.context.parallel_mode import ParallelMode
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+from colossalai.utils import get_current_device
 
 _GLOBAL_CUDA_MEM_FRACTION = 1.0
 _GLOBAL_CPU_MEM_CAPACITY = -1
@@ -91,7 +91,7 @@ def report_memory_usage(message, logger=None, report_cpu=False):
     logger.info(full_log)
 
     # get the peak memory to report correct data, so reset the counter for the next call
-    if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
+    if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
         torch.cuda.reset_peak_memory_stats()
 
 
@@ -132,7 +132,7 @@ def colo_device_memory_used(device: torch.device) -> int:
     elif device.type == 'cuda':
         ret: int = torch.cuda.memory_allocated(device)
         # get the peak memory to report correct data, so reset the counter for the next call
-        if hasattr(torch.cuda, "reset_peak_memory_stats"):    # pytorch 1.4+
+        if hasattr(torch.cuda, "reset_peak_memory_stats"):  # pytorch 1.4+
             torch.cuda.reset_peak_memory_stats(device)
         return ret
 

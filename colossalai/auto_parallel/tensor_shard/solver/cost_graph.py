@@ -1,5 +1,4 @@
 from colossalai.auto_parallel.tensor_shard.constants import INFINITY_COST
-import torch
 
 
 class CostGraph:

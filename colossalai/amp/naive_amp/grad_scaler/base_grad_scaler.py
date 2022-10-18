@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import torch
 from abc import ABC, abstractmethod
-from colossalai.logging import get_dist_logger
-from torch import Tensor
 from typing import Dict
+
+import torch
+from torch import Tensor
+
+from colossalai.logging import get_dist_logger
 
 __all__ = ['BaseGradScaler']
 
@@ -64,8 +66,6 @@ class BaseGradScaler(ABC):
         Args:
             overflow (bool): whether overflow occurs
         """
-
-        pass
 
     def log(self, message, *args, **kwargs):
         """Log messages.

@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
+import operator
+from functools import reduce
 from typing import List, Tuple, Union
+
 import torch
 import torch.distributed as dist
 
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.utils import get_current_device
-from functools import reduce
-import operator
-from .utils import split_tensor_into_1d_equal_chunks, gather_split_1d_tensor
+
+from .utils import gather_split_1d_tensor, split_tensor_into_1d_equal_chunks
 
 TensorShape = Union[torch.Size, List[int], Tuple[int]]
 

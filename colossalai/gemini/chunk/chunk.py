@@ -1,11 +1,12 @@
-import torch
-import torch.distributed as dist
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
-from colossalai.utils import get_current_device
+import torch
+import torch.distributed as dist
+
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.utils import get_current_device
 
 
 class TensorState(Enum):
@@ -96,9 +97,9 @@ class Chunk:
 
         self.dtype = dtype
         device = init_device or get_current_device()
-        self.chunk_temp = torch.zeros(chunk_size, dtype=dtype, device=device)    # keep all zero
-        self.chunk_total = None    # we force chunk_total located in CUDA
-        self.cuda_shard = None    # using two attributes for the better interpretation
+        self.chunk_temp = torch.zeros(chunk_size, dtype=dtype, device=device)  # keep all zero
+        self.chunk_total = None  # we force chunk_total located in CUDA
+        self.cuda_shard = None  # using two attributes for the better interpretation
         self.cpu_shard = None
         self.is_gathered = True
 
@@ -118,7 +119,7 @@ class Chunk:
         # so their computation patterns are the same as that of the parameters in DDP
         self.keep_gathered = keep_gathered
         if self.keep_gathered:
-            pin_memory = False    # since this chunk is gathered, it doesn't need to pin
+            pin_memory = False  # since this chunk is gathered, it doesn't need to pin
 
         # if pin_memory is True, we allocate a piece of CPU pin-memory
         # for it all the time
@@ -211,7 +212,7 @@ class Chunk:
         if self.is_gathered:
             valid_tensor = self.chunk_total[:self.utilized_size]
         else:
-            assert self.cuda_shard is not None    # only check in CUDA
+            assert self.cuda_shard is not None  # only check in CUDA
             valid_tensor = self.cuda_shard[:self.valid_end]
 
         return torch.isinf(valid_tensor).any().item() | torch.isnan(valid_tensor).any().item()
@@ -277,7 +278,7 @@ class Chunk:
         if self.pin_memory or shard_dev.type == 'cpu':
             self.cpu_shard = torch.empty(self.shard_size, dtype=self.dtype, pin_memory=self.pin_memory)
             self.cpu_shard.copy_(self.cuda_shard)
-            self.cpu_vis_flag = True    # cpu_shard has been visited
+            self.cpu_vis_flag = True  # cpu_shard has been visited
 
         if shard_dev.type == 'cpu':
             self.cuda_shard = None

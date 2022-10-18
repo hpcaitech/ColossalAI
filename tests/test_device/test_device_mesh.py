@@ -1,5 +1,6 @@
-from colossalai.device.device_mesh import DeviceMesh
 import torch
+
+from colossalai.device.device_mesh import DeviceMesh
 
 
 def test_device_mesh():

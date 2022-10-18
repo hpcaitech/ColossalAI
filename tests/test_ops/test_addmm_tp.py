@@ -1,14 +1,15 @@
-import colossalai
-import torch
+from functools import partial
+
 import pytest
-import torch.nn as nn
+import torch
 import torch.multiprocessing as mp
-from colossalai.tensor import ColoTensor, ProcessGroup
-from colossalai.tensor import ColoTensorSpec
+import torch.nn as nn
+
+import colossalai
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ProcessGroup
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from functools import partial
-from tests.test_tensor.common_utils import tensor_shard_equal, tensor_equal, split_param_row_tp1d, split_param_col_tp1d
+from tests.test_tensor.common_utils import split_param_col_tp1d, split_param_row_tp1d, tensor_equal, tensor_shard_equal
 
 
 class Conv1D(nn.Module):

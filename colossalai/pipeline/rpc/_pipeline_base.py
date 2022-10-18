@@ -8,12 +8,18 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import torch
 import torch.distributed.rpc as rpc
-from colossalai.pipeline.pipeline_process_group import ppg
-from colossalai.pipeline.rpc.utils import (get_batch_lengths, get_real_args_kwargs, pytree_filter, pytree_map,
-                                           split_batch, tensor_shape_list, type_detail)
 from torch import autograd, nn, optim
 from torch._C._distributed_rpc import PyRRef
 from torch.futures import Future
+
+from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.pipeline.rpc.utils import (
+    get_batch_lengths,
+    get_real_args_kwargs,
+    pytree_filter,
+    pytree_map,
+    split_batch,
+)
 
 
 class Phase(Enum):
@@ -461,7 +467,7 @@ class WorkerBase(ABC):
                                                                                     checkpoint=use_checkpoint)
             # if not forward_only, do the backward
             if not forward_only:
-                if is_last_stage:    # if it is the last stage, trigger backward automatic
+                if is_last_stage:  # if it is the last stage, trigger backward automatic
                     self._begin_backward(microbatch_id)
 
         elif phase == Phase.BACKWARD:

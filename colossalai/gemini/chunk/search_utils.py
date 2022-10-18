@@ -1,7 +1,9 @@
 import math
 from typing import Dict, List
+
 import numpy as np
 import torch.nn as nn
+
 from colossalai.tensor import ColoParameter
 
 
@@ -52,7 +54,7 @@ def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
 def search_chunk_configuration(
         model: nn.Module,
         search_range_mb: float,
-        search_interval_byte: int,    # hidden size is the best value for the interval
+        search_interval_byte: int,  # hidden size is the best value for the interval
         min_chunk_size_mb: float = 32,
         filter_exlarge_params: bool = True) -> Dict:
     search_range_byte = round(search_range_mb * 1024**2)

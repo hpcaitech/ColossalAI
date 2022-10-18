@@ -1,27 +1,24 @@
-import pytest
-import colossalai
-import torch
-import torch.multiprocessing as mp
-import torch.distributed as dist
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-
 from functools import partial
-from tests.test_tensor.common_utils import tensor_equal, set_seed, tensor_shard_equal
-from tests.components_to_test.registry import non_distributed_component_funcs
-from torch.nn.parallel import DistributedDataParallel as DDP
-from colossalai.nn.parallel import ZeroDDP
-from colossalai.nn.optimizer import HybridAdam
-from colossalai.zero import ZeroOptimizer
-from colossalai.testing import parameterize
-from colossalai.amp import convert_to_apex_amp
-from colossalai.gemini.gemini_mgr import GeminiManager
-from tests.test_tensor.common_utils import debug_print
 
-from time import time
-from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
+import pytest
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+import colossalai
+from colossalai.amp import convert_to_apex_amp
+from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
+from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.nn.parallel import ZeroDDP
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.zero import ZeroOptimizer
+from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.test_tensor.common_utils import set_seed
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):

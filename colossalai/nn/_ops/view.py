@@ -1,8 +1,10 @@
 import math
-import torch
-from colossalai.tensor.op_wrapper import colo_op_impl
-from colossalai.tensor import ColoTensor, ColoTensorSpec, ReplicaSpec
 from typing import Optional, Union
+
+import torch
+
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ReplicaSpec
+from colossalai.tensor.op_wrapper import colo_op_impl
 
 
 def _all_int(my_iter):
@@ -49,7 +51,7 @@ def _shape_infer(org_sp, tgt_sp):
         raise RuntimeError("shape '{}' is invalid for input of size {}".format(tgt_sp, org_prod))
 
     infer_dim = -(org_prod // tgt_prod)
-    return tgt_sp[: pos] + (infer_dim,) + tgt_sp[pos + 1:]
+    return tgt_sp[:pos] + (infer_dim,) + tgt_sp[pos + 1:]
 
 
 @colo_op_impl(torch.Tensor.view)
@@ -77,15 +79,11 @@ def colo_view(self: ColoTensor, *shape) -> 'ColoTensor':
         res = self.view(*new_shape)
     else:
         replicated_t = self.redistribute(dist_spec=ReplicaSpec())
-        return ColoTensor.from_torch_tensor(
-            tensor=replicated_t.view(*shape),
-            spec=ColoTensorSpec(self.get_process_group()))
+        return ColoTensor.from_torch_tensor(tensor=replicated_t.view(*shape),
+                                            spec=ColoTensorSpec(self.get_process_group()))
 
-    return ColoTensor.from_torch_tensor(
-        tensor=res,
-        spec=ColoTensorSpec(
-            pg=self.get_process_group(),
-            dist_attr=self.dist_spec))
+    return ColoTensor.from_torch_tensor(tensor=res,
+                                        spec=ColoTensorSpec(pg=self.get_process_group(), dist_attr=self.dist_spec))
 
 
 @colo_op_impl(torch.Tensor.size)

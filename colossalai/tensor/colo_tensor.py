@@ -1,14 +1,14 @@
-from .op_wrapper import _COLOSSAL_OPS
-from .const import TensorType
 from copy import copy
-import torch
 from functools import lru_cache
+from typing import Callable, Optional, Set
 
-from colossalai.tensor import ColoTensorSpec
-from colossalai.tensor import ProcessGroup, ReplicaSpec
+import torch
+
+from colossalai.tensor import ColoTensorSpec, ProcessGroup, ReplicaSpec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
-from colossalai.tensor.distspec import _DistSpec, DistPlacementPattern
-from typing import Optional, Set, Callable
+from colossalai.tensor.distspec import DistPlacementPattern, _DistSpec
+
+from .const import TensorType
 
 
 @lru_cache(None)
@@ -18,7 +18,7 @@ def _get_my_nowrap_functions() -> Set[Callable]:
         Tensor._base.__get__,
         Tensor.grad.__get__,
         Tensor._grad.__get__,
-        Tensor.data.__get__,    # make .data returns torch.Tensor rather than ColoTensor
+        Tensor.data.__get__,  # make .data returns torch.Tensor rather than ColoTensor
     }
 
 

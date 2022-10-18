@@ -1,19 +1,21 @@
-import torch
 import itertools
-import torch.distributed as dist
-from functools import partial
-from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
-from colossalai.tensor.param_op_hook import ParamOpHookManager
-from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Dict, Iterable, List, Optional, Set
-from colossalai.logging import get_dist_logger
 from collections import OrderedDict
-from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
-from .reducer import Reducer
+from functools import partial
+from typing import Dict, Iterable, List, Optional, Set
 
-from colossalai.gemini.chunk import TensorState, Chunk, ChunkManager
+import torch
+import torch.distributed as dist
+
+from colossalai.gemini.chunk import Chunk, ChunkManager, TensorState
+from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.utils import get_temp_total_chunk_on_cuda
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
+from colossalai.tensor.param_op_hook import ParamOpHookManager
+from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
+
+from .reducer import Reducer
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -416,7 +418,7 @@ class ZeroDDP(ColoDDP):
         state_dict = state_dict.copy()
         if metadata is not None:
             # mypy isn't aware that "_metadata" exists in state_dict
-            state_dict._metadata = metadata    # type: ignore[attr-defined]
+            state_dict._metadata = metadata  # type: ignore[attr-defined]
 
         prefix = ''
         local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})

@@ -2,9 +2,10 @@
 # coding: utf-8
 
 import argparse
-import requests
-import re
 import os
+import re
+
+import requests
 
 COMMIT_API = 'https://api.github.com/repos/hpcaitech/ColossalAI/commits'
 TAGS_API = 'https://api.github.com/repos/hpcaitech/ColossalAI/tags'
@@ -109,7 +110,7 @@ if __name__ == '__main__':
 
     # get the commits since last release
     commit_info = get_all_commit_info(since=last_release_date, headers=headers)
-    commit_info = commit_info[:-1]    # remove the release commit
+    commit_info = commit_info[:-1]  # remove the release commit
 
     # collate into markdown
     release_info = collate_release_info(commit_info)

@@ -1,4 +1,5 @@
 import math
+
 import torch
 
 from colossalai.testing import parameterize
@@ -79,8 +80,8 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
             eps,
             weight_decay,
             True,
-            p_data.view(-1),    # fp32 data
-            p_grad.view(-1),    # fp32 grad
+            p_data.view(-1),  # fp32 data
+            p_grad.view(-1),  # fp32 grad
             exp_avg.view(-1),
             exp_avg_sq.view(-1),
             -1,
@@ -93,8 +94,8 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
             beta2,
             eps,
             weight_decay,
-            p_data_copy,    # fp32 data
-            p_grad_copy,    # fp32 grad
+            p_data_copy,  # fp32 data
+            p_grad_copy,  # fp32 grad
             exp_avg_copy,
             exp_avg_sq_copy,
             adamw,

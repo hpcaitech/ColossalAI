@@ -1,15 +1,12 @@
 import torch
-from torch.fx import GraphModule
 import torch.nn as nn
-import pytest
-from colossalai.auto_parallel.tensor_shard.deprecated import sharding_strategy
+from torch.fx import GraphModule
 
-from colossalai.fx.proxy import ColoProxy
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 from colossalai.auto_parallel.tensor_shard.deprecated.op_handler.layer_norm_handler import LayerNormHandler
 from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.tensor.sharding_spec import ShardingSpec
 
 
 class LNModel(nn.Module):

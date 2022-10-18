@@ -1,24 +1,27 @@
 from copy import deepcopy
-import pytest
 from functools import partial
 
+import pytest
 import torch
 import torch.multiprocessing as mp
 
-from colossalai.tensor import ColoTensor, ComputePattern, ComputeSpec, ShardSpec, ColoTensorSpec
-from colossalai.nn.parallel.layers import init_colo_module, check_colo_module
-from tests.test_tensor.common_utils import tensor_equal, tensor_shard_equal, set_seed
-
 import colossalai
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
-
-from colossalai.tensor import distspec, ProcessGroup, ReplicaSpec
-
+from colossalai.nn.parallel.layers import check_colo_module, init_colo_module
+from colossalai.tensor import (
+    ColoTensor,
+    ColoTensorSpec,
+    ComputePattern,
+    ComputeSpec,
+    ProcessGroup,
+    ReplicaSpec,
+    ShardSpec,
+)
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.test_tensor.common_utils import set_seed, tensor_equal, tensor_shard_equal
 
 
 def run_model_with_spec(mode, model_name):
@@ -94,11 +97,11 @@ def run_model_with_spec(mode, model_name):
                     if p1.size() == p2.size():
                         assert torch.allclose(p1, p2)
                     else:
-                        if p1.size(-1) < p2.size(-1):    # col
+                        if p1.size(-1) < p2.size(-1):  # col
                             world_size = p2.size(-1) // p1.size(-1)
                             split_p2 = torch.chunk(p2, world_size, dim=-1)[0]
 
-                        elif p1.size(0) < p2.size(0):    # row
+                        elif p1.size(0) < p2.size(0):  # row
                             world_size = p2.size(0) // p1.size(0)
                             split_p2 = torch.chunk(p2, world_size, dim=0)[0]
 
@@ -134,7 +137,7 @@ def run_linear_with_spec(mode):
 
 
 def run_check_shared_param():
-    from transformers import BertForMaskedLM, BertConfig
+    from transformers import BertConfig, BertForMaskedLM
     hidden_dim = 8
     num_head = 4
     sequence_length = 12

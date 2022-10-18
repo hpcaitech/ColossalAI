@@ -3,11 +3,20 @@ from typing import Any, Dict, List, NamedTuple, Tuple
 
 import torch
 import torch.fx
-from colossalai.fx._compatibility import compatibility
-from colossalai.fx.profiler import (GraphInfo, activation_size, calculate_fwd_in, calculate_fwd_out, calculate_fwd_tmp,
-                                    profile_function, profile_method, profile_module)
 from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_map
+
+from colossalai.fx._compatibility import compatibility
+from colossalai.fx.profiler import (
+    GraphInfo,
+    activation_size,
+    calculate_fwd_in,
+    calculate_fwd_out,
+    calculate_fwd_tmp,
+    profile_function,
+    profile_method,
+    profile_module,
+)
 
 
 @compatibility(is_backward_compatible=True)
@@ -101,7 +110,7 @@ class MetaInfoProp(torch.fx.Interpreter):
 
         tensor_meta = tree_map(extract_tensor_meta, result)
         n.meta['tensor_meta'] = tensor_meta
-        n.meta = {**n.meta, **asdict(meta_info)}    # extend MetaInfo to `n.meta`
+        n.meta = {**n.meta, **asdict(meta_info)}  # extend MetaInfo to `n.meta`
         # TODO: the attribute node_size should be removed in the future
         setattr(n, 'node_size', activation_size(n.meta.get('fwd_in', 0)) + activation_size(n.meta.get('fwd_tmp', 0)))
         n.meta['type'] = type(result)

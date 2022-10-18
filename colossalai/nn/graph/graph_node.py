@@ -1,5 +1,5 @@
-from colossalai.tensor import ColoTensor
 from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.tensor import ColoTensor
 
 
 class GraphGlobalEnv(metaclass=SingletonMeta):

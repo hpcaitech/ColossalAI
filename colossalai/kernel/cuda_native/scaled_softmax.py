@@ -1,9 +1,10 @@
 """This code from NVIDIA Megatron
    with some changes. """
 
+import enum
+
 import torch
 import torch.nn as nn
-import enum
 
 
 class AttnMaskType(enum.Enum):
@@ -131,12 +132,12 @@ class FusedScaleMaskSoftmax(nn.Module):
     def is_kernel_available(self, mask, b, np, sq, sk):
         attn_batches = b * np
 
-        if (self.scaled_masked_softmax_fusion    # user want to fuse
-                and self.input_in_float16    # input must be fp16
-                and mask is not None    # mask tensor must not be None
-                and 16 < sk <= 2048    # sk must be 16 ~ 2048
-                and sq % 4 == 0    # sq must be divisor of 4
-                and attn_batches % 4 == 0    # np * b must be divisor of 4
+        if (self.scaled_masked_softmax_fusion  # user want to fuse
+                and self.input_in_float16  # input must be fp16
+                and mask is not None  # mask tensor must not be None
+                and 16 < sk <= 2048  # sk must be 16 ~ 2048
+                and sq % 4 == 0  # sq must be divisor of 4
+                and attn_batches % 4 == 0  # np * b must be divisor of 4
            ):
             if 0 <= sk <= 2048:
                 batch_per_block = self.get_batch_per_block(sq, sk, b, np)

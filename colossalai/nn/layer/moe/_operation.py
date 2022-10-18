@@ -1,7 +1,8 @@
+from typing import Any, Optional, Tuple
+
 import torch
 import torch.distributed as dist
 from torch import Tensor
-from typing import Any, Tuple, Optional
 from torch.distributed import ProcessGroup
 
 COL_MOE_KERNEL_FLAG = False

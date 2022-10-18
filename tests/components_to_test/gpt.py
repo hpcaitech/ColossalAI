@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
-from .registry import non_distributed_component_funcs
 from transformers import GPT2Config, GPT2LMHeadModel
-from .utils.dummy_data_generator import DummyDataGenerator
+
 from colossalai.utils.cuda import get_current_device
+
+from .registry import non_distributed_component_funcs
+from .utils.dummy_data_generator import DummyDataGenerator
 
 
 class DummyDataLoader(DummyDataGenerator):

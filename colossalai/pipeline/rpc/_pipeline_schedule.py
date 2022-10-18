@@ -2,11 +2,11 @@ import threading
 from typing import Callable, Dict, List
 
 import torch
-import torch.distributed as dist
-from colossalai.pipeline.pipeline_process_group import ppg
-from colossalai.pipeline.rpc._pipeline_base import (Phase, PipelineEngineBase, UniqueKey, WorkerBase, WorkItem)
 from torch._C._distributed_rpc import PyRRef
 from torch.futures import Future
+
+from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.pipeline.rpc._pipeline_base import Phase, PipelineEngineBase, UniqueKey, WorkerBase, WorkItem
 
 # Implementation of different Pipeline schedule
 # <strategy>Worker defines the worker for each stage
@@ -152,7 +152,7 @@ class ChimeraWorker(WorkerBase):
             ((pp_rank + 1) % stage_num == 0 and forward_block_num > self.backward_times):
             target_phase = Phase.BACKWARD
             target_microbatch_id = self.backward_times
-        else:    # others
+        else:  # others
             target_phase = Phase.FORWARD
             target_microbatch_id = self.forward_times
 

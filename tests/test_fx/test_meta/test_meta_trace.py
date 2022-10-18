@@ -2,6 +2,7 @@ import pytest
 import timm.models as tmm
 import torch
 import torchvision.models as tm
+
 from colossalai.fx._compatibility import is_compatible_with_meta
 
 if is_compatible_with_meta():

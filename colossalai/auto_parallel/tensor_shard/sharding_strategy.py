@@ -4,11 +4,12 @@ from enum import Enum
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
-from colossalai.tensor.shape_consistency import CommSpec
-from colossalai.tensor.sharding_spec import ShardingSpec
 from torch.fx.node import Node
 
-from .constants import (BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP)
+from colossalai.tensor.shape_consistency import CommSpec
+from colossalai.tensor.sharding_spec import ShardingSpec
+
+from .constants import BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP
 
 __all__ = ['OperationDataType', 'OperationData', 'TrainCycleItem', 'MemoryCost', 'ShardingStrategy', 'StrategiesVector']
 

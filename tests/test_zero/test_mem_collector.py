@@ -1,17 +1,19 @@
-import torch
-import colossalai
+from functools import partial
+
 import pytest
+import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity, colo_set_process_memory_fraction
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.shard_utils import BucketTensorShardStrategy
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from functools import partial
+from colossalai.zero.sharded_model import ShardedModelV2
 
 
 class MyTestModel(torch.nn.Module):

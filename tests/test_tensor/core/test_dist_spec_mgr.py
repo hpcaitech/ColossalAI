@@ -1,13 +1,15 @@
 import math
+from functools import partial
+
+import pytest
 import torch
 import torch.distributed as dist
-import pytest
-import colossalai
 import torch.multiprocessing as mp
+
+import colossalai
+from colossalai.tensor import DistSpecManager, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from colossalai.tensor import DistSpecManager, ProcessGroup, ShardSpec, ReplicaSpec
-from functools import partial
 
 
 def run():

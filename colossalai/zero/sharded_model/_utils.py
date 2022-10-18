@@ -1,8 +1,8 @@
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from typing import Union
+
 from colossalai.gemini.stateful_tensor import StatefulTensor
 
 
@@ -25,7 +25,7 @@ def free_storage(data: torch.Tensor) -> None:
 @torch.no_grad()
 def alloc_storage(data: torch.Tensor, size: torch.Size) -> None:
     """Allocate storage for a tensor."""
-    if data.storage().size() == size.numel():    # no need to reallocate
+    if data.storage().size() == size.numel():  # no need to reallocate
         return
     assert data.storage().size() == 0
     data.storage().resize_(size.numel())

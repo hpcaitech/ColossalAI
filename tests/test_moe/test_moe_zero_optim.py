@@ -1,28 +1,26 @@
 from functools import partial
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.amp import convert_to_apex_amp
+from colossalai.context import MOE_CONTEXT
+from colossalai.engine.gradient_handler import MoeGradientHandler
 from colossalai.nn import MoeLoss
 from colossalai.nn.optimizer import CPUAdam
-from colossalai.testing import parameterize, rerun_if_address_is_in_use
-from colossalai.utils import free_port
+from colossalai.testing import assert_equal_in_group, parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
+from colossalai.zero.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
-from colossalai.utils import get_current_device
 from tests.components_to_test.registry import non_distributed_component_funcs
-from colossalai.engine.gradient_handler import MoeGradientHandler
-from colossalai.context import MOE_CONTEXT
-from colossalai.testing import assert_equal_in_group
-
-from tests.test_zero.common import CONFIG, check_sharded_model_params
 from tests.test_moe.test_moe_zero_init import MoeModel
+from tests.test_zero.common import CONFIG, check_sharded_model_params
 
 
 def _run_step(model, optimizer, data, label, criterion, grad_handler):
@@ -48,7 +46,7 @@ def _run_step(model, optimizer, data, label, criterion, grad_handler):
 
 
 @parameterize("cpu_offload", [True])
-@parameterize("use_cpuadam", [True])    # We do not use Hybrid Adam right now, since it has a little bug
+@parameterize("use_cpuadam", [True])  # We do not use Hybrid Adam right now, since it has a little bug
 @parameterize("reuse_fp16_shard", [True, False])
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
 def _run_test_sharded_optim_v2(cpu_offload,

@@ -1,11 +1,12 @@
 import pytest
 import torch
 import torchvision.models as tm
+
 from colossalai.fx import ColoTracer
 from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.algorithms import linearize, solver_rotor
-from colossalai.fx.passes.algorithms.operation import (ForwardCheck, ForwardEnable, ForwardNograd, Loss)
+from colossalai.fx.passes.algorithms.operation import ForwardCheck, ForwardEnable, ForwardNograd, Loss
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 
 if is_compatible_with_meta():

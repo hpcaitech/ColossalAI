@@ -1,7 +1,8 @@
-from typing import List, Set, Tuple
-import torch
-from torch.fx import GraphModule, Node
 import math
+from typing import List, Set, Tuple
+
+from torch.fx import GraphModule, Node
+
 from colossalai.fx.profiler import calculate_fwd_in, calculate_fwd_tmp
 
 __all__ = ['chen_greedy']
@@ -23,12 +24,12 @@ def _all_potential_ckpt_nodes(gm: GraphModule) -> List:
     ckpt_nodes = []
     for n in gm.graph.nodes:
         for n_par in n._input_nodes:
-            deps[n_par] -= 1    # free memory and dependencies
+            deps[n_par] -= 1  # free memory and dependencies
 
         # We can only put act_ckpt on these nodes
         if n.op in CKPT_OP and is_sink():
             ckpt_nodes.append(n)
-        deps[n] = len(n.users)    # add dependencies for future executions
+        deps[n] = len(n.users)  # add dependencies for future executions
     return ckpt_nodes
 
 
@@ -84,7 +85,7 @@ def chen_greedy(gm: GraphModule) -> GraphModule:
                 prev_idx = idx + 1
         return ckpt_intv, math.floor(math.sqrt(x * y))
 
-    gm.graph.lint()    # make sure nodes are in topological order
+    gm.graph.lint()  # make sure nodes are in topological order
     ckpt = grid_search(num_grids=6)
     node_list = list(gm.graph.nodes)
     for i, seg in enumerate(ckpt):

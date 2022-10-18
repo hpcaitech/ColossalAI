@@ -1,6 +1,8 @@
-import torch
-from colossalai.fx.tracer.meta_patch import patched_function
 from functools import partial
+
+import torch
+
+from colossalai.fx.tracer.meta_patch import patched_function
 
 
 def _run(data, patch_fn):

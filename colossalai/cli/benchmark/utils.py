@@ -1,10 +1,11 @@
 import math
 import time
+from typing import Callable, Dict, List, Tuple
+
 import torch
 
+from colossalai.context import Config, ParallelMode
 from colossalai.utils import MultiTimer
-from colossalai.context import ParallelMode, Config
-from typing import List, Dict, Tuple, Callable
 
 
 def get_time_stamp() -> int:

@@ -1,21 +1,21 @@
 import contextlib
 import functools
-from typing import Optional
 from contextlib import AbstractContextManager
+from typing import Optional
 
 import torch
-import torch.nn as nn
 import torch.distributed as dist
+import torch.nn as nn
 
 from colossalai.context.parallel_mode import ParallelMode
-from colossalai.core import global_context as gpc
 from colossalai.context.singleton_meta import SingletonMeta
+from colossalai.core import global_context as gpc
 from colossalai.logging import get_dist_logger
+from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model._utils import cast_tensor_to_fp16
 from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 from colossalai.zero.sharded_param import ShardedParamV2
-from colossalai.utils.model.utils import InsertPostInitMethodToModuleSubClasses
 
 
 class ZeroContextConfig(object):
@@ -150,7 +150,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
         # set new seed for initialization, since we initialize sharded tensor separately
         # we don't want all processes have the same seed
         # otherwise all sharded tensors are same after init
-        offset = self.seed + 1    # we want to have more 1 in binary format seed
+        offset = self.seed + 1  # we want to have more 1 in binary format seed
         torch.manual_seed(self.seed + offset * dist.get_rank())
 
     def _post_context_exec(self):
@@ -213,7 +213,7 @@ class ZeroInitContext(InsertPostInitMethodToModuleSubClasses):
             if self.shard_param:
                 self.shard_strategy.shard([param.colo_attr.sharded_data_tensor], self.dp_process_group)
 
-            param.data = param.colo_attr.data_payload    # set param.data to payload
+            param.data = param.colo_attr.data_payload  # set param.data to payload
 
             # mark whether the param is replicated
             param.colo_attr.is_replicated = self.is_replicated

@@ -1,7 +1,6 @@
-import torch
-from typing import List, Callable, Optional
-
 from abc import ABC, abstractmethod
+from typing import Callable, List, Optional
+
 import torch
 
 
