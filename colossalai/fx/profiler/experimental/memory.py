@@ -1,11 +1,15 @@
 # for PyTorch 1.11 compatibility uses
+from typing import Dict, List, Tuple, Union
+
 import torch
-from torch.fx import Node, GraphModule
-from typing import Union, Dict, List, Tuple
+from torch.fx import GraphModule, Node
+
+from ..._compatibility import compatibility
 
 __all__ = ["calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"]
 
 
+@compatibility(is_backward_compatible=True)
 def calculate_fwd_in(n: Node) -> bool:
     """A helper function to calculate `fwd_in`
 
@@ -18,6 +22,7 @@ def calculate_fwd_in(n: Node) -> bool:
     return n.meta['save_fwd_in']
 
 
+@compatibility(is_backward_compatible=True)
 def calculate_fwd_tmp(n: Node) -> int:
     """A helper function to calculate `fwd_tmp`
 
@@ -30,6 +35,7 @@ def calculate_fwd_tmp(n: Node) -> int:
     return n.meta["fwd_mem_tmp"]
 
 
+@compatibility(is_backward_compatible=True)
 def calculate_fwd_out(n: Node) -> int:
     """A helper function to calculate `fwd_out`
 

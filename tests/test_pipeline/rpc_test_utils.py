@@ -1,19 +1,17 @@
-import os
 import argparse
+import os
 import warnings
 
 import torch
-from torch import nn
-import torch.multiprocessing as mp
-import torch.distributed.rpc as rpc
-from torch.optim import SGD, Adam, RMSprop, Optimizer
-from torch._C._distributed_rpc import _is_current_rpc_agent_set
 import torch.distributed as dist
-from colorama import Back, Style
-
-from colossalai.pipeline.pipeline_process_group import ppg
-from colossalai.logging import disable_existing_loggers
+import torch.distributed.rpc as rpc
+import torch.multiprocessing as mp
 from colossalai import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.pipeline.pipeline_process_group import ppg
+from torch import nn
+from torch._C._distributed_rpc import _is_current_rpc_agent_set
+from torch.optim import SGD, Adam, Optimizer, RMSprop
 
 rpc_is_initialized = _is_current_rpc_agent_set
 

@@ -1,16 +1,19 @@
+import time
 from functools import partial
-from typing import Callable, Any, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
+
 import torch
-from torch.nn.parameter import Parameter
 from torch.fx import Graph, Node
 from torch.fx.node import Argument, Target
+from torch.nn.parameter import Parameter
 from torch.utils._pytree import tree_map
-from .dataflow import autograd_graph_analysis, is_phase, Phase, GraphInfo
+
+from .._compatibility import compatibility
+from .constants import ALIAS_ATEN
+from .dataflow import GraphInfo, Phase, autograd_graph_analysis, is_phase
 from .memory import activation_size, parameter_size
-from .constant import ALIAS_ATEN
-from .tensor import MetaTensor
 from .opcount import flop_mapping
-import time
+from .tensor import MetaTensor
 
 __all__ = ['profile_function', 'profile_module', 'profile_method']
 
@@ -41,6 +44,7 @@ def detach_variables(x):
     return x
 
 
+@compatibility(is_backward_compatible=True)
 def _profile_concrete(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphInfo]:
     """Profile a Callable function with args and kwargs on concrete devices by https://github.com/Cypher30
     To profile the actual forward memory, we first run target in the context torch.no_grad() to get
@@ -140,6 +144,7 @@ def _profile_concrete(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...
     return tree_map(detach_variables, out), graphinfo
 
 
+@compatibility(is_backward_compatible=False)
 def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], GraphInfo]:
     """
     Profile a Callable function with args and kwargs on meta devices.
@@ -277,6 +282,7 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
     return tree_map(unwrap, out), graph_info
 
 
+@compatibility(is_backward_compatible=True)
 def profile_function(target: 'Target', device: str = 'meta') -> Callable:
     """
     Wrap a `call_function` node or `torch.nn.functional` in order to 
@@ -335,6 +341,7 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
     return f
 
 
+@compatibility(is_backward_compatible=True)
 def profile_method(target: 'Target', device: str = 'meta') -> Callable:
     """
     Wrap a `call_method` node
@@ -353,6 +360,7 @@ def profile_method(target: 'Target', device: str = 'meta') -> Callable:
     return f
 
 
+@compatibility(is_backward_compatible=True)
 def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
     """
     Wrap a `call_module` node or `torch.nn` in order to 

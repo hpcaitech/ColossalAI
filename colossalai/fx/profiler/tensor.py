@@ -1,10 +1,13 @@
+import uuid
 from copy import deepcopy
 from typing import Optional
+
 import torch
-from torch.utils._pytree import tree_map, tree_flatten
-from torch.types import _bool, _dtype, _device
-import uuid
-from .constant import ALIAS_ATEN
+from torch.types import _bool, _device, _dtype
+from torch.utils._pytree import tree_flatten, tree_map
+
+from .._compatibility import compatibility
+from .constants import ALIAS_ATEN
 
 __all__ = ['MetaTensor']
 
@@ -15,6 +18,7 @@ def set_uuid(x):
             setattr(x, 'uuid', uuid.uuid4())
 
 
+@compatibility(is_backward_compatible=False)
 class MetaTensor(torch.Tensor):
     """
     A wrapping tensor that hacks `torch.autograd` without patching more `torch.ops.aten` ops.

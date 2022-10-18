@@ -1,12 +1,11 @@
 from typing import Any, Callable, Union
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from colossalai import META_COMPATIBILITY
 
 import pytest
+import torch
+import torch.nn as nn
+from colossalai.fx._compatibility import is_compatible_with_meta
 
-if META_COMPATIBILITY:
+if is_compatible_with_meta():
     from colossalai.fx.profiler import MetaTensor
 
 aten = torch.ops.aten
@@ -71,7 +70,7 @@ def run_and_compare(f: Union[nn.Module, Callable], x: torch.Tensor, requires_bac
         compare_all(x.grad, meta_x.grad)
 
 
-@pytest.mark.skipif(not META_COMPATIBILITY, reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(not is_compatible_with_meta(), reason='torch version is lower than 1.12.0')
 def test_meta_aten():
     for (aten_op, requires_backward), v in registered_meta.items():
         for f, x in v:

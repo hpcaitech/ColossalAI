@@ -1,10 +1,10 @@
-import torchvision.models as tm
+import pytest
 import timm.models as tmm
 import torch
-from colossalai import META_COMPATIBILITY
-import pytest
+import torchvision.models as tm
+from colossalai.fx._compatibility import is_compatible_with_meta
 
-if META_COMPATIBILITY:
+if is_compatible_with_meta():
     from colossalai.fx import meta_trace
 
 tm_models = [
@@ -27,7 +27,7 @@ tmm_models = [
 ]
 
 
-@pytest.mark.skipif(not META_COMPATIBILITY, reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(not is_compatible_with_meta(), reason='torch version is lower than 1.12.0')
 def test_torchvision_models_trace():
     for m in tm_models:
         model = m()
@@ -35,7 +35,7 @@ def test_torchvision_models_trace():
         graph = meta_trace(model, torch.device('cpu'), data)
 
 
-@pytest.mark.skipif(not META_COMPATIBILITY, reason='torch version is lower than 1.12.0')
+@pytest.mark.skipif(not is_compatible_with_meta(), reason='torch version is lower than 1.12.0')
 def test_timm_models_trace():
     for m in tmm_models:
         model = m()

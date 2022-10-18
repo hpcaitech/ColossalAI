@@ -1,20 +1,22 @@
-from typing import Callable
 import copy
 import re
+from typing import Callable
+
+import colossalai
+import pytest
 import torch
 import torch.multiprocessing as mp
 import torchvision.models as tm
-from torch.fx import GraphModule
-import colossalai
-from colossalai.fx import ColoTracer
-from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
-from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
-import pytest
-from colossalai import META_COMPATIBILITY
-if META_COMPATIBILITY:
+from colossalai.fx import ColoTracer
+from colossalai.fx._compatibility import is_compatible_with_meta
+from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.fx.passes.algorithms import chen_greedy, solver_rotor
+from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.utils import free_port
+from torch.fx import GraphModule
+
+if is_compatible_with_meta():
     from colossalai.fx.profiler.tensor import MetaTensor
 
 try:
@@ -54,8 +56,9 @@ def _is_graph_linearized(gm: GraphModule):
 def check_backward_consistency(m: torch.nn.Module, gm: GraphModule, solver: Callable[[GraphModule], GraphModule],
                                model_cls: Callable[[], torch.nn.Module]):
     criterion = torch.nn.MSELoss()
-    data = torch.rand(2, 3, 32, 32)
-    label = torch.rand(2, 5)
+    m.cuda()
+    data = torch.rand(2, 3, 32, 32).cuda()
+    label = torch.rand(2, 5).cuda()
     loss = criterion(m(data), label)
     loss.backward()
     loss = criterion(gm(data), label)
@@ -77,7 +80,7 @@ def _run_ckpt_solver(rank):
             m = model_cls(num_classes=5)
             graph = tracer.trace(root=m)
             gm = ColoGraphModule(copy.deepcopy(m), graph, m.__class__.__name__)
-            MetaInfoProp(gm.cuda()).run(MetaTensor(data, fake_device='cuda'))
+            MetaInfoProp(gm.cuda()).run(MetaTensor(data).cuda())
             codegen = ActivationCheckpointCodeGen()
             gm.graph.set_codegen(codegen)
             if solver == solver_rotor:
