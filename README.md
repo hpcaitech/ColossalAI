@@ -36,6 +36,7 @@
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
      <li><a href="#OPT">OPT</a></li>
+     <li><a href="#Recommendation-System-Models">Recommendation System Models</a></li>
    </ul>
  </li>
  <li>
