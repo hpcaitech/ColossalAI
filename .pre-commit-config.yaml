@@ -22,7 +22,10 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.3.0
     hooks:
-      - id: trailing-whitespace  # Trim trailing whitespace
-      - id: check-yaml  # Attempt to load all yaml files to verify syntax
-      - id: check-merge-conflict  # Check for files that contain merge conflict strings
-      - id: end-of-file-fixer  # Make sure files end in a newline and only a newline
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ['--fix=lf']
