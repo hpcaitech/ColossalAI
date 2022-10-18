@@ -315,8 +315,11 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
         # If there is an argument that this `call_function` is inplace, we should
         # still run the profiling but discard some results regarding `target`
         global do_not_cache
+
         inplace = kwargs.get('inplace', False)
-        if inplace or target in RELU_LIKE_OPS:
+        if target in RELU_LIKE_OPS:
+            do_not_cache = True
+        if inplace:
             do_not_cache = True
             kwargs['inplace'] = False
         if device == 'meta':
@@ -380,7 +383,9 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
         global do_not_cache
 
         inplace = getattr(module, 'inplace', False)
-        if inplace or type(module) in RELU_LIKE_MOD:
+        if type(module) in RELU_LIKE_MOD:
+            do_not_cache = True
+        if inplace:
             do_not_cache = True
             module.inplace = False
         if device == 'meta':
