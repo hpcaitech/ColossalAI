@@ -4,8 +4,9 @@ from typing import Optional
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from manager import ChunkManager
-from search_utils import in_ddp, search_chunk_configuration
+
+from colossalai.gemini.chunk import ChunkManager
+from colossalai.gemini.chunk.search_utils import in_ddp, search_chunk_configuration
 
 
 def init_chunk_manager(model: nn.Module,
@@ -48,7 +49,8 @@ def init_chunk_manager(model: nn.Module,
     if dist.get_rank() == 0:
         print("searching chunk configuration is completed in {:.2f} s.\n".format(span_s),
               "used number: {:.2f} MB, wasted number: {:.2f} MB\n".format(total_size, wasted_size),
-              "total wasted percentage is {:.2f}%".format(wasted_size / (total_size + wasted_size)))
+              "total wasted percentage is {:.2f}%".format(100 * wasted_size / (total_size + wasted_size)),
+              sep='')
     dist.barrier()
 
     chunk_manager = ChunkManager(config_dict, init_device)
