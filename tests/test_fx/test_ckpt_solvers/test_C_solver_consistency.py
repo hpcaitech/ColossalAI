@@ -8,14 +8,13 @@ import torch.multiprocessing as mp
 import torchvision.models as tm
 from colossalai.core import global_context as gpc
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.fx._compatibility import check_meta_compatibility
+from colossalai.fx._compatibility import is_compatible_with_meta
 from colossalai.fx.passes.algorithms import solver_rotor
 from colossalai.fx.passes.algorithms.operation import Sequence
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.utils import free_port
 
-is_compatible = check_meta_compatibility()
-if is_compatible:
+if is_compatible_with_meta():
     from colossalai.fx.profiler.tensor import MetaTensor
 
 try:
@@ -37,7 +36,7 @@ def _run_C_solver_consistency_test(rank=0):
         graph = tracer.trace(model, meta_args={"x": data})
         graph.set_codegen(ActivationCheckpointCodeGen())
         gm = ColoGraphModule(model, graph, model.__class__.__name__)
-        if is_compatible:
+        if is_compatible_with_meta():
             data_meta = MetaTensor(data, fake_device=next(gm.parameters()).device)
         MetaInfoProp(gm).run(data_meta)
 
