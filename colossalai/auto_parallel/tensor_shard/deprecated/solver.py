@@ -1,18 +1,20 @@
-import warnings
-
-import time
-import numpy as np
 import multiprocessing
-from torch.fx.node import Node
-from torch.fx.graph import Graph
-from .graph_analysis import GraphAnalyser
-from .cost_graph import CostGraph
-from .strategies_constructor import StrategiesConstructor
+import time
+import warnings
 from typing import Dict
+
+import numpy as np
+from torch.fx.graph import Graph
+from torch.fx.node import Node
+
 from .constants import INFINITY_COST
+from .cost_graph import CostGraph
+from .graph_analysis import GraphAnalyser
+from .strategies_constructor import StrategiesConstructor
+
 try:
     import pulp
-    from pulp import LpVariable, LpProblem, LpMinimize, lpSum, lpDot, LpStatus
+    from pulp import LpMinimize, LpProblem, LpStatus, LpVariable, lpDot, lpSum
 except:
     warnings.warn(f'please install the pulp')
 

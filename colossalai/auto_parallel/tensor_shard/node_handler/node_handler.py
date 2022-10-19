@@ -1,10 +1,16 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Union
 
+import torch
 from torch.fx.node import Node
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, ShardingStrategy, StrategiesVector,
-                                                                     TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    OperationData,
+    ShardingStrategy,
+    StrategiesVector,
+    TrainCycleItem,
+)
+from colossalai.auto_parallel.tensor_shard.utils import check_sharding_spec_validity
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 
@@ -98,6 +104,12 @@ class NodeHandler(ABC):
 
             self.strategies_vector.extend(post_processed_strategies)
 
+        # validating the correctness of the sharding strategy
+        for strategy in self.strategies_vector:
+            for op_data, sharding_spec in strategy.sharding_specs.items():
+                if op_data.data is not None and isinstance(op_data.data, torch.Tensor):
+                    check_sharding_spec_validity(sharding_spec, op_data.data)
+
         return self.strategies_vector
 
     def post_process(self, strategy: ShardingStrategy) -> Union[ShardingStrategy, List[ShardingStrategy]]:
@@ -116,8 +128,8 @@ class NodeHandler(ABC):
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
         """
         Returns the mapping between the logical operation data to its physical data.
-        A logical operation data is a data associated with an operation, which can be input and output. It is 
-        defined by the strategy generator, for example, a matrix multiplication operation has two operands "input" 
+        A logical operation data is a data associated with an operation, which can be input and output. It is
+        defined by the strategy generator, for example, a matrix multiplication operation has two operands "input"
         and "other" and one result "output". For a nn.Linear module, the physical operand for "input" is
         the module input, the physical operand for "other" is the module weight, and the physical result for "output"
         is the module output.

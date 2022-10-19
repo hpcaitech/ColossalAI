@@ -3,7 +3,7 @@ import operator
 from functools import reduce
 from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, ShardingStrategy, TrainCycleItem
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import StrategyGenerator
@@ -31,8 +31,8 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         For BatchNorm3d, the dim of input data should be 5([N, C, H, W, D]).
         '''
         input_op_data = self.op_data['input']
-        assert input_op_data.dim() in (3, 4,
-                                       5), f'We suppose the dim of input fed into conv op should in range of [3, 5].'
+        assert input_op_data.data.dim() in (
+            3, 4, 5), f'We suppose the dim of input fed into conv op should in range of [3, 5].'
 
     def update_compute_cost(self, strategy: ShardingStrategy):
         '''

@@ -1,13 +1,15 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.dot_handler import (LinearFunctionHandler, LinearModuleHandler)
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, ShardingStrategy,
-                                                                     StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler.dot_handler import LinearFunctionHandler, LinearModuleHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    OperationData,
+    OperationDataType,
+    ShardingStrategy,
+    StrategiesVector,
+)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from tests.test_auto_parallel.test_tensor_shard.test_node_handler.common import \
-    is_sharding_spec_valid
 
 
 def test_linear_module_handler():
@@ -92,12 +94,6 @@ def test_linear_module_handler():
         bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
         output_sharding_spec = strategy.get_sharding_spec_by_name('_0')
 
-        # make sure the sharding spec is valid
-        is_sharding_spec_valid(input_sharding_spec, torch.rand(2, 2, 4, 16))
-        is_sharding_spec_valid(weight_sharding_spec, model.get_parameter('0.weight'))
-        is_sharding_spec_valid(bias_sharding_spec, model.get_parameter('0.bias'))
-        is_sharding_spec_valid(output_sharding_spec, torch.rand([2, 2, 4, 32]))
-
         # make sure the sharding matches across different operation data
         assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
         assert weight_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
@@ -181,12 +177,6 @@ def test_linear_function_handler():
         weight_sharding_spec = strategy.get_sharding_spec_by_name('weight')
         bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
         output_sharding_spec = strategy.get_sharding_spec_by_name('linear')
-
-        # make sure the sharding spec is valid
-        is_sharding_spec_valid(input_sharding_spec, torch.rand(2, 2, 4, 16))
-        is_sharding_spec_valid(weight_sharding_spec, model.get_parameter('weight'))
-        is_sharding_spec_valid(bias_sharding_spec, model.get_parameter('bias'))
-        is_sharding_spec_valid(output_sharding_spec, torch.rand([2, 2, 4, 32]))
 
         # make sure the sharding matches across different operation data
         assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
