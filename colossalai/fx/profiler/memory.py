@@ -6,7 +6,7 @@ from torch.fx import GraphModule, Node
 from .._compatibility import compatibility, is_compatible_with_meta
 
 if is_compatible_with_meta():
-    from .constants import RELU_LIKE_MOD, RELU_LIKE_OPS
+    from .constants import OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 
 __all__ = [
     'activation_size', 'parameter_size', 'is_inplace', "calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"
@@ -97,9 +97,9 @@ def calculate_fwd_tmp(n: Node) -> int:
             bool: Whether the node is a ReLU-like node
         """
         if n.op == 'call_function':
-            return n.target in RELU_LIKE_OPS
+            return n.target in OUTPUT_SAVED_OPS
         elif n.op == 'call_module':
-            return type(n.graph.owning_module.get_submodule(n.target)) in RELU_LIKE_MOD
+            return type(n.graph.owning_module.get_submodule(n.target)) in OUTPUT_SAVED_MOD
         return False
 
     if not is_relu_like_node(n):

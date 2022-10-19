@@ -9,7 +9,7 @@ from torch.nn.parameter import Parameter
 from torch.utils._pytree import tree_map
 
 from .._compatibility import compatibility
-from .constants import ALIAS_ATEN, RELU_LIKE_MOD, RELU_LIKE_OPS
+from .constants import ALIAS_ATEN, OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 from .dataflow import GraphInfo, Phase, autograd_graph_analysis, is_phase
 from .memory import activation_size, parameter_size
 from .opcount import flop_mapping
@@ -317,7 +317,7 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
         global do_not_cache
 
         inplace = kwargs.get('inplace', False)
-        if target in RELU_LIKE_OPS:
+        if target in OUTPUT_SAVED_OPS:
             do_not_cache = True
         if inplace:
             do_not_cache = True
@@ -383,7 +383,7 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
         global do_not_cache
 
         inplace = getattr(module, 'inplace', False)
-        if type(module) in RELU_LIKE_MOD:
+        if type(module) in OUTPUT_SAVED_MOD:
             do_not_cache = True
         if inplace:
             do_not_cache = True

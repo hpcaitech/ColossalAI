@@ -31,9 +31,9 @@ CLONE_ATEN = [
     aten.clone.default,
 ]
 
-RELU_LIKE_OPS = [
+OUTPUT_SAVED_OPS = [
     torch.nn.functional.relu,
     torch.nn.functional.softmax,
 ]
 
-RELU_LIKE_MOD = [torch.nn.ReLU, torch.nn.Softmax]
+OUTPUT_SAVED_MOD = [torch.nn.ReLU, torch.nn.Softmax]
