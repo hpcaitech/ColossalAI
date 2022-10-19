@@ -142,7 +142,7 @@ def merge(path: str, output_path: str, max_shard_size_gb: float = 0.0, overwrite
     for shard_dict in reader.load_optimizer():
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
-    meta_checkpoint = {'dist_meta': None}
+    meta_checkpoint = {'dist_meta': None, 'params': list(param_count.keys())}
     if param_to_os is not None:
         meta_checkpoint['param_to_os'] = param_to_os
         meta_checkpoint['paired_os'] = paired_os

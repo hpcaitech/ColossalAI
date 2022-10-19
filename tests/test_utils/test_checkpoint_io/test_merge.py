@@ -109,6 +109,7 @@ def test_merge_tp_dp(zero: bool):
             assert len(global_meta['meta']) == 1
             meta = torch.load(os.path.join(output_dir, global_meta['meta'][0]))
             assert meta['dist_meta'] is None
+            assert len(meta['params']) == 2
             assert len(meta['model']) == 1 and len(meta['optimizer']) == 1
             model_state_dict = torch.load(os.path.join(output_dir, meta['model'][0]))
             assert len(model_state_dict) == 2
