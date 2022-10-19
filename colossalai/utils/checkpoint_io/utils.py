@@ -167,11 +167,11 @@ def build_checkpoints(max_size: int,
     return model_checkpoints, optimizer_checkpoints, meta
 
 
-def is_duplicated_list(l: List[Any]) -> bool:
-    if len(l) == 0:
+def is_duplicated_list(list_: List[Any]) -> bool:
+    if len(list_) == 0:
         return True
-    elem = l[0]
-    for x in l[1:]:
+    elem = list_[0]
+    for x in list_[1:]:
         if x != elem:
             return False
     return True
