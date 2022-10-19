@@ -137,7 +137,11 @@ class StrategyGenerator(ABC):
         # if so, loop over each action and compute the cost of each action
         if strategy.communication_actions is not None:
             for operand, comm_action in strategy.communication_actions.items():
-                comm_spec = comm_action.comm_spec
+                if isinstance(comm_action, CommAction):
+                    comm_spec = comm_action.comm_spec
+                else:
+                    # this condition branch will be removed after all the handler updated.
+                    comm_spec = comm_action
                 if isinstance(comm_spec, dict):
                     src_spec = comm_spec['src_spec']
                     tgt_spec = comm_spec['tgt_spec']
