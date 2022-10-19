@@ -1,9 +1,14 @@
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Callable
 from torch import Tensor
 from torch.optim import Optimizer
 from torch.nn import Module
 from .meta import ParamDistMeta
 import warnings
+
+
+def run_if_not_none(fn: Callable[[Any], Any], arg: Any) -> Any:
+    if arg is not None:
+        return fn(arg)
 
 
 def get_param_to_os(model: Module, optimizer: Optimizer) -> Dict[str, int]:
@@ -55,8 +60,7 @@ class ModelCheckpointSharder:
         shards = []
         for key, tensor in state_dict.items():
             shard = self.append(key, tensor)
-            if shard is not None:
-                shards.append(shard)
+            run_if_not_none(shards.append, shard)
         return shards
 
     def complete(self) -> Optional[dict]:
@@ -85,8 +89,7 @@ class OptimizerCheckpointSharder:
         shards = []
         for key, state in state_dict['state'].items():
             shard = self.append(key, state)
-            if shard is not None:
-                shards.append(shard)
+            run_if_not_none(shards.append, shard)
         return shards
 
     def complete(self) -> Optional[dict]:
@@ -107,16 +110,12 @@ def shard_checkpoint(max_shard_size: int,
         has_optimizer = True
     model_sharder = ModelCheckpointSharder(max_shard_size)
     model_shards = model_sharder.extend(model_state_dict)
-    remaining_shard = model_sharder.complete()
-    if remaining_shard is not None:
-        model_shards.append(remaining_shard)
+    run_if_not_none(model_shards.append, model_sharder.complete())
     if not has_optimizer:
         return model_shards, []
     optimizer_sharder = OptimizerCheckpointSharder(max_shard_size, optimizer_state_dict['param_groups'])
     optimizer_shards = optimizer_sharder.extend(optimizer_state_dict)
-    remaining_shard = optimizer_sharder.complete()
-    if remaining_shard is not None:
-        optimizer_shards.append(remaining_shard)
+    run_if_not_none(optimizer_shards.append, optimizer_sharder.complete())
     return model_shards, optimizer_shards
 
 

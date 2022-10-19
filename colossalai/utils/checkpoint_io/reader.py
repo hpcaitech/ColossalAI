@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Generator, List, Tuple, Optional, Dict
 from .constant import GLOBAL_META_FILE_NAME, OTHER_CKPT_FILE_NAME
+from .meta import ParamDistMeta
 import torch
 import os
 
@@ -17,7 +18,7 @@ class CheckpointReader(ABC):
         pass
 
     @abstractmethod
-    def load_meta(self) -> Tuple[List[Optional[List]], List[Optional[List]], List[Optional[List]]]:
+    def load_meta(self) -> Tuple[List[Optional[Dict[str, ParamDistMeta]]], List[Optional[dict]], List[Optional[dict]]]:
         pass
 
     @abstractmethod
@@ -49,7 +50,7 @@ class DiskCheckpointReader(CheckpointReader):
     def read(self, name: str) -> dict:
         return torch.load(os.path.join(self.base_name, name))
 
-    def load_meta(self) -> Tuple[List[Optional[List]], List[Optional[List]], List[Optional[List]]]:
+    def load_meta(self) -> Tuple[List[Optional[Dict[str, ParamDistMeta]]], List[Optional[dict]], List[Optional[dict]]]:
         meta_infos = [(meta.get('dist_meta', None), meta.get('param_to_os', None), meta.get('paired_os', None))
                       for meta in self.meta_list]
         dist_meta_list, param_to_os_list, paired_os_list = zip(*meta_infos)
