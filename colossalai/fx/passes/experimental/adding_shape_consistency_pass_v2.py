@@ -62,7 +62,6 @@ def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int], de
                 origin_sharding_spec = ShardingSpec(device_mesh, param.shape, {})
                 setattr(param, 'sharding_spec', origin_sharding_spec)
                 target_sharding_spec = node.best_strategy.get_sharding_spec_by_name(name)
-                print(node.best_strategy.get_op_data_by_name(name).data.shape)
                 shape_consistency_manager.apply(param, target_sharding_spec)
 
             for name, buffer in target_module.named_buffers():
