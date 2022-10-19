@@ -125,5 +125,5 @@ class MetaTensor(torch.Tensor):
             device = kwargs['device']
         result = super().to(*args, **kwargs)
         if device is not None:
-            result = MetaTensor(deepcopy(result), fake_device=device)
+            result = MetaTensor(result, fake_device=device)
         return result

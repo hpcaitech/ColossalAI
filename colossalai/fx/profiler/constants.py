@@ -1,6 +1,6 @@
 import torch
 
-__all__ = ['ALIAS_ATEN', 'INPLACE_NEW', 'INPLACE_MATH_ATEN', 'CLONE_ATEN']
+__all__ = ['ALIAS_ATEN', 'INPLACE_NEW', 'INPLACE_MATH_ATEN', 'CLONE_ATEN', 'RELU_LIKE_OPS', 'RELU_LIKE_MOD']
 
 aten = torch.ops.aten
 
@@ -29,4 +29,16 @@ INPLACE_MATH_ATEN = [
 
 CLONE_ATEN = [
     aten.clone.default,
+]
+
+# See illustrations in
+# https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/fx/profiler/constants.py
+OUTPUT_SAVED_OPS = [
+    torch.nn.functional.relu,
+    torch.nn.functional.softmax,
+]
+
+OUTPUT_SAVED_MOD = [
+    torch.nn.ReLU,
+    torch.nn.Softmax,
 ]
