@@ -3,6 +3,8 @@ from functools import reduce
 from typing import List
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.utils import \
+    ignore_sharding_exception
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import StrategyGenerator
@@ -169,7 +171,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                       total=fwd_compute_cost + bwd_compute_cost)
         strategy.compute_cost = compute_cost
 
-    def generate(self) -> List[ShardingStrategy]:
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategies = []
 
         # SS = SR x RS
@@ -201,14 +203,9 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         # RS01 = RR x RS01
         strategies.append(self.split_rhs_2nd_dim_1d(0, 1))
 
-        # update mete info on cost
-        for strategy in strategies:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
-
         return strategies
 
+    @ignore_sharding_exception
     def split_lhs_space_rhs_space(self, mesh_dim_0, mesh_dim_1):
         # handle case SS = SR x RS
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
@@ -249,6 +246,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_lhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         # handle the case SR = SS x SR
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
@@ -289,6 +287,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_rhs_space_both_contract(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
 
@@ -324,6 +323,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def recompute_split_both_contract(self, mesh_dim):
         name = f'RR = RS{mesh_dim} x S{mesh_dim}R'
 
@@ -351,6 +351,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_rhs_space_only(self, mesh_dim):
         name = f'RS{mesh_dim} = RR x RS{mesh_dim}'
 
@@ -380,6 +381,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_lhs_1st_dim_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
         # get sharding spec
@@ -410,6 +412,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communcation_action_mapping)
 
+    @ignore_sharding_exception
     def split_lhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
 
@@ -437,6 +440,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_rhs_2nd_dim_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_0}{mesh_dim_1} = RR x RS{mesh_dim_0}{mesh_dim_1}'
 
@@ -542,7 +546,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                 sharding_spec=sharding_spec_mapping['bias'],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
                 logical_process_axis=[mesh_dim_0, mesh_dim_1])
-            communication_action_mappingp['bias'] = bias_comm_spec
+            communication_action_mapping['bias'] = bias_comm_spec
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -662,7 +666,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self) -> List[ShardingStrategy]:
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
         device_mesh_is_1d = True
         if len(self.device_mesh.mesh_shape) == 2 and 1 not in self.device_mesh.mesh_shape:

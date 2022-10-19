@@ -1,9 +1,13 @@
 import operator
 from functools import reduce
+
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import (enumerate_all_possible_1d_sharding,
+                                                                     enumerate_all_possible_2d_sharding,
+                                                                     generate_sharding_size, ignore_sharding_exception)
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
+
 from .operator_handler import OperatorHandler
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler, enumerate_all_possible_2d_sharding, enumerate_all_possible_1d_sharding, generate_sharding_size
 
 __all__ = ['LayerNormHandler']
 
@@ -149,21 +153,21 @@ class LayerNormHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_batch_single_mesh_dim(self, mesh_dim_0):
         batch_dimension_length = self.input_data.dim() - self.weight.dim()
         dim_partition_list = enumerate_all_possible_1d_sharding(mesh_dim_0, batch_dimension_length)
         for dim_partition in dim_partition_list:
             self._generate_strategy_with_dim_partition(dim_partition)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_batch_both_mesh_dim(self, mesh_dim_0, mesh_dim_1):
         batch_dimension_length = self.input_data.dim() - self.weight.dim()
         dim_partition_list = enumerate_all_possible_2d_sharding(mesh_dim_0, mesh_dim_1, batch_dimension_length)
         for dim_partition in dim_partition_list:
             self._generate_strategy_with_dim_partition(dim_partition)
 
-    @exception_handler
+    @ignore_sharding_exception
     def non_split(self):
         name = f'RR = RR x R'
 

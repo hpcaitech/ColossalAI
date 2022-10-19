@@ -25,8 +25,8 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
         For Pool3d, the dim of input data should be 5([N, C, H, W, D]).
         '''
         input_op_data = self.op_data['input']
-        assert input_op_data.dim() in (3, 4,
-                                       5), f'We suppose the dim of input fed into Pool op should in range of [3, 5].'
+        assert input_op_data.data.dim() in (
+            3, 4, 5), f'We suppose the dim of input fed into Pool op should in range of [3, 5].'
 
     def update_compute_cost(self, strategy: ShardingStrategy) -> TrainCycleItem:
         '''
@@ -103,17 +103,12 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
 
         return dim_partition_list
 
-    def generate(self) -> List[ShardingStrategy]:
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
 
         dim_partition_list = self.enumerate_all_possible_batch_dimensions_dim_partition(0, 1)
         for dim_partition in dim_partition_list:
             strategy = self._generate_strategy_with_dim_partition(dim_partition)
             strategy_list.append(strategy)
-
-        for strategy in strategy_list:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
 
         return strategy_list

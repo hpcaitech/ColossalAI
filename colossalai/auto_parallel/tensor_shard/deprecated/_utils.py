@@ -1,13 +1,15 @@
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-import torch
-from torch.fx.node import Node
-from colossalai.tensor.sharding_spec import ShardingSpec
-from colossalai.device.device_mesh import DeviceMesh
-from typing import Union, Dict, List, Optional
-import warnings
-from functools import reduce
 import functools
 import operator
+import warnings
+from functools import reduce
+from typing import Dict, List, Optional, Union
+
+import torch
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.tensor.sharding_spec import ShardingSpec
+from torch.fx.node import Node
+
 from .constants import INFINITY_COST
 
 
@@ -87,7 +89,7 @@ def generate_resharding_costs(nodes: List[Node],
     return resharding_costs
 
 
-def exception_handler(func):
+def ignore_sharding_exception(func):
     """
     A function wrapper which executes the function with a specified seed.
     """

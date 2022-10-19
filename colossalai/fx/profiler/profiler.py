@@ -9,7 +9,7 @@ from torch.nn.parameter import Parameter
 from torch.utils._pytree import tree_map
 
 from .._compatibility import compatibility
-from .constants import ALIAS_ATEN
+from .constants import ALIAS_ATEN, OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 from .dataflow import GraphInfo, Phase, autograd_graph_analysis, is_phase
 from .memory import activation_size, parameter_size
 from .opcount import flop_mapping
@@ -272,7 +272,8 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
             tensor = x._tensor.detach()
             tensor.uuid = x._tensor.uuid
             return tensor
-        return x
+        if not isinstance(x, torch.finfo):
+            return x
 
     graph_info.fwd_out = list(map(extract_tensor, normalize_tuple(out)))
 
@@ -314,21 +315,17 @@ def profile_function(target: 'Target', device: str = 'meta') -> Callable:
         # If there is an argument that this `call_function` is inplace, we should
         # still run the profiling but discard some results regarding `target`
         global do_not_cache
+
         inplace = kwargs.get('inplace', False)
-        if inplace or target in [torch.nn.functional.relu]:
+        if target in OUTPUT_SAVED_OPS:
+            do_not_cache = True
+        if inplace:
             do_not_cache = True
             kwargs['inplace'] = False
         if device == 'meta':
             out, meta = _profile_meta(func, *args, **kwargs)
-            # currently we set the fwd_mem_tmp of ReLU to zero
-            if target in [torch.nn.functional.relu]:
-                meta.fwd_in = []
-                meta.fwd_tmp = []
-                meta.bwd_mem_out = 0
-                meta.fwd_mem_tmp = 0
         else:
             out, meta = _profile_concrete(func, *args, **kwargs)
-
         if inplace:
             kwargs['inplace'] = True
         do_not_cache = False
@@ -386,20 +383,16 @@ def profile_module(module: torch.nn.Module, device: str = 'meta') -> Callable:
         global do_not_cache
 
         inplace = getattr(module, 'inplace', False)
-        if inplace or type(module) in [torch.nn.ReLU]:
+        if type(module) in OUTPUT_SAVED_MOD:
+            do_not_cache = True
+        if inplace:
             do_not_cache = True
             module.inplace = False
         if device == 'meta':
             out, meta = _profile_meta(func, *args, **kwargs)
-            # currently we set the fwd_tmp of ReLU to []
-            if type(module) in [torch.nn.ReLU]:
-                meta.fwd_in = []
-                meta.fwd_tmp = []
-                meta.bwd_mem_out = 0
         else:
             out, meta = _profile_concrete(func, *args, **kwargs)
         if inplace:
-
             module.inplace = True
         do_not_cache = False
 

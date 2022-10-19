@@ -1,14 +1,17 @@
 import colorsys
-from .operator_handler import OperatorHandler
-from colossalai.tensor.sharding_spec import ShardingSpec
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from copy import deepcopy
 import math
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler
 import warnings
+from copy import deepcopy
+
 import torch
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
+    ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
+from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.tensor.sharding_spec import ShardingSpec
+
 from ..constants import INFINITY_COST
+from .operator_handler import OperatorHandler
 
 
 class ReshapeHandler(OperatorHandler):
@@ -24,7 +27,7 @@ class ReshapeHandler(OperatorHandler):
     def _generate_compute_cost(self, *args, **kwargs):
         return super()._generate_compute_cost(*args, **kwargs)
 
-    @exception_handler
+    @ignore_sharding_exception
     def register_strategy(self):
         # TODO: add strategies with more output sharding specs other than only fully replicated.
         input_node = self.strategies_vector.predecessor_nodes[0]

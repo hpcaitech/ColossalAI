@@ -5,6 +5,9 @@ from torch.fx import GraphModule, Node
 
 from .._compatibility import compatibility, is_compatible_with_meta
 
+if is_compatible_with_meta():
+    from .constants import OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
+
 __all__ = [
     'activation_size', 'parameter_size', 'is_inplace', "calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"
 ]
@@ -71,14 +74,35 @@ def calculate_fwd_tmp(n: Node) -> int:
         fwd_tmp (int): the result of `fwd_tmp`
     """
 
-    def is_relu_node(n: Node) -> bool:
+    def is_relu_like_node(n: Node) -> bool:
+        """Check if a node is a ReLU-like node.
+        ReLU-like nodes have the following properties:
+        - They are either `call_function` or `call_module`
+        - Their output tensors are directly saved for backward
+        - Their input tensors are not saved for backward
+
+        An example is `torch.nn.functional.softmax` which has (forward + backward):
+        def forward(self, input_2):
+            _softmax_default = torch.ops.aten._softmax.default(input_2, None, None);  input_2 = None
+            zeros_like_default = torch.ops.aten.zeros_like.default(_softmax_default, dtype = None, layout = None, device = None, pin_memory = None)
+            detach_default = torch.ops.aten.detach.default(_softmax_default);  _softmax_default = None
+            _softmax_backward_data_default = torch.ops.aten._softmax_backward_data.default(zeros_like_default, detach_default, None, None);  zeros_like_default = detach_default = None
+            detach_default_1 = torch.ops.aten.detach.default(_softmax_backward_data_default);  _softmax_backward_data_default = None
+            detach_default_2 = torch.ops.aten.detach.default(detach_default_1);  detach_default_1 = None
+
+        Args:
+            n (Node): A node from the graph
+
+        Returns:
+            bool: Whether the node is a ReLU-like node
+        """
         if n.op == 'call_function':
-            return n.target in [torch.nn.functional.relu]
+            return n.target in OUTPUT_SAVED_OPS
         elif n.op == 'call_module':
-            return type(n.graph.owning_module.get_submodule(n.target)) in [torch.nn.ReLU]
+            return type(n.graph.owning_module.get_submodule(n.target)) in OUTPUT_SAVED_MOD
         return False
 
-    if not is_relu_node(n):
+    if not is_relu_like_node(n):
         return activation_size(n.meta["fwd_tmp"])
     return 0
 
