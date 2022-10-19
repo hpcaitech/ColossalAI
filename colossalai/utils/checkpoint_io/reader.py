@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import Generator, List, Tuple, Optional, Dict
+from collections import Counter
 from .constant import GLOBAL_META_FILE_NAME, OTHER_CKPT_FILE_NAME
 from .meta import ParamDistMeta
+from .utils import is_duplicated_list
 import torch
 import os
 
@@ -18,7 +20,8 @@ class CheckpointReader(ABC):
         pass
 
     @abstractmethod
-    def load_meta(self) -> Tuple[List[Optional[Dict[str, ParamDistMeta]]], List[Optional[dict]], List[Optional[dict]]]:
+    def load_meta(
+            self) -> Tuple[List[Optional[Dict[str, ParamDistMeta]]], Dict[str, int], Optional[dict], Optional[dict]]:
         pass
 
     @abstractmethod
@@ -50,11 +53,18 @@ class DiskCheckpointReader(CheckpointReader):
     def read(self, name: str) -> dict:
         return torch.load(os.path.join(self.base_name, name))
 
-    def load_meta(self) -> Tuple[List[Optional[Dict[str, ParamDistMeta]]], List[Optional[dict]], List[Optional[dict]]]:
-        meta_infos = [(meta.get('dist_meta', None), meta.get('param_to_os', None), meta.get('paired_os', None))
+    def load_meta(
+            self) -> Tuple[List[Optional[Dict[str, ParamDistMeta]]], Dict[str, int], Optional[dict], Optional[dict]]:
+        meta_infos = [(meta.get('dist_meta', None), meta['params'], meta.get('param_to_os',
+                                                                             None), meta.get('paired_os', None))
                       for meta in self.meta_list]
-        dist_meta_list, param_to_os_list, paired_os_list = zip(*meta_infos)
-        return list(dist_meta_list), list(param_to_os_list), list(paired_os_list)
+        dist_meta_list, params_list, param_to_os_list, paired_os_list = zip(*meta_infos)
+        # reduce param_count
+        param_count = Counter(p for params in params_list for p in params)
+        # validate param_to_os
+        assert is_duplicated_list(param_to_os_list)
+        assert is_duplicated_list(paired_os_list)
+        return list(dist_meta_list), param_count, param_to_os_list[0], paired_os_list[0]
 
     def load_model(self) -> Generator[Dict[int, dict], None, None]:
         indices = [0] * len(self.meta_list)

@@ -25,6 +25,10 @@ class ParamDistMeta:
         return self.zero_numel is not None and self.zero_orig_shape is not None
 
     @property
+    def parallel_meta(self) -> tuple:
+        return self.dp_rank, self.dp_world_size, self.tp_rank, self.tp_world_size
+
+    @property
     def tp_meta(self) -> tuple:
         return self.tp_shard_dims, self.tp_num_parts
 

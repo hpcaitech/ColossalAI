@@ -48,7 +48,7 @@ class ModelCheckpointSharder:
 
     def append(self, key: str, tensor: Tensor) -> Optional[dict]:
         retval = None
-        if self.buffer_size >= self.max_shard_size:
+        if self.max_shard_size > 0 and self.buffer_size >= self.max_shard_size:
             retval = self.buffer
             self.buffer = {}
             self.buffer_size = 0
@@ -77,7 +77,7 @@ class OptimizerCheckpointSharder:
 
     def append(self, key: int, state: dict) -> Optional[dict]:
         retval = None
-        if self.buffer_size >= self.max_shard_size:
+        if self.max_shard_size > 0 and self.buffer_size >= self.max_shard_size:
             retval = self.buffer
             self.buffer = {'state': {}}
             self.buffer_size = 0
@@ -158,13 +158,20 @@ def build_checkpoints(max_size: int,
                 for k in model_state_dict.keys()
                 if dist_meta[k].used_zero or dist_meta[k].dp_rank == 0
             }
+    meta['params'] = list(model_state_dict.keys())
     if len(model_state_dict) == 0:
-        warnings.warn('model state dict is empty, checkpoint is not saved', category=RuntimeWarning)
+        warnings.warn('model state dict is empty, checkpoint is not saved')
         return [], [], meta
-    if max_size <= 0:
-        model_checkpoints = [model_state_dict]
-        optimizer_checkpoints = [optimizer_state_dict] if optimizer else []
-    else:
-        model_checkpoints, optimizer_checkpoints = shard_checkpoint(max_size, model_state_dict, optimizer_state_dict,
-                                                                    param_to_os)
+    model_checkpoints, optimizer_checkpoints = shard_checkpoint(max_size, model_state_dict, optimizer_state_dict,
+                                                                param_to_os)
     return model_checkpoints, optimizer_checkpoints, meta
+
+
+def is_duplicated_list(l: List[Any]) -> bool:
+    if len(l) == 0:
+        return True
+    elem = l[0]
+    for x in l[1:]:
+        if x != elem:
+            return False
+    return True

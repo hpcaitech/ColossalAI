@@ -1,7 +1,7 @@
 import torch
 from numpy import prod
 from torch import Tensor
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from collections import defaultdict
 from .meta import ParamDistMeta, ParamRedistMeta
 
@@ -50,15 +50,24 @@ def validate_parallel_info(dist_metas: List[ParamDistMeta]) -> None:
             0].dp_world_size, 'Expect all dist meta have the same dp_world_size'
         assert dist_meta.tp_world_size == dist_metas[
             0].tp_world_size, 'Expect all dist meta have the same tp_world_size'
-    # check rank
-    rank_list = [(dist_meta.dp_rank, dist_meta.tp_rank) for dist_meta in dist_metas]
-    assert len(rank_list) == len(set(rank_list)), 'Expect ranks are not replicated'
+
+
+def deduplicate_params(tensors: List[Tensor],
+                       dist_metas: List[ParamDistMeta]) -> Tuple[List[Tensor], List[ParamDistMeta]]:
+    unique_dist_meta = []
+    unique_idx = []
+    for i, dist_meta in enumerate(dist_metas):
+        if dist_meta not in unique_dist_meta:
+            unique_dist_meta.append(dist_meta)
+            unique_idx.append(i)
+    return [tensors[i] for i in unique_idx], [dist_metas[i] for i in unique_idx]
 
 
 def merge_param(tensors: List[Tensor], dist_metas: List[ParamDistMeta]) -> Tensor:
     assert len(tensors) > 0 and len(dist_metas) > 0 and len(tensors) == len(dist_metas)
     # validate parallel info
     validate_parallel_info(dist_metas)
+    tensors, dist_metas = deduplicate_params(tensors, dist_metas)
     unflattened_tensors = []
     # group zero params by tp rank
     tensor_dict = defaultdict(list)

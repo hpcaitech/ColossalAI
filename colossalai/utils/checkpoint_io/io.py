@@ -8,6 +8,7 @@ from .backend import get_backend
 from .distributed import merge_param
 from collections import defaultdict
 import torch.distributed as dist
+import warnings
 
 
 def save(path: str,
@@ -43,19 +44,19 @@ def save(path: str,
 
 class ModelCheckpointConvertor:
 
-    def __init__(self, max_shard_size: int, save_fn: Callable[[dict], Any]) -> None:
+    def __init__(self, max_shard_size: int, save_fn: Callable[[dict], Any], param_count: Dict[str, int]) -> None:
         self.sharder = ModelCheckpointSharder(max_shard_size)
         self.buffer: Dict[str, Dict[int, Tensor]] = defaultdict(dict)
         self.save_fn = save_fn
+        self.param_count = param_count
 
-    def append(self, shard_dict: Dict[int, dict], dist_meta_list: List[Dict[str, ParamDistMeta]], n_procs: int) -> None:
+    def append(self, shard_dict: Dict[int, dict], dist_meta_list: List[Dict[str, ParamDistMeta]]) -> None:
         for rank, state_dict in shard_dict.items():
             for k, tensor in state_dict.items():
                 self.buffer[k][rank] = tensor
         merged_keys = set()
         for k, rank_dict in self.buffer.items():
-            if (not dist_meta_list[0][k].use_zero and len(rank_dict) == 1) or \
-                    len(rank_dict) == n_procs:
+            if len(rank_dict) == self.param_count[k]:
                 tensors = []
                 dist_metas = []
                 for rank, tensor in rank_dict.items():
@@ -75,28 +76,29 @@ class ModelCheckpointConvertor:
 
 class OptimizerCheckpointConvertor:
 
-    def __init__(self, max_shard_size: int, save_fn: Callable[[dict], Any]) -> None:
+    def __init__(self, max_shard_size: int, save_fn: Callable[[dict], Any], param_count: Dict[str, int],
+                 param_to_os: Optional[Dict[str, int]], paired_os: Optional[Dict[int, dict]]) -> None:
         self.sharder = None
         self.max_shard_size = max_shard_size
         self.buffer: Dict[int, Dict[int, dict]] = defaultdict(dict)
         self.save_fn = save_fn
+        self.param_count = param_count
+        self.param_to_os = param_to_os
+        self.paired_os = paired_os
 
     def _setup(self, param_groups: dict) -> None:
         if self.sharder is None:
             self.sharder = OptimizerCheckpointSharder(self.max_shard_size, param_groups)
 
-    def append(self, shard_dict: Dict[str, dict], dist_meta_list: List[Dict[str, ParamDistMeta]],
-               param_to_os_list: List[Dict[str, int]], paired_os_list: List[Dict[int, dict]], n_procs: int) -> None:
-        os_to_param = {v: k for k, v in param_to_os_list[0].items()}
-        paired_os = paired_os_list[0]
+    def append(self, shard_dict: Dict[str, dict], dist_meta_list: List[Dict[str, ParamDistMeta]]) -> None:
+        os_to_param = {v: k for k, v in self.param_to_os.items()}
         for rank, state_dict in shard_dict.items():
             self._setup(state_dict['param_groups'])
             for idx, state in state_dict['state'].items():
                 self.buffer[idx][rank] = state
         merged_keys = set()
         for idx, rank_dict in self.buffer.items():
-            if (not dist_meta_list[0][os_to_param[idx]].use_zero and len(rank_dict) == 1) or \
-                    len(rank_dict) == n_procs:
+            if len(rank_dict) == self.param_count[os_to_param[idx]]:
                 states = []
                 dist_metas = []
                 for rank, state in rank_dict.items():
@@ -104,7 +106,7 @@ class OptimizerCheckpointConvertor:
                     dist_metas.append(dist_meta_list[rank][os_to_param[idx]])
                 new_state = {}
                 for k, state_tensor in states[0].items():
-                    if paired_os[idx][k]:
+                    if self.paired_os[idx][k]:
                         new_state[k] = merge_param([state[k] for state in states], dist_metas)
                     else:
                         new_state[k] = state_tensor
@@ -126,22 +128,22 @@ def merge(path: str, output_path: str, max_shard_size_gb: float = 0.0, overwrite
     reader = io_backend.get_reader(path)
     if len(reader.meta_list) == 1:
         # already global
-        # copy
+        warnings.warn(f'Checkpoint at "{path}" is already global, nothing to do.')
         return
-    dist_meta_list, param_to_os_list, paired_os_list = reader.load_meta()
+    dist_meta_list, param_count, param_to_os, paired_os = reader.load_meta()
     writer = io_backend.get_writer(output_path, overwrite=overwrite)
     writer.save_others(reader.load_others())
     max_shard_size = int(max_shard_size_gb * 1024**3)
-    convertor = ModelCheckpointConvertor(max_shard_size, writer.save_model)
+    convertor = ModelCheckpointConvertor(max_shard_size, writer.save_model, param_count)
     for shard_dict in reader.load_model():
-        convertor.append(shard_dict, dist_meta_list, len(reader.meta_list))
+        convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
-    convertor = OptimizerCheckpointConvertor(max_shard_size, writer.save_optimizer)
+    convertor = OptimizerCheckpointConvertor(max_shard_size, writer.save_optimizer, param_count, param_to_os, paired_os)
     for shard_dict in reader.load_optimizer():
-        convertor.append(shard_dict, dist_meta_list, param_to_os_list, paired_os_list, len(reader.meta_list))
+        convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
     meta_checkpoint = {'dist_meta': None}
-    if param_to_os_list[0] is not None:
-        meta_checkpoint['param_to_os'] = param_to_os_list[0]
-        meta_checkpoint['paired_os'] = paired_os_list[0]
+    if param_to_os is not None:
+        meta_checkpoint['param_to_os'] = param_to_os
+        meta_checkpoint['paired_os'] = paired_os
     writer.save_meta(meta_checkpoint)
