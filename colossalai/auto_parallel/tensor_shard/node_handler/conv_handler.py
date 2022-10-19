@@ -3,7 +3,7 @@ from typing import Dict, List
 import torch
 import torch.nn.functional as F
 
-from ..sharding_strategy import (OperationData, OperationDataType, ShardingStrategy)
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
 from .node_handler import ModuleHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import ConvStrategyGenerator, StrategyGenerator
@@ -68,7 +68,7 @@ class ConvModuleHandler(ModuleHandler):
                     dim_partition_dict[1] = second_dim_partition
 
                 # re-init the sharding spec
-                sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
+                sharding_spec.__init__(sharding_spec.device_mesh, op_data.data.shape, dim_partition_dict)
         return strategy
 
 

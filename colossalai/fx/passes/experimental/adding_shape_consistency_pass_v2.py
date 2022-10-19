@@ -1,15 +1,17 @@
-from ast import NodeTransformer
-import torch
-from typing import List
-from torch.fx import symbolic_trace
-from torch.fx.node import Node
-from colossalai.fx.passes.split_module import split_module
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 import builtins
 import operator
+from ast import NodeTransformer
 from copy import deepcopy
+from typing import List
+
+import torch
+from torch.fx import symbolic_trace
+from torch.fx.node import Node
+
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.passes.split_module import split_module
+from colossalai.tensor.shape_consistency import ShapeConsistencyManager
+from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 
 shape_consistency_manager = ShapeConsistencyManager()
 
@@ -60,6 +62,7 @@ def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int], de
                 origin_sharding_spec = ShardingSpec(device_mesh, param.shape, {})
                 setattr(param, 'sharding_spec', origin_sharding_spec)
                 target_sharding_spec = node.best_strategy.get_sharding_spec_by_name(name)
+                print(node.best_strategy.get_op_data_by_name(name).data.shape)
                 shape_consistency_manager.apply(param, target_sharding_spec)
 
             for name, buffer in target_module.named_buffers():
