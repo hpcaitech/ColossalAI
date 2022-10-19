@@ -88,6 +88,12 @@ class MemoryCost:
 class CommType(Enum):
     """
     CommType describes the sequential order of a communication action and a computation action.
+
+    Meaning:
+        BEFORE: the communication action happens just before the computation operation.
+        AFTER: the communication action happens after the computation operation.
+        HOOK: the communication action is used to do the grad all reduce.
+        IMPLICIT: the communication action happens during the kernel execution, such as SyncBatchNorm
     """
     BEFORE = 0
     AFTER = 1
@@ -97,6 +103,15 @@ class CommType(Enum):
 
 @dataclass
 class CommAction:
+    """
+    CommAction is used to record the communication action.
+
+    Args:
+        comm_spec: express the communication pattern and the process groups to execute the communication action.
+        comm_type: describes the sequential order of a communication action and a computation action.
+        arg_index: record the location of tensor which join the communication, we cannot use name of node or op_data at runtime,
+                   because the args of node may be changed by graph transform passes.
+    """
     comm_spec: CommSpec = None
     comm_type: CommType = None
     arg_index: int = -1
