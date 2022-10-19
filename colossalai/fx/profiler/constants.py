@@ -31,9 +31,14 @@ CLONE_ATEN = [
     aten.clone.default,
 ]
 
+# See illustrations in
+# https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/fx/profiler/constants.py
 OUTPUT_SAVED_OPS = [
     torch.nn.functional.relu,
     torch.nn.functional.softmax,
 ]
 
-OUTPUT_SAVED_MOD = [torch.nn.ReLU, torch.nn.Softmax]
+OUTPUT_SAVED_MOD = [
+    torch.nn.ReLU,
+    torch.nn.Softmax,
+]
