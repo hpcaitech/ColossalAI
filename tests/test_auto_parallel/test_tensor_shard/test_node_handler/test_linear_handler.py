@@ -6,12 +6,13 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationDa
                                                                      StrategiesVector)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.fx.tracer.meta_patch.patched_module import linear
-from colossalai.tensor.sharding_spec import ShardingSpec
+from tests.test_auto_parallel.test_tensor_shard.test_node_handler.common import \
+    is_sharding_spec_valid
 
 
 def test_linear_module_handler():
     model = nn.Sequential(nn.Linear(16, 32).to('meta'))
+
     tracer = ColoTracer()
     graph = tracer.trace(model, meta_args={"input": torch.rand(2, 2, 4, 16).to('meta')})
     gm = ColoGraphModule(model, graph)
@@ -91,6 +92,12 @@ def test_linear_module_handler():
         bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
         output_sharding_spec = strategy.get_sharding_spec_by_name('_0')
 
+        # make sure the sharding spec is valid
+        is_sharding_spec_valid(input_sharding_spec, torch.rand(2, 2, 4, 16))
+        is_sharding_spec_valid(weight_sharding_spec, model.get_parameter('0.weight'))
+        is_sharding_spec_valid(bias_sharding_spec, model.get_parameter('0.bias'))
+        is_sharding_spec_valid(output_sharding_spec, torch.rand([2, 2, 4, 32]))
+
         # make sure the sharding matches across different operation data
         assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
         assert weight_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
@@ -101,7 +108,7 @@ def test_linear_module_handler():
 def test_linear_function_handler():
     model = nn.Linear(16, 32).to('meta')
     tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"input": torch.rand(4, 16).to('meta')})
+    graph = tracer.trace(model, meta_args={"input": torch.rand(2, 2, 4, 16).to('meta')})
     gm = ColoGraphModule(model, graph)
     physical_mesh_id = torch.arange(0, 4)
 
@@ -117,11 +124,13 @@ def test_linear_function_handler():
     # # check operation data mapping
     mapping = handler.get_operation_data_mapping()
 
+    print(mapping['input'].logical_shape)
+
     assert mapping['input'].name == "input_1"
     assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([4, 16])
+    assert mapping['input'].data.shape == torch.Size([2, 2, 4, 16])
     assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([4, 16])
+    assert mapping['input'].logical_shape == torch.Size([16, 16])
 
     assert mapping['other'].name == "weight"
     assert mapping['other'].data.is_meta
@@ -137,7 +146,7 @@ def test_linear_function_handler():
 
     assert mapping['output'].name == "linear"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 32])
+    assert mapping['output'].data.shape == torch.Size([2, 2, 4, 32])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
@@ -167,10 +176,17 @@ def test_linear_function_handler():
 
     for strategy in strategies_vector:
         strategy: ShardingStrategy
+        print(strategy)
         input_sharding_spec = strategy.get_sharding_spec_by_name('input_1')
         weight_sharding_spec = strategy.get_sharding_spec_by_name('weight')
         bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
         output_sharding_spec = strategy.get_sharding_spec_by_name('linear')
+
+        # make sure the sharding spec is valid
+        is_sharding_spec_valid(input_sharding_spec, torch.rand(2, 2, 4, 16))
+        is_sharding_spec_valid(weight_sharding_spec, model.get_parameter('weight'))
+        is_sharding_spec_valid(bias_sharding_spec, model.get_parameter('bias'))
+        is_sharding_spec_valid(output_sharding_spec, torch.rand([2, 2, 4, 32]))
 
         # make sure the sharding matches across different operation data
         assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]

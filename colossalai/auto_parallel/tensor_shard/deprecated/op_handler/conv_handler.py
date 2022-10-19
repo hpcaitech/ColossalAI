@@ -1,10 +1,13 @@
 import operator
-from functools import reduce
 import warnings
+from functools import reduce
+
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
+    ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
+
 from .operator_handler import OperatorHandler
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler
 
 __all__ = ['ConvHandler']
 
@@ -105,7 +108,7 @@ class ConvHandler(OperatorHandler):
 
         return memory_cost, memory_cost_forward_activation, memory_cost_backward_activation, memory_cost_backward_weight
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_batch_weight_out_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}R x RS{mesh_dim_1}'
 
@@ -153,7 +156,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_batch(self, mesh_dim_0):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}R x RR'
 
@@ -199,7 +202,7 @@ class ConvHandler(OperatorHandler):
 
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_both_dim_weight_in_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1}R'
 
@@ -245,7 +248,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_in_channel_weight_both_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_1} = RS{mesh_dim_0} x S{mesh_dim_0}S{mesh_dim_1}'
 
@@ -288,7 +291,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_in_channel_weight_in_channel(self, mesh_dim_0):
         name = f'RR = RS{mesh_dim_0} x S{mesh_dim_0}R'
 
@@ -331,7 +334,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_weight_out_channel(self, mesh_dim_0):
         name = f'RS{mesh_dim_0} = RR x RS{mesh_dim_0}'
 
@@ -374,7 +377,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def non_split(self):
         name = f'RR = RR x RR'
 
@@ -415,7 +418,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_1d_parallel_on_input_batch(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x RR'
 
@@ -463,7 +466,7 @@ class ConvHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_1d_parallel_on_in_channel(self, mesh_dim_0, mesh_dim_1):
         name = f'RR = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}R'
 

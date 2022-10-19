@@ -1,14 +1,17 @@
 import operator
-from functools import reduce
 import warnings
+from copy import deepcopy
+from functools import reduce
+from typing import Dict, List
+
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
+    ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
-from copy import deepcopy
-from typing import Dict, List
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler
+
+from .operator_handler import OperatorHandler
 
 __all__ = ['EmbeddingHandler']
 
@@ -76,7 +79,7 @@ class EmbeddingHandler(OperatorHandler):
 
         return memory_cost, memory_cost_forward_activation, memory_cost_backward_activation, memory_cost_backward_weight
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_weight_both_dim(self, mesh_dim_0, mesh_dim_1):
         name = f'RRS{mesh_dim_1} = RR x S{mesh_dim_0}S{mesh_dim_1}'
 
@@ -117,7 +120,7 @@ class EmbeddingHandler(OperatorHandler):
                                                input_shardings=(sharding_spec_for_input, sharding_spec_for_weight))
         self.strategies_vector.append(sharding_strategies)
 
-    @exception_handler
+    @ignore_sharding_exception
     def split_input_both_dim(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}S{mesh_dim_1}R = S{mesh_dim_0}S{mesh_dim_1} x RR'
 

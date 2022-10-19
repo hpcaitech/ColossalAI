@@ -1,4 +1,5 @@
 import copy
+from typing import List
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
@@ -61,7 +62,7 @@ class TensorStrategyGenerator(GetItemStrategyGenerator):
     Deal with case 1 and 2.
     '''
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
         for strategy in self.predecessor_node.strategies_vector:
             dim_partition_dict_mapping = {}
@@ -109,7 +110,7 @@ class TensorTupleStrategyGenerator(GetItemStrategyGenerator):
     Deal with case 3.
     '''
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
         index = self.op_data["index"].data
 
@@ -132,10 +133,5 @@ class TensorTupleStrategyGenerator(GetItemStrategyGenerator):
                                                   communication_action_mapping=communication_action_mapping)
 
             strategy_list.append(strategy)
-
-        for strategy in strategy_list:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
 
         return strategy_list

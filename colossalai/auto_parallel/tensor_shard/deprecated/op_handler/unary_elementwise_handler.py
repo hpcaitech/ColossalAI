@@ -1,16 +1,20 @@
+import math
 import operator
-from functools import reduce
 import warnings
+from copy import deepcopy
+from functools import reduce
+from typing import Dict, List
+
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated.constants import INFINITY_COST
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
+    ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.constants import \
+    INFINITY_COST
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
-from copy import deepcopy
-from typing import Dict, List
-import math
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler
+
+from .operator_handler import OperatorHandler
 
 __all__ = ['UnaryElementwiseHandler']
 
@@ -40,7 +44,7 @@ class UnaryElementwiseHandler(OperatorHandler):
     def _generate_compute_cost(self, *args, **kwargs):
         return super()._generate_compute_cost(*args, **kwargs)
 
-    @exception_handler
+    @ignore_sharding_exception
     def register_strategy(self):
         # TODO: integrate element-wise func and module together
         # create sharding strategy for element-wise function

@@ -1,3 +1,5 @@
+from typing import List
+
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
 
 from .strategy_generator import StrategyGenerator
@@ -35,7 +37,7 @@ class PlaceholderGenerator(StrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         dim_partition_dict_mapping = {
             "output": {},
         }
@@ -47,9 +49,5 @@ class PlaceholderGenerator(StrategyGenerator):
         strategy = self.get_sharding_strategy(name=name,
                                               sharding_spec_mapping=sharding_spec_mapping,
                                               communication_action_mapping=communication_action_mapping)
-
-        self.update_communication_cost(strategy)
-        self.update_compute_cost(strategy)
-        self.update_memory_cost(strategy)
 
         return [strategy]
