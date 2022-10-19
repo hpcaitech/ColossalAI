@@ -87,6 +87,19 @@ def test_linear_module_handler():
     assert 'RS0 = RR x RS0' in strategy_name_list
     assert 'RS1 = RR x RS1' in strategy_name_list
 
+    for strategy in strategies_vector:
+        strategy: ShardingStrategy
+        input_sharding_spec = strategy.get_sharding_spec_by_name('input_1')
+        weight_sharding_spec = strategy.get_sharding_spec_by_name('weight')
+        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('_0')
+
+        # make sure the sharding matches across different operation data
+        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert weight_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
+        assert weight_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[-1]
+        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
+
 
 def test_linear_function_handler():
     model = nn.Linear(16, 32).to('meta')
@@ -156,6 +169,20 @@ def test_linear_function_handler():
     # RS= RR x RS
     assert 'RS0 = RR x RS0' in strategy_name_list
     assert 'RS1 = RR x RS1' in strategy_name_list
+
+    for strategy in strategies_vector:
+        strategy: ShardingStrategy
+        print(strategy)
+        input_sharding_spec = strategy.get_sharding_spec_by_name('input_1')
+        weight_sharding_spec = strategy.get_sharding_spec_by_name('weight')
+        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('linear')
+
+        # make sure the sharding matches across different operation data
+        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert weight_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
+        assert weight_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[-1]
+        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
 if __name__ == '__main__':
