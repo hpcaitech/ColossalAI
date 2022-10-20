@@ -345,9 +345,9 @@ class CommSpec:
             tensor(torch.Tensor): Tensor stored in each device, which could be different in different ranks.
         '''
         if self.comm_pattern in pattern_to_func_dict:
-            tensor.data = pattern_to_func_dict[self.comm_pattern](tensor, self)
+            tensor = pattern_to_func_dict[self.comm_pattern](tensor, self)
         else:
-            tensor.data = tensor
+            tensor = tensor
         return tensor
 
 
