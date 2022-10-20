@@ -20,7 +20,10 @@ def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     """
     act_size = 0
     if isinstance(out, torch.Tensor):
-        act_size += out.numel() * torch.tensor([], dtype=out.dtype).element_size()
+        if out.is_quantized:
+            act_size += out.numel() * torch._empty_affine_quantized([], dtype=out.dtype).element_size()
+        else:
+            act_size += out.numel() * torch.tensor([], dtype=out.dtype).element_size()
     elif isinstance(out, dict):
         value_list = [v for _, v in out.items()]
         act_size += activation_size(value_list)
