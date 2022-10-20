@@ -1,10 +1,10 @@
 import pytest
-import transformers
 import torch
+import transformers
 from utils import trace_model_and_compare_output
 
 BATCH_SIZE = 1
-SEQ_LENGHT = 16
+SEQ_LENGTH = 16
 
 
 def test_t5():
@@ -17,13 +17,13 @@ def test_t5():
     config = transformers.T5Config(d_model=128, num_layers=2)
 
     def data_gen():
-        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
-        decoder_input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
+        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
+        decoder_input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
         kwargs = dict(input_ids=input_ids, decoder_input_ids=decoder_input_ids)
         return kwargs
 
     def data_gen_for_encoder_only():
-        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
+        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
         kwargs = dict(input_ids=input_ids)
         return kwargs
 
