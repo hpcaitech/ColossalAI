@@ -3,7 +3,7 @@ from typing import Dict, List, Union
 import torch
 import torch.nn.functional as F
 
-from colossalai.auto_parallel.tensor_shard.utils import tranpose_partition_dim, update_partition_dim
+from colossalai.auto_parallel.tensor_shard.utils import transpose_partition_dim, update_partition_dim
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.sharding_spec import ShardingNotDivisibleError
 
@@ -30,7 +30,7 @@ def _update_sharding_spec_for_transposed_weight_for_linear(strategy: ShardingStr
     op_data = strategy.get_op_data_by_name(weight_name)
     assert op_data.logical_shape != op_data.data.shape, \
         "Expected the logical and physical shape of the linear operator's weight to be different, but found them to be the same"
-    tranpose_partition_dim(sharding_spec, 0, -1)
+    transpose_partition_dim(sharding_spec, 0, -1)
     return strategy
 
 

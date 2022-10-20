@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
+from ..utils import transpose_partition_dim
 from .node_handler import ModuleHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import ConvStrategyGenerator, StrategyGenerator
@@ -55,20 +56,7 @@ class ConvModuleHandler(ModuleHandler):
         """
         for op_data, sharding_spec in strategy.input_sharding_specs.items():
             if op_data.name == "weight":
-                dim_partition_dict = sharding_spec.dim_partition_dict
-
-                # switch first and second dim of the conv module weight
-                first_dim_partition = dim_partition_dict.pop(1, None)
-                second_dim_partition = dim_partition_dict.pop(0, None)
-
-                if first_dim_partition:
-                    dim_partition_dict[0] = first_dim_partition
-
-                if second_dim_partition:
-                    dim_partition_dict[1] = second_dim_partition
-
-                # re-init the sharding spec
-                sharding_spec.__init__(sharding_spec.device_mesh, op_data.data.shape, dim_partition_dict)
+                transpose_partition_dim(sharding_spec, 0, 1)
         return strategy
 
 
@@ -110,7 +98,7 @@ class ConvFunctionHandler(NodeHandler):
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
-        if "bias" in self.node.kwargs:
+        if "bias" in self.node.kwargs and self.node.kwargs['bias'] is not None:
             # check if the other operand is a parameter
             if isinstance(self.node.kwargs["bias"]._meta_data, torch.nn.parameter.Parameter):
                 data_type = OperationDataType.PARAM
@@ -128,19 +116,5 @@ class ConvFunctionHandler(NodeHandler):
         """
         for op_data, sharding_spec in strategy.input_sharding_specs.items():
             if op_data.name == str(self.node.args[1]):
-                assert op_data.logical_shape != op_data.data.shape
-                dim_partition_dict = sharding_spec.dim_partition_dict
-
-                # switch first and second dim of the conv function weight
-                first_dim_partition = dim_partition_dict.pop(1, None)
-                second_dim_partition = dim_partition_dict.pop(0, None)
-
-                if first_dim_partition:
-                    dim_partition_dict[0] = first_dim_partition
-
-                if second_dim_partition:
-                    dim_partition_dict[1] = second_dim_partition
-
-                # re-init the sharding spec
-                sharding_spec.__init__(sharding_spec.device_mesh, sharding_spec.entire_shape, dim_partition_dict)
+                transpose_partition_dim(sharding_spec, 0, 1)
         return strategy

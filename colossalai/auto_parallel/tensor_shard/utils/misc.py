@@ -68,4 +68,5 @@ def check_sharding_spec_validity(sharding_spec: ShardingSpec, tensor: torch.Tens
                 f'The dimension at index {i} has value {dim_size}, but it is sharded over {num_devices} devices.'
 
     # make sure the entire shape matches the physical tensor shape
-    assert sharding_spec.entire_shape == tensor.shape
+    assert sharding_spec.entire_shape == tensor.shape, \
+        f'The entire_shape of the sharding spec {sharding_spec.entire_shape} does not match the tensor shape {tensor.shape}'

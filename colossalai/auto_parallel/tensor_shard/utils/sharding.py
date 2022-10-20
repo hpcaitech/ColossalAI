@@ -8,12 +8,12 @@ import torch
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 __all__ = [
-    'tranpose_partition_dim', 'update_partition_dim', 'enumerate_all_possible_1d_sharding',
+    'transpose_partition_dim', 'update_partition_dim', 'enumerate_all_possible_1d_sharding',
     'enumerate_all_possible_2d_sharding', 'generate_sharding_size'
 ]
 
 
-def tranpose_partition_dim(sharding_spec: ShardingSpec, dim1: int, dim2: int) -> ShardingSpec:
+def transpose_partition_dim(sharding_spec: ShardingSpec, dim1: int, dim2: int) -> ShardingSpec:
     """
     Switch the sharding mesh dimensions for two tensor dimensions. This operation is in-place.
 
