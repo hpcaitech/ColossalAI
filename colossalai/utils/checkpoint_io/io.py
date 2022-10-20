@@ -1,13 +1,15 @@
+import warnings
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import torch.distributed as dist
 from torch.nn import Module
 from torch.optim import Optimizer
-from torch import Tensor
-from typing import Any, List, Tuple, Optional, Dict, Callable
-from .meta import ParamDistMeta, RedistMeta
-from .utils import build_checkpoints, ModelCheckpointSharder, run_if_not_none, OptimizerCheckpointSharder
+
 from .backend import get_backend
-from .convertor import ModelCheckpointMerger, OptimizerCheckpointMerger
-import torch.distributed as dist
-import warnings
+from .convertor import (ModelCheckpointMerger, ModelCheckpointRedistor, OptimizerCheckpointMerger,
+                        OptimizerCheckpointRedistor)
+from .meta import ParamDistMeta, RedistMeta
+from .utils import build_checkpoints
 
 
 def save(path: str,
@@ -18,7 +20,7 @@ def save(path: str,
          max_shard_size_gb: float = 0.0,
          overwrite: bool = False,
          backend: str = 'disk',
-         **kwargs: Any):
+         **kwargs: Any) -> None:
     io_backend = get_backend(backend)
     if dist.is_initialized():
         rank = dist.get_rank()
@@ -41,7 +43,11 @@ def save(path: str,
     writer.save_meta(meta_checkpoint)
 
 
-def merge(path: str, output_path: str, max_shard_size_gb: float = 0.0, overwrite: bool = False, backend: str = 'disk'):
+def merge(path: str,
+          output_path: str,
+          max_shard_size_gb: float = 0.0,
+          overwrite: bool = False,
+          backend: str = 'disk') -> None:
     io_backend = get_backend(backend)
     if dist.is_initialized() and dist.get_rank() != 0:
         return
@@ -67,3 +73,49 @@ def merge(path: str, output_path: str, max_shard_size_gb: float = 0.0, overwrite
         meta_checkpoint['param_to_os'] = param_to_os
         meta_checkpoint['paired_os'] = paired_os
     writer.save_meta(meta_checkpoint)
+
+
+def redist(path: str,
+           output_path: str,
+           redist_meta: RedistMeta,
+           dist_metas: List[Dict[str, ParamDistMeta]],
+           max_shard_size_gb: float = 0.0,
+           overwrite: bool = False,
+           backend: str = 'disk') -> None:
+    io_backend = get_backend(backend)
+    if dist.is_initialized() and dist.get_rank() != 0:
+        return
+    nprocs = len(dist_metas)
+    reader = io_backend.get_reader(path)
+    dist_meta_list, param_count, param_to_os, paired_os = reader.load_meta()
+    do_redist: bool = False
+    if len(dist_meta_list) == nprocs:
+        for a, b in zip(dist_metas, dist_meta_list):
+            if a != b:
+                do_redist = True
+                break
+    else:
+        do_redist = True
+    if not do_redist:
+        warnings.warn(f'Checkpoint at "{path}" is not required to redist, nothing to do.')
+        return
+
+    writers = [io_backend.get_writer(output_path, overwrite, rank, nprocs) for rank in range(nprocs)]
+    writers[0].save_others(reader.load_others())
+    max_shard_size = int(max_shard_size_gb * 1024**3)
+    convertor = ModelCheckpointRedistor(max_shard_size, [writer.save_model for writer in writers], param_count,
+                                        redist_meta)
+    for shard_dict in reader.load_model():
+        convertor.append(shard_dict, dist_meta_list)
+    convertor.complete()
+    convertor = OptimizerCheckpointRedistor(max_shard_size, [writer.save_optimizer for writer in writers], param_count,
+                                            param_to_os, paired_os, redist_meta)
+    for shard_dict in reader.load_optimizer():
+        convertor.append(shard_dict, dist_meta_list)
+    convertor.complete()
+    for writer, dist_meta in zip(writers, dist_metas):
+        meta_checkpoint = {'dist_meta': dist_meta, 'params': list(param_count.keys())}
+        if param_to_os is not None:
+            meta_checkpoint['param_to_os'] = param_to_os
+            meta_checkpoint['paired_os'] = paired_os
+        writer.save_meta(meta_checkpoint)
