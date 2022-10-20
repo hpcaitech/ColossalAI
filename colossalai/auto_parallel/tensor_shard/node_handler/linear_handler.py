@@ -1,19 +1,18 @@
-from copy import deepcopy
 from typing import Dict, List, Union
 
 import torch
 import torch.nn.functional as F
 
-from colossalai.auto_parallel.tensor_shard.utils import (switch_partition_dim, update_partition_dim)
+from colossalai.auto_parallel.tensor_shard.utils import tranpose_partition_dim, update_partition_dim
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.sharding_spec import ShardingNotDivisibleError
 
-from ..sharding_strategy import (OperationData, OperationDataType, ShardingStrategy)
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
 from .node_handler import ModuleHandler, NodeHandler
 from .registry import operator_registry
-from .strategy import (BatchedMatMulStrategyGenerator, LinearProjectionStrategyGenerator, StrategyGenerator)
+from .strategy import LinearProjectionStrategyGenerator, StrategyGenerator
 
-__all__ = ['LinearModuleHandler', 'LinearFunctionHandler', 'BMMFunctionHandler']
+__all__ = ['LinearModuleHandler', 'LinearFunctionHandler']
 
 
 def _update_sharding_spec_for_transposed_weight_for_linear(strategy: ShardingStrategy,
@@ -31,7 +30,7 @@ def _update_sharding_spec_for_transposed_weight_for_linear(strategy: ShardingStr
     op_data = strategy.get_op_data_by_name(weight_name)
     assert op_data.logical_shape != op_data.data.shape, \
         "Expected the logical and physical shape of the linear operator's weight to be different, but found them to be the same"
-    switch_partition_dim(sharding_spec, 0, -1)
+    tranpose_partition_dim(sharding_spec, 0, -1)
     return strategy
 
 
@@ -104,8 +103,6 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
                              dim_mapping={},
                              physical_shape=output_op_data.data.shape,
                              inplace=True)
-        print(input_op_data.data.shape)
-        print(output_op_data.data.shape)
         sharding_strategies.append(strategy_copy)
     return sharding_strategies
 
@@ -144,7 +141,7 @@ class LinearModuleHandler(ModuleHandler):
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
-        if self.named_parameters['bias'] is not None:
+        if 'bias' in self.named_parameters is not None:
             physical_bias_operand = OperationData(name="bias",
                                                   type=OperationDataType.PARAM,
                                                   data=self.named_parameters['bias'])
@@ -229,30 +226,3 @@ class LinearFunctionHandler(NodeHandler):
                                                                                     input_name=str(self.node.args[0]),
                                                                                     output_name=str(self.node))
         return strategies
-
-
-@operator_registry.register(torch.bmm)
-@operator_registry.register(torch.Tensor.bmm)
-class BMMFunctionHandler(NodeHandler):
-
-    def get_operation_data_mapping(self) -> Dict[str, OperationData]:
-        # use transposed shape for strategies
-        # the strategies will be transformed back to its original shape in self.post_process
-        physical_input_operand = OperationData(name=str(self.node.args[0]),
-                                               type=OperationDataType.ARG,
-                                               data=self.node.args[0]._meta_data)
-
-        physical_other_operand = OperationData(name=str(self.node.args[1]),
-                                               type=OperationDataType.ARG,
-                                               data=self.node.args[1]._meta_data)
-        physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
-
-        mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
-        return mapping
-
-    def get_strategy_generator(self) -> List[StrategyGenerator]:
-        generators = []
-        op_data_mapping = self.get_operation_data_mapping()
-        generators = []
-        generators.append(BatchedMatMulStrategyGenerator(op_data_mapping, self.device_mesh))
-        return generators

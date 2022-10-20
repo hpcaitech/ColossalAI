@@ -2,12 +2,10 @@ import pytest
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.dot_handler import \
-    BMMFunctionHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler import BMMFunctionHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class BMMTensorMethodModule(nn.Module):
@@ -91,6 +89,16 @@ def test_2d_device_mesh(module):
     assert 'Sb0R = Sb0Sk1 x Sb0Sk1' in strategy_name_list
     assert 'Sb1R = Sb1Sk0 x Sb1Sk0' in strategy_name_list
 
+    for strategy in strategies_vector:
+        input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
+        other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('bmm')
+
+        # make sure the sharding matches across different operation data
+        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert other_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
+        assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
+
 
 @pytest.mark.parametrize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
 def test_1d_device_mesh(module):
@@ -144,6 +152,16 @@ def test_1d_device_mesh(module):
     assert len(strategy_name_list) == 1
     # one batch dim
     assert 'Sb0 = Sb0 x Sb0' in strategy_name_list
+
+    for strategy in strategies_vector:
+        input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
+        other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('bmm')
+
+        # make sure the sharding matches across different operation data
+        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert other_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
+        assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
 if __name__ == '__main__':

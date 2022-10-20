@@ -5,8 +5,10 @@ from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import Conv
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_conv_module_handler():
     model = nn.Sequential(nn.Conv2d(4, 16, 3, padding=1).to('meta'))
     tracer = ColoTracer()
@@ -108,6 +110,7 @@ class ConvModel(nn.Module):
         return x
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_conv_function_handler():
     model = ConvModel()
     tracer = ColoTracer()
