@@ -76,6 +76,6 @@ class PipelineRedistMeta:
 
 @dataclass
 class RedistMeta:
-    rank_meta: List[RankRedistMeta]
+    rank_meta: Dict[str, Dict[int, RankRedistMeta]]
     pipeline_meta: List[PipelineRedistMeta]
     param_meta: Dict[str, ParamRedistMeta]

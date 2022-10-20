@@ -2,11 +2,10 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from torch import Tensor
 from typing import Any, List, Tuple, Optional, Dict, Callable
-from .meta import ParamDistMeta
+from .meta import ParamDistMeta, RedistMeta
 from .utils import build_checkpoints, ModelCheckpointSharder, run_if_not_none, OptimizerCheckpointSharder
 from .backend import get_backend
-from .distributed import merge_param
-from collections import defaultdict
+from .convertor import ModelCheckpointMerger, OptimizerCheckpointMerger
 import torch.distributed as dist
 import warnings
 
@@ -42,85 +41,6 @@ def save(path: str,
     writer.save_meta(meta_checkpoint)
 
 
-class ModelCheckpointConvertor:
-
-    def __init__(self, max_shard_size: int, save_fn: Callable[[dict], Any], param_count: Dict[str, int]) -> None:
-        self.sharder = ModelCheckpointSharder(max_shard_size)
-        self.buffer: Dict[str, Dict[int, Tensor]] = defaultdict(dict)
-        self.save_fn = save_fn
-        self.param_count = param_count
-
-    def append(self, shard_dict: Dict[int, dict], dist_meta_list: List[Dict[str, ParamDistMeta]]) -> None:
-        for rank, state_dict in shard_dict.items():
-            for k, tensor in state_dict.items():
-                self.buffer[k][rank] = tensor
-        merged_keys = set()
-        for k, rank_dict in self.buffer.items():
-            if len(rank_dict) == self.param_count[k]:
-                tensors = []
-                dist_metas = []
-                for rank, tensor in rank_dict.items():
-                    tensors.append(tensor)
-                    dist_metas.append(dist_meta_list[rank][k])
-                tensor = merge_param(tensors, dist_metas)
-                merged_keys.add(k)
-                shard = self.sharder.append(k, tensor)
-                run_if_not_none(self.save_fn, shard)
-        for k in merged_keys:
-            del self.buffer[k]
-
-    def complete(self) -> None:
-        assert len(self.buffer) == 0
-        run_if_not_none(self.save_fn, self.sharder.complete())
-
-
-class OptimizerCheckpointConvertor:
-
-    def __init__(self, max_shard_size: int, save_fn: Callable[[dict], Any], param_count: Dict[str, int],
-                 param_to_os: Optional[Dict[str, int]], paired_os: Optional[Dict[int, dict]]) -> None:
-        self.sharder = None
-        self.max_shard_size = max_shard_size
-        self.buffer: Dict[int, Dict[int, dict]] = defaultdict(dict)
-        self.save_fn = save_fn
-        self.param_count = param_count
-        self.param_to_os = param_to_os
-        self.paired_os = paired_os
-
-    def _setup(self, param_groups: dict) -> None:
-        if self.sharder is None:
-            self.sharder = OptimizerCheckpointSharder(self.max_shard_size, param_groups)
-
-    def append(self, shard_dict: Dict[str, dict], dist_meta_list: List[Dict[str, ParamDistMeta]]) -> None:
-        os_to_param = {v: k for k, v in self.param_to_os.items()}
-        for rank, state_dict in shard_dict.items():
-            self._setup(state_dict['param_groups'])
-            for idx, state in state_dict['state'].items():
-                self.buffer[idx][rank] = state
-        merged_keys = set()
-        for idx, rank_dict in self.buffer.items():
-            if len(rank_dict) == self.param_count[os_to_param[idx]]:
-                states = []
-                dist_metas = []
-                for rank, state in rank_dict.items():
-                    states.append(state)
-                    dist_metas.append(dist_meta_list[rank][os_to_param[idx]])
-                new_state = {}
-                for k, state_tensor in states[0].items():
-                    if self.paired_os[idx][k]:
-                        new_state[k] = merge_param([state[k] for state in states], dist_metas)
-                    else:
-                        new_state[k] = state_tensor
-                merged_keys.add(idx)
-                shard = self.sharder.append(idx, new_state)
-                run_if_not_none(self.save_fn, shard)
-        for idx in merged_keys:
-            del self.buffer[idx]
-
-    def complete(self) -> None:
-        assert len(self.buffer) == 0
-        run_if_not_none(self.save_fn, self.sharder.complete())
-
-
 def merge(path: str, output_path: str, max_shard_size_gb: float = 0.0, overwrite: bool = False, backend: str = 'disk'):
     io_backend = get_backend(backend)
     if dist.is_initialized() and dist.get_rank() != 0:
@@ -134,11 +54,11 @@ def merge(path: str, output_path: str, max_shard_size_gb: float = 0.0, overwrite
     writer = io_backend.get_writer(output_path, overwrite=overwrite)
     writer.save_others(reader.load_others())
     max_shard_size = int(max_shard_size_gb * 1024**3)
-    convertor = ModelCheckpointConvertor(max_shard_size, writer.save_model, param_count)
+    convertor = ModelCheckpointMerger(max_shard_size, writer.save_model, param_count)
     for shard_dict in reader.load_model():
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
-    convertor = OptimizerCheckpointConvertor(max_shard_size, writer.save_optimizer, param_count, param_to_os, paired_os)
+    convertor = OptimizerCheckpointMerger(max_shard_size, writer.save_optimizer, param_count, param_to_os, paired_os)
     for shard_dict in reader.load_optimizer():
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
