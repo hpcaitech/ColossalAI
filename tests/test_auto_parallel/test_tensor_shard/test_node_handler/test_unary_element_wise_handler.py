@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
-from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import \
-    ConvFunctionHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.unary_elementwise_handler import \
-    UnaryElementwiseHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
+
+from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
+from colossalai.auto_parallel.tensor_shard.node_handler.unary_elementwise_handler import UnaryElementwiseHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx.tracer.meta_patch.patched_module import linear
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class ReLuModel(nn.Module):
@@ -22,6 +22,7 @@ class ReLuModel(nn.Module):
         return relu_node
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_elementwise_handler():
     model = ReLuModel()
     tracer = ColoTracer()
