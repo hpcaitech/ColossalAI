@@ -82,7 +82,7 @@ def merge_param(tensors: List[Tensor], dist_metas: List[ParamDistMeta]) -> Tenso
     return gather_tp_param(unflattened_tensors, [dist_meta_list[0] for dist_meta_list in dist_meta_dict.values()])
 
 
-def split_tp_param(tensor: Tensor, redist_meta: ParamDistMeta) -> List[Tensor]:
+def split_tp_param(tensor: Tensor, redist_meta: ParamRedistMeta) -> List[Tensor]:
     if not redist_meta.used_tp:
         assert redist_meta.tp_world_size == 1, 'Expect tp_world_size == 1, when no tp meta provided.'
         return [tensor]
@@ -102,21 +102,26 @@ def split_tp_param(tensor: Tensor, redist_meta: ParamDistMeta) -> List[Tensor]:
     return tensors
 
 
-def flatten_zero_param(tensor: Tensor, redist_meta: ParamRedistMeta) -> List[Optional[Tensor]]:
+def flatten_zero_param(tensor: Tensor, redist_meta: ParamRedistMeta) -> List[Tensor]:
     if not redist_meta.used_zero:
         return [tensor] * redist_meta.dp_world_size
-    tensors: List[Optional[Tensor]] = [None] * redist_meta.zero_start_dp_rank
+    tensors: List[Optional[Tensor]] = [
+        torch.empty(0, dtype=tensor.dtype, device=tensor.device) for _ in range(redist_meta.zero_start_dp_rank)
+    ]
     offsets = redist_meta.zero_offsets + [tensor.numel()]
     for i, offset in enumerate(offsets[:-1]):
         end = offsets[i + 1]
         tensors.append(tensor.view(-1)[offset:end])
     if len(tensors) < redist_meta.dp_world_size:
-        tensors.extend([None] * (redist_meta.dp_world_size - len(tensors)))
+        tensors.extend([
+            torch.empty(0, dtype=tensor.dtype, device=tensor.device)
+            for _ in range(redist_meta.dp_world_size - len(tensors))
+        ])
     assert len(tensors) == redist_meta.dp_world_size
     return tensors
 
 
-def unmerge_param(tensor: Tensor, redist_meta: ParamRedistMeta) -> List[List[Optional[Tensor]]]:
+def unmerge_param(tensor: Tensor, redist_meta: ParamRedistMeta) -> List[List[Tensor]]:
     tensors = split_tp_param(tensor, redist_meta)
     tensors = [flatten_zero_param(t, redist_meta) for t in tensors]
     return tensors
