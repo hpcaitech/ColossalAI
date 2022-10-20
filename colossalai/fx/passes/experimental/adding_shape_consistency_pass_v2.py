@@ -16,23 +16,10 @@ from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 shape_consistency_manager = ShapeConsistencyManager()
 
 
-class ConsistencyApply(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx, node, origin_dict, input_dict, node_index, user_node_index):
-        ctx.origin_sharding_spec = origin_dict[node_index]
-        ctx.target_sharding_spec = input_dict[node_index][user_node_index]
-        return shape_consistency_manager.apply_for_autoparallel_runtime(node, ctx.origin_sharding_spec,
-                                                                        ctx.target_sharding_spec)
-
-    @staticmethod
-    def backward(ctx, node_grad):
-        return shape_consistency_manager.apply_for_autoparallel_runtime(
-            node_grad, ctx.target_sharding_spec, ctx.origin_sharding_spec), None, None, None, None
-
-
 def runtime_apply_for_leaf_node(node, origin_dict, input_dict, node_index, user_node_index):
-    return ConsistencyApply.apply(node, origin_dict, input_dict, node_index, user_node_index)
+    origin_sharding_spec = origin_dict[node_index]
+    target_sharding_spec = input_dict[node_index][user_node_index]
+    return shape_consistency_manager.apply_for_autoparallel_runtime(node, origin_sharding_spec, target_sharding_spec)
 
 
 def runtime_apply(node, origin_dict, input_dict, node_index, user_node_index):

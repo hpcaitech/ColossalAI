@@ -6,11 +6,18 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 from torch.fx import GraphModule
 
-from colossalai.auto_parallel.tensor_shard.solver import (CostGraph, GraphAnalyser, Solver, SolverOptions,
-                                                          StrategiesConstructor)
+from colossalai.auto_parallel.tensor_shard.solver import (
+    CostGraph,
+    GraphAnalyser,
+    Solver,
+    SolverOptions,
+    StrategiesConstructor,
+)
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.passes.experimental.adding_shape_consistency_pass_v2 import (shape_consistency_pass,
-                                                                                solution_annotatation_pass)
+from colossalai.fx.passes.experimental.adding_shape_consistency_pass_v2 import (
+    shape_consistency_pass,
+    solution_annotatation_pass,
+)
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
