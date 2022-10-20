@@ -1,5 +1,3 @@
-from audioop import bias
-
 import torch
 import torch.nn as nn
 
@@ -8,7 +6,6 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationDat
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.testing import parameterize
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 @parameterize('bias', [True, False])
