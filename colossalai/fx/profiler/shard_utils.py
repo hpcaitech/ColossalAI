@@ -90,3 +90,25 @@ def calculate_fwd_out(n: Node) -> int:
         fwd_in.update({x.uuid: x for x in u.meta["fwd_in"] if isinstance(x, torch.Tensor) and hasattr(x, 'uuid')})
     fwd_out = {x.uuid: x for x in n.meta["fwd_out"] if isinstance(x, torch.Tensor) and hasattr(x, 'uuid')}
     return activation_size(intersect(fwd_in, fwd_out))
+
+
+def calculate_fwd_time(n: Node) -> float:
+    """A helper function to calculate `fwd_time` (with sharding spec)
+    Args:
+        n (Node): a node from the graph
+    Returns:
+        fwd_time (float): the result of `fwd_time`
+    """
+    # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
+    return n.meta["fwd_flop"]
+
+
+def calculate_bwd_time(n: Node) -> float:
+    """A helper function to calculate `bwd_time` (with sharding spec)
+    Args:
+        n (Node): a node from the graph
+    Returns:
+        bwd_time (float): the result of `bwd_time`
+    """
+    # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
+    return n.meta["bwd_flop"]
