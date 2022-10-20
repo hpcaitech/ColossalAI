@@ -4,9 +4,18 @@ import warnings
 from functools import reduce
 from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommAction,
+    CommType,
+    MemoryCost,
+    ShardingStrategy,
+    TrainCycleItem,
+)
+
 from colossalai.auto_parallel.tensor_shard.utils import \
     ignore_sharding_exception
+
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import StrategyGenerator
@@ -122,26 +131,28 @@ class ConvStrategyGenerator(StrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
-        input_comm_spec = self.get_communication_spec(
+        input_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["input"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-            logical_process_axis=mesh_dim_1)
-
-        communication_action_mapping = {"input": input_comm_spec}
+            logical_process_axis=mesh_dim_1,
+            comm_type=CommType.BEFORE)
+        communication_action_mapping = {"input": input_comm_action}
 
         if self.is_param("other"):
-            other_comm_spec = self.get_communication_spec(
+            other_comm_action = self.get_communication_action(
                 sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=mesh_dim_0)
-            communication_action_mapping["other"] = other_comm_spec
+                logical_process_axis=mesh_dim_0,
+                comm_type=CommType.HOOK)
+            communication_action_mapping["other"] = other_comm_action
 
         if self.has_bias and self.is_param("bias"):
-            bias_comm_spec = self.get_communication_spec(
+            bias_comm_action = self.get_communication_action(
                 sharding_spec_mapping["bias"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=mesh_dim_0)
-            communication_action_mapping["bias"] = bias_comm_spec
+                logical_process_axis=mesh_dim_0,
+                comm_type=CommType.HOOK)
+            communication_action_mapping["bias"] = bias_comm_action
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -167,18 +178,20 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         communication_action_mapping = {}
         if self.is_param("other"):
-            other_comm_spec = self.get_communication_spec(
+            other_comm_action = self.get_communication_action(
                 sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=mesh_dim_0)
-            communication_action_mapping["other"] = other_comm_spec
+                logical_process_axis=mesh_dim_0,
+                comm_type=CommType.HOOK)
+            communication_action_mapping["other"] = other_comm_action
 
         if self.has_bias and self.is_param("bias"):
-            bias_comm_spec = self.get_communication_spec(
+            bias_comm_action = self.get_communication_action(
                 sharding_spec_mapping["bias"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=mesh_dim_0)
-            communication_action_mapping["bias"] = bias_comm_spec
+                logical_process_axis=mesh_dim_0,
+                comm_type=CommType.HOOK)
+            communication_action_mapping["bias"] = bias_comm_action
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -206,26 +219,30 @@ class ConvStrategyGenerator(StrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=mesh_dim_1)
+            logical_process_axis=mesh_dim_1,
+            comm_type=CommType.AFTER,
+            arg_index=0)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         if self.is_param("other"):
-            other_comm_spec = self.get_communication_spec(
+            other_comm_action = self.get_communication_action(
                 sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=mesh_dim_0)
-            communication_action_mapping["other"] = other_comm_spec
+                logical_process_axis=mesh_dim_0,
+                comm_type=CommType.HOOK)
+            communication_action_mapping["other"] = other_comm_action
 
         if self.has_bias and self.is_param("bias"):
-            bias_comm_spec = self.get_communication_spec(
+            bias_comm_action = self.get_communication_action(
                 sharding_spec_mapping["bias"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=mesh_dim_0)
-            communication_action_mapping["bias"] = bias_comm_spec
+                logical_process_axis=mesh_dim_0,
+                comm_type=CommType.HOOK)
+            communication_action_mapping["bias"] = bias_comm_action
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -256,16 +273,20 @@ class ConvStrategyGenerator(StrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=mesh_dim_0)
-        input_comm_spec = self.get_communication_spec(
+            logical_process_axis=mesh_dim_0,
+            comm_type=CommType.AFTER,
+            arg_index=0)
+        input_comm_action = self.get_communication_action(
             sharding_spec_mapping["input"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-            logical_process_axis=mesh_dim_0)
+            logical_process_axis=mesh_dim_0,
+            comm_type=CommType.BEFORE,
+            arg_index=0)
 
-        communication_action_mapping = {"output": output_comm_spec, "input": input_comm_spec}
+        communication_action_mapping = {"output": output_comm_action, "input": input_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -291,12 +312,14 @@ class ConvStrategyGenerator(StrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=mesh_dim_0)
+            logical_process_axis=mesh_dim_0,
+            comm_type=CommType.AFTER,
+            arg_index=0)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -324,12 +347,13 @@ class ConvStrategyGenerator(StrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
-        input_comm_spec = self.get_communication_spec(
+        input_comm_action = self.get_communication_action(
             sharding_spec_mapping["input"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-            logical_process_axis=mesh_dim_0)
+            logical_process_axis=mesh_dim_0,
+            comm_type=CommType.BEFORE)
 
-        communication_action_mapping = {"input": input_comm_spec}
+        communication_action_mapping = {"input": input_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -375,18 +399,20 @@ class ConvStrategyGenerator(StrategyGenerator):
 
         communication_action_mapping = {}
         if self.is_param("other"):
-            other_comm_spec = self.get_communication_spec(
+            other_comm_action = self.get_communication_action(
                 sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=[mesh_dim_0, mesh_dim_1])
-            communication_action_mapping["other"] = other_comm_spec
+                logical_process_axis=[mesh_dim_0, mesh_dim_1],
+                comm_type=CommType.HOOK)
+            communication_action_mapping["other"] = other_comm_action
 
         if self.has_bias and self.is_param("bias"):
-            bias_comm_spec = self.get_communication_spec(
+            bias_comm_action = self.get_communication_action(
                 sharding_spec_mapping["bias"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=[mesh_dim_0, mesh_dim_1])
-            communication_action_mapping["bias"] = bias_comm_spec
+                logical_process_axis=[mesh_dim_0, mesh_dim_1],
+                comm_type=CommType.HOOK)
+            communication_action_mapping["bias"] = bias_comm_action
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -411,12 +437,14 @@ class ConvStrategyGenerator(StrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=[mesh_dim_0, mesh_dim_1])
+            logical_process_axis=[mesh_dim_0, mesh_dim_1],
+            comm_type=CommType.AFTER,
+            arg_index=0)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -443,12 +471,14 @@ class ConvStrategyGenerator(StrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
-        input_comm_spec = self.get_communication_spec(
+        input_comm_action = self.get_communication_action(
             sharding_spec_mapping["input"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-            logical_process_axis=[mesh_dim_0, mesh_dim_1])
+            logical_process_axis=[mesh_dim_0, mesh_dim_1],
+            comm_type=CommType.BEFORE,
+            arg_index=0)
 
-        communication_action_mapping = {"input": input_comm_spec}
+        communication_action_mapping = {"input": input_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,

@@ -8,8 +8,10 @@ import torch
 from torch.fx import symbolic_trace
 from torch.fx.node import Node
 
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import CommAction, CommType, OperationDataType
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.passes.split_module import split_module
+from colossalai.tensor.comm_spec import CommSpec, _all_reduce
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
 
@@ -19,9 +21,9 @@ shape_consistency_manager = ShapeConsistencyManager()
 class ConsistencyApply(torch.autograd.Function):
 
     @staticmethod
-    def forward(ctx, node, origin_dict, input_dict, node_index, user_node_index):
-        ctx.origin_sharding_spec = origin_dict[node_index]
-        ctx.target_sharding_spec = input_dict[node_index][user_node_index]
+    def forward(ctx, node, origin_sharding_spec, target_sharding_spec):
+        ctx.origin_sharding_spec = origin_sharding_spec
+        ctx.target_sharding_spec = target_sharding_spec
         return shape_consistency_manager.apply_for_autoparallel_runtime(node, ctx.origin_sharding_spec,
                                                                         ctx.target_sharding_spec)
 
@@ -32,13 +34,27 @@ class ConsistencyApply(torch.autograd.Function):
 
 
 def runtime_apply_for_leaf_node(node, origin_dict, input_dict, node_index, user_node_index):
-    return ConsistencyApply.apply(node, origin_dict, input_dict, node_index, user_node_index)
+    origin_sharding_spec = origin_dict[node_index]
+    target_sharding_spec = input_dict[node_index][user_node_index]
+    return ConsistencyApply.apply(node, origin_sharding_spec, target_sharding_spec)
 
 
 def runtime_apply(node, origin_dict, input_dict, node_index, user_node_index):
     origin_sharding_spec = origin_dict[node_index]
     target_sharding_spec = input_dict[node_index][user_node_index]
     return shape_consistency_manager.apply_for_autoparallel_runtime(node, origin_sharding_spec, target_sharding_spec)
+
+
+def runtime_comm_spec_apply(tensor, comm_actions_dict, node_index, op_data):
+
+    comm_action = comm_actions_dict[node_index][op_data]
+    if isinstance(comm_action.comm_spec, CommSpec):
+        rst = comm_action.comm_spec.covert_spec_to_action(tensor)
+    else:
+        origin_sharding_spec = comm_action.comm_spec['src_spec']
+        tgt_sharding_spec = comm_action.comm_spec['tgt_spec']
+        rst = ConsistencyApply.apply(tensor, origin_sharding_spec, tgt_sharding_spec)
+    return rst
 
 
 def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int], device_mesh):
@@ -63,6 +79,16 @@ def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int], de
                 setattr(param, 'sharding_spec', origin_sharding_spec)
                 target_sharding_spec = node.best_strategy.get_sharding_spec_by_name(name)
                 shape_consistency_manager.apply(param, target_sharding_spec)
+                comm_actions = node.best_strategy.communication_actions
+
+                for operation_data, comm_action in comm_actions.items():
+                    comm_spec_to_use = comm_action.comm_spec
+                    if operation_data.type == OperationDataType.PARAM and operation_data.name == name and comm_action.comm_type == CommType.HOOK:
+
+                        def hook_fn(grad):
+                            _all_reduce(grad, comm_spec_to_use)
+
+                        param.register_hook(hook_fn)
 
             for name, buffer in target_module.named_buffers():
                 origin_sharding_spec = ShardingSpec(device_mesh, buffer.shape, {})
@@ -79,15 +105,24 @@ def solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int], de
             target_sharding_specs.append(target_sharding_spec)
         sharding_spec_convert_dict[index] = target_sharding_specs
 
+    # the dict to record comm actions of nodes
+    comm_actions_dict = {}
+    for index, node in enumerate(nodes):
+        comm_action_dict = {}
+        for op_data, comm_action in node.best_strategy.communication_actions.items():
+            comm_action_dict[op_data.name] = comm_action
+        comm_actions_dict[index] = comm_action_dict
+
     # add above dicts into graph
     for node in nodes:
         if node.op != 'placeholder':
             with mod_graph.inserting_before(node):
                 input_specs_node = mod_graph.create_node('placeholder', target='sharding_spec_convert_dict')
                 origin_specs_node = mod_graph.create_node('placeholder', target='origin_node_sharding_spec_dict')
+                comm_actions_dict_node = mod_graph.create_node('placeholder', target='comm_actions_dict')
             break
 
-    return sharding_spec_convert_dict, origin_node_sharding_spec_dict
+    return sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict
 
 
 def shape_consistency_pass(gm: torch.fx.GraphModule):
@@ -105,6 +140,9 @@ def shape_consistency_pass(gm: torch.fx.GraphModule):
             continue
         if node.target == 'origin_node_sharding_spec_dict':
             origin_dict_node = node
+            continue
+        if node.target == 'comm_actions_dict':
+            comm_actions_dict_node = node
             continue
         if not hasattr(node, 'best_strategy'):
             continue
@@ -138,4 +176,24 @@ def shape_consistency_pass(gm: torch.fx.GraphModule):
             new_args[origin_index_args] = shape_consistency_node
             user_node.args = new_args
 
+        comm_actions = node.best_strategy.communication_actions
+        for op_data, comm_action in comm_actions.items():
+            comm_object = node.args[comm_action.arg_index]
+            if op_data.type == OperationDataType.ARG:
+                if comm_action.comm_type == CommType.BEFORE:
+                    with mod_graph.inserting_before(node):
+                        comm_spec_apply_node = mod_graph.create_node('call_function',
+                                                                     runtime_comm_spec_apply,
+                                                                     args=(comm_object, comm_actions_dict_node,
+                                                                           node_to_index_dict[node], op_data.name))
+                elif comm_action.comm_type == CommType.AFTER:
+                    with mod_graph.inserting_after(node):
+                        comm_spec_apply_node = mod_graph.create_node('call_function',
+                                                                     runtime_comm_spec_apply,
+                                                                     args=(comm_object, comm_actions_dict_node,
+                                                                           node_to_index_dict[node], op_data.name))
+            # TODO: consider other OperationDataType, such as OperationDataType.OUTPUT
+            new_args = list(node.args)
+            new_args[comm_action.arg_index] = comm_spec_apply_node
+            node.args = new_args
     return gm

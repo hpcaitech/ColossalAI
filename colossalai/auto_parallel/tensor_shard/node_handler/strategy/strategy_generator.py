@@ -4,17 +4,27 @@ from functools import reduce
 from typing import Any, Dict, List, Union
 
 import torch
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, ShardingStrategy,
-                                                                     TrainCycleItem)
+
+from torch.fx import Node
+
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommAction,
+    CommType,
+    OperationData,
+    OperationDataType,
+    ShardingStrategy,
+    TrainCycleItem,
+)
+
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
+from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 from torch.fx import Node
 
 
 class StrategyGenerator(ABC):
     """
-    StrategyGenerator is used to generate the same group of sharding strategies. 
+    StrategyGenerator is used to generate the same group of sharding strategies.
 
     TODO: remove the original strategy_generator.py after refactoring
     """
@@ -97,6 +107,21 @@ class StrategyGenerator(ABC):
                         sharding_spec=sharding_spec,
                         logical_process_axis=logical_process_axis)
 
+    def get_communication_action(self,
+                                 sharding_spec: ShardingSpec,
+                                 communication_pattern: CollectiveCommPattern,
+                                 logical_process_axis: Union[int, List[int]],
+                                 comm_type: CommType,
+                                 arg_index: int = -1) -> CommAction:
+        """
+        A factory method to produce a CommAction object.
+        """
+        return CommAction(comm_spec=self.get_communication_spec(sharding_spec=sharding_spec,
+                                                                communication_pattern=communication_pattern,
+                                                                logical_process_axis=logical_process_axis),
+                          comm_type=comm_type,
+                          arg_index=arg_index)
+
     def update_communication_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """
         Compute the communication cost involved in the forward and backward iteration.
@@ -117,8 +142,21 @@ class StrategyGenerator(ABC):
         # check if communication action exists
         # if so, loop over each action and compute the cost of each action
         if strategy.communication_actions is not None:
-            for operand, comm_spec in strategy.communication_actions.items():
-                _compute_and_add(operand, comm_spec)
+            for operand, comm_action in strategy.communication_actions.items():
+                if isinstance(comm_action, CommAction):
+                    comm_spec = comm_action.comm_spec
+                else:
+                    # this condition branch will be removed after all the handler updated.
+                    comm_spec = comm_action
+                if isinstance(comm_spec, dict):
+                    src_spec = comm_spec['src_spec']
+                    tgt_spec = comm_spec['tgt_spec']
+                    shape_consistency_manager = ShapeConsistencyManager()
+                    _, comm_action_sequence, _ = shape_consistency_manager.shape_consistency(src_spec, tgt_spec)
+                    for comm_spec_ in comm_action_sequence:
+                        _compute_and_add(operand, comm_spec_)
+                else:
+                    _compute_and_add(operand, comm_spec)
 
         # update the communication cost attribute in-place
         strategy.communication_cost = comm_cost
@@ -141,7 +179,7 @@ class StrategyGenerator(ABC):
     def _compute_size_in_bytes(self, strategy: ShardingStrategy, key: str):
         """
         Compute the size of a tensor in bytes.
-        
+
         Args:
             strategy (ShardingStrategy): the ShardingStrategy generated.
             key (str): the name of the operation data defined by the generator.
@@ -182,7 +220,7 @@ class StrategyGenerator(ABC):
     @abstractmethod
     def validate(self) -> bool:
         """
-        Validate if the operands are of desired shape. 
+        Validate if the operands are of desired shape.
         If True, means this generator can be used for the current operation.
         """
         pass
@@ -190,7 +228,7 @@ class StrategyGenerator(ABC):
 
 class FollowingStrategyGenerator(StrategyGenerator):
     """
-    FollowingStrategyGenerator is used to generate the sharding strategies which depends on its predecessor node. 
+    FollowingStrategyGenerator is used to generate the sharding strategies which depends on its predecessor node.
 
     TODO: remove the original strategy_generator.py after refactoring
     """
