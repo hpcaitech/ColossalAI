@@ -12,7 +12,7 @@ __all__ = ["calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"]
 
 @compatibility(is_backward_compatible=False)
 def calculate_fwd_in(n: Node) -> int:
-    """A helper function to calculate `fwd_in`
+    """A helper function to calculate `fwd_in` (with sharding spec)
 
     Args:
         n (Node): a node from the graph
@@ -25,7 +25,7 @@ def calculate_fwd_in(n: Node) -> int:
 
 @compatibility(is_backward_compatible=False)
 def calculate_fwd_tmp(n: Node) -> int:
-    """A helper function to calculate `fwd_tmp`
+    """A helper function to calculate `fwd_tmp` (with sharding spec)
     Currently, `torch.nn.ReLU` behaves weirdly, so we have to patch it for accuracy.
 
     Args:
@@ -70,7 +70,7 @@ def calculate_fwd_tmp(n: Node) -> int:
 
 @compatibility(is_backward_compatible=False)
 def calculate_fwd_out(n: Node) -> int:
-    """A helper function to calculate `fwd_out`
+    """A helper function to calculate `fwd_out` (with sharding spec)
 
     Args:
         n (Node): a node from the graph
