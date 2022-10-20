@@ -95,6 +95,8 @@ def check_apply(rank, world_size, port):
         assert_close(gm.conv.weight.grad.data, grad_1.data)
 
 
+# skip this test due to pulp not installed in CI environment
+@run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_apply():
