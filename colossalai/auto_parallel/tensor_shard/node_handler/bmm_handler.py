@@ -13,8 +13,6 @@ from .strategy import BatchedMatMulStrategyGenerator, StrategyGenerator
 class BMMFunctionHandler(NodeHandler):
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
-        # use transposed shape for strategies
-        # the strategies will be transformed back to its original shape in self.post_process
         physical_input_operand = OperationData(name=str(self.node.args[0]),
                                                type=OperationDataType.ARG,
                                                data=self.node.args[0]._meta_data)

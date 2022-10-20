@@ -6,7 +6,6 @@ from colossalai.auto_parallel.tensor_shard.node_handler import BMMFunctionHandle
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class BMMTensorMethodModule(nn.Module):
