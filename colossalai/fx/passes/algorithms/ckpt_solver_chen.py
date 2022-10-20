@@ -1,7 +1,9 @@
+import math
 from typing import List, Set, Tuple
+
 import torch
 from torch.fx import GraphModule, Node
-import math
+
 from colossalai.fx.profiler import calculate_fwd_in, calculate_fwd_tmp
 
 __all__ = ['chen_greedy']
