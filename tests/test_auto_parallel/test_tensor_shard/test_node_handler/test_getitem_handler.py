@@ -21,7 +21,6 @@ class GetItemModel(nn.Module):
         return x
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_getitem_function_handler():
     model = GetItemModel()
     tracer = ColoTracer()

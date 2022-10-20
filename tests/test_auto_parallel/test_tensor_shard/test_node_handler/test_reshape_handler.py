@@ -20,7 +20,6 @@ class ReshapeModel(nn.Module):
         return reshape_node
 
 
-@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_reshape_handler():
     model = ReshapeModel()
     tracer = ColoTracer()
