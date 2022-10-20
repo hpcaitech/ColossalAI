@@ -8,7 +8,7 @@ from utils import trace_model_and_compare_output
 from colossalai.fx import ColoTracer
 
 BATCH_SIZE = 2
-SEQ_LENGTH = 50
+SEQ_LENGTH = 5
 HEIGHT = 224
 WIDTH = 224
 IN_CHANNELS = 3
