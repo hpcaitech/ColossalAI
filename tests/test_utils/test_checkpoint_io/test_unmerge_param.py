@@ -24,7 +24,7 @@ def test_flatten_zero_param_uneven() -> None:
     orig_tensor = torch.rand(4, 4)
     tensors = list(orig_tensor.reshape(-1).split([13, 3]))
     flat_tensors = flatten_zero_param(orig_tensor, redist_meta)
-    assert flat_tensors[0] is None and flat_tensors[-1] is None
+    assert flat_tensors[0].size(0) == 0 and flat_tensors[-1].size(0) == 0
     flat_tensors = flat_tensors[1:-1]
     assert len(tensors) == len(flat_tensors)
     for t, st in zip(tensors, flat_tensors):
@@ -32,7 +32,7 @@ def test_flatten_zero_param_uneven() -> None:
     unmerged_tensors = unmerge_param(orig_tensor, redist_meta)
     assert len(unmerged_tensors) == 1
     unmerged_tensors = unmerged_tensors[0]
-    assert unmerged_tensors[0] is None and unmerged_tensors[-1] is None
+    assert unmerged_tensors[0].size(0) == 0 and unmerged_tensors[-1].size(0) == 0
     unmerged_tensors = unmerged_tensors[1:-1]
     assert len(tensors) == len(unmerged_tensors)
     for t, tl in zip(tensors, unmerged_tensors):
