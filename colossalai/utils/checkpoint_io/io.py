@@ -1,12 +1,12 @@
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple
 
 import torch.distributed as dist
 from torch.nn import Module
 from torch.optim import Optimizer
 
 from .backend import get_backend
-from .convertor import (ModelCheckpointMerger, ModelCheckpointRedistor, OptimizerCheckpointMerger,
+from .convertor import (CheckpointConvertor, ModelCheckpointMerger, ModelCheckpointRedistor, OptimizerCheckpointMerger,
                         OptimizerCheckpointRedistor)
 from .meta import ParamDistMeta, RedistMeta
 from .utils import build_checkpoints
@@ -60,14 +60,11 @@ def merge(path: str,
     writer = io_backend.get_writer(output_path, overwrite=overwrite)
     writer.save_others(reader.load_others())
     max_shard_size = int(max_shard_size_gb * 1024**3)
-    convertor = ModelCheckpointMerger(max_shard_size, writer.save_model, param_count)
-    for shard_dict in reader.load_models():
-        convertor.append(shard_dict, dist_meta_list)
-    convertor.complete()
-    convertor = OptimizerCheckpointMerger(max_shard_size, writer.save_optimizer, param_count, param_to_os, paired_os)
-    for shard_dict in reader.load_optimizers():
-        convertor.append(shard_dict, dist_meta_list)
-    convertor.complete()
+    _convert_shards(ModelCheckpointMerger(max_shard_size, writer.save_model, param_count), reader.load_models(),
+                    dist_meta_list)
+    _convert_shards(
+        OptimizerCheckpointMerger(max_shard_size, writer.save_optimizer, param_count, param_to_os, paired_os),
+        reader.load_optimizers(), dist_meta_list)
     meta_checkpoint = {'dist_meta': None, 'params': list(param_count.keys())}
     if param_to_os is not None:
         meta_checkpoint['param_to_os'] = param_to_os
@@ -103,19 +100,22 @@ def redist(path: str,
     writers = [io_backend.get_writer(output_path, overwrite, rank, nprocs) for rank in range(nprocs)]
     writers[0].save_others(reader.load_others())
     max_shard_size = int(max_shard_size_gb * 1024**3)
-    convertor = ModelCheckpointRedistor(max_shard_size, [writer.save_model for writer in writers], param_count,
-                                        redist_meta)
-    for shard_dict in reader.load_models():
-        convertor.append(shard_dict, dist_meta_list)
-    convertor.complete()
-    convertor = OptimizerCheckpointRedistor(max_shard_size, [writer.save_optimizer for writer in writers], param_count,
-                                            param_to_os, paired_os, redist_meta)
-    for shard_dict in reader.load_optimizers():
-        convertor.append(shard_dict, dist_meta_list)
-    convertor.complete()
+    _convert_shards(
+        ModelCheckpointRedistor(max_shard_size, [writer.save_model for writer in writers], param_count, redist_meta),
+        reader.load_models(), dist_meta_list)
+    _convert_shards(
+        OptimizerCheckpointRedistor(max_shard_size, [writer.save_optimizer for writer in writers], param_count,
+                                    param_to_os, paired_os, redist_meta), reader.load_optimizers(), dist_meta_list)
     for writer, dist_meta in zip(writers, dist_metas):
         meta_checkpoint = {'dist_meta': dist_meta, 'params': list(param_count.keys())}
         if param_to_os is not None:
             meta_checkpoint['param_to_os'] = param_to_os
             meta_checkpoint['paired_os'] = paired_os
         writer.save_meta(meta_checkpoint)
+
+
+def _convert_shards(convertor: CheckpointConvertor, shard_generator: Generator[dict, None, None],
+                    dist_meta_list: List[Optional[Dict[str, ParamDistMeta]]]) -> None:
+    for shard_dict in shard_generator:
+        convertor.append(shard_dict, dist_meta_list)
+    convertor.complete()

@@ -9,7 +9,18 @@ from .meta import ParamDistMeta, RedistMeta
 from .utils import (ModelCheckpointSharder, OptimizerCheckpointSharder, run_if_not_none)
 
 
-class ModelCheckpointConvertor(ABC):
+class CheckpointConvertor(ABC):
+
+    @abstractmethod
+    def append(self, shard_dict: Dict[int, dict], dist_meta_list: List[Optional[Dict[str, ParamDistMeta]]]) -> None:
+        pass
+
+    @abstractmethod
+    def complete(self) -> None:
+        pass
+
+
+class ModelCheckpointConvertor(CheckpointConvertor):
 
     def __init__(self, param_count: Dict[str, int]) -> None:
         super().__init__()
@@ -93,7 +104,7 @@ class ModelCheckpointRedistor(ModelCheckpointConvertor):
             run_if_not_none(save_fn, self.sharders[rank].complete())
 
 
-class OptimizerCheckpointConvertor(ABC):
+class OptimizerCheckpointConvertor(CheckpointConvertor):
 
     def __init__(self, param_count: Dict[str, int], param_to_os: Optional[Dict[str, int]],
                  paired_os: Optional[Dict[int, dict]]) -> None:
@@ -112,7 +123,7 @@ class OptimizerCheckpointConvertor(ABC):
     def convert_states(self, idx: int, states: List[dict], dist_metas: List[ParamDistMeta]) -> None:
         pass
 
-    def append(self, shard_dict: Dict[str, dict], dist_meta_list: List[Dict[str, ParamDistMeta]]) -> None:
+    def append(self, shard_dict: Dict[int, dict], dist_meta_list: List[Optional[Dict[str, ParamDistMeta]]]) -> None:
         for rank, state_dict in shard_dict.items():
             self.setup(state_dict['param_groups'])
             for idx, state in state_dict['state'].items():
