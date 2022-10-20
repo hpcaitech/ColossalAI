@@ -1,11 +1,13 @@
+import os
 from abc import ABC, abstractmethod
-from typing import Generator, List, Tuple, Optional, Dict
 from collections import Counter
+from typing import Dict, Generator, List, Optional, Tuple
+
+import torch
+
 from .constant import GLOBAL_META_FILE_NAME, OTHER_CKPT_FILE_NAME
 from .meta import ParamDistMeta
 from .utils import is_duplicated_list
-import torch
-import os
 
 
 class CheckpointReader(ABC):
@@ -25,11 +27,19 @@ class CheckpointReader(ABC):
         pass
 
     @abstractmethod
-    def load_model(self) -> Generator[Dict[int, dict], None, None]:
+    def load_model(self, rank: int) -> Generator[dict, None, None]:
         pass
 
     @abstractmethod
-    def load_optimizer(self) -> Generator[Dict[int, dict], None, None]:
+    def load_models(self) -> Generator[Dict[int, dict], None, None]:
+        pass
+
+    @abstractmethod
+    def load_optimizer(self, rank: int) -> Generator[dict, None, None]:
+        pass
+
+    @abstractmethod
+    def load_optimizers(self) -> Generator[Dict[int, dict], None, None]:
         pass
 
     @abstractmethod
@@ -66,7 +76,16 @@ class DiskCheckpointReader(CheckpointReader):
         assert is_duplicated_list(paired_os_list)
         return list(dist_meta_list), param_count, param_to_os_list[0], paired_os_list[0]
 
-    def load_model(self) -> Generator[Dict[int, dict], None, None]:
+    def _load_shard(self, shard_type: str, rank: int) -> Generator[dict, None, None]:
+        meta = self.meta_list[rank]
+        checkpoint_names = meta.get(shard_type, [])
+        for name in checkpoint_names:
+            yield self.read(name)
+
+    def load_model(self, rank: int) -> Generator[dict, None, None]:
+        return self._load_shard('model', rank)
+
+    def load_models(self) -> Generator[Dict[int, dict], None, None]:
         indices = [0] * len(self.meta_list)
         while True:
             shards = {}
@@ -80,7 +99,10 @@ class DiskCheckpointReader(CheckpointReader):
             else:
                 break
 
-    def load_optimizer(self) -> Generator[Dict[int, dict], None, None]:
+    def load_optimizer(self, rank: int) -> Generator[dict, None, None]:
+        return self._load_shard('optimizer', rank)
+
+    def load_optimizers(self) -> Generator[Dict[int, dict], None, None]:
         indices = [0] * len(self.meta_list)
         param_groups = []
         while True:

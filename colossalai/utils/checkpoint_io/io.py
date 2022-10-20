@@ -61,11 +61,11 @@ def merge(path: str,
     writer.save_others(reader.load_others())
     max_shard_size = int(max_shard_size_gb * 1024**3)
     convertor = ModelCheckpointMerger(max_shard_size, writer.save_model, param_count)
-    for shard_dict in reader.load_model():
+    for shard_dict in reader.load_models():
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
     convertor = OptimizerCheckpointMerger(max_shard_size, writer.save_optimizer, param_count, param_to_os, paired_os)
-    for shard_dict in reader.load_optimizer():
+    for shard_dict in reader.load_optimizers():
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
     meta_checkpoint = {'dist_meta': None, 'params': list(param_count.keys())}
@@ -105,12 +105,12 @@ def redist(path: str,
     max_shard_size = int(max_shard_size_gb * 1024**3)
     convertor = ModelCheckpointRedistor(max_shard_size, [writer.save_model for writer in writers], param_count,
                                         redist_meta)
-    for shard_dict in reader.load_model():
+    for shard_dict in reader.load_models():
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
     convertor = OptimizerCheckpointRedistor(max_shard_size, [writer.save_optimizer for writer in writers], param_count,
                                             param_to_os, paired_os, redist_meta)
-    for shard_dict in reader.load_optimizer():
+    for shard_dict in reader.load_optimizers():
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
     for writer, dist_meta in zip(writers, dist_metas):
