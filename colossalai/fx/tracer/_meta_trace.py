@@ -1,6 +1,5 @@
 import torch
 from torch.fx import Graph, Node
-from torch.fx.graph import _Namespace
 from torch.utils._pytree import tree_map
 
 
