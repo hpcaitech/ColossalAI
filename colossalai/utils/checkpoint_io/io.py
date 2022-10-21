@@ -160,6 +160,8 @@ def load(path: str,
             # optimizer.load_state_dict(shard)
             optimizer_load_state_dict(optimizer, shard)
     others_dict = reader.load_others()
+    if not is_global:
+        dist.barrier()
     # clean up temp
     if is_main_process:
         io_backend.clean_temp()
