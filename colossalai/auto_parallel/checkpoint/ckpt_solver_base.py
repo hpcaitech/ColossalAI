@@ -63,17 +63,6 @@ class CheckpointSolverBase(ABC):
         """
         return [[node] for node in self.graph.nodes]
 
-    def get_solution(self):
-        """Get the solution from the solver.
-        """
-        return self.solution
-
-    def get_solution_cost(self):
-        """Get the cost of the solution.
-        """
-        # TODO(super-dainiu): Implement this function.
-        raise NotImplementedError
-
     def _linearize_graph(self) -> List[List[Node]]:
         """Linearizing the graph
         Args:

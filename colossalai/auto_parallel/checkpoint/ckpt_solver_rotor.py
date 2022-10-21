@@ -2,6 +2,7 @@ import math
 import sys
 from typing import List, Tuple
 
+from torch import Tensor
 from torch.fx import Graph, Node
 
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
@@ -29,6 +30,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                  mem_slots: int = 500):
         """This is the simple implementation of dynamic programming algorithm rotor in https://hal.inria.fr/hal-02352969
         Some code are adapted from https://gitlab.inria.fr/hiepacs/rotor
+
         Args:
             graph (Graph): The computing graph to be optimized.
             memory_budget (float, optional): Memory constraint for the solution.
@@ -41,36 +43,8 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         self.mem_slots = mem_slots
 
     def solve(self, force_python: bool = False):
-        # try to import C version solver if force_python is not set
-        logger = get_dist_logger()
-        if not force_python:
-            try:
-                from .rotor_C_solver import compute_table
-                CVERSION = True
-
-            # build module if module not found
-            except ModuleNotFoundError:
-                import os
-                import subprocess
-                logger.info("rotor_C_solver hasn't been built! Building library...", ranks=[0])
-                this_dir = os.path.dirname(os.path.abspath(__file__))
-                result = subprocess.Popen(
-                    [
-                        f"{sys.executable}", f"{os.path.join(this_dir, 'build_c_ext.py')}", "build_ext",
-                        f"--build-lib={this_dir}"
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                if result.wait() == 0:
-                    logger.info("rotor_C_solver has been built!", ranks=[0])
-                    from .rotor_C_solver import compute_table
-                    CVERSION = True
-                else:
-                    logger.info("rotor_C_solver built failed! Switching to Python solver!", ranks=[0])
-                    CVERSION = False
-        else:
-            CVERSION = False
+        # TODO: implement this
+        raise NotImplementedError
 
     def print_chain(self):
         print('[input]', self.chain.x[0], self.chain.xbar[0], self.chain.ftmp[0], self.chain.btmp[0])
@@ -164,6 +138,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
     @staticmethod
     def _compute_table(chain: Chain, mem_slots: int) -> Tuple:
         """Compute the table using dynamic programming. Returns the optimal table.
+
         Args:
             chain (Chain): A basic linearized structure for solving the dynamic programming problem.
             mem_slots (int): Number of slots for discretizing memory budget.
@@ -229,229 +204,10 @@ class CheckpointSolverRotor(CheckpointSolverBase):
 
     @staticmethod
     def _rec(chain: Chain, lmin: int, lmax: int, cmem, opt_table):
-        """ chain : the class describing the AC graph
-            lmin : index of the first forward to execute
-            lmax : upper bound index of the last forward to execute (not included)
-            cmem : number of available memory slots
-            Return the optimal sequence of makespan Opt_hete[cmem][lmin][lmax-lmin]
-        Args:
-            chain (Chain): _description_
-            lmin (_type_): _description_
-            lmax (_type_): _description_
-            cmem (_type_): _description_
-            opt_table (_type_): _description_
-        Raises:
-            ValueError: _description_
-        Returns:
-            _type_: _description_
-        """
-        if cmem <= 0:
-            raise ValueError("Can not process a chain with negative memory {cmem}".format(cmem=cmem))
-        opt, what = opt_table
-        sequence = Sequence(Function("Persistent", lmax - lmin, cmem))
-        if opt[cmem][lmin][lmax] == float("inf"):
-            # using logger to annonce that the solver is failed
-            logger = get_dist_logger()
-            logger.info("Can not process this chain from index {lmin} to {lmax} with memory {cmem}".format(lmin=lmin,
-                                                                                                           lmax=lmax,
-                                                                                                           cmem=cmem))
+        # TODO: implement this
+        raise NotImplementedError
 
-            # set global indicater SOLVER_FAILED to True
-            global SOLVER_FAILED
-            SOLVER_FAILED = True
-            return sequence
-
-        if lmin == lmax:
-            if lmin == chain.length:
-                sequence.insert(Loss())
-            else:
-                sequence.insert(ForwardEnable(lmin))
-                sequence.insert(Backward(lmin))
-            return sequence
-
-        if what[cmem][lmin][lmax][0]:
-            sequence.insert(ForwardEnable(lmin))
-            sequence.insert_sequence(
-                CheckpointSolverRotor._rec(chain, lmin + 1, lmax, cmem - chain.cbweight[lmin + 1], opt_table))
-            sequence.insert(Backward(lmin))
-        else:
-            j = what[cmem][lmin][lmax][1]
-            sequence.insert(ForwardCheck(lmin))
-            for k in range(lmin + 1, j):
-                sequence.insert(ForwardNograd(k))
-            sequence.insert_sequence(CheckpointSolverRotor._rec(chain, j, lmax, cmem - chain.cweight[j], opt_table))
-            sequence.insert_sequence(CheckpointSolverRotor._rec(chain, lmin, j - 1, cmem, opt_table))
-        return sequence
-
-
-def _annotate_from_sequence(sequence: Sequence, node_list: List[List[Node]]):
-    op_list = sequence.list_operations()
-    loss_op = next(op for op in op_list if isinstance(op, Loss))
-    fwd_list = op_list[:op_list.index(loss_op)]
-    bwd_list = op_list[op_list.index(loss_op) + 1:]
-    ckpt_idx = 0
-    in_ckpt = False
-    ckpt_region = []
-
-    # forward annotation
-    for idx, op in enumerate(fwd_list, 0):
-        if in_ckpt:
-            if isinstance(op, ForwardNograd):
-                ckpt_region.append(idx)
-
-            elif isinstance(op, ForwardEnable):
-                in_ckpt = False
-                for node_idx in ckpt_region:
-                    for n in node_list[node_idx]:
-                        setattr(n, "activation_checkpoint", [ckpt_idx])
-
-                ckpt_idx += 1
-                ckpt_region = []
-
-            elif isinstance(op, ForwardCheck):
-                for node_idx in ckpt_region:
-                    for n in node_list[node_idx]:
-                        setattr(n, "activation_checkpoint", [ckpt_idx])
-
-                ckpt_idx += 1
-                ckpt_region = [idx]
-
-        else:
-            if isinstance(op, ForwardCheck):
-                in_ckpt = True
-                ckpt_region.append(idx)
-
-    # annotate the backward if there is any nested activation checkpoint
-    in_recompute = False
-    for op in bwd_list:
-        if in_recompute:
-            if isinstance(op, ForwardNograd):
-                ckpt_region.append(op.index)
-
-            elif isinstance(op, ForwardEnable):
-                for node_idx in ckpt_region:
-                    for n in node_list[node_idx]:
-                        n.activation_checkpoint.append(ckpt_idx)
-
-                ckpt_idx += 1
-                ckpt_region = []
-
-            elif isinstance(op, ForwardCheck):
-                for node_idx in ckpt_region:
-                    for n in node_list[node_idx]:
-                        n.activation_checkpoint.append(ckpt_idx)
-
-                ckpt_idx += 1
-                ckpt_region = [op.index]
-
-            elif isinstance(op, Backward):
-                for node_idx in ckpt_region:
-                    for n in node_list[node_idx]:
-                        n.activation_checkpoint.append(ckpt_idx)
-
-                in_recompute = False
-
-        else:
-            if not isinstance(op, Backward):
-                in_recompute = True
-                ckpt_idx = 0
-                ckpt_region = []
-                if isinstance(op, ForwardCheck):
-                    ckpt_region.append(op.index)
-
-    # postprocess, make sure every activation checkpoint label in the
-    # same activation checkpoint region (level = 0) has the same length
-    op_list = []
-    for node in node_list:
-        op_list += node
-    ckpt_regions = _find_nested_ckpt_regions(op_list)
-    for (start_idx, end_idx) in ckpt_regions:
-        nested_length = max(len(op_list[idx].activation_checkpoint) for idx in range(start_idx, end_idx + 1))
-        for idx in range(start_idx, end_idx + 1):
-            op_list[idx].activation_checkpoint += [None] * (nested_length - len(op_list[idx].activation_checkpoint))
-
-
-def solver_rotor(gm: ColoGraphModule,
-                 data,
-                 mem_limit: int,
-                 mem_slots: int = 500,
-                 cnode: List[str] = None,
-                 eps: float = 0.0,
-                 force_python: bool = False) -> ColoGraphModule:
-    """solver that automatically find activation checkpoint in rotor's manner
-    Args:
-        gm (ColoGraphModule): ColoGraphModule generated by tracing model and MetaInfoProp.
-        data (torch.Tensor): input data.
-        mem_limit (int): memory budget in Byte.
-        mem_slots (int, optional): number of slots for discretizing memory budget. Defaults to 500.
-        cnode (List[Node], optional): common node list for linearize. Defaults to None.
-        eps (float): epsilon for memory decay. Defaults to 0.0
-        force_python (bool): force to use python version of dynamic programs
-    Returns:
-        ColoGraphModule: annotated ColoGraphModuled with __sequence__ attribute
-    """
-
-    # try to import C version solver if force_python is not set
-    logger = get_dist_logger()
-    if not force_python:
-        try:
-            from .dynamic_programs_C_version import persistent_compute_table
-            CVERSION = True
-
-        # build module if module not found
-        except ModuleNotFoundError:
-            import os
-            import subprocess
-            logger.info("dynamic_programs_C_version hasn't been built! Building library...", ranks=[0])
-            this_dir = os.path.dirname(os.path.abspath(__file__))
-            result = subprocess.Popen(
-                [
-                    f"{sys.executable}", f"{os.path.join(this_dir, 'build_c_ext.py')}", "build_ext",
-                    f"--build-lib={this_dir}"
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            if result.wait() == 0:
-                logger.info("dynamic_programs_C_version has been built!", ranks=[0])
-                from .dynamic_programs_C_version import persistent_compute_table
-                CVERSION = True
-            else:
-                logger.info("dynamic_programs_C_version built failed! Using python version!", ranks=[0])
-                CVERSION = False
-    else:
-        CVERSION = False
-
-    # linearize the graph
-    node_list = linearize(gm, cnode)
-
-    # construct chain
-    mem_unit = mem_limit * (1.0 - eps) // mem_slots
-    chain: Chain = _construct_chain(node_list, data)
-    chain._discretize(mem_unit)
-
-    # use C version if possible
-    if CVERSION and not force_python:
-        logger.info("Using C version rotor solver!", ranks=[0])
-        opt_table = persistent_compute_table(chain, mem_slots)
-    else:
-        opt_table = _compute_table(chain, mem_slots)
-        logger.info("Using python version rotor solver!", ranks=[0])
-
-    # found sequence
-    sequence = _rec(chain, 0, chain.length, mem_slots - chain.cweight[0], opt_table)
-
-    # if solver failed, we don't need to annotate the graph
-    if not SOLVER_FAILED:
-        _annotate_from_sequence(sequence, node_list)
-
-    # set __sequence__ attribute to GraphModule
-    if SOLVER_FAILED:
-        setattr(gm, "__sequence__", None)
-    else:
-        setattr(gm, "__sequence__", sequence)
-
-    # set __opttable__ attribute to GraphModule
-    setattr(gm, "__opttable__", opt_table[0])
-    gm.recompile()
-    return
+    @staticmethod
+    def _annotate_from_sequence(sequence: Sequence, node_list: List[List[Node]]):
+        # TODO: implement this
+        raise NotImplementedError
