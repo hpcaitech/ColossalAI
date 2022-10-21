@@ -1,8 +1,11 @@
 import warnings
+from copy import deepcopy
+from itertools import chain
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from torch import Tensor
 from torch.nn import Module
+from torch.nn.parameter import Parameter
 from torch.optim import Optimizer
 
 from .meta import ParamDistMeta
@@ -178,3 +181,43 @@ def is_duplicated_list(list_: List[Any]) -> bool:
         if x != elem:
             return False
     return True
+
+
+def copy_optimizer_state(src_state: dict, dest_state: dict) -> None:
+    for k, v in src_state.items():
+        if k in dest_state:
+            old_v = dest_state[k]
+            if isinstance(old_v, Tensor):
+                old_v.copy_(v)
+        else:
+            dest_state[k] = v
+
+
+def optimizer_load_state_dict(optimizer: Optimizer, state_dict: dict, strict: bool = False) -> None:
+    assert optimizer.state_dict()['param_groups'] == state_dict['param_groups']
+    state_dict = deepcopy(state_dict)
+    groups = optimizer.param_groups
+    saved_groups = state_dict['param_groups']
+    idx_to_p: Dict[str, Parameter] = {
+        old_id: p for old_id, p in zip(chain.from_iterable((g['params'] for g in saved_groups
+                                                           )), chain.from_iterable((g['params'] for g in groups)))
+    }
+    missing_keys = list(set(idx_to_p.keys()) - set(state_dict['state'].keys()))
+    unexpected_keys = []
+    error_msgs = []
+    for idx, state in state_dict['state'].items():
+        if idx in idx_to_p:
+            old_state = optimizer.state[idx_to_p[idx]]
+            copy_optimizer_state(state, old_state)
+        else:
+            unexpected_keys.append(idx)
+    if strict:
+        if len(unexpected_keys) > 0:
+            error_msgs.insert(
+                0, 'Unexpected key(s) in state_dict: {}. '.format(', '.join('"{}"'.format(k) for k in unexpected_keys)))
+        if len(missing_keys) > 0:
+            error_msgs.insert(
+                0, 'Missing key(s) in state_dict: {}. '.format(', '.join('"{}"'.format(k) for k in missing_keys)))
+    if len(error_msgs) > 0:
+        raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(optimizer.__class__.__name__,
+                                                                                 "\n\t".join(error_msgs)))

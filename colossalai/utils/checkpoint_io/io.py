@@ -9,7 +9,7 @@ from .backend import get_backend
 from .convertor import (CheckpointConvertor, ModelCheckpointMerger, ModelCheckpointRedistor, OptimizerCheckpointMerger,
                         OptimizerCheckpointRedistor)
 from .meta import ParamDistMeta, RedistMeta
-from .utils import build_checkpoints
+from .utils import build_checkpoints, optimizer_load_state_dict
 
 
 def save(path: str,
@@ -157,7 +157,8 @@ def load(path: str,
         model.load_state_dict(shard, strict=False)
     if optimizer is not None:
         for shard in reader.load_optimizer(rank):
-            optimizer.load_state_dict(shard)
+            # optimizer.load_state_dict(shard)
+            optimizer_load_state_dict(optimizer, shard)
     others_dict = reader.load_others()
     # clean up temp
     if is_main_process:

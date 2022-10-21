@@ -100,7 +100,13 @@ class DiskCheckpointReader(CheckpointReader):
                 break
 
     def load_optimizer(self, rank: int) -> Generator[dict, None, None]:
-        return self._load_shard('optimizer', rank)
+        param_groups = None
+        for shard in self._load_shard('optimizer', rank):
+            if param_groups is None:
+                param_groups = shard['param_groups']
+            else:
+                shard['param_groups'] = param_groups
+            yield shard
 
     def load_optimizers(self) -> Generator[Dict[int, dict], None, None]:
         indices = [0] * len(self.meta_list)
