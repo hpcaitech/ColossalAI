@@ -29,7 +29,10 @@ def check_optim_state_dict(a: dict, b: dict, ignore_param_gruops: bool = False) 
     for k, state in a['state'].items():
         b_state = b['state'][k]
         for v1, v2 in zip(state.values(), b_state.values()):
-            assert torch.equal(v1, v2)
+            if isinstance(v1, Tensor):
+                assert torch.equal(v1, v2)
+            else:
+                assert v1 == v2
     if not ignore_param_gruops:
         assert a['param_groups'] == b['param_groups']
 

@@ -25,12 +25,14 @@ def save(path: str,
     if dist.is_initialized():
         rank = dist.get_rank()
         world_size = dist.get_world_size()
-        assert dist_meta is not None
     else:
         rank = 0
         world_size = 1
+    if world_size == 1:
         # global doesn't need dist_meta
         dist_meta = None
+    else:
+        assert dist_meta is not None
     max_shard_size = int(max_shard_size_gb * 1024**3)
     model_checkpoints, optimizer_checkpoints, meta_checkpoint = build_checkpoints(max_shard_size, model, optimizer,
                                                                                   param_to_os, dist_meta)

@@ -60,7 +60,10 @@ def test_global_optimizer():
     for k, orig_state in orig_state_dict['state'].items():
         state = state_dict['state'][k]
         for v1, v2 in zip(orig_state.values(), state.values()):
-            assert torch.equal(v1, v2)
+            if isinstance(v2, torch.Tensor):
+                assert torch.equal(v1, v2)
+            else:
+                assert v2 == v2
     assert orig_state_dict['param_groups'] == state_dict['param_groups']
 
 
@@ -81,7 +84,10 @@ def test_global_optimizer_shard():
         state = optimizer_checkpoints[0]['state'][k] if k in optimizer_checkpoints[0][
             'state'] else optimizer_checkpoints[1]['state'][k]
         for v1, v2 in zip(orig_state.values(), state.values()):
-            assert torch.equal(v1, v2)
+            if isinstance(v2, torch.Tensor):
+                assert torch.equal(v1, v2)
+            else:
+                assert v1 == v2
 
     assert orig_state_dict['param_groups'] == optimizer_checkpoints[0]['param_groups']
 
