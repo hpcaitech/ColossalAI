@@ -1,20 +1,22 @@
-from colossalai.utils.checkpoint_io.meta import ParamDistMeta
-from colossalai.utils.checkpoint_io.constant import MODEL_CKPT_FILE_NAME, GLOBAL_META_FILE_NAME, META_CKPT_FILE_NAME, OTHER_CKPT_FILE_NAME, OPTIM_CKPT_FILE_NAME
-from colossalai.utils.checkpoint_io.io import save
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils import free_port
-from tempfile import TemporaryDirectory
-from torch.optim import Adam
-from typing import Dict
-from torch import Tensor
-from functools import partial
-import torch
 import os
-import pytest
+from functools import partial
+from tempfile import TemporaryDirectory
+from typing import Dict
+
 import colossalai
-import torch.nn as nn
+import pytest
+import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+import torch.nn as nn
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.checkpoint_io.constant import (GLOBAL_META_FILE_NAME, META_CKPT_FILE_NAME, MODEL_CKPT_FILE_NAME,
+                                                     OPTIM_CKPT_FILE_NAME, OTHER_CKPT_FILE_NAME)
+from colossalai.utils.checkpoint_io.io import save
+from colossalai.utils.checkpoint_io.meta import ParamDistMeta
+from torch import Tensor
+from torch.optim import Adam
 
 
 def check_model_state_dict(a: Dict[str, Tensor], b: Dict[str, Tensor]) -> None:
@@ -121,21 +123,18 @@ def test_save_dist():
         world_size = 2
         proc_fn = partial(run_dist, world_size=world_size, port=free_port(), func=fn)
         mp.spawn(proc_fn, nprocs=world_size)
-        assert len(os.listdir(dir_name)) == 6
+        assert len(os.listdir(dir_name)) == 8
         global_meta = torch.load(os.path.join(dir_name, GLOBAL_META_FILE_NAME))
         assert len(global_meta['meta']) == 2
         for rank, meta_name in enumerate(global_meta['meta']):
             meta = torch.load(os.path.join(dir_name, meta_name))
             assert meta.get('dist_meta', None) is not None
-            if rank == 0:
-                assert len(meta['model']) == 1 and len(meta['optimizer']) == 1
-                model_state_dict = torch.load(os.path.join(dir_name, meta['model'][0]))
-                assert len(model_state_dict) == 2
-                optimizer_state_dict = torch.load(os.path.join(dir_name, meta['optimizer'][0]))
-                assert len(optimizer_state_dict['state']) == 2
-                assert 'param_groups' in optimizer_state_dict
-            else:
-                assert 'model' not in meta and 'optimizer' not in meta
+            assert len(meta['model']) == 1 and len(meta['optimizer']) == 1
+            model_state_dict = torch.load(os.path.join(dir_name, meta['model'][0]))
+            assert len(model_state_dict) == 2
+            optimizer_state_dict = torch.load(os.path.join(dir_name, meta['optimizer'][0]))
+            assert len(optimizer_state_dict['state']) == 2
+            assert 'param_groups' in optimizer_state_dict
 
 
 if __name__ == '__main__':

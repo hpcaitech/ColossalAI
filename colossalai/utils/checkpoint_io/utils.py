@@ -1,9 +1,11 @@
-from typing import List, Optional, Dict, Any, Tuple, Callable
-from torch import Tensor
-from torch.optim import Optimizer
-from torch.nn import Module
-from .meta import ParamDistMeta
 import warnings
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from torch import Tensor
+from torch.nn import Module
+from torch.optim import Optimizer
+
+from .meta import ParamDistMeta
 
 
 def run_if_not_none(fn: Callable[[Any], Any], arg: Any) -> Any:
@@ -137,7 +139,8 @@ def build_checkpoints(max_size: int,
                       model: Module,
                       optimizer: Optional[Optimizer] = None,
                       param_to_os: Optional[Dict[str, int]] = None,
-                      dist_meta: Optional[Dict[str, ParamDistMeta]] = None) -> Tuple[List[dict], List[dict], dict]:
+                      dist_meta: Optional[Dict[str, ParamDistMeta]] = None,
+                      eliminate_replica: bool = False) -> Tuple[List[dict], List[dict], dict]:
     save_global = dist_meta is None
     model_state_dict = model.state_dict()
     optimizer_state_dict = optimizer.state_dict() if optimizer else None
@@ -147,7 +150,7 @@ def build_checkpoints(max_size: int,
         paired_os = get_paired_os(model_state_dict, optimizer_state_dict, param_to_os)
         meta['param_to_os'] = param_to_os
         meta['paired_os'] = paired_os
-    if not save_global:
+    if not save_global and eliminate_replica:
         # filter dp replicated params
         model_state_dict = {
             k: v for k, v in model_state_dict.items() if dist_meta[k].used_zero or dist_meta[k].dp_rank == 0

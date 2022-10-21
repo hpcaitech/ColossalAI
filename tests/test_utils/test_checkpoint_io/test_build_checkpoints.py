@@ -1,8 +1,8 @@
+import torch
+import torch.nn as nn
 from colossalai.utils.checkpoint_io.meta import ParamDistMeta
 from colossalai.utils.checkpoint_io.utils import build_checkpoints
 from torch.optim import Adam
-import torch.nn as nn
-import torch
 
 
 class DummyModel(nn.Module):
@@ -97,13 +97,13 @@ def test_dist_model_optimizer():
     assert dist_meta == meta['dist_meta']
     assert len(model_checkpoints) == 1
     assert len(optimizer_checkpoints) == 1
-    assert 'fc.weight' in model_checkpoints[0] and 'fc.bias' not in model_checkpoints[0]
-    assert 0 in optimizer_checkpoints[0]['state'] and 1 not in optimizer_checkpoints[0]['state']
+    assert 'fc.weight' in model_checkpoints[0] and 'fc.bias' in model_checkpoints[0]
+    assert 0 in optimizer_checkpoints[0]['state'] and 1 in optimizer_checkpoints[0]['state']
     dist_meta = {'fc.weight': ParamDistMeta(1, 2, 0, 1), 'fc.bias': ParamDistMeta(1, 2, 0, 1)}
     model_checkpoints, optimizer_checkpoints, meta = build_checkpoints(0, model, optimizer, dist_meta=dist_meta)
     assert dist_meta == meta['dist_meta']
-    assert len(model_checkpoints) == 0
-    assert len(optimizer_checkpoints) == 0
+    assert len(model_checkpoints) == 1
+    assert len(optimizer_checkpoints) == 1
 
 
 if __name__ == '__main__':
