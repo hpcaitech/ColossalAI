@@ -1,4 +1,5 @@
 import torch
+
 from ..registry import meta_patched_function
 
 
@@ -54,6 +55,16 @@ def torch_bmm(input, mat2, *, out=None):
     batch_size, n, m = input.shape
     _, _, p = mat2.shape
     return torch.empty(batch_size, n, p, device="meta")
+
+
+@meta_patched_function.register(torch.addbmm)
+@meta_patched_function.register(torch.Tensor.addbmm)
+def torch_addbmm(input, mat1, mat2, *, beta=1, alpha=1, out=None):
+    if out is not None:
+        raise ValueError("Don't support in-place abs for MetaTensor analysis")
+    batch_size, n, m = mat1.shape
+    _, _, p = mat2.shape
+    return torch.empty(n, p, device="meta")
 
 
 @meta_patched_function.register(torch.var_mean)
