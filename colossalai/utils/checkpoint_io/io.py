@@ -47,15 +47,15 @@ def merge(path: str,
           output_path: str,
           max_shard_size_gb: float = 0.0,
           overwrite: bool = False,
-          backend: str = 'disk') -> None:
+          backend: str = 'disk') -> bool:
     io_backend = get_backend(backend)
     if dist.is_initialized() and dist.get_rank() != 0:
-        return
+        return False
     reader = io_backend.get_reader(path)
     if len(reader.meta_list) == 1:
         # already global
         warnings.warn(f'Checkpoint at "{path}" is already global, nothing to do.')
-        return
+        return False
     dist_meta_list, param_count, param_to_os, paired_os = reader.load_meta()
     writer = io_backend.get_writer(output_path, overwrite=overwrite)
     writer.save_others(reader.load_others())
@@ -70,6 +70,7 @@ def merge(path: str,
         meta_checkpoint['param_to_os'] = param_to_os
         meta_checkpoint['paired_os'] = paired_os
     writer.save_meta(meta_checkpoint)
+    return True
 
 
 def redist(path: str,
@@ -78,10 +79,10 @@ def redist(path: str,
            dist_metas: List[Dict[str, ParamDistMeta]],
            max_shard_size_gb: float = 0.0,
            overwrite: bool = False,
-           backend: str = 'disk') -> None:
+           backend: str = 'disk') -> bool:
     io_backend = get_backend(backend)
     if dist.is_initialized() and dist.get_rank() != 0:
-        return
+        return False
     nprocs = len(dist_metas)
     reader = io_backend.get_reader(path)
     dist_meta_list, param_count, param_to_os, paired_os = reader.load_meta()
@@ -95,7 +96,7 @@ def redist(path: str,
         do_redist = True
     if not do_redist:
         warnings.warn(f'Checkpoint at "{path}" is not required to redist, nothing to do.')
-        return
+        return False
 
     writers = [io_backend.get_writer(output_path, overwrite, rank, nprocs) for rank in range(nprocs)]
     writers[0].save_others(reader.load_others())
@@ -112,6 +113,7 @@ def redist(path: str,
             meta_checkpoint['param_to_os'] = param_to_os
             meta_checkpoint['paired_os'] = paired_os
         writer.save_meta(meta_checkpoint)
+    return True
 
 
 def _convert_shards(convertor: CheckpointConvertor, shard_generator: Generator[dict, None, None],
@@ -119,3 +121,45 @@ def _convert_shards(convertor: CheckpointConvertor, shard_generator: Generator[d
     for shard_dict in shard_generator:
         convertor.append(shard_dict, dist_meta_list)
     convertor.complete()
+
+
+def load(path: str,
+         model: Module,
+         optimizer: Optional[Optimizer] = None,
+         redist_meta: Optional[RedistMeta] = None,
+         dist_metas: Optional[List[Dict[str, ParamDistMeta]]] = None,
+         max_shard_size_gb: float = 0.0,
+         backend: str = 'disk') -> dict:
+    is_global: bool = not dist.is_initialized() or dist.get_world_size() == 1
+    rank: int = dist.get_rank() if dist.is_initialized() else 0
+    is_main_process: bool = rank == 0
+    # validate args
+    if redist_meta is None or dist_metas is None:
+        assert is_global
+    io_backend = get_backend(backend)
+    read_path: str = path
+    if is_main_process:
+        # pre-process checkpoints
+        temp_path = io_backend.get_temp(path)
+        if is_global:
+            wrote = merge(path, temp_path, max_shard_size_gb, backend=backend)
+        else:
+            wrote = redist(path, temp_path, redist_meta, dist_metas, max_shard_size_gb, backend=backend)
+        if wrote:
+            read_path = temp_path
+    if not is_global:
+        bcast_list = [read_path] if is_main_process else [None]
+        dist.broadcast_object_list(bcast_list)
+        read_path = bcast_list[0]
+    reader = io_backend.get_reader(read_path)
+    # load model
+    for shard in reader.load_model(rank):
+        model.load_state_dict(shard, strict=False)
+    if optimizer is not None:
+        for shard in reader.load_optimizer(rank):
+            optimizer.load_state_dict(shard)
+    others_dict = reader.load_others()
+    # clean up temp
+    if is_main_process:
+        io_backend.clean_temp()
+    return others_dict

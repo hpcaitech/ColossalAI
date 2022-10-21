@@ -1,7 +1,10 @@
+import shutil
+import tempfile
 from abc import ABC, abstractmethod
-from typing import Dict, Type
-from .writer import CheckpointWriter, DiskCheckpointWriter
+from typing import Dict, List, Type
+
 from .reader import CheckpointReader, DiskCheckpointReader
+from .writer import CheckpointWriter, DiskCheckpointWriter
 
 _backends: Dict[str, Type['CheckpointIOBackend']] = {}
 
@@ -23,6 +26,10 @@ def get_backend(name: str) -> 'CheckpointIOBackend':
 
 class CheckpointIOBackend(ABC):
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.temps: List[str] = []
+
     @abstractmethod
     def get_writer(self,
                    base_name: str,
@@ -33,6 +40,14 @@ class CheckpointIOBackend(ABC):
 
     @abstractmethod
     def get_reader(self, base_name: str) -> CheckpointReader:
+        pass
+
+    @abstractmethod
+    def get_temp(self, base_name: str) -> str:
+        pass
+
+    @abstractmethod
+    def clean_temp(self) -> None:
         pass
 
 
@@ -48,3 +63,12 @@ class CheckpointDiskIO(CheckpointIOBackend):
 
     def get_reader(self, base_name: str) -> CheckpointReader:
         return DiskCheckpointReader(base_name)
+
+    def get_temp(self, base_name: str) -> str:
+        temp_dir_name = tempfile.mkdtemp(dir=base_name)
+        self.temps.append(temp_dir_name)
+        return temp_dir_name
+
+    def clean_temp(self) -> None:
+        for temp_dir_name in self.temps:
+            shutil.rmtree(temp_dir_name)
