@@ -77,6 +77,7 @@ def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
                 if target_sharding_spec.dim_partition_dict != {}:
                     origin_sharding_spec = ShardingSpec(device_mesh, param.shape, {})
                     setattr(param, 'sharding_spec', origin_sharding_spec)
+                    # TODO: build a ColoParamter class to manager the distributed parameters
                     param_sharded = torch.nn.Parameter(
                         shape_consistency_manager.apply_for_autoparallel_runtime(param.data, param.sharding_spec,
                                                                                  target_sharding_spec).detach().clone())
