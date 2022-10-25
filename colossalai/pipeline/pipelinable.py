@@ -9,7 +9,7 @@ from colossalai.nn.layer.utils import CheckpointModule
 from colossalai.tensor import ColoParameter
 from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
-from .layer_sepc import LayerSpec
+from .layer_spec import LayerSpec
 
 
 class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
