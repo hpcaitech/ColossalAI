@@ -51,6 +51,8 @@ def alloc_storage(tensor: torch.Tensor) -> None:
 
 class Chunk:
 
+    _total_number = 0
+
     def __init__(self,
                  chunk_size: int,
                  process_group: ColoProcessGroup,
@@ -73,6 +75,8 @@ class Chunk:
             keep_gathered (bool): optional, if True, this chunk is always gathered in CUDA memory
             pin_memory (bool): optional, if True, this chunk always has a shard copied in pinned CPU memory
         """
+        self.count_id = Chunk._total_number
+        Chunk._total_number += 1
 
         self.chunk_size = chunk_size
         self.utilized_size = 0

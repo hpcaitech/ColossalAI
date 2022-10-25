@@ -26,9 +26,8 @@ class ZeROHookV2(ParamOpHook):
         chunks = self._chunk_manager.get_chunks(params)
         for p in params:
             self._chunk_manager.trans_tensor_state(p, TensorState.COMPUTE)
-        self._chunk_manager.exec_lazy_release()
         self._gemini_manager.sample_overall_data()
-        self._gemini_manager.adjust_layout(chunks, 'fp16_param')
+        self._gemini_manager.adjust_layout(chunks)
         for chunk in chunks:
             self._chunk_manager.access_chunk(chunk)
         self._gemini_manager.sample_model_data()
@@ -38,7 +37,6 @@ class ZeROHookV2(ParamOpHook):
         for p in params:
             tensor_state = TensorState.HOLD if self._training_phase == TrainingPhase.FORWARD or not p.requires_grad else TensorState.HOLD_AFTER_BWD
             self._chunk_manager.trans_tensor_state(p, tensor_state)
-        self._chunk_manager.add_lazy_release_tensors(params)
 
     def pre_forward(self, params: List[torch.Tensor]) -> None:
         self.pre_op(params)

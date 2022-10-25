@@ -224,14 +224,16 @@ class ZeroDDP(ColoDDP):
         # TODO: get param order and filter unused params
         for p in module.parameters():
             assert isinstance(p, ColoParameter)
+
             if getattr(p, '_ddp_to_ignore', False):
-                p.data = p.half()
+                p.data = p.data.half()
                 continue
 
-            dp_world_size = p.process_group.dp_world_size()
-            fp32_data = p.float().data
-            p.data = p.half()
+            fp32_data = p.data.float()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
+            p.data = p.data.half()
+
+            dp_world_size = p.process_group.dp_world_size()
             self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
             self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size, pin_memory)
             self.fp32_params.append(fp32_p)
@@ -253,7 +255,6 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager.pre_iter()
         with ParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
-        self.chunk_manager.exec_lazy_release()
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
         return outputs
@@ -265,7 +266,7 @@ class ZeroDDP(ColoDDP):
             p.grad = None
 
     def _post_backward(self):
-        self.chunk_manager.exec_lazy_release()
+        assert self.chunk_manager.accessed_mem == 0
         self._setup_grads_ptr()
         self._logger.debug(
             f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'

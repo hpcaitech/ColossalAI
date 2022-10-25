@@ -1,13 +1,12 @@
 from dataclasses import asdict
-from colossalai.fx.profiler import GraphInfo
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+
 import torch
 import torch.fx
-from torch.fx.node import Node, Argument, Target
+from colossalai.fx._compatibility import compatibility
+from colossalai.fx.profiler import (GraphInfo, profile_function, profile_method, profile_module)
+from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_flatten
-from typing import Any, List, Tuple, NamedTuple, Dict, Optional
-from torch.fx._compatibility import compatibility
-from colossalai.fx.profiler import profile_function, profile_module, profile_method, activation_size
-from torch.fx.graph_module import GraphModule
 
 
 @compatibility(is_backward_compatible=True)

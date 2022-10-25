@@ -65,6 +65,7 @@ jobs:
         run: |
           cp -r ./.github/workflows/scripts/* ./
           ln -s /github/home/pip_wheels ./pip_wheels
+          git config --global --add safe.directory /__w/ColossalAI/ColossalAI
           git checkout $git_ref
           wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
           unzip 1.8.0.zip

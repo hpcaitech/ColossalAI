@@ -2,7 +2,6 @@ import operator
 from typing import Any, Tuple
 import torch
 from ..registry import meta_profiler_function
-from colossalai.fx.proxy import ColoProxy
 
 
 @meta_profiler_function.register(operator.getitem)

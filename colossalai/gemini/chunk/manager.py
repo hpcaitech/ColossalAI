@@ -28,7 +28,7 @@ class ChunkManager:
         self.chunk_groups: Dict[str, Deque] = dict()
         self.tensor_chunk_map: Dict[torch.Tensor, Chunk] = dict()
         self.accessed_chunks: Set[Chunk] = set()
-        self.lazy_release_tensors: List[torch.Tensor] = list()
+        self.accessed_mem: int = 0
         self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
 
     def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int, pin_memory: bool = False) -> None:
@@ -91,9 +91,8 @@ class ChunkManager:
         self.__sub_memroy_usage(chunk.memory_usage)
         if chunk.device_type == 'cpu':
             chunk.shard_move(get_current_device())
-        chunk.access_chunk()
+        self.__add_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
-        self.accessed_chunks.add(chunk)
 
     def release_chunk(self, chunk: Chunk) -> None:
         """Scatter the chunk in CUDA.
@@ -102,9 +101,8 @@ class ChunkManager:
             return
         if chunk.can_release:
             self.__sub_memroy_usage(chunk.memory_usage)
-            chunk.release_chunk()
+            self.__sub_accessed_chunk(chunk)
             self.__add_memory_usage(chunk.memory_usage)
-            self.accessed_chunks.remove(chunk)
 
     def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False) -> None:
         """Move the shard of the chunk to the target device.
@@ -128,6 +126,7 @@ class ChunkManager:
             return False
         self.__sub_memroy_usage(chunk.memory_usage)
         chunk.reduce()
+        self.__sub_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
         return True
 
@@ -151,31 +150,15 @@ class ChunkManager:
         """
         return self.tensor_chunk_map[tensor]
 
-    def add_lazy_release_tensors(self, tensors: List[torch.Tensor]) -> None:
+    def get_cuda_movable_chunks(self) -> List[Chunk]:
         """
-        Add tensors to the buffer for lazy release.
-
-        Args:
-            tensors (List[torch.Tensor]): the tensors to be released lazily
+        Get all chunks that can be moved.
         """
-        self.lazy_release_tensors.extend(tensors)
-
-    def exec_lazy_release(self) -> None:
-        """
-        Execute release for tensors added to the lazy release buffer.
-        """
-
-        for chunk in self.get_chunks(self.lazy_release_tensors):
-            self.release_chunk(chunk)
-        self.lazy_release_tensors.clear()
-
-    def get_cuda_movable_chunks(self, group_type: str) -> List[Chunk]:
         chunk_list = []
-        for group_name in self.chunk_groups:
-            if group_type in group_name:
-                for chunk in self.chunk_groups[group_name]:
-                    if chunk.device_type == 'cuda' and chunk.can_move:
-                        chunk_list.append(chunk)
+        for chunk in self.accessed_chunks:
+            if chunk.can_release:
+                chunk_list.append(chunk)
+        chunk_list.sort(key=lambda x: x.count_id)
         return chunk_list
 
     def get_chunks(self, tensors: Iterable[torch.Tensor]) -> Tuple[Chunk, ...]:
@@ -235,3 +218,13 @@ class ChunkManager:
     def __add_memory_usage(self, usage: Dict[str, int]):
         for k, v in usage.items():
             self.total_mem[k] += v
+
+    def __add_accessed_chunk(self, chunk: Chunk):
+        chunk.access_chunk()
+        self.accessed_chunks.add(chunk)
+        self.accessed_mem += chunk.chunk_mem
+
+    def __sub_accessed_chunk(self, chunk: Chunk):
+        chunk.release_chunk()
+        self.accessed_chunks.remove(chunk)
+        self.accessed_mem -= chunk.chunk_mem

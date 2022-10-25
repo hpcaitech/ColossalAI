@@ -1,3 +1,4 @@
+diffusers
 pytest
 torchvision
 transformers

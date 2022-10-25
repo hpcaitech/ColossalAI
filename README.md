@@ -36,6 +36,7 @@
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
      <li><a href="#OPT">OPT</a></li>
+     <li><a href="#Recommendation-System-Models">Recommendation System Models</a></li>
    </ul>
  </li>
  <li>
@@ -152,6 +153,9 @@ distributed training and inference in a few lines.
 - 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt) 
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
+
+### Recommendation System Models
+- [Cached Embedding](https://github.com/hpcaitech/CachedEmbedding), utilize software cache to train larger embedding tables with a smaller GPU memory budget.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

@@ -56,14 +56,14 @@ class GeminiManager:
         self._evict_time = 0
         self._comp_cuda_demand_time = 0
 
-    def adjust_layout(self, chunks: Tuple[Chunk, ...], group_type: str) -> None:
+    def adjust_layout(self, chunks: Tuple[Chunk, ...]) -> None:
         """ Adjust the layout of statefuil tensor according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
         """
         # find stateful tensor in state COMPUTE
         start = time()
         self._record_chunks_order(chunks)
-        cuda_demand, hold_cuda_tensor_list = self._get_layout_info(self._compute_idx, self._warmup, chunks, group_type)
+        cuda_demand, hold_cuda_tensor_list = self._get_layout_info(self._compute_idx, self._warmup, chunks)
         self._layout_time += time() - start
 
         vol, evict_time = self._placement_policy.evict_tensors(can_evict_chunks=hold_cuda_tensor_list,
@@ -78,7 +78,7 @@ class GeminiManager:
         self._h2d_volume += cuda_demand
 
     @functools.lru_cache(maxsize=None)
-    def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...], group_type: str):
+    def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...]):
         start = time()
         cuda_demand = 0
         for chunk in chunks:
@@ -93,7 +93,7 @@ class GeminiManager:
                 raise RuntimeError
         self._comp_cuda_demand_time += time() - start
 
-        can_evict_chunks = self._chunk_manager.get_cuda_movable_chunks(group_type)
+        can_evict_chunks = self._chunk_manager.get_cuda_movable_chunks()
         return cuda_demand, can_evict_chunks
 
     def _record_chunks_order(self, chunks: Tuple[Chunk, ...]) -> None:
