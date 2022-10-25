@@ -10,6 +10,8 @@ from torch.fx import GraphModule
 from torchvision.models import resnet34, resnet50
 
 from colossalai import device
+from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
+from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.constants import *
 from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
@@ -17,8 +19,6 @@ from colossalai.auto_parallel.tensor_shard.solver.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from colossalai.auto_parallel.tensor_shard.solver.strategies_constructor import StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.passes.autoparallel.runtime_apply_pass import runtime_apply_pass
-from colossalai.fx.passes.autoparallel.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers

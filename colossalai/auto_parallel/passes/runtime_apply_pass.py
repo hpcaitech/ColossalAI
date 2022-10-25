@@ -68,7 +68,7 @@ def _preprocess_graph(nodes: List[Node]):
     return input_dict_node, origin_dict_node, comm_actions_dict_node, node_to_index_dict
 
 
-def _shape_consistency_pass(gm: torch.fx.GraphModule):
+def _shape_consistency_apply(gm: torch.fx.GraphModule):
     """
     This pass is used to add the shape consistency node to the origin graph.
     """
@@ -97,7 +97,7 @@ def _shape_consistency_pass(gm: torch.fx.GraphModule):
     return gm
 
 
-def _comm_spec_apply_pass(gm: torch.fx.GraphModule):
+def _comm_spec_apply(gm: torch.fx.GraphModule):
     """
     This pass is used to add the comm spec apply node to the origin graph.
     """
@@ -145,7 +145,7 @@ def runtime_apply_pass(gm: torch.fx.GraphModule):
     """
     The method manages all the passes acting on the distributed training runtime.
     """
-    gm = _shape_consistency_pass(gm)
-    gm = _comm_spec_apply_pass(gm)
+    gm = _shape_consistency_apply(gm)
+    gm = _comm_spec_apply(gm)
 
     return gm

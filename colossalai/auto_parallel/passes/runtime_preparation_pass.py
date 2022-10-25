@@ -14,7 +14,7 @@ from colossalai.tensor.sharding_spec import ShardingSpec
 shape_consistency_manager = ShapeConsistencyManager()
 
 
-def _solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int]):
+def _solution_annotatation(gm: torch.fx.GraphModule, solution: List[int]):
     """
     This method is used to stick the solution strategy to the nodes and add the information
     required in runtime into graph as placeholder nodes.
@@ -59,7 +59,7 @@ def _solution_annotatation_pass(gm: torch.fx.GraphModule, solution: List[int]):
     return gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict
 
 
-def _module_params_sharding_pass(gm: torch.fx.GraphModule, device_mesh):
+def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
     """
     Apply the sharding action to the module parameters and buffers following the
     instructions of solver solution.
@@ -113,7 +113,7 @@ def _module_params_sharding_pass(gm: torch.fx.GraphModule, device_mesh):
     return gm
 
 
-def implicit_comm_action_apply_pass(gm: torch.fx.GraphModule):
+def implicit_comm_action_apply(gm: torch.fx.GraphModule):
     """
     replace the origin kernel into kernel with implicit communication inside.
     """
@@ -121,10 +121,10 @@ def implicit_comm_action_apply_pass(gm: torch.fx.GraphModule):
 
 
 def runtime_preparation_pass(gm: torch.fx.GraphModule, solution: List[int], device_mesh: DeviceMesh):
-    gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = _solution_annotatation_pass(
+    gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = _solution_annotatation(
         gm, solution)
     # TODO: the pass below should be uncommented after the implementation of implicit_comm_action_apply_pass completed.
-    # gm = implicit_comm_action_apply_pass(gm)
-    gm = _module_params_sharding_pass(gm, device_mesh)
+    # gm = implicit_comm_action_apply(gm)
+    gm = _module_params_sharding(gm, device_mesh)
 
     return gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict

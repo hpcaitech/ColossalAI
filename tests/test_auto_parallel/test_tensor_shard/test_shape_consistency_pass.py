@@ -7,6 +7,8 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 from torch.fx import GraphModule
 
+from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
+from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.solver import (
     CostGraph,
     GraphAnalyser,
@@ -15,8 +17,6 @@ from colossalai.auto_parallel.tensor_shard.solver import (
     StrategiesConstructor,
 )
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.passes.autoparallel.runtime_apply_pass import runtime_apply_pass
-from colossalai.fx.passes.autoparallel.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
