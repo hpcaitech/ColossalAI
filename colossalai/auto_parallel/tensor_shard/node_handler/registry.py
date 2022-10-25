@@ -8,7 +8,12 @@ class Registry:
     def register(self, source):
 
         def wrapper(func):
-            self.store[source] = func
+            if isinstance(source, (list, tuple)):
+                # support register a list of items for this func
+                for element in source:
+                    self.store[element] = func
+            else:
+                self.store[source] = func
             return func
 
         return wrapper
