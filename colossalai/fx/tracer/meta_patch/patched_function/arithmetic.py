@@ -73,29 +73,3 @@ def torch_var_mean(input, dim, unbiased=True, keepdim=False, *, out=None):
     var = torch.empty(1).squeeze(0).to('meta')
     mean = torch.empty(1).squeeze(0).to('meta')
     return var, mean
-
-
-@meta_patched_function.register(torch.add)
-@meta_patched_function.register(torch.Tensor.add)
-@meta_patched_function.register('add')
-def torch_add(input, other, *, alpha=1, out=None):
-    assert out is None, 'saving to out is not supported yet'
-
-    if not isinstance(input, torch.Tensor):
-        return torch.empty(other.shape, device='meta')
-    elif not isinstance(other, torch.Tensor):
-        return torch.empty(input.shape, device='meta')
-    else:
-        shape1, shape2 = input.shape, other.shape
-        shape1_reverse = shape1[::-1]
-        shape2_reverse = shape2[::-1]
-        min_common_dim = min(len(shape1), len(shape2))
-        dims = []
-        for s1, s2 in zip(shape1_reverse, shape2_reverse):
-            dims.append(max(s1, s2))
-
-        # append the remaining dims
-        dims.extend(shape1_reverse[min_common_dim:])
-        dims.extend(shape2_reverse[min_common_dim:])
-        dims = dims[::-1]
-        return torch.empty(*dims, device='meta')

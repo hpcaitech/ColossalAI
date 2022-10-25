@@ -1,9 +1,6 @@
-from re import L
-
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.constants import BCAST_FUNC_OP
 from colossalai.auto_parallel.tensor_shard.node_handler import BinaryElementwiseHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
@@ -86,7 +83,6 @@ def test_binary_elementwise_handler_with_tensor(op, other_dim):
     assert '[R, R] = [R, R] <binary-elementwise-op> [R, R]' in strategy_name_list
 
     for strategy in strategies_vector:
-        strategy: ShardingStrategy
         input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
         other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
         output_sharding_spec = strategy.get_sharding_spec_by_name(str(op_node))
@@ -165,7 +161,6 @@ def test_binary_elementwise_handler_with_int(op, other):
     assert '[R, R] = [R, R] <binary-elementwise-op> [R, R]' in strategy_name_list
 
     for strategy in strategies_vector:
-        strategy: ShardingStrategy
         input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
         output_sharding_spec = strategy.get_sharding_spec_by_name(str(op_node))
 
