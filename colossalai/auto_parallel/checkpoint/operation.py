@@ -17,6 +17,7 @@ class Chain:
                  check_consistency: bool = True):
         """The chain is a basic linearized structure for solving the dynamic programming problem for activation checkpoint.
         See paper https://hal.inria.fr/hal-02352969 for details.
+
         Args:
             ftime (List[float]): The forward time of each node.
             btime (List[float]): The backward time of each node.
@@ -69,31 +70,6 @@ class Operation(ABC):
             self.index = tuple(x + value for x in self.index)
         else:
             self.index += value
-
-
-class Offload(Operation):
-    name = "Off"
-
-    def __init__(self, index, has_bar=False) -> None:
-        super().__init__()
-        self.index = index
-        self.has_bar = has_bar
-        if self.has_bar:
-            self.name += "wBar"
-
-
-class Prefetch(Operation):
-    name = "Pre"
-
-    def __init__(self, index, has_bar=False) -> None:
-        super().__init__()
-        self.index = index
-        self.has_bar = has_bar
-        if self.has_bar:
-            self.name += "wBar"
-
-    def __repr__(self):
-        return f"{self.name}_{self.index}"
 
 
 class Forward(Operation):

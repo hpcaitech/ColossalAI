@@ -9,7 +9,6 @@ from colossalai.fx.profiler import calculate_fwd_in, calculate_fwd_tmp
 from .ckpt_solver_base import CheckpointSolverBase
 
 __all__ = ['CheckpointSolverChen']
-CKPT_OP = ['call_module', 'call_method', 'call_function', 'get_attr']
 
 
 class CheckpointSolverChen(CheckpointSolverBase):
@@ -18,6 +17,7 @@ class CheckpointSolverChen(CheckpointSolverBase):
         """
         This is the simple implementation of Algorithm 3 in https://arxiv.org/abs/1604.06174.
         Note that this algorithm targets at memory optimization only, using techniques in appendix A.
+
         Args:
             graph (Graph): The computing graph to be optimized.
             cnode (List[str], optional): Common node List, should be the subset of input. Defaults to None.
@@ -26,13 +26,19 @@ class CheckpointSolverChen(CheckpointSolverBase):
         super().__init__(graph, 0, 0, True, cnode)
         self.num_grids = num_grids
 
-    def solve(self):
+    def solve(self) -> Graph:
+        """Solve the checkpointing problem using Algorithm 3.
+
+        Returns:
+            graph (Graph): The optimized graph, should be a copy of the original graph.
+        """
+        checkpointable_op = ['call_module', 'call_method', 'call_function', 'get_attr']
         ckpt = self.grid_search()
         for i, seg in enumerate(ckpt):
             for idx in range(*seg):
                 nodes = self.node_list[idx]
                 for n in nodes:
-                    if n.op in CKPT_OP:
+                    if n.op in checkpointable_op:
                         n.meta['activation_checkpoint'] = i
         return deepcopy(self.graph)
 

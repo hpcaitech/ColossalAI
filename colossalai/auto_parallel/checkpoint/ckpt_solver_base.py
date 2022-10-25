@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Any, List
 
@@ -7,7 +7,7 @@ from torch.fx import Graph, Node
 from colossalai.fx.codegen.activation_checkpoint_codegen import ActivationCheckpointCodeGen
 from colossalai.fx.profiler.memory import is_inplace
 
-__all___ = ['Solver']
+__all___ = ['CheckpointSolverBase']
 
 
 class CheckpointSolverBase(ABC):
@@ -23,12 +23,14 @@ class CheckpointSolverBase(ABC):
         """CheckpointSolver class will integrate information provided by the components
         and use an existing solver to find a possible optimal strategies combination for
         target computing graph.
+
         Args:
             graph (Graph): The computing graph to be optimized.
             memory_budget (float): Memory constraint for the solution.
             parameter_size (float): The size of parameter of this model. Use `parameter_size(model)` to estimate.
             requires_linearize (bool): Whether the graph needs to be linearized.
             cnode (List[str], optional): Common node List, should be the subset of input. Default to None.
+
         Warnings:
             `MetaInfoProp` should be done before constructing the solver. Meta information of the graph is required.
         """
@@ -53,6 +55,7 @@ class CheckpointSolverBase(ABC):
         else:
             self.node_list = self.get_node_list()
 
+    @abstractmethod
     def solve(self):
         """Solve the checkpointing problem and return the solution.
         """
@@ -65,11 +68,14 @@ class CheckpointSolverBase(ABC):
 
     def _linearize_graph(self) -> List[List[Node]]:
         """Linearizing the graph
+
         Args:
             graph (Graph): The computing graph to be optimized.
+
         Returns:
             List[List[Node]]: List of list, each inside list of Node presents
             the actual 'node' in linearized manner.
+
         Remarks:
             Do merge the inplace ops into the previous node.
         """
@@ -85,23 +91,26 @@ class CheckpointSolverBase(ABC):
         # nodes or it's op belongs to the following operations, we view this node as a
         # newly born common node.
         # List of target name that could be seen as common node
-        COPS = ["getattr", "getitem", "size"]
+        common_ops = ["getattr", "getitem", "size"]
 
         def _is_cop(target: Any) -> bool:
             """Check if an op could be seen as common node
+
             Args:
                 target (Any): node target
+
             Returns:
                 bool
             """
 
             if isinstance(target, str):
-                return target in COPS
+                return target in common_ops
             else:
-                return target.__name__ in COPS
+                return target.__name__ in common_ops
 
         def _is_sink() -> bool:
             """Check if we can free all dependencies
+
             Returns:
                 bool
             """
