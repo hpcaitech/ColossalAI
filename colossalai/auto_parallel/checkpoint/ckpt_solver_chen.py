@@ -18,6 +18,14 @@ class CheckpointSolverChen(CheckpointSolverBase):
         This is the simple implementation of Algorithm 3 in https://arxiv.org/abs/1604.06174.
         Note that this algorithm targets at memory optimization only, using techniques in appendix A.
 
+        Usage:
+            Assume that we have a `GraphModule`, and we already applied the `MetaInfoProp`
+            to the graph to retrieve all information needed, then we could use the following
+            code to find a solution using `CheckpointSolverChen`:
+            >>> solver = CheckpointSolverChen(gm.graph)
+            >>> chen_graph = solver.solve()
+            >>> gm.graph = chen_graph    # set the graph to a new graph
+
         Args:
             graph (Graph): The computing graph to be optimized.
             cnode (List[str], optional): Common node List, should be the subset of input. Defaults to None.

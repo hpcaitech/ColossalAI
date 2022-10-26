@@ -31,6 +31,10 @@ class CheckpointSolverBase(ABC):
         and use an existing solver to find a possible optimal strategies combination for
         target computing graph.
 
+        Existing Solvers:
+            Chen's Greedy solver: https://arxiv.org/abs/1604.06174  (CheckpointSolverChen)
+            Rotor solver: https://hal.inria.fr/hal-02352969  (CheckpointSolverRotor)
+
         Args:
             graph (Graph): The computing graph to be optimized.
             memory_budget (float): Memory constraint for the solution.
