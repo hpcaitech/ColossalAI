@@ -31,7 +31,11 @@ def check_conv_module_handler(rank, bias, world_size, port):
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
 
-    numerical_test_for_node_strategy(model, device_mesh, 1, 16, [input], ['input'])
+    # index of conv node in this graph
+    node_index = 1
+    # total number of conv strategies
+    strategy_number = 16
+    numerical_test_for_node_strategy(model, device_mesh, node_index, strategy_number, [input], ['input'])
     tracer = ColoTracer()
     graph = tracer.trace(model, meta_args={"input": torch.rand(4, 4, 64, 64).to('meta')})
     gm = ColoGraphModule(model, graph)
@@ -154,12 +158,15 @@ def check_conv_function_handler(rank, bias, world_size, port):
     input_args = [input, others]
     meta_arg_names = ['input', 'others']
     input_kwargs = {}
+    # total number of conv strategies
+    strategy_number = 16
     node_index = 2
     if bias:
         bias_tensor = torch.rand(16).cuda()
         input_kwargs['bias'] = bias_tensor
         node_index += 1
-    numerical_test_for_node_strategy(model, device_mesh, node_index, 16, input_args, meta_arg_names, input_kwargs)
+    numerical_test_for_node_strategy(model, device_mesh, node_index, strategy_number, input_args, meta_arg_names,
+                                     input_kwargs)
 
     tracer = ColoTracer()
     # graph():
