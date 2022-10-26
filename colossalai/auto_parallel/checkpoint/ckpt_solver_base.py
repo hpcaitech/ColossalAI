@@ -50,7 +50,7 @@ class CheckpointSolverBase(ABC):
         self.graph.set_codegen(ActivationCheckpointCodeGen())
 
         # check if `MetaInfoProp` is done
-        if any(len(node.meta) == 0 for node in self.graph.nodes if node.op != 'output'):
+        if any(len(node.meta) == 0 for node in self.graph.nodes):
             raise RuntimeError(
                 "Nodes meta information hasn't been prepared! Please run MetaInfoProp before constructing the solver!")
 
