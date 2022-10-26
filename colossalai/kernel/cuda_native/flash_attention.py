@@ -7,7 +7,7 @@ This is a Triton implementation of the Flash Attention algorithm
 
 import torch
 import subprocess
-from subprocess import PIPE, run
+import os
 
 try:
     import triton
@@ -22,11 +22,8 @@ except ImportError:
 
 
 def triton_check():
-    # def out(command):
-    #     result = run(command, stdout=PIPE, stderr=PIPE, universal_newlines=True, shell=False)
-    #     return result.stdout
-    # cuda_version = out("nvcc --version")
-    cuda_version = subprocess.check_output(["nvcc", "--version"]).decode().strip()
+    cuda_home = os.getenv("CUDA_HOME", default="/usr/local/cuda")
+    cuda_version = subprocess.check_output([os.path.join(cuda_home, "/bin/nvcc"), "--version"]).decode().strip()
     cuda_version = cuda_version.split('release ')[1]
     cuda_version = cuda_version.split(',')[0]
     cuda_version = cuda_version.split('.')
