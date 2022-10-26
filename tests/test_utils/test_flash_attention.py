@@ -38,10 +38,10 @@ def test_triton_flash_attention(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
         tri_dk, k.grad = k.grad.clone(), None
         tri_dq, q.grad = q.grad.clone(), None
         # compare
-        torch.allclose(ref_out, tri_out)
-        torch.allclose(ref_dv, tri_dv)
-        torch.allclose(ref_dk, tri_dk)
-        torch.allclose(ref_dq, tri_dq)
+        assert torch.allclose(ref_out, tri_out, atol=1e-3)
+        assert torch.allclose(ref_dv, tri_dv, atol=1e-3)
+        assert torch.allclose(ref_dk, tri_dk, atol=1e-3)
+        assert torch.allclose(ref_dq, tri_dq, atol=1e-3)
     else:
         try:
             tri_out = flash_attention(q, k, v, sm_scale, Z, N_CTX)
@@ -76,7 +76,7 @@ def test_flash_attention(Z, H, N_CTX, D_HEAD, dtype=torch.float16):
     tri_out, tri_dq, tri_dk, tri_dv = map(lambda x: rearrange(x, '(z n) h d -> z h n d', z=Z), (tri_out, tri_dq, tri_dk, tri_dv))
 
     # compare
-    torch.allclose(ref_out, tri_out)
-    torch.allclose(ref_dv, tri_dv)
-    torch.allclose(ref_dk, tri_dk)
-    torch.allclose(ref_dq, tri_dq)
+    assert torch.allclose(ref_out, tri_out, atol=1e-3)
+    assert torch.allclose(ref_dv, tri_dv, atol=1e-3)
+    assert torch.allclose(ref_dk, tri_dk, atol=1e-3)
+    assert torch.allclose(ref_dq, tri_dq, atol=1e-3)
