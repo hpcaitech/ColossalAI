@@ -1,58 +1,18 @@
-from typing import Dict, List, Tuple, Union
-
 import torch
-from torch.fx import GraphModule, Node
+from torch.fx import Node
 
 from .._compatibility import compatibility, is_compatible_with_meta
+from .memory_utils import activation_size
 
 if is_compatible_with_meta():
     from .constants import OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 
-__all__ = [
-    'activation_size', 'parameter_size', 'is_inplace', "calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"
-]
+__all__ = ["calculate_fwd_in", "calculate_fwd_tmp", "calculate_fwd_out"]
 
 
-@compatibility(is_backward_compatible=True)
-def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
-    """Calculate activation size of a node.
-
-    Args:
-        activation (Union[torch.Tensor, Dict, List, Tuple, int]): The activation of a `torch.nn.Module` or `torch.nn.functional`
-
-    Returns:
-        int: The activation size
-    """
-    act_size = 0
-    if isinstance(out, torch.Tensor):
-        act_size += out.numel() * torch.tensor([], dtype=out.dtype).element_size()
-    elif isinstance(out, dict):
-        value_list = [v for _, v in out.items()]
-        act_size += activation_size(value_list)
-    elif isinstance(out, tuple) or isinstance(out, list) or isinstance(out, set):
-        for element in out:
-            act_size += activation_size(element)
-    return act_size
-
-
-@compatibility(is_backward_compatible=True)
-def parameter_size(mod: torch.nn.Module) -> int:
-    """Calculate parameter size of a node.
-
-    Args:
-        mod (torch.nn.Module): The target `torch.nn.Module`
-
-    Returns:
-        int: The parameter size
-    """
-    param_size = 0
-    for param in mod.parameters():
-        param_size += param.numel() * torch.tensor([], dtype=param.dtype).element_size()
-    return param_size
-
-
+@compatibility(is_backward_compatible=False)
 def calculate_fwd_in(n: Node) -> int:
-    """A helper function to calculate `fwd_in`
+    """A helper function to calculate `fwd_in` (with sharding spec)
 
     Args:
         n (Node): a node from the graph
@@ -60,11 +20,13 @@ def calculate_fwd_in(n: Node) -> int:
     Returns:
         fwd_in (int): the result of `fwd_in`
     """
+    # TODO(super-dainiu): should divide the memory by sharding spec
     return activation_size(n.meta["fwd_in"])
 
 
+@compatibility(is_backward_compatible=False)
 def calculate_fwd_tmp(n: Node) -> int:
-    """A helper function to calculate `fwd_tmp`
+    """A helper function to calculate `fwd_tmp` (with sharding spec)
     Currently, `torch.nn.ReLU` behaves weirdly, so we have to patch it for accuracy.
 
     Args:
@@ -74,6 +36,7 @@ def calculate_fwd_tmp(n: Node) -> int:
         fwd_tmp (int): the result of `fwd_tmp`
     """
 
+    # TODO(super-dainiu): should divide the memory by sharding spec
     def is_relu_like_node(n: Node) -> bool:
         """Check if a node is a ReLU-like node.
         ReLU-like nodes have the following properties:
@@ -107,8 +70,9 @@ def calculate_fwd_tmp(n: Node) -> int:
     return 0
 
 
+@compatibility(is_backward_compatible=False)
 def calculate_fwd_out(n: Node) -> int:
-    """A helper function to calculate `fwd_out`
+    """A helper function to calculate `fwd_out` (with sharding spec)
 
     Args:
         n (Node): a node from the graph
@@ -117,6 +81,7 @@ def calculate_fwd_out(n: Node) -> int:
         fwd_out (int): the result of `fwd_out`
     """
 
+    # TODO(super-dainiu): should divide the memory by sharding spec
     def intersect(a, b):
         return {k: a[k] for k in a if k in b}
 
@@ -127,23 +92,23 @@ def calculate_fwd_out(n: Node) -> int:
     return activation_size(intersect(fwd_in, fwd_out))
 
 
-def is_inplace(n: Node):
-    """Get the inplace argument from torch.fx.Node
-
+def calculate_fwd_time(n: Node) -> float:
+    """A helper function to calculate `fwd_time` (with sharding spec)
     Args:
-        node (Node): torch.fx.Node
-
+        n (Node): a node from the graph
     Returns:
-        bool: indicates whether this op is inplace
+        fwd_time (float): the result of `fwd_time`
     """
-    inplace = False
-    if n.op == "call_function":
-        inplace = n.kwargs.get("inplace", False)
-        if is_compatible_with_meta():
-            from .constants import ALIAS_ATEN
-            if n.target in ALIAS_ATEN:
-                inplace = True
-    elif n.op == "call_module":
-        inplace = getattr(n.graph.owning_module.get_submodule(n.target), "inplace", False)
+    # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
+    return n.meta["fwd_flop"]
 
-    return inplace
+
+def calculate_bwd_time(n: Node) -> float:
+    """A helper function to calculate `bwd_time` (with sharding spec)
+    Args:
+        n (Node): a node from the graph
+    Returns:
+        bwd_time (float): the result of `bwd_time`
+    """
+    # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
+    return n.meta["bwd_flop"]

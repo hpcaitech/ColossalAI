@@ -4,7 +4,6 @@ from functools import reduce
 from typing import Any, Dict, List, Union
 
 import torch
-
 from torch.fx import Node
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
@@ -15,11 +14,9 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     ShardingStrategy,
     TrainCycleItem,
 )
-
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
-from torch.fx import Node
 
 
 class StrategyGenerator(ABC):

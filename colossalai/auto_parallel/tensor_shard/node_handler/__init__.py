@@ -1,5 +1,6 @@
 from .batch_norm_handler import BatchNormModuleHandler
-from .bmm_handler import BMMFunctionHandler
+from .binary_elementwise_handler import BinaryElementwiseHandler
+from .bmm_handler import AddBMMFunctionHandler, BMMFunctionHandler
 from .conv_handler import ConvFunctionHandler, ConvModuleHandler
 from .layer_norm_handler import LayerNormModuleHandler
 from .linear_handler import LinearFunctionHandler, LinearModuleHandler
@@ -12,7 +13,8 @@ from .unary_elementwise_handler import UnaryElementwiseHandler
 from .where_handler import WhereHandler
 
 __all__ = [
-    'LinearFunctionHandler', 'LinearModuleHandler', 'BMMFunctionHandler', 'LayerNormModuleHandler',
-    'BatchNormModuleHandler', 'ConvModuleHandler', 'ConvFunctionHandler', 'UnaryElementwiseHandler', 'ReshapeHandler',
-    'PlacehodlerHandler', 'OuputHandler', 'WhereHandler', 'NormPoolingHandler', 'operator_registry'
+    'LinearFunctionHandler', 'LinearModuleHandler', 'BMMFunctionHandler', 'AddBMMFunctionHandler',
+    'LayerNormModuleHandler', 'BatchNormModuleHandler', 'ConvModuleHandler', 'ConvFunctionHandler',
+    'UnaryElementwiseHandler', 'ReshapeHandler', 'PlacehodlerHandler', 'OuputHandler', 'WhereHandler',
+    'NormPoolingHandler', 'BinaryElementwiseHandler', 'operator_registry'
 ]
