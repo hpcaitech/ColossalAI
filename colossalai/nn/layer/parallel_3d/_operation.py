@@ -9,7 +9,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
-from ._utils import get_parallel_mode_from_env
+from ._utils import get_parallel_mode_from_env, push_async_grad
 from colossalai.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
 
 
@@ -17,34 +17,27 @@ class _Linear3D(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx,
-                input_: Tensor,
-                weight: Tensor,
-                bias: Optional[Tensor],
-                input_parallel_mode: ParallelMode,
-                weight_parallel_mode: ParallelMode,
-                output_parallel_mode: ParallelMode,
-                input_dim: int = 0,
-                weight_dim: int = -1,
-                output_dim: int = 0) -> Tensor:
-        ctx.use_bias = bias is not None
-
-        input_ = all_gather(input_, input_dim, input_parallel_mode)
-        weight = all_gather(weight, weight_dim, weight_parallel_mode)
-        ctx.save_for_backward(input_, weight)
-
-        output = torch.matmul(input_, weight)
-        output = reduce_scatter(output, output_dim, output_parallel_mode)
-
-        if bias is not None:
-            output += bias
-
+    def forward(
+        ctx,
+        input_: Tensor,
+        weight: Tensor,
+        weight_id: int,
+        input_parallel_mode: ParallelMode,
+        weight_parallel_mode: ParallelMode,
+        output_parallel_mode: ParallelMode,
+    ) -> Tensor:
+        ctx.weight_id = weight_id
         ctx.input_parallel_mode = input_parallel_mode
         ctx.weight_parallel_mode = weight_parallel_mode
         ctx.output_parallel_mode = output_parallel_mode
-        ctx.input_dim = input_dim
-        ctx.weight_dim = weight_dim
-        ctx.output_dim = output_dim
+
+        input_ = all_gather(input_, 0, input_parallel_mode)
+        weight = all_gather(weight, -1, weight_parallel_mode)
+        ctx.save_for_backward(input_, weight)
+
+        output = torch.matmul(input_, weight)
+        output = reduce_scatter(output, 0, output_parallel_mode)
+
         return output
 
     @staticmethod
@@ -52,73 +45,70 @@ class _Linear3D(torch.autograd.Function):
     def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
         input_, weight = ctx.saved_tensors
         with torch.no_grad():
-            output_grad = all_gather(output_grad, ctx.output_dim, ctx.output_parallel_mode)
-
-            async_ops = list()
+            output_grad = all_gather(output_grad, 0, ctx.output_parallel_mode)
 
             input_grad = torch.matmul(output_grad, weight.transpose(0, 1))
-            input_grad, op = reduce_scatter(input_grad, ctx.input_dim, ctx.input_parallel_mode, async_op=True)
-            async_ops.append(op)
+            input_grad, input_op = reduce_scatter(input_grad, 0, ctx.input_parallel_mode, async_op=True)
 
             weight_grad = torch.matmul(
                 input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1]))
-            weight_grad, op = reduce_scatter(weight_grad, ctx.weight_dim, ctx.weight_parallel_mode, async_op=True)
-            async_ops.append(op)
+            weight_grad, op = reduce_scatter(weight_grad, -1, ctx.weight_parallel_mode, async_op=True)
+            weight_grad = push_async_grad(op, weight_grad, ctx.weight_id)
 
-            if ctx.use_bias:
-                bias_grad = torch.sum(output_grad, dim=tuple(range(len(output_grad.shape))[:-1]))
-                bias_grad, op = all_reduce(bias_grad, ctx.weight_parallel_mode, async_op=True)
-                async_ops.append(op)
-            else:
-                bias_grad = None
+            input_op.wait()
 
-            for op in async_ops:
-                if op is not None:
-                    op.wait()
-
-        return input_grad, weight_grad, bias_grad, None, None, None, None, None, None
+        return input_grad, weight_grad, None, None, None, None
 
 
-def linear_3d(input_: Tensor,
-              weight: Tensor,
-              bias: Optional[Tensor],
-              input_parallel_mode: ParallelMode,
-              weight_parallel_mode: ParallelMode,
-              output_parallel_mode: ParallelMode,
-              input_dim: int = 0,
-              weight_dim: int = -1,
-              output_dim: int = 0) -> Tensor:
+def linear_3d(
+    input_: Tensor,
+    weight: Tensor,
+    input_parallel_mode: ParallelMode,
+    weight_parallel_mode: ParallelMode,
+    output_parallel_mode: ParallelMode,
+) -> Tensor:
     r"""Linear layer for 3D parallelism.
 
     Args:
         input_ (:class:`torch.tensor`): input matrix.
         weight (:class:`torch.tensor`): matrix of weight.
-        bias (:class:`torch.tensor`): matrix of bias.
         input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
         weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
         output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
-        input_dim (int, optional): dimension of input, defaults to 0.
-        weight_dim (int, optional): dimension of weight, defaults to -1.
-        output_dim (int, optional): dimension of output, defaults to 0.
 
     Note:
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
-    return _Linear3D.apply(input_, weight, bias, input_parallel_mode, weight_parallel_mode, output_parallel_mode,
-                           input_dim, weight_dim, output_dim)
+    return _Linear3D.apply(
+        input_,
+        weight,
+        id(weight),
+        input_parallel_mode,
+        weight_parallel_mode,
+        output_parallel_mode,
+    )
 
 
 class _Classifier3D(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx, input_: Tensor, weight: Tensor, bias: Optional[Tensor], input_parallel_mode: ParallelMode,
-                weight_parallel_mode: ParallelMode, output_parallel_mode: ParallelMode) -> Tensor:
+    def forward(
+        ctx,
+        input_: Tensor,
+        weight: Tensor,
+        bias: Optional[Tensor],
+        weight_id: int,
+        bias_id: Optional[int],
+        input_parallel_mode: ParallelMode,
+        weight_parallel_mode: ParallelMode,
+        output_parallel_mode: ParallelMode,
+    ) -> Tensor:
         ctx.use_bias = bias is not None
+        ctx.weight_id = weight_id
 
-        ranks_in_group = gpc.get_ranks_in_group(input_parallel_mode)
-        src_rank = ranks_in_group[gpc.get_local_rank(output_parallel_mode)]
+        src_rank = gpc.get_ranks_in_group(input_parallel_mode)[gpc.get_local_rank(output_parallel_mode)]
         weight = broadcast(weight, src_rank, input_parallel_mode)
         ctx.save_for_backward(input_, weight)
 
@@ -126,6 +116,7 @@ class _Classifier3D(torch.autograd.Function):
         output = all_reduce(output, output_parallel_mode)
 
         if bias is not None:
+            ctx.bias_id = bias_id
             output += bias
 
         ctx.src_rank = src_rank
@@ -139,14 +130,12 @@ class _Classifier3D(torch.autograd.Function):
     def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
         input_, weight = ctx.saved_tensors
         with torch.no_grad():
-            async_ops = list()
-
             weight_grad = torch.matmul(
                 output_grad.reshape(-1, output_grad.shape[-1]).transpose(0, 1), input_.reshape(-1, input_.shape[-1]))
             weight_grad = reduce(weight_grad, ctx.src_rank, ctx.input_parallel_mode)
             if gpc.get_local_rank(ctx.input_parallel_mode) == gpc.get_local_rank(ctx.output_parallel_mode):
                 weight_grad, op = all_reduce(weight_grad, ctx.weight_parallel_mode, async_op=True)
-                async_ops.append(op)
+                weight_grad = push_async_grad(op, weight_grad, ctx.weight_id)
             else:
                 weight_grad = None
 
@@ -154,21 +143,23 @@ class _Classifier3D(torch.autograd.Function):
                 bias_grad = torch.sum(output_grad, dim=tuple(range(len(output_grad.shape))[:-1]))
                 bias_grad = all_reduce(bias_grad, ctx.input_parallel_mode)
                 bias_grad, op = all_reduce(bias_grad, ctx.weight_parallel_mode, async_op=True)
-                async_ops.append(op)
+                bias_grad = push_async_grad(op, bias_grad, ctx.bias_id)
             else:
                 bias_grad = None
 
             input_grad = torch.matmul(output_grad, weight)
 
-            for op in async_ops:
-                if op is not None:
-                    op.wait()
-
-        return input_grad, weight_grad, bias_grad, None, None, None, None, None, None
+        return input_grad, weight_grad, bias_grad, None, None, None, None, None
 
 
-def classifier_3d(input_: Tensor, weight: Tensor, bias: Optional[Tensor], input_parallel_mode: ParallelMode,
-                  weight_parallel_mode: ParallelMode, output_parallel_mode: ParallelMode) -> Tensor:
+def classifier_3d(
+    input_: Tensor,
+    weight: Tensor,
+    bias: Optional[Tensor],
+    input_parallel_mode: ParallelMode,
+    weight_parallel_mode: ParallelMode,
+    output_parallel_mode: ParallelMode,
+) -> Tensor:
     r"""3D parallel classifier.
 
     Args:
@@ -183,16 +174,134 @@ def classifier_3d(input_: Tensor, weight: Tensor, bias: Optional[Tensor], input_
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
-    return _Classifier3D.apply(input_, weight, bias, input_parallel_mode, weight_parallel_mode, output_parallel_mode)
+    return _Classifier3D.apply(
+        input_,
+        weight,
+        bias,
+        id(weight),
+        id(bias) if bias is not None else None,
+        input_parallel_mode,
+        weight_parallel_mode,
+        output_parallel_mode,
+    )
+
+
+class _VocabParallelClassifier3D(torch.autograd.Function):
+
+    @staticmethod
+    @custom_fwd(cast_inputs=torch.float16)
+    def forward(
+        ctx,
+        input_: Tensor,
+        weight: Tensor,
+        bias: Optional[Tensor],
+        weight_id: int,
+        bias_id: Optional[int],
+        input_parallel_mode: ParallelMode,
+        weight_parallel_mode: ParallelMode,
+        output_parallel_mode: ParallelMode,
+    ) -> Tensor:
+        ctx.use_bias = bias is not None
+        ctx.weight_id = weight_id
+
+        input_ = all_gather(input_, 0, input_parallel_mode)
+        weight = all_gather(weight.transpose(0, 1), -1, weight_parallel_mode)
+        ctx.save_for_backward(input_, weight)
+
+        output = torch.matmul(input_, weight)
+        output = reduce_scatter(output, 0, output_parallel_mode)
+
+        if bias is not None:
+            ctx.bias_id = bias_id
+            output += bias
+
+        ctx.input_parallel_mode = input_parallel_mode
+        ctx.weight_parallel_mode = weight_parallel_mode
+        ctx.output_parallel_mode = output_parallel_mode
+        return output
+
+    @staticmethod
+    @custom_bwd
+    def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
+        input_, weight = ctx.saved_tensors
+        with torch.no_grad():
+            output_grad = all_gather(output_grad, 0, ctx.output_parallel_mode)
+
+            input_grad = torch.matmul(output_grad, weight.transpose(0, 1))
+            input_grad, input_op = reduce_scatter(input_grad, 0, ctx.input_parallel_mode, async_op=True)
+
+            weight_grad = torch.matmul(
+                input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1]))
+            weight_grad, op = reduce_scatter(weight_grad.transpose(0, 1), 0, ctx.weight_parallel_mode, async_op=True)
+            weight_grad = push_async_grad(op, weight_grad, ctx.weight_id)
+
+            if ctx.use_bias:
+                bias_grad = torch.sum(output_grad, dim=tuple(range(len(output_grad.shape))[:-1]))
+                bias_grad, op = all_reduce(bias_grad, ctx.weight_parallel_mode, async_op=True)
+                bias_grad = push_async_grad(op, bias_grad, ctx.bias_id)
+            else:
+                bias_grad = None
+
+            input_op.wait()
+
+        return input_grad, weight_grad, bias_grad, None, None, None, None, None
+
+
+def vocab_parallel_classifier_3d(
+    input_: Tensor,
+    weight: Tensor,
+    bias: Optional[Tensor],
+    input_parallel_mode: ParallelMode,
+    weight_parallel_mode: ParallelMode,
+    output_parallel_mode: ParallelMode,
+) -> Tensor:
+    r"""3D vocab parallel classifier.
+
+    Args:
+        input_ (:class:`torch.tensor`): input matrix.
+        weight (:class:`torch.tensor`): matrix of weight.
+        bias (:class:`torch.tensor`): matrix of bias.
+        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
+        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
+        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
+
+    Note:
+        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
+        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
+    """
+    return _VocabParallelClassifier3D.apply(
+        input_,
+        weight,
+        bias,
+        id(weight),
+        id(bias) if bias is not None else None,
+        input_parallel_mode,
+        weight_parallel_mode,
+        output_parallel_mode,
+    )
 
 
 class _Layernorm3D(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, input_: Tensor, weight: Tensor, bias: Optional[Tensor], normalized_shape: int, eps: float,
-                input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,
-                output_parallel_mode: ParallelMode) -> Tensor:
+    def forward(
+        ctx,
+        input_: Tensor,
+        weight: Tensor,
+        bias: Tensor,
+        weight_id: int,
+        bias_id: int,
+        normalized_shape: int,
+        eps: float,
+        input_parallel_mode: ParallelMode,
+        weight_parallel_mode: ParallelMode,
+        output_parallel_mode: ParallelMode,
+        input_x_weight_parallel_mode: ParallelMode,
+    ) -> Tensor:
+        ctx.weight_id = weight_id
+        ctx.bias_id = bias_id
+
         mean = all_reduce(torch.sum(input_, dim=-1, keepdim=True), output_parallel_mode) / normalized_shape
         mu = input_ - mean
         var = all_reduce(torch.sum(mu**2, dim=-1, keepdim=True), output_parallel_mode) / normalized_shape
@@ -201,15 +310,13 @@ class _Layernorm3D(torch.autograd.Function):
         ctx.save_for_backward(mu, sigma, weight)
 
         z = mu / sigma
-        output = weight * z
-        if bias is not None:
-            output = output + bias
+        output = weight * z + bias
 
-        ctx.use_bias = bias is not None
         ctx.normalized_shape = normalized_shape
         ctx.input_parallel_mode = input_parallel_mode
         ctx.weight_parallel_mode = weight_parallel_mode
         ctx.output_parallel_mode = output_parallel_mode
+        ctx.input_x_weight_parallel_mode = input_x_weight_parallel_mode
 
         return output
 
@@ -218,17 +325,14 @@ class _Layernorm3D(torch.autograd.Function):
     def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
         mu, sigma, weight = ctx.saved_tensors
         with torch.no_grad():
-            weight_grad = output_grad * mu / sigma
-            if ctx.use_bias:
-                bias_grad = output_grad
-                weight_grad = torch.stack([bias_grad, weight_grad]).contiguous()
-            else:
-                bias_grad = None
-            weight_grad = torch.sum(weight_grad, dim=tuple(range(len(weight_grad.shape))[1:-1]))
-            weight_grad = all_reduce(weight_grad, ctx.weight_parallel_mode)
-            weight_grad = all_reduce(weight_grad, ctx.input_parallel_mode)
-            if ctx.use_bias:
-                bias_grad, weight_grad = weight_grad[0], weight_grad[1]
+
+            bias_grad, weight_grad = output_grad, output_grad * mu / sigma
+            bias_grad = torch.sum(bias_grad, dim=tuple(range(len(bias_grad.shape))[:-1]))
+            bias_grad, op = all_reduce(bias_grad, ctx.input_x_weight_parallel_mode, async_op=True)
+            bias_grad = push_async_grad(op, bias_grad, ctx.bias_id)
+            weight_grad = torch.sum(weight_grad, dim=tuple(range(len(weight_grad.shape))[:-1]))
+            weight_grad, op = all_reduce(weight_grad, ctx.input_x_weight_parallel_mode, async_op=True)
+            weight_grad = push_async_grad(op, weight_grad, ctx.weight_id)
 
             dz = output_grad * weight
             dvar = dz * mu * (-0.5) * sigma**(-3)
@@ -236,15 +340,22 @@ class _Layernorm3D(torch.autograd.Function):
             dmean = dz * (-1 / sigma) + dvar * -2 * mu / ctx.normalized_shape
             dmean = all_reduce(torch.sum(dmean, dim=-1, keepdim=True), ctx.output_parallel_mode)
 
-            input_grad = dz / sigma + dvar * 2 * mu / \
-                ctx.normalized_shape + dmean / ctx.normalized_shape
+            input_grad = dz / sigma + dvar * 2 * mu / ctx.normalized_shape + dmean / ctx.normalized_shape
 
-        return input_grad, weight_grad, bias_grad, None, None, None, None, None
+        return input_grad, weight_grad, bias_grad, None, None, None, None, None, None, None, None
 
 
-def layernorm_3d(input_: Tensor, weight: Tensor, bias: Optional[Tensor], normalized_shape: int, eps: float,
-                 input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,
-                 output_parallel_mode: ParallelMode) -> Tensor:
+def layernorm_3d(
+    input_: Tensor,
+    weight: Tensor,
+    bias: Tensor,
+    normalized_shape: int,
+    eps: float,
+    input_parallel_mode: ParallelMode,
+    weight_parallel_mode: ParallelMode,
+    output_parallel_mode: ParallelMode,
+    input_x_weight_parallel_mode: ParallelMode,
+) -> Tensor:
     r"""3D parallel Layernorm.
 
     Args:
@@ -265,8 +376,19 @@ def layernorm_3d(input_: Tensor, weight: Tensor, bias: Optional[Tensor], normali
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
-    return _Layernorm3D.apply(input_, weight, bias, normalized_shape, eps, input_parallel_mode, weight_parallel_mode,
-                              output_parallel_mode)
+    return _Layernorm3D.apply(
+        input_,
+        weight,
+        bias,
+        id(weight),
+        id(bias),
+        normalized_shape,
+        eps,
+        input_parallel_mode,
+        weight_parallel_mode,
+        output_parallel_mode,
+        input_x_weight_parallel_mode,
+    )
 
 
 def split_tensor_3d(tensor: Tensor, dim: int, parallel_mode: ParallelMode) -> Tensor:
@@ -315,17 +437,12 @@ def split_batch_3d(input_: Tensor,
         The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_.
     """
-    dim_size = input_.size(dim)
+    if input_.size(dim) <= 1:
+        return input_
     weight_parallel_mode = get_parallel_mode_from_env(WEIGHT_GROUP_3D)
     input_parallel_mode = get_parallel_mode_from_env(INPUT_GROUP_3D)
     weight_world_size = gpc.get_world_size(weight_parallel_mode)
     input_world_size = gpc.get_world_size(input_parallel_mode)
-
-    assert dim_size % (input_world_size*weight_world_size) == 0, \
-        f'The batch size ({dim_size}) is not a multiple of square of 3D depth ({input_world_size*weight_world_size}).'
-
-    if input_.size(dim) <= 1:
-        return input_
     output = torch.chunk(input_, weight_world_size, dim=dim)[gpc.get_local_rank(weight_parallel_mode)].contiguous()
     output = torch.chunk(output, input_world_size, dim=dim)[gpc.get_local_rank(input_parallel_mode)].contiguous()
     return output
@@ -464,47 +581,3 @@ def reduce_by_batch_3d(tensor: Tensor,
         in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
     """
     return _ReduceByBatch3D.apply(tensor, input_parallel_mode, weight_parallel_mode, reduce_mean)
-
-
-class _BroadcastWeight3D_FromDiagonal(torch.autograd.Function):
-    r"""broadcast weight from diagonal.
-
-    Args:
-        input_ (:class:`torch.tensor`): input matrix.
-        input_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): input parallel mode.
-        weight_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): weight parallel mode.
-        output_parallel_mode (:class:`colossalai.context.parallel_mode.ParallelMode`): output parallel mode.
-
-    Note:
-        The parallel_mode should be concluded in ``ParallelMode``. More details about ``ParallelMode`` could be found
-        in `parallel_mode <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/context/parallel_mode.py>`_
-    """
-
-    @staticmethod
-    @custom_fwd(cast_inputs=torch.float16)
-    def forward(ctx, input_: Tensor, input_parallel_mode: ParallelMode, weight_parallel_mode: ParallelMode,
-                output_parallel_mode: ParallelMode) -> Tensor:
-        ranks_in_group = gpc.get_ranks_in_group(input_parallel_mode)
-        src_rank = ranks_in_group[gpc.get_local_rank(output_parallel_mode)]
-        output = broadcast(input_, src_rank, input_parallel_mode)
-        ctx.src_rank = src_rank
-        ctx.input_parallel_mode = input_parallel_mode
-        ctx.weight_parallel_mode = weight_parallel_mode
-        ctx.output_parallel_mode = output_parallel_mode
-        return output
-
-    @staticmethod
-    @custom_bwd
-    def backward(ctx, output_grad: Tensor) -> Tuple[Tensor, ...]:
-        input_grad = reduce(output_grad, ctx.src_rank, ctx.input_parallel_mode)
-        if gpc.get_local_rank(ctx.input_parallel_mode) == gpc.get_local_rank(ctx.output_parallel_mode):
-            input_grad = all_reduce(input_grad, ctx.weight_parallel_mode)
-        else:
-            input_grad = None
-        return input_grad, None, None, None
-
-
-def broadcast_weight_3d_from_diagonal(tensor: Tensor, input_parallel_mode: ParallelMode,
-                                      weight_parallel_mode: ParallelMode, output_parallel_mode: ParallelMode) -> Tensor:
-    return _BroadcastWeight3D_FromDiagonal.apply(tensor, input_parallel_mode, weight_parallel_mode,
-                                                 output_parallel_mode)

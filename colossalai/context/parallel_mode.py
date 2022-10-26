@@ -39,6 +39,8 @@ class ParallelMode(Enum):
     PARALLEL_3D_INPUT = '3d_input'
     PARALLEL_3D_WEIGHT = '3d_weight'
     PARALLEL_3D_OUTPUT = '3d_output'
+    PARALLEL_3D_INPUT_X_WEIGHT = "3d_input_x_weight"
+    PARALLEL_3D_OUTPUT_X_WEIGHT = "3d_output_x_weight"
 
     # 2.5D parallel
     PARALLEL_2P5D_ROW = '2p5d_row'
