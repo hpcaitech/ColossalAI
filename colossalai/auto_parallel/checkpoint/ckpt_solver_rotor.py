@@ -39,8 +39,13 @@ class CheckpointSolverRotor(CheckpointSolverBase):
             memory_slots (int, optional): Number of slots for discretizing memory budget. Defaults to 500.
         """
         super().__init__(graph, memory_budget, parameter_size, True, cnode)
-        self.chain = self._construct_chain(self.graph, self.node_list)
         self.memory_slots = memory_slots
+
+        # construct chain
+        unit = self.memory_budget // self.memory_slots
+        self.chain = self._construct_chain(self.graph, self.node_list)
+        self.chain.discretize_all(unit)
+
         self.cost_table = None
         self.back_ptr = None
         self.sequence = None
@@ -54,16 +59,13 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         Returns:
             graph (Graph): The optimized graph, should be a copy of the original graph.
         """
-        # construct chain
-        unit = self.memory_budget // self.memory_slots
-        chain = self._construct_chain(self.graph, self.node_list)
-        chain.discretize_all(unit)
+        chain = self.chain
 
         # compute cost table
         if force_python:
-            self.cost_table, self.back_ptr = self._compute_table(chain, self.memory_slots, unit)
+            self.cost_table, self.back_ptr = self._compute_table(chain, self.memory_slots)
         else:
-            self.cost_table, self.back_ptr = self._compute_table_c(chain, self.memory_slots, unit)
+            self.cost_table, self.back_ptr = self._compute_table_c(chain, self.memory_slots)
 
         # backtrack
         try:
@@ -92,7 +94,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         fwd_time, bwd_time, ftmp, btmp = list(), list(), list(), list()
         xbar, x = [activation_size(input_tensors)], [activation_size(input_tensors)]
 
-        for node in enumerate(node_list):
+        for idx, node in enumerate(node_list):
             node_info = cls._extract_node_info(node)
             fwd_time.append(node_info[0])
             bwd_time.append(node_info[1])
@@ -114,6 +116,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         fwd_time = 0
         bwd_time = 0
         for n in node:
+            assert isinstance(n, Node), f'{n} is not a Node'
             xbar += calculate_fwd_tmp(n) + calculate_fwd_out(n)
             # minimum flop count is required
             fwd_time += max(calculate_fwd_time(n), 1.0)

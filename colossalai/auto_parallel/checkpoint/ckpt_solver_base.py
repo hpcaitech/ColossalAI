@@ -5,9 +5,16 @@ from typing import Any, List
 from torch.fx import Graph, Node
 
 from colossalai.fx.codegen.activation_checkpoint_codegen import ActivationCheckpointCodeGen
-from colossalai.fx.profiler.memory import is_inplace
+from colossalai.fx.profiler.memory_utils import is_inplace
 
 __all___ = ['CheckpointSolverBase']
+
+
+def _copy_output(src: Graph, dst: Graph):
+    """Copy the output node from src to dst"""
+    for n_src, n_dst in zip(src.nodes, dst.nodes):
+        if n_src.op == 'output':
+            n_dst.meta = n_src.meta
 
 
 class CheckpointSolverBase(ABC):
@@ -39,6 +46,7 @@ class CheckpointSolverBase(ABC):
         # the solver is executed.
         self.graph = deepcopy(graph)
         self.graph.owning_module = graph.owning_module
+        _copy_output(graph, self.graph)
         self.graph.set_codegen(ActivationCheckpointCodeGen())
 
         # check if `MetaInfoProp` is done
