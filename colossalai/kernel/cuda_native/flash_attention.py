@@ -8,10 +8,16 @@ This is a Triton implementation of the Flash Attention algorithm
 import torch
 from subprocess import PIPE, run
 
-import triton
-import triton.language as tl
+try:
+    import triton
+    import triton.language as tl
+except ImportError:
+    raise ImportError('please install triton from https://github.com/openai/triton')
 
-from flash_attn.flash_attn_interface import flash_attn_unpadded_func
+try:
+    from flash_attn.flash_attn_interface import flash_attn_unpadded_func
+except ImportError:
+    raise ImportError('please install flash_attn from https://github.com/HazyResearch/flash-attention')
 
 
 def triton_check():
@@ -22,10 +28,10 @@ def triton_check():
     cuda_version = cuda_version.split('release ')[1]
     cuda_version = cuda_version.split(',')[0]
     cuda_version = cuda_version.split('.')
-    if len(cuda_version) < 2 or \
+    if len(cuda_version) == 2 and \
         (int(cuda_version[0]) == 11 and int(cuda_version[1]) >= 4) or \
         int(cuda_version[0]) > 11:
-        return False
+        return True
     return False
 
 TRITON_AVALIABLE = triton_check()
