@@ -10,6 +10,8 @@ from torch.fx import GraphModule
 from torchvision.models import resnet34, resnet50
 
 from colossalai import device
+from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
+from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.constants import *
 from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
@@ -17,10 +19,6 @@ from colossalai.auto_parallel.tensor_shard.solver.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from colossalai.auto_parallel.tensor_shard.solver.strategies_constructor import StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.passes.experimental.adding_shape_consistency_pass_v2 import (
-    shape_consistency_pass,
-    solution_annotatation_pass,
-)
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
@@ -153,8 +151,8 @@ def check_apply_bottleneck(rank, world_size, port):
     print(solution)
     for index, node in enumerate(graph.nodes):
         print(node.name, node.strategies_vector[solution[index]].name)
-    sharding_spec_dict, origin_spec_dict, comm_actions_dict = solution_annotatation_pass(gm, solution, device_mesh)
-    shape_consistency_pass(gm)
+    gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(gm, solution, device_mesh)
+    gm = runtime_apply_pass(gm)
     gm.recompile()
     nodes = [node for node in gm.graph.nodes]
     # TODO: wrap the gm to avoid the influence of the user training code
