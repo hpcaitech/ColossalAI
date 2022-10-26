@@ -5,7 +5,7 @@ import torch
 from torch.fx.node import Argument, Target
 
 from ..._compatibility import compatibility
-from ..memory import activation_size
+from ..memory_utils import activation_size
 from .constants import INPLACE_METHOD, INPLACE_OPS, NON_INPLACE_METHOD
 from .registry import meta_profiler_function, meta_profiler_module
 
@@ -27,7 +27,7 @@ class GraphInfo:
     placeholders saved for  |     | \__________     |     |
     backward.               |     |            \    |     |
                             | [fwd_tmp] ------> [bwd_tmp] |    <-----
-                            |     |  \_________     |     |    [bwd_tmp] marks the peak memory 
+                            |     |  \_________     |     |    [bwd_tmp] marks the peak memory
                             |    / \           \    |     |    in backward pass.
     [x] is not counted ---> | [x]  [fwd_tmp] -> [bwd_tmp] |    <-----
     in [fwd_tmp] because    |  |       |  \_____    |     |
@@ -76,14 +76,14 @@ def profile_YOUR_MODULE(self: torch.nn.Module, input: torch.Tensor) -> Tuple[int
 @compatibility(is_backward_compatible=True)
 def profile_function(target: 'Target') -> Callable:
     """
-    Wrap a `call_function` node or `torch.nn.functional` in order to 
+    Wrap a `call_function` node or `torch.nn.functional` in order to
     record the memory cost and FLOPs of the execution.
     Unfortunately, backward memory cost and FLOPs are estimated results.
-    
+
     Warnings:
         You may only use tensors with `device=meta` for this wrapped function.
         Only original `torch.nn.functional` are available.
-    
+
     Examples:
         >>> input = torch.rand(100, 100, 100, 100, device='meta')
         >>> func = torch.nn.functional.relu
@@ -142,13 +142,13 @@ def profile_method(target: 'Target') -> Callable:
 @compatibility(is_backward_compatible=True)
 def profile_module(module: torch.nn.Module) -> Callable:
     """
-    Wrap a `call_module` node or `torch.nn` in order to 
+    Wrap a `call_module` node or `torch.nn` in order to
     record the memory cost and FLOPs of the execution.
-    
+
     Warnings:
         You may only use tensors with `device=meta` for this wrapped function.
         Only original `torch.nn` are available.
-    
+
     Example:
         >>> input = torch.rand(4, 3, 224, 224, device='meta')
         >>> mod = torch.nn.Conv2d(3, 128, 3)
