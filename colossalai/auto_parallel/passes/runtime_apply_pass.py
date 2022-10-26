@@ -81,7 +81,6 @@ def _shape_consistency_apply(gm: torch.fx.GraphModule):
             continue
 
         for user_node_index, user_node in enumerate(node.strategies_vector.successor_nodes):
-            # user_node_index = user_node.strategies_vector.predecessor_nodes.index(node)
             with mod_graph.inserting_before(user_node):
                 shape_consistency_node = mod_graph.create_node('call_function',
                                                                runtime_apply,
@@ -89,11 +88,14 @@ def _shape_consistency_apply(gm: torch.fx.GraphModule):
                                                                      node_to_index_dict[node], user_node_index))
             new_args = list(user_node.args)
             new_kwargs = dict(user_node.kwargs)
+            # the origin node may be a positional argument or key word argument of user node
             if node in new_args:
+                # substitute the origin node with shape_consistency_node
                 origin_index_args = new_args.index(node)
                 new_args[origin_index_args] = shape_consistency_node
                 user_node.args = new_args
             elif str(node) in new_kwargs:
+                # substitute the origin node with shape_consistency_node
                 new_kwargs[str(node)] = shape_consistency_node
                 user_node.kwargs = new_kwargs
 
@@ -128,12 +130,14 @@ def _comm_spec_apply(gm: torch.fx.GraphModule):
                                                                  runtime_comm_spec_apply,
                                                                  args=(comm_object, comm_actions_dict_node,
                                                                        node_to_index_dict[node], op_data.name))
-
+                # the origin node may be a positional argument or key word argument of user node
                 if comm_action.key_for_kwarg is not None:
+                    # substitute the origin node with comm_spec_apply_node
                     new_kwargs = dict(node.kwargs)
                     new_kwargs[comm_action.key_for_kwarg] = comm_spec_apply_node
                     node.kwargs = new_kwargs
                 else:
+                    # substitute the origin node with comm_spec_apply_node
                     new_args = list(node.args)
                     new_args[comm_action.arg_index] = comm_spec_apply_node
                     node.args = new_args
@@ -150,11 +154,14 @@ def _comm_spec_apply(gm: torch.fx.GraphModule):
                         continue
                     new_args = list(user.args)
                     new_kwargs = dict(user.kwargs)
+                    # the origin node may be a positional argument or key word argument of user node
                     if node in new_args:
+                        # substitute the origin node with comm_spec_apply_node
                         new_args[new_args.index(node)] = comm_spec_apply_node
                         user.args = tuple(new_args)
                     elif str(node) in new_kwargs:
-                        new_kwargs[node] = comm_spec_apply_node
+                        # substitute the origin node with comm_spec_apply_node
+                        new_kwargs[str(node)] = comm_spec_apply_node
                         user.kwargs = new_kwargs
 
     return gm

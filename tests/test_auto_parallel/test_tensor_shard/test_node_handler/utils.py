@@ -1,5 +1,4 @@
 import copy
-from re import T
 from typing import Dict, List
 
 import torch
@@ -10,8 +9,7 @@ from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_pre
 from colossalai.auto_parallel.tensor_shard.solver import SolverOptions, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.tensor.shape_consistency import to_global
 from colossalai.testing.comparison import assert_close
 
 
@@ -126,12 +124,3 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
             grad_to_compare = param_to_compare_dict[name].grad
             global_grad = to_global(grad_sharded, param_sharding_spec)
             assert_close((global_grad - grad_to_compare).sum(), zero_tensor)
-
-
-def to_global(distributed_tensor: torch.Tensor, sharding_spec: ShardingSpec):
-    shape_consistency_manager = ShapeConsistencyManager()
-    global_sharding_spec = ShardingSpec(sharding_spec.device_mesh, sharding_spec.entire_shape, {})
-    with torch.no_grad():
-        global_tensor = shape_consistency_manager.apply_for_autoparallel_runtime(distributed_tensor, sharding_spec,
-                                                                                 global_sharding_spec)
-    return global_tensor
