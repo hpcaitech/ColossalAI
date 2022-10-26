@@ -1,6 +1,8 @@
-import torch
 from enum import Enum, auto
 from typing import List
+
+import torch
+
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 __all__ = ['BroadcastType', 'is_broadcastable', 'get_broadcast_shape', 'recover_sharding_spec_for_broadcast_shape']
@@ -52,9 +54,17 @@ def recover_sharding_spec_for_broadcast_shape(logical_sharding_spec: ShardingSpe
         logical_shape (torch.Size): logical shape is the broadcast shape of a tensor
         physical_shape (torch.Size): the shape of the tensor before broadcasting
     """
+    # if the two shapes are the same, no broadcast occurs
+    # we directly return the current sharding spec
+    if list(logical_shape) == list(physical_shape):
+        return logical_sharding_spec
+
     # get the number of dimensions
     logical_num_dims = len(logical_shape)
     physical_num_dims = len(physical_shape)
+
+    assert logical_num_dims >= physical_num_dims, \
+        'The number of dimensions in the logical shape is smaller than that of the physical shape, this tensor is not broadcast!'
 
     # track the dim and its broadcasting type
     logical_dim_broadcast_info = {}

@@ -6,7 +6,7 @@ from typing import Dict, List
 from torch.fx import Graph, Node
 
 from .._compatibility import compatibility
-from .memory import activation_size, is_inplace
+from .memory_utils import activation_size, is_inplace
 
 
 class Phase(Enum):
@@ -29,7 +29,7 @@ class GraphInfo:
     placeholders saved for  |     | \__________     |     |
     backward.               |     |            \    |     |
                             | [fwd_tmp] ------> [bwd_tmp] |    <-----
-                            |     |  \_________     |     |    [bwd_tmp] marks the peak memory 
+                            |     |  \_________     |     |    [bwd_tmp] marks the peak memory
                             |    / \           \    |     |    in backward pass.
     [x] is not counted ---> | [x]  [fwd_tmp] -> [bwd_tmp] |    <-----
     in [fwd_tmp] because    |          |  \_____    |     |
@@ -80,18 +80,18 @@ def autograd_graph_analysis(graph: Graph) -> GraphInfo:
     Nodes should have attribute `out` indicating the output of each node.
     ============================================================================
     Placeholder ---->   p           o     <---- We need to keep track of grad out
-                        |\________  | 
+                        |\________  |
                         ↓         ↘|
                         f --------> b
                         |\ \_____   ↑
                         | \      ↘ /
                         f  f ----> b      <---- Not every forward result needs to be saved for backward
                         |   \____  ↑
-                         ↘      ↘| 
+                         ↘      ↘|
                            f ----> b      <---- Backward can be freed as soon as it is required no more.
                              ↘ ↗
                                l
-    =============================================================================                     
+    =============================================================================
     Args:
         graph (Graph): The autograd graph with nodes marked for keyword `phase`.
 

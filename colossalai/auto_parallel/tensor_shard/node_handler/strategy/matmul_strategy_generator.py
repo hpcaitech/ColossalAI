@@ -514,22 +514,59 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
 
     A batched matrix multiplication can be viewed as
     [b, i, k] x [b, k, j] -> [b, i, j]
+
+    The bias term is considered to have a 2D logical shape.
     """
+
+    def __init__(self, *args, **kwargs):
+        self.squeeze_batch_dim = False
+        super().__init__(*args, **kwargs)
+
+    def _pop_batch_dim_sharding_for_output(self, dim_partition_dict):
+        # remove partition dict for dim 0
+        dim_partition_dict['output'].pop(0, None)
+
+        # decrease the remaining dim index by 1
+        temp_dim_partition = {}
+        keys = list(dim_partition_dict['output'].keys())
+        for key in keys:
+            val = dim_partition_dict['output'].pop(key)
+            temp_dim_partition[key - 1] = val
+        dim_partition_dict['output'].update(temp_dim_partition)
 
     def validate(self) -> bool:
         input_op_data = self.op_data['input']
         other_op_data = self.op_data['other']
-        assert input_op_data.data.dim() > 2 or other_op_data.data.dim() > 2
+        assert input_op_data.data.dim() == 3 or other_op_data.data.dim() == 3
+
+        if 'bias' in self.op_data:
+            bias_op_data = self.op_data['bias']
+            assert bias_op_data.data.dim() < 3 and len(bias_op_data.logical_shape) == 2
+
+        if self.op_data['output'].data.dim() == 2:
+            # addbmm will shrink the first batch dim
+            self.squeeze_batch_dim = True
 
     def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
-        return self.op_data['input'].data.shape[-1] * reduce(operator.mul, self.op_data['output'].data.shape)
+        fwd_compute_cost = self.op_data['input'].data.shape[-1] * reduce(operator.mul,
+                                                                         self.op_data['output'].data.shape)
+        bwd_compute_cost = fwd_compute_cost * 2
+        compute_cost = TrainCycleItem(fwd=fwd_compute_cost,
+                                      bwd=bwd_compute_cost,
+                                      total=fwd_compute_cost + bwd_compute_cost)
+        strategy.compute_cost = compute_cost
 
+    @ignore_sharding_exception
     def split_one_batch_dim(self, mesh_dim):
         name = f'Sb{mesh_dim} = Sb{mesh_dim} x Sb{mesh_dim}'
 
         # get sharding_spec
         dim_partition_dict = {"input": {0: [mesh_dim]}, "other": {0: [mesh_dim]}, "bias": {}, "output": {0: [mesh_dim]}}
+        if self.squeeze_batch_dim:
+            self._pop_batch_dim_sharding_for_output(dim_partition_dict)
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
+
+        print(sharding_spec_mapping)
 
         # get communication actions
         communication_action_mapping = {}
@@ -543,6 +580,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_two_batch_dim(self, mesh_dim_0, mesh_dim_1):
         name = f'Sb{mesh_dim_0}{mesh_dim_1} = Sb{mesh_dim_0}{mesh_dim_1} x Sb{mesh_dim_0}{mesh_dim_1}'
         dim_partition_dict = {
@@ -557,6 +595,8 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                 0: [mesh_dim_0, mesh_dim_1]
             }
         }
+        if self.squeeze_batch_dim:
+            self._pop_batch_dim_sharding_for_output(dim_partition_dict)
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
 
         # get communication actions
@@ -572,22 +612,27 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_batch_dim_lhs_space(self, mesh_dim_0, mesh_dim_1):
         name = f'Sb{mesh_dim_0}Si{mesh_dim_1} = Sb{mesh_dim_0}Si{mesh_dim_1} x Sb{mesh_dim_0}'
         dim_partition_dict = {
             "input": {
                 0: [mesh_dim_0],
-                -2: [mesh_dim_1]
+                1: [mesh_dim_1]
             },
             "other": {
                 0: [mesh_dim_0]
             },
-            "bias": {},
+            "bias": {
+                0: [mesh_dim_1]
+            },
             "output": {
                 0: [mesh_dim_0],
-                -2: [mesh_dim_1]
+                1: [mesh_dim_1]
             }
         }
+        if self.squeeze_batch_dim:
+            self._pop_batch_dim_sharding_for_output(dim_partition_dict)
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
 
         # get communication actions
@@ -609,6 +654,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_batch_dim_rhs_space(self, mesh_dim_0, mesh_dim_1):
         name = f'Sb{mesh_dim_0}Sj{mesh_dim_1} = Sb{mesh_dim_0}R x Sb{mesh_dim_0}Sj{mesh_dim_1}'
         dim_partition_dict = {
@@ -617,16 +663,18 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
             },
             "other": {
                 0: [mesh_dim_0],
-                -1: [mesh_dim_1]
+                2: [mesh_dim_1]
             },
             "bias": {
-                -1: [mesh_dim_1]
+                1: [mesh_dim_1]
             },
             "output": {
                 0: [mesh_dim_0],
-                -1: [mesh_dim_1]
+                2: [mesh_dim_1]
             }
         }
+        if self.squeeze_batch_dim:
+            self._pop_batch_dim_sharding_for_output(dim_partition_dict)
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
 
         # get communication actions
@@ -648,6 +696,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_batch_dim_both_contract(self, mesh_dim_0, mesh_dim_1):
         name = f'Sb{mesh_dim_0}R = Sb{mesh_dim_0}Sk{mesh_dim_1} x Sb{mesh_dim_0}Sk{mesh_dim_1}'
         dim_partition_dict = {
@@ -664,6 +713,8 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
                 0: [mesh_dim_0],
             }
         }
+        if self.squeeze_batch_dim:
+            self._pop_batch_dim_sharding_for_output(dim_partition_dict)
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
 
         # get communication actions

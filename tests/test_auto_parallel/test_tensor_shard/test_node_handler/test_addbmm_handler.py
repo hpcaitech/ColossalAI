@@ -1,33 +1,34 @@
-import pytest
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler import BMMFunctionHandler
+from colossalai.auto_parallel.tensor_shard.node_handler import AddBMMFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.testing import parameterize
 
 
-class BMMTensorMethodModule(nn.Module):
+class AddBMMTensorMethodModule(nn.Module):
 
-    def forward(self, x1, x2):
-        return x1.bmm(x2)
-
-
-class BMMTorchFunctionModule(nn.Module):
-
-    def forward(self, x1, x2):
-        return torch.bmm(x1, x2)
+    def forward(self, bias, x1, x2):
+        return bias.addbmm(x1, x2)
 
 
-@parameterize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
-def test_2d_device_mesh(module):
+class AddBMMTorchFunctionModule(nn.Module):
+
+    def forward(self, bias, x1, x2):
+        return torch.addbmm(bias, x1, x2)
+
+
+@parameterize('module', [AddBMMTorchFunctionModule, AddBMMTensorMethodModule])
+@parameterize('bias_shape', [[8], [1, 8], [8, 8]])
+def test_2d_device_mesh(module, bias_shape):
 
     model = module()
     tracer = ColoTracer()
     graph = tracer.trace(model,
                          meta_args={
+                             'bias': torch.rand(*bias_shape).to('meta'),
                              "x1": torch.rand(4, 8, 16).to('meta'),
                              'x2': torch.rand(4, 16, 8).to('meta')
                          })
@@ -37,11 +38,11 @@ def test_2d_device_mesh(module):
 
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
-    linear_mod_node = list(graph.nodes)[2]
+    linear_mod_node = list(graph.nodes)[3]
     strategies_vector = StrategiesVector(linear_mod_node)
 
     # build handler
-    handler = BMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
+    handler = AddBMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
     # check operation data mapping
     mapping = handler.get_operation_data_mapping()
@@ -64,9 +65,15 @@ def test_2d_device_mesh(module):
     assert mapping['other'].type == OperationDataType.ARG
     assert mapping['other'].logical_shape == torch.Size([4, 16, 8])
 
-    assert mapping['output'].name == "bmm"
+    assert mapping['bias'].name == "bias"
+    assert mapping['bias'].data.is_meta
+    assert mapping['bias'].data.shape == torch.Size(bias_shape)
+    assert mapping['bias'].type == OperationDataType.ARG
+    assert mapping['bias'].logical_shape == torch.Size([8, 8])
+
+    assert mapping['output'].name == "addbmm"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 8, 8])
+    assert mapping['output'].data.shape == torch.Size([8, 8])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
@@ -93,21 +100,24 @@ def test_2d_device_mesh(module):
     for strategy in strategies_vector:
         input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
         other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
-        output_sharding_spec = strategy.get_sharding_spec_by_name('bmm')
+        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('addbmm')
 
         # make sure the sharding matches across different operation data
-        print(input_sharding_spec.sharding_sequence, output_sharding_spec.sharding_sequence)
-        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert input_sharding_spec.sharding_sequence[1] == output_sharding_spec.sharding_sequence[0]
         assert other_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
+        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
-@parameterize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
-def test_1d_device_mesh(module):
+@parameterize('module', [AddBMMTorchFunctionModule, AddBMMTensorMethodModule])
+@parameterize('bias_shape', [[8], [1, 8], [8, 8]])
+def test_1d_device_mesh(module, bias_shape):
     model = module()
     tracer = ColoTracer()
     graph = tracer.trace(model,
                          meta_args={
+                             'bias': torch.rand(*bias_shape).to('meta'),
                              "x1": torch.rand(4, 8, 16).to('meta'),
                              'x2': torch.rand(4, 16, 8).to('meta')
                          })
@@ -117,11 +127,11 @@ def test_1d_device_mesh(module):
 
     mesh_shape = (1, 4)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
-    linear_mod_node = list(graph.nodes)[2]
+    linear_mod_node = list(graph.nodes)[3]
     strategies_vector = StrategiesVector(linear_mod_node)
 
     # build handler
-    handler = BMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
+    handler = AddBMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
     # check operation data mapping
     mapping = handler.get_operation_data_mapping()
@@ -144,9 +154,15 @@ def test_1d_device_mesh(module):
     assert mapping['other'].type == OperationDataType.ARG
     assert mapping['other'].logical_shape == torch.Size([4, 16, 8])
 
-    assert mapping['output'].name == "bmm"
+    assert mapping['bias'].name == "bias"
+    assert mapping['bias'].data.is_meta
+    assert mapping['bias'].data.shape == torch.Size(bias_shape)
+    assert mapping['bias'].type == OperationDataType.ARG
+    assert mapping['bias'].logical_shape == torch.Size([8, 8])
+
+    assert mapping['output'].name == "addbmm"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([4, 8, 8])
+    assert mapping['output'].data.shape == torch.Size([8, 8])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
@@ -158,14 +174,16 @@ def test_1d_device_mesh(module):
     for strategy in strategies_vector:
         input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
         other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
-        output_sharding_spec = strategy.get_sharding_spec_by_name('bmm')
+        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('addbmm')
 
         # make sure the sharding matches across different operation data
-        assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
+        assert input_sharding_spec.sharding_sequence[1] == output_sharding_spec.sharding_sequence[0]
         assert other_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
+        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
 if __name__ == '__main__':
     test_1d_device_mesh()
-    test_2d_device_mesh()
+    # test_2d_device_mesh()
