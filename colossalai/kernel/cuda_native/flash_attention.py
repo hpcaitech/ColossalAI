@@ -22,7 +22,7 @@ except ImportError:
 
 def triton_check():
     def out(command):
-        result = run(command, stdout=PIPE, stderr=PIPE, universal_newlines=True, shell=True)
+        result = run(command, stdout=PIPE, stderr=PIPE, universal_newlines=True, shell=False)
         return result.stdout
     cuda_version = out("nvcc --version")
     cuda_version = cuda_version.split('release ')[1]
