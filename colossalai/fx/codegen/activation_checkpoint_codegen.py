@@ -179,7 +179,7 @@ def _find_offload_regions(nodes: List[Node]):
 
     for idx, node in enumerate(nodes):
         if 'activation_offload' in node.meta and isinstance(node.meta['activation_offload'], Iterable):
-            act_offload_label = node.activation_offload
+            act_offload_label = node.meta['activation_offload']
 
             if current_region == None:
                 current_region = act_offload_label
@@ -331,7 +331,7 @@ def emit_ckpt_func(body,
             delete_unused_value_func(node, ckpt_func)
 
         ckpt_func.append('    ' + _gen_ckpt_output(outputs) + '\n\n')
-        activation_offload = getattr(node_list[0], "activation_offload", False)
+        activation_offload = node_list[0].meta.get('activation_offload', False)
         usage = _gen_ckpt_usage(label, activation_offload, inputs, outputs, False)
         usage += "\n"
         body.append(usage)
@@ -372,7 +372,7 @@ def emit_ckpt_func(body,
 
             ckpt_func.append('    ' + _gen_ckpt_output(outputs) + '\n\n')
             ckpt_func += ckpt_func_buffer
-            activation_offload = getattr(node_list[0], "activation_offload", False)
+            activation_offload = node_list[0].meta.get('activation_offload', False)
             usage = _gen_ckpt_usage(label, activation_offload, inputs, outputs, False) + '\n'
             if in_ckpt:
                 usage = '    ' + usage
@@ -386,7 +386,7 @@ def emit_ckpt_func(body,
                 delete_unused_value_func(node, ckpt_func)
 
             ckpt_func.append('    ' + _gen_ckpt_output(outputs) + '\n\n')
-            activation_offload = getattr(node_list[0], "activation_offload", False)
+            activation_offload = node_list[0].meta.get('activation_offload', False)
             usage = _gen_ckpt_usage(label, activation_offload, inputs, outputs, False) + '\n'
             if in_ckpt:
                 usage = '    ' + usage
