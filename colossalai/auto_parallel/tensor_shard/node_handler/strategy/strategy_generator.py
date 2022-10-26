@@ -186,9 +186,14 @@ class StrategyGenerator(ABC):
         """
         op_data = self.op_data[key]
         sharded_shape = strategy.sharding_specs[op_data].get_sharded_shape_per_device()
+
+        if len(sharded_shape) == 0:
+            num_elements = 1
+        else:
+            num_elements = reduce(operator.mul, sharded_shape)
         dtype = self.op_data[key].data.dtype
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        return reduce(operator.mul, sharded_shape) * size_per_elem_bytes
+        return num_elements * size_per_elem_bytes
 
     def generate(self) -> List[ShardingStrategy]:
         """
