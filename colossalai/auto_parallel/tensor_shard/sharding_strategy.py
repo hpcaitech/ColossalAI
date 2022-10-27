@@ -115,6 +115,7 @@ class CommAction:
     comm_spec: CommSpec = None
     comm_type: CommType = None
     arg_index: int = -1
+    key_for_kwarg: any = None
 
 
 @dataclass
