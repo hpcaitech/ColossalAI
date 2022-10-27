@@ -5,8 +5,16 @@ from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.gemini.chunk import ChunkManager
 
 import torch
+import torch.nn as nn
 import time
 from typing import List
+
+from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.fx.profiler import (calculate_fwd_out, calculate_fwd_tmp, is_compatible_with_meta, parameter_size)
+from torch.fx import symbolic_trace
+
+if is_compatible_with_meta():
+    from colossalai.fx.profiler import MetaTensor
 
 
 class MemStatsCollector:
@@ -150,3 +158,61 @@ class MemStatsCollectorV2(MemStatsCollector):
     @property
     def cuda_margin_mem(self) -> float:
         return colo_device_memory_capacity(get_current_device()) - max(self.overall_mem_stats('cuda'))
+
+
+class MemStatsCollectorStatic(MemStatsCollector):
+    """
+    A Static Memory statistic collector.
+    """
+
+    def __init__(self, module: nn.Module) -> None:
+        super().__init__()
+        self.module = module
+
+    def init_mem_stats(self, *inputs):
+        self.module.cpu()
+        self.module.train()
+        # data = MetaTensor(torch.rand(int(TM_BATCH_SIZE), 3, 224, 224, device='meta'), fake_device='cuda:0')
+        data = [MetaTensor(torch.rand(inp.shape, device='meta'), fake_device='cpu') for inp in inputs]
+        gm = symbolic_trace(self.module)
+        interp = MetaInfoProp(gm)
+        interp.propagate(data)
+        for node in gm.graph.nodes:
+            self._non_model_data_cuda_list.append(node.meta["fwd_mem_tmp"] + node.meta['fwd_mem_out'])
+        for node in gm.graph.nodes.__reversed__():
+            self._non_model_data_cuda_list.append(node.meta["bwd_mem_tmp"] + node.meta['bwd_mem_out'])
+
+    def next_period_non_model_data_usage(self, device_type: str) -> int:
+        """Get max non model data memory usage of current sampling period
+
+        Args:
+            device_type (str): device type, can be 'cpu' or 'cuda'.
+
+        Returns:
+            int: max non model data memory usage of current sampling period
+        """
+        assert not self._start_flag, 'Cannot get mem stats info during collection phase.'
+        assert self._step_total > 0, 'Cannot get mem stats info before collection phase.'
+        next_non_model_data = self.non_model_data_list(device_type)[self._step_idx]
+        # self._step_idx = (self._step_idx + 1) % self._step_total
+        self._step_idx = (self._step_idx + 1) % len(self._non_model_data_cuda_list)
+        return next_non_model_data
+
+
+    def sample_overall_data(self) -> None:
+        """Sampling non model data statistics.
+        """
+        if self._start_flag:
+            # overall data recording is after model data recording
+            if len(self._model_data_cuda_list) == 0:
+                return
+
+            self._overall_cuda_list.append(self._mem_monitor.finish())
+            self._overall_cpu_list.append(colo_device_memory_used(torch.device('cpu')))
+
+            assert len(self._model_data_cuda_list) == len(self._overall_cuda_list)
+
+            # self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
+            self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
+            self._sampling_time.append(time.time())
+            self._mem_monitor.start()
