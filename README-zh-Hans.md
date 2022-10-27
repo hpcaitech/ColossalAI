@@ -56,7 +56,7 @@
 <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
    <ul>
-     <li><a href="#xTrimoMultimer">xTrimoMultimer: 蛋白质单体与复合物结构预测</a></li>
+     <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>
  </li>
  <li>
@@ -105,7 +105,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 - 推理
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 - Colossal-AI 成功案例
-  - [xTrimoMultimer: 蛋白质单体与复合物结构预测](https://github.com/biomap-research/xTrimoMultimer)
+  - 生物医药: [FastFold](https://github.com/hpcaitech/FastFold) 加速蛋白质结构预测 AlphaFold 训练与推理
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 并行训练样例展示
@@ -178,7 +178,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - 用相同的硬件训练34倍大的模型
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 
 ## 推理 (Energon-AI) 样例展示
@@ -196,19 +196,26 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 - [OPT推理服务](https://service.colossalai.org/opt): 无需注册，免费体验1750亿参数OPT在线推理服务
 
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## Colossal-AI 成功案例
+### 生物医药
 
-### xTrimoMultimer: 蛋白质单体与复合物结构预测
+加速 [AlphaFold](https://alphafold.ebi.ac.uk/) 蛋白质结构预测
+
+<p id="FastFold" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/FastFold.jpg" width=800/>
+</p>
+
+- [FastFold](https://github.com/hpcaitech/FastFold): 加速AlphaFold训练与推理、数据前处理、推理序列长度超过10000残基
+
 <p id="xTrimoMultimer" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTM_Prediction.jpg" width=380/>
-<p></p>
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
 </p>
 
 - [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): 11倍加速蛋白质单体与复合物结构预测
 
+<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 安装
 
