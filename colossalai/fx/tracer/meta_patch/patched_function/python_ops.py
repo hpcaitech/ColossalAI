@@ -9,7 +9,7 @@ def operator_getitem(a, b):
     # copied from huggingface.utils.fx
     def to_concrete(t):
         if isinstance(t, torch.Tensor):
-            concrete = torch.ones_like(t, device="cpu")
+            concrete = torch.zeros_like(t, device="cpu")
             if concrete.dtype in [torch.float16, torch.float32, torch.float64, torch.int32]:
                 concrete = concrete.to(torch.int64)
             return concrete
