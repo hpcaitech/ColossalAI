@@ -1,7 +1,12 @@
 import copy
 from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommType,
+    MemoryCost,
+    ShardingStrategy,
+    TrainCycleItem,
+)
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import FollowingStrategyGenerator
@@ -83,11 +88,13 @@ class TensorStrategyGenerator(GetItemStrategyGenerator):
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
             if gather_input:
-                input_communication_spec = self.get_communication_spec(
+                input_communication_action = self.get_communication_action(
                     sharding_spec_mapping["input"],
                     communication_pattern=CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                    logical_process_axis=logical_process_axis)
-                communication_action_mapping["input"] = input_communication_spec
+                    logical_process_axis=logical_process_axis,
+                    comm_type=CommType.BEFORE,
+                    arg_index=0)
+                communication_action_mapping["input"] = input_communication_action
 
             name = f'{sharding_spec_mapping["output"].sharding_sequence} = {sharding_spec_mapping["input"].sharding_sequence}'
 

@@ -202,16 +202,17 @@ class LinearFunctionHandler(NodeHandler):
 
         mapping = {"input": physical_input_operand, "other": physical_other_operand, "output": physical_output}
 
-        if self.node.args[2] is not None:
+        if 'bias' in self.node.kwargs and self.node.kwargs['bias'] is not None:
             # check if the other operand is a parameter
-            if isinstance(self.node.args[2]._meta_data, torch.nn.parameter.Parameter):
+            if isinstance(self.node.kwargs["bias"]._meta_data, torch.nn.parameter.Parameter):
                 data_type = OperationDataType.PARAM
             else:
                 data_type = OperationDataType.ARG
-            physical_bias_operand = OperationData(name=str(self.node.args[2]),
+            physical_bias_operand = OperationData(name=str(self.node.kwargs["bias"]),
                                                   type=data_type,
-                                                  data=self.node.args[2]._meta_data)
+                                                  data=self.node.kwargs["bias"]._meta_data)
             mapping['bias'] = physical_bias_operand
+
         return mapping
 
     def post_process(self, strategy: ShardingStrategy):
