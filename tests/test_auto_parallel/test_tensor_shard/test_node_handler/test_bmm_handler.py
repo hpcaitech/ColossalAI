@@ -1,12 +1,20 @@
+from functools import partial
+
 import pytest
 import torch
+import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai.auto_parallel.tensor_shard.node_handler import BMMFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.testing import parameterize
+from colossalai.initialize import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.utils import free_port
+from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
 class BMMTensorMethodModule(nn.Module):
@@ -21,22 +29,37 @@ class BMMTorchFunctionModule(nn.Module):
         return torch.bmm(x1, x2)
 
 
-@parameterize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
-def test_2d_device_mesh(module):
-
-    model = module()
+def check_2d_device_mesh(rank, module, world_size, port):
+    disable_existing_loggers()
+    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    model = module().cuda()
+    physical_mesh_id = torch.arange(0, 4)
+    mesh_shape = (2, 2)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
+    x1 = torch.rand(4, 8, 16).cuda()
+    x2 = torch.rand(4, 16, 8).cuda()
+    # the index of bmm node in computation graph
+    node_index = 2
+    # strategy number of bmm node on 2d device mesh
+    strategy_number = 7
+    # construct input args
+    input_args = [x1, x2]
+    # construct meta arg names
+    meta_arg_names = ['x1', 'x2']
+    numerical_test_for_node_strategy(model=model,
+                                     device_mesh=device_mesh,
+                                     node_index=node_index,
+                                     strategy_number=strategy_number,
+                                     input_args=input_args,
+                                     meta_arg_names=meta_arg_names)
     tracer = ColoTracer()
     graph = tracer.trace(model,
                          meta_args={
                              "x1": torch.rand(4, 8, 16).to('meta'),
                              'x2': torch.rand(4, 16, 8).to('meta')
                          })
-    print(graph)
     gm = ColoGraphModule(model, graph)
-    physical_mesh_id = torch.arange(0, 4)
 
-    mesh_shape = (2, 2)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     linear_mod_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(linear_mod_node)
 
@@ -96,27 +119,41 @@ def test_2d_device_mesh(module):
         output_sharding_spec = strategy.get_sharding_spec_by_name('bmm')
 
         # make sure the sharding matches across different operation data
-        print(input_sharding_spec.sharding_sequence, output_sharding_spec.sharding_sequence)
         assert input_sharding_spec.sharding_sequence[:-1] == output_sharding_spec.sharding_sequence[:-1]
         assert other_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
-@parameterize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
-def test_1d_device_mesh(module):
-    model = module()
+def check_1d_device_mesh(rank, module, world_size, port):
+    disable_existing_loggers()
+    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    model = module().cuda()
+    physical_mesh_id = torch.arange(0, 4)
+    mesh_shape = (1, 4)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
+    x1 = torch.rand(4, 8, 16).cuda()
+    x2 = torch.rand(4, 16, 8).cuda()
+    # the index of bmm node in computation graph
+    node_index = 2
+    # strategy number of bmm node on 1d device mesh
+    strategy_number = 1
+    # construct input args
+    input_args = [x1, x2]
+    # construct meta arg names
+    meta_arg_names = ['x1', 'x2']
+    numerical_test_for_node_strategy(model=model,
+                                     device_mesh=device_mesh,
+                                     node_index=node_index,
+                                     strategy_number=strategy_number,
+                                     input_args=input_args,
+                                     meta_arg_names=meta_arg_names)
     tracer = ColoTracer()
     graph = tracer.trace(model,
                          meta_args={
                              "x1": torch.rand(4, 8, 16).to('meta'),
                              'x2': torch.rand(4, 16, 8).to('meta')
                          })
-    print(graph)
     gm = ColoGraphModule(model, graph)
-    physical_mesh_id = torch.arange(0, 4)
-
-    mesh_shape = (1, 4)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
     linear_mod_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(linear_mod_node)
 
@@ -166,6 +203,17 @@ def test_1d_device_mesh(module):
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
+@parameterize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
+@run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+def test_bmm_handler(module):
+    world_size = 4
+    run_func_2d = partial(check_2d_device_mesh, module=module, world_size=world_size, port=free_port())
+    mp.spawn(run_func_2d, nprocs=world_size)
+    run_func_1d = partial(check_1d_device_mesh, module=module, world_size=world_size, port=free_port())
+    mp.spawn(run_func_1d, nprocs=world_size)
+
+
 if __name__ == '__main__':
-    test_1d_device_mesh()
-    test_2d_device_mesh()
+    test_bmm_handler()
