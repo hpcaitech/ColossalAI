@@ -1,16 +1,25 @@
+from functools import partial
+
+import pytest
 import torch
+import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai.auto_parallel.tensor_shard.node_handler import BinaryElementwiseHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.testing import parameterize
+from colossalai.initialize import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.testing import assert_close, parameterize, rerun_if_address_is_in_use
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
+from colossalai.utils import free_port
+from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
-@parameterize('op', [torch.add])
-@parameterize('other_dim', [1, 2])
-def test_binary_elementwise_handler_with_tensor(op, other_dim):
+def check_binary_elementwise_handler_with_tensor(rank, op, other_dim, world_size, port):
+    disable_existing_loggers()
+    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     class BinaryElementwiseOpModel(nn.Module):
 
@@ -22,16 +31,32 @@ def test_binary_elementwise_handler_with_tensor(op, other_dim):
             out = self.op(x1, x2)
             return out
 
-    model = BinaryElementwiseOpModel(op)
-    tracer = ColoTracer()
-
-    meta_args = {'x1': torch.rand(4, 4).to('meta'), 'x2': torch.rand([4] * other_dim).to('meta')}
-    graph = tracer.trace(model, meta_args=meta_args)
-    print(graph)
-    gm = ColoGraphModule(model, graph)
+    model = BinaryElementwiseOpModel(op).cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
+    x1 = torch.rand(4, 4).cuda()
+    x2 = torch.rand([4] * other_dim).cuda()
+    # the index of binary-elementwise node in computation graph
+    node_index = 2
+    # strategy number of binary-elementwise node
+    strategy_number = 9
+    # construct input args
+    input_args = [x1, x2]
+    # construct meta arg names
+    meta_arg_names = ['x1', 'x2']
+    numerical_test_for_node_strategy(model=model,
+                                     device_mesh=device_mesh,
+                                     node_index=node_index,
+                                     strategy_number=strategy_number,
+                                     input_args=input_args,
+                                     meta_arg_names=meta_arg_names)
+
+    tracer = ColoTracer()
+    meta_args = {'x1': torch.rand(4, 4).to('meta'), 'x2': torch.rand([4] * other_dim).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
+    gm = ColoGraphModule(model, graph)
+
     op_node = list(graph.nodes)[2]
     strategies_vector = StrategiesVector(op_node)
 
@@ -97,9 +122,9 @@ def test_binary_elementwise_handler_with_tensor(op, other_dim):
             assert input_sharding_spec.sharding_sequence[-1] == other_sharding_spec.sharding_sequence[-1]
 
 
-@parameterize('op', [torch.add])
-@parameterize('other', [1, 2])
-def test_binary_elementwise_handler_with_int(op, other):
+def check_binary_elementwise_handler_with_int(rank, op, other_dim, world_size, port):
+    disable_existing_loggers()
+    launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     class BinaryElementwiseOpModel(nn.Module):
 
@@ -112,16 +137,30 @@ def test_binary_elementwise_handler_with_int(op, other):
             out = self.op(x1, self.const)
             return out
 
-    model = BinaryElementwiseOpModel(op, other)
-    tracer = ColoTracer()
-
-    meta_args = {'x1': torch.rand(4, 4).to('meta')}
-    graph = tracer.trace(model, meta_args=meta_args)
-    print(graph)
-    gm = ColoGraphModule(model, graph)
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
+    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
+    model = BinaryElementwiseOpModel(op, other_dim).cuda()
+    x1 = torch.rand(4, 4).cuda()
+    # the index of binary-elementwise node in computation graph
+    node_index = 1
+    # strategy number of binary-elementwise node
+    strategy_number = 9
+    # construct input args
+    input_args = [x1]
+    # construct meta arg names
+    meta_arg_names = ['x1']
+    numerical_test_for_node_strategy(model=model,
+                                     device_mesh=device_mesh,
+                                     node_index=node_index,
+                                     strategy_number=strategy_number,
+                                     input_args=input_args,
+                                     meta_arg_names=meta_arg_names)
+    tracer = ColoTracer()
+    meta_args = {'x1': torch.rand(4, 4).to('meta')}
+    graph = tracer.trace(model, meta_args=meta_args)
+    gm = ColoGraphModule(model, graph)
+
     op_node = list(graph.nodes)[1]
     strategies_vector = StrategiesVector(op_node)
 
@@ -168,6 +207,26 @@ def test_binary_elementwise_handler_with_int(op, other):
         assert input_sharding_spec.sharding_sequence == output_sharding_spec.sharding_sequence
 
 
+@parameterize('op', [torch.add])
+@parameterize('other_dim', [1, 2])
+@run_on_environment_flag(name='AUTO_PARALLEL')
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+def test_binary_elementwise_handler(op, other_dim):
+    world_size = 4
+    run_func_tensor = partial(check_binary_elementwise_handler_with_tensor,
+                              op=op,
+                              other_dim=other_dim,
+                              world_size=world_size,
+                              port=free_port())
+    mp.spawn(run_func_tensor, nprocs=world_size)
+    run_func_int = partial(check_binary_elementwise_handler_with_int,
+                           op=op,
+                           other_dim=other_dim,
+                           world_size=world_size,
+                           port=free_port())
+    mp.spawn(run_func_int, nprocs=world_size)
+
+
 if __name__ == '__main__':
-    test_binary_elementwise_handler_with_tensor()
-    test_binary_elementwise_handler_with_int()
+    test_binary_elementwise_handler()

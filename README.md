@@ -56,7 +56,7 @@
    <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a> 
    <ul>
-     <li><a href="#xTrimoMultimer">xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction</a></li>
+     <li><a href="#Biomedicine">Biomedicine: Acceleration of AlphaFold Protein Structure</a></li>
    </ul>
  </li>
  <li>
@@ -111,7 +111,7 @@ distributed training and inference in a few lines.
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 
 - Colossal-AI in the Real World 
-  - [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): Accelerating Protein Monomer and Multimer Structure Prediction
+  - Biomedicine: [FastFold](https://github.com/hpcaitech/FastFold) accelerates training and inference of AlphaFold protein structure
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo
@@ -202,14 +202,21 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 ## Colossal-AI in the Real World
 
-### xTrimoMultimer: Accelerating Protein Monomer and Multimer Structure Prediction
+### Biomedicine
+Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
+
+<p id="FastFold" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/FastFold.jpg" width=800/>
+</p>
+
+- [FastFold](https://github.com/hpcaitech/FastFold): accelerating training and inference on GPU Clusters, faster data processing, inference sequence containing more than 10000 residues.
+
 <p id="xTrimoMultimer" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTM_Prediction.jpg" width=380/>
-<p></p>
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/xTrimoMultimer_Table.jpg" width=800/>
 </p>
 
-- [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): accelerating structure prediction of protein monomers and multimer by 11x
+- [xTrimoMultimer](https://github.com/biomap-research/xTrimoMultimer): accelerating structure prediction of protein monomers and multimer by 11x.
+
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
