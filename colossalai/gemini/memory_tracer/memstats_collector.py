@@ -170,17 +170,36 @@ class MemStatsCollectorStatic(MemStatsCollector):
         self.module = module
 
     def init_mem_stats(self, *inputs):
-        self.module.cpu()
+
+        self.module = self.module.cpu()
         self.module.train()
-        # data = MetaTensor(torch.rand(int(TM_BATCH_SIZE), 3, 224, 224, device='meta'), fake_device='cuda:0')
         data = [MetaTensor(torch.rand(inp.shape, device='meta'), fake_device='cpu') for inp in inputs]
         gm = symbolic_trace(self.module)
         interp = MetaInfoProp(gm)
-        interp.propagate(data)
+        interp.propagate(*data)
+
+        total_mem = 0
+        for inp in inputs:
+            total_mem += inp.numel() * 4.0
+        last_node = None
         for node in gm.graph.nodes:
-            self._non_model_data_cuda_list.append(node.meta["fwd_mem_tmp"] + node.meta['fwd_mem_out'])
+            total_mem = total_mem + calculate_fwd_tmp(node) + calculate_fwd_out(node)
+            if node.op == "call_module":
+                self._non_model_data_cuda_list.append(total_mem)
+                last_node = node
+
+        cur_module_mem_fwd = 0
+        cur_module_mem_bwd = 0
+        grad_module_out = last_node.meta["fwd_mem_out"]
         for node in gm.graph.nodes.__reversed__():
-            self._non_model_data_cuda_list.append(node.meta["bwd_mem_tmp"] + node.meta['bwd_mem_out'])
+            cur_module_mem_fwd = cur_module_mem_fwd + node.meta["fwd_mem_tmp"] + node.meta["fwd_mem_out"]
+            cur_module_mem_bwd = cur_module_mem_bwd + node.meta["bwd_mem_tmp"] + node.meta["bwd_mem_out"]
+            if node.op == "call_module":
+                self._non_model_data_cuda_list.append(total_mem + grad_module_out + cur_module_mem_bwd)
+                total_mem = total_mem - cur_module_mem_fwd
+                cur_module_mem_fwd = 0
+                cur_module_mem_bwd = 0
+                grad_module_out = node.meta["bwd_mem_out"]
 
     def next_period_non_model_data_usage(self, device_type: str) -> int:
         """Get max non model data memory usage of current sampling period
