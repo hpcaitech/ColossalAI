@@ -109,7 +109,8 @@ class StrategyGenerator(ABC):
                                  communication_pattern: CollectiveCommPattern,
                                  logical_process_axis: Union[int, List[int]],
                                  comm_type: CommType,
-                                 arg_index: int = -1) -> CommAction:
+                                 arg_index: int = -1,
+                                 key_for_kwarg: any = None) -> CommAction:
         """
         A factory method to produce a CommAction object.
         """
@@ -117,7 +118,8 @@ class StrategyGenerator(ABC):
                                                                 communication_pattern=communication_pattern,
                                                                 logical_process_axis=logical_process_axis),
                           comm_type=comm_type,
-                          arg_index=arg_index)
+                          arg_index=arg_index,
+                          key_for_kwarg=key_for_kwarg)
 
     def update_communication_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """

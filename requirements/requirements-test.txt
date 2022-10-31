@@ -7,3 +7,6 @@ titans
 torchaudio
 torchrec
 contexttimer
+einops
+triton==2.0.0.dev20221011
+git+https://github.com/HazyResearch/flash-attention.git@c422fee3776eb3ea24e011ef641fd5fbeb212623#egg=flash_attn

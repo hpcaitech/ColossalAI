@@ -24,7 +24,6 @@ def runtime_apply(node: Node, origin_dict: Dict, input_dict: Dict, node_index: i
     """
     origin_sharding_spec = origin_dict[node_index]
     target_sharding_spec = input_dict[node_index][user_node_index]
-
     return shape_consistency_manager.apply_for_autoparallel_runtime(node, origin_sharding_spec, target_sharding_spec)
 
 
@@ -81,18 +80,24 @@ def _shape_consistency_apply(gm: torch.fx.GraphModule):
         if not hasattr(node, 'best_strategy') or node.op == 'output':
             continue
 
-        for user_node in node.strategies_vector.successor_nodes:
-            user_node_index = user_node.strategies_vector.predecessor_nodes.index(node)
+        for user_node_index, user_node in enumerate(node.strategies_vector.successor_nodes):
             with mod_graph.inserting_before(user_node):
                 shape_consistency_node = mod_graph.create_node('call_function',
                                                                runtime_apply,
                                                                args=(node, origin_dict_node, input_dict_node,
                                                                      node_to_index_dict[node], user_node_index))
-
-            origin_index_args = user_node.args.index(node)
             new_args = list(user_node.args)
-            new_args[origin_index_args] = shape_consistency_node
-            user_node.args = new_args
+            new_kwargs = dict(user_node.kwargs)
+            # the origin node may be a positional argument or key word argument of user node
+            if node in new_args:
+                # substitute the origin node with shape_consistency_node
+                origin_index_args = new_args.index(node)
+                new_args[origin_index_args] = shape_consistency_node
+                user_node.args = new_args
+            elif str(node) in new_kwargs:
+                # substitute the origin node with shape_consistency_node
+                new_kwargs[str(node)] = shape_consistency_node
+                user_node.kwargs = new_kwargs
 
     return gm
 
@@ -112,18 +117,31 @@ def _comm_spec_apply(gm: torch.fx.GraphModule):
 
         comm_actions = node.best_strategy.communication_actions
         for op_data, comm_action in comm_actions.items():
-            comm_object = node.args[comm_action.arg_index]
+
             if op_data.type == OperationDataType.PARAM:
                 continue
             if comm_action.comm_type == CommType.BEFORE:
+                if comm_action.key_for_kwarg is not None:
+                    comm_object = node.kwargs[comm_action.key_for_kwarg]
+                else:
+                    comm_object = node.args[comm_action.arg_index]
                 with mod_graph.inserting_before(node):
                     comm_spec_apply_node = mod_graph.create_node('call_function',
                                                                  runtime_comm_spec_apply,
                                                                  args=(comm_object, comm_actions_dict_node,
                                                                        node_to_index_dict[node], op_data.name))
-                new_args = list(node.args)
-                new_args[comm_action.arg_index] = comm_spec_apply_node
-                node.args = new_args
+                # the origin node may be a positional argument or key word argument of user node
+                if comm_action.key_for_kwarg is not None:
+                    # substitute the origin node with comm_spec_apply_node
+                    new_kwargs = dict(node.kwargs)
+                    new_kwargs[comm_action.key_for_kwarg] = comm_spec_apply_node
+                    node.kwargs = new_kwargs
+                else:
+                    # substitute the origin node with comm_spec_apply_node
+                    new_args = list(node.args)
+                    new_args[comm_action.arg_index] = comm_spec_apply_node
+                    node.args = new_args
+
             elif comm_action.comm_type == CommType.AFTER:
                 with mod_graph.inserting_after(node):
                     comm_spec_apply_node = mod_graph.create_node('call_function',
@@ -135,8 +153,16 @@ def _comm_spec_apply(gm: torch.fx.GraphModule):
                     if user == comm_spec_apply_node:
                         continue
                     new_args = list(user.args)
-                    new_args[new_args.index(node)] = comm_spec_apply_node
-                    user.args = tuple(new_args)
+                    new_kwargs = dict(user.kwargs)
+                    # the origin node may be a positional argument or key word argument of user node
+                    if node in new_args:
+                        # substitute the origin node with comm_spec_apply_node
+                        new_args[new_args.index(node)] = comm_spec_apply_node
+                        user.args = tuple(new_args)
+                    elif str(node) in new_kwargs:
+                        # substitute the origin node with comm_spec_apply_node
+                        new_kwargs[str(node)] = comm_spec_apply_node
+                        user.kwargs = new_kwargs
 
     return gm
 

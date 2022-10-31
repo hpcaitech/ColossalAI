@@ -3,7 +3,12 @@ import operator
 from functools import reduce
 from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, ShardingStrategy, TrainCycleItem
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommType,
+    MemoryCost,
+    ShardingStrategy,
+    TrainCycleItem,
+)
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import StrategyGenerator
@@ -204,12 +209,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # For SyncBN case, we don't need to do communication for weight and bias.
         # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=mesh_dim_0)
+            logical_process_axis=mesh_dim_0,
+            comm_type=CommType.AFTER)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -238,12 +244,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
         # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=[mesh_dim_0, mesh_dim_1])
+            logical_process_axis=[mesh_dim_0, mesh_dim_1],
+            comm_type=CommType.AFTER)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -282,12 +289,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
         # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=[mesh_dim_0])
+            logical_process_axis=[mesh_dim_0],
+            comm_type=CommType.AFTER)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
