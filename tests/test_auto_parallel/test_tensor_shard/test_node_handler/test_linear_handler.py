@@ -160,6 +160,8 @@ def test_linear_function_handler(bias):
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
     # one strategy will be converted to different physical sharding spec
+    import pdb
+    pdb.set_trace()
     assert len(strategy_name_list) > 8
 
     # SS = SR x RS
