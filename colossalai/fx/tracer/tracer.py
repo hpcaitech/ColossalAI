@@ -18,8 +18,6 @@ from torch.fx import Node, Tracer
 from torch.fx.graph import Graph, magic_methods, reflectable_magic_methods
 from torch.fx.proxy import ParameterProxy, Proxy
 
-from colossalai.fx.tracer.meta_patch import meta_patched_module
-
 from ..proxy import ColoProxy
 from ._tracer_utils import compute_meta_data_for_functions_proxy, extract_meta, is_element_in_list
 from .meta_patch import bias_addition_function, bias_addition_module, meta_patched_function, meta_patched_module
@@ -91,25 +89,20 @@ class ColoTracer(Tracer):
 
         # if no extra manipulation is applied, we just pass the origin arguments to create_proxy function
         # to create node on computation graph
-        origin_arguments_list = [(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)]
-
+        origin_arguments = (kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
         # dispatch the arguments generator depending on the kind and target in origin arguments.
         args_metas, _ = extract_meta(*args, **kwargs)
         if kind == "call_function":
             if bias_addition_function.has(target):
-                patched_arguments_list = bias_addition_function.get(target)
+                return bias_addition_function.get(target)
             elif bias_addition_function.has(target.__name__):
                 # use name for some builtin op like @ (matmul)
-                patched_arguments_list = bias_addition_function.get(target.__name__)
-            else:
-                patched_arguments_list = origin_arguments_list
+                return bias_addition_function.get(target.__name__)
 
         elif kind == "call_method":
             method = getattr(args_metas[0].__class__, target)
             if bias_addition_function.has(method):
-                patched_arguments_list = bias_addition_function.get(method)
-            else:
-                patched_arguments_list = origin_arguments_list
+                proxy_arguments_dict = bias_addition_function.get(method)
 
         elif kind == "call_module":
             if not hasattr(self, "orig_forward"):
@@ -119,21 +112,20 @@ class ColoTracer(Tracer):
                 mod = self.root.get_submodule(target)
                 mod_type = type(mod)
                 if bias_addition_module.has(mod_type):
-                    patched_arguments_list = bias_addition_module.get(mod_type)
-                else:
-                    patched_arguments_list = origin_arguments_list
+                    return bias_addition_module.get(mod_type)(self, target, args, kwargs)
             finally:
                 self._disable_module_getattr = False
 
-        else:
-            patched_arguments_list = origin_arguments_list
-
         # create nodes using patched arguments
-        for patched_arguments in patched_arguments_list:
-            proxy = super().create_proxy(*patched_arguments)
-            proxy: ColoProxy
-            meta_out = self._meta_data_computing(kind, target, args, kwargs)
-            proxy.meta_data = meta_out
+        proxy = super().create_proxy(*origin_arguments)
+        proxy: ColoProxy
+        meta_out = self._meta_data_computing(
+            kind,
+            target,
+            args,
+            kwargs,
+        )
+        proxy.meta_data = meta_out
 
         return proxy
 
