@@ -1,26 +1,28 @@
 #!/usr/bin/env python
 """
-tracer.py: 
+tracer.py:
     Implemented a tracer which supports control flow and user-defined meta arguments.
     The implementation is partly inspired HuggingFace's fx tracer
 """
 import enum
-import inspect
 import functools
+import inspect
 import operator
 from contextlib import contextmanager
-from colossalai.fx.tracer.meta_patch import meta_patched_module
+from typing import Any, Dict, Optional
+
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.fx import Tracer, Node
-from torch.fx.graph import Graph
-from torch.fx.proxy import Proxy, ParameterProxy
+from torch.fx import Node, Tracer
+from torch.fx.graph import Graph, magic_methods, reflectable_magic_methods
+from torch.fx.proxy import ParameterProxy, Proxy
+
+from colossalai.fx.tracer.meta_patch import meta_patched_module
+
 from ..proxy import ColoProxy
-from typing import Optional, Dict, Any
-from ._tracer_utils import is_element_in_list, extract_meta, compute_meta_data_for_functions_proxy
-from .meta_patch import meta_patched_function, meta_patched_module
-from torch.fx.graph import magic_methods, reflectable_magic_methods
+from ._tracer_utils import compute_meta_data_for_functions_proxy, extract_meta, is_element_in_list
+from .meta_patch import bias_addition_function, bias_addition_module, meta_patched_function, meta_patched_module
 
 __all__ = ['ColoTracer']
 
@@ -77,88 +79,62 @@ class ColoTracer(Tracer):
         """
         Create a proxy for different kinds of operations.
         """
-        proxy = super().create_proxy(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
 
         if self.tracer_type == TracerType.DEFAULT:
             # since meta_args is not given
             # we just fall back to the original torch.fx.Tracer
+            proxy = super().create_proxy(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
             return proxy
 
-        proxy: ColoProxy
+        # if graph is traced for auto parallelism module, some extra node will be added during
+        # graph construction to deal with the compatability between bias addition and all reduce.
 
-        if kind == "placeholder" and target in self.meta_args and self.meta_args[target].is_meta:
-            proxy.meta_data = self.meta_args[target]
-            return proxy
+        # if no extra manipulation is applied, we just pass the origin arguments to create_proxy function
+        # to create node on computation graph
+        origin_arguments_list = [(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)]
 
-        if target in self.orig_torch_tensor_methods:
-            # NOTE: tensor constructors in PyTorch define the `device` argument as
-            # *kwargs-only*. That is why this works. If you add methods to
-            # _TORCH_METHODS_TO_PATCH that do not define `device` as kwarg-only,
-            # this will break and you will likely see issues where we cannot infer
-            # the size of the output.
-            if "device" in kwargs:
-                kwargs["device"] = "meta"
-
-        try:
-            args_metas, kwargs_metas = extract_meta(*args, **kwargs)
-
-            if kind == "call_function":
-                # fetch patched function
-                if meta_patched_function.has(target):
-                    meta_target = meta_patched_function.get(target)
-                elif meta_patched_function.has(target.__name__):
-                    # use name for some builtin op like @ (matmul)
-                    meta_target = meta_patched_function.get(target.__name__)
-                else:
-                    meta_target = target
-
-                meta_out = meta_target(*args_metas, **kwargs_metas)
-                if isinstance(meta_out, torch.Tensor):
-                    meta_out = meta_out.to(device="meta")
-            elif kind == "call_method":
-                method = getattr(args_metas[0].__class__, target)
-
-                # fetch patched method
-                if meta_patched_function.has(method):
-                    meta_target = meta_patched_function.get(method)
-                else:
-                    meta_target = method
-
-                meta_out = meta_target(*args_metas, **kwargs_metas)
-            elif kind == "call_module":
-                if not hasattr(self, "orig_forward"):
-                    raise AttributeError(f"{self} does not have an attribute called orig_forward")
-                self._disable_module_getattr = True
-                try:
-                    mod = self.root.get_submodule(target)
-                    mod_type = type(mod)
-                    if meta_patched_module.has(mod_type):
-                        meta_out = meta_patched_module.get(mod_type)(mod, *args_metas, **kwargs_metas)
-                    else:
-                        meta_out = self.orig_forward(*args_metas, **kwargs_metas)
-                finally:
-                    self._disable_module_getattr = False
-            elif kind == "get_attr":
-                self._disable_module_getattr = True
-                try:
-                    attr_itr = self.root
-                    atoms = target.split(".")
-                    for atom in atoms:
-                        attr_itr = getattr(attr_itr, atom)
-                    if isinstance(attr_itr, torch.Tensor):
-                        meta_out = attr_itr.to(device="meta")
-                    else:
-                        meta_out = attr_itr
-                finally:
-                    self._disable_module_getattr = False
+        # dispatch the arguments generator depending on the kind and target in origin arguments.
+        args_metas, _ = extract_meta(*args, **kwargs)
+        if kind == "call_function":
+            if bias_addition_function.has(target):
+                patched_arguments_list = bias_addition_function.get(target)
+            elif bias_addition_function.has(target.__name__):
+                # use name for some builtin op like @ (matmul)
+                patched_arguments_list = bias_addition_function.get(target.__name__)
             else:
-                return proxy
+                patched_arguments_list = origin_arguments_list
 
-            if not isinstance(proxy, Proxy):
-                raise ValueError("Don't support composite output yet")
+        elif kind == "call_method":
+            method = getattr(args_metas[0].__class__, target)
+            if bias_addition_function.has(method):
+                patched_arguments_list = bias_addition_function.get(method)
+            else:
+                patched_arguments_list = origin_arguments_list
+
+        elif kind == "call_module":
+            if not hasattr(self, "orig_forward"):
+                raise AttributeError(f"{self} does not have an attribute called orig_forward")
+            self._disable_module_getattr = True
+            try:
+                mod = self.root.get_submodule(target)
+                mod_type = type(mod)
+                if bias_addition_module.has(mod_type):
+                    patched_arguments_list = bias_addition_module.get(mod_type)
+                else:
+                    patched_arguments_list = origin_arguments_list
+            finally:
+                self._disable_module_getattr = False
+
+        else:
+            patched_arguments_list = origin_arguments_list
+
+        # create nodes using patched arguments
+        for patched_arguments in patched_arguments_list:
+            proxy = super().create_proxy(*patched_arguments)
+            proxy: ColoProxy
+            meta_out = self._meta_data_computing(kind, target, args, kwargs)
             proxy.meta_data = meta_out
-        except Exception as e:
-            raise RuntimeError(f"Could not compute metadata for {kind} target {target}: {e}")
+
         return proxy
 
     def _module_getattr(self, attr, attr_val, parameter_proxy_cache):
@@ -222,6 +198,81 @@ class ColoTracer(Tracer):
         else:
             raise ValueError(f"Unrecognised tracer type {tracer_type}")
 
+    def _meta_data_computing(self, kind, target, args, kwargs):
+
+        if kind == "placeholder" and target in self.meta_args and self.meta_args[target].is_meta:
+            meta_out = self.meta_args[target]
+            return meta_out
+
+        if target in self.orig_torch_tensor_methods:
+            # NOTE: tensor constructors in PyTorch define the `device` argument as
+            # *kwargs-only*. That is why this works. If you add methods to
+            # _TORCH_METHODS_TO_PATCH that do not define `device` as kwarg-only,
+            # this will break and you will likely see issues where we cannot infer
+            # the size of the output.
+            if "device" in kwargs:
+                kwargs["device"] = "meta"
+
+        try:
+            args_metas, kwargs_metas = extract_meta(*args, **kwargs)
+
+            if kind == "call_function":
+                # fetch patched function
+                if meta_patched_function.has(target):
+                    meta_target = meta_patched_function.get(target)
+                elif meta_patched_function.has(target.__name__):
+                    # use name for some builtin op like @ (matmul)
+                    meta_target = meta_patched_function.get(target.__name__)
+                else:
+                    meta_target = target
+
+                meta_out = meta_target(*args_metas, **kwargs_metas)
+                if isinstance(meta_out, torch.Tensor):
+                    meta_out = meta_out.to(device="meta")
+            elif kind == "call_method":
+                method = getattr(args_metas[0].__class__, target)
+
+                # fetch patched method
+                if meta_patched_function.has(method):
+                    meta_target = meta_patched_function.get(method)
+                else:
+                    meta_target = method
+
+                meta_out = meta_target(*args_metas, **kwargs_metas)
+            elif kind == "call_module":
+                if not hasattr(self, "orig_forward"):
+                    raise AttributeError(f"{self} does not have an attribute called orig_forward")
+                self._disable_module_getattr = True
+                try:
+                    mod = self.root.get_submodule(target)
+                    mod_type = type(mod)
+                    if meta_patched_module.has(mod_type):
+                        meta_out = meta_patched_module.get(mod_type)(mod, *args_metas, **kwargs_metas)
+                    else:
+                        meta_out = self.orig_forward(*args_metas, **kwargs_metas)
+                finally:
+                    self._disable_module_getattr = False
+            elif kind == "get_attr":
+                self._disable_module_getattr = True
+                try:
+                    attr_itr = self.root
+                    atoms = target.split(".")
+                    for atom in atoms:
+                        attr_itr = getattr(attr_itr, atom)
+                    if isinstance(attr_itr, torch.Tensor):
+                        meta_out = attr_itr.to(device="meta")
+                    else:
+                        meta_out = attr_itr
+                finally:
+                    self._disable_module_getattr = False
+            else:
+                return None
+
+        except Exception as e:
+            raise RuntimeError(f"Could not compute metadata for {kind} target {target}: {e}")
+
+        return meta_out
+
     def trace(self,
               root: nn.Module,
               concrete_args: Optional[Dict[str, Tensor]] = None,
@@ -231,7 +282,7 @@ class ColoTracer(Tracer):
 
         Args:
             root (nn.Module): a `nn.Module` object to trace the computation graph
-            meta_args (Optional[Dict[str, Tensor]]): the meta tensor arguments used to trace the computation graph. 
+            meta_args (Optional[Dict[str, Tensor]]): the meta tensor arguments used to trace the computation graph.
                 These arguments are the sample data fed to the model during actual computation, but just converted to meta tensors.
             concrete_args (Optional[Dict[str, Tensor]]): the concrete arguments that should not be treated as Proxies.
         """
