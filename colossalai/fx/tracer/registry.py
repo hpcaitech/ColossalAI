@@ -23,3 +23,5 @@ class PatchRegistry:
 
 meta_patched_function = PatchRegistry(name='patched_functions_for_meta_execution')
 meta_patched_module = PatchRegistry(name='patched_modules_for_meta_execution')
+bias_addition_function = PatchRegistry(name='patched_function_for_bias_addition')
+bias_addition_module = PatchRegistry(name='patched_module_for_bias_addition')
