@@ -106,7 +106,7 @@ def linear_meta_info(*args) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.
         # the backward activation cost is the size of input_tensor, weight_tensor and bias_tensor, parameter cost is 0
         bwd_memory_cost = MemoryCost(activation=activation_size(input_tensor) + activation_size(weight_tensor) +
                                      activation_size(bias_tensor),
-                                     parameter=0,
+                                     parameter=activation_size(weight_tensor) + activation_size(bias_tensor),
                                      temp=0,
                                      buffer=0)
 
@@ -141,7 +141,7 @@ def linear_meta_info(*args) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.
 
         # the backward activation cost is the size of input_tensor and weight_tensor, parameter cost is 0
         bwd_memory_cost = MemoryCost(activation=activation_size(input_tensor) + activation_size(weight_tensor),
-                                     parameter=0,
+                                     parameter=activation_size(weight_tensor),
                                      temp=0,
                                      buffer=0)
 
