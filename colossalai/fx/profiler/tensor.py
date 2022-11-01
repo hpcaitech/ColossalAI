@@ -12,10 +12,11 @@ from .constants import ALIAS_ATEN
 __all__ = ['MetaTensor']
 
 
-def set_uuid(x):
+def set_data_ptr(x):
     if isinstance(x, torch.Tensor):
-        if not hasattr(x, 'uuid'):
-            setattr(x, 'uuid', uuid.uuid4())
+        if not x.data_ptr():
+            data_ptr = uuid.uuid4()
+            x.data_ptr = lambda: data_ptr
 
 
 @compatibility(is_backward_compatible=False)
@@ -53,7 +54,7 @@ class MetaTensor(torch.Tensor):
         if not r._tensor.is_meta:
             r._tensor = r._tensor.to(torch.device('meta'))
         # only tensor not on `meta` should be copied to `meta`
-        set_uuid(r._tensor)
+        set_data_ptr(r._tensor)
         return r
 
     def __repr__(self):
@@ -88,7 +89,7 @@ class MetaTensor(torch.Tensor):
         # here we keep the uuid of input because ALIAS_ATEN do not generate a physical copy
         # of the input
         if func in ALIAS_ATEN:
-            setattr(out, 'uuid', args[0].uuid)
+            out.data_ptr = args[0].data_ptr
 
         # Now, we want to continue propagating this tensor, so we rewrap Tensors in
         # our custom tensor subclass

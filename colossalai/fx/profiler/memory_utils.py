@@ -13,10 +13,10 @@ def activation_size(out: Union[torch.Tensor, Dict, List, Tuple, int]) -> int:
     """Calculate activation size of a node.
 
     Args:
-        activation (Union[torch.Tensor, Dict, List, Tuple, int]): The activation of a `torch.nn.Module` or `torch.nn.functional`
+        activation (Union[torch.Tensor, Dict, List, Tuple, int]): The activation of a `torch.nn.Module` or `torch.nn.functional`.
 
     Returns:
-        int: The activation size
+        int: The activation size, unit is byte.
     """
     act_size = 0
     if isinstance(out, torch.Tensor):
@@ -38,10 +38,10 @@ def parameter_size(mod: torch.nn.Module) -> int:
     """Calculate parameter size of a node.
 
     Args:
-        mod (torch.nn.Module): The target `torch.nn.Module`
+        mod (torch.nn.Module): The target `torch.nn.Module`.
 
     Returns:
-        int: The parameter size
+        int: The parameter size, unit is byte.
     """
     param_size = 0
     for param in mod.parameters():

@@ -426,7 +426,7 @@ class ColoTracer(Tracer):
 
         if self.inside_torch_checkpoint_func:
             # annotate the activation checkpoint module
-            setattr(node, 'activation_checkpoint', self.act_ckpt_region_count)
+            node.meta['activation_checkpoint'] = self.act_ckpt_region_count
         return node
 
 
