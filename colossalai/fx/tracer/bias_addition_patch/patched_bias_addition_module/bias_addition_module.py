@@ -1,6 +1,9 @@
 import operator
 from abc import ABC, abstractmethod
 
+import torch
+import torch.nn.functional as F
+
 
 class BiasAdditionModule(ABC):
     """
@@ -41,7 +44,6 @@ class BiasAdditionModule(ABC):
         bias_proxy = self.tracer.create_proxy(bias_node_kind, bias_node_target, (), {})
         return bias_proxy
 
-    @abstractmethod
     def create_non_bias_func_proxy(self):
         """
         This method is used to create the non_bias_func proxy, the node created by this proxy will
@@ -54,7 +56,6 @@ class BiasAdditionModule(ABC):
         non_bias_func_proxy = self.tracer.create_proxy(node_kind, node_target, node_args, {})
         return non_bias_func_proxy
 
-    @abstractmethod
     def create_bias_addition_proxy(self, non_bias_func_proxy, bias_proxy):
         """
         This method is used to create the bias_addition_proxy, the node created by this proxy will
@@ -86,3 +87,11 @@ class BiasAdditionModule(ABC):
             %add : [#users=1] = call_function[target=operator.add](args = (%conv2d, %view), kwargs = {})
         """
         pass
+
+
+module_to_func_dict = {
+    torch.nn.Linear: F.linear,
+    torch.nn.Conv1d: F.conv1d,
+    torch.nn.Conv2d: F.conv2d,
+    torch.nn.Conv3d: F.conv3d,
+}

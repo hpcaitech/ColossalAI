@@ -20,7 +20,8 @@ from torch.fx.proxy import ParameterProxy, Proxy
 
 from ..proxy import ColoProxy
 from ._tracer_utils import compute_meta_data_for_functions_proxy, extract_meta, is_element_in_list
-from .meta_patch import bias_addition_function, bias_addition_module, meta_patched_function, meta_patched_module
+from .bias_addition_patch import module_to_func_dict
+from .registry import bias_addition_function, bias_addition_module, meta_patched_function, meta_patched_module
 
 __all__ = ['ColoTracer']
 
@@ -112,7 +113,9 @@ class ColoTracer(Tracer):
                 mod = self.root.get_submodule(target)
                 mod_type = type(mod)
                 if bias_addition_module.has(mod_type):
-                    return bias_addition_module.get(mod_type)(self, target, args, kwargs)
+                    function_to_substitute = module_to_func_dict[mod_type]
+                    handle = bias_addition_module.get(mod_type)(self, target, args, kwargs, function_to_substitute)
+                    return handle.generate()
             finally:
                 self._disable_module_getattr = False
 
