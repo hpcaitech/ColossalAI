@@ -118,11 +118,10 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         res = []
         
         layer_spec = self._layer_spec_dict[id(mod)]
-        if layer_spec.children is None:
+        if layer_spec.children is None or len(layer_spec.children) == 0:
             res.append(layer_spec)
-            return
+            return res
         
-        layer_spec = self._layer_spec_dict[id(mod)]
         if layer_spec.typename in (torch.nn.modules.container.ModuleList,
                                     torch.nn.modules.container.Sequential):
             for child_in_container in layer_spec.children:

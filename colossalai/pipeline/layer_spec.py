@@ -42,7 +42,7 @@ class LayerSpec:
         return self.typename(*recovered_args, **recovered_kwargs)
 
     def set_children(self, children):
-        self.children = children
+        self.children = list(children)
 
     def count_params(self):
         self._param_count = 0
