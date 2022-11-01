@@ -132,7 +132,6 @@ def check_linear_module_handler(rank, bias, world_size, port):
             assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
-
 class LinearModel(nn.Module):
 
     def __init__(self):
@@ -210,8 +209,6 @@ def check_linear_function_handler(rank, bias, world_size, port):
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
     # one strategy will be converted to different physical sharding spec
-    import pdb
-    pdb.set_trace()
     assert len(strategy_name_list) > 8
 
     # SS = SR x RS
