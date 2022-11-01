@@ -112,7 +112,7 @@ class ColoTracer(Tracer):
             try:
                 mod = self.root.get_submodule(target)
                 mod_type = type(mod)
-                if bias_addition_module.has(mod_type):
+                if bias_addition_module.has(mod_type) and mod.bias is not None:
                     function_to_substitute = module_to_func_dict[mod_type]
                     handle = bias_addition_module.get(mod_type)(self, target, args, kwargs, function_to_substitute)
                     return handle.generate()

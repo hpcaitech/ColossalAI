@@ -44,16 +44,30 @@ class BiasAdditionModule(ABC):
         bias_proxy = self.tracer.create_proxy(bias_node_kind, bias_node_target, (), {})
         return bias_proxy
 
-    def create_non_bias_func_proxy(self):
+    @abstractmethod
+    def extract_kwargs_from_mod(self):
+        """
+        This method is used to extract the kwargs for non-bias computation.
+
+        For example:
+            The kwargs for conv2d module is {} because the attributes like 'padding' or 'groups' are
+            considered during module initilizing. However, we need to consider those attributes as kwargs
+            in F.conv2d.
+        """
+        pass
+
+    def create_non_bias_func_proxy(self, input_proxy=None):
         """
         This method is used to create the non_bias_func proxy, the node created by this proxy will
         compute the main computation, such as convolution, with bias option banned.
         """
         node_kind = 'call_function'
         node_target = self.substitute_func
-        input_proxy = self.args[0]
+        if input_proxy is None:
+            input_proxy = self.args[0]
         node_args = (input_proxy, self.weight_proxy)
-        non_bias_func_proxy = self.tracer.create_proxy(node_kind, node_target, node_args, {})
+        node_kwargs = self.extract_kwargs_from_mod()
+        non_bias_func_proxy = self.tracer.create_proxy(node_kind, node_target, node_args, node_kwargs)
         return non_bias_func_proxy
 
     def create_bias_addition_proxy(self, non_bias_func_proxy, bias_proxy):
