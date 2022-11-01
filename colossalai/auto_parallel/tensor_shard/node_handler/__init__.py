@@ -2,7 +2,7 @@ from .batch_norm_handler import BatchNormModuleHandler
 from .binary_elementwise_handler import BinaryElementwiseHandler
 from .bmm_handler import AddBMMFunctionHandler, BMMFunctionHandler
 from .conv_handler import ConvFunctionHandler, ConvModuleHandler
-from .getatrr_hadnler import GetattrHandler
+from .getatrr_handler import GetattrHandler
 from .layer_norm_handler import LayerNormModuleHandler
 from .linear_handler import LinearFunctionHandler, LinearModuleHandler
 from .normal_pooling_handler import NormPoolingHandler
