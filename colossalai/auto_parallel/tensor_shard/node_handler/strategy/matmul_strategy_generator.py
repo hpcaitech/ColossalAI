@@ -158,6 +158,7 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
 
         # get communication action
+        communication_action_mapping = {}
         if self.is_param('other'):
             other_comm_action = self.get_communication_action(
                 sharding_spec=sharding_spec_mapping['other'],
@@ -171,6 +172,8 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
                 logical_process_axis=mesh_dim,
                 comm_type=CommType.BEFORE,
                 arg_index=1)
+        communication_action_mapping['other'] = other_comm_action
+
         if self.has_bias:
             if self.is_param('bias'):
                 bias_comm_action = self.get_communication_action(
@@ -185,7 +188,7 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
                     logical_process_axis=mesh_dim,
                     comm_type=CommType.BEFORE,
                     arg_index=2)
-        communication_action_mapping = {'other': other_comm_action, 'bias': bias_comm_action}
+            communication_action_mapping['bias'] = bias_comm_action
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
