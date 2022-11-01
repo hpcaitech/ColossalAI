@@ -114,6 +114,26 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
                 delattr(module, name)
             setattr(module, name, ColoParameter.from_torch_tensor(tensor=param.data, requires_grad=param.requires_grad))
 
+    def _get_flatten_model(self, mod):
+        res = []
+        
+        layer_spec = self._layer_spec_dict[id(mod)]
+        if layer_spec.children is None:
+            res.append(layer_spec)
+            return
+        
+        layer_spec = self._layer_spec_dict[id(mod)]
+        if layer_spec.typename in (torch.nn.modules.container.ModuleList,
+                                    torch.nn.modules.container.Sequential):
+            for child_in_container in layer_spec.children:
+                res.append(self._layer_spec_dict[id(child_in_container)])
+        
+        else:
+            for child in layer_spec.children:
+                res = res + self._get_flatten_model(child)
+        
+        return res
+
     def to_layer_list(self, exec_seq=None):
         """
         Create a layer spec list and func list with execution sequence given by user.
@@ -123,23 +143,10 @@ class PipelinableContext(InsertPostInitMethodToModuleSubClasses):
         self._exec_seq = exec_seq
         if exec_seq is None:
             # if user do not provide the model executing sequence, we use the initialization order as the executing order.
-            children_name = []
+            
+            # flatten the model except children of ModuleList & Sequential
             for child in self._root_children:
-                layer_spec = self._layer_spec_dict[id(child)]
-                if layer_spec.typename in (torch.nn.modules.container.ModuleList,
-                                           torch.nn.modules.container.Sequential):
-                    for child_in_container in layer_spec.children:
-                        self._layer_spec_list.append(self._layer_spec_dict[id(child_in_container)])
-                        for name, module in self._model.named_modules():
-                            if id(module) == id(child_in_container):
-                                children_name.append(name)
-                                break
-                else:
-                    self._layer_spec_list.append(layer_spec)
-                    for name, module in self._model.named_modules():
-                        if id(module) == id(child):
-                            children_name.append(name)
-                            break
+                self._layer_spec_list = self._layer_spec_list + self._get_flatten_model(child)
 
         else:
             front_funcs_list = []
