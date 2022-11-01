@@ -290,7 +290,6 @@ def check_conv_function_handler(rank, bias, world_size, port):
             assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[1]
 
 
-@pytest.mark.skip("some cases need to be fixed")
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 # We temporarily ban the bias option before doing bias add
@@ -303,7 +302,6 @@ def test_conv_module_handler(bias=False):
     mp.spawn(run_func, nprocs=world_size)
 
 
-@pytest.mark.skip("some cases need to be fixed")
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 # We temporarily ban the bias option before doing bias add
