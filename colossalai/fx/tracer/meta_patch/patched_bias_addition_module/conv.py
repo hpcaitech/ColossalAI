@@ -1,53 +1,53 @@
-import copy
-import operator
-
 import torch
+import torch.nn.functional as F
 
 from ..registry import bias_addition_module
+from .bias_addition_module import BiasAdditionModule
+
+
+class BiasAdditionConv(BiasAdditionModule):
+
+    def create_non_bias_func_proxy(self):
+        return super().create_non_bias_func_proxy()
+
+    def create_bias_addition_proxy(self, non_bias_func_proxy, bias_proxy):
+        return super().create_bias_addition_proxy(non_bias_func_proxy, bias_proxy)
+
+    def create_bias_reshape_proxy(self, dimensions):
+        """
+        This method is used to reshape the bias node in order to make bias and
+        output of non-bias convolution broadcastable.
+        """
+        bias_shape = [1] * dimensions
+        bias_shape[1] = -1
+        bias_reshape_node_kind = 'call_method'
+        bias_reshape_node_target = 'view'
+        bias_reshape_node_args = (self.bias_proxy, bias_shape)
+        bias_reshape_proxy = self.tracer.create_proxy(bias_reshape_node_kind, bias_reshape_node_target,
+                                                      bias_reshape_node_args, {})
+        return bias_reshape_proxy
+
+    def generate(self):
+        non_bias_conv_func_proxy = self.create_non_bias_func_proxy()
+        output_dims = non_bias_conv_func_proxy.meta_data.dim()
+        bias_reshape_proxy = self.create_bias_reshape_proxy(output_dims)
+        bias_addition_proxy = self.create_bias_addition_proxy(non_bias_conv_func_proxy, bias_reshape_proxy)
+        return bias_addition_proxy
 
 
 @bias_addition_module.register(torch.nn.Conv1d)
 def non_bias_nn_conv1d(tracer, target, args, kwargs):
-    return _non_bias_nn_conv(tracer, target, args, kwargs, torch.nn.functional.conv1d)
+    bias_addition_conv1d = BiasAdditionConv(tracer, target, args, kwargs, F.conv1d)
+    return bias_addition_conv1d.generate()
 
 
 @bias_addition_module.register(torch.nn.Conv2d)
 def non_bias_nn_conv2d(tracer, target, args, kwargs):
-    return _non_bias_nn_conv(tracer, target, args, kwargs, torch.nn.functional.conv2d)
+    bias_addition_conv2d = BiasAdditionConv(tracer, target, args, kwargs, F.conv2d)
+    return bias_addition_conv2d.generate()
 
 
 @bias_addition_module.register(torch.nn.Conv3d)
 def non_bias_nn_conv3d(tracer, target, args, kwargs):
-    return _non_bias_nn_conv(tracer, target, args, kwargs, torch.nn.functional.conv3d)
-
-
-def _non_bias_nn_conv(tracer, target, args, kwargs, conv_function):
-    weight_node_kind = 'get_attr'
-    weight_node_target = target + '.weight'
-    weight_proxy = tracer.create_proxy(weight_node_kind, weight_node_target, (), {})
-
-    bias_node_kind = 'get_attr'
-    bias_node_target = target + '.bias'
-    bias_proxy = tracer.create_proxy(bias_node_kind, bias_node_target, (), {})
-
-    conv_node_kind = 'call_function'
-    conv_node_target = conv_function
-    conv_node_args = list(args)
-    conv_node_args.append(weight_proxy)
-    conv_proxy = tracer.create_proxy(conv_node_kind, conv_node_target, tuple(conv_node_args), {})
-
-    bias_dim = conv_proxy.meta_data.dim()
-    bias_shape = [1] * bias_dim
-    bias_shape[1] = -1
-    bias_reshape_node_kind = 'call_method'
-    bias_reshape_node_target = 'view'
-    bias_reshape_node_args = (bias_proxy, bias_shape)
-    bias_reshape_kind = tracer.create_proxy(bias_reshape_node_kind, bias_reshape_node_target, bias_reshape_node_args,
-                                            {})
-
-    bias_add_node_kind = 'call_function'
-    bias_add_node_target = operator.add
-    bias_add_args = (conv_proxy, bias_reshape_kind)
-    bias_add_proxy = tracer.create_proxy(bias_add_node_kind, bias_add_node_target, tuple(bias_add_args), kwargs)
-
-    return bias_add_proxy
+    bias_addition_conv3d = BiasAdditionConv(tracer, target, args, kwargs, F.conv3d)
+    return bias_addition_conv3d.generate()

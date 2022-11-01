@@ -1,31 +1,25 @@
-import copy
-import operator
-from weakref import ProxyType
-
 import torch
+import torch.nn.functional as F
 
 from ..registry import bias_addition_module
+from .bias_addition_module import BiasAdditionModule
+
+
+class BiasAdditionLinear(BiasAdditionModule):
+
+    def create_non_bias_func_proxy(self):
+        return super().create_non_bias_func_proxy()
+
+    def create_bias_addition_proxy(self, non_bias_func_proxy, bias_proxy):
+        return super().create_bias_addition_proxy(non_bias_func_proxy, bias_proxy)
+
+    def generate(self):
+        non_bias_linear_func_proxy = self.create_non_bias_func_proxy()
+        bias_addition_proxy = self.create_bias_addition_proxy(non_bias_linear_func_proxy, self.bias_proxy)
+        return bias_addition_proxy
 
 
 @bias_addition_module.register(torch.nn.Linear)
 def non_bias_nn_linear(tracer, target, args, kwargs):
-    weight_node_kind = 'get_attr'
-    weight_node_target = target + '.weight'
-    weight_proxy = tracer.create_proxy(weight_node_kind, weight_node_target, (), {})
-
-    bias_node_kind = 'get_attr'
-    bias_node_target = target + '.bias'
-    bias_proxy = tracer.create_proxy(bias_node_kind, bias_node_target, (), {})
-
-    linear_node_kind = 'call_function'
-    linear_node_target = torch.nn.functional.linear
-    linear_node_args = list(args)
-    linear_node_args.append(weight_proxy)
-    linear_proxy = tracer.create_proxy(linear_node_kind, linear_node_target, tuple(linear_node_args), kwargs)
-
-    bias_add_node_kind = 'call_function'
-    bias_add_node_target = operator.add
-    bias_add_args = (linear_proxy, bias_proxy)
-    bias_add_proxy = tracer.create_proxy(bias_add_node_kind, bias_add_node_target, tuple(bias_add_args), kwargs)
-
-    return bias_add_proxy
+    bias_addition_linear = BiasAdditionLinear(tracer, target, args, kwargs, F.linear)
+    return bias_addition_linear.generate()

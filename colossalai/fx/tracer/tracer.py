@@ -94,15 +94,15 @@ class ColoTracer(Tracer):
         args_metas, _ = extract_meta(*args, **kwargs)
         if kind == "call_function":
             if bias_addition_function.has(target):
-                return bias_addition_function.get(target)
+                return bias_addition_function.get(target)(self, target, args, kwargs)
             elif bias_addition_function.has(target.__name__):
                 # use name for some builtin op like @ (matmul)
-                return bias_addition_function.get(target.__name__)
+                return bias_addition_function.get(target.__name__)(self, target, args, kwargs)
 
         elif kind == "call_method":
             method = getattr(args_metas[0].__class__, target)
             if bias_addition_function.has(method):
-                proxy_arguments_dict = bias_addition_function.get(method)
+                return bias_addition_function.get(method)(self, target, args, kwargs)
 
         elif kind == "call_module":
             if not hasattr(self, "orig_forward"):
