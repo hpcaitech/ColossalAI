@@ -1,6 +1,5 @@
 import operator
 from copy import deepcopy
-from enum import Enum
 from functools import reduce
 
 import torch
@@ -175,6 +174,9 @@ class ShardingSpec:
                  dim_partition_dict=None,
                  sharding_sequence=None):
         self.device_mesh = device_mesh
+
+        if isinstance(entire_shape, (list, tuple)):
+            entire_shape = torch.Size(entire_shape)
         self.entire_shape = entire_shape
         self.dim_partition_dict = dim_partition_dict
         self.sharding_sequence = sharding_sequence
