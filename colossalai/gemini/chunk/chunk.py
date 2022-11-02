@@ -1,11 +1,12 @@
-import torch
-import torch.distributed as dist
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
-from colossalai.utils import get_current_device
+import torch
+import torch.distributed as dist
+
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.utils import get_current_device
 
 
 class TensorState(Enum):
@@ -58,6 +59,7 @@ class Chunk:
                  process_group: ColoProcessGroup,
                  dtype: torch.dtype,
                  init_device: Optional[torch.device] = None,
+                 cpu_shard_init: bool = False,
                  keep_gathered: bool = False,
                  pin_memory: bool = False) -> None:
         """
@@ -101,6 +103,11 @@ class Chunk:
         self.cuda_shard = None    # using two attributes for the better interpretation
         self.cpu_shard = None
         self.is_gathered = True
+
+        # configure the init deivce of the shard
+        # no-offload default: fp16, fp32 -> CUDA
+        # offload default: fp16, fp32 -> CPU
+        self.shard_device = torch.device("cpu") if cpu_shard_init else get_current_device()
 
         self.chunk_mem = self.chunk_size * self.chunk_temp.element_size()
         self.shard_mem = self.chunk_mem // self.pg_size
@@ -242,11 +249,8 @@ class Chunk:
         self.tensors_state_monitor[tensor_state] += 1
         self.utilized_size = new_utilized_size
 
-    def close_chunk(self, shard_dev: Optional[torch.device] = None):
+    def close_chunk(self):
         """Close the chunk. Any tensor can't be appended to a closed chunk later.
-
-        Args:
-            shard_dev: the device where the shard locates
         """
         # sanity check
         assert self.chunk_temp is not None
@@ -265,21 +269,16 @@ class Chunk:
         self.chunk_temp = None
 
         self.__scatter()
-
+        # always gathered chunk does not have shard
         if self.keep_gathered:
-            if shard_dev is None:
-                shard_dev = get_current_device()
-            else:
-                assert shard_dev.type == 'cuda'
-        elif shard_dev is None:
-            shard_dev = torch.device('cpu')
+            return
 
-        if self.pin_memory or shard_dev.type == 'cpu':
+        if self.pin_memory or self.shard_device.type == 'cpu':
             self.cpu_shard = torch.empty(self.shard_size, dtype=self.dtype, pin_memory=self.pin_memory)
             self.cpu_shard.copy_(self.cuda_shard)
             self.cpu_vis_flag = True    # cpu_shard has been visited
 
-        if shard_dev.type == 'cpu':
+        if self.shard_device.type == 'cpu':
             self.cuda_shard = None
 
     def shard_move(self, device: torch.device, force_copy: bool = False):

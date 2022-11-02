@@ -1,9 +1,12 @@
-import torch
 import functools
-from .memory_tracer.memstats_collector import MemStatsCollectorV2
-from typing import List, Optional, Tuple
 from time import time
+from typing import List, Optional, Tuple
+
+import torch
+
 from colossalai.gemini.chunk import Chunk, ChunkManager
+
+from .memory_tracer.memstats_collector import MemStatsCollectorV2
 from .placement_policy import PlacementPolicyFactory
 
 
@@ -25,6 +28,7 @@ class GeminiManager:
 
     def __init__(self, placement_policy: str, chunk_manager: ChunkManager) -> None:
         assert placement_policy in PlacementPolicyFactory.get_polocy_names()
+        self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
         self._mem_stats_collector = MemStatsCollectorV2(chunk_manager) if policy_cls.need_mem_stats else None
