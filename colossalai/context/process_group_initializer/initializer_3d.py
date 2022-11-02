@@ -176,6 +176,112 @@ class Initializer_3D_Output(ProcessGroupInitializer):
         return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
 
 
+class Initializer_3D_InputxWeight(ProcessGroupInitializer):
+    """3D tensor parallel initialization among input.
+
+    Args:
+        num_group (int): The number of all tensor groups.
+        depth (int): Depth of 3D parallelism.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
+    """
+
+    def __init__(self, num_group: int, depth: int, *args):
+        super().__init__(*args)
+        self.num_group = num_group
+        self.depth = depth
+
+    def init_dist_group(self):
+        """Initialize 3D tensor parallel groups among input, and assign local_ranks and groups to each gpu.
+
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among input in a tuple.
+        """
+        local_rank = None
+        ranks_in_group = None
+        process_group = None
+        cpu_group = None
+        group_world_size = None
+        mode = ParallelMode.PARALLEL_3D_INPUT_X_WEIGHT
+        env.input_x_weight_group_3d = mode
+
+        for h in range(self.num_group):
+            for k in range(self.depth):
+                ranks = [
+                    h * self.depth**3 + i + self.depth * (j + self.depth * k) for j in range(self.depth)
+                    for i in range(self.depth)
+                ]
+                group = dist.new_group(ranks)
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+
+                if self.rank in ranks:
+                    local_rank = ranks.index(self.rank)
+                    group_world_size = len(ranks)
+                    process_group = group
+                    cpu_group = group_cpu
+                    ranks_in_group = ranks
+
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
+
+
+class Initializer_3D_OutputxWeight(ProcessGroupInitializer):
+    """3D tensor parallel initialization among input.
+
+    Args:
+        num_group (int): The number of all tensor groups.
+        depth (int): Depth of 3D parallelism.
+        rank (int): The rank of current process.
+        world_size (int): Size of whole communication world.
+        config (Config): Running configuration.
+        data_parallel_size (int): Size of data parallel.
+        pipeline_parallel_size (int): Size of pipeline parallel.
+        tensor_parallel_size (int): Size of tensor parallel.
+    """
+
+    def __init__(self, num_group: int, depth: int, *args):
+        super().__init__(*args)
+        self.num_group = num_group
+        self.depth = depth
+
+    def init_dist_group(self):
+        """Initialize 3D tensor parallel groups among input, and assign local_ranks and groups to each gpu.
+
+        Returns:
+            Tuple (local_rank, group_world_size, process_group, ranks_in_group, mode):
+                3D tensor parallelism's information among input in a tuple.
+        """
+        local_rank = None
+        ranks_in_group = None
+        process_group = None
+        cpu_group = None
+        group_world_size = None
+        mode = ParallelMode.PARALLEL_3D_OUTPUT_X_WEIGHT
+        env.output_x_weight_group_3d = mode
+
+        for h in range(self.num_group):
+            for j in range(self.depth):
+                ranks = [
+                    h * self.depth**3 + i + self.depth * (j + self.depth * k) for k in range(self.depth)
+                    for i in range(self.depth)
+                ]
+                group = dist.new_group(ranks)
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+
+                if self.rank in ranks:
+                    local_rank = ranks.index(self.rank)
+                    group_world_size = len(ranks)
+                    process_group = group
+                    cpu_group = group_cpu
+                    ranks_in_group = ranks
+
+        return local_rank, group_world_size, process_group, cpu_group, ranks_in_group, mode
+
+
 @DIST_GROUP_INITIALIZER.register_module
 class Initializer_3D(ProcessGroupInitializer):
     """Serve as the single entry point to 3D parallel initialization.
@@ -200,6 +306,8 @@ class Initializer_3D(ProcessGroupInitializer):
         self.input_initializer = Initializer_3D_Input(self.num_group, self.depth, *args)
         self.weight_initializer = Initializer_3D_Weight(self.num_group, self.depth, *args)
         self.output_initializer = Initializer_3D_Output(self.num_group, self.depth, *args)
+        self.input_x_weight_initializer = Initializer_3D_InputxWeight(self.num_group, self.depth, *args)
+        self.output_x_weight_initializer = Initializer_3D_OutputxWeight(self.num_group, self.depth, *args)
 
     def init_dist_group(self):
         """Initialize 3D tensor parallel groups, and assign local_ranks and groups to each gpu.
@@ -211,6 +319,8 @@ class Initializer_3D(ProcessGroupInitializer):
         parallel_setting = [
             self.input_initializer.init_dist_group(),
             self.weight_initializer.init_dist_group(),
-            self.output_initializer.init_dist_group()
+            self.output_initializer.init_dist_group(),
+            self.input_x_weight_initializer.init_dist_group(),
+            self.output_x_weight_initializer.init_dist_group()
         ]
         return parallel_setting

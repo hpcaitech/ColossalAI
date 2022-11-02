@@ -1,7 +1,10 @@
 import operator
+
 import torch
-from ..registry import meta_patched_function
+
 from colossalai.fx.proxy import ColoProxy
+
+from ...registry import meta_patched_function
 
 
 @meta_patched_function.register(operator.getitem)

@@ -1,8 +1,9 @@
-import torch
-import timm.models as tm
-from colossalai.fx import ColoTracer
-from torch.fx import GraphModule
 import pytest
+import timm.models as tm
+import torch
+from torch.fx import GraphModule
+
+from colossalai.fx import ColoTracer
 
 
 def trace_and_compare(model_cls, tracer, data, meta_args=None):
@@ -22,7 +23,7 @@ def trace_and_compare(model_cls, tracer, data, meta_args=None):
     with torch.no_grad():
         fx_out = gm(data)
         non_fx_out = model(data)
-    
+
     # compare output
     if isinstance(fx_out, tuple):
         # some models produce tuple as output
@@ -30,7 +31,8 @@ def trace_and_compare(model_cls, tracer, data, meta_args=None):
             assert torch.allclose(v1, v2), f'{model.__class__.__name__} has inconsistent outputs, {v1} vs {v2}'
     else:
         assert torch.allclose(
-            fx_out, non_fx_out), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+            fx_out, non_fx_out,
+            atol=1e-5), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
 
 
 def test_timm_models_without_control_flow():
