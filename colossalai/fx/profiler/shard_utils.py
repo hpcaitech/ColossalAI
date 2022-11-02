@@ -87,8 +87,8 @@ def calculate_fwd_out(n: Node) -> int:
 
     fwd_in = dict()
     for u in n.users:
-        fwd_in.update({x.uuid: x for x in u.meta["fwd_in"] if isinstance(x, torch.Tensor) and hasattr(x, 'uuid')})
-    fwd_out = {x.uuid: x for x in n.meta["fwd_out"] if isinstance(x, torch.Tensor) and hasattr(x, 'uuid')}
+        fwd_in.update({x.data_ptr(): x for x in u.meta["fwd_in"] if isinstance(x, torch.Tensor)})
+    fwd_out = {x.data_ptr(): x for x in n.meta["fwd_out"] if isinstance(x, torch.Tensor)}
     return activation_size(intersect(fwd_in, fwd_out))
 
 
