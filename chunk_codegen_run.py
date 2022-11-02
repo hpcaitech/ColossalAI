@@ -54,6 +54,7 @@ def _test_fwd_and_bwd(model: torch.nn.Module, gm: ColoGraphModule, data: torch.T
     # test forward
     non_fx_out = model(data)
     fx_out = gm(data)
+    print(non_fx_out.shape, fx_out.shape)
     assert torch.equal(non_fx_out, fx_out), "fx_out doesn't comply with original output"
 
     # test barckward
@@ -86,13 +87,13 @@ def _run_offload_codegen(rank):
             setattr(node, "activation_offload", [0, True, False])
         if node.name == "linear1":
             setattr(node, "activation_offload", [0, True, False])
-        if node.name == "linear2":
-            setattr(node, "activation_offload", [1, True, True])
-        if node.name == "linear4":
-            setattr(node, "activation_offload", [2, False, True])
-        if node.name == "linear5":
-            setattr(node, "activation_checkpoint", [0])
-            setattr(node, "activation_offload", True)
+        # if node.name == "linear2":
+        #     setattr(node, "activation_offload", [1, True, True])
+        # if node.name == "linear4":
+        #     setattr(node, "activation_offload", [2, False, True])
+        # if node.name == "linear5":
+        #     setattr(node, "activation_checkpoint", [0])
+        #     setattr(node, "activation_offload", True)
 
     gm = ColoGraphModule(copy.deepcopy(model), graph)
     gm.recompile()
