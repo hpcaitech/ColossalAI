@@ -68,6 +68,7 @@ class ColoTensor(torch.Tensor):
         data (torch.Tensor): a torch tensor used as the payload the colotensor.
         spec (ColoTensorSpec, optional): the tensor spec of initialization. Defaults to ColoTensorSpec(ReplicaSpec()).
     """
+    torch_minor = int(torch.__version__.split('.')[1])
 
     def __new__(cls, data: torch.Tensor, spec: ColoTensorSpec) -> 'ColoTensor':
         """
@@ -167,14 +168,15 @@ class ColoTensor(torch.Tensor):
         if func in _COLOSSAL_OPS:
             func = _COLOSSAL_OPS[func]
 
-        # in order to trigger pre-op hook in the forward of checkpoint module
-        # we have to capture the `backward` function
-        # and make sure that it does not in `torch._C.DisableTorchFunction()` context
-        if func is torch.Tensor.backward:
-            assert len(args) == 1    # only has 1 paramter
-            backward_tensor = torch.Tensor(args[0])
-            tensor_kwargs = {k: torch.Tensor(v) if torch.is_tensor(v) else v for k, v in kwargs.items()}
-            return backward_tensor.backward(**tensor_kwargs)
+        if cls.torch_minor >= 12:
+            # in order to trigger pre-op hook in the forward of checkpoint module
+            # we have to capture the `backward` function
+            # and make sure that it does not in `torch._C.DisableTorchFunction()` context
+            if func is torch.Tensor.backward:
+                assert len(args) == 1    # only has 1 paramter
+                backward_tensor = torch.Tensor(args[0])
+                tensor_kwargs = {k: torch.Tensor(v) if torch.is_tensor(v) else v for k, v in kwargs.items()}
+                return backward_tensor.backward(**tensor_kwargs)
 
         with torch._C.DisableTorchFunction():
             ret = func(*args, **kwargs)
