@@ -1,17 +1,18 @@
-import torch
-from torch.fx import GraphModule
-import torch.nn as nn
-import pytest
+from copy import deepcopy
 
+import pytest
+import torch
+import torch.nn as nn
+from torch.fx import GraphModule
+
+from colossalai.auto_parallel.tensor_shard.deprecated.op_handler.conv_handler import CONV_STRATEGIES_LIST
+from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
+from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
+from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.proxy import ColoProxy
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec, _DimSpec
-from colossalai.auto_parallel.tensor_shard.deprecated.op_handler.conv_handler import CONV_STRATEGIES_LIST
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
-from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
-from copy import deepcopy
 
 
 class ConvModel(nn.Module):
@@ -40,9 +41,14 @@ def test_strategies_constructor():
     # graph():
     #     %x : torch.Tensor [#users=1] = placeholder[target=x]
     #     %mul : [#users=1] = call_function[target=operator.mul](args = (%x, 2), kwargs = {})
-    #     %conv : [#users=1] = call_module[target=conv](args = (%mul,), kwargs = {})
-    #     return conv
+    #     %conv_weight : [#users=1] = get_attr[target=conv.weight]
+    #     %conv_bias : [#users=1] = get_attr[target=conv.bias]
+    #     %conv2d : [#users=1] = call_function[target=torch.conv2d](args = (%mul, %conv_weight), kwargs = {groups: 1, dilation: (1, 1), stride: (1, 1), padding: (0, 0)})
+    #     %view : [#users=1] = call_method[target=view](args = (%conv_bias, [1, -1, 1, 1]), kwargs = {})
+    #     %add : [#users=1] = call_function[target=operator.add](args = (%conv2d, %view), kwargs = {})
+    #     return add
     graph = tracer.trace(root=model, meta_args=input_sample)
+    print(graph)
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
 
@@ -63,12 +69,12 @@ def test_strategies_constructor():
 
     # Third node is conv.
     conv_check_list = deepcopy(CONV_STRATEGIES_LIST)
-    for strategy in strategies_constructor.leaf_strategies[2]:
+    for strategy in strategies_constructor.leaf_strategies[4]:
         conv_check_list.remove(strategy.name)
     assert len(conv_check_list) == 0
 
     # In fast mode, output node only has replica strategy.
-    assert strategies_constructor.leaf_strategies[3][0].name == 'Replica Output'
+    assert strategies_constructor.leaf_strategies[7][0].name == 'Replica Output'
 
     # check strategy_map
 
@@ -81,15 +87,15 @@ def test_strategies_constructor():
     mul = nodes[1]
     assert strategies_constructor.strategy_map[mul][0].name == '[R, R, R, R] -> [R, R, R, R]_0'
 
-    # Third node is conv.
-    conv = nodes[2]
+    # fifth node is conv.
+    conv = nodes[4]
     conv_check_list = deepcopy(CONV_STRATEGIES_LIST)
     for strategy in strategies_constructor.strategy_map[conv]:
         conv_check_list.remove(strategy.name)
     assert len(conv_check_list) == 0
 
     # In fast mode, output node only has replica strategy.
-    output = nodes[3]
+    output = nodes[-1]
     assert strategies_constructor.strategy_map[output][0].name == 'Replica Output'
 
 

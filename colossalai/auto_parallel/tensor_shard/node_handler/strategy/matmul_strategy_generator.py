@@ -60,12 +60,13 @@ class DotProductStrategyGenerator(MatMulStrategyGenerator):
     def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
         fwd_compute_cost = sharded_input_shape[0]
-        bwd_compute_cost = sharded_input_shape * 2
+        bwd_compute_cost = fwd_compute_cost * 2
         compute_cost = TrainCycleItem(fwd=fwd_compute_cost,
                                       bwd=bwd_compute_cost,
                                       total=fwd_compute_cost + bwd_compute_cost)
         return compute_cost
 
+    @ignore_sharding_exception
     def no_split(self):
         name = f'R = R dot R'
         dim_partition_dict = {"input": {}, "other": {}, "output": {}, 'bias': {}}
@@ -75,6 +76,7 @@ class DotProductStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_one_dim(self, mesh_dim):
         name = f'R = S{mesh_dim} dot S{mesh_dim}'
 
@@ -93,7 +95,7 @@ class DotProductStrategyGenerator(MatMulStrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self) -> List[ShardingStrategy]:
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
 
         # do not split dimensions for dot product
@@ -113,24 +115,50 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
     def validate(self) -> bool:
         input_op_data = self.op_data['input']
         other_op_data = self.op_data['other']
-        assert input_op_data.data.dim() > 1 and other_op_data.data.dim() == 1
+        assert input_op_data.data.dim() == 2 and other_op_data.data.dim() == 1
 
+    def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
+        sharded_input_shape = strategy.sharding_specs[self.op_data['input']].get_sharded_shape_per_device()
+        fwd_compute_cost = sharded_input_shape[0]
+        bwd_compute_cost = fwd_compute_cost * 2
+        compute_cost = TrainCycleItem(fwd=fwd_compute_cost,
+                                      bwd=bwd_compute_cost,
+                                      total=fwd_compute_cost + bwd_compute_cost)
+        return compute_cost
+
+    @ignore_sharding_exception
     def no_split(self):
         name = "R = R x R"
-        dim_partition_dict = {"input": {}, "other": {}, "output": {}, "bias": {}}
+        dim_partition_dict = {"input": {}, "other": {}, "output": {}}
+
+        if self.has_bias:
+            dim_partition_dict['bias'] = {}
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping={})
 
+    @ignore_sharding_exception
     def split_input_batch(self, mesh_dim):
         name = f'S{mesh_dim}R = S{mesh_dim}R x R'
 
         # get sharding spec
-        dim_partition_dict = {"input": {0: [mesh_dim]}, "other": {}, "output": {0: [mesh_dim]}, "bias": {}}
+        dim_partition_dict = {
+            "input": {
+                0: [mesh_dim]
+            },
+            "other": {},
+            "output": {
+                0: [mesh_dim]
+            },
+        }
+
+        if self.has_bias:
+            dim_partition_dict['bias'] = {}
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict)
 
         # get communication action
+        communication_action_mapping = {}
         if self.is_param('other'):
             other_comm_action = self.get_communication_action(
                 sharding_spec=sharding_spec_mapping['other'],
@@ -144,6 +172,8 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
                 logical_process_axis=mesh_dim,
                 comm_type=CommType.BEFORE,
                 arg_index=1)
+        communication_action_mapping['other'] = other_comm_action
+
         if self.has_bias:
             if self.is_param('bias'):
                 bias_comm_action = self.get_communication_action(
@@ -158,13 +188,13 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
                     logical_process_axis=mesh_dim,
                     comm_type=CommType.BEFORE,
                     arg_index=2)
-        communication_action_mapping = {'other': other_comm_action, 'bias': bias_comm_action}
+            communication_action_mapping['bias'] = bias_comm_action
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self) -> List[ShardingStrategy]:
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
 
         # no split
@@ -638,7 +668,7 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
     def validate(self) -> bool:
         input_op_data = self.op_data['input']
         other_op_data = self.op_data['other']
-        assert input_op_data.data.dim() == 3 or other_op_data.data.dim() == 3
+        assert len(input_op_data.logical_shape) == 3 or len(other_op_data.logical_shape) == 3
 
         if 'bias' in self.op_data:
             bias_op_data = self.op_data['bias']
@@ -816,11 +846,11 @@ class BatchedMatMulStrategyGenerator(MatMulStrategyGenerator):
         dim_partition_dict = {
             "input": {
                 0: [mesh_dim_0],
-                -1: [mesh_dim_1]
+                2: [mesh_dim_1]
             },
             "other": {
                 0: [mesh_dim_0],
-                -2: [mesh_dim_1]
+                1: [mesh_dim_1]
             },
             "bias": {},
             "output": {

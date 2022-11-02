@@ -1,5 +1,6 @@
 import torch
-from ..registry import meta_patched_function
+
+from ...registry import meta_patched_function
 
 
 @meta_patched_function.register(torch.nn.functional.embedding)

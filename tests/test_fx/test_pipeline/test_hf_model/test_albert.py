@@ -1,12 +1,13 @@
-import transformers
-import torch
 import pytest
+import torch
+import transformers
 from hf_utils import split_model_and_compare_output
 
 BATCH_SIZE = 2
 SEQ_LENGHT = 16
 
 
+@pytest.mark.skip('balance split v2 is not ready')
 def test_single_sentence_albert():
     MODEL_LIST = [
         transformers.AlbertModel,

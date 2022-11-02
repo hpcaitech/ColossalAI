@@ -1,14 +1,15 @@
-import torch
-import torch.nn.functional as F
 import pytest
+import torch
 import torch.multiprocessing as mp
-from torch.utils.checkpoint import checkpoint
+import torch.nn.functional as F
 from torch.fx import GraphModule
-from colossalai.fx import ColoTracer
+from torch.utils.checkpoint import checkpoint
+
 import colossalai
-from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
+from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.utils import free_port
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -92,11 +93,11 @@ def _run_act_ckpt_codegen(rank):
     offload_starts = ['mlp1_linear1']
     for node in graph.nodes:
         if node.name in ckpt_nodes:
-            assert hasattr(node, 'activation_checkpoint')
+            assert 'activation_checkpoint' in node.meta
 
             # annotate the selected node for offload
             if node.name in offload_starts:
-                setattr(node, 'activation_offload', True)
+                node.meta['activation_offload'] = True
 
     gm = ColoGraphModule(model, graph)
     gm.recompile()
@@ -148,11 +149,11 @@ def _run_act_ckpt_python_code_torch11(rank):
     offload_starts = ['mlp1_linear1']
     for node in graph.nodes:
         if node.name in ckpt_nodes:
-            assert hasattr(node, 'activation_checkpoint')
+            assert 'activation_checkpoint' in node.meta
 
             # annotate the selected node for offload
             if node.name in offload_starts:
-                setattr(node, 'activation_offload', True)
+                node.meta['activation_offload'] = True
 
     gm = ColoGraphModule(model, graph)
     gm.recompile()

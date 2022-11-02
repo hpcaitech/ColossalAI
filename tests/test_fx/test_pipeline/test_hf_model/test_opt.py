@@ -1,12 +1,13 @@
 import pytest
-import transformers
 import torch
+import transformers
 from hf_utils import split_model_and_compare_output
 
 BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
 
+@pytest.mark.skip('balance split v2 is not ready')
 def test_opt():
     MODEL_LIST = [
         transformers.OPTModel,
