@@ -51,7 +51,7 @@ class TriangleMultiplicationOutgoing(nn.Module):
 
         ab = torch.einsum('bikd,bjkd->bijd', left_proj_act, right_proj_act)
         ab = self.output_projection(self.layernorm2(ab))
-        dropout_mask = torch.ones_like(Z[:, 0:1, :, :], device=Z.device, dtype=Z.dtype)
+        dropout_mask = torch.ones_like(Z[:, 0:1, :, :]).to(Z.device).to(Z.dtype)
         return bias_ele_dropout_residual(ab,
                                          self.output_bias,
                                          g,
@@ -97,7 +97,7 @@ class TriangleMultiplicationIncoming(nn.Module):
 
         ab = torch.einsum('bkid,bkjd->bijd', left_proj_act, right_proj_act)
         ab = self.output_projection(self.layernorm2(ab))
-        dropout_mask = torch.ones_like(Z[:, 0:1, :, :], device=Z.device, dtype=Z.dtype)
+        dropout_mask = torch.ones_like(Z[:, 0:1, :, :]).to(Z.device).to(Z.dtype)
         return bias_ele_dropout_residual(ab,
                                          self.output_bias,
                                          g,
@@ -134,7 +134,7 @@ class TriangleAttentionStartingNode(nn.Module):
 
         Z = self.attention(Z, b)
 
-        dropout_mask = torch.ones_like(Z[:, 0:1, :, :], device=Z.device, dtype=Z.dtype)
+        dropout_mask = torch.ones_like(Z[:, 0:1, :, :]).to(Z.device).to(Z.dtype)
         return bias_dropout_add(Z, self.out_bias, dropout_mask, Z_raw, prob=self.p_drop)
 
 
@@ -168,7 +168,7 @@ class TriangleAttentionEndingNode(nn.Module):
         Z = self.attention(Z, b)
 
         Z = Z.transpose(-2, -3)
-        dropout_mask = torch.ones_like(Z[:, :, 0:1, :], device=Z.device, dtype=Z.dtype)
+        dropout_mask = torch.ones_like(Z[:, :, 0:1, :]).to(Z.device).to(Z.dtype)
         return bias_dropout_add(Z, self.out_bias, dropout_mask, Z_raw, prob=self.p_drop)
 
 

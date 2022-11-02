@@ -8,7 +8,7 @@ def bias_sigmod_ele(y, bias, z):
 
 def bias_dropout_add(x: torch.Tensor, bias: torch.Tensor, dropmask: torch.Tensor,
                      residual: torch.Tensor, prob: float) -> torch.Tensor:
-    out = (x + bias) * F.dropout(dropmask, p=prob, training=True)
+    out = (x + bias) * F.dropout(dropmask, p=prob, training=False)
     out = residual + out
     return out
 

@@ -45,7 +45,7 @@ class MSARowAttentionWithPairBias(nn.Module):
         # b = rearrange(b, 'b q k h -> b h q k')
 
         M = self.attention(M, b)
-        dropout_mask = torch.ones_like(M[:, 0:1, :, :], device=M.device, dtype=M.dtype)
+        dropout_mask = torch.ones_like(M[:, 0:1, :, :]).to(M.device).to(M.dtype)
 
         return bias_dropout_add(M, self.out_bias, dropout_mask, M_raw, prob=self.p_drop)
 

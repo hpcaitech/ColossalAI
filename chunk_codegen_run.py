@@ -9,60 +9,39 @@ import colossalai
 from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
 from colossalai.fx.graph_module import ColoGraphModule
-
-try:
-    from chunk_codegen import ChunkCodeGen
-    with_codegen = True
-except:
-    # fall back to older pytorch version
-    from chunk_codegen import python_code_with_activation_checkpoint
-    with_codegen = False
-
-
-class MyNet(torch.nn.Module):
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.linear0 = torch.nn.Linear(4, 4)
-        self.linear1 = torch.nn.Linear(4, 4)
-        self.linear2 = torch.nn.Linear(4, 4)
-        self.linear3 = torch.nn.Linear(4, 4)
-        self.linear4 = torch.nn.Linear(4, 4)
-        self.linear5 = torch.nn.Linear(4, 4)
-        self.linear6 = torch.nn.Linear(4, 4)
-
-    def forward(self, x):
-        x = self.linear0(x)
-        x = self.linear1(x)
-        x = self.linear2(x)
-        x = self.linear3(x)
-        x = self.linear4(x)
-        x = self.linear5(x)
-        x = self.linear6(x)
-        return x
+from evoformer.evoformer import evoformer_base
+from chunk_codegen import ChunkCodeGen
+with_codegen = True
 
 
 def _is_all_gradient_close(m: torch.nn.Module, gm: GraphModule) -> bool:
     for m_p, gm_p in zip(m.parameters(), gm.parameters()):
-        if not torch.allclose(m_p.grad, gm_p.grad):
+        if m_p.grad is not None and not torch.allclose(m_p.grad, gm_p.grad):
             return False
     return True
 
 
-def _test_fwd_and_bwd(model: torch.nn.Module, gm: ColoGraphModule, data: torch.Tensor):
+def _is_all_param_close(m: torch.nn.Module, gm: GraphModule) -> bool:
+    for m_p, gm_p in zip(m.parameters(), gm.parameters()):
+        if m_p.grad is not None and not torch.allclose(m_p.data, gm_p.data):
+            return False
+    return True
 
+
+def _test_fwd_and_bwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair):
     # test forward
-    non_fx_out = model(data)
-    fx_out = gm(data)
-    print(non_fx_out.shape, fx_out.shape)
-    assert torch.equal(non_fx_out, fx_out), "fx_out doesn't comply with original output"
+    non_fx_out = model(node.clone(), pair.clone())
+    fx_out = gm(node.clone(), pair.clone())
+    assert torch.equal(non_fx_out[0], fx_out[0]), "fx_out doesn't comply with original output"
+    assert torch.equal(non_fx_out[1], fx_out[1]), "fx_out doesn't comply with original output"
 
     # test barckward
-    loss0 = non_fx_out.sum()
-    loss0.backward()
-    loss1 = fx_out.sum()
-    loss1.backward()
-    assert _is_all_gradient_close(model, gm), "gm doesn't have the same gradient as original one"
+    # loss0 = non_fx_out[0].sum() + non_fx_out[1].sum()
+    # loss0.backward()
+    # loss1 = fx_out[0].sum() + fx_out[1].sum()
+    # loss1.backward()
+    # assert _is_all_param_close(model, gm)
+    # assert _is_all_gradient_close(model, gm), "gm doesn't have the same gradient as original one"
 
 
 def _run_offload_codegen(rank):
@@ -70,30 +49,22 @@ def _run_offload_codegen(rank):
     colossalai.launch(config={}, rank=rank, world_size=1, host='localhost', port=free_port(), backend='nccl')
 
     # build model and input
-    model = MyNet().cuda()
-    data = torch.rand(4, 4).cuda()
+    model = evoformer_base().cuda()
+    node = torch.randn(1, 16, 32, 256).cuda()
+    pair = torch.randn(1, 32, 32, 128).cuda()
 
     # trace the module and replace codegen
     tracer = ColoTracer(trace_act_ckpt=True)
     graph = tracer.trace(model)
-    codegen = ChunkCodeGen()
-    graph.set_codegen(codegen)
+    # codegen = ChunkCodeGen()
+    # graph.set_codegen(codegen)
 
-    # annotate the activation offload part
-    # also annotate the activation_checkpoint so we could test both types
-    # of input offload
-    for node in graph.nodes:
-        if node.name == "linear0":
-            setattr(node, "activation_offload", [0, True, False])
-        if node.name == "linear1":
-            setattr(node, "activation_offload", [0, True, False])
-        # if node.name == "linear2":
-        #     setattr(node, "activation_offload", [1, True, True])
-        # if node.name == "linear4":
-        #     setattr(node, "activation_offload", [2, False, True])
-        # if node.name == "linear5":
-        #     setattr(node, "activation_checkpoint", [0])
-        #     setattr(node, "activation_offload", True)
+    # annotate the chunk part
+    # for node in graph.nodes:
+    #     if node.name == "linear0":
+    #         setattr(node, "activation_offload", [0, True, False])
+    #     if node.name == "linear1":
+    #         setattr(node, "activation_offload", [0, True, False])
 
     gm = ColoGraphModule(copy.deepcopy(model), graph)
     gm.recompile()
@@ -102,7 +73,7 @@ def _run_offload_codegen(rank):
     code = graph.python_code("self").src
     print(code)
 
-    _test_fwd_and_bwd(model, gm, data)
+    _test_fwd_and_bwd(model, gm, node, pair)
     gpc.destroy()
 
 

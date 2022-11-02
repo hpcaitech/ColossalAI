@@ -28,13 +28,18 @@ class Evoformer(nn.Module):
         super(Evoformer, self).__init__()
 
         self.blocks = nn.ModuleList()
-        for _ in range(3):
+        for _ in range(1):
             self.blocks.append(EvoformerBlock(d_node, d_pair))
 
     def forward(self, node, pair):
         for b in self.blocks:
             node, pair = b(node, pair)
         return node, pair
+
+
+def evoformer_tiny():
+    return Evoformer(d_node=64, d_pair=32)
+
 
 def evoformer_base():
     return Evoformer(d_node=256, d_pair=128)
