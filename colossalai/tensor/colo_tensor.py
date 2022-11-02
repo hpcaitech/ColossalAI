@@ -167,6 +167,9 @@ class ColoTensor(torch.Tensor):
             func = _COLOSSAL_OPS[func]
 
         with torch._C.DisableTorchFunction():
+            args = [
+                arg.contiguous() if (isinstance(arg, torch.Tensor) and not arg.is_contiguous()) else arg for arg in args
+            ]
             ret = func(*args, **kwargs)
             if func in _get_my_nowrap_functions():
                 return ret
