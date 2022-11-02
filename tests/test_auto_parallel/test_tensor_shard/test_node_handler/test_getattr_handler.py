@@ -11,7 +11,7 @@ class GetattrModel(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.conv = nn.Conv2d(4, 16, 3, padding=1)
+        self.conv = nn.Conv2d(4, 16, 3, padding=1, bias=False)
 
     def forward(self, input):
         weight = self.conv.weight

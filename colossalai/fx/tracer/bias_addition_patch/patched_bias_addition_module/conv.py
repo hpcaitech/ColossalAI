@@ -20,6 +20,7 @@ class BiasAdditionConv(BiasAdditionModule):
             if hasattr(conv_module, attr_name):
                 non_bias_kwargs[attr_name] = getattr(conv_module, attr_name)
         if conv_module.padding_mode != "zeros":
+            #TODO: non zeros mode requires some extra processing for input
             conv_type = type(conv_module)
             if conv_type == "torch.nn.Conv1d":
                 padding_element = _single(0)

@@ -22,6 +22,11 @@ class GetattrHandler(NodeHandler):
         # use transposed shape for strategies
         # the strategies will be transformed back to its original shape in self.post_process
 
+        # There are only two possible types for get_attr node:
+        # 1. torch.Tensor(torch.nn.Parameters or torch.nn.Buffers)
+        # 2. torch.nn.Module
+        # temporarily, we just support first case in Tracer, so we don't have to worry about
+        # issue related to the node._meta_data type.
         physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=self.node._meta_data)
 
         mapping = {"output": physical_output}
