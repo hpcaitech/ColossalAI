@@ -254,7 +254,9 @@ class ColoTracer(Tracer):
                     atoms = target.split(".")
                     for atom in atoms:
                         attr_itr = getattr(attr_itr, atom)
-                    if isinstance(attr_itr, torch.Tensor):
+                    if isinstance(attr_itr, torch.nn.parameter.Parameter):
+                        meta_out = torch.nn.Parameter(attr_itr.to(device="meta"))
+                    elif isinstance(attr_itr, torch.Tensor):
                         meta_out = attr_itr.to(device="meta")
                     else:
                         meta_out = attr_itr
