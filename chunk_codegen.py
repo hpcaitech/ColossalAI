@@ -366,6 +366,9 @@ def emit_code_with_chunk(body, ckpt_func, nodes, emit_node_func, delete_unused_v
 if CODEGEN_AVAILABLE:
 
     class ChunkCodeGen(CodeGen):
+        def __init__(self, meta_graph):
+            super().__init__()
+            self.meta_node = list(meta_graph.graph.nodes)
 
         def _gen_python_code(self, nodes, root_module: str, namespace: _Namespace) -> PythonCode:
             free_vars: List[str] = []
