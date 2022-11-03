@@ -1,7 +1,10 @@
 import torch
 
-from colossalai.auto_parallel.tensor_shard.utils import (get_broadcast_shape, is_broadcastable,
-                                                         recover_sharding_spec_for_broadcast_shape)
+from colossalai.auto_parallel.tensor_shard.utils import (
+    get_broadcast_shape,
+    is_broadcastable,
+    recover_sharding_spec_for_broadcast_shape,
+)
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.sharding_spec import ShardingSpec
 
@@ -51,8 +54,8 @@ def test_recover_sharding_spec_for_broadcast_shape():
                                                     1: [1]
                                                 },
                                                 entire_shape=broadcast_shape)
-    physical_sharding_spec_for_x1 = recover_sharding_spec_for_broadcast_shape(logical_sharding_spec_for_x1,
-                                                                              broadcast_shape, x1.shape)
+    physical_sharding_spec_for_x1, removed_dims = recover_sharding_spec_for_broadcast_shape(
+        logical_sharding_spec_for_x1, broadcast_shape, x1.shape)
     print(physical_sharding_spec_for_x1)
 
     assert physical_sharding_spec_for_x1.entire_shape == x1.shape

@@ -213,7 +213,7 @@ class Broadcaster(BmmTransform):
 
             tensor_shape_before_broadcast = [dim for dim in tensor_shape if dim is not None]
 
-            physical_sharding_spec = recover_sharding_spec_for_broadcast_shape(
+            physical_sharding_spec, removed_dims = recover_sharding_spec_for_broadcast_shape(
                 logical_sharding_spec=sharding_spec,
                 logical_shape=sharding_spec.entire_shape,
                 physical_shape=tensor_shape_before_broadcast)
