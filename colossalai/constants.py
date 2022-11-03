@@ -23,6 +23,8 @@ INITIALIZER_MAPPING = {
 INPUT_GROUP_3D = 'input_group_3d'
 WEIGHT_GROUP_3D = 'weight_group_3d'
 OUTPUT_GROUP_3D = 'output_group_3d'
+INPUT_X_WEIGHT_3D = 'input_x_weight_group_3d'
+OUTPUT_X_WEIGHT_3D = 'output_x_weight_group_3d'
 
 # Attributes of tensor parallel parameters
 IS_TENSOR_PARALLEL = 'is_tensor_parallel'

@@ -20,12 +20,12 @@ from colossalai.utils.cuda import get_current_device
 from torch import Tensor
 from torch.nn.parameter import Parameter
 from ..vanilla import VanillaPatchEmbedding, VanillaLayerNorm
-
 from ..base_layer import ParallelLayer
 from ..colossalai_layer._utils import ColossalaiModule
 from ..utils import divide, set_tensor_parallel_attribute_by_partition
 from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
                      split_forward_gather_backward)
+from ._operation import linear_with_async_comm
 
 
 @LAYERS.register_module
@@ -96,8 +96,25 @@ class LayerNorm1D(ColossalaiModule):
         dtype (:class:`torch.dtype`, optional): The dtype of parameters, defaults to None.
     """
 
+    _fast_ln_supported_sizes = [
+        1024, 1536, 2048, 2304, 3072, 3840, 4096, 5120, 6144, 8192, 10240, 12288, 12800, 15360, 16384, 18432, 20480,
+        24576, 25600, 30720, 32768, 40960, 49152, 65536
+    ]
+
     def __init__(self, normalized_shape: int, eps=1e-05, bias=True, dtype=None):
-        norm = VanillaLayerNorm(normalized_shape, eps=eps, bias=bias, dtype=dtype)
+        from apex.normalization import FusedLayerNorm
+
+        fast_ln_installed = False
+        try:
+            from apex.contrib.layer_norm.layer_norm import FastLayerNorm
+            fast_ln_installed = True
+        except ImportError:
+            pass
+
+        if fast_ln_installed and normalized_shape in self._fast_ln_supported_sizes:
+            norm = FastLayerNorm(normalized_shape, eps=eps).to(dtype)
+        else:
+            norm = FusedLayerNorm(normalized_shape, eps=eps).to(dtype)
         super().__init__(norm)
 
     def _load_from_state_dict(self, state_dict, prefix, *args):
@@ -519,11 +536,12 @@ class Linear1D_Col(ParallelLayer):
             'Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.'.format(
                 input_.shape, self.weight.shape, self.weight.shape[-1])
         # Set up backprop all-reduce.
-        input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
+        # input_parallel = reduce_grad(input_, ParallelMode.PARALLEL_1D)
+        input_parallel = input_
         # Matrix multiply.
-
         bias = self.bias if not self.skip_bias_add else None
-        output_parallel = F.linear(input_parallel, self.weight, bias)
+        # output_parallel = F.linear(input_parallel, self.weight, bias)
+        output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, ParallelMode.PARALLEL_1D, True)
         if self.gather_output:
             # All-gather across the partitions.
             output = gather_forward_split_backward(output_parallel, ParallelMode.PARALLEL_1D, dim=-1)
@@ -665,6 +683,7 @@ class Linear1D_Row(ParallelLayer):
             input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
         output_parallel = F.linear(input_, self.weight)
+        # output_parallel = linear_with_async_comm(input_, self.weight, None, ParallelMode.PARALLEL_1D, False)
         output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
 
         if not self.skip_bias_add:

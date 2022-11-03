@@ -1,15 +1,16 @@
+from copy import deepcopy
 from pickletools import optimize
-import torch
-from torch.fx import GraphModule
-import torch.nn as nn
-import pytest
 
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
+import pytest
+import torch
+import torch.nn as nn
+from torch.fx import GraphModule
+
 from colossalai.auto_parallel.tensor_shard.deprecated.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
-from copy import deepcopy
+from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.tracer.tracer import ColoTracer
 
 
 class ConvModel(nn.Module):
@@ -67,7 +68,8 @@ def test_cost_graph():
     for node in graph.nodes:
         if node.op == 'output':
             continue
-        all_node_pairs.append((node, node.next))
+        for child in node.users.keys():
+            all_node_pairs.append((node, child))
 
     for node_pair in all_node_pairs:
         assert node_pair in cost_graph.edge_costs
@@ -75,14 +77,14 @@ def test_cost_graph():
     # construct merged node pairs
     merged_node_pairs = []
     node_list = list(graph.nodes)
-
-    # add (x, conv) and (conv, output) into check node pairs
-    merged_node_pairs.append((node_list[0], node_list[2]))
-    merged_node_pairs.append((node_list[2], node_list[-1]))
-    # (conv1, output):{(0, 0): 246019.30000000002, (1, 0): 246019.30000000002, (2, 0): 123009.1, (3, 0): 123009.1, (4, 0): 246019.30000000002, (5, 0): 246019.30000000002, (6, 0): 123009.1, (7, 0): 123009.1, (8, 0): 123009.1, (9, 0): 123009.1, (10, 0): 0, (11, 0): 0, (12, 0): 0, (13, 0): 246019.30000000002, (14, 0): 246019.30000000002}
-    # (x, conv1):{(0, 0): 65547.1, (0, 1): 65547.1, (0, 2): 65547.1, (0, 3): 65547.1, (0, 4): 131105.30000000002, (0, 5): 131105.30000000002, (0, 6): 65547.1, (0, 7): 65547.1, (0, 8): 65547.1, (0, 9): 65547.1, (0, 10): 0, (0, 11): 0, (0, 12): 0, (0, 13): 131105.30000000002, (0, 14): 131105.30000000002}
+    # add (conv1_weight, conv2d), (conv1_bias, view), (conv2d, add), (view, add), (add, output), (x, conv2d) into check node pairs
+    merged_node_pairs.append((node_list[0], node_list[4]))
+    merged_node_pairs.append((node_list[2], node_list[4]))
+    merged_node_pairs.append((node_list[3], node_list[5]))
+    merged_node_pairs.append((node_list[5], node_list[6]))
+    merged_node_pairs.append((node_list[4], node_list[6]))
+    merged_node_pairs.append((node_list[6], node_list[-1]))
     cost_graph.simplify_graph()
-
     for node_pair in all_node_pairs:
         if node_pair in merged_node_pairs:
             assert node_pair in cost_graph.edge_costs

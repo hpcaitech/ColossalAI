@@ -9,7 +9,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
-from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
+from colossalai.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
 from colossalai.gemini.gemini_mgr import GeminiManager
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.nn.parallel import ZeroDDP
@@ -98,10 +98,55 @@ def exam_gpt_fwd_bwd(placement_policy):
         check_param(model, torch_model)
 
 
+@parameterize('placement_policy', ['cuda', 'cpu'])
+def exam_tiny_example(placement_policy):
+    set_seed(42)
+    get_components_func = non_distributed_component_funcs.get_callable('gpt2')
+    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
+
+    with ColoInitContext(device=get_current_device()):
+        model = model_builder()
+
+    torch_model = model_builder().cuda()
+    for torch_p, p in zip(torch_model.parameters(), model.parameters()):
+        torch_p.data.copy_(p.data)
+
+    chunk_manager = init_chunk_manager(model=model, init_device=get_current_device(), search_range_mb=1)
+    gemini_manager = GeminiManager(placement_policy, chunk_manager)
+    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+
+    optimizer = HybridAdam(model.parameters(), lr=1e-3)
+    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=2)
+
+    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
+    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
+    torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
+    torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
+
+    model.eval()
+    torch_model.eval()
+
+    set_seed(dist.get_rank() * 3 + 128)
+    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
+        if i > 2:
+            break
+
+        zero_logits = run_fwd_bwd(model, criterion, zero_optim, input_ids, attn_mask)
+        torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
+        assert torch.allclose(zero_logits, torch_logits, rtol=1e-3, atol=1e-2)
+        # debug_print([0], zero_logits, torch_logits)
+
+        zero_optim.step()
+        torch_optim.step()
+
+        check_param(model, torch_model)
+
+
 def run_dist(rank, world_size, port):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     exam_gpt_fwd_bwd()
+    exam_tiny_example()
 
 
 @pytest.mark.dist
@@ -113,4 +158,4 @@ def test_gpt(world_size):
 
 
 if __name__ == '__main__':
-    test_gpt(1)
+    test_gpt(2)

@@ -1,6 +1,8 @@
 import math
+
 import torch
-from ..registry import meta_patched_module
+
+from ...registry import meta_patched_module
 
 
 @meta_patched_module.register(torch.nn.Conv1d)
