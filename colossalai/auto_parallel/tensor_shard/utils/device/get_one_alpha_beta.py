@@ -1,10 +1,11 @@
 import math
 import socket
-import subprocess
 import time
 
 import torch
 import torch.distributed as dist
+
+from colossalai.device import load_tmp, store_tmp
 
 MB = int((1 << 10) * 1e3)
 GB = int((1 << 20) * 1e3)
@@ -12,26 +13,7 @@ Byte = 4
 FRAMEWORK = 20 / 1e6
 
 
-def store(time, bandwidth):
-    f = open("tmp.txt", "w")
-    f.write(str(time) + ',' + str(bandwidth))
-    f.close()
-
-
-def load():
-    f = open("tmp.txt", "r")
-    ln = f.readline().split(",")
-    f.close()
-    return (float(ln[0]), float(ln[1]))
-
-
-def execute_cmd(cmd):
-    cmd = ' '.join(cmd)
-    print(cmd)
-    subprocess.call(cmd, shell=True)
-
-
-def test(wsize, nbytes, type):
+def profile(wsize, nbytes, type):
     warmup = 5
     repeat = 25
     rank = dist.get_rank()
@@ -71,32 +53,32 @@ def test(wsize, nbytes, type):
             bus_band = alg_band
         elif type == "a":
             bus_band = 2 * (wsize - 1) / wsize * alg_band
-        store(avg_time_s, alg_band)
+        store_tmp(avg_time_s, alg_band)
         print(
             f"{gpu}, Bytes: {nbytes} B,Time: {round(avg_time_s * 1e6,2)} us, Bus bandwidth: {round(bus_band / GB,2)} GB/s"
         )
         return (avg_time_s, alg_band)
 
 
-def test_latency(wsize, it=3, type="a"):
+def profile_latency(wsize, it=3, type="a"):
     latency = []
     for i in range(it):
         nbytes = int(Byte << i)
-        test(wsize, nbytes, type)
+        profile(wsize, nbytes, type)
         dist.barrier()
-        (t, _) = load()
+        (t, _) = load_tmp()
         latency.append(t)
     return min(latency)
 
 
-def test_bandwidth(wsize, maxbytes, type="a"):
-    test(wsize, maxbytes, type)
+def profile_bandwidth(wsize, maxbytes, type="a"):
+    profile(wsize, maxbytes, type)
     dist.barrier()
-    (_, bandwidth) = load()
+    (_, bandwidth) = load_tmp()
     return bandwidth
 
 
-def test_ab(wsize, type="a"):
+def profile_ab(wsize, type="a"):
     dist.init_process_group(
         backend=dist.Backend.NCCL,
         init_method='env://',
@@ -110,8 +92,8 @@ def test_ab(wsize, type="a"):
     if dist.get_rank() == 0:
         print(f"max_nbytes: {max_nbytes} B")
 
-    alpha = test_latency(wsize, 5)
-    beta = 1 / test_bandwidth(wsize, max_nbytes)
+    alpha = profile_latency(wsize, 5)
+    beta = 1 / profile_bandwidth(wsize, max_nbytes)
     dist.barrier()
 
     return (alpha, beta)
@@ -119,11 +101,10 @@ def test_ab(wsize, type="a"):
 
 def get_one_alpha_beta():
     assert torch.cuda.is_available()
-    (alpha, beta) = test_ab(torch.cuda.device_count(), "a")
+    (alpha, beta) = profile_ab(torch.cuda.device_count(), "a")
     if dist.get_rank() == 0:
-        store(alpha, beta)
+        store_tmp(alpha, beta)
         print(f"alpha(us): {round(alpha * 1e6,2)}, beta(us/GB): {round(beta * 1e6 * GB,2)}")
-        execute_cmd(["rm", "tmp.txt"])
 
 
 if __name__ == "__main__":
