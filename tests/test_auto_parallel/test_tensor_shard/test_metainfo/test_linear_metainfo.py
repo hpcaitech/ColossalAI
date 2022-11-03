@@ -56,14 +56,6 @@ def test_linear_metainfo(bias):
             metainfo = MetaInfo(strategy,
                                 linear_mod_node.graph.owning_module.get_submodule(linear_mod_node.target).__class__)
 
-            # this region is for debugging
-            # print("compute cost:")
-            # pprint.pprint(metainfo.compute_cost)
-            # print("memory cost:")
-            # pprint.pprint(metainfo.memory_cost)
-            # print(f"device mesh: {device_mesh.mesh_shape}")
-            # for opdata, spec in strategy.sharding_specs.items():
-            #     print(opdata.type, opdata.data.shape, spec.sharding_sequence)
         except:
             raise RuntimeError(f"Failed to compute metainfo for {strategy}")
 
