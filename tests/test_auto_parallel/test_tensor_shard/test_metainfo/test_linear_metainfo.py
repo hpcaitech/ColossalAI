@@ -9,13 +9,15 @@ from colossalai.auto_parallel.tensor_shard.node_handler import LinearModuleHandl
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
-from colossalai.fx.meta_profiler import MetaInfo, meta_register
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from colossalai.testing.utils import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_test_for_node_strategy
+
+if torch.__version__ >= '1.12.0':
+    from colossalai.fx.meta_profiler import MetaInfo, meta_register
 
 
 @pytest.mark.skipif(torch.__version__ < '1.12.0', reason='PyTorch version is too low')
