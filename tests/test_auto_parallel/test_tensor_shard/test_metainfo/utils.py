@@ -15,43 +15,6 @@ from colossalai.tensor.shape_consistency import to_global
 from colossalai.testing.comparison import assert_close, assert_close_loose
 
 
-def _build_model_to_compare(model: torch.nn.Module, input_args: List[torch.Tensor],
-                            input_kwargs: Dict[str, torch.Tensor], grad_dict: Dict[any, torch.Tensor]):
-
-    model_to_compare = copy.deepcopy(model)
-    args_to_compare = []
-    kwargs_to_compare = {}
-    for arg_index, input_tensor in enumerate(input_args):
-
-        def wrapper(param, index):
-
-            def hook_fn(grad):
-                grad_dict[index] = grad
-
-            param.register_hook(hook_fn)
-
-        arg_to_compare = copy.deepcopy(input_tensor)
-        arg_to_compare.requires_grad = True
-        wrapper(arg_to_compare, arg_index)
-        args_to_compare.append(arg_to_compare)
-
-    for name, input_kwarg in input_kwargs.items():
-
-        def wrapper(param, name):
-
-            def hook_fn(grad):
-                grad_dict[name] = grad
-
-            param.register_hook(hook_fn)
-
-        kwarg_to_compare = copy.deepcopy(input_kwarg)
-        kwarg_to_compare.requires_grad = True
-        wrapper(kwarg_to_compare, name)
-        kwargs_to_compare[name] = kwarg_to_compare
-
-    return model_to_compare, args_to_compare, kwargs_to_compare
-
-
 def mem_test_for_node_strategy(rank: int,
                                model: torch.nn.Module,
                                device_mesh: DeviceMesh,
@@ -62,9 +25,8 @@ def mem_test_for_node_strategy(rank: int,
                                input_kwargs: Dict[str, torch.Tensor] = {}):
     for strategy_index in range(strategy_number):
         # We need to copy the model to avoid do backward more than once in same graph
-        grad_to_shard_dict = {}
-        model_to_shard, args_to_shard, kwargs_to_shard = _build_model_to_compare(model, input_args, input_kwargs,
-                                                                                 grad_to_shard_dict)
+        model_to_shard, args_to_shard, kwargs_to_shard = copy.deepcopy(model), copy.deepcopy(input_args), copy.deepcopy(
+            input_kwargs)
 
         tracer = ColoTracer()
         input_sample = {}
@@ -78,11 +40,6 @@ def mem_test_for_node_strategy(rank: int,
         strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
         strategies_constructor.build_strategies_and_cost()
         target_node = list(graph.nodes)[node_index]
-
-        if rank == 0:
-            print("=======================")
-            print(f"#strategy_index: {strategy_index}")
-            pprint(target_node.strategies_vector[strategy_index])
 
         # solution construction
         # construct the strategy for the target node
@@ -101,6 +58,12 @@ def mem_test_for_node_strategy(rank: int,
             gm, solution, device_mesh)
         gm = runtime_apply_pass(gm)
         gm.recompile()
+        gm: GraphModule
+
+        if rank == 0:
+            print("=======================")
+            print(f"#strategy_index: {strategy_index}")
+            pprint(target_node.strategies_vector[strategy_index])
 
         # warmup
         with torch.no_grad():
@@ -113,8 +76,8 @@ def mem_test_for_node_strategy(rank: int,
         del output
         # forward memory compare
         if rank == 0:
-            torch.cuda.reset_peak_memory_stats("cuda:0")
-            mem_stamp0 = torch.cuda.memory_allocated("cuda:0")
+            torch.cuda.reset_peak_memory_stats()
+            mem_stamp0 = torch.cuda.memory_allocated()
         output = gm(*args_to_shard,
                     sharding_spec_convert_dict=sharding_spec_dict,
                     origin_node_sharding_spec_dict=origin_spec_dict,
@@ -124,7 +87,7 @@ def mem_test_for_node_strategy(rank: int,
         if rank == 0:
             # print forward memory allocated and peak memory stats in kb
             print(
-                f"forward memory allocated: {(torch.cuda.memory_allocated('cuda:0') - mem_stamp0) / 1024} kb, peak memory stats: {(torch.cuda.max_memory_allocated('cuda:0') - mem_stamp0) / 1024} kb"
+                f"forward memory allocated: {(torch.cuda.memory_allocated() - mem_stamp0) / 1024} kb, peak memory stats: {(torch.cuda.max_memory_allocated() - mem_stamp0) / 1024} kb"
             )
 
         # backward memory compare
@@ -136,7 +99,7 @@ def mem_test_for_node_strategy(rank: int,
         if rank == 0:
             # print backward memory allocated and peak memory stats in kb
             print(
-                f"backward memory allocated: {(torch.cuda.memory_allocated('cuda:0') - mem_stamp0) / 1024} kb, peak memory stats: {(torch.cuda.max_memory_allocated('cuda:0') - mem_stamp0) / 1024} kb"
+                f"backward memory allocated: {(torch.cuda.memory_allocated() - mem_stamp0) / 1024} kb, peak memory stats: {(torch.cuda.max_memory_allocated() - mem_stamp0) / 1024} kb"
             )
 
             # estimated memory

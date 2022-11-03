@@ -80,7 +80,7 @@ def _linear_mem_test(rank, bias, world_size, port):
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = nn.Sequential(nn.Linear(64, 128, bias=bias)).cuda()
     input = torch.rand(8, 8, 16, 64).cuda()
-    input.requires_grad = False
+    input.requires_grad = True
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
