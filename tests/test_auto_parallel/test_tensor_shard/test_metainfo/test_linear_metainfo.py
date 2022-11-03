@@ -1,19 +1,12 @@
-import pprint
 from functools import partial
 
 import pytest
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from typing_extensions import Self
 
-from colossalai.auto_parallel.tensor_shard.node_handler import LinearFunctionHandler, LinearModuleHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
-    OperationData,
-    OperationDataType,
-    ShardingStrategy,
-    StrategiesVector,
-)
+from colossalai.auto_parallel.tensor_shard.node_handler import LinearModuleHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx.meta_profiler import MetaInfo, meta_register

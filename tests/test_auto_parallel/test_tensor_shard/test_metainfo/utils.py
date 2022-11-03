@@ -9,10 +9,8 @@ from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pas
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.solver import SolverOptions, StrategiesConstructor
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.meta_profiler import MetaInfo, meta_register
+from colossalai.fx.meta_profiler import MetaInfo
 from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.tensor.shape_consistency import to_global
-from colossalai.testing.comparison import assert_close, assert_close_loose
 
 
 def mem_test_for_node_strategy(rank: int,
