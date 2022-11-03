@@ -7,6 +7,9 @@ from typing import Callable, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor
+from torch.nn.parameter import Parameter
+
 from colossalai.communication import broadcast
 from colossalai.context import ParallelMode, seed
 from colossalai.core import global_context as gpc
@@ -14,18 +17,33 @@ from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.kernel import LayerNorm
 from colossalai.nn import init as init
 from colossalai.registry import LAYERS
-from colossalai.utils.checkpointing import (broadcast_state_dict, gather_tensor_parallel_state_dict,
-                                            partition_tensor_parallel_state_dict)
+from colossalai.utils.checkpointing import (
+    broadcast_state_dict,
+    gather_tensor_parallel_state_dict,
+    partition_tensor_parallel_state_dict,
+)
 from colossalai.utils.cuda import get_current_device
-from torch import Tensor
-from torch.nn.parameter import Parameter
-from ..vanilla import VanillaPatchEmbedding, VanillaLayerNorm
+
 from ..base_layer import ParallelLayer
 from ..colossalai_layer._utils import ColossalaiModule
 from ..utils import divide, set_tensor_parallel_attribute_by_partition
-from ._utils import (gather_forward_split_backward, get_parallel_input, reduce_grad, reduce_input, set_parallel_input,
-                     split_forward_gather_backward)
+from ..vanilla import VanillaLayerNorm, VanillaPatchEmbedding
 from ._operation import linear_with_async_comm
+from ._utils import (
+    gather_forward_split_backward,
+    get_parallel_input,
+    reduce_grad,
+    reduce_input,
+    set_parallel_input,
+    split_forward_gather_backward,
+)
+
+Fast_LN = None
+try:
+    from apex.contrib.layer_norm.layer_norm import FastLayerNorm
+    Fast_LN = FastLayerNorm
+except ImportError:
+    pass
 
 
 @LAYERS.register_module
@@ -102,19 +120,15 @@ class LayerNorm1D(ColossalaiModule):
     ]
 
     def __init__(self, normalized_shape: int, eps=1e-05, bias=True, dtype=None):
-        from apex.normalization import FusedLayerNorm
-
-        fast_ln_installed = False
-        try:
-            from apex.contrib.layer_norm.layer_norm import FastLayerNorm
-            fast_ln_installed = True
-        except ImportError:
-            pass
-
-        if fast_ln_installed and normalized_shape in self._fast_ln_supported_sizes:
-            norm = FastLayerNorm(normalized_shape, eps=eps).to(dtype)
+        if Fast_LN is not None and normalized_shape in self._fast_ln_supported_sizes:
+            norm = Fast_LN(normalized_shape, eps=eps).to(dtype)
         else:
-            norm = FusedLayerNorm(normalized_shape, eps=eps).to(dtype)
+            norm = None
+            try:
+                from apex.normalization import FusedLayerNorm
+                norm = FusedLayerNorm(normalized_shape, eps=eps).to(dtype)
+            except ImportError:
+                norm = LayerNorm(normalized_shape, eps=eps).to(dtype)
         super().__init__(norm)
 
     def _load_from_state_dict(self, state_dict, prefix, *args):
