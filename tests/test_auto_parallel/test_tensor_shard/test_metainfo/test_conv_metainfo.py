@@ -20,7 +20,17 @@ if torch.__version__ >= '1.12.0':
     from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
 
 
-def _conv_mem_test(rank, bias, world_size, port):
+def _conv_module_mem_test(rank, bias, world_size, port):
+    """This function is for conv memory test
+    Test and print real memory cost and estimated, this test will not be executed except with the tag AUTO_PARALLEL
+
+    Args:
+    Args:
+        rank: device rank
+        bias: indicate whether conv module need bias
+        world_size: number of devices
+        port: port for initializing process group
+    """
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     model = nn.Sequential(nn.Conv2d(4, 16, 3, padding=1, bias=bias)).cuda()
@@ -46,10 +56,9 @@ def _conv_mem_test(rank, bias, world_size, port):
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-# @parameterize('bias', [True, False])
 def test_conv_meta_concrete_info_match(bias=False):
     world_size = 4
-    run_func_module = partial(_conv_mem_test, bias=bias, world_size=world_size, port=free_port())
+    run_func_module = partial(_conv_module_mem_test, bias=bias, world_size=world_size, port=free_port())
     mp.spawn(run_func_module, nprocs=world_size)
 
 

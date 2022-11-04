@@ -20,48 +20,15 @@ if torch.__version__ >= '1.12.0':
     from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
 
 
-@pytest.mark.skip(reason="Wait for the stable version of Linear module with bias")
-@parameterize('bias', [True, False])
-def test_linear_module_metainfo(bias):
-    model = nn.Sequential(nn.Linear(16, 32, bias=bias)).cuda()
-
-    tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args={"input": torch.rand(2, 2, 4, 16).to('meta')})
-    gm = ColoGraphModule(model, graph)
-    physical_mesh_id = torch.arange(0, 4)
-
-    mesh_shape = (2, 2)
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
-    linear_mod_node = list(graph.nodes)[1]
-    strategies_vector = StrategiesVector(linear_mod_node)
-
-    # build handler
-    handler = LinearModuleHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
-
-    # build strategy
-    strategies_vector = handler.register_strategy(compute_resharding_cost=False)
-
-    # assert module is registered
-    assert meta_register.has(linear_mod_node.graph.owning_module.get_submodule(linear_mod_node.target).__class__)
-
-    # check metainfo
-    for strategy in strategies_vector:
-        strategy: ShardingStrategy
-        try:
-            metainfo = MetaInfo(strategy,
-                                linear_mod_node.graph.owning_module.get_submodule(linear_mod_node.target).__class__)
-
-        except:
-            raise RuntimeError(f"Failed to compute metainfo for {strategy}")
-
-
-def _linear_mem_test(rank, bias, world_size, port):
+def _linear_module_mem_test(rank, bias, world_size, port):
     """This function is for linear memory test
-    Test and print real memory cost and estimated, this test will not be executed
-    in unit test.
+    Test and print real memory cost and estimated, this test will not be executed except with the tag AUTO_PARALLEL
 
     Args:
-        bias (bool, optional): Indicate whether we need bias for Linear. Defaults to True.
+        rank: device rank
+        bias: indicate whether linear module need bias
+        world_size: number of devices
+        port: port for initializing process group
     """
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
@@ -87,10 +54,9 @@ def _linear_mem_test(rank, bias, world_size, port):
 @rerun_if_address_is_in_use()
 def test_linear_meta_concrete_info_match(bias=False):
     world_size = 4
-    run_func_module = partial(_linear_mem_test, bias=bias, world_size=world_size, port=free_port())
+    run_func_module = partial(_linear_module_mem_test, bias=bias, world_size=world_size, port=free_port())
     mp.spawn(run_func_module, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    # test_linear_module_metainfo()
     test_linear_meta_concrete_info_match()
