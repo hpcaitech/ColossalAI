@@ -132,7 +132,6 @@ def check_linear_module_handler(rank, bias, world_size, port):
             assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
-
 class LinearModel(nn.Module):
 
     def __init__(self):

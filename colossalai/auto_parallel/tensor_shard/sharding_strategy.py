@@ -79,9 +79,12 @@ class MemoryCost:
     Args:
         activation (int): the memory cost incurred by the activations in bytes.
         parameter (int): the memory cost incurred by the module parameter in bytes.
+        temp (int): the memory cost incurred by the temporary tensors in bytes.
+        buffer (int): the memory cost incurred by the module buffer in bytes.
     """
     activation: int = 0
     parameter: int = 0
+    temp: int = 0
     buffer: int = 0
 
 
