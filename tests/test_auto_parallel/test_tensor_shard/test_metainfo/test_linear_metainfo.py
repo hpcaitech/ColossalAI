@@ -85,8 +85,7 @@ def _linear_mem_test(rank, bias, world_size, port):
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-@parameterize('bias', [True, False])
-def test_linear_meta_concrete_info_match(bias):
+def test_linear_meta_concrete_info_match(bias=False):
     world_size = 4
     run_func_module = partial(_linear_mem_test, bias=bias, world_size=world_size, port=free_port())
     mp.spawn(run_func_module, nprocs=world_size)
