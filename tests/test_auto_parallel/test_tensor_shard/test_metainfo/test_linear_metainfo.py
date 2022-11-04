@@ -20,10 +20,10 @@ if torch.__version__ >= '1.12.0':
     from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
 
 
-@pytest.mark.skipif(torch.__version__ < '1.12.0', reason='PyTorch version is too low')
+@pytest.mark.skip(reason="Wait for the stable version of Linear module with bias")
 @parameterize('bias', [True, False])
-def test_linear_metainfo(bias):
-    model = nn.Sequential(nn.Linear(16, 32, bias=bias).to('meta'))
+def test_linear_module_metainfo(bias):
+    model = nn.Sequential(nn.Linear(16, 32, bias=bias)).cuda()
 
     tracer = ColoTracer()
     graph = tracer.trace(model, meta_args={"input": torch.rand(2, 2, 4, 16).to('meta')})
@@ -85,13 +85,13 @@ def _linear_mem_test(rank, bias, world_size, port):
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_linear_meta_concrete_info_match(bias=False):
+@parameterize('bias', [True, False])
+def test_linear_meta_concrete_info_match(bias):
     world_size = 4
     run_func_module = partial(_linear_mem_test, bias=bias, world_size=world_size, port=free_port())
     mp.spawn(run_func_module, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    # test_linear_metainfo()
-    # _linear_mem_test(bias=True)
+    # test_linear_module_metainfo()
     test_linear_meta_concrete_info_match()
