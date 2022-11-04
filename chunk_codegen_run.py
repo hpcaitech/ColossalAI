@@ -70,7 +70,7 @@ def _run_offload_codegen(rank):
     #         setattr(node, "activation_offload", [0, True, False])
 
     codegen = ChunkCodeGen(gm_prop)
-    # graph.set_codegen(codegen)
+    graph.set_codegen(codegen)
     gm = ColoGraphModule(model, graph)
     gm.recompile()
 
