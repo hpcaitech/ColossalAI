@@ -160,13 +160,13 @@ class MemStatsCollectorV2(MemStatsCollector):
         return colo_device_memory_capacity(get_current_device()) - max(self.overall_mem_stats('cuda'))
 
 
-class MemStatsCollectorStatic(MemStatsCollector):
+class MemStatsCollectorStatic(MemStatsCollectorV2):
     """
     A Static Memory statistic collector.
     """
 
-    def __init__(self, module: nn.Module) -> None:
-        super().__init__()
+    def __init__(self, module: nn.Module, chunk_manager: ChunkManager) -> None:
+        super().__init__(chunk_manager)
         self.module = module
 
     def init_mem_stats(self, *inputs):
@@ -180,7 +180,7 @@ class MemStatsCollectorStatic(MemStatsCollector):
 
         total_mem = 0
         for inp in inputs:
-            total_mem += inp.numel() * 4.0
+            total_mem += inp.numel() * inp.element_size()
         last_node = None
         for node in gm.graph.nodes:
             total_mem = total_mem + calculate_fwd_tmp(node) + calculate_fwd_out(node)
@@ -192,7 +192,7 @@ class MemStatsCollectorStatic(MemStatsCollector):
         cur_module_mem_bwd = 0
         grad_module_out = last_node.meta["fwd_mem_out"]
         for node in gm.graph.nodes.__reversed__():
-            cur_module_mem_fwd = cur_module_mem_fwd + node.meta["fwd_mem_tmp"] + node.meta["fwd_mem_out"]
+            cur_module_mem_fwd = cur_module_mem_fwd + calculate_fwd_tmp(node) + calculate_fwd_out(node)
             cur_module_mem_bwd = cur_module_mem_bwd + node.meta["bwd_mem_tmp"] + node.meta["bwd_mem_out"]
             if node.op == "call_module":
                 self._non_model_data_cuda_list.append(total_mem + grad_module_out + cur_module_mem_bwd)
@@ -201,37 +201,4 @@ class MemStatsCollectorStatic(MemStatsCollector):
                 cur_module_mem_bwd = 0
                 grad_module_out = node.meta["bwd_mem_out"]
 
-    def next_period_non_model_data_usage(self, device_type: str) -> int:
-        """Get max non model data memory usage of current sampling period
-
-        Args:
-            device_type (str): device type, can be 'cpu' or 'cuda'.
-
-        Returns:
-            int: max non model data memory usage of current sampling period
-        """
-        assert not self._start_flag, 'Cannot get mem stats info during collection phase.'
-        assert self._step_total > 0, 'Cannot get mem stats info before collection phase.'
-        next_non_model_data = self.non_model_data_list(device_type)[self._step_idx]
-        # self._step_idx = (self._step_idx + 1) % self._step_total
-        self._step_idx = (self._step_idx + 1) % len(self._non_model_data_cuda_list)
-        return next_non_model_data
-
-
-    def sample_overall_data(self) -> None:
-        """Sampling non model data statistics.
-        """
-        if self._start_flag:
-            # overall data recording is after model data recording
-            if len(self._model_data_cuda_list) == 0:
-                return
-
-            self._overall_cuda_list.append(self._mem_monitor.finish())
-            self._overall_cpu_list.append(colo_device_memory_used(torch.device('cpu')))
-
-            assert len(self._model_data_cuda_list) == len(self._overall_cuda_list)
-
-            # self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
-            self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
-            self._sampling_time.append(time.time())
-            self._mem_monitor.start()
+        self._step_total = len(self._non_model_data_cuda_list)
