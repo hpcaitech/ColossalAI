@@ -13,6 +13,7 @@ __all__ = ['ReshapeHandler']
 @operator_registry.register(torch.reshape)
 @operator_registry.register(torch.flatten)
 @operator_registry.register(torch.Tensor.permute)
+@operator_registry.register(torch.Tensor.view)
 @operator_registry.register(torch.nn.AdaptiveAvgPool2d)
 class ReshapeHandler(NodeHandler):
     """
