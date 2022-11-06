@@ -62,8 +62,6 @@ def _solution_annotatation(gm: torch.fx.GraphModule, solution: List[int]):
             new_sharding_specs[origin_op_data] = new_sharding_spec
             new_communication_actions = {}
             if op_data_in_user in user_strategy.communication_actions:
-                # print(str(user_node), user_strategy.communication_actions[op_data_in_user])
-                # new_communication_actions[origin_op_data] = user_strategy.communication_actions[op_data_in_user]
                 new_communication_action = user_strategy.communication_actions.pop(op_data_in_user)
                 new_communication_action.arg_index = 0
                 new_communication_actions[origin_op_data] = new_communication_action
@@ -75,7 +73,6 @@ def _solution_annotatation(gm: torch.fx.GraphModule, solution: List[int]):
                                             communication_actions=new_communication_actions)
             setattr(node, 'best_strategy', new_strategy)
             setattr(node, 'sharding_spec', new_sharding_spec)
-            print(node.best_strategy)
         comm_action_dict = {}
         for op_data, comm_action in node.best_strategy.communication_actions.items():
             comm_action_dict[op_data.name] = comm_action
@@ -145,19 +142,16 @@ def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
                 setattr(target_module, name, buffer_sharded.detach().clone())
 
         if node.op == 'get_attr':
-            attr_itr = node.graph.owning_module
+            root = node.graph.owning_module
             atoms = node.target.split(".")
             attr_len = len(atoms)
             if attr_len == 1:
-                target_module = attr_itr
-                target = getattr(attr_itr, atoms[0])
+                target_module = root
+                target = getattr(root, atoms[0])
             else:
-                for index in range(attr_len):
-                    attr_itr = getattr(attr_itr, atoms[index])
-                    if index == attr_len - 1:
-                        target = attr_itr
-                    elif index == attr_len - 2:
-                        target_module = attr_itr
+                target_module = root.get_submodule(atoms[-2])
+                target = getattr(target_module, atoms[-1])
+
             target_sharding_spec = node.sharding_spec
             if target_sharding_spec.dim_partition_dict != {}:
                 origin_sharding_spec = ShardingSpec(device_mesh, target.shape, {})
@@ -174,8 +168,6 @@ def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
             for operation_data, comm_action in comm_actions.items():
                 comm_spec_to_use = comm_action.comm_spec
                 # register hook to the parameters
-                assert isinstance(node._meta_data, torch.nn.parameter.Parameter)
-                assert comm_action.comm_type == CommType.HOOK
                 if isinstance(node._meta_data, torch.nn.parameter.Parameter) and comm_action.comm_type == CommType.HOOK:
 
                     def wrapper(param, comm_spec):
@@ -186,7 +178,6 @@ def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
                         param.register_hook(hook_fn)
 
                     wrapper(target_sharded, comm_spec_to_use)
-
     return gm
 
 
