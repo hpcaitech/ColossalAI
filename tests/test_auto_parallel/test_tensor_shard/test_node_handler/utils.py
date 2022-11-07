@@ -53,26 +53,6 @@ def _build_model_to_compare(model: torch.nn.Module, input_args: List[torch.Tenso
     return model_to_compare, args_to_compare, kwargs_to_compare
 
 
-def _normal_solution_constructor(solution_len, node_index, strategy_index):
-    solution_len = len(strategies_constructor.leaf_strategies)
-    solution = [0] * solution_len
-    solution[node_index] = strategy_index
-    return solution
-
-
-def _bias_module_solution_constructor(strategies_constructor, node_index, strategy_index):
-    linear_node_vector = strategies_constructor.leaf_strategies[node_index]
-    strategy_to_keep = linear_node_vector[strategy_index]
-    linear_node_vector = [strategy_to_keep]
-    cost_graph = CostGraph(strategies_constructor.leaf_strategies)
-    cost_graph.simplify_graph()
-    graph_analyser = GraphAnalyser(gm)
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
-    ret = solver.call_solver_serialized_args()
-    solution = list(ret[0])
-    return solution
-
-
 def numerical_test_for_node_strategy(model: torch.nn.Module,
                                      device_mesh: DeviceMesh,
                                      node_index: int,
