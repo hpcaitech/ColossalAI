@@ -3,9 +3,12 @@ import operator
 from functools import reduce
 from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
-from colossalai.auto_parallel.tensor_shard.utils import (enumerate_all_possible_1d_sharding,
-                                                         enumerate_all_possible_2d_sharding)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, ShardingStrategy, TrainCycleItem
+from colossalai.auto_parallel.tensor_shard.utils import (
+    enumerate_all_possible_1d_sharding,
+    enumerate_all_possible_2d_sharding,
+    ignore_sharding_exception,
+)
 
 from .strategy_generator import StrategyGenerator
 
@@ -79,6 +82,7 @@ class NormalPoolStrategyGenerator(StrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
+    @ignore_sharding_exception
     def _generate_strategy_with_dim_partition(self, dim_partition):
         dim_partition_dict_mapping = {"input": dim_partition, "output": dim_partition}
 

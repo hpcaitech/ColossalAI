@@ -17,6 +17,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
+from colossalai.tensor.utils import convert_dim_partition_dict
 
 
 class StrategyGenerator(ABC):
@@ -75,10 +76,14 @@ class StrategyGenerator(ABC):
                 if isinstance(op_data.data, tuple) and isinstance(op_data.data[0], torch.Tensor):
                     sharding_spec = []
                     for output, dim_partition_dict_element in zip(op_data.data, dim_partition_dict):
+                        dim_size = len(output.shape)
+                        dim_partition_dict_element = convert_dim_partition_dict(dim_size, dim_partition_dict_element)
                         sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
                                                      entire_shape=output.shape,
                                                      dim_partition_dict=dim_partition_dict_element)
                 else:
+                    dim_size = len(op_data.logical_shape)
+                    dim_partition_dict = convert_dim_partition_dict(dim_size, dim_partition_dict)
                     sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
                                                  entire_shape=op_data.logical_shape,
                                                  dim_partition_dict=dim_partition_dict)
