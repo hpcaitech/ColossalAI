@@ -1,7 +1,7 @@
 import math
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -350,7 +350,8 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
         valid_spec_dict.update(self.get_all_shard_spec(source_spec, orig_cost_dict))
         return valid_spec_dict
 
-    def shape_consistency(self, source_spec: ShardingSpec, target_spec: ShardingSpec):
+    def shape_consistency(self, source_spec: ShardingSpec,
+                          target_spec: ShardingSpec) -> Tuple[List[ShardingSpec], List[CommSpec], float]:
         '''
         This method will find a path to transform source_spec to target_spec with
         a greedy algorithm.
