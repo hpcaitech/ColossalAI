@@ -39,8 +39,8 @@ class BiasAdditionConv(BiasAdditionModule):
         This method is used to reshape the bias node in order to make bias and
         output of non-bias convolution broadcastable.
         """
-        bias_shape = [1] * dimensions
-        bias_shape[1] = -1
+        bias_shape = [1] * (dimensions - 1)
+        bias_shape[0] = -1
         bias_reshape_node_kind = 'call_method'
         bias_reshape_node_target = 'view'
         bias_reshape_node_args = (self.bias_proxy, bias_shape)
