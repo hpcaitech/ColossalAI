@@ -61,7 +61,7 @@ class GeminiManager:
         self._comp_cuda_demand_time = 0
 
     def adjust_layout(self, chunks: Tuple[Chunk, ...]) -> None:
-        """ Adjust the layout of statefuil tensor according to the information provided
+        """ Adjust the layout of stateful tensors according to the information provided
         by mem_stats_collector, which should belongs to a Sharded Model.
         """
         # find stateful tensor in state COMPUTE
