@@ -13,9 +13,10 @@ import torch
 try:
     import triton
     import triton.language as tl
+    HAS_TRITON = True
 except ImportError:
     print('please install triton from https://github.com/openai/triton')
-
+    HAS_TRITON = False
 try:
     from flash_attn.flash_attn_interface import flash_attn_unpadded_func
     HAS_FLASH_ATTN = True

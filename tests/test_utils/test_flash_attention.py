@@ -2,12 +2,12 @@ import pytest
 import torch
 from einops import rearrange
 
-from colossalai.kernel.cuda_native.flash_attention import HAS_FLASH_ATTN, TRITON_AVALIABLE
+from colossalai.kernel.cuda_native.flash_attention import HAS_FLASH_ATTN, HAS_TRITON, TRITON_AVALIABLE
 
 if HAS_FLASH_ATTN:
     from colossalai.kernel.cuda_native.flash_attention import flash_attention
 
-if TRITON_AVALIABLE:
+if HAS_TRITON:
     from colossalai.kernel.cuda_native.flash_attention import triton_flash_attention
 
 
