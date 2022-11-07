@@ -2,7 +2,7 @@ import diffusers
 import pytest
 import torch
 import transformers
-from hf_utils import trace_model_and_compare_output
+from hf_tracer_utils import trace_model_and_compare_output
 
 from colossalai.fx import ColoTracer, symbolic_trace
 

@@ -23,6 +23,9 @@ def symbolic_trace(
     With ``meta_args`` and ``concrete_args``, we can trace the model that are untraceable subject to control flow.
     If specified using ``meta_args`` only, the tracing can be done ahead of time.
 
+    Note that both ``meta_args`` and ``concrete_args`` are kwargs, which contains the key of the argument's names
+    and the value of the argument's values.
+
     Uses:
         >>> model = ...
 
