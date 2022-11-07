@@ -1,6 +1,6 @@
 import torch
 
-from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.fx import symbolic_trace
 
 try:
     from torchrec.models import dlrm
@@ -12,7 +12,6 @@ except ImportError:
     NOT_TORCHREC = True
 
 import pytest
-from torch.fx import GraphModule
 
 BATCH = 2
 SHAPE = 10
@@ -51,8 +50,6 @@ def test_torchrec_dlrm_models():
 
     # Sparse Features
     sparse_features = torch.rand((BATCH, len(keys), SHAPE))
-    # Tracer
-    tracer = ColoTracer()
 
     for model_cls in MODEL_LIST:
         # Initializing model
@@ -77,12 +74,9 @@ def test_torchrec_dlrm_models():
         # Setup GraphModule
         if model_cls == dlrm.InteractionV2Arch:
             concrete_args = {"dense_features": dense_features, "sparse_features": sparse_features}
-            graph = tracer.trace(model, concrete_args=concrete_args)
+            gm = symbolic_trace(model, concrete_args=concrete_args)
         else:
-            graph = tracer.trace(model)
-
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+            gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()
