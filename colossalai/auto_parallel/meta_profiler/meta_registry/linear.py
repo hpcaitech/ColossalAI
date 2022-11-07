@@ -59,7 +59,7 @@ def linear_meta_info(*args) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.
     %detach_default_4 : [#users=0] = call_function[target=torch.ops.aten.detach.default](args = (%detach_default_3,), kwargs = {})
 
     Returns:
-        Tuple[TrainCycleItem, TrainCycleItem, bool]: compute cost, memory cost and save input flag
+        Tuple[TrainCycleItem, TrainCycleItem, bool]: compute cost, memory cost and forward inputs
     """
 
     has_bias: bool = False
