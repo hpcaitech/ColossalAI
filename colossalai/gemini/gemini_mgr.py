@@ -28,7 +28,7 @@ class GeminiManager:
 
     def __init__(self, placement_policy: str,
                  chunk_manager: ChunkManager,
-                 module: torch.nn.Module = None,
+                 module: Optional[torch.nn.Module] = None,
                  use_static_memstats: bool = False) -> None:
 
         assert placement_policy in PlacementPolicyFactory.get_polocy_names()
