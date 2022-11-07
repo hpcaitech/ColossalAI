@@ -21,7 +21,7 @@ LATENTS_SHAPE = (BATCH_SIZE, IN_CHANNELS, HEIGHT // 8, WIDTH // 8)
 TIME_STEP = 2
 
 
-@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not be installed")
+@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not been installed")
 def test_vae():
     MODEL_LIST = [
         diffusers.AutoencoderKL,
@@ -86,7 +86,7 @@ def test_clip():
         trace_model_and_compare_output(model, data_gen)
 
 
-@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not be installed")
+@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not been installed")
 @pytest.mark.skip(reason='cannot pass the test yet')
 def test_unet():
     MODEL_LIST = [
