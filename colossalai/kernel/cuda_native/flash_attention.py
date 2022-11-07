@@ -14,7 +14,7 @@ try:
     import triton
     import triton.language as tl
 except ImportError:
-    raise ImportError('please install triton from https://github.com/openai/triton')
+    print('please install triton from https://github.com/openai/triton')
 
 try:
     from flash_attn.flash_attn_interface import flash_attn_unpadded_func
