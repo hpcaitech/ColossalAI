@@ -5,8 +5,6 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler import LinearModuleHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import ShardingStrategy, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.initialize import launch
@@ -15,9 +13,6 @@ from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from colossalai.testing.utils import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_test_for_node_strategy
-
-if torch.__version__ >= '1.12.0':
-    from colossalai.auto_parallel.meta_profiler import MetaInfo, meta_register
 
 
 def _conv_module_mem_test(rank, bias, world_size, port):
@@ -33,7 +28,7 @@ def _conv_module_mem_test(rank, bias, world_size, port):
     """
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    model = nn.Sequential(nn.Conv2d(4, 16, 3, padding=1, bias=bias)).cuda()
+    model = nn.Sequential(nn.Conv2d(4, 64, 3, padding=1, bias=bias)).cuda()
     input = torch.rand(4, 4, 64, 64).cuda()
     input.requires_grad = True
     physical_mesh_id = torch.arange(0, 4)
