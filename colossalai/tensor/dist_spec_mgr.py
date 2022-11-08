@@ -1,12 +1,14 @@
-from colossalai.tensor.distspec import _DistSpec
-# from colossalai.nn.layer.utils import divide
-from numpy import prod
 from contextlib import contextmanager
+
 import torch
 import torch.distributed as dist
+# from colossalai.nn.layer.utils import divide
+from numpy import prod
 from packaging import version
+
 from colossalai.logging import get_dist_logger
-from colossalai.tensor import ProcessGroup
+from colossalai.tensor.distspec import _DistSpec
+from colossalai.tensor.process_group import ProcessGroup
 
 
 # TODO(jiaruifang) circle import, move the divide to colossalai.commons.

@@ -56,6 +56,7 @@
 <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
    <ul>
+     <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
      <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>
  </li>
@@ -199,6 +200,21 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## Colossal-AI 成功案例
+
+### AIGC
+加速AIGC(AI内容生成)模型，如[Stable Diffusion](https://github.com/CompVis/stable-diffusion)
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+</p>
+
+- [Colossal-AI优化Stable Diffusion](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 6.5倍训练加速和预训练成本降低, 微调硬件成本下降约7倍(从RTX3090/4090到RTX3050/2070)
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+</p>
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
 ### 生物医药
 
 加速 [AlphaFold](https://alphafold.ebi.ac.uk/) 蛋白质结构预测

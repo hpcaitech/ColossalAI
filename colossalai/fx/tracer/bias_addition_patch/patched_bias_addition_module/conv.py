@@ -43,7 +43,7 @@ class BiasAdditionConv(BiasAdditionModule):
         bias_shape[0] = -1
         bias_reshape_node_kind = 'call_method'
         bias_reshape_node_target = 'view'
-        bias_reshape_node_args = (self.bias_proxy, bias_shape)
+        bias_reshape_node_args = (self.bias_proxy, torch.Size(bias_shape))
         bias_reshape_proxy = self.tracer.create_proxy(bias_reshape_node_kind, bias_reshape_node_target,
                                                       bias_reshape_node_args, {})
         return bias_reshape_proxy
