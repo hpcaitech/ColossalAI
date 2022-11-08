@@ -25,6 +25,12 @@ def parse_args():
         default=1,
         help="Tensor Parallelism Degree.",
     )
+    parser.add_argument(
+        "--placement",
+        type=str,
+        default='cpu',
+        help="Placement Policy for Gemini.",
+    )
     args = parser.parse_args()
     return args
 
@@ -198,7 +204,7 @@ def main():
     # Tensor Parallelism (TP)
     tensor_parallelize(model, pg)
     # Gemini + ZeRO DP, Note it must be used after TP
-    model = gemini_zero_dpp(model, pg, 'cpu')
+    model = gemini_zero_dpp(model, pg, args.placement)
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
 
     # build criterion
