@@ -1,0 +1,3 @@
+colossalai >= 0.1.10
+torch >= 1.8.1
+transformers >= 4.231

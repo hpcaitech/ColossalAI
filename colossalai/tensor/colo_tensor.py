@@ -4,9 +4,10 @@ from typing import Callable, Optional, Set
 
 import torch
 
-from colossalai.tensor import ColoTensorSpec, ProcessGroup, ReplicaSpec
 from colossalai.tensor.dist_spec_mgr import DistSpecManager
-from colossalai.tensor.distspec import DistPlacementPattern, _DistSpec
+from colossalai.tensor.distspec import DistPlacementPattern, ReplicaSpec, _DistSpec
+from colossalai.tensor.process_group import ProcessGroup
+from colossalai.tensor.tensor_spec import ColoTensorSpec
 
 from .const import TensorType
 from .op_wrapper import _COLOSSAL_OPS
