@@ -1,21 +1,27 @@
-# ColoDiffusion
-*[ColoDiffusion](https://github.com/hpcaitech/ColoDiffusion) is a Faster Train implementation of the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/)* 
+# Stable Diffusion with Colossal-AI
+*[Colosssal-AI](https://github.com/hpcaitech/ColossalAI) provides a faster and lower cost solution for pretraining and 
+fine-tuning for AIGC (AI-Generated Content) applications such as the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/).* 
 
-We take advantage of Colosssal-AI to exploit multiple optimization strategies
+We take advantage of [Colosssal-AI](https://github.com/hpcaitech/ColossalAI) to exploit multiple optimization strategies
 , e.g. data parallelism, tensor parallelism, mixed precision & ZeRO, to scale the training to multiple GPUs.
 
-
-![](./Merged-0001.png)
-
-[Stable Diffusion](#stable-diffusion-v1) is a latent text-to-image diffusion
+## Stable Diffusion
+[Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) is a latent text-to-image diffusion
 model.
 Thanks to a generous compute donation from [Stability AI](https://stability.ai/) and support from [LAION](https://laion.ai/), we were able to train a Latent Diffusion Model on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. 
 Similar to Google's [Imagen](https://arxiv.org/abs/2205.11487), 
 this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts.
-With its 860M UNet and 123M text encoder, the model is relatively lightweight and runs on a GPU with at least 10GB VRAM.
-See [this section](#stable-diffusion-v1) below and the [model card](https://huggingface.co/CompVis/stable-diffusion).
 
-  
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+</p>
+
+[Stable Diffusion with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion) provides **6.5x faster training and pretraining cost saving, the hardware cost of fine-tuning can be almost 7X cheaper** (from RTX3090/4090 24GB to RTX3050/2070 8GB).
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+</p>
+
 ## Requirements
 A suitable [conda](https://conda.io/) environment named `ldm` can be created
 and activated with:
@@ -33,7 +39,7 @@ pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
 ``` 
 
-### Install ColossalAI
+### Install Colossal-AI
 
 ```
 git clone https://github.com/hpcaitech/ColossalAI.git
@@ -41,7 +47,7 @@ git checkout v0.1.10
 pip install .
 ```
 
-### Install colossalai lightning 
+### Install Colossal-AI [Lightning](https://github.com/Lightning-AI/lightning)
 ```
 git clone -b colossalai https://github.com/Fazziekey/lightning.git
 pip install .
@@ -74,16 +80,23 @@ you can change the trainging config in the yaml file
 ## Comments 
 
 - Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion)
-and [https://github.com/lucidrains/denoising-diffusion-pytorch](https://github.com/lucidrains/denoising-diffusion-pytorch). 
+, [https://github.com/lucidrains/denoising-diffusion-pytorch](https://github.com/lucidrains/denoising-diffusion-pytorch),
+[Stable Diffusion](https://github.com/CompVis/stable-diffusion) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion). 
 Thanks for open-sourcing!
 
 - The implementation of the transformer encoder is from [x-transformers](https://github.com/lucidrains/x-transformers) by [lucidrains](https://github.com/lucidrains?tab=repositories). 
 
-- the implementation of [flash attention](https://github.com/HazyResearch/flash-attention) is from [HazyResearch](https://github.com/HazyResearch) 
+- The implementation of [flash attention](https://github.com/HazyResearch/flash-attention) is from [HazyResearch](https://github.com/HazyResearch). 
 
 ## BibTeX
 
 ```
+@article{bian2021colossal,
+  title={Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training},
+  author={Bian, Zhengda and Liu, Hongxin and Wang, Boxiang and Huang, Haichen and Li, Yongbin and Wang, Chuanrui and Cui, Fan and You, Yang},
+  journal={arXiv preprint arXiv:2110.14883},
+  year={2021}
+}
 @misc{rombach2021highresolution,
       title={High-Resolution Image Synthesis with Latent Diffusion Models}, 
       author={Robin Rombach and Andreas Blattmann and Dominik Lorenz and Patrick Esser and Björn Ommer},
