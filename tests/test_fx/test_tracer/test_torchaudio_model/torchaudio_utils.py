@@ -1,20 +1,16 @@
 import torch
-from torch.fx import GraphModule, Tracer
 
-from colossalai.fx import ColoTracer
+from colossalai.fx import symbolic_trace
 
 
 def trace_and_compare(model, data_gen, need_meta=False, need_concrete=False, kwargs_transform=False):
     data = data_gen()
     concrete_args = data if need_concrete else {}
     meta_args = {k: v.to('meta') for k, v in data.items()} if need_meta else {}
-    tracer = ColoTracer()
 
     model.eval()
 
-    graph = tracer.trace(root=model, concrete_args=concrete_args, meta_args=meta_args)
-    gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
+    gm = symbolic_trace(model, concrete_args=concrete_args, meta_args=meta_args)
 
     with torch.no_grad():
         non_fx_out = model(**data)

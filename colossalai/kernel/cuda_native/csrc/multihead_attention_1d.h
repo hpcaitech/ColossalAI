@@ -4,8 +4,14 @@
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime_api.h>
+#include <torch/torch.h>
 
+#if TORCH_VERSION_MINOR >= 13
+#include <torch/csrc/distributed/c10d/ProcessGroup.hpp>
+#else
 #include <c10d/ProcessGroup.hpp>
+#endif
+
 #include <string>
 #include <type_traits>
 
