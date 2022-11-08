@@ -1,10 +1,9 @@
 import pytest
 import torch
-from torch.fx import GraphModule
-from utils import trace_model_and_compare_output
-
 import transformers
-from colossalai.fx import ColoTracer
+from hf_tracer_utils import trace_model_and_compare_output
+
+from colossalai.fx import symbolic_trace
 
 try:
     import diffusers
@@ -32,11 +31,7 @@ def test_vae():
         model = model_cls()
         sample = torch.zeros(LATENTS_SHAPE)
 
-        tracer = ColoTracer()
-        graph = tracer.trace(root=model)
-
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+        gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()
@@ -98,11 +93,7 @@ def test_unet():
         model = model_cls()
         sample = torch.zeros(LATENTS_SHAPE)
 
-        tracer = ColoTracer()
-        graph = tracer.trace(root=model)
-
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+        gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()

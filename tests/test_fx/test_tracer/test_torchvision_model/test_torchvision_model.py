@@ -2,8 +2,8 @@ import torch
 import torchvision
 import torchvision.models as tm
 from packaging import version
-from colossalai.fx import ColoTracer
-from torch.fx import GraphModule
+
+from colossalai.fx import symbolic_trace
 
 
 def test_torchvision_models():
@@ -20,7 +20,6 @@ def test_torchvision_models():
 
     torch.backends.cudnn.deterministic = True
 
-    tracer = ColoTracer()
     data = torch.rand(2, 3, 224, 224)
 
     for model_cls in MODEL_LIST:
@@ -30,10 +29,7 @@ def test_torchvision_models():
         else:
             model = model_cls()
 
-        graph = tracer.trace(root=model)
-
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+        gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()
