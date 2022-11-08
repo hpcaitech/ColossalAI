@@ -7,6 +7,9 @@ from torch.fx import GraphModule
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
 from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.solver import SolverOptions, StrategiesConstructor
+from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
+from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
+from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.shape_consistency import to_global
@@ -56,7 +59,8 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
                                      strategy_number: int,
                                      input_args: List[torch.Tensor],
                                      meta_arg_names: List[str],
-                                     input_kwargs: Dict[str, torch.Tensor] = {}):
+                                     input_kwargs: Dict[str, torch.Tensor] = {},
+                                     node_type: str = 'normal'):
     for strategy_index in range(strategy_number):
         print(f'#strategy_index: {strategy_index}')
         # We need to copy the model to avoid do backward more than once in same graph
@@ -79,11 +83,21 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
         strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
         strategies_constructor.build_strategies_and_cost()
         target_node = list(graph.nodes)[node_index]
-
-        # solution construction
-        solution_len = len(strategies_constructor.leaf_strategies)
-        solution = [0] * solution_len
-        solution[node_index] = strategy_index
+        if node_type == 'normal':
+            solution_len = len(strategies_constructor.leaf_strategies)
+            solution = [0] * solution_len
+            solution[node_index] = strategy_index
+        else:
+            node_vector = strategies_constructor.leaf_strategies[node_index]
+            strategy_to_keep = node_vector[strategy_index]
+            node_vector = [strategy_to_keep]
+            # solution construction
+            cost_graph = CostGraph(strategies_constructor.leaf_strategies)
+            cost_graph.simplify_graph()
+            graph_analyser = GraphAnalyser(gm)
+            solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser)
+            ret = solver.call_solver_serialized_args()
+            solution = list(ret[0])
         gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
             gm, solution, device_mesh)
         gm = runtime_apply_pass(gm)
@@ -110,11 +124,18 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
 
         # extract the strategy used in this iter
         strategy_in_use = target_node.strategies_vector[strategy_index]
-        param_to_shard_dict = dict(model_to_shard.named_parameters())
+        param_to_shard_dict = dict(gm.named_parameters())
         param_to_compare_dict = dict(model_to_compare.named_parameters())
         for name in param_to_shard_dict.keys():
             param_name = name.split('.')[-1]
-            param_sharding_spec = strategy_in_use.get_sharding_spec_by_name(param_name)
+            if node_type == 'normal':
+                param_sharding_spec = strategy_in_use.get_sharding_spec_by_name(param_name)
+            else:
+                if 'weight' in name:
+                    param_sharding_spec = list(graph.nodes)[4].sharding_spec
+                elif 'bias' in name:
+                    param_sharding_spec = list(graph.nodes)[5].sharding_spec
+
             grad_sharded = param_to_shard_dict[name].grad
             grad_to_compare = param_to_compare_dict[name].grad
             global_grad = to_global(grad_sharded, param_sharding_spec)
