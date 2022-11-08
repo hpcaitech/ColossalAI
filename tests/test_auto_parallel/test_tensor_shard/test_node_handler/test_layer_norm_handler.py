@@ -62,6 +62,7 @@ def check_ln_module_handler(rank, world_size, port):
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
+        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['input'].name == "input_1"
     assert mapping['input'].data.shape == torch.Size([4, 16])

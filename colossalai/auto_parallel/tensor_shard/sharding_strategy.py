@@ -40,11 +40,15 @@ class OperationData:
     type: OperationDataType
     data: Any
     logical_shape: Tuple[int] = None
+    data_ptr: int = None
 
     def __post_init__(self):
         # if no logical shape is specified, use the data shape as the logical shape
         if self.logical_shape is None and isinstance(self.data, torch.Tensor):
             self.logical_shape = self.data.shape
+        if self.data_ptr is None and isinstance(self.data, torch.Tensor):
+            self.data_ptr = self.data.data_ptr()
+            assert self.data_ptr, f"data_ptr is should be neither None nor 0, but got {self.data_ptr}"
 
     def __repr__(self) -> str:
         return f'OperationData(name={self.name}, type={self.type})'

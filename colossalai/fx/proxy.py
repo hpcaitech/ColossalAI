@@ -1,10 +1,20 @@
 import operator
+import uuid
+from typing import Any, List, Union
+
 import torch
-from torch.fx.proxy import Proxy, Attribute
-from typing import List, Union, Any
+from torch.fx.proxy import Attribute, Proxy
+
 from colossalai.fx.tracer.meta_patch import meta_patched_function
 
 __all__ = ['ColoProxy']
+
+
+def set_data_ptr(x):
+    if isinstance(x, torch.Tensor):
+        if not x.data_ptr():
+            data_ptr = uuid.uuid4()
+            x.data_ptr = lambda: data_ptr
 
 
 class ColoProxy(Proxy):
@@ -30,7 +40,10 @@ class ColoProxy(Proxy):
 
     @meta_data.setter
     def meta_data(self, data: Any):
+        set_data_ptr(data)
         self.node._meta_data = data
+        assert self.node._meta_data.data_ptr(
+        ) != 0, f"meta data ptr should not be 0, but got {self.node._meta_data.data_ptr()}"
 
     @property
     def has_meta_data(self):

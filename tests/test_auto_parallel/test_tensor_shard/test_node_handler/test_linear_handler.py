@@ -67,6 +67,7 @@ def check_linear_module_handler(rank, bias, world_size, port):
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
+        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['input'].name == "input_1"
     assert mapping['input'].data.shape == torch.Size([2, 2, 4, 16])
@@ -183,8 +184,15 @@ def check_linear_function_handler(rank, bias, world_size, port):
     # build handler
     handler = LinearFunctionHandler(node=linear_func_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
-    # # check operation data mapping
+    # check operation data mapping
     mapping = handler.get_operation_data_mapping()
+
+    for name, op_data in mapping.items():
+        op_data: OperationData
+        # make sure they have valid values
+        assert op_data.logical_shape is not None
+        assert op_data.data is not None
+        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['input'].name == "input_1"
     assert mapping['input'].data.shape == torch.Size([2, 2, 4, 16])

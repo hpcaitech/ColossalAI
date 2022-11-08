@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import \
-    PlacehodlerHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlaceholderHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 
@@ -35,7 +34,7 @@ def test_placeholder_handler():
     placeholder_strategies_vector = StrategiesVector(placeholder_node)
 
     # build handler
-    placeholder_handler = PlacehodlerHandler(node=placeholder_node,
+    placeholder_handler = PlaceholderHandler(node=placeholder_node,
                                              device_mesh=device_mesh,
                                              strategies_vector=placeholder_strategies_vector)
 
@@ -46,7 +45,9 @@ def test_placeholder_handler():
     for name, op_data in mapping.items():
         op_data: OperationData
         # make sure they have valid values
+        assert op_data.logical_shape is not None
         assert op_data.data is not None
+        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['output'].name == "input_1"
     assert mapping['output'].data.is_meta

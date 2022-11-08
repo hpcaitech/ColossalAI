@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.output_handler import \
-    OuputHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler.output_handler import OuputHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 
@@ -37,11 +36,11 @@ def test_output_handler():
     output_strategies_vector = StrategiesVector(output_node)
 
     # build handler
-    otuput_handler = OuputHandler(node=output_node, device_mesh=device_mesh, strategies_vector=output_strategies_vector)
+    output_handler = OuputHandler(node=output_node, device_mesh=device_mesh, strategies_vector=output_strategies_vector)
 
-    otuput_handler.register_strategy(compute_resharding_cost=False)
+    output_handler.register_strategy(compute_resharding_cost=False)
     # check operation data mapping
-    mapping = otuput_handler.get_operation_data_mapping()
+    mapping = output_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
         op_data: OperationData
@@ -51,7 +50,7 @@ def test_output_handler():
     assert mapping['output'].name == "output"
     assert mapping['output'].data.is_meta
     assert mapping['output'].type == OperationDataType.OUTPUT
-    strategy_name_list = [val.name for val in otuput_handler.strategies_vector]
+    strategy_name_list = [val.name for val in output_handler.strategies_vector]
     assert "Replica Output" in strategy_name_list
 
 

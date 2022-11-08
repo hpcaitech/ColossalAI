@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.where_handler import \
-    WhereHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler.where_handler import WhereHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx.tracer.meta_patch.patched_module import linear
@@ -53,6 +52,7 @@ def test_where_handler():
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
+        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['condition'].name == "condition"
     assert mapping['condition'].data.is_meta

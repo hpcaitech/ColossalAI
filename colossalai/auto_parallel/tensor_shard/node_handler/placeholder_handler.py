@@ -4,12 +4,12 @@ from ..sharding_strategy import OperationData, OperationDataType
 from .node_handler import NodeHandler
 from .strategy import PlaceholderGenerator, StrategyGenerator
 
-__all__ = ['PlacehodlerHandler']
+__all__ = ['PlaceholderHandler']
 
 
-class PlacehodlerHandler(NodeHandler):
+class PlaceholderHandler(NodeHandler):
     """
-    A PlacehodlerHandler which deals with the sharding strategies for Placeholder Node.
+    A PlaceholderHandler which deals with the sharding strategies for Placeholder Node.
     """
 
     def get_strategy_generator(self) -> List[StrategyGenerator]:

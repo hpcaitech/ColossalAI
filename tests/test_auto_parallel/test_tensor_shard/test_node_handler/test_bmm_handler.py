@@ -74,6 +74,7 @@ def check_2d_device_mesh(rank, module, world_size, port):
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
+        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['input'].name == "x1"
     assert mapping['input'].data.is_meta
@@ -168,6 +169,7 @@ def check_1d_device_mesh(rank, module, world_size, port):
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
+        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['input'].name == "x1"
     assert mapping['input'].data.is_meta
