@@ -32,9 +32,9 @@ import datasets
 import torch
 import torch.distributed as dist
 from accelerate.utils import set_seed
+from context import barrier_context
 from datasets import load_dataset
 from packaging import version
-from titans.utils import barrier_context
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from utils import colo_memory_cap
