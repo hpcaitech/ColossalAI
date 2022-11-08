@@ -42,4 +42,3 @@ jobs:
           body_path: ${{ steps.generate_draft.outputs.path }}
           draft: True
           prerelease: false
-        
