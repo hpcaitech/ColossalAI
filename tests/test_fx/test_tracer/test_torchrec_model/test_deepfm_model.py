@@ -54,7 +54,6 @@ def test_torchrec_deepfm_models():
 
         # Setup GraphModule
         gm = symbolic_trace(model)
-        gm.recompile()
 
         model.eval()
         gm.eval()

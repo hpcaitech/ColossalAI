@@ -16,7 +16,6 @@ def trace_model_and_compare_output(model, data_gen):
         gm = symbolic_trace(model, meta_args=meta_args)
     except Exception as e:
         raise RuntimeError(f"Failed to trace {model.__class__.__name__}, error: {e}")
-    gm.recompile()
 
     # run forward
     inputs = data_gen()
