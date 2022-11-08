@@ -1,7 +1,15 @@
 import copy
+from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommAction,
+    CommType,
+    MemoryCost,
+    ShardingStrategy,
+    TrainCycleItem,
+)
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
+from colossalai.tensor.sharding_spec import ShardingSpec
 
 from .strategy_generator import FollowingStrategyGenerator
 
@@ -49,7 +57,7 @@ class ReshapeGenerator(FollowingStrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
         # For reshape function, to keep the computing correctness we keep the sharding
         # spec of input is fully replicated. In addition, we will keep the output in
@@ -80,12 +88,23 @@ class ReshapeGenerator(FollowingStrategyGenerator):
             # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
             if len(total_mesh_dim_list) == 1:
                 total_mesh_dim_list = total_mesh_dim_list[0]
+                input_comm_action = self.get_communication_action(
+                    sharding_spec=sharding_spec_mapping["input"],
+                    communication_pattern=CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
+                    logical_process_axis=total_mesh_dim_list,
+                    comm_type=CommType.BEFORE,
+                    arg_index=0)
+                input_comm_action.comm_spec.gather_dim = total_mesh_dim_list
 
-            input_comm_spec = self.get_communication_spec(
-                sharding_spec=sharding_spec_mapping["input"],
-                communication_pattern=CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
-                logical_process_axis=total_mesh_dim_list)
-            communication_action_mapping["input"] = input_comm_spec
+            else:
+                source_spec = sharding_spec_mapping["input"]
+                target_spec = ShardingSpec(device_mesh=self.device_mesh,
+                                           entire_shape=source_spec.entire_shape,
+                                           dim_partition_dict={})
+                comm_spec = {'src_spec': source_spec, 'tgt_spec': target_spec}
+                input_comm_action = CommAction(comm_spec=comm_spec, comm_type=CommType.BEFORE, arg_index=0)
+
+            communication_action_mapping["input"] = input_comm_action
             strategy = self.get_sharding_strategy(name=name,
                                                   sharding_spec_mapping=sharding_spec_mapping,
                                                   communication_action_mapping=communication_action_mapping)

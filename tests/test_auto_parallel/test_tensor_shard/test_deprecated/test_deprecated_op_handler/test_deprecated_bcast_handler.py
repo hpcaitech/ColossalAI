@@ -1,12 +1,15 @@
-import torch
-from torch.fx import GraphModule
-import torch.nn as nn
+from cProfile import run
+
 import pytest
+import torch
+import torch.nn as nn
+from torch.fx import GraphModule
 
 from colossalai.auto_parallel.tensor_shard.deprecated.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.deprecated.strategies_constructor import StrategiesConstructor
-from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 class ConvModel(nn.Module):
@@ -27,6 +30,7 @@ class ConvModel(nn.Module):
         return x
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_conv_handler():
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

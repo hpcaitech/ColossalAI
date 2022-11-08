@@ -6,16 +6,22 @@ from typing import Any, Dict, List, Union
 import torch
 from torch.fx import Node
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, ShardingStrategy,
-                                                                     TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommAction,
+    CommType,
+    OperationData,
+    OperationDataType,
+    ShardingStrategy,
+    TrainCycleItem,
+)
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec
+from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 
 class StrategyGenerator(ABC):
     """
-    StrategyGenerator is used to generate the same group of sharding strategies. 
+    StrategyGenerator is used to generate the same group of sharding strategies.
 
     TODO: remove the original strategy_generator.py after refactoring
     """
@@ -23,6 +29,9 @@ class StrategyGenerator(ABC):
     def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh):
         self.op_data = operation_data_mapping
         self.device_mesh = device_mesh
+
+        # validate the whether operation data is of desired value
+        self.validate()
 
     @property
     def has_bias(self):
@@ -34,6 +43,10 @@ class StrategyGenerator(ABC):
     def is_param(self, op_data_name):
         other_data = self.op_data[op_data_name]
         return other_data.type == OperationDataType.PARAM
+
+    def is_buffer(self, op_data_name):
+        other_data = self.op_data[op_data_name]
+        return other_data.type == OperationDataType.BUFFER
 
     def get_sharding_strategy(self, name: str, sharding_spec_mapping: Dict[str, ShardingSpec],
                               communication_action_mapping: Dict[str, CommSpec]):
@@ -91,6 +104,23 @@ class StrategyGenerator(ABC):
                         sharding_spec=sharding_spec,
                         logical_process_axis=logical_process_axis)
 
+    def get_communication_action(self,
+                                 sharding_spec: ShardingSpec,
+                                 communication_pattern: CollectiveCommPattern,
+                                 logical_process_axis: Union[int, List[int]],
+                                 comm_type: CommType,
+                                 arg_index: int = -1,
+                                 key_for_kwarg: any = None) -> CommAction:
+        """
+        A factory method to produce a CommAction object.
+        """
+        return CommAction(comm_spec=self.get_communication_spec(sharding_spec=sharding_spec,
+                                                                communication_pattern=communication_pattern,
+                                                                logical_process_axis=logical_process_axis),
+                          comm_type=comm_type,
+                          arg_index=arg_index,
+                          key_for_kwarg=key_for_kwarg)
+
     def update_communication_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         """
         Compute the communication cost involved in the forward and backward iteration.
@@ -98,9 +128,9 @@ class StrategyGenerator(ABC):
 
         comm_cost = TrainCycleItem(fwd=0, bwd=0, total=0)
 
-        def _compute_and_add(data: OperationData, comm_spec: CommSpec):
+        def _compute_and_add(op_data: OperationData, comm_spec: CommSpec):
             num_ele_in_comm = comm_spec.get_comm_cost()
-            dtype = operand.data.dtype
+            dtype = op_data.data.dtype
             size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
             for phase, cost in num_ele_in_comm.items():
                 num_ele_in_comm[phase] = num_ele_in_comm[phase] * size_per_elem_bytes
@@ -111,8 +141,21 @@ class StrategyGenerator(ABC):
         # check if communication action exists
         # if so, loop over each action and compute the cost of each action
         if strategy.communication_actions is not None:
-            for operand, comm_spec in strategy.communication_actions.items():
-                _compute_and_add(operand, comm_spec)
+            for operand, comm_action in strategy.communication_actions.items():
+                if isinstance(comm_action, CommAction):
+                    comm_spec = comm_action.comm_spec
+                else:
+                    # this condition branch will be removed after all the handler updated.
+                    comm_spec = comm_action
+                if isinstance(comm_spec, dict):
+                    src_spec = comm_spec['src_spec']
+                    tgt_spec = comm_spec['tgt_spec']
+                    shape_consistency_manager = ShapeConsistencyManager()
+                    _, comm_action_sequence, _ = shape_consistency_manager.shape_consistency(src_spec, tgt_spec)
+                    for comm_spec_ in comm_action_sequence:
+                        _compute_and_add(operand, comm_spec_)
+                else:
+                    _compute_and_add(operand, comm_spec)
 
         # update the communication cost attribute in-place
         strategy.communication_cost = comm_cost
@@ -135,7 +178,7 @@ class StrategyGenerator(ABC):
     def _compute_size_in_bytes(self, strategy: ShardingStrategy, key: str):
         """
         Compute the size of a tensor in bytes.
-        
+
         Args:
             strategy (ShardingStrategy): the ShardingStrategy generated.
             key (str): the name of the operation data defined by the generator.
@@ -143,21 +186,45 @@ class StrategyGenerator(ABC):
         """
         op_data = self.op_data[key]
         sharded_shape = strategy.sharding_specs[op_data].get_sharded_shape_per_device()
+
+        if len(sharded_shape) == 0:
+            num_elements = 1
+        else:
+            num_elements = reduce(operator.mul, sharded_shape)
         dtype = self.op_data[key].data.dtype
         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
-        return reduce(operator.mul, sharded_shape) * size_per_elem_bytes
+        return num_elements * size_per_elem_bytes
 
-    @abstractmethod
     def generate(self) -> List[ShardingStrategy]:
         """
         Generate all possible sharding strategies for this operation.
         """
+        strategies = self.collate_strategies()
+
+        # some strategies may be None as ignore_sharding_exception may return None
+        # when ShardingSpecException occurs.
+        # thus, remove those None values
+        strategies = [strategy for strategy in strategies if strategy]
+
+        # update the costs
+        # update mete info on cost
+        # these update methods are all in-place, the default method will do nothing
+        # the cost info will only be added if the child class overrides these methods
+        for strategy in strategies:
+            self.update_communication_cost(strategy)
+            self.update_compute_cost(strategy)
+            self.update_memory_cost(strategy)
+
+        return strategies
+
+    @abstractmethod
+    def collate_strategies(self) -> List[ShardingStrategy]:
         pass
 
     @abstractmethod
     def validate(self) -> bool:
         """
-        Validate if the operands are of desired shape. 
+        Validate if the operands are of desired shape.
         If True, means this generator can be used for the current operation.
         """
         pass
@@ -165,7 +232,7 @@ class StrategyGenerator(ABC):
 
 class FollowingStrategyGenerator(StrategyGenerator):
     """
-    FollowingStrategyGenerator is used to generate the sharding strategies which depends on its predecessor node. 
+    FollowingStrategyGenerator is used to generate the sharding strategies which depends on its predecessor node.
 
     TODO: remove the original strategy_generator.py after refactoring
     """

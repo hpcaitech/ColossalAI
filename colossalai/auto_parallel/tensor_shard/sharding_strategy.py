@@ -4,11 +4,12 @@ from enum import Enum
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
-from colossalai.tensor.shape_consistency import CommSpec
-from colossalai.tensor.sharding_spec import ShardingSpec
 from torch.fx.node import Node
 
-from .constants import (BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP)
+from colossalai.tensor.shape_consistency import CommSpec
+from colossalai.tensor.sharding_spec import ShardingSpec
+
+from .constants import BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP
 
 __all__ = ['OperationDataType', 'OperationData', 'TrainCycleItem', 'MemoryCost', 'ShardingStrategy', 'StrategiesVector']
 
@@ -20,7 +21,8 @@ class OperationDataType(Enum):
     INPUT = 0
     ARG = 1
     PARAM = 2
-    OUTPUT = 3
+    BUFFER = 3
+    OUTPUT = 4
 
 
 @dataclass
@@ -77,9 +79,46 @@ class MemoryCost:
     Args:
         activation (int): the memory cost incurred by the activations in bytes.
         parameter (int): the memory cost incurred by the module parameter in bytes.
+        temp (int): the memory cost incurred by the temporary tensors in bytes.
+        buffer (int): the memory cost incurred by the module buffer in bytes.
     """
     activation: int = 0
     parameter: int = 0
+    temp: int = 0
+    buffer: int = 0
+
+
+class CommType(Enum):
+    """
+    CommType describes the sequential order of a communication action and a computation action.
+
+    Meaning:
+        BEFORE: the communication action happens just before the computation operation.
+        AFTER: the communication action happens after the computation operation.
+        HOOK: the communication action is used to do the grad all reduce.
+        IMPLICIT: the communication action happens during the kernel execution, such as SyncBatchNorm
+    """
+    BEFORE = 0
+    AFTER = 1
+    HOOK = 2
+    IMPLICIT = 3
+
+
+@dataclass
+class CommAction:
+    """
+    CommAction is used to record the communication action.
+
+    Args:
+        comm_spec: express the communication pattern and the process groups to execute the communication action.
+        comm_type: describes the sequential order of a communication action and a computation action.
+        arg_index: record the location of tensor which join the communication, we cannot use name of node or op_data at runtime,
+                   because the args of node may be changed by graph transform passes.
+    """
+    comm_spec: CommSpec = None
+    comm_type: CommType = None
+    arg_index: int = -1
+    key_for_kwarg: any = None
 
 
 @dataclass
@@ -100,7 +139,7 @@ class ShardingStrategy:
     compute_cost: TrainCycleItem = None
     communication_cost: TrainCycleItem = None
     memory_cost: TrainCycleItem = None
-    communication_actions: Dict[OperationData, CommSpec] = None
+    communication_actions: Dict[OperationData, CommAction] = None
     resharding_costs: Dict[Node, List[TrainCycleItem]] = None
 
     @property

@@ -1,23 +1,22 @@
+from functools import partial
+
 import pytest
-import colossalai
 import torch
 import torch.multiprocessing as mp
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-
-from functools import partial
-from tests.test_tensor.common_utils import tensor_equal, set_seed, tensor_shard_equal
-from tests.components_to_test.registry import non_distributed_component_funcs
 from torch.nn.parallel import DistributedDataParallel as DDP
-from colossalai.gemini.chunk import search_chunk_configuration, ChunkManager
-from colossalai.nn.parallel import ZeroDDP
-from colossalai.testing import parameterize
+
+import colossalai
 from colossalai.amp import convert_to_apex_amp
+from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ProcessGroup
-from tests.test_tensor.common_utils import debug_print
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
+from tests.components_to_test.registry import non_distributed_component_funcs
+from tests.test_tensor.common_utils import debug_print, set_seed, tensor_equal, tensor_shard_equal
 
 
 def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -41,7 +40,8 @@ def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
-def exam_gpt_fwd_bwd(placement_policy):
+@parameterize('keep_gather', [False, True])
+def exam_gpt_fwd_bwd(placement_policy, keep_gather):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable('gpt2')
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
@@ -54,9 +54,9 @@ def exam_gpt_fwd_bwd(placement_policy):
         torch_p.data.copy_(p.data)
 
     world_size = torch.distributed.get_world_size()
-    config_dict = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
+    config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     config_dict[world_size]['chunk_size'] = 5000
-    config_dict[world_size]['keep_gathered'] = False
+    config_dict[world_size]['keep_gathered'] = keep_gather
     chunk_manager = ChunkManager(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
@@ -102,4 +102,4 @@ def test_gpt(world_size):
 
 
 if __name__ == '__main__':
-    test_gpt(1)
+    test_gpt(4)

@@ -1,9 +1,10 @@
-import torch
-import timm.models as tm
-from timm_utils import split_model_and_compare_output
 import pytest
+import timm.models as tm
+import torch
+from timm_utils import split_model_and_compare_output
 
 
+@pytest.mark.skip('balance split v2 is not ready')
 def test_timm_models_without_control_flow():
 
     MODEL_LIST = [
@@ -24,6 +25,7 @@ def test_timm_models_without_control_flow():
         split_model_and_compare_output(model, data)
 
 
+@pytest.mark.skip('balance split v2 is not ready')
 def test_timm_models_with_control_flow():
     torch.backends.cudnn.deterministic = True
 

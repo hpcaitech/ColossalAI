@@ -1,17 +1,16 @@
-import pytest
-
 from functools import partial
 
+import pytest
 import torch
-import torch.multiprocessing as mp
 import torch.distributed as dist
+import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.gemini.chunk import search_chunk_configuration
+from colossalai.tensor import ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port, get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ShardSpec, ComputePattern, ComputeSpec, ProcessGroup
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
@@ -35,11 +34,11 @@ def exam_search_chunk_size():
     with ColoInitContext(device=get_current_device()):
         model = model_builder()
     init_1d_row_spec(model, pg_tp)
-    config_dict = search_chunk_configuration(model,
-                                             search_range_mb=1,
-                                             search_interval_byte=16,
-                                             min_chunk_size_mb=0,
-                                             filter_exlarge_params=True)
+    config_dict, _ = search_chunk_configuration(model,
+                                                search_range_mb=1,
+                                                search_interval_byte=16,
+                                                min_chunk_size_mb=0,
+                                                filter_exlarge_params=True)
 
     for key in config_dict:
         chunk_size = config_dict[key]['chunk_size']

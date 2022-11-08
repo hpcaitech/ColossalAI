@@ -1,10 +1,10 @@
-import torch
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, shard_simulator
-from copy import deepcopy
-from enum import Enum
-from functools import reduce
 import operator
+from copy import deepcopy
+from functools import reduce
+
+import torch
+
+from colossalai.device.device_mesh import DeviceMesh
 
 __all__ = ['_DimSpec', 'ShardingException', 'ShardingSpec']
 
@@ -21,7 +21,7 @@ class _DimSpec:
     This class is used internally in ShardingSpec.
 
     Argument:
-        shard_list(List[int]): if shard_list is None, the dim spec will be 'R' type. 
+        shard_list(List[int]): if shard_list is None, the dim spec will be 'R' type.
             Otherwise, the element in shard_list means the data will be sharded in that dimension.
     '''
 
@@ -60,7 +60,7 @@ class _DimSpec:
 
     def build_difference_2d_dict(self):
         '''
-        Build a difference maping for 2D device mesh case. It will be used to 
+        Build a difference maping for 2D device mesh case. It will be used to
         compute the difference between DimSpec pairs.
         '''
 
@@ -138,16 +138,28 @@ class _DimSpec:
         return difference
 
 
-class ShardingException(Exception):
+class ShardingSpecException(Exception):
+    pass
+
+
+class ShardingOutOfIndexError(ShardingSpecException):
+    pass
+
+
+class DuplicatedShardingDimensionError(ShardingSpecException):
+    pass
+
+
+class ShardingNotDivisibleError(ShardingSpecException):
     pass
 
 
 class ShardingSpec:
     '''
     Sharding spec for a tensor, it contains info of the logical device mesh this tensor belong
-    to, the entire shape of the tensor before sharded, and the sharding sequence looks like 
+    to, the entire shape of the tensor before sharded, and the sharding sequence looks like
     [R, R, S0, S1].
-    
+
     Argument:
         device_mesh(DeviceMesh): A logical view of a physical mesh.
         entire_shape(torch.Size): The entire shape of tensor before sharded.
@@ -156,8 +168,15 @@ class ShardingSpec:
         sharding_sequence(List[_DimSpec], optional): A straight view of ShardingSpec looks like [R, R, S0, S1].
     '''
 
-    def __init__(self, device_mesh, entire_shape, dim_partition_dict=None, sharding_sequence=None):
+    def __init__(self,
+                 device_mesh: DeviceMesh,
+                 entire_shape: torch.Size,
+                 dim_partition_dict=None,
+                 sharding_sequence=None):
         self.device_mesh = device_mesh
+
+        if isinstance(entire_shape, (list, tuple)):
+            entire_shape = torch.Size(entire_shape)
         self.entire_shape = entire_shape
         self.dim_partition_dict = dim_partition_dict
         self.sharding_sequence = sharding_sequence
@@ -174,18 +193,35 @@ class ShardingSpec:
         return ' '.join(res_list)
 
     def _sanity_check(self):
-        '''
-        In sanity check, we need make sure all axes in logical device mesh only be used
-        once.
-        '''
-        dim_check_list = [i for i in range(self.device_mesh.logical_mesh_id.dim())]
+        # make sure all axes in logical device mesh only be used once
+        dim_check_list = list(range(self.device_mesh.logical_mesh_id.dim()))
         for dim, shard_list in self.dim_partition_dict.items():
             for element in shard_list:
                 if element in dim_check_list:
                     dim_check_list.remove(element)
                 else:
-                    raise ValueError(
+                    raise DuplicatedShardingDimensionError(
                         f"find an invalid sharding axis {element} in dim_partition_dict in tensor dimension {dim}.")
+
+        # make sure that the dimension is not out of index
+        for dim in self.dim_partition_dict.keys():
+            if dim >= len(self.entire_shape):
+                raise ShardingOutOfIndexError(
+                    f"The dim_partition_dict specifies to shard dimension {dim} but the entire_shape only has {len(self.entire_shape)} dimensions"
+                )
+
+        # make sure that the sharding for a dimension is divisible by the number of devices
+        for dim, shard_list in self.dim_partition_dict.items():
+            tensor_dim_size = self.entire_shape[dim]
+            num_devices = 1
+
+            for element in shard_list:
+                num_devices *= self.device_mesh.mesh_shape[element]
+
+            if tensor_dim_size % num_devices != 0:
+                raise ShardingNotDivisibleError(
+                    f'The size of dimension at index {dim} is {tensor_dim_size}, it cannot be sharded over {num_devices} devices.'
+                )
 
     def convert_dict_to_shard_sequence(self):
         '''
@@ -225,10 +261,10 @@ class ShardingSpec:
             #     device_mesh_shape: (4, 4)
             sharding_spec_to_compare = ShardingSpec(device_mesh, entire_shape, dim_partition_dict_to_compare)
             print(sharding_spec.sharding_sequence_difference(sharding_spec_to_compare))
-        
+
         Output:
             25
-        
+
         Argument:
             other(ShardingSpec): The ShardingSpec to compared with.
 

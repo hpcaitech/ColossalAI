@@ -1,13 +1,12 @@
-from typing import List, Callable, Dict
 import threading
+from typing import Callable, Dict, List
 
 import torch
 import torch.distributed as dist
-from torch.futures import Future
-from torch._C._distributed_rpc import PyRRef
-
-from colossalai.pipeline.rpc._pipeline_base import PipelineEngineBase, WorkerBase, UniqueKey, Phase, WorkItem
 from colossalai.pipeline.pipeline_process_group import ppg
+from colossalai.pipeline.rpc._pipeline_base import (Phase, PipelineEngineBase, UniqueKey, WorkerBase, WorkItem)
+from torch._C._distributed_rpc import PyRRef
+from torch.futures import Future
 
 # Implementation of different Pipeline schedule
 # <strategy>Worker defines the worker for each stage

@@ -1,4 +1,5 @@
 import copy
+from typing import List
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
 
@@ -48,7 +49,7 @@ class UnaryElementwiseGenerator(FollowingStrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
         # For element-wise function, we keep the sharding spec of output node same as
         # the input. Therefore, the different strategies of input node with same
@@ -72,10 +73,5 @@ class UnaryElementwiseGenerator(FollowingStrategyGenerator):
                                                   sharding_spec_mapping=sharding_spec_mapping,
                                                   communication_action_mapping=communication_action_mapping)
             strategy_list.append(strategy)
-
-        for strategy in strategy_list:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
 
         return strategy_list

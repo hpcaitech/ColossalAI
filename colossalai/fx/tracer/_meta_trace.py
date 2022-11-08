@@ -1,7 +1,5 @@
-from colossalai.fx.profiler.memory import activation_size
 import torch
-from torch.fx import Node, Graph
-from torch.fx.graph import _Namespace
+from torch.fx import Graph, Node
 from torch.utils._pytree import tree_map
 
 

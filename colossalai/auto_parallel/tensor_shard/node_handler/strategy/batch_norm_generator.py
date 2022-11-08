@@ -1,8 +1,14 @@
 import copy
 import operator
 from functools import reduce
+from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommType,
+    MemoryCost,
+    ShardingStrategy,
+    TrainCycleItem,
+)
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import StrategyGenerator
@@ -30,8 +36,8 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         For BatchNorm3d, the dim of input data should be 5([N, C, H, W, D]).
         '''
         input_op_data = self.op_data['input']
-        assert input_op_data.dim() in (3, 4,
-                                       5), f'We suppose the dim of input fed into conv op should in range of [3, 5].'
+        assert input_op_data.data.dim() in (
+            3, 4, 5), f'We suppose the dim of input fed into conv op should in range of [3, 5].'
 
     def update_compute_cost(self, strategy: ShardingStrategy):
         '''
@@ -64,7 +70,9 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         forward_size_mapping = {
             'input': self._compute_size_in_bytes(strategy, "input"),
             'other': self._compute_size_in_bytes(strategy, "other"),
-            'output': self._compute_size_in_bytes(strategy, "output")
+            'output': self._compute_size_in_bytes(strategy, "output"),
+            'running_mean': self._compute_size_in_bytes(strategy, "running_mean"),
+            'running_var': self._compute_size_in_bytes(strategy, "running_var"),
         }
 
         if self.has_bias:
@@ -75,24 +83,27 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         backward_size_mapping.pop("output")
         # compute fwd cost incurred
         # fwd_cost = input + other + bias + output
-        fwd_activation_cost = sum([v for k, v in forward_size_mapping.items() if not self.is_param(k)])
+        fwd_activation_cost = sum(
+            [v for k, v in forward_size_mapping.items() if not self.is_param(k) and not self.is_buffer(k)])
         fwd_parameter_cost = sum([v for k, v in forward_size_mapping.items() if self.is_param(k)])
-        fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost)
+        fwd_buffer_cost = sum([v for k, v in forward_size_mapping.items() if self.is_buffer(k)])
+        fwd_mem_cost = MemoryCost(activation=fwd_activation_cost, parameter=fwd_parameter_cost, buffer=fwd_buffer_cost)
 
         # compute bwd cost incurred
         # bwd_cost = input_grad + other_grad + bias_grad
-        bwd_activation_cost = sum([v for k, v in backward_size_mapping.items() if not self.is_param(k)])
+        bwd_activation_cost = sum(
+            [v for k, v in backward_size_mapping.items() if not self.is_param(k) and not self.is_buffer(k)])
         bwd_parameter_cost = sum([v for k, v in backward_size_mapping.items() if self.is_param(k)])
         bwd_mem_cost = MemoryCost(activation=bwd_activation_cost, parameter=bwd_parameter_cost)
 
         # compute total cost
         total_mem_cost = MemoryCost(activation=fwd_activation_cost + bwd_activation_cost,
-                                    parameter=fwd_parameter_cost + bwd_parameter_cost)
+                                    parameter=fwd_parameter_cost + bwd_parameter_cost,
+                                    buffer=fwd_buffer_cost)
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
     def split_input_channel(self, mesh_dim_0):
-        strategy_list = []
         name = f'RS{mesh_dim_0} = RS{mesh_dim_0} x S{mesh_dim_0}'
         dim_partition_dict_mapping = {
             "input": {
@@ -104,6 +115,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             "output": {
                 1: [mesh_dim_0]
             },
+            "running_mean": {
+                0: [mesh_dim_0]
+            },
+            "running_var": {
+                0: [mesh_dim_0]
+            },
+            "num_batches_tracked": {},
         }
         if self.has_bias:
             dim_partition_dict_mapping["bias"] = {0: [mesh_dim_0]}
@@ -128,6 +146,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             "output": {
                 1: [mesh_dim_0, mesh_dim_1]
             },
+            "running_mean": {
+                0: [mesh_dim_0, mesh_dim_1]
+            },
+            "running_var": {
+                0: [mesh_dim_0, mesh_dim_1]
+            },
+            "num_batches_tracked": {},
         }
         if self.has_bias:
             dim_partition_dict_mapping["bias"] = {0: [mesh_dim_0, mesh_dim_1]}
@@ -146,6 +171,9 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             "input": {},
             "other": {},
             "output": {},
+            "running_mean": {},
+            "running_var": {},
+            "num_batches_tracked": {},
         }
         if self.has_bias:
             dim_partition_dict_mapping["bias"] = {}
@@ -168,6 +196,9 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             "output": {
                 0: [mesh_dim_0]
             },
+            "running_mean": {},
+            "running_var": {},
+            "num_batches_tracked": {},
         }
         if self.has_bias:
             dim_partition_dict_mapping["bias"] = {}
@@ -178,12 +209,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # For SyncBN case, we don't need to do communication for weight and bias.
         # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=mesh_dim_0)
+            logical_process_axis=mesh_dim_0,
+            comm_type=CommType.AFTER)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -199,6 +231,9 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             "output": {
                 0: [mesh_dim_0, mesh_dim_1]
             },
+            "running_mean": {},
+            "running_var": {},
+            "num_batches_tracked": {},
         }
         if self.has_bias:
             dim_partition_dict_mapping["bias"] = {}
@@ -209,12 +244,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
         # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=[mesh_dim_0, mesh_dim_1])
+            logical_process_axis=[mesh_dim_0, mesh_dim_1],
+            comm_type=CommType.AFTER)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -234,6 +270,13 @@ class BatchNormStrategyGenerator(StrategyGenerator):
                 0: [mesh_dim_0],
                 1: [mesh_dim_1],
             },
+            "running_mean": {
+                0: [mesh_dim_1],
+            },
+            "running_var": {
+                0: [mesh_dim_1],
+            },
+            "num_batches_tracked": {},
         }
         if self.has_bias:
             dim_partition_dict_mapping["bias"] = {
@@ -246,18 +289,19 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # For SyncBN case, we don't need to do communication for gradients of weight and bias.
         # TODO: the communication happens interally at SyncBN operation. We need to replace the BN operation
         # to SyncBN operation instead of inserting a communication node.
-        output_comm_spec = self.get_communication_spec(
+        output_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["output"],
             communication_pattern=CollectiveCommPattern.ALLREDUCE_FWD_IDENTITY_BWD,
-            logical_process_axis=[mesh_dim_0])
+            logical_process_axis=[mesh_dim_0],
+            comm_type=CommType.AFTER)
 
-        communication_action_mapping = {"output": output_comm_spec}
+        communication_action_mapping = {"output": output_comm_action}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         '''
         Generate every possible strategies for a BatchNorm node, and record all strategies into the strategies_vector.
         '''
@@ -273,20 +317,21 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         # RS01 = RS01 x S01
         strategy_list.append(self.split_input_channel_1d(0, 1))
 
+        # The strategies with SYNC_BN are temporarily commented,
+        # because it requires some additional passes to keep runtime
+        # computation correctness.
+
+        # TODO: The strategies below should be uncommented after runtime
+        # passes ready.
         # SR = SR x R WITH SYNC_BN
-        strategy_list.append(self.split_input_batch(0))
-        strategy_list.append(self.split_input_batch(1))
+        # strategy_list.append(self.split_input_batch(0))
+        # strategy_list.append(self.split_input_batch(1))
 
         # SS = SS x S WITH SYNC_BN
-        strategy_list.append(self.split_input_both_dim(0, 1))
-        strategy_list.append(self.split_input_both_dim(1, 0))
+        # strategy_list.append(self.split_input_both_dim(0, 1))
+        # strategy_list.append(self.split_input_both_dim(1, 0))
 
         # S01R = S01R x R WITH SYNC_BN
-        strategy_list.append(self.split_input_batch_1d(0, 1))
-
-        for strategy in strategy_list:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
+        # strategy_list.append(self.split_input_batch_1d(0, 1))
 
         return strategy_list

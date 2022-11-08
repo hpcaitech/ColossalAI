@@ -1,10 +1,18 @@
 import copy
 import operator
 from functools import reduce
+from typing import List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
-from colossalai.auto_parallel.tensor_shard.utils import (enumerate_all_possible_1d_sharding,
-                                                         enumerate_all_possible_2d_sharding)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    CommType,
+    MemoryCost,
+    ShardingStrategy,
+    TrainCycleItem,
+)
+from colossalai.auto_parallel.tensor_shard.utils import (
+    enumerate_all_possible_1d_sharding,
+    enumerate_all_possible_2d_sharding,
+)
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import StrategyGenerator
@@ -106,18 +114,20 @@ class LayerNormGenerator(StrategyGenerator):
             total_mesh_dim_list = total_mesh_dim_list[0]
         communication_action_mapping = {}
 
-        other_comm_spec = self.get_communication_spec(
+        other_comm_action = self.get_communication_action(
             sharding_spec=sharding_spec_mapping["other"],
             communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-            logical_process_axis=total_mesh_dim_list)
-        communication_action_mapping["other"] = other_comm_spec
+            logical_process_axis=total_mesh_dim_list,
+            comm_type=CommType.HOOK)
+        communication_action_mapping["other"] = other_comm_action
 
         if self.has_bias:
-            bias_comm_spec = self.get_communication_spec(
+            bias_comm_action = self.get_communication_action(
                 sharding_spec=sharding_spec_mapping["bias"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
-                logical_process_axis=total_mesh_dim_list)
-            communication_action_mapping["bias"] = bias_comm_spec
+                logical_process_axis=total_mesh_dim_list,
+                comm_type=CommType.HOOK)
+            communication_action_mapping["bias"] = bias_comm_action
 
         strategy = self.get_sharding_strategy(name=name,
                                               sharding_spec_mapping=sharding_spec_mapping,
@@ -159,7 +169,7 @@ class LayerNormGenerator(StrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         '''
         Generate every possible strategies for a LayerNorm node, and record all strategies into the strategies_vector.
         '''
@@ -178,11 +188,5 @@ class LayerNormGenerator(StrategyGenerator):
 
         # RR = RR x R
         strategy_list.append(self.non_split())
-        # update mete info on cost
-
-        for strategy in strategy_list:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
 
         return strategy_list

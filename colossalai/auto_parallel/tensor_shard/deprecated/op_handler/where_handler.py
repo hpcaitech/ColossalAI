@@ -1,14 +1,19 @@
 import operator
-from functools import reduce
 import warnings
+from copy import deepcopy
+from functools import reduce
+from typing import Dict, List
+
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
-from .operator_handler import OperatorHandler
+
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import (enumerate_all_possible_1d_sharding,
+                                                                     enumerate_all_possible_2d_sharding,
+                                                                     ignore_sharding_exception)
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
-from copy import deepcopy
-from typing import Dict, List
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import exception_handler, enumerate_all_possible_1d_sharding, enumerate_all_possible_2d_sharding
+
+from .operator_handler import OperatorHandler
 
 __all__ = ['WhereHandler']
 
@@ -94,7 +99,7 @@ class WhereHandler(OperatorHandler):
                 # compute the resharding cost
                 _, _, total_resharding_cost = shape_consistency_manager.shape_consistency(
                     input_sharding_spec, input_spec)
-
+                total_resharding_cost = total_resharding_cost['total']
                 # we need multiply the size of elem dtype to get correct communication cost
                 resharding_cost = total_resharding_cost * size_per_elem_bytes
                 resharding_costs[input_node].append(resharding_cost)
@@ -139,7 +144,7 @@ class WhereHandler(OperatorHandler):
 
         return output_sharding_spec_list
 
-    @exception_handler
+    @ignore_sharding_exception
     def _register_strategy(self, output_sharding_spec):
         dim_partition_dict_for_input = output_sharding_spec.dim_partition_dict
         sharding_spec_for_condition = self._generate_sharding_spec(self.condition_data, dim_partition_dict_for_input)

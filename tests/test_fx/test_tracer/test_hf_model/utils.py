@@ -1,8 +1,9 @@
-from numpy import isin
 import torch
-from colossalai.fx import ColoTracer
+from numpy import isin
 from torch.fx import GraphModule
 from torch.utils._pytree import tree_flatten
+
+from colossalai.fx import ColoTracer
 
 
 def trace_model_and_compare_output(model, data_gen):

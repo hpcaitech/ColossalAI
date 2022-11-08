@@ -1,16 +1,18 @@
+from functools import partial
 from lib2to3 import pgen2
-import colossalai
-import torch
+
 import pytest
+import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
+
+import colossalai
+from colossalai.device.device_mesh import DeviceMesh
+from colossalai.nn._ops._utils import gather_forward_split_backward
+from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup
+from colossalai.tensor.sharding_spec import ShardingSpec
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
-from functools import partial
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.sharding_spec import ShardingSpec
-from colossalai.tensor import ColoTensor, ColoParameter, ProcessGroup
-from colossalai.nn._ops._utils import gather_forward_split_backward
 
 
 def run_dist(rank, world_size, port):
@@ -18,7 +20,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
     # create mlp vars
-    x = ColoTensor.from_torch_tensor(torch.rand(2, 4, 8, requires_grad=True)).cuda()
+    x = ColoTensor.from_torch_tensor(torch.rand(4, 4, 8, requires_grad=True)).cuda()
     w = ColoParameter.from_torch_tensor(torch.rand(16, 8, requires_grad=True)).cuda()
     b = ColoParameter.from_torch_tensor(torch.rand(16, requires_grad=True)).cuda()
 

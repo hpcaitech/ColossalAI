@@ -1,10 +1,10 @@
 import pytest
-import transformers
 import torch
+import transformers
 from utils import trace_model_and_compare_output
 
 BATCH_SIZE = 1
-SEQ_LENGHT = 16
+SEQ_LENGTH = 16
 
 
 def test_opt():
@@ -16,8 +16,8 @@ def test_opt():
     config = transformers.OPTConfig(hidden_size=128, num_hidden_layers=2, num_attention_heads=4)
 
     def data_gen():
-        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
-        attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGHT), dtype=torch.int64)
+        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
+        attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
         kwargs = dict(input_ids=input_ids, attention_mask=attention_mask)
         return kwargs
 

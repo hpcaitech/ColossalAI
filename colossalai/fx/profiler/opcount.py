@@ -1,10 +1,11 @@
 # adopted from https://github.com/facebookresearch/fvcore/blob/main/fvcore/nn/jit_handles.py
 # ideas from https://pastebin.com/AkvAyJBw
 
-from functools import partial, reduce
 import operator
-from typing import Callable, List, Any
+from functools import partial, reduce
 from numbers import Number
+from typing import Any, Callable, List
+
 import torch
 
 aten = torch.ops.aten
@@ -31,7 +32,7 @@ def addmm_flop_jit(inputs: List[Any], outputs: List[Any]) -> Number:
     # inputs is a list of length 3.
     input_shapes = [v.shape for v in inputs[1:3]]
     # input_shapes[0]: [batch size, input feature dimension]
-    # input_shapes[1]: [batch size, output feature dimension]
+    # input_shapes[1]: [input feature dimension, output feature dimension]
     assert len(input_shapes[0]) == 2, input_shapes[0]
     assert len(input_shapes[1]) == 2, input_shapes[1]
     batch_size, input_dim = input_shapes[0]

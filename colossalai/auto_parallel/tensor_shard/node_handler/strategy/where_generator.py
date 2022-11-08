@@ -1,4 +1,5 @@
 import copy
+from typing import List
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
 from colossalai.auto_parallel.tensor_shard.utils import (enumerate_all_possible_1d_sharding,
@@ -78,7 +79,7 @@ class WhereGenerator(StrategyGenerator):
 
         return dim_partition_list
 
-    def generate(self):
+    def collate_strategies(self) -> List[ShardingStrategy]:
         '''
         Generate every possible strategies for a where node, and record all strategies into the strategies_vector.
         '''
@@ -89,10 +90,5 @@ class WhereGenerator(StrategyGenerator):
         for dim_partition in dim_partition_list:
             strategy = self._generate_strategy_with_dim_partition(dim_partition)
             strategy_list.append(strategy)
-
-        for strategy in strategy_list:
-            self.update_communication_cost(strategy)
-            self.update_compute_cost(strategy)
-            self.update_memory_cost(strategy)
 
         return strategy_list
