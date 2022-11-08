@@ -75,11 +75,11 @@ class StrategyGenerator(ABC):
                 op_data = self.op_data[op_data_name]
                 if isinstance(op_data.data, tuple) and isinstance(op_data.data[0], torch.Tensor):
                     sharding_spec = []
-                    for output, dim_partition_dict_element in zip(op_data.data, dim_partition_dict):
-                        dim_size = len(output.shape)
+                    for logical_shape, dim_partition_dict_element in zip(op_data.logical_shape, dim_partition_dict):
+                        dim_size = len(logical_shape)
                         dim_partition_dict_element = convert_dim_partition_dict(dim_size, dim_partition_dict_element)
                         sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                                     entire_shape=output.shape,
+                                                     entire_shape=logical_shape,
                                                      dim_partition_dict=dim_partition_dict_element)
                 else:
                     dim_size = len(op_data.logical_shape)

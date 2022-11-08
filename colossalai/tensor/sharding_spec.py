@@ -6,6 +6,8 @@ import torch
 
 from colossalai.device.device_mesh import DeviceMesh
 
+from .utils import merge_same_dim_mesh_list
+
 __all__ = ['_DimSpec', 'ShardingException', 'ShardingSpec']
 
 ALLGATHER_COST = 20
@@ -179,6 +181,8 @@ class ShardingSpec:
             entire_shape = torch.Size(entire_shape)
         self.entire_shape = entire_shape
         self.dim_partition_dict = dim_partition_dict
+        self.dim_partition_dict = merge_same_dim_mesh_list(dim_size=len(entire_shape),
+                                                           dim_partition_dict=self.dim_partition_dict)
         self.sharding_sequence = sharding_sequence
         if self.sharding_sequence is None:
             self.convert_dict_to_shard_sequence()

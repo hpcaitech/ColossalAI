@@ -8,10 +8,10 @@ from .distspec import ReplicaSpec, ShardSpec
 from .param_op_hook import ParamOpHook, ParamOpHookManager
 from .process_group import ProcessGroup
 from .tensor_spec import ColoTensorSpec
-from .utils import convert_dim_partition_dict, convert_parameter, named_params_with_colotensor
+from .utils import convert_dim_partition_dict, convert_parameter, merge_same_dim_mesh_list, named_params_with_colotensor
 
 __all__ = [
     'ColoTensor', 'convert_parameter', 'ComputePattern', 'ComputeSpec', 'named_params_with_colotensor', 'ColoParameter',
     'distspec', 'DistSpecManager', 'ParamOpHook', 'ParamOpHookManager', 'ProcessGroup', 'ColoTensorSpec', 'ShardSpec',
-    'ReplicaSpec', 'CommSpec', 'CollectiveCommPattern', 'convert_dim_partition_dict'
+    'ReplicaSpec', 'CommSpec', 'CollectiveCommPattern', 'convert_dim_partition_dict', 'merge_same_dim_mesh_list'
 ]

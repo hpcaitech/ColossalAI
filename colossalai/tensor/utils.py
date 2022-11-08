@@ -179,3 +179,23 @@ def convert_dim_partition_dict(dim_size: int, dim_partition_dict: Dict[int, List
         dim_partition_dict.pop(dim)
         dim_partition_dict[dim_size + dim] = mesh_list
     return dim_partition_dict
+
+
+def merge_same_dim_mesh_list(dim_size: int, dim_partition_dict: Dict[int, List[int]]) -> Dict[int, List[int]]:
+    '''
+    This method is used to merge the different key value which points to same physical position.
+
+    For example:
+        dim_partition_dict: {1 :[0], -1: [1]} or {1: [0], 1: [1]} for a 2d tensor, the dim 1 and -1 point same physical position.
+        In this method, above dim_partition_dict will be converted to {1: [0, 1]}
+    '''
+    converted_dim_partition_dict = {}
+    for dim, mesh_list in dim_partition_dict.items():
+        if dim < 0:
+            dim = dim_size + dim
+        if dim not in converted_dim_partition_dict:
+            converted_dim_partition_dict[dim] = mesh_list
+        else:
+            converted_dim_partition_dict[dim].extend(mesh_list)
+
+    return converted_dim_partition_dict
