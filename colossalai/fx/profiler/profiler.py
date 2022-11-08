@@ -190,22 +190,6 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
 
             out = super().__torch_dispatch__(func, types, args, kwargs)
 
-            print(func)
-            print("input")
-            for arg in args:
-                if isinstance(arg, torch.Tensor):
-                    print(arg.shape)
-                else:
-                    print(arg)
-            print("output")
-            for arg in out:
-                if isinstance(arg, torch.Tensor):
-                    if len(arg.shape) > 0:
-                        print(arg.shape)
-                else:
-                    print(arg)
-
-            print("===================")
             flop_count[phase] += flop_mapping[func](args, normalize_tuple(out))
             node.meta['phase'] = phase
 
@@ -296,7 +280,6 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
     def unwrap(x):
         return MetaTensor(x) if isinstance(x, torch.Tensor) else x
 
-    print(subgraph.python_code("self").src)
     return tree_map(unwrap, out), graph_info
 
 
