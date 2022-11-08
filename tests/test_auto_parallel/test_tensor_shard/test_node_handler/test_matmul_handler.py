@@ -77,7 +77,6 @@ def test_matmul_node_handler(tensor_shapes):
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
-        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     logical_input_shape = input_shape
     logical_other_shape = other_shape

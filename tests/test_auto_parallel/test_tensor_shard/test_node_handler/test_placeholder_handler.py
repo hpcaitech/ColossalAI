@@ -47,7 +47,6 @@ def test_placeholder_handler():
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
-        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['output'].name == "input_1"
     assert mapping['output'].data.is_meta

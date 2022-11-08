@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from torch.fx.node import Node
+from torch.utils._pytree import tree_map
 
 from colossalai.tensor.shape_consistency import CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
@@ -12,6 +13,17 @@ from colossalai.tensor.sharding_spec import ShardingSpec
 from .constants import BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP
 
 __all__ = ['OperationDataType', 'OperationData', 'TrainCycleItem', 'MemoryCost', 'ShardingStrategy', 'StrategiesVector']
+
+
+def _assert_non_trivial_data_ptr(data: Union[torch.Tensor, List, Tuple]) -> None:
+    """
+    Assert that the data has non-trivial data_ptr.
+    """
+    if isinstance(data, torch.Tensor):
+        assert data.data_ptr() != 0, f"data_ptr is should be non-trivial, but {data} got {data.data_ptr()}"
+    elif isinstance(data, (list, tuple)):
+        for item in data:
+            _assert_non_trivial_data_ptr(item)
 
 
 class OperationDataType(Enum):
@@ -40,15 +52,13 @@ class OperationData:
     type: OperationDataType
     data: Any
     logical_shape: Tuple[int] = None
-    data_ptr: int = None
 
     def __post_init__(self):
         # if no logical shape is specified, use the data shape as the logical shape
-        if self.logical_shape is None and isinstance(self.data, torch.Tensor):
-            self.logical_shape = self.data.shape
-        if self.data_ptr is None and isinstance(self.data, torch.Tensor):
-            self.data_ptr = self.data.data_ptr()
-            assert self.data_ptr, f"data_ptr is should be neither None nor 0, but got {self.data_ptr}"
+        if self.logical_shape is None:
+            self.logical_shape = tree_map(lambda x: x.shape if isinstance(x, torch.Tensor) else None, self.data)
+
+        _assert_non_trivial_data_ptr(self.data)
 
     def __repr__(self) -> str:
         return f'OperationData(name={self.name}, type={self.type})'

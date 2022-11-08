@@ -1,3 +1,4 @@
+import uuid
 from typing import Dict, List, Union
 
 import torch
@@ -46,6 +47,9 @@ class BinaryElementwiseHandler(NodeHandler):
                 # as it won't affect the strategy generation
                 assert isinstance(self.node.args[idx], (int, float))
                 meta_data = torch.Tensor([self.node.args[idx]]).to('meta')
+                # (super-dainiu): each newly created tensor on meta device will have a unique ``data_ptr()``
+                data_ptr = uuid.uuid4()
+                meta_data.data_ptr = lambda: data_ptr
             return meta_data
 
         input_meta_data = _get_arg_value(0)

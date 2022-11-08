@@ -1,3 +1,4 @@
+import uuid
 from typing import Dict, List
 
 import torch
@@ -24,12 +25,12 @@ class OuputHandler(NodeHandler):
         # use transposed shape for strategies
         # the strategies will be transformed back to its original shape in self.post_process
         dummy_output = torch.empty(1,).to("meta")
+        data_ptr = uuid.uuid4()
+        dummy_output.data_ptr = lambda: data_ptr
         physical_output = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=dummy_output)
 
         mapping = {"output": physical_output}
         for index, input_node in enumerate(self.predecessor_node):
-            if not hasattr(input_node, "_meta_data"):
-                print(input_node.name)
             physical_inputs = OperationData(name=str(input_node),
                                             type=OperationDataType.ARG,
                                             data=input_node._meta_data)

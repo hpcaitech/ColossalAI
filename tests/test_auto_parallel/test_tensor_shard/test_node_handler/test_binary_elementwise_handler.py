@@ -71,7 +71,6 @@ def check_binary_elementwise_handler_with_tensor(rank, op, other_dim, world_size
         # make sure they have valid values
         assert op_data.logical_shape is not None
         assert op_data.data is not None
-        assert op_data.data_ptr is not None and op_data.data_ptr != 0
 
     assert mapping['input'].name == "x1"
     assert mapping['input'].data.is_meta

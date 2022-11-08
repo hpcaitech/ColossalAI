@@ -1,6 +1,6 @@
 import operator
 import uuid
-from typing import Any, List, Union
+from typing import Any, List, Tuple, Union
 
 import torch
 from torch.fx.proxy import Attribute, Proxy
@@ -10,11 +10,28 @@ from colossalai.fx.tracer.meta_patch import meta_patched_function
 __all__ = ['ColoProxy']
 
 
-def set_data_ptr(x):
-    if isinstance(x, torch.Tensor):
-        if not x.data_ptr():
+def _set_data_ptr(data: Union[torch.Tensor, List, Tuple]) -> None:
+    """
+    Set a non-trivial data_ptr for the data if it is a ``torch.Tensor`` and is on ``meta`` device
+    """
+    if isinstance(data, list) or isinstance(data, tuple) and not isinstance(data, torch.Size):
+        for item in data:
+            _set_data_ptr(item)
+    elif isinstance(data, torch.Tensor):
+        if not data.data_ptr():
             data_ptr = uuid.uuid4()
-            x.data_ptr = lambda: data_ptr
+            data.data_ptr = lambda: data_ptr
+
+
+def _assert_non_trivial_data_ptr(data: Union[torch.Tensor, List, Tuple]) -> None:
+    """
+    Assert that the data has non-trivial data_ptr.
+    """
+    if isinstance(data, torch.Tensor):
+        assert data.data_ptr() != 0, f"data_ptr is should be non-trivial, but {data} got {data.data_ptr()}"
+    elif isinstance(data, (list, tuple)):
+        for item in data:
+            _assert_non_trivial_data_ptr(item)
 
 
 class ColoProxy(Proxy):
@@ -40,10 +57,9 @@ class ColoProxy(Proxy):
 
     @meta_data.setter
     def meta_data(self, data: Any):
-        set_data_ptr(data)
+        _set_data_ptr(data)
+        _assert_non_trivial_data_ptr(data)
         self.node._meta_data = data
-        assert self.node._meta_data.data_ptr(
-        ) != 0, f"meta data ptr should not be 0, but got {self.node._meta_data.data_ptr()}"
 
     @property
     def has_meta_data(self):
