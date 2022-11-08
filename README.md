@@ -56,6 +56,7 @@
    <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a> 
    <ul>
+     <li><a href="#AIGC">AIGC: Acceleration of Stable Diffusion</a></li>
      <li><a href="#Biomedicine">Biomedicine: Acceleration of AlphaFold Protein Structure</a></li>
    </ul>
  </li>
@@ -201,6 +202,20 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Colossal-AI in the Real World
+
+### AIGC
+Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion](https://github.com/CompVis/stable-diffusion)
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+</p>
+
+- [Stable Diffusion with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 6.5x faster training and pretraining cost saving, the hardware cost of fine-tuning can be almost 7X cheaper (from RTX3090/4090 to RTX3050/2070)
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+</p>
+
+<p align="right">(<a href="#top">back to top</a>)</p>
 
 ### Biomedicine
 Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
