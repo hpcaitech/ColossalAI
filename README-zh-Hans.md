@@ -70,11 +70,6 @@
  <li><a href="#使用-Docker">使用 Docker</a></li>
  <li><a href="#社区">社区</a></li>
  <li><a href="#做出贡献">做出贡献</a></li>
- <li><a href="#快速预览">快速预览</a></li>
-   <ul>
-     <li><a href="#几行代码开启分布式训练">几行代码开启分布式训练</a></li>
-     <li><a href="#构建一个简单的2维并行模型">构建一个简单的2维并行模型</a></li>
-   </ul>
  <li><a href="#引用我们">引用我们</a></li>
 </ul>
 
@@ -306,31 +301,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 快速预览
-
-### 几行代码开启分布式训练
-
-```python
-parallel = dict(
-    pipeline=2,
-    tensor=dict(mode='2.5d', depth = 1, size=4)
-)
-```
-
-### 几行代码开启异构训练
-
-```python
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=TensorShardStrategy(),
-        reuse_fp16_shard=True
-    ),
-    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
-)
-```
-
-<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 引用我们
 

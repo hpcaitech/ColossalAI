@@ -70,11 +70,6 @@
  <li><a href="#Use-Docker">Use Docker</a></li>
  <li><a href="#Community">Community</a></li>
  <li><a href="#contributing">Contributing</a></li>
- <li><a href="#Quick-View">Quick View</a></li>
-   <ul>
-     <li><a href="#Start-Distributed-Training-in-Lines">Start Distributed Training in Lines</a></li>
-     <li><a href="#Write-a-Simple-2D-Parallel-Model">Write a Simple 2D Parallel Model</a></li>
-   </ul>
  <li><a href="#Cite-Us">Cite Us</a></li>
 </ul>
 
@@ -311,32 +306,6 @@ Thanks so much to all of our amazing contributors!
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Quick View
-
-### Start Distributed Training in Lines
-
-```python
-parallel = dict(
-    pipeline=2,
-    tensor=dict(mode='2.5d', depth = 1, size=4)
-)
-```
-
-### Start Heterogeneous Training in Lines
-
-```python
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=TensorShardStrategy(),
-        reuse_fp16_shard=True
-    ),
-    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
-)
-
-```
-
-<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Cite Us
 
