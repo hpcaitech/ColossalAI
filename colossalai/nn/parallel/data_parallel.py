@@ -188,25 +188,16 @@ class ColoDDP(torch.nn.Module):
 
 
 class ZeroDDP(ColoDDP):
-    """ZeRO-DP for ColoTensor. Nested ZeroDDP is not supported now.
-    We can configure chunk and gemini via ChunkManager and GeminiManager respectively.
+    """ZeRO DDP for ColoTensor.
+    Warning: Nested ZeroDDP is not supported now.
+    It is designed to be used with ChunkManager and GeminiManager.
     For more details, see the API reference of ``ChunkManager`` and ``GeminiManager``.
-
-    Example:
-        >>> model = torch.nn.Linear(20, 1)
-        >>> placement_policy = 'cuda'
-        >>> chunk_size = ChunkManager.search_chunk_size(model, search_range, n_grids) if use_chunk else None
-        >>> chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero, init_device=GeminiManager.get_default_device(placement_policy))
-        >>> gemini_manager = GeminiManager(placement_policy, chunk_manager)
-        >>> model = ZeroDDP(model, gemini_manager)
-        >>> logits = model(x)
-        >>> loss = criterion(logits, labels)
-        >>> model.backward(loss)
 
     Args:
         module (torch.nn.Module): Module to apply ZeRO-DP.
         gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous momery space.
             For more details, see the API reference of ``GeminiManager``.
+        pin_memory (bool): Chunks on CPU Memory use pin-memory.
         force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.  Defaults to False.
     """
 
@@ -267,7 +258,7 @@ class ZeroDDP(ColoDDP):
     def forward(self, *args, **kwargs):
         args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)
-        self.gemini_manager.pre_iter()
+        self.gemini_manager.pre_iter(*args)
         with ParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         if self.force_outputs_fp32:

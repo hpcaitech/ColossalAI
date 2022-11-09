@@ -96,7 +96,7 @@ class ReshapeGenerator(FollowingStrategyGenerator):
                     arg_index=0)
                 input_comm_action.comm_spec.gather_dim = total_mesh_dim_list
 
-            else:
+            elif len(total_mesh_dim_list) >= 2:
                 source_spec = sharding_spec_mapping["input"]
                 target_spec = ShardingSpec(device_mesh=self.device_mesh,
                                            entire_shape=source_spec.entire_shape,
@@ -104,7 +104,11 @@ class ReshapeGenerator(FollowingStrategyGenerator):
                 comm_spec = {'src_spec': source_spec, 'tgt_spec': target_spec}
                 input_comm_action = CommAction(comm_spec=comm_spec, comm_type=CommType.BEFORE, arg_index=0)
 
-            communication_action_mapping["input"] = input_comm_action
+            else:
+                input_comm_action = None
+
+            if input_comm_action is not None:
+                communication_action_mapping["input"] = input_comm_action
             strategy = self.get_sharding_strategy(name=name,
                                                   sharding_spec_mapping=sharding_spec_mapping,
                                                   communication_action_mapping=communication_action_mapping)

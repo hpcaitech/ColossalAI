@@ -105,7 +105,7 @@ def test_conv_module():
     assert weight_node._meta_data.shape == (6, 3, 2, 2)
     assert bias_node._meta_data.shape == (6,)
     assert conv_node._meta_data.shape == (4, 6, 63, 63)
-    assert view_node._meta_data.shape == (1, 6, 1, 1)
+    assert view_node._meta_data.shape == (6, 1, 1)
     assert add_node._meta_data.shape == (4, 6, 63, 63)
 
 

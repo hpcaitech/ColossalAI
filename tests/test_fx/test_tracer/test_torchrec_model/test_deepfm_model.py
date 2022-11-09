@@ -1,9 +1,7 @@
 import pytest
 import torch
 
-from colossalai.fx.tracer import meta_patch
-from colossalai.fx.tracer.meta_patch.patched_function import python_ops
-from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.fx import symbolic_trace
 
 try:
     from torchrec.models import deepfm
@@ -13,8 +11,6 @@ try:
     NOT_TORCHREC = False
 except ImportError:
     NOT_TORCHREC = True
-
-from torch.fx import GraphModule
 
 BATCH = 2
 SHAPE = 10
@@ -43,9 +39,6 @@ def test_torchrec_deepfm_models():
     # Dense Features
     features = torch.rand((BATCH, SHAPE))
 
-    # Tracer
-    tracer = ColoTracer()
-
     for model_cls in MODEL_LIST:
         # Initializing model
         if model_cls == deepfm.DenseArch:
@@ -60,9 +53,7 @@ def test_torchrec_deepfm_models():
             model = model_cls(ebc)
 
         # Setup GraphModule
-        graph = tracer.trace(model)
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+        gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()

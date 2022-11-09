@@ -20,6 +20,7 @@ class BiasAdditionConv(BiasAdditionModule):
             if hasattr(conv_module, attr_name):
                 non_bias_kwargs[attr_name] = getattr(conv_module, attr_name)
         if conv_module.padding_mode != "zeros":
+            #TODO: non zeros mode requires some extra processing for input
             conv_type = type(conv_module)
             if conv_type == "torch.nn.Conv1d":
                 padding_element = _single(0)
@@ -38,11 +39,11 @@ class BiasAdditionConv(BiasAdditionModule):
         This method is used to reshape the bias node in order to make bias and
         output of non-bias convolution broadcastable.
         """
-        bias_shape = [1] * dimensions
-        bias_shape[1] = -1
+        bias_shape = [1] * (dimensions - 1)
+        bias_shape[0] = -1
         bias_reshape_node_kind = 'call_method'
         bias_reshape_node_target = 'view'
-        bias_reshape_node_args = (self.bias_proxy, bias_shape)
+        bias_reshape_node_args = (self.bias_proxy, torch.Size(bias_shape))
         bias_reshape_proxy = self.tracer.create_proxy(bias_reshape_node_kind, bias_reshape_node_target,
                                                       bias_reshape_node_args, {})
         return bias_reshape_proxy

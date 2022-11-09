@@ -213,7 +213,7 @@ class Broadcaster(BmmTransform):
 
             tensor_shape_before_broadcast = [dim for dim in tensor_shape if dim is not None]
 
-            physical_sharding_spec = recover_sharding_spec_for_broadcast_shape(
+            physical_sharding_spec, removed_dims = recover_sharding_spec_for_broadcast_shape(
                 logical_sharding_spec=sharding_spec,
                 logical_shape=sharding_spec.entire_shape,
                 physical_shape=tensor_shape_before_broadcast)
@@ -453,6 +453,9 @@ class MatMulHandler(NodeHandler):
                 # move the partitioning in dim 1 to dim 0
                 if -1 in dim_partition_dict:
                     shard = dim_partition_dict.pop(-1)
+                    dim_partition_dict[0] = shard
+                if 1 in dim_partition_dict:
+                    shard = dim_partition_dict.pop(1)
                     dim_partition_dict[0] = shard
 
                 # re-init the sharding spec
