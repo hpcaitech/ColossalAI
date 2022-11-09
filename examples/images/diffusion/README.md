@@ -1,6 +1,6 @@
 # Stable Diffusion with Colossal-AI
-*[Colosssal-AI](https://github.com/hpcaitech/ColossalAI) provides a faster and lower cost solution for pretraining and 
-fine-tuning for AIGC (AI-Generated Content) applications such as the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/).* 
+*[Colosssal-AI](https://github.com/hpcaitech/ColossalAI) provides a faster and lower cost solution for pretraining and
+fine-tuning for AIGC (AI-Generated Content) applications such as the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/).*
 
 We take advantage of [Colosssal-AI](https://github.com/hpcaitech/ColossalAI) to exploit multiple optimization strategies
 , e.g. data parallelism, tensor parallelism, mixed precision & ZeRO, to scale the training to multiple GPUs.
@@ -8,8 +8,8 @@ We take advantage of [Colosssal-AI](https://github.com/hpcaitech/ColossalAI) to 
 ## Stable Diffusion
 [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) is a latent text-to-image diffusion
 model.
-Thanks to a generous compute donation from [Stability AI](https://stability.ai/) and support from [LAION](https://laion.ai/), we were able to train a Latent Diffusion Model on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. 
-Similar to Google's [Imagen](https://arxiv.org/abs/2205.11487), 
+Thanks to a generous compute donation from [Stability AI](https://stability.ai/) and support from [LAION](https://laion.ai/), we were able to train a Latent Diffusion Model on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database.
+Similar to Google's [Imagen](https://arxiv.org/abs/2205.11487),
 this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts.
 
 <p id="diffusion_train" align="center">
@@ -37,24 +37,22 @@ You can also update an existing [latent diffusion](https://github.com/CompVis/la
 conda install pytorch torchvision -c pytorch
 pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
-``` 
-
-### Install Colossal-AI
-
-```
-git clone https://github.com/hpcaitech/ColossalAI.git
-git checkout v0.1.10
-pip install .
 ```
 
-### Install Colossal-AI [Lightning](https://github.com/Lightning-AI/lightning)
+### Install [Colossal-AI v0.1.10](https://colossalai.org/download/) From Our Official Website
 ```
-git clone -b colossalai https://github.com/Fazziekey/lightning.git
-pip install .
+pip install colossalai==0.1.10+torch1.11cu11.3 -f https://release.colossalai.org
+```
+
+### Install [Lightning](https://github.com/Lightning-AI/lightning)
+We use the Sep. 2022 version with commit id as `b04a7aa`.
+```
+git clone https://github.com/Lightning-AI/lightning && cd lightning && git reset --hard b04a7aa
+pip install -r requirements.txt && pip install .
 ```
 
 ## Dataset
-The DataSet is from [LAION-5B](https://laion.ai/blog/laion-5b/), the subset of [LAION](https://laion.ai/), 
+The DataSet is from [LAION-5B](https://laion.ai/blog/laion-5b/), the subset of [LAION](https://laion.ai/),
 you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
@@ -63,7 +61,7 @@ we provide the script `train.sh` to run the training task , and three Stategy in
 
 for example, you can run the training from colossalai by
 ```
-python main.py --logdir /tmp -t --postfix test -b config/train_colossalai.yaml 
+python main.py --logdir /tmp -t --postfix test -b config/train_colossalai.yaml
 ```
 
 - you can change the `--logdir` the save the log information and the last checkpoint
@@ -71,22 +69,22 @@ python main.py --logdir /tmp -t --postfix test -b config/train_colossalai.yaml
 ### Training config
 you can change the trainging config in the yaml file
 
-- accelerator: acceleratortype, default 'gpu' 
+- accelerator: acceleratortype, default 'gpu'
 - devices: device number used for training, default 4
 - max_epochs: max training epochs
 - precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
 
 
-## Comments 
+## Comments
 
 - Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion)
 , [https://github.com/lucidrains/denoising-diffusion-pytorch](https://github.com/lucidrains/denoising-diffusion-pytorch),
-[Stable Diffusion](https://github.com/CompVis/stable-diffusion) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion). 
+[Stable Diffusion](https://github.com/CompVis/stable-diffusion) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion).
 Thanks for open-sourcing!
 
-- The implementation of the transformer encoder is from [x-transformers](https://github.com/lucidrains/x-transformers) by [lucidrains](https://github.com/lucidrains?tab=repositories). 
+- The implementation of the transformer encoder is from [x-transformers](https://github.com/lucidrains/x-transformers) by [lucidrains](https://github.com/lucidrains?tab=repositories).
 
-- The implementation of [flash attention](https://github.com/HazyResearch/flash-attention) is from [HazyResearch](https://github.com/HazyResearch). 
+- The implementation of [flash attention](https://github.com/HazyResearch/flash-attention) is from [HazyResearch](https://github.com/HazyResearch).
 
 ## BibTeX
 
@@ -98,7 +96,7 @@ Thanks for open-sourcing!
   year={2021}
 }
 @misc{rombach2021highresolution,
-      title={High-Resolution Image Synthesis with Latent Diffusion Models}, 
+      title={High-Resolution Image Synthesis with Latent Diffusion Models},
       author={Robin Rombach and Andreas Blattmann and Dominik Lorenz and Patrick Esser and Björn Ommer},
       year={2021},
       eprint={2112.10752},
@@ -112,5 +110,3 @@ Thanks for open-sourcing!
   year={2022}
 }
 ```
-
-
