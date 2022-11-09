@@ -1,4 +1,27 @@
+from math import pow
+
 import numpy as np
+
+
+def get_submesh_choices(num_hosts, num_devices_per_host, mode="new"):
+    submesh_choices = []
+    i = 1
+    p = -1
+    while i <= num_devices_per_host:
+        i *= 2
+        p += 1
+    assert pow(2, p) == num_devices_per_host, ("Only supports the cases where num_devices_per_host is power of two, "
+                                               f"while now num_devices_per_host = {num_devices_per_host}")
+    if mode == "alpa":
+        for i in range(p + 1):
+            submesh_choices.append((1, pow(2, i)))
+        for i in range(2, num_hosts + 1):
+            submesh_choices.append((i, num_devices_per_host))
+    elif mode == "new":
+        for i in range(p // 2 + 1):
+            for j in range(i, p - i + 1):
+                submesh_choices.append((pow(2, i), pow(2, j)))
+    return submesh_choices
 
 
 def alpa_dp_impl(num_layers, num_devices, num_microbatches, submesh_choices, compute_cost, max_stage_cost,
@@ -14,9 +37,7 @@ def alpa_dp_impl(num_layers, num_devices, num_microbatches, submesh_choices, com
 		compute_cost: t_intra
 	"""
     # For f, layer ID start from 0
-    # f[#pipeline stages,
-    #   layer id that is currently being considered,
-    #   number of devices used]
+    # f[#pipeline stages, layer id that is currently being considered, number of devices used]
     f = np.full((num_layers + 1, num_layers + 1, num_devices + 1), np.inf, dtype=np.float32)
     f_stage_max = np.full((num_layers + 1, num_layers + 1, num_devices + 1), 0.0, dtype=np.float32)
     f_argmin = np.full((num_layers + 1, num_layers + 1, num_devices + 1, 3), -1, dtype=np.int32)
@@ -27,6 +48,9 @@ def alpa_dp_impl(num_layers, num_devices, num_microbatches, submesh_choices, com
                 for m, submesh in enumerate(submesh_choices):
                     n_submesh_devices = np.prod(np.array(submesh))
                     if n_submesh_devices <= d:
+                        # TODO: [luzgh]: Why alpa needs max_n_succ_stages? Delete.
+                        # if s - 1 <= max_n_succ_stages[i, k - 1, m, n_config]:
+                        # ...
                         for i in range(num_layers, k, -1):
                             stage_cost = compute_cost[k, i, m]
                             new_cost = f[s - 1, k, d - n_submesh_devices] + stage_cost
@@ -83,6 +107,8 @@ def alpa_dp(num_layers,
     best_cost = np.inf
     best_solution = None
     last_max_stage_cost = 0.0
+    # TODO: [luzgh]: Why alpa needs the num_autosharding_configs dimension in compute_cost?
+    # In dp_impl it seems the argmin n_config will be chosen. Just amin here.
     best_configs = np.argmin(compute_cost, axis=3)
     best_compute_cost = np.amin(compute_cost, axis=3)
     assert len(all_possible_stage_costs), "no solution in auto stage construction."
