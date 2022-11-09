@@ -147,7 +147,7 @@ class SelfAttention(nn.Module):
 
         q = self.to_q(in_data)
         k = self.to_k(in_data)
-        v = self.to_k(in_data)
+        v = self.to_v(in_data)
 
         # q, k, v = map(lambda t: rearrange(t, 'b1 b2 n (h d) -> b1 b2 h n d', h=self.n_head),
         #               [q, k, v])
