@@ -60,9 +60,7 @@ def run_workflow(world_size, dev):
     data = torch.rand(4, 16, device=dev)
     non_fx_out = model(data)
     fx_out = annotated_gm(data)
-    print(non_fx_out)
 
-    print(fx_out)
     assert torch.equal(non_fx_out, fx_out)
 
 
