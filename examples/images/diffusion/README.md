@@ -51,6 +51,8 @@ git clone https://github.com/Lightning-AI/lightning && cd lightning && git reset
 pip install -r requirements.txt && pip install .
 ```
 
+> The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
+
 ## Dataset
 The DataSet is from [LAION-5B](https://laion.ai/blog/laion-5b/), the subset of [LAION](https://laion.ai/),
 you should the change the `data.file_path` in the `config/train_colossalai.yaml`
@@ -78,8 +80,8 @@ you can change the trainging config in the yaml file
 ## Comments
 
 - Our codebase for the diffusion models builds heavily on [OpenAI's ADM codebase](https://github.com/openai/guided-diffusion)
-, [https://github.com/lucidrains/denoising-diffusion-pytorch](https://github.com/lucidrains/denoising-diffusion-pytorch),
-[Stable Diffusion](https://github.com/CompVis/stable-diffusion) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion).
+, [lucidrains](https://github.com/lucidrains/denoising-diffusion-pytorch),
+[Stable Diffusion](https://github.com/CompVis/stable-diffusion), [Lightning](https://github.com/Lightning-AI/lightning) and [Hugging Face](https://huggingface.co/CompVis/stable-diffusion).
 Thanks for open-sourcing!
 
 - The implementation of the transformer encoder is from [x-transformers](https://github.com/lucidrains/x-transformers) by [lucidrains](https://github.com/lucidrains?tab=repositories).
@@ -96,12 +98,12 @@ Thanks for open-sourcing!
   year={2021}
 }
 @misc{rombach2021highresolution,
-      title={High-Resolution Image Synthesis with Latent Diffusion Models},
-      author={Robin Rombach and Andreas Blattmann and Dominik Lorenz and Patrick Esser and Björn Ommer},
-      year={2021},
-      eprint={2112.10752},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
+  title={High-Resolution Image Synthesis with Latent Diffusion Models},
+  author={Robin Rombach and Andreas Blattmann and Dominik Lorenz and Patrick Esser and Björn Ommer},
+  year={2021},
+  eprint={2112.10752},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV}
 }
 @article{dao2022flashattention,
   title={FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness},
