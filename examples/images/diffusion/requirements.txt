@@ -13,7 +13,6 @@ torch-fidelity==0.3.0
 transformers==4.19.2
 torchmetrics==0.6.0
 kornia==0.6
-deepspeed==0.7.4
 opencv-python==4.6.0.66
 prefetch_generator
 -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
