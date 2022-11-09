@@ -1,11 +1,12 @@
 import math
+import os
 import socket
 import time
 
 import torch
 import torch.distributed as dist
 
-from colossalai.device import load_tmp, store_tmp
+from .utils import load_tmp, store_tmp
 
 MB = int((1 << 10) * 1e3)
 GB = int((1 << 20) * 1e3)
@@ -78,18 +79,16 @@ def profile_bandwidth(wsize, maxbytes, type="a"):
     return bandwidth
 
 
-def profile_ab(wsize, type="a"):
-    dist.init_process_group(
-        backend=dist.Backend.NCCL,
-        init_method='env://',
-        world_size=wsize,
-    )
+def profile_ab(rank, wsize, type="a"):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '29020'
+    dist.init_process_group(backend=dist.Backend.NCCL, init_method='env://', world_size=wsize, rank=rank)
 
-    device = torch.device("cuda", dist.get_rank())
+    device = torch.device("cuda", rank)
     max_nbytes = torch.tensor(torch.cuda.mem_get_info(device)[0]).to(device)
-    dist.all_reduce(max_nbytes, op=dist.ReduceOp.MIN)
     max_nbytes = min(int(4 * GB), int(GB << int(math.log2(max_nbytes.item() / GB))))
-    if dist.get_rank() == 0:
+
+    if rank == 0:
         print(f"max_nbytes: {max_nbytes} B")
 
     alpha = profile_latency(wsize, 5)
@@ -99,13 +98,9 @@ def profile_ab(wsize, type="a"):
     return (alpha, beta)
 
 
-def get_one_alpha_beta():
+def get_one_alpha_beta(rank):
     assert torch.cuda.is_available()
-    (alpha, beta) = profile_ab(torch.cuda.device_count(), "a")
-    if dist.get_rank() == 0:
+    (alpha, beta) = profile_ab(rank, torch.cuda.device_count(), "a")
+    if rank == 0:
         store_tmp(alpha, beta)
         print(f"alpha(us): {round(alpha * 1e6,2)}, beta(us/GB): {round(beta * 1e6 * GB,2)}")
-
-
-if __name__ == "__main__":
-    get_one_alpha_beta()
