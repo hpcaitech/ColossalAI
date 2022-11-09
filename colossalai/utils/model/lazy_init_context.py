@@ -1,23 +1,24 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import inspect
+import types
+from typing import Callable, List
+
 import torch
 import torch.nn as nn
-from colossalai.tensor import ColoParameter, ColoTensor
 
-import types
-import inspect
-from typing import List, Callable
+from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup
 from colossalai.utils.model.utils import substitute_init_recursively
 
 
 class LazyInitContext():
     """
-    A context to allow for lazy weight initialization of PyTorch modules. It intercepts the tensor 
+    A context to allow for lazy weight initialization of PyTorch modules. It intercepts the tensor
     initialization functions for lazy initialization
 
     Note:
-        This API is only experimental and subject to future changes. 
+        This API is only experimental and subject to future changes.
 
     Usage:
         with LazyInitContext() as ctx:
@@ -30,13 +31,13 @@ class LazyInitContext():
         # initialize weights
         ctx.lazy_init_parameters(model)
 
-        # make sure the weight is not a meta tensor 
+        # make sure the weight is not a meta tensor
         # and initialized correctly
         assert not model.weight.is_meta and torch.all(model.weight == 0)
 
     Args:
         to_meta (bool): optional, whether to initialize the model with meta tensors, default is False.
-        extra_torch_tensor_func (List[str]): extra torch tensor functions related 
+        extra_torch_tensor_func (List[str]): extra torch tensor functions related
             to value setting, such as `zero_` and `triu_`. `zero_` is pre-added by default.
     """
 
@@ -190,29 +191,74 @@ class LazyInitContext():
             for mod in module.children():
                 _init_recursively(mod)
 
+            tensor_name_list = []
+
             # initialize and shard tensors directly attached to the current module
             for name, param in module.named_parameters(recurse=False):
-                _init_and_shard(module, name, param)
+                colo_param = _convert_colotensor(param)
+                tensor_name_list.append((name, colo_param))
 
+            for (n, p) in tensor_name_list:
+                delattr(module, n)
+                setattr(module, n, p)
+
+            tensor_name_list = []
             for name, buf in module.named_buffers(recurse=False):
-                _init_and_shard(module, name, buf)
+                colo_buf = _convert_colotensor(buf)
+                tensor_name_list.append((name, colo_buf))
+
+            for (n, p) in tensor_name_list:
+                module.n = p
+
+            for (n, p) in tensor_name_list:
+                delattr(module, n)
+                module.register_buffer(n, p)
 
         @torch.no_grad()
-        def _init_and_shard(module, name, tensor):
+        def _convert_colotensor(tensor: torch.Tensor) -> ColoTensor:
+            """
+            convert a torch tensor to ColoTensor
+
+            Args:
+                tensor (torch.Tensor): torch tensor
+
+            Returns:
+                ColoTensor: colotensor
+            """
             # check whether the tensor is a buffer or parameter
+            if isinstance(tensor, ColoTensor):
+                return tensor
+
+            if hasattr(tensor, 'pg'):
+                pg = tensor.pg
+            else:
+                pg = None
+
+            if hasattr(tensor, 'dist_spec'):
+                dist_spec = tensor.dist_spec
+            else:
+                dist_spec = None
+
+            if hasattr(tensor, 'comp_spec'):
+                comp_spec = tensor.comp_spec
+            else:
+                comp_spec = None
+
             is_param = isinstance(tensor, nn.parameter.Parameter)
 
-            # get sharding spec
-            dist_spec = getattr(tensor, 'dist_spec', None)
-            pg = getattr(tensor, 'pg', None)
-            comp_spec = getattr(tensor, 'comp_spec', None)
+            # FIXME(jiaruifang) model params init under the LazyInitContext has no requires_grad infomation!
+            # hardcode to True
+            requires_grad = True
 
             # convert the tensor from meta to materialized one
             if tensor.is_meta:
                 materialized_tensor = torch.empty_like(tensor, device=device)
                 # if this tensor is a meta tensor, it must have an init function
-                assert tensor in self._intercepted_nn_init_func_cache
+                # TODO(jiaruifang) the following code can not wirk
+                # assert tensor in self._intercepted_nn_init_func_cache
                 tensor = materialized_tensor
+            else:
+                tensor = tensor.to(device)
 
             # apply init function
             if tensor in self._intercepted_nn_init_func_cache:
@@ -221,18 +267,23 @@ class LazyInitContext():
 
             # convert it to ColoTensor or ColoParameter
             if is_param:
-                tensor = ColoParameter.from_torch_tensor(tensor, requires_grad=tensor.requires_grad)
+                tensor = ColoParameter.from_torch_tensor(tensor, requires_grad=requires_grad)
             else:
                 tensor = ColoTensor.from_torch_tensor(tensor)
 
-            # override the original tensor
-            with torch.no_grad():
-                setattr(module, name, tensor)
+            # apply a default pg
+            if pg is not None:
+                tensor.set_process_group(pg)
+            else:
+                tensor.set_process_group(ProcessGroup())
 
-            # apply sharding
-            if dist_spec:
-                tensor.process_group = pg
-                tensor.set_tensor_spec(dist_spec, comp_spec)
+            if dist_spec is not None:
+                tensor.set_dist_spec(dist_spec)
+
+            if comp_spec is not None:
+                tensor.compute_spec = comp_spec
+
+            return tensor
 
         _init_recursively(model)
 

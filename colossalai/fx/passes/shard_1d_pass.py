@@ -1,9 +1,11 @@
+import operator
+
 import torch
 import torch.nn as nn
-import operator
+
 from colossalai.tensor import ProcessGroup
-from colossalai.tensor.distspec import ShardSpec
 from colossalai.tensor.compute_spec import ComputePattern, ComputeSpec
+from colossalai.tensor.distspec import ShardSpec
 
 ELEMENTWISE_MODULE_OP = [torch.nn.Dropout, torch.nn.ReLU]
 ELEMENTWISE_FUNC_OP = [
@@ -13,7 +15,7 @@ ELEMENTWISE_FUNC_OP = [
 
 
 def weight_split(weight: torch.nn.parameter.Parameter, dim: int, col_normal: bool) -> torch.nn.parameter.Parameter:
-    """weight_split 
+    """weight_split
     split a nn.Parameter
 
     Args:
@@ -58,18 +60,17 @@ def row_shard_linear_pass(gm: torch.fx.GraphModule):
     return gm
 
 
-def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: ProcessGroup):
+def transformer_mlp_pass(graph_module: torch.fx.GraphModule):
     """
-    This IR pass checks for transformer MLP like structure and annotate column and row sharding to the linear layers. 
+    This IR pass checks for transformer MLP like structure and annotate column and row sharding to the linear layers.
     """
     #TODO: Needs to handle special cases, like x = linear(x) + linear(x)
     graph = graph_module.graph
-    world_size = process_group.world_size()
 
     def _traverse_and_annotate(node, start_tracking, annotation_record, world_size):
         # traverse the graph to look for consecutive linear layers
         is_linear_module = False
-
+        pg = ProcessGroup(tp_degree=world_size)
         if node.op == 'call_module':
             # look for the linear layer
             module = node.graph.owning_module.get_submodule(node.target)
@@ -81,20 +82,19 @@ def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: Proc
                     # is the second linear
                     # set the current linear module to be row-sharded
                     annotation_record['row'] = module
-
                     for shard_type, module in annotation_record.items():
                         # add row sharding spec
                         if shard_type == 'row':
                             dist_spec = ShardSpec(dims=[-1], num_partitions=[world_size])
                             comp_spec = ComputeSpec(ComputePattern.TP1D)
-                            setattr(module.weight, 'pg', process_group)
+                            setattr(module.weight, 'pg', pg)
                             setattr(module.weight, 'dist_spec', dist_spec)
                             setattr(module.weight, 'comp_spec', comp_spec)
                         elif shard_type == 'col':
                             weight_dist_spec = ShardSpec(dims=[0], num_partitions=[world_size])
                             weight_comp_spec = ComputeSpec(ComputePattern.TP1D)
                             weight_comp_spec.output_replicate = False
-                            setattr(module.weight, 'pg', process_group)
+                            setattr(module.weight, 'pg', pg)
                             setattr(module.weight, 'dist_spec', weight_dist_spec)
                             setattr(module.weight, 'comp_spec', weight_comp_spec)
 
@@ -102,7 +102,7 @@ def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: Proc
                                 bias_dist_spec = ShardSpec(dims=[0], num_partitions=[world_size])
                                 bias_comp_spec = ComputeSpec(ComputePattern.TP1D)
                                 bias_comp_spec.output_replicate = False
-                                setattr(module.bias, 'pg', process_group)
+                                setattr(module.bias, 'pg', pg)
                                 setattr(module.bias, 'dist_spec', bias_dist_spec)
                                 setattr(module.bias, 'comp_spec', bias_comp_spec)
                     start_tracking = False
@@ -146,6 +146,6 @@ def transformer_mlp_pass(graph_module: torch.fx.GraphModule, process_group: Proc
 
     placeholder_node = list(graph.nodes)[0]
     annotate_record = {}
-    _traverse_and_annotate(placeholder_node, False, annotate_record, world_size)
+    _traverse_and_annotate(placeholder_node, False, annotate_record, torch.distributed.get_world_size())
 
     return graph_module
