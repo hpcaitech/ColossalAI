@@ -72,6 +72,7 @@ class MetaInfo:
         device_mesh = sharding_spec.device_mesh
         shape = operation_data.data.shape
 
+        # TODO: operation_data.data can have multiple items
         new_shape = []
         for dim, shard in zip(shape, shard_sequnce):
             if shard.is_replica:
@@ -80,9 +81,10 @@ class MetaInfo:
             else:
                 # sharded according to device_mesh shape
                 new_shape.append(dim // np.prod(np.array([device_mesh.mesh_shape[i] for i in shard.shard_list])))
-
+        new_data = torch.zeros(new_shape, device="meta")
+        new_data.data_ptr = operation_data.data.data_ptr
         return OperationData(name=operation_data.name,
-                             data=torch.zeros(new_shape, device="meta"),
+                             data=new_data,
                              type=operation_data.type,
                              logical_shape=operation_data.logical_shape)
 
