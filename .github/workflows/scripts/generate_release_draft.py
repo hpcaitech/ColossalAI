@@ -2,9 +2,10 @@
 # coding: utf-8
 
 import argparse
-import requests
-import re
 import os
+import re
+
+import requests
 
 COMMIT_API = 'https://api.github.com/repos/hpcaitech/ColossalAI/commits'
 TAGS_API = 'https://api.github.com/repos/hpcaitech/ColossalAI/tags'
