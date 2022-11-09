@@ -70,7 +70,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-      - name: Install Colossal-AI      
+      - name: Install Colossal-AI
         run: |
           pip install -r requirements/requirements.txt
           pip install -v --no-cache-dir .
