@@ -334,6 +334,9 @@ def metainfo_trace(gm: torch.fx.GraphModule, *args, verbose: bool = False, unit:
         gm (torch.fx.GraphModule): The ``GraphModule`` to be annotated with MetaInfo.
         verbose (bool, optional): Whether to show ``MetaInfoProp.summary()`. Defaults to False.
         unit (str, optional): The unit of memory. Defaults to "MB".
+
+    Returns:
+        torch.fx.GraphModule: The ``GraphModule`` annotated with MetaInfo.
     """
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     interp = MetaInfoProp(gm.to(device))
@@ -346,3 +349,4 @@ def metainfo_trace(gm: torch.fx.GraphModule, *args, verbose: bool = False, unit:
         interp.summary(unit)
     gm.to('cpu')
     del interp
+    return gm
