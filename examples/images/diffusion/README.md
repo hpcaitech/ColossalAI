@@ -59,7 +59,7 @@ you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-we provide the script `train.sh` to run the training task , and three Stategy in `configs`:`train_colossalai.yaml`, `train_ddp.yaml`, `train_deepspeed.yaml`
+we provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml`, `train_ddp.yaml`
 
 for example, you can run the training from colossalai by
 ```

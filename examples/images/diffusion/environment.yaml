@@ -26,7 +26,6 @@ dependencies:
     - transformers==4.19.2
     - torchmetrics==0.6.0
     - kornia==0.6
-    - deepspeed==0.7.4
     - prefetch_generator
     - -e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
     - -e git+https://github.com/openai/CLIP.git@main#egg=clip
