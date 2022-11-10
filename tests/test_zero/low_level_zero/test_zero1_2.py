@@ -16,7 +16,7 @@ def check_equal(a, b):
     """
     This function checks if two tensors are equal within tolerance
     """
-    assert torch.allclose(a.float(), b.float(), rtol=1e-3, atol=1e-5), f'a = {a}, b = {b}'
+    assert torch.allclose(a.float(), b.float(), rtol=1e-4, atol=1e-3), f'a = {a}, b = {b}'
 
 
 def check_completely_equal(a, b):
