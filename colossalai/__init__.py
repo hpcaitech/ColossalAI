@@ -7,4 +7,4 @@ from .initialize import (
     launch_from_torch,
 )
 
-__version__ = '0.1.11rc1'
+__version__ = '0.1.11rc2'

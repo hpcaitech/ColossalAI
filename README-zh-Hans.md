@@ -56,6 +56,7 @@
 <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
    <ul>
+     <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
      <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>
  </li>
@@ -69,11 +70,6 @@
  <li><a href="#使用-Docker">使用 Docker</a></li>
  <li><a href="#社区">社区</a></li>
  <li><a href="#做出贡献">做出贡献</a></li>
- <li><a href="#快速预览">快速预览</a></li>
-   <ul>
-     <li><a href="#几行代码开启分布式训练">几行代码开启分布式训练</a></li>
-     <li><a href="#构建一个简单的2维并行模型">构建一个简单的2维并行模型</a></li>
-   </ul>
  <li><a href="#引用我们">引用我们</a></li>
 </ul>
 
@@ -199,6 +195,21 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## Colossal-AI 成功案例
+
+### AIGC
+加速AIGC(AI内容生成)模型，如[Stable Diffusion](https://github.com/CompVis/stable-diffusion)
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+</p>
+
+- [Colossal-AI优化Stable Diffusion](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 6.5倍训练加速和预训练成本降低, 微调硬件成本下降约7倍(从RTX3090/4090到RTX3050/2070)
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+</p>
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
 ### 生物医药
 
 加速 [AlphaFold](https://alphafold.ebi.ac.uk/) 蛋白质结构预测
@@ -290,31 +301,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 快速预览
-
-### 几行代码开启分布式训练
-
-```python
-parallel = dict(
-    pipeline=2,
-    tensor=dict(mode='2.5d', depth = 1, size=4)
-)
-```
-
-### 几行代码开启异构训练
-
-```python
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=TensorShardStrategy(),
-        reuse_fp16_shard=True
-    ),
-    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
-)
-```
-
-<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 引用我们
 

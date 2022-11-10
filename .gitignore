@@ -134,7 +134,7 @@ dmypy.json
 .vscode/
 
 # macos
-.DS_Store
+*.DS_Store
 #data/
 
 docs/.build

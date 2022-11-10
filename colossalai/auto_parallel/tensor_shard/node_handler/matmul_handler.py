@@ -454,6 +454,9 @@ class MatMulHandler(NodeHandler):
                 if -1 in dim_partition_dict:
                     shard = dim_partition_dict.pop(-1)
                     dim_partition_dict[0] = shard
+                if 1 in dim_partition_dict:
+                    shard = dim_partition_dict.pop(1)
+                    dim_partition_dict[0] = shard
 
                 # re-init the sharding spec
                 input_sharding_spec.__init__(input_sharding_spec.device_mesh,
