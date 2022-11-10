@@ -708,7 +708,6 @@ class Linear1D_Row(ParallelLayer):
         if self.stream_chunk_num > 1:
             output_parallel_list = [None for i in range(self.stream_chunk_num)]
             for i in range(self.stream_chunk_num):
-                print(input_.shape, [w.shape for w in self.weight_list])
                 output_parallel_list[i] = F.linear(input_, self.weight_list[i])
                 output_parallel_list[i] = reduce_input(output_parallel_list[i], ParallelMode.PARALLEL_1D)
             output = torch.cat(output_parallel_list, dim=-1)
