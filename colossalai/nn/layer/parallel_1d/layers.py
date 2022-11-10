@@ -706,6 +706,8 @@ class Linear1D_Row(ParallelLayer):
             input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
         if self.stream_chunk_num > 1:
+            if self.training:
+                raise RuntimeError("use stream_chunk_num=1 in Linear1D_Row for training!")
             with torch.no_grad():
                 output_parallel_list = [None for i in range(self.stream_chunk_num)]
                 handle_list = []
