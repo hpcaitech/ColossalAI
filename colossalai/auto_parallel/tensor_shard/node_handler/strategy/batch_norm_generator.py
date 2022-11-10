@@ -9,6 +9,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     ShardingStrategy,
     TrainCycleItem,
 )
+from colossalai.auto_parallel.tensor_shard.utils import ignore_sharding_exception
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
 from .strategy_generator import StrategyGenerator
@@ -103,6 +104,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
+    @ignore_sharding_exception
     def split_input_channel(self, mesh_dim_0):
         name = f'RS{mesh_dim_0} = RS{mesh_dim_0} x S{mesh_dim_0}'
         dim_partition_dict_mapping = {
@@ -134,6 +136,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_input_channel_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'RS{mesh_dim_0}{mesh_dim_1} = RS{mesh_dim_0}{mesh_dim_1} x S{mesh_dim_0}{mesh_dim_1}'
         dim_partition_dict_mapping = {
@@ -165,6 +168,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def non_split(self):
         name = f'RR = RR x R'
         dim_partition_dict_mapping = {
@@ -186,6 +190,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_input_batch(self, mesh_dim_0):
         name = f'S{mesh_dim_0}R = S{mesh_dim_0}R x R WITH SYNC_BN'
         dim_partition_dict_mapping = {
@@ -221,6 +226,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_input_batch_1d(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}{mesh_dim_1}R = S{mesh_dim_0}{mesh_dim_1}R x R WITH SYNC_BN'
         dim_partition_dict_mapping = {
@@ -256,6 +262,7 @@ class BatchNormStrategyGenerator(StrategyGenerator):
                                           sharding_spec_mapping=sharding_spec_mapping,
                                           communication_action_mapping=communication_action_mapping)
 
+    @ignore_sharding_exception
     def split_input_both_dim(self, mesh_dim_0, mesh_dim_1):
         name = f'S{mesh_dim_0}S{mesh_dim_1} = S{mesh_dim_0}S{mesh_dim_1} x S{mesh_dim_1} WITH SYNC_BN'
         dim_partition_dict_mapping = {

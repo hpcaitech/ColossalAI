@@ -1,10 +1,13 @@
-from .utils import InsertPostInitMethodToModuleSubClasses
-import torch
-from colossalai.tensor import ColoTensor, ColoParameter
-from colossalai.nn.parallel.layers import register_colo_module, \
-    ColoLinear, ColoEmbedding
-from torch import nn
 from typing import Iterator, Tuple, Union
+
+import torch
+from torch import nn
+
+from colossalai.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
+from colossalai.tensor import ColoParameter, ColoTensor
+
+from .utils import InsertPostInitMethodToModuleSubClasses
+
 # find named_params includes replica
 
 
@@ -33,17 +36,13 @@ def ColoModulize(module):
 
 class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
-    def __init__(self,
-                 lazy_memory_allocate: bool = False,
-                 device: torch.device = torch.device('cpu'),
-                 dtype: torch.dtype = torch.float):
+    def __init__(self, device: torch.device = torch.device('cpu'), dtype: torch.dtype = torch.float):
         """
         Args:
-            lazy_memory_allocate (bool, optional): whether to allocate memory for the parameter tensors. Defaults to False.
-            device (torch.device, optional): the device parameters initialized are resident on. Defaults to torch.device('cpu').
+            device (torch.device): the device where parameters initialized are resident. Defaults to torch.device('cpu').
+            dtype (torch.dtype): the dtype of parameters initialized. Defults to torch.float.
         """
         super().__init__()
-        self._lazy_memory_allocate = lazy_memory_allocate
         self._device = device
         self._dtype = dtype
 
@@ -87,7 +86,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
             if param in replaced_tensors:
                 colo_param = replaced_tensors[param]
             else:
-                save_torch_payload = True if not self._lazy_memory_allocate else False
                 # detaching tensor is necessary for optimizers.
                 requires_grad = param.requires_grad
                 # TODO(jiaruifang) we initialize a Default PG memory
