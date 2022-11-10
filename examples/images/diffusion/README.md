@@ -63,7 +63,7 @@ we provide the script `train.sh` to run the training task , and two Stategy in `
 
 for example, you can run the training from colossalai by
 ```
-python main.py --logdir /tmp -t --postfix test -b config/train_colossalai.yaml
+python main.py --logdir /tmp -t --postfix test -b configs/train_colossalai.yaml
 ```
 
 - you can change the `--logdir` the save the log information and the last checkpoint
