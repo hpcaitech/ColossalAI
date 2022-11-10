@@ -20,7 +20,7 @@ def run_torch_amp():
     torch.backends.cudnn.deterministic = True
 
     # create layer
-    test_models = ['repeated_computed_layers', 'nested_model', 'resnet18']
+    test_models = ['resnet18', 'simple_net']
     for test_name in test_models:
         get_component_func = non_distributed_component_funcs.get_callable(test_name)
         model_builder, train_dataloader, _, optim_class, _ = get_component_func()
@@ -59,7 +59,7 @@ def run_torch_amp():
         apex_amp_optimizer.backward(apex_amp_output.mean())
 
         # check grad
-        # In apex amp, grad is not scaled before backward, but torch amp do
+        # In apex amp, grad is not scaled before backward, but torch amp does
         for torch_amp_param, apex_amp_param in zip(torch_amp_model.parameters(), apex_amp_model.parameters()):
             assert_close_loose(torch_amp_param.grad, apex_amp_param.grad * apex_amp_config['loss_scale'])
 
