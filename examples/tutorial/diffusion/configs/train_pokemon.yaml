@@ -16,6 +16,7 @@ model:
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
     use_ema: False
+    check_nan_inf: False
 
     scheduler_config: # 10000 warmup steps
       target: ldm.lr_scheduler.LambdaLinearScheduler
@@ -24,12 +25,13 @@ model:
         cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
         f_start: [ 1.e-6 ]
         f_max: [ 1.e-4 ]
-        f_min: [ 1.e-10 ]
+        f_min: [ 1.e-10  ]
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         image_size: 32 # unused
+        from_pretrained: '/data/scratch/diffuser/stable-diffusion-v1-4/unet/diffusion_pytorch_model.bin'
         in_channels: 4
         out_channels: 4
         model_channels: 320
@@ -42,12 +44,12 @@ model:
         context_dim: 768
         use_checkpoint: False
         legacy: False
-        use_fp16: True
 
     first_stage_config:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
+        from_pretrained: '/data/scratch/diffuser/stable-diffusion-v1-4/vae/diffusion_pytorch_model.bin'
         monitor: val/rec_loss
         ddconfig:
           double_z: true
@@ -75,14 +77,14 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 4
+    batch_size: 32
     wrap: False
     train:
-      target: ldm.data.base.Txt2ImgIterableBaseDataset
-      params:
-        file_path: "/data/scratch/diffuser/laion_part0/"
-        world_size: 1
-        rank: 0
+      target: ldm.data.pokemon.PokemonDataset
+      # params:
+        # file_path: "/data/scratch/diffuser/laion_part0/"
+        # world_size: 1
+        # rank: 0
 
 lightning:
   trainer:
@@ -93,14 +95,18 @@ lightning:
     precision: 16
     auto_select_gpus: False
     strategy:
-      target: pytorch_lightning.strategies.DeepSpeedStrategy
+      target: pytorch_lightning.strategies.ColossalAIStrategy
       params:
-        stage: 2
-        zero_optimization: True
-        offload_optimizer: False
-        offload_parameters: False
+        use_chunk: False
+        enable_distributed_storage: True,
+        placement_policy: cuda
+        force_outputs_fp32: False
+        initial_scale: 65536
+        min_scale: 1
+        max_scale: 65536
+        # max_scale: 4294967296
+
     log_every_n_steps: 2
-#    max_steps: 6o
     logger: True
     default_root_dir: "/tmp/diff_log/"
     profiler: pytorch
@@ -110,8 +116,6 @@ lightning:
       target: pytorch_lightning.loggers.WandbLogger
       params:
           name: nowname
-          save_dir: logdir
+          save_dir: "/tmp/diff_log/"
           offline: opt.debug
           id: nowname
-    
-

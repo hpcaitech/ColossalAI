@@ -37,6 +37,9 @@ def run_workflow(world_size, dev):
     with LazyInitContext() as ctx:
         model = MLP(16)
 
+    for param in model.parameters():
+        assert param.is_meta
+
     # tracing
     tracer = ColoTracer()
     graph = tracer.trace(model)
@@ -47,8 +50,9 @@ def run_workflow(world_size, dev):
     annotated_gm.recompile()
 
     # materialization and sharding
-    ctx.lazy_init_parameters(annotated_gm, dev)
-    model = model.to(dev)
+    ctx.lazy_init_parameters(annotated_gm)
+    for param in model.parameters():
+        assert not param.is_meta
 
     # # check sharding
     assert list(model.linear1.weight.shape) == [16 // world_size, 16]
@@ -60,8 +64,7 @@ def run_workflow(world_size, dev):
     data = torch.rand(4, 16, device=dev)
     non_fx_out = model(data)
     fx_out = annotated_gm(data)
-
-    assert torch.equal(non_fx_out, fx_out)
+    assert torch.equal(non_fx_out, fx_out), f'{non_fx_out} vs {fx_out}'
 
 
 def run_dist(rank, world_size, dev, port):
@@ -81,4 +84,4 @@ def test_complete_workflow(world_size, dev):
 
 
 if __name__ == '__main__':
-    test_complete_workflow(2, 'cuda')
+    test_complete_workflow(1)
