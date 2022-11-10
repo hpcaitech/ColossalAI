@@ -1,10 +1,11 @@
-import torch
-from typing import Optional, Dict, Deque, Set, List, Tuple, Iterable
 from collections import deque
+from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 
-from colossalai.utils import get_current_device
+import torch
+
+from colossalai.gemini.chunk import Chunk, ChunkFullError, TensorState
 from colossalai.tensor import ColoTensor
-from colossalai.gemini.chunk import ChunkFullError, TensorState, Chunk
+from colossalai.utils import get_current_device
 
 
 class ChunkManager:
@@ -31,13 +32,19 @@ class ChunkManager:
         self.accessed_mem: int = 0
         self.total_mem: Dict[str, int] = {'cpu': 0, 'cuda': 0}
 
-    def append_tensor(self, tensor: ColoTensor, group_type: str, config_key: int, pin_memory: bool = False) -> None:
+    def append_tensor(self,
+                      tensor: ColoTensor,
+                      group_type: str,
+                      config_key: int,
+                      cpu_offload: bool = False,
+                      pin_memory: bool = False) -> None:
         """Append a tensor to a chunk.
 
         Args:
             tensor: the tensor appended to the chunk
             group_type: the data type of the group
             config_key: the key of the group's name, usually the size of the dp world
+            cpu_offload: if True, the chunk will be closed on CPU
             pin_memory: whether the chunk is pinned in the cpu memory
         """
         assert tensor not in self.tensor_chunk_map
@@ -67,6 +74,7 @@ class ChunkManager:
                 chunk_size=chunk_size,
                 process_group=tensor.process_group,
                 dtype=tensor.dtype,
+                cpu_shard_init=cpu_offload,
                 pin_memory=pin_memory,
                 **chunk_kwargs,
             )
@@ -206,9 +214,8 @@ class ChunkManager:
         return self.chunk_groups[group_name]
 
     def __close_one_chunk(self, chunk: Chunk):
-        device = get_current_device() if chunk.keep_gathered else self.device    # keep gathered chunk in cuda
         self.__sub_memroy_usage(chunk.memory_usage)
-        chunk.close_chunk(device)
+        chunk.close_chunk()
         self.__add_memory_usage(chunk.memory_usage)
 
     def __sub_memroy_usage(self, usage: Dict[str, int]):

@@ -79,9 +79,12 @@ class MemoryCost:
     Args:
         activation (int): the memory cost incurred by the activations in bytes.
         parameter (int): the memory cost incurred by the module parameter in bytes.
+        temp (int): the memory cost incurred by the temporary tensors in bytes.
+        buffer (int): the memory cost incurred by the module buffer in bytes.
     """
     activation: int = 0
     parameter: int = 0
+    temp: int = 0
     buffer: int = 0
 
 
@@ -115,6 +118,7 @@ class CommAction:
     comm_spec: CommSpec = None
     comm_type: CommType = None
     arg_index: int = -1
+    key_for_kwarg: any = None
 
 
 @dataclass

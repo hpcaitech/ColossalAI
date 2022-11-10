@@ -3,24 +3,19 @@ from numpy import isin
 from torch.fx import GraphModule
 from torch.utils._pytree import tree_flatten
 
-from colossalai.fx import ColoTracer
+from colossalai.fx import symbolic_trace
 
 
 def trace_model_and_compare_output(model, data_gen):
     # must turn on eval mode to ensure the output is consistent
     model.eval()
 
-    # make sure that the model is traceable
-    tracer = ColoTracer()
-
     try:
         kwargs = data_gen()
         meta_args = {k: v.to('meta') for k, v in kwargs.items()}
-        graph = tracer.trace(root=model, meta_args=meta_args)
+        gm = symbolic_trace(model, meta_args=meta_args)
     except Exception as e:
         raise RuntimeError(f"Failed to trace {model.__class__.__name__}, error: {e}")
-    gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
 
     # run forward
     inputs = data_gen()

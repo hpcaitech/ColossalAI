@@ -1,19 +1,22 @@
-from colossalai.fx.tracer import meta_patch
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.fx.tracer.meta_patch.patched_function import python_ops
+import pytest
 import torch
-from torchrec.sparse.jagged_tensor import KeyedTensor, KeyedJaggedTensor
-from torchrec.modules.embedding_modules import EmbeddingBagCollection
-from torchrec.modules.embedding_configs import EmbeddingBagConfig
-from torchrec.models import deepfm, dlrm
-import colossalai.fx as fx
-import pdb
-from torch.fx import GraphModule
+
+from colossalai.fx import symbolic_trace
+
+try:
+    from torchrec.models import deepfm
+    from torchrec.modules.embedding_configs import EmbeddingBagConfig
+    from torchrec.modules.embedding_modules import EmbeddingBagCollection
+    from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, KeyedTensor
+    NOT_TORCHREC = False
+except ImportError:
+    NOT_TORCHREC = True
 
 BATCH = 2
 SHAPE = 10
 
 
+@pytest.mark.skipif(NOT_TORCHREC, reason='torchrec is not installed')
 def test_torchrec_deepfm_models():
     MODEL_LIST = [deepfm.DenseArch, deepfm.FMInteractionArch, deepfm.OverArch, deepfm.SimpleDeepFMNN, deepfm.SparseArch]
 
@@ -36,9 +39,6 @@ def test_torchrec_deepfm_models():
     # Dense Features
     features = torch.rand((BATCH, SHAPE))
 
-    # Tracer
-    tracer = ColoTracer()
-
     for model_cls in MODEL_LIST:
         # Initializing model
         if model_cls == deepfm.DenseArch:
@@ -53,9 +53,7 @@ def test_torchrec_deepfm_models():
             model = model_cls(ebc)
 
         # Setup GraphModule
-        graph = tracer.trace(model)
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+        gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()

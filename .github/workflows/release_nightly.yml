@@ -2,10 +2,10 @@ name: Release bdist wheel for Nightly versions
 
 on:
   schedule:
-    # run at 00:00 of every Sunday 
+    # run at 00:00 of every Sunday
     - cron:  '0 0 * * 6'
   workflow_dispatch:
-  
+
 jobs:
   matrix_preparation:
     name: Prepare Container List
@@ -71,4 +71,3 @@ jobs:
             cd $BUILD_DIR
             find . -type f -mtime +0 -exec rm -f {} +
           script_stop: true
-        

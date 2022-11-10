@@ -13,7 +13,7 @@ from colossalai.zero.utils import ZeroHook
 from colossalai.gemini.paramhooks import BaseParamHookMgr
 from colossalai.logging import get_dist_logger
 from colossalai.utils import get_current_device, disposable
-from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollector
+from colossalai.gemini.memory_tracer.memstats_collector import MemStatsCollector, MemStatsCollectorStatic
 from colossalai.utils.memory import colo_device_memory_capacity
 from colossalai.zero.shard_utils import BaseShardStrategy
 from colossalai.zero.sharded_model.reduce_scatter import ReduceScatterBucketer
@@ -77,6 +77,7 @@ class ShardedModelV2(nn.Module):
                  tensor_placement_policy: str = 'cuda',
                  gradient_predivide_factor: Optional[float] = 1.0,
                  reuse_fp16_shard: bool = False,
+                 user_static_memstats: bool = False,
                  *args,
                  **kwargs):
         assert not isinstance(module, ShardedModelV2), 'Nested ShardedModelV2 is not supported.'
@@ -110,10 +111,14 @@ class ShardedModelV2(nn.Module):
         self.world_size = dist.get_world_size(self.process_group)
         self.rank = dist.get_rank(self.process_group)
         self.shard_strategy = shard_strategy
+        self.user_static_memstats = user_static_memstats
 
         self._use_memory_tracer = tensor_placement_policy == 'auto'
         if self._use_memory_tracer:
-            self._memstats_collector = MemStatsCollector()
+            if self.user_static_memstats:
+                self._memstats_collector = MemStatsCollectorStatic(self.module)
+            else:
+                self._memstats_collector = MemStatsCollector()
             self._start_collect_memstats = disposable(self._memstats_collector.start_collection)
             self._finish_collect_memstats = disposable(self._memstats_collector.finish_collection)
         else:
@@ -206,9 +211,11 @@ class ShardedModelV2(nn.Module):
                     f.write(str(self._memstats_collector.non_model_data_list('cpu', 'GB')))
                     f.write('\n')
 
-    def _pre_forward_operations(self):
+    def _pre_forward_operations(self, *args):
         # the operation will affect the memory tracer behavior in ZeroHook
         if self._memstats_collector:
+            if self.user_static_memstats:
+                self.init_mem_stats(*args)
             self._start_collect_memstats()
 
         for p in self.module.parameters():
@@ -223,7 +230,7 @@ class ShardedModelV2(nn.Module):
                 p.colo_attr.sharded_data_tensor.trans_state(TensorState.HOLD)
 
     def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
-        self._pre_forward_operations()
+        self._pre_forward_operations(*args)
         args, kwargs = cast_float_arguments(cast_tensor_to_fp16, *args, **kwargs)
         outputs = self.module(*args, **kwargs)
         self._post_forward_operations()

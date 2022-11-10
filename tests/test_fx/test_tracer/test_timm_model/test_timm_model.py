@@ -1,11 +1,11 @@
-import torch
-import timm.models as tm
-from colossalai.fx import ColoTracer
-from torch.fx import GraphModule
 import pytest
+import timm.models as tm
+import torch
+
+from colossalai.fx import symbolic_trace
 
 
-def trace_and_compare(model_cls, tracer, data, meta_args=None):
+def trace_and_compare(model_cls, data, meta_args=None):
     # trace
     model = model_cls()
 
@@ -14,15 +14,13 @@ def trace_and_compare(model_cls, tracer, data, meta_args=None):
     # without this statement, the torch.nn.functional.batch_norm will always be in training mode
     model.eval()
 
-    graph = tracer.trace(root=model, meta_args=meta_args)
-    gm = GraphModule(model, graph, model.__class__.__name__)
-    gm.recompile()
+    gm = symbolic_trace(model, meta_args=meta_args)
 
     # run forward
     with torch.no_grad():
         fx_out = gm(data)
         non_fx_out = model(data)
-    
+
     # compare output
     if isinstance(fx_out, tuple):
         # some models produce tuple as output
@@ -30,7 +28,8 @@ def trace_and_compare(model_cls, tracer, data, meta_args=None):
             assert torch.allclose(v1, v2), f'{model.__class__.__name__} has inconsistent outputs, {v1} vs {v2}'
     else:
         assert torch.allclose(
-            fx_out, non_fx_out), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
+            fx_out, non_fx_out,
+            atol=1e-5), f'{model.__class__.__name__} has inconsistent outputs, {fx_out} vs {non_fx_out}'
 
 
 def test_timm_models_without_control_flow():
@@ -47,11 +46,10 @@ def test_timm_models_without_control_flow():
         tm.deit_base_distilled_patch16_224,
     ]
 
-    tracer = ColoTracer()
     data = torch.rand(2, 3, 224, 224)
 
     for model_cls in MODEL_LIST:
-        trace_and_compare(model_cls, tracer, data)
+        trace_and_compare(model_cls, data)
 
 
 def test_timm_models_with_control_flow():
@@ -62,13 +60,12 @@ def test_timm_models_with_control_flow():
         tm.swin_transformer.swin_base_patch4_window7_224
     ]
 
-    tracer = ColoTracer()
     data = torch.rand(2, 3, 224, 224)
 
     meta_args = {'x': data.to('meta')}
 
     for model_cls in MODEL_LIST_WITH_CONTROL_FLOW:
-        trace_and_compare(model_cls, tracer, data, meta_args)
+        trace_and_compare(model_cls, data, meta_args)
 
 
 if __name__ == '__main__':

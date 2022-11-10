@@ -1,15 +1,17 @@
-import torch
-import colossalai
-import pytest
-import torch.multiprocessing as mp
-import torch.distributed as dist
 from functools import partial
-from colossalai.testing import rerun_if_address_is_in_use, parameterize
-from colossalai.utils import free_port, get_current_device
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
-from colossalai.tensor import ColoParameter
+
+import pytest
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+
+import colossalai
 from colossalai.gemini import TensorState
 from colossalai.gemini.chunk import Chunk
+from colossalai.tensor import ColoParameter
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
+from colossalai.utils import free_port, get_current_device
 
 
 def dist_sum(x):
@@ -42,6 +44,7 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
                      process_group=pg,
                      dtype=torch.float32,
                      init_device=init_device,
+                     cpu_shard_init=True,
                      keep_gathered=keep_gathered,
                      pin_memory=pin_memory)
 

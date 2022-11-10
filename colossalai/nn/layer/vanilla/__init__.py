@@ -1,6 +1,14 @@
-from .layers import (DropPath, VanillaClassifier, VanillaLayerNorm, VanillaPatchEmbedding, WrappedDropout,
-                     WrappedDropPath)
+from .layers import (
+    DropPath,
+    VanillaClassifier,
+    VanillaLayerNorm,
+    VanillaLinear,
+    VanillaPatchEmbedding,
+    WrappedDropout,
+    WrappedDropPath,
+)
 
 __all__ = [
-    "VanillaLayerNorm", "VanillaPatchEmbedding", "VanillaClassifier", "DropPath", "WrappedDropout", "WrappedDropPath"
+    "VanillaLayerNorm", "VanillaPatchEmbedding", "VanillaClassifier", "DropPath", "WrappedDropout", "WrappedDropPath",
+    "VanillaLinear"
 ]

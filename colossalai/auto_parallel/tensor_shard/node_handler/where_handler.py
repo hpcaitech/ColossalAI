@@ -4,7 +4,7 @@ from typing import Dict, List
 
 import torch
 
-from ..sharding_strategy import (OperationData, OperationDataType, ShardingStrategy, StrategiesVector)
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy, StrategiesVector
 from ..utils import recover_sharding_spec_for_broadcast_shape
 from .node_handler import NodeHandler
 from .registry import operator_registry
@@ -81,8 +81,8 @@ class WhereHandler(NodeHandler):
             logical_sharding_spec = strategy.sharding_specs[logical_op_data_mapping[key]]
             logical_shape = logical_op_data_mapping[key].logical_shape
             physical_shape = physical_op_data_mapping[key].logical_shape
-            physical_sharding_spec = recover_sharding_spec_for_broadcast_shape(logical_sharding_spec, logical_shape,
-                                                                               physical_shape)
+            physical_sharding_spec, removed_dims = recover_sharding_spec_for_broadcast_shape(
+                logical_sharding_spec, logical_shape, physical_shape)
             strategy.sharding_specs.pop(logical_op_data_mapping[key])
             strategy.sharding_specs[physical_op_data_mapping[key]] = physical_sharding_spec
         strategy.name = f"{strategy.sharding_specs[physical_op_data_mapping['output']].sharding_sequence} = {strategy.sharding_specs[physical_op_data_mapping['condition']].sharding_sequence} x {strategy.sharding_specs[physical_op_data_mapping['x']].sharding_sequence} x {strategy.sharding_specs[physical_op_data_mapping['y']].sharding_sequence}"

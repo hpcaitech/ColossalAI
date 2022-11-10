@@ -1,12 +1,21 @@
 import torch
 import torch.distributed as dist
+from torch.nn import Parameter
+
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.nn import (Classifier1D, Embedding1D, Linear1D_Col, Linear1D_Row, VanillaClassifier,
-                           VocabParallelClassifier1D, VocabParallelCrossEntropyLoss1D, VocabParallelEmbedding1D)
+from colossalai.nn import (
+    Classifier1D,
+    Embedding1D,
+    Linear1D_Col,
+    Linear1D_Row,
+    VanillaClassifier,
+    VocabParallelClassifier1D,
+    VocabParallelCrossEntropyLoss1D,
+    VocabParallelEmbedding1D,
+)
 from colossalai.utils import get_current_device, print_rank_0
-from torch.nn import Parameter
 
 from .common import BATCH_SIZE, DEPTH, HIDDEN_SIZE, NUM_CLASSES, SEQ_LENGTH, VOCAB_SIZE, check_equal
 
@@ -494,3 +503,50 @@ def check_vocab_parallel_loss():
     out_grad = torch.chunk(out_grad, DEPTH, dim=-1)[i]
     check_equal(out_grad, out.grad)
     print_rank_0('vocab parallel loss backward: pass')
+
+
+@torch.no_grad()
+def check_linear_row_stream_inference():
+    device = get_current_device()
+    dtype = torch.float32
+    INPUT_SIZE = HIDDEN_SIZE
+    OUTPUT_SIZE = 2 * HIDDEN_SIZE
+
+    i = gpc.get_local_rank(ParallelMode.PARALLEL_1D)
+
+    stream_chunk_num = 4
+    assert HIDDEN_SIZE % stream_chunk_num == 0
+    layer = Linear1D_Row(OUTPUT_SIZE, INPUT_SIZE, stream_chunk_num=stream_chunk_num)
+
+    A_shape = (BATCH_SIZE, SEQ_LENGTH, OUTPUT_SIZE)
+    A_master = torch.randn(A_shape, dtype=dtype, device=device)
+    dist.broadcast(A_master, src=0)
+    A = torch.chunk(A_master, DEPTH, dim=-1)[i]
+    A = A.clone()
+
+    W_shape = (INPUT_SIZE, OUTPUT_SIZE)
+    W_master = torch.randn(W_shape, dtype=dtype, device=device)
+    dist.broadcast(W_master, src=0)
+    W = torch.chunk(W_master, DEPTH, dim=-1)[i]
+    W = W.clone()
+
+    B_shape = (INPUT_SIZE)
+    B_master = torch.randn(B_shape, dtype=dtype, device=device)
+    dist.broadcast(B_master, src=0)
+    B = B_master.clone()
+
+    layer.weight = Parameter(W)
+    layer.bias = Parameter(B)
+    layer.chunk_weight()
+    layer.eval()
+
+    out = layer(A)
+
+    A_master = A_master.clone()
+    W_master = W_master.clone()
+    B_master = B_master.clone()
+    C_master = torch.matmul(A_master, W_master.transpose(0, 1)) + B_master
+    C = C_master.clone()
+
+    check_equal(out, C)
+    print_rank_0('linear_row forward: pass')

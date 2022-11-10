@@ -1,6 +1,6 @@
-import transformers
-import torch
 import pytest
+import torch
+import transformers
 from hf_utils import split_model_and_compare_output
 
 BATCH_SIZE = 64
@@ -9,6 +9,7 @@ NUM_EPOCHS = 2
 NUM_CHUNKS = 1
 
 
+@pytest.mark.skip('balance split v2 is not ready')
 def test_gpt():
     MODEL_LIST = [
         transformers.GPT2Model,

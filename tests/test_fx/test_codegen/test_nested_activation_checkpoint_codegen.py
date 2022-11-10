@@ -1,14 +1,15 @@
-import torch
-import torch.nn.functional as F
 import pytest
+import torch
 import torch.multiprocessing as mp
-from torch.utils.checkpoint import checkpoint
+import torch.nn.functional as F
 from torch.fx import GraphModule
-from colossalai.fx import ColoTracer
+from torch.utils.checkpoint import checkpoint
+
 import colossalai
-from colossalai.utils import free_port
 from colossalai.core import global_context as gpc
+from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.utils import free_port
 
 try:
     from colossalai.fx.codegen import ActivationCheckpointCodeGen
@@ -57,16 +58,16 @@ def _run_act_ckpt_codegen(rank):
     # annotate nested checkpoint
     for node in graph.nodes:
         if node.name == "linear1":
-            setattr(node, "activation_checkpoint", [0, 0, 0])
+            node.meta['activation_checkpoint'] = [0, 0, 0]
             continue
         if node.name == "linear2":
-            setattr(node, "activation_checkpoint", [0, 0, None])
+            node.meta['activation_checkpoint'] = [0, 0, None]
         if node.name == "linear3":
-            setattr(node, "activation_checkpoint", [0, 0, 1])
+            node.meta['activation_checkpoint'] = [0, 0, 1]
         if node.name == "linear4":
-            setattr(node, "activation_checkpoint", [0, 1, None])
+            node.meta['activation_checkpoint'] = [0, 1, None]
         if node.name == "linear5":
-            setattr(node, "activation_checkpoint", 1)
+            node.meta['activation_checkpoint'] = 1
     gm = ColoGraphModule(model, graph)
     gm.recompile()
 
@@ -114,16 +115,16 @@ def _run_act_ckpt_python_code_torch11(rank):
     # annotate nested checkpoint
     for node in graph.nodes:
         if node.name == "linear1":
-            setattr(node, "activation_checkpoint", [0, 0, 0])
+            node.meta['activation_checkpoint'] = [0, 0, 0]
             continue
         if node.name == "linear2":
-            setattr(node, "activation_checkpoint", [0, 0, None])
+            node.meta['activation_checkpoint'] = [0, 0, None]
         if node.name == "linear3":
-            setattr(node, "activation_checkpoint", [0, 0, 1])
+            node.meta['activation_checkpoint'] = [0, 0, 1]
         if node.name == "linear4":
-            setattr(node, "activation_checkpoint", [0, 1, None])
+            node.meta['activation_checkpoint'] = [0, 1, None]
         if node.name == "linear5":
-            setattr(node, "activation_checkpoint", 1)
+            node.meta['activation_checkpoint'] = 1
     gm = ColoGraphModule(model, graph)
     gm.recompile()
 

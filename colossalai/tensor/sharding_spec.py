@@ -1,12 +1,12 @@
 import operator
 from copy import deepcopy
-from enum import Enum
 from functools import reduce
 
 import torch
 
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.tensor.utils import (all_gather_simulator, all_to_all_simulator, shard_simulator)
+
+from .utils import merge_same_dim_mesh_list
 
 __all__ = ['_DimSpec', 'ShardingException', 'ShardingSpec']
 
@@ -23,7 +23,7 @@ class _DimSpec:
     This class is used internally in ShardingSpec.
 
     Argument:
-        shard_list(List[int]): if shard_list is None, the dim spec will be 'R' type. 
+        shard_list(List[int]): if shard_list is None, the dim spec will be 'R' type.
             Otherwise, the element in shard_list means the data will be sharded in that dimension.
     '''
 
@@ -62,7 +62,7 @@ class _DimSpec:
 
     def build_difference_2d_dict(self):
         '''
-        Build a difference maping for 2D device mesh case. It will be used to 
+        Build a difference maping for 2D device mesh case. It will be used to
         compute the difference between DimSpec pairs.
         '''
 
@@ -159,9 +159,9 @@ class ShardingNotDivisibleError(ShardingSpecException):
 class ShardingSpec:
     '''
     Sharding spec for a tensor, it contains info of the logical device mesh this tensor belong
-    to, the entire shape of the tensor before sharded, and the sharding sequence looks like 
+    to, the entire shape of the tensor before sharded, and the sharding sequence looks like
     [R, R, S0, S1].
-    
+
     Argument:
         device_mesh(DeviceMesh): A logical view of a physical mesh.
         entire_shape(torch.Size): The entire shape of tensor before sharded.
@@ -176,12 +176,19 @@ class ShardingSpec:
                  dim_partition_dict=None,
                  sharding_sequence=None):
         self.device_mesh = device_mesh
+
+        if isinstance(entire_shape, (list, tuple)):
+            entire_shape = torch.Size(entire_shape)
         self.entire_shape = entire_shape
         self.dim_partition_dict = dim_partition_dict
         self.sharding_sequence = sharding_sequence
         if self.sharding_sequence is None:
+            assert self.dim_partition_dict is not None, f'dim_partition_dict should not be None, if sharding_sequence is NoneType object.'
+            self.dim_partition_dict = merge_same_dim_mesh_list(dim_size=len(entire_shape),
+                                                               dim_partition_dict=self.dim_partition_dict)
             self.convert_dict_to_shard_sequence()
         elif self.dim_partition_dict is None:
+            assert self.sharding_sequence is not None, f'sharding_sequence should not be None, if dim_partition_dict is NoneType object.'
             self.convert_shard_sequence_to_dict()
         self._sanity_check()
 
@@ -260,10 +267,10 @@ class ShardingSpec:
             #     device_mesh_shape: (4, 4)
             sharding_spec_to_compare = ShardingSpec(device_mesh, entire_shape, dim_partition_dict_to_compare)
             print(sharding_spec.sharding_sequence_difference(sharding_spec_to_compare))
-        
+
         Output:
             25
-        
+
         Argument:
             other(ShardingSpec): The ShardingSpec to compared with.
 
