@@ -94,8 +94,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--free_memory",
                         type=int,
-                        default=56000 * 1024**2,
-                        help="maximum memory budget in Byte for benchmark, default 56000 MB (56000 * 1024**2 B)")
+                        default=56000,
+                        help="maximum memory budget in MB for benchmark, default 56000 MB")
     parser.add_argument(
         "--start_factor",
         type=int,
@@ -105,4 +105,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    gpt2_benchmark(args.batch_size, args.num_steps, args.sample_points, args.free_memory, args.start_factor)
+    gpt2_benchmark(args.batch_size, args.num_steps, args.sample_points, args.free_memory * 1024**2, args.start_factor)

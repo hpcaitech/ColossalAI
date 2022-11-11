@@ -35,7 +35,7 @@ optional arguments:
   --sample_points SAMPLE_POINTS
                         number of sample points for benchmark from start memory budget to maximum memory budget (free_memory), default 15
   --free_memory FREE_MEMORY
-                        maximum memory budget in byte for benchmark, default 11000 MB (11000 * 1024**2 B)
+                        maximum memory budget in MB for benchmark, default 11000 MB
   --start_factor START_FACTOR
                         start memory budget factor for benchmark, the start memory budget will be free_memory / start_factor, default 4
 
@@ -55,7 +55,7 @@ optional arguments:
   --sample_points SAMPLE_POINTS
                         number of sample points for benchmark from start memory budget to maximum memory budget (free_memory), default 15
   --free_memory FREE_MEMORY
-                        maximum memory budget in Byte for benchmark, default 56000 MB (56000 * 1024**2 B)
+                        maximum memory budget in MB for benchmark, default 56000 MB
   --start_factor START_FACTOR
                         start memory budget factor for benchmark, the start memory budget will be free_memory / start_factor, default 10
 
