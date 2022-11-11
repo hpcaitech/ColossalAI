@@ -1,5 +1,4 @@
-# Handson 6: Acceleration of Stable Diffusion
-
+# Stable Diffusion with Colossal-AI
 *[Colosssal-AI](https://github.com/hpcaitech/ColossalAI) provides a faster and lower cost solution for pretraining and
 fine-tuning for AIGC (AI-Generated Content) applications such as the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/).*
 
