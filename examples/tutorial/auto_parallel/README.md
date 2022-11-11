@@ -92,3 +92,5 @@ batch_size: 512, peak memory: 73314.392 MB, through put: 254.286 images/s
 batch_size: 1024, peak memory: 73316.216 MB, through put: 397.608 images/s
 batch_size: 2048, peak memory: 72927.837 MB, through put: 277.429 images/s
 ```
+
+The above tests will output the test summary and a plot of the benchmarking results.
