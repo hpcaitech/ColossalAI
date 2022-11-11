@@ -1,5 +1,4 @@
-# Handson 6: Acceleration of Stable Diffusion
-
+# Stable Diffusion with Colossal-AI
 *[Colosssal-AI](https://github.com/hpcaitech/ColossalAI) provides a faster and lower cost solution for pretraining and
 fine-tuning for AIGC (AI-Generated Content) applications such as the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/).*
 
@@ -55,27 +54,39 @@ pip install -r requirements.txt && pip install .
 > The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
 
 ## Dataset
-The DataSet is from [LAION-5B](https://laion.ai/blog/laion-5b/), the subset of [LAION](https://laion.ai/),
+The dataSet is from [LAION-5B](https://laion.ai/blog/laion-5b/), the subset of [LAION](https://laion.ai/),
 you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-we provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml`, `train_ddp.yaml`
+We provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml`
 
-for example, you can run the training from colossalai by
+For example, you can run the training from colossalai by
 ```
-python main.py --logdir /tmp -t --postfix test -b config/train_colossalai.yaml
+python main.py --logdir /tmp -t --postfix test -b configs/train_colossalai.yaml
 ```
 
 - you can change the `--logdir` the save the log information and the last checkpoint
 
 ### Training config
-you can change the trainging config in the yaml file
+You can change the trainging config in the yaml file
 
 - accelerator: acceleratortype, default 'gpu'
 - devices: device number used for training, default 4
 - max_epochs: max training epochs
 - precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
+
+## Example
+
+### Training on cifar10
+
+We provide the finetuning example on CIFAR10 dataset
+
+You can run by config `train_colossalai_cifar10.yaml`
+```
+python main.py --logdir /tmp -t --postfix test -b configs/train_colossalai_cifar10.yaml
+```
+
 
 
 ## Comments
