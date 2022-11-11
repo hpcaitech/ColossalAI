@@ -83,7 +83,7 @@ def gpt2_benchmark(batch_size, num_steps, sample_points, free_memory, start_fact
 
 if __name__ == "__main__":
     parser = ArgumentParser("GPT2 medium Auto Activation Benchmark")
-    parser.add_argument("--batch_size", type=int, default=8, help="batch size for benchmark, default 128")
+    parser.add_argument("--batch_size", type=int, default=8, help="batch size for benchmark, default 8")
     parser.add_argument("--num_steps", type=int, default=5, help="number of test steps for benchmark, default 5")
     parser.add_argument(
         "--sample_points",
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("--free_memory",
                         type=int,
                         default=56000 * 1024**2,
-                        help="maximum memory budget for benchmark, default maximum memory avialable of current device")
+                        help="maximum memory budget in Byte for benchmark, default 56000 MB (56000 * 1024**2 B)")
     parser.add_argument(
         "--start_factor",
         type=int,

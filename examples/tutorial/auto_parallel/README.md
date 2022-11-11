@@ -35,7 +35,7 @@ optional arguments:
   --sample_points SAMPLE_POINTS
                         number of sample points for benchmark from start memory budget to maximum memory budget (free_memory), default 15
   --free_memory FREE_MEMORY
-                        maximum memory budget for benchmark, default maximum memory avialable of current device
+                        maximum memory budget in byte for benchmark, default 11000 MB (11000 * 1024**2 B)
   --start_factor START_FACTOR
                         start memory budget factor for benchmark, the start memory budget will be free_memory / start_factor, default 4
 
@@ -49,13 +49,13 @@ usage: GPT2 medium Auto Activation Benchmark [-h] [--batch_size BATCH_SIZE] [--n
 optional arguments:
   -h, --help            show this help message and exit
   --batch_size BATCH_SIZE
-                        batch size for benchmark, default 128
+                        batch size for benchmark, default 8
   --num_steps NUM_STEPS
                         number of test steps for benchmark, default 5
   --sample_points SAMPLE_POINTS
                         number of sample points for benchmark from start memory budget to maximum memory budget (free_memory), default 15
   --free_memory FREE_MEMORY
-                        maximum memory budget for benchmark, default maximum memory avialable of current device
+                        maximum memory budget in Byte for benchmark, default 56000 MB (56000 * 1024**2 B)
   --start_factor START_FACTOR
                         start memory budget factor for benchmark, the start memory budget will be free_memory / start_factor, default 10
 
@@ -94,4 +94,3 @@ batch_size: 2048, peak memory: 72927.837 MB, through put: 277.429 images/s
 ```
 
 The above tests will output the test summary and a plot of the benchmarking results.
-=======

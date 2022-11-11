@@ -93,7 +93,7 @@ if __name__ == "__main__":
     parser.add_argument("--free_memory",
                         type=int,
                         default=11000 * 1024**2,
-                        help="maximum memory budget for benchmark, default maximum memory avialable of current device")
+                        help="maximum memory budget in byte for benchmark, default 11000 MB (11000 * 1024**2 B)")
     parser.add_argument(
         "--start_factor",
         type=int,
