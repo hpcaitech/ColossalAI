@@ -1,26 +1,28 @@
-from pathlib import Path
-from colossalai.logging import get_dist_logger
-import colossalai
-import torch
 import os
+from pathlib import Path
+
+import torch
+from titans.utils import barrier_context
 from torch.fx import GraphModule
-from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
-from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
-from colossalai.core import global_context as gpc
-from colossalai.utils import get_dataloader
 from torchvision import transforms
-from colossalai.nn.lr_scheduler import CosineAnnealingLR
 from torchvision.datasets import CIFAR10
 from torchvision.models import resnet50
 from tqdm import tqdm
-from titans.utils import barrier_context
+
+import colossalai
+from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply_pass
+from colossalai.auto_parallel.passes.runtime_preparation_pass import runtime_preparation_pass
 from colossalai.auto_parallel.tensor_shard.solver.cost_graph import CostGraph
 from colossalai.auto_parallel.tensor_shard.solver.graph_analysis import GraphAnalyser
 from colossalai.auto_parallel.tensor_shard.solver.options import SolverOptions
 from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from colossalai.auto_parallel.tensor_shard.solver.strategies_constructor import StrategiesConstructor
+from colossalai.core import global_context as gpc
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
+from colossalai.logging import get_dist_logger
+from colossalai.nn.lr_scheduler import CosineAnnealingLR
+from colossalai.utils import get_dataloader
 
 DATA_ROOT = Path(os.environ.get('DATA', './data'))
 BATCH_SIZE = 1024
