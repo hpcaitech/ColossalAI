@@ -757,16 +757,6 @@ if __name__ == "__main__":
         for k in data.datasets:
             print(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
 
-        # was there to debug the issue of not matching shapes
-        # # iterate over batch
-        # from collections import Counter
-        # from tqdm import tqdm
-        # counter = Counter()
-        # for batch in tqdm(data.train_dataloader()):
-        #     counter[batch['image'].shape] += 1
-        # print(counter)
-        # print(0/0)
-
         # configure learning rate
         bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
         if not cpu:
