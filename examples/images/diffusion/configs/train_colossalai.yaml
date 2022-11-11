@@ -30,7 +30,7 @@ model:
       target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
         image_size: 32 # unused
-        from_pretrained: '/data/scratch/diffuser/stable-diffusion-v1-4/unet/diffusion_pytorch_model.bin'
+        from_pretrained: '/shared/ml_models/diffuser/stable-diffusion-v1-4/unet/diffusion_pytorch_model.bin'
         in_channels: 4
         out_channels: 4
         model_channels: 320
@@ -48,7 +48,7 @@ model:
       target: ldm.models.autoencoder.AutoencoderKL
       params:
         embed_dim: 4
-        from_pretrained: '/data/scratch/diffuser/stable-diffusion-v1-4/vae/diffusion_pytorch_model.bin'
+        from_pretrained: '/shared/ml_models/diffuser/stable-diffusion-v1-4/vae/diffusion_pytorch_model.bin'
         monitor: val/rec_loss
         ddconfig:
           double_z: true
@@ -76,21 +76,22 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 64
+    num_workers: 48
+    batch_size: 16
     wrap: False
     train:
       target: ldm.data.base.Txt2ImgIterableBaseDataset
       params:
-        file_path: "/data/scratch/diffuser/laion_part0/"
+        file_path: "/shared/datasets/laion/laion-art-256-256-loaded/"
         world_size: 1
         rank: 0
 
 lightning:
   trainer:
     accelerator: 'gpu' 
-    devices: 4
+    devices: 1
     log_gpu_memory: all
-    max_epochs: 2
+    max_epochs: 3
     precision: 16
     auto_select_gpus: False
     strategy:
