@@ -1,4 +1,4 @@
-name: ldm
+name: ldm_colossal
 channels:
   - pytorch
   - defaults
