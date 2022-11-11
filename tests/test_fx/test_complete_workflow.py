@@ -96,16 +96,16 @@ def run_workflow(world_size, dev, model_config):
         assert param.is_meta
 
     # tracing
-    tracer = ColoTracer()
-    graph = tracer.trace(model, meta_args=model_config[1])
-    gm = torch.fx.GraphModule(model, graph, model.__class__.__name__)
+    # tracer = ColoTracer()
+    # graph = tracer.trace(model, meta_args=model_config[1])
+    # gm = torch.fx.GraphModule(model, graph, model.__class__.__name__)
 
     # annotate
-    annotated_gm = transformer_mlp_pass(gm, process_group=ProcessGroup(tp_degree=world_size))
-    annotated_gm.recompile()
+    # annotated_gm = transformer_mlp_pass(gm, process_group=ProcessGroup(tp_degree=world_size))
+    # annotated_gm.recompile()
 
     # materialization and sharding
-    ctx.lazy_init_parameters(annotated_gm, device=dev)
+    ctx.lazy_init_parameters(model, device=dev)
     for param in model.parameters():
         assert not param.is_meta
 
