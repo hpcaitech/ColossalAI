@@ -29,14 +29,14 @@ quickly deploy large AI model training and inference, reducing large AI model tr
    - Try sequence parallelism with BERT
    - Combination of data/pipeline/sequence parallelism
    - Faster training and longer sequence length
+  - Large Batch Training Optimization
+   - Comparison of small/large batch size with SGD/LARS optimizer
+   - Acceleration from a larger batch size
  - Auto-Parallelism
    - Parallelism with normal non-distributed training code
    - Model tracing + solution solving + runtime communication inserting all in one auto-parallelism system
    - Try single program, multiple data (SPMD) parallel with auto-parallelism SPMD solver on ResNet50
- - Large Batch Training Optimization
-   - Comparison of small/large batch size with SGD/LARS optimizer
-   - Acceleration from a larger batch size
- - Fine-tuning and Serving for OPT from Hugging Face
+ - Fine-tuning and Serving for OPT
    - Try OPT model imported from Hugging Face with Colossal-AI
    - Fine-tuning OPT with limited hardware using ZeRO, Gemini and parallelism
    - Deploy the fine-tuned model to inference service
