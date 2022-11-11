@@ -338,7 +338,7 @@ def metainfo_trace(gm: torch.fx.GraphModule, *args, verbose: bool = False, unit:
     Returns:
         torch.fx.GraphModule: The ``GraphModule`` annotated with MetaInfo.
     """
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     interp = MetaInfoProp(gm.to(device))
     if is_compatible_with_meta():
         from colossalai.fx.profiler import MetaTensor
