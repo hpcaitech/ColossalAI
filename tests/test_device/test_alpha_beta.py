@@ -1,10 +1,11 @@
-from colossalai.device import get_alpha_beta
+from colossalai.device import profile_alpha_beta
 
 
-def test_get_alpha_beta():
+def test_profile_alpha_beta():
     physical_devices = [0, 1, 2, 3]
-    get_alpha_beta(1, 4, physical_devices)
+    (alpha, beta) = profile_alpha_beta(physical_devices)
+    print((alpha, beta))
 
 
 if __name__ == '__main__':
-    test_get_alpha_beta()
+    test_profile_alpha_beta()
