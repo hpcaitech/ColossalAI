@@ -13,6 +13,33 @@ from colossalai.tensor import ProcessGroup
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.model.lazy_init_context import LazyInitContext
+from transformers import GPT2Config, GPT2LMHeadModel
+
+
+class GPTLMModel(nn.Module):
+
+    def __init__(self,
+                 hidden_size=768,
+                 num_layers=12,
+                 num_attention_heads=12,
+                 max_seq_len=1024,
+                 vocab_size=50257,
+                 checkpoint=False):
+        super().__init__()
+        self.checkpoint = checkpoint
+        self.model = GPT2LMHeadModel(
+            GPT2Config(n_embd=hidden_size,
+                       n_layer=num_layers,
+                       n_head=num_attention_heads,
+                       n_positions=max_seq_len,
+                       n_ctx=max_seq_len,
+                       vocab_size=vocab_size))
+        if checkpoint:
+            self.model.gradient_checkpointing_enable()
+
+    def forward(self, input_ids, attention_mask):
+        # Only return lm_logits
+        return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=not self.checkpoint)[0]
 
 
 class MLP(torch.nn.Module):
@@ -32,17 +59,45 @@ class MLP(torch.nn.Module):
         return x
 
 
-def run_workflow(world_size, dev):
+def GPT_config():
+    model_builder = lambda: GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=True)
+    BATCH_SIZE = 1
+    SEQ_LENGTH = 16
+
+    def data_gen():
+        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64).to('meta')
+        attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64).to('meta')
+        kwargs = dict(input_ids=input_ids, attention_mask=attention_mask)
+        return kwargs
+
+    return model_builder, data_gen()
+
+
+def MLP_config():
+    return lambda: MLP(16), None
+
+
+MODEL_CONFIGS = [GPT_config()]
+
+
+## Randomly Generated Data
+def get_data(batch_size, seq_len, vocab_size):
+    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
+    attention_mask = torch.ones_like(input_ids)
+    return input_ids, attention_mask
+
+
+def run_workflow(world_size, dev, model_config):
     # initailization
     with LazyInitContext() as ctx:
-        model = MLP(16)
+        model = model_config[0]()
 
     for param in model.parameters():
         assert param.is_meta
 
     # tracing
     tracer = ColoTracer()
-    graph = tracer.trace(model)
+    graph = tracer.trace(model, meta_args=model_config[1])
     gm = torch.fx.GraphModule(model, graph, model.__class__.__name__)
 
     # annotate
@@ -69,7 +124,8 @@ def run_workflow(world_size, dev):
 
 def run_dist(rank, world_size, dev, port):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    run_workflow(world_size, dev)
+    for model_builder in MODEL_CONFIGS:
+        run_workflow(world_size, dev, model_builder)
 
 
 @pytest.mark.dist
