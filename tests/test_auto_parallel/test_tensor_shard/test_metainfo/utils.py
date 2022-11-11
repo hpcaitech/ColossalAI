@@ -36,7 +36,7 @@ def mem_test_for_node_strategy(rank: int,
             input_sample[meta_kwarg_name] = torch.rand(input_kwarg.shape).to('meta')
         graph = tracer.trace(root=model_to_shard, meta_args=input_sample)
         gm = GraphModule(model_to_shard, graph, model_to_shard.__class__.__name__)
-        solver_options = SolverOptions(fast=True)
+        solver_options = SolverOptions()
         strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
         strategies_constructor.build_strategies_and_cost()
         target_node = list(graph.nodes)[node_index]
