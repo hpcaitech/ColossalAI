@@ -1,4 +1,4 @@
-# Train ResNet on CIFAR10 with auto_parallel
+# Handson 3: Auto-Parallelism with ResNet
 
 ## Prepare Dataset
 
@@ -94,3 +94,4 @@ batch_size: 2048, peak memory: 72927.837 MB, through put: 277.429 images/s
 ```
 
 The above tests will output the test summary and a plot of the benchmarking results.
+=======

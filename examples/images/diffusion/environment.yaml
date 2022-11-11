@@ -11,6 +11,7 @@ dependencies:
   - numpy=1.19.2
   - pip:
     - albumentations==0.4.3
+    - datasets
     - diffusers
     - opencv-python==4.6.0.66
     - pudb==2019.2
