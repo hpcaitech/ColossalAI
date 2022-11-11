@@ -59,7 +59,7 @@ you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-we provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml`, `train_ddp.yaml`
+we provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml`
 
 for example, you can run the training from colossalai by
 ```
@@ -75,6 +75,18 @@ you can change the trainging config in the yaml file
 - devices: device number used for training, default 4
 - max_epochs: max training epochs
 - precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
+
+## Example
+
+### Training on cifar10
+
+we provide the Finetone example on datasets Cifar10
+
+you can run by config `train_colossalai_cifar10.yaml`
+```
+python main.py --logdir /tmp -t --postfix test -b configs/train_colossalai_cifar10.yaml
+```
+
 
 
 ## Comments
