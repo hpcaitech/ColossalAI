@@ -66,10 +66,10 @@ python demo_gpt2_medium.py
 There are some results for your reference
 
 ### ResNet 50
-![](./imgs/resnet50_benchmark.png)
+![](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/tutorial/resnet50_benchmark.png)
 
 ### GPT2 Medium
-![](./imgs/gpt2_benchmark.png)
+![](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/tutorial/gpt2_benchmark.png)
 
 We also prepare the demo `demo_resnet152.py` to manifest the benefit of auto activation with large batch, the usage is listed as follows
 ```bash
