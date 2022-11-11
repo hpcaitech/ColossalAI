@@ -118,8 +118,3 @@ def profile_alpha_beta(device1d):
     ctype = "a"
     mp.spawn(profile_ab, args=[device1d, return_dict, ctype], nprocs=int(torch.cuda.device_count()))
     return return_dict[device1d[0]]
-
-
-if __name__ == "__main__":
-    (alpha, beta) = profile_alpha_beta([0, 1])
-    print((alpha, beta))
