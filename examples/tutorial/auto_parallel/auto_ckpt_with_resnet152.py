@@ -34,7 +34,7 @@ def _resnet152_benchmark(rank, world_size, port, num_steps):
     model = tm.resnet152()
     gm = symbolic_trace(model)
     raw_graph = deepcopy(gm.graph)
-    peak_mems, through_puts, batch_sizes = [], [], [256, 512, 1024, 2048]
+    peak_mems, through_puts, batch_sizes = [], [], [512, 1024, 2048]
     for batch_size in batch_sizes:
         batch_size = int(batch_size)
         gm = metainfo_trace(gm, torch.empty(batch_size, 3, 224, 224, device='meta'))
