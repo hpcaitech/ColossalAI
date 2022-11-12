@@ -21,8 +21,8 @@ CHECKPOINT = False
 SEQ_LENGTH = (IMG_SIZE // PATCH_SIZE)**2 + 1    # add 1 for cls token
 
 # parallel setting
-TENSOR_PARALLEL_SIZE = 2
-TENSOR_PARALLEL_MODE = '1d'
+TENSOR_PARALLEL_SIZE = 4
+TENSOR_PARALLEL_MODE = '2d'
 
 parallel = dict(
     pipeline=2,
