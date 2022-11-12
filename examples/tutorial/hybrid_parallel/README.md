@@ -28,5 +28,5 @@ Current configuration setting on `config.py` is TP=2, PP=2.
 colossalai run --nproc_per_node 4 train.py --config config.py
 
 # train with synthetic data
-colossalai run --nproc_per_node 4 train.py --config config.py
+colossalai run --nproc_per_node 4 train.py --config config.py -s
 ```
