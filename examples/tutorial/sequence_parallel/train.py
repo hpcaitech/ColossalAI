@@ -64,7 +64,6 @@ def main():
     else:
         from data.dummy_dataloader import DummyDataloader
 
-        # we assume we train for 30 steps, validate for 10 steps and test for 10 steps per epoch
         BATCH_SIZE_PER_GPUS = gpc.config.GLOBAL_BATCH_SIZE // gpc.get_world_size(ParallelMode.DATA)
         VOCAB_SIZE = 30528
         trainloader = DummyDataloader(batch_size=BATCH_SIZE_PER_GPUS,
