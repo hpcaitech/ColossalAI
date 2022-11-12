@@ -1,6 +1,6 @@
-# Handson 2: Sequence Parallelism with BERT
+# Sequence Parallelism with BERT
 
-In this example, we implemented BERT with sequence parallelism. Sequence parallelism splits the input tensor and intermediate 
+In this example, we implemented BERT with sequence parallelism. Sequence parallelism splits the input tensor and intermediate
 activation along the sequence dimension. This method can achieve better memory efficiency and allows us to train with larger batch size and longer sequence length.
 
 Paper: [Sequence Parallelism: Long Sequence Training from System Perspective](https://arxiv.org/abs/2105.13120)
@@ -16,7 +16,7 @@ First, let's prepare the WikiPedia dataset from scratch. To generate a preproces
 For the preprocessing script, we thank Megatron-LM for providing a preprocessing script to generate the corpus file.
 
 ```python
-# download raw data 
+# download raw data
 mkdir data && cd ./data
 wget https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.bz2
 
@@ -24,7 +24,7 @@ wget https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-pages-articles.xml.
 git clone https://github.com/FrankLeeeee/wikiextractor.git
 pip install ./wikiextractor
 
-# extractmodule 
+# extractmodule
 wikiextractor --json enwiki-latest-pages-articles.xml.bz2
 cat text/*/* > ./corpus.json
 cd ..
@@ -34,7 +34,7 @@ mkdir vocab && cd ./vocab
 wget https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-uncased-vocab.txt
 cd ..
 
-# preprocess some data 
+# preprocess some data
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd ./Megatron-LM
 python tools/preprocess_data.py \
@@ -86,12 +86,12 @@ class Encoder(object):
 
 ## How to Train with Sequence Parallelism
 
-We provided `train.py` for you to execute training. Before invoking the script, there are several 
+We provided `train.py` for you to execute training. Before invoking the script, there are several
 steps to perform.
 
 ### Step 1. Set data path and vocab path
 
-At the top of `config.py`, you can see two global variables `DATA_PATH` and `VOCAB_FILE_PATH`. 
+At the top of `config.py`, you can see two global variables `DATA_PATH` and `VOCAB_FILE_PATH`.
 
 ```python
 DATA_PATH = <data-path>
@@ -106,7 +106,7 @@ For example, if your my-bert_text_sentence.bin is /home/Megatron-LM/my-bert_text
 DATA_PATH = '/home/Megatron-LM/my-bert_text_sentence'
 ```
 
-The `VOCAB_FILE_PATH` refers to the path to the vocabulary downloaded when you prepare the dataset 
+The `VOCAB_FILE_PATH` refers to the path to the vocabulary downloaded when you prepare the dataset
 (e.g. bert-large-uncased-vocab.txt).
 
 ### Step 3. Make Dataset Helper
@@ -121,12 +121,12 @@ make
 ### Step 3. Configure your parameters
 
 In the `config.py` provided, a set of parameters are defined including training scheme, model, etc.
-You can also modify the ColossalAI setting. For example, if you wish to parallelize over the 
+You can also modify the ColossalAI setting. For example, if you wish to parallelize over the
 sequence dimension on 8 GPUs. You can change `size=4` to `size=8`. If you wish to use pipeline parallelism, you can set `pipeline=<num_of_pipeline_stages>`.
 
 ### Step 4. Invoke parallel training
 
-Lastly, you can start training with sequence parallelism. How you invoke `train.py` depends on your 
+Lastly, you can start training with sequence parallelism. How you invoke `train.py` depends on your
 machine setting.
 
 - If you are using a single machine with multiple GPUs, PyTorch launch utility can easily let you
@@ -137,7 +137,6 @@ machine setting.
   ```
 
 - If you are using multiple machines with multiple GPUs, we suggest that you refer to `colossalai
-  launch_from_slurm` or `colossalai.launch_from_openmpi` as it is easier to use SLURM and OpenMPI 
-  to start multiple processes over multiple nodes. If you have your own launcher, you can fall back 
+  launch_from_slurm` or `colossalai.launch_from_openmpi` as it is easier to use SLURM and OpenMPI
+  to start multiple processes over multiple nodes. If you have your own launcher, you can fall back
   to the default `colossalai.launch` function.
-  
