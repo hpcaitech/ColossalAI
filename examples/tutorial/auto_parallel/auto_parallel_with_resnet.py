@@ -24,7 +24,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingLR
 from colossalai.utils import get_dataloader
 
-DATA_ROOT = Path(os.environ.get('DATA', './data'))
+DATA_ROOT = Path(os.environ.get('DATA', '../data')).absolute()
 BATCH_SIZE = 1024
 NUM_EPOCHS = 10
 
