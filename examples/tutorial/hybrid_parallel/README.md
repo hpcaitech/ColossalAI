@@ -1,4 +1,4 @@
-# Handson 1: Multi-dimensional Parallelism with Colossal-AI
+# Multi-dimensional Parallelism with Colossal-AI
 
 
 ## Install Titans Model Zoo
