@@ -133,7 +133,7 @@ machine setting.
   start your script. A sample command is like below:
 
   ```bash
-    python -m torch.distributed.launch --nproc_per_node <num_gpus_on_this_machine> --master_addr localhost --master_port 29500 train.py
+    colossalai run --nproc_per_node <num_gpus_on_this_machine> --master_addr localhost --master_port 29500 train.py
   ```
 
 - If you are using multiple machines with multiple GPUs, we suggest that you refer to `colossalai

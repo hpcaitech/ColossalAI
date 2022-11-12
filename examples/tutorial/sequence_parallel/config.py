@@ -31,10 +31,8 @@ SEED = 1234
 NUM_MICRO_BATCHES = 4
 
 # colossalai config
-parallel = dict(pipeline=1, tensor=dict(size=4, mode='sequence'))
+parallel = dict(pipeline=1, tensor=dict(size=2, mode='sequence'))
 
 fp16 = dict(mode=AMP_TYPE.NAIVE, verbose=True)
-
-clip_grad_norm = 1.0
 
 gradient_handler = [dict(type='SequenceParallelGradientHandler')]
