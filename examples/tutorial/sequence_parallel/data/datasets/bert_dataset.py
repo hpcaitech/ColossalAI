@@ -14,19 +14,30 @@
 # limitations under the License.
 """BERT Style dataset."""
 
-from colossalai.logging import get_dist_logger
+import os
+import time
+
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from ..tokenizer import get_tokenizer
-from .dataset_utils import (get_a_and_b_segments, truncate_segments, create_tokens_and_tokentypes,
-                            create_masked_lm_predictions, pad_and_convert_to_numpy)
-from colossalai.core import global_context as gpc
 from colossalai.context import ParallelMode
-import time
-import os
-from . import helpers
+from colossalai.core import global_context as gpc
+from colossalai.logging import get_dist_logger
+
+from ..tokenizer import get_tokenizer
+from .dataset_utils import (
+    create_masked_lm_predictions,
+    create_tokens_and_tokentypes,
+    get_a_and_b_segments,
+    pad_and_convert_to_numpy,
+    truncate_segments,
+)
+
+try:
+    from . import helpers
+except:
+    print("helper is not built, ignore this message if you are using synthetic data.")
 
 
 class BertDataset(Dataset):
