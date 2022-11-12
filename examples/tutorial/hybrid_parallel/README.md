@@ -24,5 +24,9 @@ export DATA=/path/to/data
 Current configuration setting on `config.py` is TP=2, PP=2.
 
 ```bash
+# train with cifar10
+colossalai run --nproc_per_node 4 train.py --config config.py
+
+# train with synthetic data
 colossalai run --nproc_per_node 4 train.py --config config.py
 ```
