@@ -52,7 +52,7 @@ pip install colossalai==0.1.11+torch1.12cu11.3 -f https://release.colossalai.org
    - Model tracing + solution solving + runtime communication inserting all in one auto-parallelism system
    - Try single program, multiple data (SPMD) parallel with auto-parallelism SPMD solver on ResNet50
  - Fine-tuning and Serving for OPT
-   - Try pre-training OPT model with Colossal-AI
+   - Try pre-training OPT model weights with Colossal-AI
    - Fine-tuning OPT with limited hardware using ZeRO, Gemini and parallelism
    - Deploy the fine-tuned model to inference service
  - Acceleration of Stable Diffusion
