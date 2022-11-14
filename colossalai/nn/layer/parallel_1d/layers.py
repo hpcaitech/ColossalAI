@@ -77,12 +77,11 @@ class Linear1D(ColossalaiModule):
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         parallel_input = get_parallel_input()
-        if not parallel_input:
+        if not parallel_input and not gather_output:
             layer = Linear1D_Col(in_features,
                                  out_features,
                                  bias=bias,
                                  dtype=dtype,
-                                 gather_output=gather_output,
                                  skip_bias_add=skip_bias_add,
                                  weight_initializer=weight_initializer,
                                  bias_initializer=bias_initializer)
@@ -597,8 +596,11 @@ class Linear1D_Row(ParallelLayer):
                  parallel_input: bool = True,
                  skip_bias_add: bool = False,
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
-                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
+                 bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+                 stream_chunk_num: int = 1):
         super().__init__()
+
+        self.stream_chunk_num = stream_chunk_num
 
         # Keep input parameters
         self.in_features = in_features
@@ -617,6 +619,9 @@ class Linear1D_Row(ParallelLayer):
         factory_kwargs = {'device': get_current_device(), 'dtype': dtype}
         self.weight = Parameter(torch.empty(self.out_features, self.input_size_per_partition, **factory_kwargs))
 
+        if self.stream_chunk_num > 1:
+            # TODO() work for inference only
+            self.chunk_weight()
         if bias:
             self.bias = Parameter(torch.empty(self.out_features, **factory_kwargs))
         else:
@@ -625,6 +630,9 @@ class Linear1D_Row(ParallelLayer):
             self.reset_parameters(weight_initializer, bias_initializer)
         self._set_tensor_parallel_attributes()
         set_parallel_input(False)
+
+    def chunk_weight(self):
+        self.weight_list = torch.chunk(self.weight, self.stream_chunk_num, dim=0)
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
         fan_in, fan_out = self.in_features, self.out_features
@@ -696,10 +704,26 @@ class Linear1D_Row(ParallelLayer):
                 input_.shape, self.weight.shape, self.weight.shape[-1] * gpc.tensor_parallel_size)
             input_ = split_forward_gather_backward(input_, ParallelMode.PARALLEL_1D, dim=-1)
 
-        output_parallel = F.linear(input_, self.weight)
-        # output_parallel = linear_with_async_comm(input_, self.weight, None, ParallelMode.PARALLEL_1D, False)
-        output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
-
+        if self.stream_chunk_num > 1:
+            if self.training:
+                raise RuntimeError("use stream_chunk_num=1 in Linear1D_Row for training!")
+            with torch.no_grad():
+                output_parallel_list = [None for i in range(self.stream_chunk_num)]
+                handle_list = []
+                for i in range(self.stream_chunk_num):
+                    output_parallel_list[i] = F.linear(input_, self.weight_list[i])
+                    handle = torch.distributed.all_reduce(output_parallel_list[i],
+                                                          group=gpc.get_group(ParallelMode.PARALLEL_1D),
+                                                          async_op=True)
+                    handle_list.append(handle)
+                    # output_parallel_list[i] = reduce_input(output_parallel_list[i], ParallelMode.PARALLEL_1D)
+                for handle in handle_list:
+                    handle.wait()
+                output = torch.cat(output_parallel_list, dim=-1)
+        else:
+            output_parallel = F.linear(input_, self.weight)
+            # output_parallel = linear_with_async_comm(input_, self.weight, None, ParallelMode.PARALLEL_1D, False)
+            output = reduce_input(output_parallel, ParallelMode.PARALLEL_1D)
         if not self.skip_bias_add:
             if self.bias is not None:
                 output = output + self.bias
