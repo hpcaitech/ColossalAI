@@ -44,7 +44,7 @@ pip install colossalai==0.1.11+torch1.12cu11.3 -f https://release.colossalai.org
    - Try sequence parallelism with BERT
    - Combination of data/pipeline/sequence parallelism
    - Faster training and longer sequence length
-  - Large Batch Training Optimization
+ - Large Batch Training Optimization
    - Comparison of small/large batch size with SGD/LARS optimizer
    - Acceleration from a larger batch size
  - Auto-Parallelism
@@ -52,7 +52,7 @@ pip install colossalai==0.1.11+torch1.12cu11.3 -f https://release.colossalai.org
    - Model tracing + solution solving + runtime communication inserting all in one auto-parallelism system
    - Try single program, multiple data (SPMD) parallel with auto-parallelism SPMD solver on ResNet50
  - Fine-tuning and Serving for OPT
-   - Try OPT model imported from Hugging Face with Colossal-AI
+   - Try pre-trained OPT model weights with Colossal-AI
    - Fine-tuning OPT with limited hardware using ZeRO, Gemini and parallelism
    - Deploy the fine-tuned model to inference service
  - Acceleration of Stable Diffusion

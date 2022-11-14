@@ -1,4 +1,4 @@
-# Handson 3: Auto-Parallelism with ResNet
+# Auto-Parallelism with ResNet
 
 ## Prepare Dataset
 

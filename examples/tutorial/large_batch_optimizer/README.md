@@ -1,4 +1,4 @@
-# Handson 4: Comparison of Large Batch Training Optimization
+# Comparison of Large Batch Training Optimization
 
 ## Prepare Dataset
 
