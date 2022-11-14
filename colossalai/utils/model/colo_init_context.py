@@ -100,9 +100,9 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 colo_param = ColoParameter(param.to(device=self._device, dtype=self._dtype),
                                            requires_grad=requires_grad)
 
-                # if default_shard_plan exist, shard the param during initailization.
+                # if default_shard_plan exists, shard the param during initialization.
                 # This can reduce the model size after initialization.
-                # NOTE() embedding ususally can not be correctly sharded. So I use execpt to handle
+                # NOTE() embedding usually can not be correctly sharded. So I use except to handle
                 # the param that can not be sharded by the default plan
                 if self._default_shard_plan is not None:
                     colo_param.set_process_group(default_pg)
