@@ -13,9 +13,9 @@ class SolverPerference(Enum):
     TP = 2
 
 
-class PlaceholderOption(Enum):
+class DataloaderOption(Enum):
     """
-    This enum class is to define the placeholder option.
+    This enum class is to define the dataloader option.
     """
     REPLICATED = 0
     DISTRIBUTED = 1
@@ -27,4 +27,4 @@ class SolverOptions:
     SolverOptions is a dataclass used to configure the preferences for the parallel execution plan search.
     """
     solver_perference: SolverPerference = SolverPerference.STANDARD
-    placerholder_option: PlaceholderOption = PlaceholderOption.REPLICATED
+    dataloader_option: DataloaderOption = DataloaderOption.REPLICATED

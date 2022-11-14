@@ -15,7 +15,7 @@ from colossalai.auto_parallel.tensor_shard.node_handler import (
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 
-from .options import PlaceholderOption, SolverOptions
+from .options import DataloaderOption, SolverOptions
 
 __all__ = ['StrategiesConstructor']
 
@@ -68,10 +68,10 @@ class StrategiesConstructor:
             strategies_vector = StrategiesVector(node)
             # placeholder node
             if node.op == 'placeholder':
-                if self.solver_options.placerholder_option == PlaceholderOption.DISTRIBUTED:
+                if self.solver_options.dataloader_option == DataloaderOption.DISTRIBUTED:
                     placeholder_option = 'distributed'
                 else:
-                    assert self.solver_options.placerholder_option == PlaceholderOption.REPLICATED, f'placeholder_option {self.solver_options.placerholder_optionn} is not supported'
+                    assert self.solver_options.dataloader_option == DataloaderOption.REPLICATED, f'placeholder_option {self.solver_options.dataloader_option} is not supported'
                     placeholder_option = 'replicated'
                 placeholder_handler = PlacehodlerHandler(node,
                                                          self.device_mesh,
@@ -106,7 +106,12 @@ class StrategiesConstructor:
 
             # output node
             elif node.op == 'output':
-                output_handler = OuputHandler(node, self.device_mesh, strategies_vector)
+                if self.solver_options.dataloader_option == DataloaderOption.DISTRIBUTED:
+                    output_option = 'distributed'
+                else:
+                    assert self.solver_options.dataloader_option == DataloaderOption.REPLICATED, f'placeholder_option {self.solver_options.dataloader_option} is not supported'
+                    output_option = 'replicated'
+                output_handler = OuputHandler(node, self.device_mesh, strategies_vector, output_option=output_option)
                 output_handler.register_strategy()
 
             if len(strategies_vector) <= 0:
