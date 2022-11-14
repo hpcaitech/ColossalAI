@@ -1,5 +1,4 @@
 from functools import partial
-from lib2to3 import pgen2
 
 import pytest
 import torch
