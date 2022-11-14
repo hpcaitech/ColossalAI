@@ -1,5 +1,49 @@
 # Auto-Parallelism with ResNet
 
+## 🚀Quick Start
+### Auto-Parallel Tutorial
+1. Install `pulp` and `coin-or-cbc` for the solver.
+```bash
+pip install pulp
+conda install -c conda-forge coin-or-cbc
+```
+2. Run the auto parallel resnet example with 4 GPUs with synthetic dataset.
+```bash
+colossalai run --nproc_per_node 4 auto_parallel_with_resnet.py -s
+```
+
+You should expect to the log like this. This log shows the edge cost on the computation graph as well as the sharding strategy for an operation. For example, `layer1_0_conv1 S01R = S01R X RR` means that the first dimension (batch) of the input and output is sharded while the weight is not sharded (S means sharded, R means replicated), simply equivalent to data parallel training.
+![](https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/tutorial/auto-parallel%20demo.png)
+
+
+### Auto-Checkpoint Tutorial
+1. Stay in the `auto_parallel` folder.
+2. Install the dependencies.
+```bash
+pip install matplotlib transformers
+```
+3. Run a simple resnet50 benchmark to automatically checkpoint the model.
+```bash
+python auto_ckpt_solver_test.py --model resnet50
+```
+
+You should expect the log to be like this
+![](https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/tutorial/auto-ckpt%20demo.png)
+
+This shows that given different memory budgets, the model is automatically injected with activation checkpoint and its time taken per iteration. You can run this benchmark for GPT as well but it can much longer since the model is larger.
+```bash
+python auto_ckpt_solver_test.py --model gpt2
+```
+
+4. Run a simple benchmark to find the optimal batch size for checkpointed model.
+```bash
+python auto_ckpt_batchsize_test.py
+```
+
+You can expect the log to be like
+![](https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/tutorial/auto-ckpt%20batchsize.png)
+
+
 ## Prepare Dataset
 
 We use CIFAR10 dataset in this example. You should invoke the `donwload_cifar10.py` in the tutorial root directory or directly run the `auto_parallel_with_resnet.py`.
