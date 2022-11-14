@@ -15,6 +15,7 @@ limitations under the License.
 -->
 # Train OPT model with Colossal-AI
 
+
 ## OPT
 Meta recently released [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model, which stimulates AI programmers to perform various downstream tasks and application deployments.
 
@@ -26,7 +27,21 @@ the tokenization). This training script is adapted from the [HuggingFace Languag
 ## Our Modifications
 We adapt the OPT training code to ColossalAI by leveraging Gemini and ZeRO DDP.
 
-## Quick Start
+## 🚀Quick Start for Tutorial
+1. Install the dependency
+```bash
+pip install datasets accelerate
+```
+2. Run finetuning with synthetic datasets with one GPU
+```bash
+bash ./run_clm_synthetic.sh
+```
+3. Run finetuning with 4 GPUs
+```bash
+bash ./run_clm_synthetic.sh 16 0 125m 4
+```
+
+## Quick Start for Practical Use
 You can launch training by using the following bash script
 
 ```bash
