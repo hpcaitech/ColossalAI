@@ -10,7 +10,7 @@ import torch.multiprocessing as mp
 MB = int((1 << 10) * 1e3)
 GB = int((1 << 20) * 1e3)
 Byte = 4
-FRAMEWORK = 20 / 1e6
+FRAMEWORK = 0
 NON_SENSE = (0.1, 0.1)
 
 
