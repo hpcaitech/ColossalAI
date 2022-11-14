@@ -10,6 +10,12 @@ If you wish to use customized directory for the dataset. You can set the environ
 export DATA=/path/to/data
 ```
 
+## extra requirements to use autoparallel
+
+```bash
+pip install pulp
+conda install coin-or-cbc
+```
 
 ## Run on 2*2 device mesh
 
