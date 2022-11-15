@@ -1,8 +1,10 @@
+from typing import Optional
+
 import torch
 
-from colossalai.utils import multi_tensor_applier
 from colossalai.registry import OPTIMIZERS
-from typing import Optional
+from colossalai.utils import multi_tensor_applier
+
 from .nvme_optimizer import NVMeOptimizer
 
 
@@ -11,7 +13,7 @@ class HybridAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
     Supports parameters updating on both GPU and CPU, depanding on the device of paramters.
-    But the parameters and gradients should on the same device: 
+    But the parameters and gradients should on the same device:
       * Parameters on CPU and gradients on CPU is allowed.
       * Parameters on GPU and gradients on GPU is allowed.
       * Parameters on GPU and gradients on CPU is **not** allowed.
@@ -43,7 +45,7 @@ class HybridAdam(NVMeOptimizer):
             (default: False) NOT SUPPORTED yet in CPUAdam!
         adamw_mode (boolean, optional): Apply L2 regularization or weight decay
             True for decoupled weight decay(also known as AdamW) (default: True)
-        simd_log (boolean, optional): whether to show if you are using SIMD to 
+        simd_log (boolean, optional): whether to show if you are using SIMD to
             accelerate. (default: False)
         nvme_offload_fraction (float, optional): Fraction of optimizer states to be offloaded to NVMe. Defaults to 0.0.
         nvme_offload_dir (Optional[str], optional): Directory to save NVMe offload files.
@@ -75,13 +77,14 @@ class HybridAdam(NVMeOptimizer):
         self.adamw_mode = adamw_mode
         try:
             import cpu_adam
-            import colossal_C
+
+            import colossalai._C.fused_optim
         except ImportError:
             raise ImportError('Please install colossalai from source code to use HybridAdam')
 
         self.cpu_adam_op = cpu_adam.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
-        self.gpu_adam_op = colossal_C.multi_tensor_adam
+        self.gpu_adam_op = colossalai._C.fused_optim.multi_tensor_adam
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
     @torch.no_grad()

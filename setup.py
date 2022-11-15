@@ -1,7 +1,8 @@
 import os
-import subprocess
 import re
-from setuptools import find_packages, setup, Extension
+import subprocess
+
+from setuptools import Extension, find_packages, setup
 
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
@@ -104,7 +105,7 @@ def get_version():
 if build_cuda_ext:
     try:
         import torch
-        from torch.utils.cpp_extension import (CUDA_HOME, BuildExtension, CUDAExtension)
+        from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
         print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
         TORCH_MAJOR = int(torch.__version__.split('.')[0])
         TORCH_MINOR = int(torch.__version__.split('.')[1])
@@ -148,7 +149,7 @@ if build_cuda_ext:
     extra_cuda_flags = ['-lineinfo']
 
     ext_modules.append(
-        cuda_ext_helper('colossal_C', [
+        cuda_ext_helper('colossalai._C.fused_optim', [
             'colossal_C_frontend.cpp', 'multi_tensor_sgd_kernel.cu', 'multi_tensor_scale_kernel.cu',
             'multi_tensor_adam.cu', 'multi_tensor_l2norm_kernel.cu', 'multi_tensor_lamb.cu'
         ], extra_cuda_flags + cc_flag))
