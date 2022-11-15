@@ -160,12 +160,12 @@ if build_cuda_ext:
     ]
 
     ext_modules.append(
-        cuda_ext_helper('colossal_scaled_upper_triang_masked_softmax',
+        cuda_ext_helper('colossalai._C.scaled_upper_triang_masked_softmax',
                         ['scaled_upper_triang_masked_softmax.cpp', 'scaled_upper_triang_masked_softmax_cuda.cu'],
                         extra_cuda_flags + cc_flag))
 
     ext_modules.append(
-        cuda_ext_helper('colossal_scaled_masked_softmax',
+        cuda_ext_helper('colossalai._C.scaled_masked_softmax',
                         ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu'], extra_cuda_flags + cc_flag))
 
     ext_modules.append(
