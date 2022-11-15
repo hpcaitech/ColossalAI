@@ -1,23 +1,24 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import inspect
+import types
+from typing import Callable, List
+
 import torch
 import torch.nn as nn
-from colossalai.tensor import ColoParameter, ColoTensor
 
-import types
-import inspect
-from typing import List, Callable
+from colossalai.tensor import ColoParameter, ColoTensor
 from colossalai.utils.model.utils import substitute_init_recursively
 
 
 class LazyInitContext():
     """
-    A context to allow for lazy weight initialization of PyTorch modules. It intercepts the tensor 
+    A context to allow for lazy weight initialization of PyTorch modules. It intercepts the tensor
     initialization functions for lazy initialization
 
     Note:
-        This API is only experimental and subject to future changes. 
+        This API is only experimental and subject to future changes.
 
     Usage:
         with LazyInitContext() as ctx:
@@ -30,19 +31,20 @@ class LazyInitContext():
         # initialize weights
         ctx.lazy_init_parameters(model)
 
-        # make sure the weight is not a meta tensor 
+        # make sure the weight is not a meta tensor
         # and initialized correctly
         assert not model.weight.is_meta and torch.all(model.weight == 0)
 
     Args:
-        to_meta (bool): optional, whether to initialize the model with meta tensors, default is False.
-        extra_torch_tensor_func (List[str]): extra torch tensor functions related 
+        to_meta (bool): optional, whether to initialize the model with meta tensors, default is True. This
+            argument exists for now because some corner cases such as self.weight = torch.zeros(...) cannot be captured yet.
+        extra_torch_tensor_func (List[str]): extra torch tensor functions related
             to value setting, such as `zero_` and `triu_`. `zero_` is pre-added by default.
     """
 
     tensor_set_value_func = ['zero_', 'fill_']
 
-    def __init__(self, to_meta: bool = False, extra_torch_tensor_func: List[str] = None):
+    def __init__(self, to_meta: bool = True, extra_torch_tensor_func: List[str] = None):
         # TODO: hijack the torch constructor functions as well
         self._to_meta = to_meta
         self._intercepted_nn_init_func_cache = {}
@@ -212,18 +214,19 @@ class LazyInitContext():
                 materialized_tensor = torch.empty_like(tensor, device=device)
                 # if this tensor is a meta tensor, it must have an init function
                 assert tensor in self._intercepted_nn_init_func_cache
-                tensor = materialized_tensor
+            else:
+                materialized_tensor = tensor
 
             # apply init function
             if tensor in self._intercepted_nn_init_func_cache:
                 init_func, args, kwargs = self._intercepted_nn_init_func_cache[tensor][-1]
-                init_func(tensor, *args, **kwargs)
+                init_func(materialized_tensor, *args, **kwargs)
 
             # convert it to ColoTensor or ColoParameter
             if is_param:
-                tensor = ColoParameter.from_torch_tensor(tensor, requires_grad=tensor.requires_grad)
+                tensor = ColoParameter.from_torch_tensor(materialized_tensor, requires_grad=tensor.requires_grad)
             else:
-                tensor = ColoTensor.from_torch_tensor(tensor)
+                tensor = ColoTensor.from_torch_tensor(materialized_tensor)
 
             # override the original tensor
             with torch.no_grad():

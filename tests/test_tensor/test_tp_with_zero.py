@@ -18,7 +18,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.zero import ZeroOptimizer
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import set_seed, tensor_equal, tensor_shard_equal
+from tests.test_tensor.common_utils import set_seed, tensor_shard_equal
 from tests.test_tensor.model.test_gpt2 import init_megatron_spec
 
 

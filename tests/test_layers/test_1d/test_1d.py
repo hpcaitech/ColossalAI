@@ -6,12 +6,13 @@ from functools import partial
 import pytest
 import torch
 import torch.multiprocessing as mp
-from colossalai.core import global_context as gpc
-from colossalai.logging import disable_existing_loggers
-from colossalai.initialize import launch
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
 from checks_1d.check_layer_1d import *
+
+from colossalai.core import global_context as gpc
+from colossalai.initialize import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 
 CONFIG = dict(parallel=dict(pipeline=dict(size=1), tensor=dict(size=4, mode='1d')),)
 
@@ -29,6 +30,8 @@ def check_layer(rank, world_size, port):
     check_classifier_given_embed_weight()
     check_vocab_parallel_classifier_given_embed_weight()
     check_vocab_parallel_loss()
+
+    check_linear_row_stream_inference()
 
     gpc.destroy()
     torch.cuda.empty_cache()
