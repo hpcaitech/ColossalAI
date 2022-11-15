@@ -174,7 +174,7 @@ if build_cuda_ext:
     extra_cuda_flags = ['-maxrregcount=50']
 
     ext_modules.append(
-        cuda_ext_helper('colossal_layer_norm_cuda', ['layer_norm_cuda.cpp', 'layer_norm_cuda_kernel.cu'],
+        cuda_ext_helper('colossalai._C.layer_norm', ['layer_norm_cuda.cpp', 'layer_norm_cuda_kernel.cu'],
                         extra_cuda_flags + cc_flag))
 
     extra_cuda_flags = [
