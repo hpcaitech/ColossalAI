@@ -162,7 +162,7 @@ def main():
     data, mask = get_data(GPT_BATCH_SIZE, 1024, 50257)
     # data = torch.randn(int(TM_BATCH_SIZE), 1024, device=get_current_device())
 
-    output = model(data, mask)
+    output = model(input_ids=data, attention_mask=mask)
     # output = model(data)
     loss = torch.mean(output)
     model.backward(loss)
