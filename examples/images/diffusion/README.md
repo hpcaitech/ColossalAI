@@ -44,13 +44,6 @@ pip install -e .
 pip install colossalai==0.1.10+torch1.11cu11.3 -f https://release.colossalai.org
 ```
 
-### Install [Lightning](https://github.com/Lightning-AI/lightning)
-We use the Sep. 2022 version with commit id as `b04a7aa`.
-```
-git clone https://github.com/Lightning-AI/lightning && cd lightning && git reset --hard b04a7aa
-pip install -r requirements.txt && pip install .
-```
-
 > The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
 
 ## Dataset
