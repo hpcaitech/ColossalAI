@@ -1,4 +1,4 @@
-from typing import Iterator, Tuple, Union
+from typing import Dict, Iterator, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -36,7 +36,10 @@ def ColoModulize(module):
 
 class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
-    def __init__(self, device: torch.device = torch.device('cpu'), dtype: torch.dtype = torch.float):
+    def __init__(self,
+                 device: torch.device = torch.device('cpu'),
+                 dtype: torch.dtype = torch.float,
+                 default_shard_plan: Optional[Dict] = None):
         """
         Args:
             device (torch.device): the device where parameters initialized are resident. Defaults to torch.device('cpu').
@@ -47,6 +50,7 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         self._dtype = dtype
 
         self._register_colo_modules()
+        self._default_shard_plan = default_shard_plan
 
     def _register_colo_modules(self):
         register_colo_module(torch.nn.Linear, ColoLinear())
@@ -63,6 +67,10 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
         if hasattr(module, '_colo_visited'):
             return
+
+        if self._default_shard_plan is not None:
+            default_pg = self._default_shard_plan.get('pg', None)
+            default_shard_spec = self._default_shard_plan.get('shard_spec', None)
 
         name_list = []
         for name, param in _named_params_with_replica(module):
@@ -91,7 +99,18 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
                 # TODO(jiaruifang) we initialize a Default PG memory
                 colo_param = ColoParameter(param.to(device=self._device, dtype=self._dtype),
                                            requires_grad=requires_grad)
-                # add mapping record
+
+                # if default_shard_plan exists, shard the param during initialization.
+                # This can reduce the model size after initialization.
+                # NOTE() embedding usually can not be correctly sharded. So I use except to handle
+                # the param that can not be sharded by the default plan
+                if self._default_shard_plan is not None:
+                    colo_param.set_process_group(default_pg)
+                    try:
+                        colo_param.set_dist_spec(default_shard_spec)
+                    except:
+                        pass
+
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)
             setattr(submodule, param_name, colo_param)
