@@ -20,7 +20,7 @@ __all__ = ['linear_meta_info']
 
 
 @meta_register.register(torch.nn.Linear)
-def linear_meta_info(*args) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
+def linear_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
     """torch.nn.Linear meta info generator
     The atens graph of torch.nn.Linear with bias is
     graph():
