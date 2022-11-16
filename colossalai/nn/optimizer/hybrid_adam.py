@@ -1,8 +1,10 @@
+from typing import Any, Optional
+
 import torch
 
-from colossalai.utils import multi_tensor_applier
 from colossalai.registry import OPTIMIZERS
-from typing import Optional
+from colossalai.utils import multi_tensor_applier
+
 from .nvme_optimizer import NVMeOptimizer
 
 
@@ -11,7 +13,7 @@ class HybridAdam(NVMeOptimizer):
     """Implements Adam algorithm.
 
     Supports parameters updating on both GPU and CPU, depanding on the device of paramters.
-    But the parameters and gradients should on the same device: 
+    But the parameters and gradients should on the same device:
       * Parameters on CPU and gradients on CPU is allowed.
       * Parameters on GPU and gradients on GPU is allowed.
       * Parameters on GPU and gradients on CPU is **not** allowed.
@@ -43,7 +45,7 @@ class HybridAdam(NVMeOptimizer):
             (default: False) NOT SUPPORTED yet in CPUAdam!
         adamw_mode (boolean, optional): Apply L2 regularization or weight decay
             True for decoupled weight decay(also known as AdamW) (default: True)
-        simd_log (boolean, optional): whether to show if you are using SIMD to 
+        simd_log (boolean, optional): whether to show if you are using SIMD to
             accelerate. (default: False)
         nvme_offload_fraction (float, optional): Fraction of optimizer states to be offloaded to NVMe. Defaults to 0.0.
         nvme_offload_dir (Optional[str], optional): Directory to save NVMe offload files.
@@ -68,14 +70,15 @@ class HybridAdam(NVMeOptimizer):
                  weight_decay=0,
                  adamw_mode=True,
                  nvme_offload_fraction: float = 0.0,
-                 nvme_offload_dir: Optional[str] = None):
+                 nvme_offload_dir: Optional[str] = None,
+                 **defaults: Any):
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(HybridAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
         try:
-            import cpu_adam
             import colossal_C
+            import cpu_adam
         except ImportError:
             raise ImportError('Please install colossalai from source code to use HybridAdam')
 

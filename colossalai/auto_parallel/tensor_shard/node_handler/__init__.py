@@ -1,3 +1,4 @@
+from .addmm_handler import ADDMMFunctionHandler
 from .batch_norm_handler import BatchNormModuleHandler
 from .binary_elementwise_handler import BinaryElementwiseHandler
 from .bmm_handler import AddBMMFunctionHandler, BMMFunctionHandler
@@ -18,5 +19,5 @@ __all__ = [
     'LinearFunctionHandler', 'LinearModuleHandler', 'BMMFunctionHandler', 'AddBMMFunctionHandler',
     'LayerNormModuleHandler', 'BatchNormModuleHandler', 'ConvModuleHandler', 'ConvFunctionHandler',
     'UnaryElementwiseHandler', 'ReshapeHandler', 'PlacehodlerHandler', 'OuputHandler', 'WhereHandler',
-    'NormPoolingHandler', 'BinaryElementwiseHandler', 'MatMulHandler', 'operator_registry'
+    'NormPoolingHandler', 'BinaryElementwiseHandler', 'MatMulHandler', 'operator_registry', 'ADDMMFunctionHandler'
 ]
