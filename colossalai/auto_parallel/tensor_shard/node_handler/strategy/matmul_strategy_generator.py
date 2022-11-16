@@ -209,6 +209,10 @@ class MatVecStrategyGenerator(MatMulStrategyGenerator):
 
 class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
 
+    def __init__(self, operation_data_mapping, device_mesh, linear_projection_type='linear'):
+        super().__init__(operation_data_mapping, device_mesh)
+        self.linear_projection_type = linear_projection_type
+
     def update_compute_cost(self, strategy: ShardingStrategy) -> ShardingStrategy:
         # C = AB
         # C: [M, N], A: [M, P], B: [P, N]
@@ -272,14 +276,21 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
             "other": {
                 -1: [mesh_dim_1]
             },
-            "bias": {
-                -1: [mesh_dim_1]
-            },
             "output": {
                 0: [mesh_dim_0],
                 -1: [mesh_dim_1]
             },
         }
+
+        # linear bias only has one dimension, but addmm bias has same dimensions
+        # as the output logically.
+        if self.linear_projection_type == 'linear':
+            dim_partition_dict_mapping['bias'] = {-1: [mesh_dim_1]}
+        elif self.linear_projection_type == 'addmm':
+            dim_partition_dict_mapping['bias'] = {0: [mesh_dim_0], -1: [mesh_dim_1]}
+        else:
+            raise ('Unsupported linear projection type')
+
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # set communication action
@@ -293,13 +304,13 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
 
         if self.is_param('other'):
             other_comm_action = self.get_communication_action(
-                sharding_spec_mapping["output"],
+                sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
                 logical_process_axis=mesh_dim_0,
                 comm_type=CommType.HOOK)
         else:
             other_comm_action = self.get_communication_action(
-                sharding_spec_mapping["output"],
+                sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
                 logical_process_axis=mesh_dim_0,
                 comm_type=CommType.BEFORE,
@@ -308,7 +319,9 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         communication_action_mapping['input'] = input_comm_action
         communication_action_mapping['other'] = other_comm_action
 
-        if self.has_bias:
+        # we only add allreduce comm action for linear bias, because
+        # allreduce comm action for addmm bias will be considered in post processing
+        if self.has_bias and self.linear_projection_type == 'linear':
             if self.is_param('bias'):
                 bias_comm_action = self.get_communication_action(
                     sharding_spec_mapping["bias"],
@@ -347,6 +360,16 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                 0: [mesh_dim_0]
             },
         }
+
+        # linear bias only has one dimension, but addmm bias has same dimensions
+        # as the output logically.
+        if self.linear_projection_type == 'linear':
+            dim_partition_dict_mapping['bias'] = {}
+        elif self.linear_projection_type == 'addmm':
+            dim_partition_dict_mapping['bias'] = {0: [mesh_dim_0]}
+        else:
+            raise ('Unsupported linear projection type')
+
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # get communication action mapping
@@ -360,13 +383,13 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
 
         if self.is_param('other'):
             other_comm_action = self.get_communication_action(
-                sharding_spec_mapping["output"],
+                sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
                 logical_process_axis=mesh_dim_0,
                 comm_type=CommType.HOOK)
         else:
             other_comm_action = self.get_communication_action(
-                sharding_spec_mapping["output"],
+                sharding_spec_mapping["other"],
                 communication_pattern=CollectiveCommPattern.IDENTITY_FWD_ALLREDUCE_BWD,
                 logical_process_axis=mesh_dim_0,
                 comm_type=CommType.BEFORE,
@@ -375,7 +398,9 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         communication_action_mapping['other'] = other_comm_action
         communication_action_mapping['output'] = output_comm_action
 
-        if self.has_bias:
+        # we only add allreduce comm action for linear bias, because
+        # allreduce comm action for addmm bias will be considered in post processing
+        if self.has_bias and self.linear_projection_type == 'linear':
             if self.is_param('bias'):
                 bias_comm_action = self.get_communication_action(
                     sharding_spec_mapping["bias"],
@@ -415,6 +440,10 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                 -1: [mesh_dim_1]
             },
         }
+
+        # We don't have to do anything special for bias here, because
+        # the bias is already the same sharding spec as the output.
+
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # get communication actions
@@ -451,7 +480,8 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
             "bias": {},
             "output": {},
         }
-
+        # We don't have to do anything special for bias here, because
+        # the bias is already the same sharding spec as the output.
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # get communication action
@@ -484,7 +514,8 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                 -1: [mesh_dim]
             },
         }
-
+        # We don't have to do anything special for bias here, because
+        # the bias is already the same sharding spec as the output.
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # get communication actions
@@ -515,6 +546,16 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                 0: [mesh_dim_0, mesh_dim_1]
             },
         }
+
+        # linear bias only has one dimension, but addmm bias has same dimensions
+        # as the output logically.
+        if self.linear_projection_type == 'linear':
+            dim_partition_dict_mapping['bias'] = {}
+        elif self.linear_projection_type == 'addmm':
+            dim_partition_dict_mapping['bias'] = {0: [mesh_dim_0, mesh_dim_1]}
+        else:
+            raise ('Unsupported linear projection type')
+
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # get communication action
@@ -534,7 +575,9 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                 arg_index=1)
         communication_action_mapping['other'] = other_comm_action
 
-        if self.has_bias:
+        # we only add allreduce comm action for linear bias, because
+        # allreduce comm action for addmm bias will be considered in post processing
+        if self.has_bias and self.linear_projection_type == 'linear':
             if self.is_param('bias'):
                 bias_comm_action = self.get_communication_action(
                     sharding_spec=sharding_spec_mapping['bias'],
@@ -568,6 +611,9 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
             "bias": {},
             "output": {},
         }
+
+        # We don't have to do anything special for bias here, because
+        # the bias is already the same sharding spec as the output.
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # get communication action
@@ -600,6 +646,9 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
                 -1: [mesh_dim_0, mesh_dim_1]
             },
         }
+
+        # We don't have to do anything special for bias here, because
+        # the bias is already the same sharding spec as the output.
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
 
         # get communication action
@@ -626,10 +675,7 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         assert input_data.data.dim() > 0 and other_data.data.dim() == 2
         assert other_data.logical_shape[0] == input_data.logical_shape[-1]
 
-        # check if bias has the same a valid dim
-        has_bias = "bias" in self.op_data
-
-        if has_bias:
+        if self.has_bias:
             bias_data = self.op_data['bias']
             assert bias_data.logical_shape[-1] == other_data.logical_shape[-1]
 
