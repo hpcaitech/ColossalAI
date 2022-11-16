@@ -5,7 +5,8 @@ This example shows how to use ColossalAI to run huggingface GPT training in dist
 We use the huggingface transformers GPT2 model. The input data is randonly generated.
 
 ## Our Modifications
-We adapt the OPT training code to ColossalAI by leveraging Gemini and ZeRO DDP.
+The `train_gpt_demo.py` provides three distributed plans, i.e. ColossalAI, PyTorch DDP and ZeRO.
+The ColossalAI leverages Tensor Parallel and Gemini.
 
 ## Quick Start
 You can launch training by using the following bash script
