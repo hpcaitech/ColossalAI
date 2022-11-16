@@ -192,45 +192,44 @@ if build_cuda_ext:
     extra_cxx_flags = ['-std=c++14', '-lcudart', '-lcublas', '-g', '-Wno-reorder', '-fopenmp', '-march=native']
     ext_modules.append(cuda_ext_helper('colossalai._C.cpu_optim', ['cpu_adam.cpp'], extra_cuda_flags, extra_cxx_flags))
 
-setup(
-    name='colossalai',
-    version=get_version(),
-    packages=find_packages(exclude=(
-        'benchmark',
-        'docker',
-        'tests',
-        'docs',
-        'examples',
-        'tests',
-        'scripts',
-        'requirements',
-        '*.egg-info',
-    )),
-    description='An integrated large-scale model training system with efficient parallelization techniques',
-    long_description=fetch_readme(),
-    long_description_content_type='text/markdown',
-    license='Apache Software License 2.0',
-    url='https://www.colossalai.org',
-    project_urls={
-        'Forum': 'https://github.com/hpcaitech/ColossalAI/discussions',
-        'Bug Tracker': 'https://github.com/hpcaitech/ColossalAI/issues',
-        'Examples': 'https://github.com/hpcaitech/ColossalAI-Examples',
-        'Documentation': 'http://colossalai.readthedocs.io',
-        'Github': 'https://github.com/hpcaitech/ColossalAI',
-    },
-    ext_modules=ext_modules,
-    cmdclass={'build_ext': BuildExtension} if ext_modules else {},
-    install_requires=fetch_requirements('requirements/requirements.txt'),
-    entry_points='''
+setup(name='colossalai',
+      version=get_version(),
+      packages=find_packages(exclude=(
+          'benchmark',
+          'docker',
+          'tests',
+          'docs',
+          'examples',
+          'tests',
+          'scripts',
+          'requirements',
+          '*.egg-info',
+      )),
+      description='An integrated large-scale model training system with efficient parallelization techniques',
+      long_description=fetch_readme(),
+      long_description_content_type='text/markdown',
+      license='Apache Software License 2.0',
+      url='https://www.colossalai.org',
+      project_urls={
+          'Forum': 'https://github.com/hpcaitech/ColossalAI/discussions',
+          'Bug Tracker': 'https://github.com/hpcaitech/ColossalAI/issues',
+          'Examples': 'https://github.com/hpcaitech/ColossalAI-Examples',
+          'Documentation': 'http://colossalai.readthedocs.io',
+          'Github': 'https://github.com/hpcaitech/ColossalAI',
+      },
+      ext_modules=ext_modules,
+      cmdclass={'build_ext': BuildExtension} if ext_modules else {},
+      install_requires=fetch_requirements('requirements/requirements.txt'),
+      entry_points='''
         [console_scripts]
         colossalai=colossalai.cli:cli
     ''',
-    python_requires='>=3.6',
-    classifiers=[
-        'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: Apache Software License',
-        'Environment :: GPU :: NVIDIA CUDA',
-        'Topic :: Scientific/Engineering :: Artificial Intelligence',
-        'Topic :: System :: Distributed Computing',
-    ],
-)
+      python_requires='>=3.6',
+      classifiers=[
+          'Programming Language :: Python :: 3',
+          'License :: OSI Approved :: Apache Software License',
+          'Environment :: GPU :: NVIDIA CUDA',
+          'Topic :: Scientific/Engineering :: Artificial Intelligence',
+          'Topic :: System :: Distributed Computing',
+      ],
+      package_data={'colossalai': ['_C/*.pyi']})
