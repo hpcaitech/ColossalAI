@@ -1,19 +1,11 @@
 import time
-from typing import List, Optional
+from typing import List
 
 import torch
-import torch.nn as nn
-from torch.fx import symbolic_trace
 
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp
-from colossalai.fx.profiler import calculate_fwd_out, calculate_fwd_tmp, is_compatible_with_meta, parameter_size
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.utils import get_current_device
-from colossalai.utils.memory import colo_device_memory_capacity, colo_device_memory_used
-
-if is_compatible_with_meta():
-    from colossalai.fx.profiler import MetaTensor
+from colossalai.utils.memory import colo_device_memory_used
 
 
 class MemStatsCollector:
