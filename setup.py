@@ -183,7 +183,7 @@ if build_cuda_ext:
     ]
 
     ext_modules.append(
-        cuda_ext_helper('colossal_multihead_attention', [
+        cuda_ext_helper('colossalai._C.multihead_attention', [
             'multihead_attention_1d.cpp', 'kernels/cublas_wrappers.cu', 'kernels/transform_kernels.cu',
             'kernels/dropout_kernels.cu', 'kernels/normalize_kernels.cu', 'kernels/softmax_kernels.cu',
             'kernels/general_kernels.cu', 'kernels/cuda_util.cu'
