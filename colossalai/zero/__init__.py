@@ -7,7 +7,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.zero.sharded_model.sharded_model_v2 import ShardedModelV2
 from colossalai.zero.sharded_optim import LowLevelZeroOptimizer, ShardedOptimizerV2
 
-from .zero_optimizer import ZeroOptimizer
+from ..nn.optimizer.zero_optimizer import ZeroOptimizer
 
 
 def convert_to_zero_v2(model: nn.Module, optimizer: torch.optim.Optimizer, model_config,
