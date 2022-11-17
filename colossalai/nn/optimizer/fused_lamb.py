@@ -76,13 +76,13 @@ class FusedLAMB(torch.optim.Optimizer):
                         max_grad_norm=max_grad_norm)
         super(FusedLAMB, self).__init__(params, defaults)
         if multi_tensor_applier.available:
-            import colossal_C
-            self.multi_tensor_l2norm = colossal_C.multi_tensor_l2norm
+            import colossalai._C.fused_optim
+            self.multi_tensor_l2norm = colossalai._C.fused_optim.multi_tensor_l2norm
             # Skip buffer
             self._dummy_overflow_buf = torch.tensor([0],
                                                     dtype=torch.int,
                                                     device=self.param_groups[0]["params"][0].device)
-            self.multi_tensor_lamb = colossal_C.multi_tensor_lamb
+            self.multi_tensor_lamb = colossalai._C.fused_optim.multi_tensor_lamb
         else:
             raise RuntimeError('FusedLAMB requires cuda extensions')
 

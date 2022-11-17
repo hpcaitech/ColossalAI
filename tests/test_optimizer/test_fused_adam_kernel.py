@@ -1,8 +1,8 @@
-from numpy import dtype
+import math
+
 import torch
 import torch.nn as nn
-
-import math
+from numpy import dtype
 
 from colossalai.testing import parameterize
 from colossalai.utils import multi_tensor_applier
@@ -47,11 +47,11 @@ def torch_adam_update(
 @parameterize('g_dtype', [torch.float, torch.half])
 def test_adam(adamw, step, p_dtype, g_dtype):
     try:
-        import colossal_C
-        fused_adam = colossal_C.multi_tensor_adam
+        import colossalai._C.fused_optim
+        fused_adam = colossalai._C.fused_optim.multi_tensor_adam
         dummy_overflow_buf = torch.cuda.IntTensor([0])
     except:
-        raise ImportError("No colossal_C kernel installed.")
+        raise ImportError("No colossalai._C.fused_optim kernel installed.")
 
     count = 0
 
