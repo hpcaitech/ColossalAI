@@ -73,7 +73,10 @@ class StrategyGenerator(ABC):
         for op_data_name, dim_partition_dict in mapping.items():
             if op_data_name in self.op_data:
                 op_data = self.op_data[op_data_name]
-                if isinstance(op_data.data, tuple) and isinstance(op_data.data[0], torch.Tensor):
+                if isinstance(op_data.data, tuple):
+                    for data in op_data.data:
+                        assert isinstance(
+                            data, torch.Tensor), 'We cannot create a ShardingSpec object from a non-tensor object.'
                     sharding_spec = []
                     for logical_shape, dim_partition_dict_element in zip(op_data.logical_shape, dim_partition_dict):
                         dim_size = len(logical_shape)
@@ -82,6 +85,9 @@ class StrategyGenerator(ABC):
                                                      entire_shape=logical_shape,
                                                      dim_partition_dict=dim_partition_dict_element)
                 else:
+                    assert isinstance(
+                        op_data.data, torch.Tensor
+                    ), f'op_data.data should be a torch.Tensor or Tuple[torch.Tensor], but got {type(op_data.data)}'
                     dim_size = len(op_data.logical_shape)
                     dim_partition_dict = convert_dim_partition_dict(dim_size, dim_partition_dict)
                     sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
