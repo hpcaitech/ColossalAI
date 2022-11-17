@@ -1,5 +1,7 @@
-from colossalai.device import profile_alpha_beta
 import pytest
+
+from colossalai.device import profile_alpha_beta
+
 
 @pytest.mask.skip("Skip because assertion fails for CI devices")
 def test_profile_alpha_beta():
