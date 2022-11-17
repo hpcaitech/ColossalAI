@@ -45,7 +45,7 @@ class OutputGenerator(OutputStrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
-    def replica_strategy(self):
+    def replica_strategy(self) -> List[ShardingStrategy]:
         """
         Generate replica strategy for output node.
         """
@@ -66,7 +66,7 @@ class OutputGenerator(OutputStrategyGenerator):
                                               communication_action_mapping=communication_action_mapping)
         return strategy
 
-    def distributed_strategy(self, mesh_list: List[List[int]] = None):
+    def distributed_strategy(self, mesh_list: List[List[int]] = None) -> List[ShardingStrategy]:
         """
         Generate distributed strategy for output node.
         """
