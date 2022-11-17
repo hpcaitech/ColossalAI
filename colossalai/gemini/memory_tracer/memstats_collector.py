@@ -161,13 +161,13 @@ class MemStatsCollectorV2(MemStatsCollector):
         return colo_device_memory_capacity(get_current_device()) - max(self.overall_mem_stats('cuda'))
 
 
-class MemStatsCollectorStatic(MemStatsCollectorV2):
+class MemStatsCollectorStatic(MemStatsCollector):
     """
     A Static Memory statistic collector.
     """
 
-    def __init__(self, module: nn.Module, chunk_manager: ChunkManager) -> None:
-        super().__init__(chunk_manager)
+    def __init__(self, module: nn.Module) -> None:
+        super().__init__()
         self.module = module
         self.module_info_list = []
 
@@ -189,6 +189,7 @@ class MemStatsCollectorStatic(MemStatsCollectorV2):
         fwd_out_released = {}
         total_mem = 0
 
+        # forward
         for node in gm.graph.nodes:
             total_mem = total_mem + calculate_fwd_tmp(node) + calculate_fwd_out(node)
             if calculate_fwd_out(node) > 0:
@@ -203,6 +204,7 @@ class MemStatsCollectorStatic(MemStatsCollectorV2):
         peak_mem = total_mem
         grad_in_computed = {}
 
+        # backward
         for node in gm.graph.nodes.__reversed__():
 
             if node.name.__contains__("where") or node.name.__contains__("truediv"):
@@ -222,7 +224,7 @@ class MemStatsCollectorStatic(MemStatsCollectorV2):
             # release grad_in of current node
             for grad_in in node.meta["fwd_out"]:
                 if isinstance(grad_in, torch.Tensor):
-                    total_mem -= grad_in.numel() * 4.0
+                    total_mem -= grad_in.numel() * torch.tensor([], dtype=grad_in.dtype).element_size()
 
             for in_node in node.args:
                 if isinstance(in_node, torch.fx.node.Node):
