@@ -20,7 +20,7 @@ class FusedSGD(Optimizer):
 
     :class:`colossalai.nn.optimizer.FusedSGD` may be used as a drop-in replacement for ``torch.optim.SGD``
 
-    :class:`colossalai.nn.optimizer.FusedSGD` may be used with or without Amp. 
+    :class:`colossalai.nn.optimizer.FusedSGD` may be used with or without Amp.
 
     Nesterov momentum is based on the formula from
     `On the importance of initialization and momentum in deep learning`__.
@@ -80,12 +80,13 @@ class FusedSGD(Optimizer):
         self.wd_after_momentum = wd_after_momentum
 
         if multi_tensor_applier.available:
-            import colossal_C
+            import colossalai._C.fused_optim
+
             # Skip buffer
             self._dummy_overflow_buf = torch.tensor([0],
                                                     dtype=torch.int,
                                                     device=self.param_groups[0]["params"][0].device)
-            self.multi_tensor_sgd = colossal_C.multi_tensor_sgd
+            self.multi_tensor_sgd = colossalai._C.fused_optim.multi_tensor_sgd
         else:
             raise RuntimeError('FusedSGD requires cuda extensions')
 

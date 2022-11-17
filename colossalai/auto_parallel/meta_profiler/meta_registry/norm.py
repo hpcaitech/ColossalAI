@@ -22,7 +22,7 @@ __all__ = ['batchnormnd_meta_info']
 @meta_register.register(torch.nn.BatchNorm1d)
 @meta_register.register(torch.nn.BatchNorm2d)
 @meta_register.register(torch.nn.BatchNorm3d)
-def batchnormnd_meta_info(*args) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
+def batchnormnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
     """BatchNorm1d, BatchNorm2d, BatchNorm3d, meta info generator
     The aten graph of BatchNorm2d is like
 
