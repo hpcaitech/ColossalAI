@@ -79,6 +79,34 @@ def _all_reduce(tensor, comm_spec, async_op=False):
             return tensor
 
 
+def _mix_gather(tensor, comm_spec):
+    '''
+    Implement mix gather operation on device mesh based on information provided by comm_spec.
+    '''
+    total_slices = reduce(operator.mul, comm_spec.device_mesh.mesh_shape, 1)
+    tensor_list = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for _ in range(total_slices)]
+    leading_group_dim = comm_spec.logical_process_axes[0]
+    process_group = comm_spec.device_mesh.process_groups_dict[leading_group_dim]
+    dist.all_gather(tensor_list, tensor, group=process_group)
+
+    if comm_spec.logical_process_axes[0] == comm_spec.logical_process_axes[1]:
+        output = torch.cat(tuple(tensor_list), comm_spec.gather_dim).contiguous()
+    else:
+        mesh_shape = comm_spec.device_mesh.mesh_shape
+        cat_slice = [mesh_shape[comm_spec.logical_process_axes[0]], mesh_shape[comm_spec.logical_process_axes[1]]]
+        tmp_tensor_shape = tensor.shape
+        tmp_tensor_shape[comm_spec.gather_dim[0]] *= tensor.shape[leading_group_dim]
+        tmp_tensor_list = [
+            torch.zeros(tmp_tensor_shape, dtype=tensor.dtype, device=tensor.device) for _ in range(cat_slice[1])
+        ]
+        for i in range(cat_slice[1]):
+            tmp_tensor_list[i] = torch.cat(tuple(tensor_list[i * cat_slice[0]:(i + 1) * cat_slice[0]]),
+                                           comm_spec.gather_dim[0]).contiguous()
+        output = torch.cat(tuple(tmp_tensor_list), comm_spec.gather_dim[1]).contiguous()
+
+    return output
+
+
 class _ReduceGrad(torch.autograd.Function):
     """
     A customized communication operation which forward is an identity operation,
@@ -204,6 +232,17 @@ class _AllToAll(torch.autograd.Function):
         return _all_to_all(grad_outputs, ctx.comm_spec), None
 
 
+class _MixGather(torch.autograd.Function):
+
+    @staticmethod
+    def symbolic(graph, input_):
+        return _mix_gather(input_)
+
+    @staticmethod
+    def forward(ctx, input_, commspec):
+        output = _mix_gather(input_, comm_spec)
+
+
 def reduce_grad(input_, comm_spec):
     return _ReduceGrad.apply(input_, comm_spec)
 
@@ -230,6 +269,7 @@ class CollectiveCommPattern(Enum):
     SPLIT_FWD_GATHER_BWD = 'split_fwd_gather_bwd'
     ALLREDUCE_FWD_IDENTITY_BWD = 'all_reduce_fwd_identity_bwd'
     IDENTITY_FWD_ALLREDUCE_BWD = 'identity_fwd_all_reduce_bwd'
+    MIXGATHER_FWD_SPLIT_BWD = "mixgather_fwd_split_bwd"
 
 
 class CommSpec:
@@ -255,18 +295,22 @@ class CommSpec:
                  gather_dim=None,
                  shard_dim=None,
                  logical_process_axis=None,
-                 forward_only=False):
+                 forward_only=False,
+                 mix_gather=False):
         self.comm_pattern = comm_pattern
         self.sharding_spec = sharding_spec
         self.gather_dim = gather_dim
         self.shard_dim = shard_dim
         self.logical_process_axis = logical_process_axis
         self.forward_only = forward_only
-        if isinstance(self.logical_process_axis, list):
+        if isinstance(self.logical_process_axis, list) and not mix_gather:
             self.device_mesh = self.sharding_spec.device_mesh.flatten_device_mesh
             self.logical_process_axis = 0
         else:
             self.device_mesh = self.sharding_spec.device_mesh
+        if isinstance(self.logical_process_axis, list) and mix_gather:
+            self.device_mesh = self.sharding_spec.device_mesh.flatten_device_meshes
+            self.logical_process_axes = logical_process_axis
 
     def __repr__(self):
         res_list = ["CommSpec:("]

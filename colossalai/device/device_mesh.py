@@ -52,6 +52,8 @@ class DeviceMesh:
             self.process_groups_dict = self.create_process_groups_for_logical_mesh()
         if self.need_flatten:
             self.flatten_device_mesh = self.flatten()
+            self.flatten_device_meshes = FlattenDeviceMesh(self.physical_mesh_id, self.mesh_shape, self.mesh_alpha,
+                                                           self.mesh_beta)
 
     @property
     def shape(self):
@@ -89,6 +91,18 @@ class DeviceMesh:
                           mesh_beta=[min(self.mesh_beta)] * (flatten_mesh_shape_size - 1),
                           init_process_group=self.init_process_group,
                           need_flatten=False)
+
+    def flatten_virtual(self):
+        """
+        Flatten the logical mesh into 1d logical meshes with all possible virtual meshes
+        Virtual mesh:
+            Assume starting logical mesh is (2,4)
+            # leading_dim = comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis]
+
+            # tensor_list = [torch.zeros(subshape) for _ in range(8)]
+            # process_group = comm_spec.device_mesh.process_groups_dict[]
+            # all_gather(tensor_list, tensor, group=process_group) # tensor on logical rank i is sent to tensor_list[i]
+        """
 
     def _global_rank_to_logical_rank_map(self, tensor, index_list):
         '''
@@ -199,3 +213,44 @@ class DeviceMesh:
         penalty_factor = num_devices / 2.0
         return (self.mesh_alpha[mesh_dim] + self.mesh_beta[mesh_dim] *
                 (num_devices - 1) / num_devices / num_devices * num_bytes * penalty_factor + 0.001)
+
+
+class FlattenDeviceMesh(DeviceMesh):
+
+    def __init__(self, physical_mesh_id, mesh_shape, mesh_alpha=None, mesh_beta=None):
+        super().__init__(physical_mesh_id,
+                         mesh_shape,
+                         mesh_alpha,
+                         mesh_beta,
+                         init_process_group=False,
+                         need_flatten=False)
+        self.flatten_device_meshes = {}
+        self.mesh_alpha = [max(self.mesh_alpha)]
+        self.mesh_beta = [min(self.mesh_beta)]
+        self.process_groups_dict = self.create_process_groups_for_logical_mesh()
+
+    def create_process_groups_for_logical_mesh(self):
+        '''
+        Build 1d DeviceMesh in column-major(0) and row-major(1)
+        for example:
+            mesh_shape = (2,4)
+            # [[0, 1, 2, 3],
+            #  [4, 5, 6, 7]]
+            # return {0: [0, 4, 1, 5, 2, 6, 3, 7], 1: [0, 1, 2, 3, 4, 5, 6, 7]}
+        '''
+        process_groups_dict = {}
+        check_duplicate_list = []
+        global_rank_flatten_list = self.physical_mesh_id.view(-1).tolist()
+        for global_rank in global_rank_flatten_list:
+            process_groups = self.global_rank_to_process_groups_with_global_rank(global_rank)
+            for axis, process_groups in process_groups.items():
+                if axis not in process_groups_dict:
+                    process_groups_dict[axis] = []
+                if process_groups not in check_duplicate_list:
+                    check_duplicate_list.append(process_groups)
+                    process_groups_dict[axis] += process_groups[axis]
+        process_group_handlers = {}
+        for axis, process_group in process_groups_dict.items():
+            process_group_handlers[axis] = dist.new_group(process_group)
+
+        return process_group_handlers
