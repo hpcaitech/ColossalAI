@@ -20,7 +20,7 @@ class FusedAdam(torch.optim.Optimizer):
     :class:`colossalai.nn.optimizer.FusedAdam` may be used as a drop-in replacement for ``torch.optim.AdamW``,
     or ``torch.optim.Adam`` with ``adamw_mode=False``
 
-    :class:`colossalai.nn.optimizer.FusedAdam` may be used with or without Amp. 
+    :class:`colossalai.nn.optimizer.FusedAdam` may be used with or without Amp.
 
     Adam was been proposed in `Adam: A Method for Stochastic Optimization`_.
 
@@ -65,10 +65,11 @@ class FusedAdam(torch.optim.Optimizer):
         self.adamw_mode = 1 if adamw_mode else 0
         self.set_grad_none = set_grad_none
         if multi_tensor_applier.available:
-            import colossal_C
+            import colossalai._C.fused_optim
+
             # Skip buffer
             self._dummy_overflow_buf = torch.cuda.IntTensor([0])
-            self.multi_tensor_adam = colossal_C.multi_tensor_adam
+            self.multi_tensor_adam = colossalai._C.fused_optim.multi_tensor_adam
         else:
             raise RuntimeError('FusedAdam requires cuda extensions')
 

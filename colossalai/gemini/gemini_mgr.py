@@ -6,7 +6,7 @@ import torch
 
 from colossalai.gemini.chunk import Chunk, ChunkManager
 
-from .memory_tracer.memstats_collector import MemStatsCollectorV2, MemStatsCollectorStatic
+from .memory_tracer import ChunkMemStatsCollector, StaticMemStatsCollector
 from .placement_policy import PlacementPolicyFactory
 
 
@@ -26,7 +26,8 @@ class GeminiManager:
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
     """
 
-    def __init__(self, placement_policy: str,
+    def __init__(self,
+                 placement_policy: str,
                  chunk_manager: ChunkManager,
                  module: Optional[torch.nn.Module] = None,
                  use_static_memstats: bool = False) -> None:
@@ -35,14 +36,14 @@ class GeminiManager:
         self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
-        # self._mem_stats_collector = MemStatsCollectorV2(chunk_manager) if policy_cls.need_mem_stats else None
+        # self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager) if policy_cls.need_mem_stats else None
         self.use_static_memstats = use_static_memstats
         if policy_cls.need_mem_stats:
             if use_static_memstats:
                 assert module is not None
-                self._mem_stats_collector = MemStatsCollectorStatic(module, chunk_manager)
+                self._mem_stats_collector = StaticMemStatsCollector(module, chunk_manager)
             else:
-                self._mem_stats_collector = MemStatsCollectorV2(chunk_manager)
+                self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager)
         else:
             self._mem_stats_collector = None
 

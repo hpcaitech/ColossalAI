@@ -44,14 +44,26 @@ pip install -e .
 pip install colossalai==0.1.10+torch1.11cu11.3 -f https://release.colossalai.org
 ```
 
-### Install [Lightning](https://github.com/Lightning-AI/lightning)
-We use the Sep. 2022 version with commit id as `b04a7aa`.
+> The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
+
+## Download the model checkpoint from pretrained
+
+### stable-diffusion-v1-4
+Our default model config use the weight from [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4?text=A+mecha+robot+in+a+favela+in+expressionist+style)
+
 ```
-git clone https://github.com/Lightning-AI/lightning && cd lightning && git reset --hard b04a7aa
-pip install -r requirements.txt && pip install .
+git lfs install
+git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
-> The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
+### stable-diffusion-v1-5 from runway
+If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) wiegh from runwayml
+
+```
+git lfs install
+git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+```
+
 
 ## Dataset
 The dataSet is from [LAION-5B](https://laion.ai/blog/laion-5b/), the subset of [LAION](https://laion.ai/),

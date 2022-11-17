@@ -43,11 +43,11 @@ from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ProcessGroup
 from colossalai.utils import get_current_device, get_dataloader
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero import ZeroOptimizer
 from transformers import (
     CONFIG_MAPPING,
     MODEL_MAPPING,

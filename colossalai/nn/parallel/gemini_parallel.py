@@ -16,8 +16,9 @@ class GeminiDDP(ZeroDDP):
                  force_outputs_fp32: bool = False,
                  search_range_mb: int = 32) -> None:
         """
-        A torch.Module warpper using ZeRODPP and Genimi.
+        A torch.Module warpper using ZeRO-DP and Genimi.
         ZeRO is for parallel. Gemini is for memory management.
+        WARNING: The class will modify the module inline!
 
         Example:
             model is initialized under the context of ColoInitContext
