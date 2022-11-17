@@ -14,7 +14,7 @@ from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.utils import get_current_device
-from colossalai.zero.utils.zero_hook_v2 import GeminiZeROHook
+from colossalai.zero.utils.gemini_hook import GeminiZeROHook
 
 from .reducer import Reducer
 
