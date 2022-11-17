@@ -3,7 +3,7 @@ import pytest
 from colossalai.device import profile_alpha_beta
 
 
-@pytest.mask.skip(reason="Skip because assertion fails for CI devices")
+@pytest.mark.skip(reason="Skip because assertion fails for CI devices")
 def test_profile_alpha_beta():
     physical_devices = [0, 1, 2, 3]
     (alpha, beta) = profile_alpha_beta(physical_devices)
