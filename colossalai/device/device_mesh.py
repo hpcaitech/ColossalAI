@@ -52,6 +52,7 @@ class DeviceMesh:
             self.process_groups_dict = self.create_process_groups_for_logical_mesh()
         if self.need_flatten:
             self.flatten_device_mesh = self.flatten()
+            # Create a new member `flatten_device_meshes` to distinguish from original flatten methods (Because I'm not sure if there are functions that rely on the self.flatten())
             self.flatten_device_meshes = FlattenDeviceMesh(self.physical_mesh_id, self.mesh_shape, self.mesh_alpha,
                                                            self.mesh_beta)
 
@@ -91,18 +92,6 @@ class DeviceMesh:
                           mesh_beta=[min(self.mesh_beta)] * (flatten_mesh_shape_size - 1),
                           init_process_group=self.init_process_group,
                           need_flatten=False)
-
-    def flatten_virtual(self):
-        """
-        Flatten the logical mesh into 1d logical meshes with all possible virtual meshes
-        Virtual mesh:
-            Assume starting logical mesh is (2,4)
-            # leading_dim = comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis]
-
-            # tensor_list = [torch.zeros(subshape) for _ in range(8)]
-            # process_group = comm_spec.device_mesh.process_groups_dict[]
-            # all_gather(tensor_list, tensor, group=process_group) # tensor on logical rank i is sent to tensor_list[i]
-        """
 
     def _global_rank_to_logical_rank_map(self, tensor, index_list):
         '''
@@ -224,9 +213,11 @@ class FlattenDeviceMesh(DeviceMesh):
                          mesh_beta,
                          init_process_group=False,
                          need_flatten=False)
+        # Different from flatten(), mesh_shape leaves unchanged, mesh_alpha and mesh_beta are scalars
         self.flatten_device_meshes = {}
-        self.mesh_alpha = [max(self.mesh_alpha)]
-        self.mesh_beta = [min(self.mesh_beta)]
+        self.mesh_alpha = max(self.mesh_alpha)
+        self.mesh_beta = min(self.mesh_beta)
+        # Different from original process_groups_dict, rank_list is not stored
         self.process_groups_dict = self.create_process_groups_for_logical_mesh()
 
     def create_process_groups_for_logical_mesh(self):
@@ -242,6 +233,7 @@ class FlattenDeviceMesh(DeviceMesh):
         check_duplicate_list = []
         global_rank_flatten_list = self.physical_mesh_id.view(-1).tolist()
         for global_rank in global_rank_flatten_list:
+            # Important assumption: global rank equals to the physical device id
             process_groups = self.global_rank_to_process_groups_with_global_rank(global_rank)
             for axis, process_groups in process_groups.items():
                 if axis not in process_groups_dict:
@@ -254,3 +246,7 @@ class FlattenDeviceMesh(DeviceMesh):
             process_group_handlers[axis] = dist.new_group(process_group)
 
         return process_group_handlers
+
+    def mix_gather_cost(self, num_bytes):
+        num_devices = reduce(operator.mul, self.mesh_shape, 1)
+        return (self.mesh_alpha + self.mesh_beta * (num_devices - 1) / num_devices * num_bytes + 0.1)

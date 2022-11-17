@@ -93,10 +93,10 @@ def shard_simulator(target_pair, legal_sharding_dims):
 def mix_gather_simulator(f_target_pair, b_target_pair):
     '''
     Assume index of f and b target pairs are 'f' and 'b'
-    S0S1 => [b, f], (1, 0)
-    S1S0 => [b, f], (0, 1)
-    S01R => [f], (0, 0)
-    RS01 => [b], (0, 0)
+    S0S1 => Input: (f, [0]), (b, [1]) Output: [b, f], (1, 0)
+    S1S0 => Input: (f, [1]), (b, [0]) Output: [b, f], (0, 1)
+    S01R => Input: (f, [0, 1]), (b, []) Output: [f], (0, 0)
+    RS01 => Input: (f, []), (b, [0, 1]) Output: [b], (0, 0)
     '''
     if f_target_pair[1] and b_target_pair[1]:
         leading_dim = b_target_pair[1] > f_target_pair[1]

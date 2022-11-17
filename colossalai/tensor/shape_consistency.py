@@ -328,7 +328,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                     pass
         return valid_spec_dict
 
-    def get_all_all_to_all_spec(self, source_spec: ShardingSpec,
+    def get_all_mix_gather_spec(self, source_spec: ShardingSpec,
                                 orig_cost_dict: Dict[str, float]) -> Dict[ShardingSpec, float]:
         '''
         S0S1 -> RR
@@ -345,18 +345,19 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                     continue
                 else:
                     if f_index in source_spec.dim_partition_dict:
+                        # skip (S10, R) -> (R, R)
+                        if len(f_target_pair[1]) == 2 and f_target_pair[1][0] >= f_target_pair[1][1]:
+                            continue
                         f_target_pair = (f_index, deepcopy(source_spec.dim_partition_dict[f_index]))
                     else:
                         f_target_pair = (f_index, [])
                     if b_index in source_spec.dim_partition_dict:
+                        # skip (R, S10) -> (R, R)
+                        if len(b_target_pair[1]) == 2 and b_target_pair[1][0] >= b_target_pair[1][1]:
+                            continue
                         b_target_pair = (b_index, deepcopy(source_spec.dim_partition_dict[b_index]))
                     else:
                         b_target_pair = (b_index, [])
-                # skip (S10, R) -> (R, R) and (R, S10) -> (R, R)
-                if len(f_target_pair[1]) == 2 and f_target_pair[1][0] >= f_target_pair[1][1]:
-                    continue
-                if len(b_target_pair[1]) == 2 and b_target_pair[1][0] >= b_target_pair[1][1]:
-                    continue
 
                 gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
                 comm_spec = CommSpec(comm_pathern,
@@ -366,6 +367,19 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                                      forward_only=self.forward_only,
                                      mix_gather=True)
                 cost_dict = comm_spec.get_comm_cost()
+                new_dim_partition_dict = {}
+                # generate new sharding spec
+                try:
+                    new_sharding_spec = ShardingSpec(source_spec.device_mesh,
+                                                     source_spec.entire_shape,
+                                                     dim_partition_dict=new_dim_partition_dict)
+                    for phase, cost in cost_dict.items():
+                        cost_dict[phase] = cost + orig_cost_dict[phase]
+                    valid_spec_dict[new_sharding_spec] = (comm_spec, cost_dict)
+                except ShardingSpecException:
+                    pass
+
+        return valid_spec_dict
 
     def get_all_one_step_transform_spec(self, source_spec: ShardingSpec, orig_cost_dict) -> Dict[ShardingSpec, float]:
         '''
