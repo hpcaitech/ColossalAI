@@ -77,12 +77,11 @@ class Linear1D(ColossalaiModule):
                  weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1)):
         parallel_input = get_parallel_input()
-        if not parallel_input:
+        if not parallel_input and not gather_output:
             layer = Linear1D_Col(in_features,
                                  out_features,
                                  bias=bias,
                                  dtype=dtype,
-                                 gather_output=gather_output,
                                  skip_bias_add=skip_bias_add,
                                  weight_initializer=weight_initializer,
                                  bias_initializer=bias_initializer)

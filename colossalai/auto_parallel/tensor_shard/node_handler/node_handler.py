@@ -74,11 +74,13 @@ class NodeHandler(ABC):
                 if op_data.type == OperationDataType.PARAM:
                     resharding_cost = TrainCycleItem(fwd=0, bwd=0, total=0)
                 else:
+                    dtype = op_data.data.dtype
+                    size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
                     _, _, resharding_cost = shape_consistency_manager.shape_consistency(
                         prev_sharding_spec, current_sharding_spec)
-                    resharding_cost = TrainCycleItem(fwd=resharding_cost["forward"],
-                                                     bwd=resharding_cost["backward"],
-                                                     total=resharding_cost["total"])
+                    resharding_cost = TrainCycleItem(fwd=resharding_cost["forward"] * size_per_elem_bytes,
+                                                     bwd=resharding_cost["backward"] * size_per_elem_bytes,
+                                                     total=resharding_cost["total"] * size_per_elem_bytes)
                 resharding_costs[node].append(resharding_cost)
         strategy.resharding_costs = resharding_costs
         return strategy

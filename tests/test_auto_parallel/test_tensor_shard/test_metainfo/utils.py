@@ -60,9 +60,10 @@ def mem_test_for_node_strategy(rank: int,
         gm.recompile()
         gm: GraphModule
 
+        num_of_strategies = len(target_node.strategies_vector)
         if rank == 0:
             print("=======================")
-            print(f"#strategy_index: {strategy_index}")
+            print(f"#strategy_index: {strategy_index + 1}/{num_of_strategies}")
             pprint(target_node.strategies_vector[strategy_index])
 
         # warmup
@@ -104,7 +105,7 @@ def mem_test_for_node_strategy(rank: int,
 
             # estimated memory
             metainfo = MetaInfo(target_node.strategies_vector[strategy_index],
-                                target_node.graph.owning_module.get_submodule(target_node.target).__class__)
+                                target_node.graph.owning_module.get_submodule(target_node.target))
             print("estimated memory:")
             print(
                 f"forward activation: {metainfo.memory_cost.fwd.activation / 1024} kb, forward param: {metainfo.memory_cost.fwd.parameter / 1024} kb"

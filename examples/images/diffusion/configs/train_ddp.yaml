@@ -94,7 +94,7 @@ lightning:
     precision: 16
     auto_select_gpus: False
     strategy:
-      target: pytorch_lightning.strategies.DDPStrategy
+      target: lightning.pytorch.strategies.DDPStrategy
       params:
         find_unused_parameters: False
     log_every_n_steps: 2
@@ -105,7 +105,7 @@ lightning:
 
   logger_config:
     wandb:
-      target: pytorch_lightning.loggers.WandbLogger
+      target: lightning.pytorch.loggers.WandbLogger
       params:
           name: nowname
           save_dir: "/tmp/diff_log/"
