@@ -5,6 +5,15 @@ activation along the sequence dimension. This method can achieve better memory e
 
 Paper: [Sequence Parallelism: Long Sequence Training from System Perspective](https://arxiv.org/abs/2105.13120)
 
+## 🚀Quick Start
+1. Run with the following command
+```bash
+export PYTHONPATH=$PWD
+colossalai run --nproc_per_node 4 train.py -s
+```
+2. The default config is sequence parallel size = 2, pipeline size = 1, let’s change pipeline size to be 2 and try it again.
+
+
 ## How to Prepare WikiPedia Dataset
 
 First, let's prepare the WikiPedia dataset from scratch. To generate a preprocessed dataset, we need four items:

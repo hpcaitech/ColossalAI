@@ -1,6 +1,19 @@
 # Multi-dimensional Parallelism with Colossal-AI
 
 
+## 🚀Quick Start
+1. Install our model zoo.
+```bash
+pip install titans
+```
+2. Run with synthetic data which is of similar shape to CIFAR10 with the `-s` flag.
+```bash
+colossalai run --nproc_per_node 4 train.py --config config.py -s
+```
+
+3. Modify the config file to play with different types of tensor parallelism, for example, change tensor parallel size to be 4 and mode to be 2d and run on 8 GPUs.
+
+
 ## Install Titans Model Zoo
 
 ```bash

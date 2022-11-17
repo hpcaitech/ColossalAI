@@ -94,7 +94,7 @@ lightning:
     precision: 16
     auto_select_gpus: False
     strategy:
-      target: pytorch_lightning.strategies.ColossalAIStrategy
+      target: lightning.pytorch.strategies.ColossalAIStrategy
       params:
         use_chunk: False
         enable_distributed_storage: True,
@@ -108,7 +108,7 @@ lightning:
 
   logger_config:
     wandb:
-      target: pytorch_lightning.loggers.WandbLogger
+      target: lightning.pytorch.loggers.WandbLogger
       params:
           name: nowname
           save_dir: "/tmp/diff_log/"

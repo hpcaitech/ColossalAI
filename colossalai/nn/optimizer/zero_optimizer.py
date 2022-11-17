@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Set, Tuple
+from typing import Any, Dict, Set, Tuple
 
 import torch
 import torch.distributed as dist
@@ -55,7 +55,8 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  backoff_factor: float = 0.5,
                  growth_interval: int = 1000,
                  hysteresis: int = 2,
-                 max_scale: float = 2**32):
+                 max_scale: float = 2**32,
+                 **defaults: Any):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
         self.module = module

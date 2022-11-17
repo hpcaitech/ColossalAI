@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 
@@ -70,7 +70,8 @@ class HybridAdam(NVMeOptimizer):
                  weight_decay=0,
                  adamw_mode=True,
                  nvme_offload_fraction: float = 0.0,
-                 nvme_offload_dir: Optional[str] = None):
+                 nvme_offload_dir: Optional[str] = None,
+                 **defaults: Any):
 
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(HybridAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)

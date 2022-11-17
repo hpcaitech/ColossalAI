@@ -22,7 +22,7 @@ __all__ = ['convnd_meta_info']
 @meta_register.register(torch.nn.Conv1d)
 @meta_register.register(torch.nn.Conv2d)
 @meta_register.register(torch.nn.Conv3d)
-def convnd_meta_info(*args) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
+def convnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
     """torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d meta info generator
     The atens graph of torch.nn.Convnd with bias is
     graph():

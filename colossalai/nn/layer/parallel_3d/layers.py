@@ -5,6 +5,9 @@ from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import Parameter
+
 from colossalai.communication import all_reduce, broadcast
 from colossalai.constants import INPUT_GROUP_3D, INPUT_X_WEIGHT_3D, OUTPUT_GROUP_3D, OUTPUT_X_WEIGHT_3D, WEIGHT_GROUP_3D
 from colossalai.context import ParallelMode, seed
@@ -13,16 +16,25 @@ from colossalai.global_variables import tensor_parallel_env as env
 from colossalai.nn import init as init
 from colossalai.nn.layer.base_layer import ParallelLayer
 from colossalai.registry import LAYERS
-from colossalai.utils.checkpointing import (broadcast_state_dict, gather_tensor_parallel_state_dict,
-                                            partition_tensor_parallel_state_dict)
+from colossalai.utils.checkpointing import (
+    broadcast_state_dict,
+    gather_tensor_parallel_state_dict,
+    partition_tensor_parallel_state_dict,
+)
 from colossalai.utils.cuda import get_current_device
-from torch import Tensor
-from torch.nn import Parameter
 
 from ..utils import divide, set_tensor_parallel_attribute_by_partition, to_2tuple
-from ._operation import (all_gather_tensor_3d, classifier_3d, vocab_parallel_classifier_3d, layernorm_3d, linear_3d,
-                         reduce_scatter_tensor_3d, split_tensor_3d, split_batch_3d)
-from ._utils import get_depth_from_env, get_parallel_mode_from_env, swap_in_out_group, register_async_grad_hook
+from ._operation import (
+    all_gather_tensor_3d,
+    classifier_3d,
+    layernorm_3d,
+    linear_3d,
+    reduce_scatter_tensor_3d,
+    split_batch_3d,
+    split_tensor_3d,
+    vocab_parallel_classifier_3d,
+)
+from ._utils import get_depth_from_env, get_parallel_mode_from_env, register_async_grad_hook, swap_in_out_group
 
 
 @LAYERS.register_module
@@ -144,8 +156,6 @@ class LayerNorm3D(ParallelLayer):
             self.bias,
             self.normalized_shape,
             self.variance_epsilon,
-            self.input_parallel_mode,
-            self.weight_parallel_mode,
             self.output_parallel_mode,
             self.input_x_weight_parallel_mode,
         )
@@ -900,7 +910,7 @@ class PatchEmbedding3D(ParallelLayer):
                                 weight_parallel_mode=self.weight_parallel_mode)
         output = F.conv2d(input_, self.weight, self.bias, stride=self.patch_size)
         if self.flatten:
-            output = output.flatten(2).transpose(1, 2)  # BCHW -> BNC
+            output = output.flatten(2).transpose(1, 2)    # BCHW -> BNC
 
         cls_token = self.cls_token.expand(output.shape[0], -1, -1)
         output = torch.cat((cls_token, output), dim=1)

@@ -5,6 +5,29 @@ fine-tuning for AIGC (AI-Generated Content) applications such as the model [stab
 We take advantage of [Colosssal-AI](https://github.com/hpcaitech/ColossalAI) to exploit multiple optimization strategies
 , e.g. data parallelism, tensor parallelism, mixed precision & ZeRO, to scale the training to multiple GPUs.
 
+## 🚀Quick Start
+1. Create a new environment for diffusion
+```bash
+conda env create -f environment.yaml
+conda activate ldm
+```
+2. Install Colossal-AI from our official page
+```bash
+pip install colossalai==0.1.10+torch1.11cu11.3 -f https://release.colossalai.org
+```
+3. Install PyTorch Lightning compatible commit
+```bash
+git clone https://github.com/Lightning-AI/lightning && cd lightning && git reset --hard b04a7aa
+pip install -r requirements.txt && pip install .
+cd ..
+```
+
+4. Comment out the `from_pretrained` field in the `train_colossalai_cifar10.yaml`.
+5. Run training with CIFAR10.
+```bash
+python main.py -logdir /tmp -t true -postfix test -b configs/train_colossalai_cifar10.yaml
+```
+
 ## Stable Diffusion
 [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) is a latent text-to-image diffusion
 model.

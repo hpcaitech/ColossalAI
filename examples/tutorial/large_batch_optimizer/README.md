@@ -1,5 +1,12 @@
 # Comparison of Large Batch Training Optimization
 
+## 🚀Quick Start
+Run with synthetic data
+```bash
+colossalai run --nproc_per_node 4 train.py --config config.py -s
+```
+
+
 ## Prepare Dataset
 
 We use CIFAR10 dataset in this example. You should invoke the `donwload_cifar10.py` in the tutorial root directory or directly run the `auto_parallel_with_resnet.py`.
