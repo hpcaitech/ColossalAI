@@ -36,6 +36,11 @@ class MemTracerOpHook(BaseOpHook):
                     p.grad = p.grad.to(dev)
                     comm_volume += p.grad.numel() * p.grad.element_size()
 
+        for buf in module.buffers():
+            if buf.device.type != dev:
+                buf.data = buf.data.to(dev)
+                comm_volume += buf.data.numel() * buf.data.element_size()
+
         if dev == 'cuda':
             self._cur_model_data_vol = comm_volume
 
