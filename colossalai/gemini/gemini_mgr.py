@@ -58,10 +58,10 @@ class GeminiManager:
         self._warmup = True
         self._comp_cuda_demand_time = 0
 
-    def pre_iter(self, *args):
+    def pre_iter(self, **kwargs):
         if self._mem_stats_collector and self._warmup:
             if self.use_static_memstats:
-                self._mem_stats_collector.init_mem_stats(*args)
+                self._mem_stats_collector.init_mem_stats(**kwargs)
                 self._warmup = False
             else:
                 self._mem_stats_collector.start_collection()
