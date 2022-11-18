@@ -28,6 +28,9 @@ class _Wrapper():
     def show_mem_stats(self):
         self._ophook_list[0].show_mem_stats()
 
+    def named_buffers(self):
+        return self._model.named_buffers()
+
 
 def MemtracerWrapper(model):
     ophook_list = [MemTracerOpHook()]
