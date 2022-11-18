@@ -4,6 +4,7 @@ from .binary_elementwise_handler import BinaryElementwiseHandler
 from .bmm_handler import AddBMMFunctionHandler, BMMFunctionHandler
 from .conv_handler import ConvFunctionHandler, ConvModuleHandler
 from .getatrr_handler import GetattrHandler
+from .getitem_handler import GetItemHandler
 from .layer_norm_handler import LayerNormModuleHandler
 from .linear_handler import LinearFunctionHandler, LinearModuleHandler
 from .matmul_handler import MatMulHandler
@@ -19,5 +20,6 @@ __all__ = [
     'LinearFunctionHandler', 'LinearModuleHandler', 'BMMFunctionHandler', 'AddBMMFunctionHandler',
     'LayerNormModuleHandler', 'BatchNormModuleHandler', 'ConvModuleHandler', 'ConvFunctionHandler',
     'UnaryElementwiseHandler', 'ReshapeHandler', 'PlacehodlerHandler', 'OuputHandler', 'WhereHandler',
-    'NormPoolingHandler', 'BinaryElementwiseHandler', 'MatMulHandler', 'operator_registry', 'ADDMMFunctionHandler', 'GetattrHandler'
+    'NormPoolingHandler', 'BinaryElementwiseHandler', 'MatMulHandler', 'operator_registry', 'ADDMMFunctionHandler',
+    'GetItemHandler', 'GetattrHandler'
 ]
