@@ -11,25 +11,31 @@ class MemTracerOpHook(BaseOpHook):
         self.mem_monitor = SyncCudaMemoryMonitor()
         self._cur_non_model_data_vol = 0
         self._non_model_data_list = []
+        self._cur_model_data_vol = 0
 
-    def _move_module_to_dev(self, module, dev) -> int:
+    def _move_module_to_dev(self, module, dev: str) -> int:
         """_move_module_to_dev
         move module to cuda
         Args:
-            module (_type_): _description_
-            dev (_type_): _description_
+            module (torch.nn.Module): a PyTorch module
+            dev (torch.device): the target device
         Returns:
-            int: the communication volume
+            int: the data volume of this module on the cuda
         """
+        assert isinstance(dev, str), f"device should be a str not torch.device"
         comm_volume = 0
         for p in module.parameters():
-            if p.data.device != dev:
+            if p.data.device.type != dev:
                 p.data = p.data.to(dev)
                 comm_volume += p.data.numel() * p.data.element_size()
             if p.grad is not None:
-                if p.grad.device != dev:
+                if p.grad.device.type != dev:
                     p.grad = p.grad.to(dev)
                     comm_volume += p.grad.numel() * p.grad.element_size()
+
+        if dev == 'cuda':
+            self._cur_model_data_vol = comm_volume
+
         return comm_volume
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
@@ -37,28 +43,29 @@ class MemTracerOpHook(BaseOpHook):
             cuda_volume = self.mem_monitor.finish()
             comm_volume = self._move_module_to_dev(module, 'cuda')
             self.mem_monitor.start()
-            # print(f'FWD PRE {module.__class__.__name__}')
+            # print(f'FWD PRE {module.__class__.__name__} cuda used {(cuda_volume) / 1e6} MB')
 
     def post_fwd_exec(self, module: torch.nn.Module, *args):
         if module.training:
-            comm_volume = self._move_module_to_dev(module, 'cpu')
             cuda_volume = self.mem_monitor.finish()
-            print(f'FWD POST {module.__class__.__name__} {(cuda_volume - comm_volume) /1e6} MB')
+            comm_volume = self._move_module_to_dev(module, 'cpu')
+            # print(f'FWD POST {module.__class__.__name__} cuda used {(cuda_volume) / 1e6} MB, non-model data used {(cuda_volume - comm_volume) / 1e6} MB')
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
         assert isinstance(module, torch.nn.Module)
         if module.training:
             cuda_volume = self.mem_monitor.finish()
-            comm_volume = self._move_module_to_dev(module, 'cuda')
+            self._move_module_to_dev(module, 'cuda')
             self.mem_monitor.start()
             # print(f'BWD PRE {module.__class__.__name__}')
 
     def post_bwd_exec(self, module: torch.nn.Module, input):
+        # bwd Op will generate grad. comm_volume is grad + data volume on cuda.
         assert isinstance(module, torch.nn.Module)
         if module.training:
             cuda_volume = self.mem_monitor.finish()
             comm_volume = self._move_module_to_dev(module, 'cpu')
-            print(f'BWD POST {module.__class__.__name__} {(cuda_volume - comm_volume) /1e6} MB')
+            # print(f'BWD POST {module.__class__.__name__} {cuda_volume / 1e6} MB, non-model data used {(cuda_volume - comm_volume) / 1e6} MB')
 
     def pre_iter(self):
         pass
