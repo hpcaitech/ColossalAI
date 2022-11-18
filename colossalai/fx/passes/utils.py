@@ -2,7 +2,7 @@ import torch
 from typing import Dict, Set
 from torch.fx.node import Node, map_arg
 from torch.fx.graph import Graph
-
+from torch.fx.graph_module import GraphModule
 
 def get_comm_size(prev_partition, next_partition):
     """
@@ -177,3 +177,95 @@ def get_node_module(node) -> torch.nn.Module:
     assert node.op == 'call_module', f'Expected node.op to be call_module, but found {node.op}'
     module = node.graph.owning_module.get_submodule(node.target)
     return module
+
+def find_def_in_partition(node, partitions, input_partitions=None):
+    for partition in partitions:
+        if node in partition.users.keys():
+            return partition.name
+        
+    if input_partitions is not None:
+        for placeholder in input_partitions:
+            if placeholder.name == node.name:
+                return 'MODEL_INPUT'
+
+    print(f'Not found def in partition {node.name}')
+    return None
+        
+def find_user_in_partition(node, partitions, output_partitions=None):
+    for partition in partitions:
+        if node in partition.args or node == partition:
+            return partition.name
+    
+    is_output = False
+    def find_output(def_node, output_node):
+        nonlocal is_output
+        if def_node == output_node:
+            is_output = True
+        
+    if output_partitions is not None:
+        output_node = output_partitions[0]
+        torch.fx.graph.map_arg(output_node.args[0], lambda n: find_output(node, n))
+    
+    if is_output:
+        return 'MODEL_OUTPUT'
+    
+    print(f'Not found user in partition {node.name}')
+    return None
+    
+def get_partition_depends(partition, partitions, input_partitions=None, output_partitions=None):
+    # e.g. Partition2: {input: {Partition0: [sub1_1], Partition1: [sub2_0]}, output:{Output: [sub3_0]}},
+    input = {}
+    output = {}
+    
+    for offset, arg in enumerate(partition.args):
+        def_partition_name = find_def_in_partition(arg, partitions, input_partitions)
+        if def_partition_name is None:
+            continue
+        if def_partition_name not in input:
+            input[def_partition_name] = []
+        input[def_partition_name].append(offset)
+        
+    for offset, user in enumerate(partition.users.keys()):
+        user_partition_name = find_user_in_partition(user, partitions, output_partitions)
+        if user_partition_name is None:
+            continue
+        if user_partition_name not in output:
+            output[user_partition_name] = []
+        output[user_partition_name].append(offset)
+    
+    return input, output
+
+def get_DAG(gm: GraphModule):
+    DAG = {}
+    
+    input_partitions = []
+    partitions = []
+    output_partitions = []
+    for node in gm.graph.nodes:
+        if node.op == 'placeholder':
+            input_partitions.append(node)
+        elif node.name.startswith('submod_'):
+            partitions.append(node)
+        elif node.op == 'output':
+            output_partitions.append(node)
+        # print(f'{node.name=} | {node.args=} | {node.users=}')
+
+    for partition in input_partitions:
+        DAG_node = {'input': {}, 'output': {}}
+        _, output = get_partition_depends(partition, partitions, None, output_partitions)
+        DAG_node['output'] = output
+        if 'input_partition' not in DAG:
+            DAG['input_partition'] = {}
+        DAG['input_partition'][partition.name] = DAG_node
+    
+    for partition in partitions:
+        DAG_node = {'input': {}, 'output': {}}
+        DAG_node['input'], DAG_node['output'] = get_partition_depends(partition, partitions, input_partitions, output_partitions)
+        DAG[partition.name] = DAG_node
+        
+    for partition in output_partitions:
+        DAG_node = {'input': {}, 'output': {}}
+        DAG_node['input'] = torch.fx.graph.map_arg(partition.args[0], lambda n: find_def_in_partition(n, partitions, input_partitions))
+        DAG['output_partition'] = DAG_node
+
+    return DAG

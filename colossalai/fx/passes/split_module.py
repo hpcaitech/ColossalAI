@@ -3,6 +3,7 @@ from torch.fx.graph_module import GraphModule
 from typing import Callable, List, Dict, Any, Optional
 from torch.fx._compatibility import compatibility
 from packaging import version
+from colossalai.fx.passes.utils import get_DAG
 import inspect
 
 
@@ -235,10 +236,10 @@ def split_module(
     for node in m.graph.nodes:
         if node.op == 'placeholder':
             if version.parse(torch.__version__) < version.parse('1.11.0'):
-                base_mod_env[node.name] = base_mod_graph.placeholder(node.name, type_expr=node.type)
+                base_mod_env[node.name] = base_mod_graph.placeholder(node.target, type_expr=node.type)
             else:
                 default_value = node.args[0] if len(node.args) > 0 else inspect.Signature.empty
-                base_mod_env[node.name] = base_mod_graph.placeholder(node.name,
+                base_mod_env[node.name] = base_mod_graph.placeholder(node.target,
                                                                      type_expr=node.type,
                                                                      default_value=default_value)
             base_mod_env[node.name].meta = node.meta.copy()
@@ -278,4 +279,15 @@ def split_module(
         if node.op == 'output':
             base_mod_graph.output(torch.fx.graph.map_arg(node.args[0], lambda n: base_mod_env[n.name]))    # noqa: B950
 
-    return torch.fx.graph_module.GraphModule(base_mod_attrs, base_mod_graph)
+    for partition_name in sorted_partitions:
+        partition = partitions[partition_name]
+    
+    new_gm = torch.fx.graph_module.GraphModule(base_mod_attrs, base_mod_graph)
+    
+    DAG = get_DAG(new_gm)
+    
+    for name, submodule in new_gm.named_modules():
+        if isinstance(submodule, torch.fx.GraphModule):
+            setattr(submodule, '_DAG', DAG)
+
+    return new_gm

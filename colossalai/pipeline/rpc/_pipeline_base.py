@@ -134,6 +134,7 @@ class WorkerBase(ABC):
         self.partition_args = partition_args
         self.criterion = criterion
         self.metric = metric
+        self.DAG = None
 
         # context to maintain loop
         self._initialize_context_container()
@@ -171,6 +172,7 @@ class WorkerBase(ABC):
         device = self.device
         with self.partition_condition_lock:
             self.module_partition: nn.Module = partition_fn(*partition_args).to(device)
+            self._DAG = self.module_partition._DAG
             self.partition_condition_lock.notify_all()
 
     def sync_global_worker_rrefs(self, pp_rank_to_worker_rref: Dict[int, PyRRef]) -> None:
@@ -214,6 +216,9 @@ class WorkerBase(ABC):
         with self.partition_condition_lock:
             self.partition_condition_lock.wait_for(lambda: hasattr(self, 'module_partition'))
             return self.module_partition.state_dict()
+        
+    def get_DAG(self):
+        return self._DAG
 
     def _make_args_kwargs(self, microbatch):
         if isinstance(microbatch, dict):
@@ -325,6 +330,14 @@ class WorkerBase(ABC):
             self.work_list[key] = work_item_from_consumer
             self.work_list_condition_lock.notify_all()
 
+    def pp_rank_to_partition_name(self, pp_rank: int):
+        prefix = 'submod_'
+        partition_name = prefix + str(pp_rank)
+        return partition_name
+
+    def partition_name_to_pp_rank(self, partition_name: str) -> int:
+        pass
+
     def _get_producer_consumer(self) -> None:
         rank = self.pp_rank
         assert self.producer_stage_ids is None, f"all the producers of rank {rank} has been subscribed"
@@ -341,6 +354,10 @@ class WorkerBase(ABC):
             self.producer_stage_ids.append(prev_rank)
         if next_rank <= self.actual_stage_num - 1:
             self.consumer_stage_ids.append(next_rank)
+        #DAG = self.get_DAG()
+        #DAG_node_name = self.pp_rank_to_partition_name(rank)
+        #DAG_node = DAG[DAG_node_name]
+        
 
     @abstractmethod
     def _get_work_item_key(self) -> UniqueKey:
