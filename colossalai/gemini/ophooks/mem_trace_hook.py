@@ -5,6 +5,9 @@ from colossalai.gemini.ophooks import BaseOpHook
 
 
 class MemTracerOpHook(BaseOpHook):
+    """
+    TODO() what if parameters are sharded by multiple submodules.
+    """
 
     def __init__(self):
         super().__init__()
@@ -14,8 +17,8 @@ class MemTracerOpHook(BaseOpHook):
         self._cur_model_data_vol = 0
 
     def _move_module_to_dev(self, module, dev: str) -> int:
-        """_move_module_to_dev
-        move module to cuda
+        """
+        move module to target dev
         Args:
             module (torch.nn.Module): a PyTorch module
             dev (torch.device): the target device
@@ -49,6 +52,7 @@ class MemTracerOpHook(BaseOpHook):
         if module.training:
             cuda_volume = self.mem_monitor.finish()
             comm_volume = self._move_module_to_dev(module, 'cpu')
+            self._non_model_data_list.append(cuda_volume - comm_volume)
             # print(f'FWD POST {module.__class__.__name__} cuda used {(cuda_volume) / 1e6} MB, non-model data used {(cuda_volume - comm_volume) / 1e6} MB')
 
     def pre_bwd_exec(self, module: torch.nn.Module, input, output):
@@ -65,6 +69,7 @@ class MemTracerOpHook(BaseOpHook):
         if module.training:
             cuda_volume = self.mem_monitor.finish()
             comm_volume = self._move_module_to_dev(module, 'cpu')
+            self._non_model_data_list.append(cuda_volume - comm_volume)
             # print(f'BWD POST {module.__class__.__name__} {cuda_volume / 1e6} MB, non-model data used {(cuda_volume - comm_volume) / 1e6} MB')
 
     def pre_iter(self):
@@ -73,6 +78,9 @@ class MemTracerOpHook(BaseOpHook):
     def post_iter(self):
         self.mem_monitor.finish()
         # print(f'post_iter')
+
+    def print_non_model_data(self):
+        print(self._non_model_data_list)
 
     def save_results(self, filename):
         self.mem_monitor.save(filename)
