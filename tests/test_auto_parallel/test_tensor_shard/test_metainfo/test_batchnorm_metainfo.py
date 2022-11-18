@@ -16,10 +16,9 @@ from tests.test_auto_parallel.test_tensor_shard.test_metainfo.utils import mem_t
 
 
 def _batchnorm_module_mem_test(rank, world_size, port):
-    """This function is for conv memory test
+    """This function is for batchnorm memory test
     Test and print real memory cost and estimated, this test will not be executed except with the tag AUTO_PARALLEL
 
-    Args:
     Args:
         rank: device rank
         bias: indicate whether conv module need bias
