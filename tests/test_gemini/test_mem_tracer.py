@@ -1,8 +1,13 @@
+from functools import partial
+
+import pytest
 import torch
-import torch.nn as nn
+import torch.multiprocessing as mp
 
 import colossalai
 from colossalai.gemini.memory_tracer import MemtracerWrapper
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
@@ -17,16 +22,20 @@ def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
     model.backward(loss)
 
 
-def test_tracer():
-    # reset the manager, in case that there exists memory information left
-    test_models = ['repeated_computed_layers', 'resnet18', 'no_leaf_module']
+def run_tracer(rank, world_size, port, grad_check=True):
+    colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
+    test_models = ['repeated_computed_layers', 'resnet18', 'no_leaf_module', 'bert']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
 
         # init model on cpu
-        model = MemtracerWrapper(model_builder())
+        # TODO() memtrace hook can not handle buff registered on a non-leaf module (for example the BertEmbedding).
+        # a simple method is that always puts buff on cuda and viewed them as non-model data.
+        model = MemtracerWrapper(model_builder(grad_check))
 
+        for n, buff in model.named_buffers():
+            buff.data = buff.data.cuda()
         for i, (data, label) in enumerate(train_dataloader):
             if i > 1:
                 break
@@ -38,5 +47,13 @@ def test_tracer():
         # model._ophook_list[0].print_non_model_data()
 
 
+@pytest.mark.dist
+@pytest.mark.parametrize("world_size", [1])
+@rerun_if_address_is_in_use()
+def test_tracer(world_size):
+    run_func = partial(run_tracer, world_size=world_size, port=free_port())
+    mp.spawn(run_func, nprocs=world_size)
+
+
 if __name__ == '__main__':
-    test_tracer()
+    test_tracer(1)

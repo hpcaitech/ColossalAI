@@ -7,6 +7,7 @@ from colossalai.gemini.ophooks import BaseOpHook
 class MemTracerOpHook(BaseOpHook):
     """
     TODO() what if parameters are sharded by multiple submodules.
+    register buff on its father node
     """
 
     def __init__(self):
