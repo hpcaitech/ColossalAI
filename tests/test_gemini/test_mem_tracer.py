@@ -24,8 +24,8 @@ def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
 
 def run_tracer(rank, world_size, port, use_grad_check=True):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    # test_models = ['repeated_computed_layers', 'resnet18', 'no_leaf_module', 'bert']
-    test_models = ['bert']
+    test_models = ['repeated_computed_layers', 'resnet18', 'no_leaf_module', 'bert']
+    # test_models = ['bert']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
