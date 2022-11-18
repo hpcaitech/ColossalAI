@@ -82,6 +82,9 @@ def _all_reduce(tensor, comm_spec, async_op=False):
 def _mix_gather(tensor, comm_spec):
     '''
     Implement mix gather operation on device mesh based on information provided by comm_spec.
+    Mix gather is the all-gather operation on all devices in the device_mesh(FlattenDeviceMesh) of the comm_spec. It is
+    different from _all_gather because _mix_gather does all-gather in two dimensions of device mesh, while _all_gather
+    only does all-gather in one dimension.
     Assume index of f and b target pairs are 'f' and 'b'
     ShardingSpec => gather_dim, logical_process_axes
     S0S1 => [b, f], (1, 0)
@@ -150,6 +153,8 @@ def _mix_gather(tensor, comm_spec):
 def _mix_split(tensor, comm_spec):
     '''
     Implement mix split operation. Mix split is only called for the backward of mix gather (Use ctx to keep consistent)
+    Mix split shards the tensor on device mesh based on information provided by comm_spec. It is different from split
+    because _mix_split shards the tensor in two dimensions of device mesh, while _split only shards in one dimension.
     Assume index of f and b target pairs are 'f' and 'b'
     S0S1 => [b, f], (1, 0)
     S1S0 => [b, f], (0, 1)
