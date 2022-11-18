@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.getitem_handler import GetItemHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlaceholderHandler
+from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlacehodlerHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.reshape_handler import ReshapeHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
@@ -120,7 +120,7 @@ def test_getitem_from_tuple_handler():
     split_strategies_vector = StrategiesVector(split_node)
 
     # build handler
-    input_handler = PlaceholderHandler(
+    input_handler = PlacehodlerHandler(
         node=input_node,
         device_mesh=device_mesh,
         strategies_vector=input_strategies_vector,

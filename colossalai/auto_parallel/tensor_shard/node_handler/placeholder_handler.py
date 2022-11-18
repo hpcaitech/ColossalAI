@@ -8,12 +8,12 @@ from ..sharding_strategy import OperationData, OperationDataType, StrategiesVect
 from .node_handler import NodeHandler
 from .strategy import PlaceholderGenerator, StrategyGenerator
 
-__all__ = ['PlaceholderHandler']
+__all__ = ['PlacehodlerHandler']
 
 
-class PlaceholderHandler(NodeHandler):
+class PlacehodlerHandler(NodeHandler):
     """
-    A PlaceholderHandler which deals with the sharding strategies for Placeholder Node.
+    A PlacehodlerHandler which deals with the sharding strategies for Placeholder Node.
     """
 
     def __init__(self, node: Node, device_mesh: DeviceMesh, strategies_vector: StrategiesVector,
