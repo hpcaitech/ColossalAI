@@ -20,7 +20,7 @@ class Phase(Enum):
     FORWARD = 0
     BACKWARD = 1
     UPDATE = 2
-
+    INPUT=3
 
 class UniqueKey:
     __slots__ = ('microbatch_id', 'phase')
@@ -40,9 +40,8 @@ class UniqueKey:
     def __repr__(self) -> str:
         return f'Key(microbatch_id={self.microbatch_id}, phase={self.phase})'
 
-
 class WorkItem:
-    __slots__ = ('stage_id', 'phase', 'args', 'kwargs', 'output', 'refcount', 'microbatch_id', 'batch_id',
+    __slots__ = ('stage_id', 'phase', 'args', 'kwargs', 'output', 'refcount', 'num_user', 'microbatch_id', 'batch_id',
                  'num_microbatches', 'forward_only')
 
     stage_id: int
@@ -52,6 +51,7 @@ class WorkItem:
     output: Future
     microbatch_id: int
     refcount: int
+    num_user: int
     batch_id: int
     num_microbatches: int
     forward_only: bool
@@ -63,6 +63,7 @@ class WorkItem:
                  kwargs,
                  output,
                  microbatch_id,
+                 num_user,
                  batch_id,
                  num_microbatches,
                  forward_only,
@@ -162,12 +163,18 @@ class WorkerBase(ABC):
         self.microbatch_id_to_labels: Dict[int, Any] = dict()
         self.work_list: Dict[UniqueKey, WorkItem] = dict()
         self.output_list: Dict[UniqueKey, WorkItem] = dict()
+        
+        if self.is_first_stage():
+            self.input_list: Dict[UniqueKey, WorkItem] = dict()
 
     def _initialize_lock(self):
         self.partition_condition_lock = threading.Condition(threading.Lock())
         self.work_list_condition_lock = threading.Condition(threading.Lock())
         self.output_list_condition_lock = threading.Condition(threading.Lock())
         self.label_lock = threading.Condition(threading.Lock())
+        
+        if self.is_first_stage():
+            self.input_list_condition_lock = threading.Condition(threading.Lock())
 
     def _initialize_partition(self):
         partition_fn = self.partition_fn
@@ -186,7 +193,7 @@ class WorkerBase(ABC):
         # construction of partition is executed after the registion of pp_rank_to_worker_rref
         self._initialize_partition()
 
-    def get_output_by_key(self, key: UniqueKey) -> Any:
+    def get_output_by_key(self, key: UniqueKey, offset=None) -> Any:
         with self.output_list_condition_lock:
             self.output_list_condition_lock.wait_for(lambda: key in self.output_list)
             output_work_item = self.output_list[key]
@@ -226,9 +233,9 @@ class WorkerBase(ABC):
 
     def _make_args_kwargs(self, microbatch):
         if isinstance(microbatch, dict):
-            return [], microbatch
+            return microbatch.values()
         elif isinstance(microbatch, torch.Tensor):
-            return [microbatch], {}
+            return [microbatch]
         elif isinstance(microbatch, (tuple, list)):
             args = []
             kwargs = {}
@@ -237,7 +244,10 @@ class WorkerBase(ABC):
                     kwargs.update(arg)
                 else:
                     args.append(arg)
-            return args, kwargs
+            arg_lst = args
+            for arg in kwargs.values():
+                arg_lst.append(arg)
+            return arg_lst
         else:
             raise TypeError(f"Input batch can be only dict, list, tuple or tensor, but receive {type(microbatch)}")
 
@@ -247,17 +257,45 @@ class WorkerBase(ABC):
         output = self._get_future_by_device()
 
         # make args and kwargs
-        args, kwargs = self._make_args_kwargs(microbatch)
+        arg_lst = self._make_args_kwargs(microbatch)
         
         # first stage assign correct input into other stages
-        if self.is_first_stage():
-            DAG = self.get_DAG()
-            DAG_node = DAG['input_partition']
-            for partition_name, offset in DAG_node['output'].items():
+        DAG = self.get_DAG()
+        DAG_node = DAG['input_partition']
+        recv_ranks = []
+        self_input_offsets = []
+        recv_input_key = UniqueKey(microbatch_id, Phase.INPUT)
+        # notify rank which should receive extra input
+        offset = 0
+        for _, details in DAG_node.items():
+            for partition_name, _ in details['output']:
                 recv_rank = self.partition_name_to_pp_rank(partition_name)
-                
+                if recv_rank == self.pp_rank:
+                    self_input_offsets.append(offset)
+                elif recv_rank not in recv_ranks:
+                    recv_ranks.append(recv_rank)
+            offset += 1
+            
+        for recv_rank in recv_ranks:
+            recv_worker_rref = self.pp_rank_to_worker_rref[recv_rank]
+            recv_worker_rref.rpc_async().get_output_by_key(recv_input_key)
+        
+        # put input tensor which other nodes need into output_list
+        num_user = len(recv_ranks)
+        work_item_remote = WorkItem(self.pp_rank, Phase.INPUT, [], {}, output, microbatch_id, num_user, None,
+                             self.num_microbatches, forward_only)
+        work_item_remote.output.set_default(arg_lst)
+        
+        with self.output_list_condition_lock:
+            self.output_list[recv_input_key] = work_item_remote
+            self.output_list_condition_lock.notify_all()
 
-        work_item = WorkItem(self.pp_rank, Phase.FORWARD, args, kwargs, output, microbatch_id, None,
+        # set input for self rank
+        output = self._get_future_by_device()
+        self_arg_lst = []
+        for off in self_input_offsets:
+            self_arg_lst.append(arg_lst[off])
+        work_item = WorkItem(self.pp_rank, Phase.FORWARD, self_arg_lst, {}, output, microbatch_id, None,
                              self.num_microbatches, forward_only)
         with self.work_list_condition_lock:
             self.work_list[key] = work_item
