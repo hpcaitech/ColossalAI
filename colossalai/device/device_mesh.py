@@ -214,13 +214,12 @@ class FlattenDeviceMesh(DeviceMesh):
                          init_process_group=False,
                          need_flatten=False)
         # Different from flatten(), mesh_shape leaves unchanged, mesh_alpha and mesh_beta are scalars
-        self.flatten_device_meshes = {}
         self.mesh_alpha = max(self.mesh_alpha)
         self.mesh_beta = min(self.mesh_beta)
         # Different from original process_groups_dict, rank_list is not stored
-        self.process_groups_dict = self.create_process_groups_for_logical_mesh()
+        self.process_number_dict = self.create_process_numbers_for_logical_mesh()
 
-    def create_process_groups_for_logical_mesh(self):
+    def create_process_numbers_for_logical_mesh(self):
         '''
         Build 1d DeviceMesh in column-major(0) and row-major(1)
         for example:
@@ -229,23 +228,11 @@ class FlattenDeviceMesh(DeviceMesh):
             #  [4, 5, 6, 7]]
             # return {0: [0, 4, 1, 5, 2, 6, 3, 7], 1: [0, 1, 2, 3, 4, 5, 6, 7]}
         '''
-        process_groups_dict = {}
-        check_duplicate_list = []
-        global_rank_flatten_list = self.physical_mesh_id.view(-1).tolist()
-        for global_rank in global_rank_flatten_list:
-            # Important assumption: global rank equals to the physical device id
-            process_groups = self.global_rank_to_process_groups_with_global_rank(global_rank)
-            for axis, process_groups in process_groups.items():
-                if axis not in process_groups_dict:
-                    process_groups_dict[axis] = []
-                if process_groups not in check_duplicate_list:
-                    check_duplicate_list.append(process_groups)
-                    process_groups_dict[axis] += process_groups[axis]
-        process_group_handlers = {}
-        for axis, process_group in process_groups_dict.items():
-            process_group_handlers[axis] = dist.new_group(process_group)
-
-        return process_group_handlers
+        num_devices = reduce(operator.mul, self.mesh_shape, 1)
+        process_numbers_dict = {}
+        process_numbers_dict[0] = torch.arange(num_devices).reshape(self.mesh_shape).transpose(1, 0).flatten().tolist()
+        process_numbers_dict[1] = torch.arange(num_devices).reshape(self.mesh_shape).flatten().tolist()
+        return process_numbers_dict
 
     def mix_gather_cost(self, num_bytes):
         num_devices = reduce(operator.mul, self.mesh_shape, 1)

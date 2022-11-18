@@ -100,13 +100,17 @@ def mix_gather_simulator(f_target_pair, b_target_pair):
     '''
     if f_target_pair[1] and b_target_pair[1]:
         leading_dim = b_target_pair[1] > f_target_pair[1]
-        return (b_target_pair[0], f_target_pair[1]), (leading_dim, leading_dim ^ 1)
+        return [b_target_pair[0], f_target_pair[0]], [int(leading_dim), int(leading_dim ^ 1)]
     if f_target_pair[1]:
         leading_dim = f_target_pair[1][0] > f_target_pair[1][1]
-        return (f_target_pair[0],), (leading_dim, leading_dim)
+        return [
+            f_target_pair[0],
+        ], [int(leading_dim), int(leading_dim)]
     if b_target_pair[1]:
         leading_dim = b_target_pair[1][0] > b_target_pair[1][1]
-        return (b_target_pair[0],), (leading_dim, leading_dim)
+        return [
+            b_target_pair[0],
+        ], [int(leading_dim), int(leading_dim)]
 
 
 # The function is credited to PyTorch Team

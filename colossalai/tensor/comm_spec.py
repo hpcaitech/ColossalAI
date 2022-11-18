@@ -126,19 +126,29 @@ def _mix_gather(tensor, comm_spec):
     process_group = "[0, 1, 2, 3, 4, 5, 6, 7]"
     tensor_list = [(0,0),(1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0)]
     '''
-    total_slices = reduce(operator.mul, comm_spec.device_mesh.mesh_shape, 1)
+    total_slices = comm_spec.device_mesh.mesh_shape[0]
     tensor_list = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for _ in range(total_slices)]
     leading_group_dim = comm_spec.logical_process_axes[0]
-    process_group = comm_spec.device_mesh.process_groups_dict[leading_group_dim]
+    process_group = comm_spec.device_mesh.process_groups_dict[0]
+    process_number_list = comm_spec.device_meshes.process_number_dict[leading_group_dim]
+
+    # Global all_gather
     dist.all_gather(tensor_list, tensor, group=process_group)
+
+    # This is very ugly. I'm figuring out more elegant methods
+    tensor_list_sorted = tensor_list
+    for i in range(total_slices):
+        tensor_list_sorted[i] = tensor_list[process_number_list[i]]
+    tensor_list = tensor_list_sorted
 
     if comm_spec.logical_process_axes[0] == comm_spec.logical_process_axes[1]:
         output = torch.cat(tuple(tensor_list), comm_spec.gather_dim[0]).contiguous()
     else:
-        mesh_shape = comm_spec.device_mesh.mesh_shape
+        mesh_shape = comm_spec.device_meshes.mesh_shape
         cat_slice = [mesh_shape[comm_spec.logical_process_axes[0]], mesh_shape[comm_spec.logical_process_axes[1]]]
-        tmp_tensor_shape = tensor.shape
+        tmp_tensor_shape = list(tensor.shape)
         tmp_tensor_shape[comm_spec.gather_dim[0]] *= cat_slice[0]
+        tmp_tensor_shape = torch.Size(tmp_tensor_shape)
         tmp_tensor_list = [
             torch.zeros(tmp_tensor_shape, dtype=tensor.dtype, device=tensor.device) for _ in range(cat_slice[1])
         ]
@@ -165,42 +175,24 @@ def _mix_split(tensor, comm_spec):
             # [[0, 1, 2, 3],
             #  [4, 5, 6, 7]]
             # return {0: [0, 4, 1, 5, 2, 6, 3, 7], 1: [0, 1, 2, 3, 4, 5, 6, 7]}
-    S01R:
-    process_group = "[0, 4, 1, 5, 2, 6, 3, 7]"
-    total_slices = 8
-    length = shape[f] // 8
-    start = 0, 4, 1, 5, 2, 6, 3, 7 * length # physical_id
-    output = [(0,0),(2,0),(4,0),(6,0),(1,0),(3,0),(5,0),(7,0)] # Index is physical_id
-    RS01:
-    length = shape[b] // 8
-    S0S1:
-    process_group = "[0, 1, 2, 3, 4, 5, 6, 7]"
-    dim = [b, f]
-    tensor_shape = [shape[b], shape[f]]
-    mesh_shape = [2,4]
-    rank_slice = [4,2]
-    length = [shape[b] // 4, shape[f] // 2]
-    start = [0, 0], [0, 1 * shape[b] // 4], [0, 2 * shape[b] // 4], [0, 3 * shape[b] // 4],
-            [1 * shape[f] // 2, 0], [1 * shape[f] // 2, 1 * shape[b] // 4], [1 * shape[f] // 2, 2 * shape[b] // 4], [1 * shape[f] // 2, 3 * shape[b] // 4] # In physical_id
-    S1S0:
-    process_group = "[0, 4, 1, 5, 2, 6, 3, 7]"
-    dim = [b, f]
-    tensor_shape = [shape[b], shape[f]]
-    rank_slice = [2,4]
-    length = [shape[b] // 2, shape[f] // 4]
-    start = [0, 0], [shape[f] // 4, 0], [2 * shape[f] // 4, 0], [3 * shape[f] // 4, 0]
-            [0, shape[b] // 2], [shape[f] // 4, shape[b] // 2], [2 * shape[f] // 4, shape[b] // 2], [3 * shape[f] // 4, shape[b] // 2]
     '''
+    mesh_shape = comm_spec.device_meshes.mesh_shape
+    dim = comm_spec.gather_dim
+    total_slices = comm_spec.device_mesh.mesh_shape[0]
+
+    # Get global rank
     rank = dist.get_rank()
+
+    leading_group_dim = comm_spec.logical_process_axes[0]
+    process_number_list = comm_spec.device_meshes.process_number_dict[leading_group_dim]
+    rank = process_number_list.index(rank)
+
     if comm_spec.logical_process_axes[0] == comm_spec.logical_process_axes[1]:
-        total_slices = reduce(operator.mul, comm_spec.device_mesh.mesh_shape, 1)
-        length = tensor.shape[comm_spec.gather_dim[0]] // total_slices
+        length = tensor.shape[dim[0]] // total_slices
         start = length * rank
-        output = torch.narrow(tensor, comm_spec.gather_dim[0], start, length)
+        output = torch.narrow(tensor, dim[0], start, length).contiguous()
     else:
-        dim = comm_spec.gather_dim
         tensor_shape = [tensor.shape[dim[0]], tensor.shape[dim[1]]]
-        mesh_shape = comm_spec.device_mesh.mesh_shape
         rank_slice = [mesh_shape[comm_spec.logical_process_axes[0]], mesh_shape[comm_spec.logical_process_axes[1]]]
         length = [tensor_shape[0] // rank_slice[0], tensor_shape[1] // rank_slice[1]]
         start = [(rank % rank_slice[0]) * length[0], (rank // rank_slice[0]) * length[1]]
@@ -415,15 +407,17 @@ class CommSpec:
         self.shard_dim = shard_dim
         self.logical_process_axis = logical_process_axis
         self.forward_only = forward_only
-        if isinstance(self.logical_process_axis, list) and not mix_gather:
-            self.device_mesh = self.sharding_spec.device_mesh.flatten_device_mesh
-            self.logical_process_axis = 0
+        if isinstance(self.logical_process_axis, list):
+            if not mix_gather:
+                self.device_mesh = self.sharding_spec.device_mesh.flatten_device_mesh
+                self.logical_process_axis = 0
+            else:
+                self.device_meshes = self.sharding_spec.device_mesh.flatten_device_meshes
+                self.device_mesh = self.sharding_spec.device_mesh.flatten_device_mesh
+                # Create a new member `logical_process_axes` to distinguish from original flatten
+                self.logical_process_axes = logical_process_axis
         else:
             self.device_mesh = self.sharding_spec.device_mesh
-        # Create a new member  logical_process_axes to distinguish from original flatten
-        if isinstance(self.logical_process_axis, list) and mix_gather:
-            self.device_mesh = self.sharding_spec.device_mesh.flatten_device_meshes
-            self.logical_process_axes = logical_process_axis
 
     def __repr__(self):
         res_list = ["CommSpec:("]
