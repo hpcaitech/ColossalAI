@@ -10,6 +10,8 @@ from .strategy import StrategyGenerator, UnaryElementwiseGenerator
 __all__ = ['UnaryElementwiseHandler']
 
 
+@operator_registry.register(torch.Tensor.to)
+@operator_registry.register(torch.Tensor.type)
 @operator_registry.register(torch.abs)
 @operator_registry.register(torch.nn.ReLU)
 class UnaryElementwiseHandler(NodeHandler):

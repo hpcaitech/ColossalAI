@@ -84,7 +84,7 @@ def check_linear_module(rank, world_size, port):
     gm.recompile()
     node_list = list(graph.nodes)
 
-    solver_options = SolverOptions(fast=True)
+    solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
     linear_node = node_list[3]
@@ -138,7 +138,7 @@ def check_conv_module(rank, world_size, port):
 
     node_list = list(graph.nodes)
     conv_node = node_list[3]
-    solver_options = SolverOptions(fast=True)
+    solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
