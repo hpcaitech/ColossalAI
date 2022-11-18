@@ -68,32 +68,41 @@ class StrategyGenerator(ABC):
 
         Args:
             mapping (Dict[str, Dict[int, List[int]]]): the key of the mapping is the operation data name and the value is a dim partition dictionary.
+
+        Notes:
+            The op_data.data is commonly type of torch.Tensor, torch.nn.Parameter, so the sharding spec is easy to create from the shape of the data.
+            However, if the op_data.data is of other non-iterative types, such as float or int, we should return None. If the op_data.data is of some iterative types, such as
+            list or tuple, we should return a list of ShardingSpec objects follow the same rule as above mentioned.
         """
         results = {}
         for op_data_name, dim_partition_dict in mapping.items():
             if op_data_name in self.op_data:
                 op_data = self.op_data[op_data_name]
-                if isinstance(op_data.data, tuple):
-                    for data in op_data.data:
-                        assert isinstance(
-                            data, torch.Tensor), 'We cannot create a ShardingSpec object from a non-tensor object.'
-                    sharding_spec = []
-                    for logical_shape, dim_partition_dict_element in zip(op_data.logical_shape, dim_partition_dict):
+
+                def _to_sharding_spec(
+                        data: any, logical_shape: any,
+                        dim_partition_dict: Dict[int, List[int]]) -> Union[ShardingSpec, List[ShardingSpec], None]:
+                    """
+                    This is a recursive function to convert the dim partition dict to a ShardingSpec object.
+                    """
+                    if isinstance(data, torch.Tensor):
                         dim_size = len(logical_shape)
-                        dim_partition_dict_element = convert_dim_partition_dict(dim_size, dim_partition_dict_element)
-                        sharding_spec_element = ShardingSpec(device_mesh=self.device_mesh,
-                                                             entire_shape=logical_shape,
-                                                             dim_partition_dict=dim_partition_dict_element)
-                        sharding_spec.append(sharding_spec_element)
-                else:
-                    assert isinstance(
-                        op_data.data, torch.Tensor
-                    ), f'op_data.data should be a torch.Tensor or Tuple[torch.Tensor], but got {type(op_data.data)}'
-                    dim_size = len(op_data.logical_shape)
-                    dim_partition_dict = convert_dim_partition_dict(dim_size, dim_partition_dict)
-                    sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
-                                                 entire_shape=op_data.logical_shape,
-                                                 dim_partition_dict=dim_partition_dict)
+                        dim_partition_dict = convert_dim_partition_dict(dim_size, dim_partition_dict)
+                        sharding_spec = ShardingSpec(device_mesh=self.device_mesh,
+                                                     entire_shape=logical_shape,
+                                                     dim_partition_dict=dim_partition_dict)
+                        return sharding_spec
+                    elif isinstance(data, (list, tuple)):
+                        sharding_spec = []
+                        for data_element, logical_shape_element, dim_partition_dict_element in zip(
+                                data, logical_shape, dim_partition_dict):
+                            sharding_spec.append(
+                                _to_sharding_spec(data_element, logical_shape_element, dim_partition_dict_element))
+                        return sharding_spec
+                    else:
+                        return None
+
+                sharding_spec = _to_sharding_spec(op_data.data, op_data.logical_shape, dim_partition_dict)
                 results[op_data_name] = sharding_spec
         return results
 
@@ -285,6 +294,5 @@ class OutputStrategyGenerator(StrategyGenerator):
 
     def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh,
                  predecessor_nodes: List[Node]):
-        self.op_data = operation_data_mapping
-        self.device_mesh = device_mesh
+        super().__init__(operation_data_mapping, device_mesh)
         self.predecessor_nodes = predecessor_nodes

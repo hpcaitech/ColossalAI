@@ -44,10 +44,20 @@ class OperationData:
     def __post_init__(self):
         # if no logical shape is specified, use the data shape as the logical shape
         if self.logical_shape is None:
-            if isinstance(self.data, torch.Tensor):
-                self.logical_shape = self.data.shape
-            elif isinstance(self.data, tuple):
-                self.logical_shape = tuple([getattr(d, 'shape', None) for d in self.data])
+
+            def _infer_logical_shape(data: any):
+                """
+                This function is used to infer the logical shape of the data.
+                """
+                if isinstance(data, torch.Tensor):
+                    return data.shape
+                elif isinstance(data, (tuple, list)):
+                    data_type = type(data)
+                    return data_type([_infer_logical_shape(d) for d in data])
+                else:
+                    return None
+
+            self.logical_shape = _infer_logical_shape(self.data)
 
     def __repr__(self) -> str:
         return f'OperationData(name={self.name}, type={self.type})'
@@ -216,8 +226,6 @@ class StrategiesVector(list):
         # fetch its input and output nodes
         # TODO: placeholder input nodes
         self.predecessor_nodes = list(node._input_nodes.keys())
-        if self.node.op == 'output':
-            self.predecessor_nodes = list(node._input_nodes.keys())[:1]
         self.successor_nodes = list(node.users.keys())
 
     def check_merge(self):
