@@ -18,7 +18,7 @@ class MemTracerOpHook(BaseOpHook):
 
     def _move_module_to_dev(self, module, dev: str) -> int:
         """
-        move module to cuda
+        move module to target dev
         Args:
             module (torch.nn.Module): a PyTorch module
             dev (torch.device): the target device
