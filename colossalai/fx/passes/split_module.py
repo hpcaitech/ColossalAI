@@ -286,7 +286,7 @@ def split_module(
     
     DAG = get_DAG(new_gm)
     
-    for name, submodule in new_gm.named_modules():
+    for _, submodule in new_gm.named_modules():
         if isinstance(submodule, torch.fx.GraphModule):
             setattr(submodule, '_DAG', DAG)
 

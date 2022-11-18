@@ -134,7 +134,10 @@ class WorkerBase(ABC):
         self.partition_args = partition_args
         self.criterion = criterion
         self.metric = metric
-        self.DAG = None
+        
+        # DAG info
+        self._is_input = False
+        self._is_output = False
 
         # context to maintain loop
         self._initialize_context_container()
@@ -172,7 +175,6 @@ class WorkerBase(ABC):
         device = self.device
         with self.partition_condition_lock:
             self.module_partition: nn.Module = partition_fn(*partition_args).to(device)
-            self._DAG = self.module_partition._DAG
             self.partition_condition_lock.notify_all()
 
     def sync_global_worker_rrefs(self, pp_rank_to_worker_rref: Dict[int, PyRRef]) -> None:
@@ -218,7 +220,9 @@ class WorkerBase(ABC):
             return self.module_partition.state_dict()
         
     def get_DAG(self):
-        return self._DAG
+        with self.partition_condition_lock:
+            self.partition_condition_lock.wait_for(lambda: hasattr(self, 'module_partition'))
+            return self.module_partition._DAG
 
     def _make_args_kwargs(self, microbatch):
         if isinstance(microbatch, dict):
@@ -237,7 +241,6 @@ class WorkerBase(ABC):
         else:
             raise TypeError(f"Input batch can be only dict, list, tuple or tensor, but receive {type(microbatch)}")
 
-    # just for first pp_rank
     def set_input(self, microbatch_id: int, microbatch: Tuple[Any], forward_only: bool):
         assert self.consumer_stage_ids is not None
         key = UniqueKey(microbatch_id, Phase.FORWARD)
@@ -245,6 +248,14 @@ class WorkerBase(ABC):
 
         # make args and kwargs
         args, kwargs = self._make_args_kwargs(microbatch)
+        
+        # first stage assign correct input into other stages
+        if self.is_first_stage():
+            DAG = self.get_DAG()
+            DAG_node = DAG['input_partition']
+            for partition_name, offset in DAG_node['output'].items():
+                recv_rank = self.partition_name_to_pp_rank(partition_name)
+                
 
         work_item = WorkItem(self.pp_rank, Phase.FORWARD, args, kwargs, output, microbatch_id, None,
                              self.num_microbatches, forward_only)
@@ -336,7 +347,9 @@ class WorkerBase(ABC):
         return partition_name
 
     def partition_name_to_pp_rank(self, partition_name: str) -> int:
-        pass
+        prefix = 'submod_'
+        pp_rank = int(partition_name.split(prefix)[-1])
+        return pp_rank
 
     def _get_producer_consumer(self) -> None:
         rank = self.pp_rank
@@ -347,17 +360,29 @@ class WorkerBase(ABC):
         self.producer_stage_ids = []
         self.consumer_stage_ids = []
 
-        # Just for demo
-        prev_rank = rank - 1
-        next_rank = rank + 1
-        if prev_rank >= 0:
-            self.producer_stage_ids.append(prev_rank)
-        if next_rank <= self.actual_stage_num - 1:
-            self.consumer_stage_ids.append(next_rank)
-        #DAG = self.get_DAG()
-        #DAG_node_name = self.pp_rank_to_partition_name(rank)
-        #DAG_node = DAG[DAG_node_name]
+        # # Just for demo
+        # prev_rank = rank - 1
+        # next_rank = rank + 1
+        # if prev_rank >= 0:
+        #     self.producer_stage_ids.append(prev_rank)
+        # if next_rank <= self.actual_stage_num - 1:
+        #     self.consumer_stage_ids.append(next_rank)
+        DAG = self.get_DAG()
+        DAG_node_name = self.pp_rank_to_partition_name(rank)
+        DAG_node = DAG[DAG_node_name]
+        for partition_name in DAG_node['input'].keys():
+            if partition_name == 'MODEL_INPUT':
+                self._is_input = True
+            else:
+                prev_rank = self.partition_name_to_pp_rank(partition_name)
+                self.producer_stage_ids.append(prev_rank)
         
+        for partition_name in DAG_node['output'].keys():
+            if partition_name == 'MODEL_OUTPUT':
+                self._is_output = True
+            else:
+                next_rank = self.partition_name_to_pp_rank(partition_name)
+                self.consumer_stage_ids.append(next_rank)
 
     @abstractmethod
     def _get_work_item_key(self) -> UniqueKey:
@@ -560,7 +585,7 @@ class WorkerBase(ABC):
         # for init
         self._get_producer_consumer()
         torch.cuda.set_device(ppg.get_local_pp_rank())
-
+        
         # main loop
         while True:
             work_item_key = self._get_work_item_key()
