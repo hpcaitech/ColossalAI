@@ -72,16 +72,61 @@ def check_mix_gather_S1S0(device_mesh, rank):
                          mix_gather=True)
     tensor_to_comm = tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
 
-    if rank == 0:
-        print(tensor_to_comm)
+    assert tensor_to_comm.equal(tensor_to_check)
 
 
 def check_mix_gather_S01R(device_mesh, rank):
-    pass
+    tensor_to_check = torch.arange(64).reshape((8, 8)).cuda()
+    rank_list = [0, 4, 1, 5, 2, 6, 3, 7]
+    rank = rank_list.index(rank)
+    (f, b) = (0, 1)
+    f_target_pair = (f, [0, 1])
+    b_target_pair = (b, [])
+    gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
+    tensor_to_comm = tensor_to_check[rank:rank + 1, :].contiguous().cuda()
+
+    dim_partition_dict = {0: [0, 1]}
+    # DistSpec:
+    #     shard_sequence: S01,R
+    #     device_mesh_shape: (2, 4)
+    source_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
+
+    comm_spec = CommSpec(CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
+                         sharding_spec=source_spec,
+                         gather_dim=gather_dim,
+                         logical_process_axis=logical_process_axes,
+                         forward_only=True,
+                         mix_gather=True)
+    tensor_to_comm = tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
+
+    assert tensor_to_comm.equal(tensor_to_check)
 
 
 def check_mix_gather_RS01(device_mesh, rank):
-    pass
+    tensor_to_check = torch.arange(64).reshape((8, 8)).cuda()
+    rank_list = [0, 4, 1, 5, 2, 6, 3, 7]
+    rank = rank_list.index(rank)
+    (f, b) = (0, 1)
+    f_target_pair = (f, [])
+    b_target_pair = (b, [0, 1])
+    gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
+    tensor_to_comm = tensor_to_check[:, rank:rank + 1].contiguous().cuda()
+
+    dim_partition_dict = {1: [0, 1]}
+    # DistSpec:
+    #     shard_sequence: S10,R
+    #     device_mesh_shape: (2, 4)
+    source_spec = ShardingSpec(device_mesh, tensor_to_check.shape, dim_partition_dict=dim_partition_dict)
+
+    comm_spec = CommSpec(CollectiveCommPattern.MIXGATHER_FWD_SPLIT_BWD,
+                         sharding_spec=source_spec,
+                         gather_dim=gather_dim,
+                         logical_process_axis=logical_process_axes,
+                         forward_only=True,
+                         mix_gather=True)
+    tensor_to_comm = tensor_to_comm = comm_spec.covert_spec_to_action(tensor_to_comm)
+
+    assert tensor_to_comm.equal(tensor_to_check)
 
 
 def check_comm(rank, world_size, port):
@@ -98,18 +143,18 @@ def check_comm(rank, world_size, port):
 
     check_mix_gather_S0S1(device_mesh, rank)
 
-    #check_mix_gather_S1S0(device_mesh, rank)
+    check_mix_gather_S1S0(device_mesh, rank)
 
-    #check_mix_gather_S01R(device_mesh, rank)
+    check_mix_gather_S01R(device_mesh, rank)
 
-    #check_mix_gather_RS01(device_mesh, rank)
+    check_mix_gather_RS01(device_mesh, rank)
 
 
-def test_comm_spec():
+def test_mix_gather():
     world_size = 8
     run_func = partial(check_comm, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_comm_spec()
+    test_mix_gather()

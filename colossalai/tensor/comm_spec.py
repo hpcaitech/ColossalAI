@@ -129,14 +129,17 @@ def _mix_gather(tensor, comm_spec):
     total_slices = comm_spec.device_mesh.mesh_shape[0]
     tensor_list = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for _ in range(total_slices)]
     leading_group_dim = comm_spec.logical_process_axes[0]
-    process_group = comm_spec.device_mesh.process_groups_dict[0]
+    assert len(comm_spec.device_mesh.process_groups_dict) == 1
+    _, process_group = comm_spec.device_mesh.process_groups_dict[0][0]
     process_number_list = comm_spec.device_meshes.process_number_dict[leading_group_dim]
 
     # Global all_gather
     dist.all_gather(tensor_list, tensor, group=process_group)
 
     # This is very ugly. I'm figuring out more elegant methods
-    tensor_list_sorted = tensor_list
+    tensor_list_sorted = [
+        torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for _ in range(total_slices)
+    ]
     for i in range(total_slices):
         tensor_list_sorted[i] = tensor_list[process_number_list[i]]
     tensor_list = tensor_list_sorted
