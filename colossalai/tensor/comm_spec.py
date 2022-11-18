@@ -175,7 +175,16 @@ def _mix_split(tensor, comm_spec):
     mesh_shape = [2,4]
     rank_slice = [4,2]
     length = [shape[b] // 4, shape[f] // 2]
-    start = [0,0], [1 * shape[b] // 4, 0], [2 * shape[b] // 4, 0], [3 * shape[b] // 4, 0], [0, 1 * shape[b] // 2], [1 * shape[b] // 4, 1 * shape[b] // 2], [2 * shape[b] // 4, 1 * shape[b] // 2], [3 * shape[b] // 4, 1 * shape[b] // 2]
+    start = [0, 0], [0, 1 * shape[b] // 4], [0, 2 * shape[b] // 4], [0, 3 * shape[b] // 4],
+            [1 * shape[f] // 2, 0], [1 * shape[f] // 2, 1 * shape[b] // 4], [1 * shape[f] // 2, 2 * shape[b] // 4], [1 * shape[f] // 2, 3 * shape[b] // 4] # In physical_id
+    S1S0:
+    process_group = "[0, 4, 1, 5, 2, 6, 3, 7]"
+    dim = [b, f]
+    tensor_shape = [shape[b], shape[f]]
+    rank_slice = [2,4]
+    length = [shape[b] // 2, shape[f] // 4]
+    start = [0, 0], [shape[f] // 4, 0], [2 * shape[f] // 4, 0], [3 * shape[f] // 4, 0]
+            [0, shape[b] // 2], [shape[f] // 4, shape[b] // 2], [2 * shape[f] // 4, shape[b] // 2], [3 * shape[f] // 4, shape[b] // 2]
     '''
     rank = dist.get_rank()
     if comm_spec.logical_process_axes[0] == comm_spec.logical_process_axes[1]:
