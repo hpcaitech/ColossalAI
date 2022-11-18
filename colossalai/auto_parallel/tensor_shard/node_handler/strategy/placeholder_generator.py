@@ -1,6 +1,12 @@
-from typing import List
+from typing import Dict, List
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (MemoryCost, ShardingStrategy, TrainCycleItem)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
+    MemoryCost,
+    OperationData,
+    ShardingStrategy,
+    TrainCycleItem,
+)
+from colossalai.device.device_mesh import DeviceMesh
 
 from .strategy_generator import StrategyGenerator
 
@@ -11,6 +17,11 @@ class PlaceholderGenerator(StrategyGenerator):
     """
     PlaceholderGenerator is a generic class to generate strategies for placeholder node.
     """
+
+    def __init__(self, operation_data_mapping: Dict[str, OperationData], device_mesh: DeviceMesh,
+                 placeholder_option: str):
+        super().__init__(operation_data_mapping, device_mesh)
+        self.placeholder_option = placeholder_option
 
     def validate(self) -> bool:
         return super().validate()
@@ -37,7 +48,10 @@ class PlaceholderGenerator(StrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
-    def collate_strategies(self) -> List[ShardingStrategy]:
+    def replica_placeholder(self) -> ShardingStrategy:
+        """
+        Generate replica strategy for placeholder node.
+        """
         dim_partition_dict_mapping = {
             "output": {},
         }
@@ -50,4 +64,37 @@ class PlaceholderGenerator(StrategyGenerator):
                                               sharding_spec_mapping=sharding_spec_mapping,
                                               communication_action_mapping=communication_action_mapping)
 
-        return [strategy]
+        return strategy
+
+    def distributed_placeholder(self, mesh_list) -> ShardingStrategy:
+        """
+        Generate distributed strategy for placeholder node.
+        """
+        dim_partition_dict_mapping = {
+            "output": {
+                0: mesh_list
+            },
+        }
+        communication_action_mapping = {}
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
+
+        name = 'Distributed Placeholder'
+
+        strategy = self.get_sharding_strategy(name=name,
+                                              sharding_spec_mapping=sharding_spec_mapping,
+                                              communication_action_mapping=communication_action_mapping)
+
+        return strategy
+
+    def collate_strategies(self) -> List[ShardingStrategy]:
+        strategy_list = []
+        if self.placeholder_option == 'distributed':
+            mesh_list = [0, 1]
+            distributed_strategy = self.distributed_placeholder(mesh_list)
+            strategy_list.append(distributed_strategy)
+        else:
+            assert self.placeholder_option == 'replicated', f'placeholder_option {self.placeholder_option} is not supported'
+            replicated_strategy = self.replica_placeholder()
+            strategy_list.append(replicated_strategy)
+
+        return strategy_list

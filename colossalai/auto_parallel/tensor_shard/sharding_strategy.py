@@ -43,8 +43,11 @@ class OperationData:
 
     def __post_init__(self):
         # if no logical shape is specified, use the data shape as the logical shape
-        if self.logical_shape is None and isinstance(self.data, torch.Tensor):
-            self.logical_shape = self.data.shape
+        if self.logical_shape is None:
+            if isinstance(self.data, torch.Tensor):
+                self.logical_shape = self.data.shape
+            elif isinstance(self.data, tuple):
+                self.logical_shape = tuple([getattr(d, 'shape', None) for d in self.data])
 
     def __repr__(self) -> str:
         return f'OperationData(name={self.name}, type={self.type})'
