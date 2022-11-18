@@ -2,9 +2,17 @@
 This repo introduce how to pretrain a chinese roberta-large from scratch, including preprocessing, pretraining, finetune. The repo can help you quickly train a high-quality  bert.
 
 ## 0. Prerequisite
-- every host expose ssh port of server and 
-- Ensure that each host can log in to each other without password
-- In all host, edit /etc/hosts to record all hosts' name and ip.The example is shown below.
+- Install Colossal-AI
+- Editing the port from /etc/ssh/sshd_config and /etc/ssh/ssh_config, every host expose the same ssh port of server and client. 
+- Ensure that each host can log in to each other without password. If you have n hosts, need to execute n<sup>2</sup> times
+
+```
+ssh-keygen
+ssh-copy-id -i ~/.ssh/id_rsa.pub ip_destination
+```
+
+- In all hosts, edit /etc/hosts to record all hosts' name and ip.The example is shown below. 
+
 ```bash
 192.168.2.1   GPU001
 192.168.2.2   GPU002
@@ -15,6 +23,7 @@ This repo introduce how to pretrain a chinese roberta-large from scratch, includ
 192.168.2.7   GPU007
 ...
 ```
+
 - service ssh restart
 
 ## 1. Corpus Preprocessing 
