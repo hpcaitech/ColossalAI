@@ -3,7 +3,7 @@ This repo introduce how to pretrain a chinese roberta-large from scratch, includ
 
 ## 0. Prerequisite
 - Install Colossal-AI
-- Editing the port from /etc/ssh/sshd_config and /etc/ssh/ssh_config, every host expose the same ssh port of server and client. 
+- Editing the port from /etc/ssh/sshd_config and /etc/ssh/ssh_config, every host expose the same ssh port of server and client. If you are a root user, you also set the **PermitRootLogin** from /etc/ssh/sshd_config to "yes"
 - Ensure that each host can log in to each other without password. If you have n hosts, need to execute n<sup>2</sup> times
 
 ```
@@ -24,7 +24,10 @@ ssh-copy-id -i ~/.ssh/id_rsa.pub ip_destination
 ...
 ```
 
-- service ssh restart
+- restart ssh
+```
+service ssh restart
+```
 
 ## 1. Corpus Preprocessing 
 ```bash
