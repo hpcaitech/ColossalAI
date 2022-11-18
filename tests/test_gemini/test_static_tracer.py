@@ -31,8 +31,6 @@ def run_mem_collector_testing():
                 meta_args[inp_name] = inputs[idx].to(device='meta')
             mem_collector.init_mem_stats(**meta_args)
 
-            print(mem_collector._non_model_data_cuda_list)
-
             break
 
         del model, mem_collector
