@@ -220,7 +220,9 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             logical_process_axis=mesh_dim_0,
             comm_type=CommType.IMPLICIT)
 
-        communication_action_mapping = {"output": output_comm_action}
+        # TODO: Temporary solution has no communication cost,
+        # above action should be added after the SyncBN replace pass completed.
+        communication_action_mapping = {}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -256,7 +258,9 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             logical_process_axis=[mesh_dim_0, mesh_dim_1],
             comm_type=CommType.IMPLICIT)
 
-        communication_action_mapping = {"output": output_comm_action}
+        # TODO: Temporary solution has no communication cost,
+        # above action should be added after the SyncBN replace pass completed.
+        communication_action_mapping = {}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,
@@ -302,7 +306,9 @@ class BatchNormStrategyGenerator(StrategyGenerator):
             logical_process_axis=[mesh_dim_0],
             comm_type=CommType.IMPLICIT)
 
-        communication_action_mapping = {"output": output_comm_action}
+        # TODO: Temporary solution has no communication cost,
+        # above action should be added after the SyncBN replace pass completed.
+        communication_action_mapping = {}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,

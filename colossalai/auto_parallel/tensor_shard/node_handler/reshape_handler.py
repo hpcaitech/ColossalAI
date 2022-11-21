@@ -12,6 +12,7 @@ __all__ = ['ReshapeHandler']
 
 @operator_registry.register(torch.reshape)
 @operator_registry.register(torch.Tensor.split)
+@operator_registry.register(torch.split)
 @operator_registry.register(torch.flatten)
 @operator_registry.register(torch.Tensor.transpose)
 @operator_registry.register(torch.Tensor.permute)
