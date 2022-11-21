@@ -1,11 +1,12 @@
 import functools
+from typing import Any, Callable, Dict, List, Tuple, Type, Union
 
 import torch
 
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.sharding_spec import ShardingSpec, ShardingSpecException
 
-__all__ = ['ignore_sharding_exception']
+__all__ = ['ignore_sharding_exception', 'pytree_map']
 
 
 def ignore_sharding_exception(func):
@@ -70,3 +71,27 @@ def check_sharding_spec_validity(sharding_spec: ShardingSpec, tensor: torch.Tens
     # make sure the entire shape matches the physical tensor shape
     assert sharding_spec.entire_shape == tensor.shape, \
         f'The entire_shape of the sharding spec {sharding_spec.entire_shape} does not match the tensor shape {tensor.shape}'
+
+
+def pytree_map(obj: Any, fn: Callable, process_types: Union[Type, Tuple[Type]] = (), map_all: bool = False) -> Any:
+    """process object recursively, like pytree
+
+    Args:
+        obj (:class:`Any`): object to process
+        fn (:class:`Callable`): a function to process subobject in obj
+        process_types (:class: `type | tuple[type]`): types to determine the type to process
+        map_all (:class: `bool`): if map_all is True, then any type of element will use fn
+
+    Returns:
+        :class:`Any`: returns have the same structure of `obj` and type in process_types after map of `fn`
+    """
+    if isinstance(obj, dict):
+        return {k: pytree_map(obj[k], fn, process_types, map_all) for k in obj}
+    elif isinstance(obj, tuple):
+        return tuple(pytree_map(o, fn, process_types, map_all) for o in obj)
+    elif isinstance(obj, list):
+        return list(pytree_map(o, fn, process_types, map_all) for o in obj)
+    elif isinstance(obj, process_types):
+        return fn(obj)
+    else:
+        return fn(obj) if map_all else obj

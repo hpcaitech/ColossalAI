@@ -1,3 +1,4 @@
+import builtins
 import math
 import operator
 from copy import deepcopy
@@ -13,6 +14,7 @@ from colossalai.auto_parallel.tensor_shard.node_handler import (
     operator_registry,
 )
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
+from colossalai.auto_parallel.tensor_shard.utils import generate_resharding_costs, generate_sharding_spec
 from colossalai.device.device_mesh import DeviceMesh
 
 from .options import DataloaderOption, SolverOptions
@@ -49,10 +51,6 @@ class StrategiesConstructor:
         name_checklist = []
         remove_list = []
         for strategy in strategies_vector:
-            if strategy is None:
-                print(strategies_vector.node.name)
-                print(strategies_vector)
-                assert False
             if strategy.name not in name_checklist:
                 name_checklist.append(strategy.name)
             else:
@@ -64,10 +62,33 @@ class StrategiesConstructor:
         """
         This method is to build the strategy vector for each node in the computation graph.
         """
+
+        def _check_no_strategy_for_node(node):
+            if node.op in ('placeholder', 'get_attr', 'output'):
+                return False
+
+            def _check_no_strategy_for_data(data):
+                label = True
+                if isinstance(data, torch.Tensor):
+                    return False
+                elif isinstance(data, (tuple, list)):
+                    for d in data:
+                        label = label and _check_no_strategy_for_data(d)
+                return label
+
+            return _check_no_strategy_for_data(node._meta_data)
+
+        no_strategy_node = []
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
+
+            print(node)
+            if _check_no_strategy_for_node(node):
+                no_strategy_node.append(node)
+                pass
+
             # placeholder node
-            if node.op == 'placeholder':
+            elif node.op == 'placeholder':
                 if self.solver_options.dataloader_option == DataloaderOption.DISTRIBUTED:
                     placeholder_option = 'distributed'
                 else:
@@ -80,7 +101,7 @@ class StrategiesConstructor:
                 placeholder_handler.register_strategy()
 
             # get_attr node
-            if node.op == 'get_attr':
+            elif node.op == 'get_attr':
                 getattr_handler = GetattrHandler(node, self.device_mesh, strategies_vector)
                 getattr_handler.register_strategy()
 
@@ -114,10 +135,19 @@ class StrategiesConstructor:
                 output_handler = OuputHandler(node, self.device_mesh, strategies_vector, output_option=output_option)
                 output_handler.register_strategy()
 
-            if len(strategies_vector) <= 0:
-                print(node.name)
-            assert len(strategies_vector) > 0
             self.remove_duplicated_strategy(strategies_vector)
             setattr(node, 'strategies_vector', strategies_vector)
             self.leaf_strategies.append(strategies_vector)
             self.strategy_map[node] = strategies_vector
+
+        # remove no strategy nodes
+        remove_list = []
+        for strategies_vector in self.leaf_strategies:
+            if len(strategies_vector) == 0:
+                remove_list.append(strategies_vector.node)
+
+        for node in remove_list:
+            if node.strategies_vector in self.leaf_strategies:
+                self.leaf_strategies.remove(node.strategies_vector)
+            if node in self.strategy_map:
+                self.strategy_map.pop(node)
