@@ -24,7 +24,6 @@ def register_elementwise_op(op):
             return op(input_tensor, *args, **kwargs)
         else:
             output = op(input_tensor, *args, **kwargs)
-            assert isinstance(output, Tensor), f"op: {op}"
             # return output
             if isinstance(input_tensor, ColoTensor):
                 if isinstance(output, str):
