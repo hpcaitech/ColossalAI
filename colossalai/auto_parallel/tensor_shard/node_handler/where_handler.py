@@ -57,24 +57,6 @@ class WhereHandler(NodeHandler):
         logical_operand.logical_shape = target_shape
         return logical_operand
 
-    def register_strategy(self, compute_resharding_cost: bool = False) -> StrategiesVector:
-        """
-        Register different sharding strategies for the current node.
-        """
-        strategy_generators = self.get_strategy_generator()
-
-        for generator in strategy_generators:
-            strategies = generator.generate()
-            strategies_vector = map(self.post_process, strategies)
-            # compute the resharding costs based on the previous node
-            # strategies if specified
-            if compute_resharding_cost:
-                strategies = list(map(self.update_resharding_cost, strategies))
-            self.strategies_vector.extend(strategies)
-
-        self.strategies_vector = list(strategies_vector)
-        return self.strategies_vector
-
     def post_process(self, strategy: ShardingStrategy):
         logical_op_data_mapping, physical_op_data_mapping = self.get_operation_data_mapping()
         for key in logical_op_data_mapping.keys():

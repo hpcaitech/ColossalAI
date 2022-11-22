@@ -37,9 +37,12 @@ def run_colo_init_context(rank: int, world_size: int, port: int):
     # shard the parameters during init
     set_seed(42)
     shard_spec = ReplicaSpec()
-    # ShardSpec(dims=[0], num_partitions=[world_size])
-    default_shard_plan = {'pg': ProcessGroup(tp_degree=world_size), 'shard_spec': shard_spec}
-    with ColoInitContext(device=get_current_device(), default_shard_plan=default_shard_plan):
+
+    # If using ShardSpec, the assertations will failed.
+    # But it is not a bug, the initialized values are not consist with the original one.
+    # shard_spec = ShardSpec(dims=[0], num_partitions=[world_size])
+    default_pg = ProcessGroup(tp_degree=world_size)
+    with ColoInitContext(device=get_current_device(), default_pg=default_pg, default_dist_spec=shard_spec):
         model2 = model_builder()
 
     # reshard both models
