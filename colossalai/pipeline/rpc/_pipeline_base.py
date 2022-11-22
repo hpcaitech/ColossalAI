@@ -123,6 +123,7 @@ class WorkerBase(ABC):
 
         # lock for the list
         self._initialize_lock()
+        self._producer_consumer_initialized = False
 
         # topology info
         self.producer_stage_ids: List[int] = None
@@ -171,6 +172,7 @@ class WorkerBase(ABC):
         self.work_list_condition_lock = threading.Condition(threading.Lock())
         self.output_list_condition_lock = threading.Condition(threading.Lock())
         self.label_lock = threading.Condition(threading.Lock())
+        self.producer_consumer_init_lock = threading.Condition(threading.Lock())
         
         if self.is_first_stage():
             self.input_list_condition_lock = threading.Condition(threading.Lock())
@@ -324,8 +326,17 @@ class WorkerBase(ABC):
         """
         You should call this function asynchronously
         """
-        assert self.producer_stage_ids is not None
-        producer_num = len(self.producer_stage_ids)
+        with self.work_list_condition_lock:
+            key = UniqueKey(microbatch_id, Phase.FORWARD)
+            if key in self.work_list:
+                return
+        
+        producer_stage_ids = []
+        with self.producer_consumer_init_lock:
+            self.producer_consumer_init_lock.wait_for(lambda: self._producer_consumer_initialized)
+            producer_stage_ids = self.producer_stage_ids
+        
+        producer_num = len(producer_stage_ids)
         
         # TODO get by offset
         if self.need_model_input():
@@ -345,14 +356,14 @@ class WorkerBase(ABC):
             subscribe_forward_futures[0] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
             
             for i in range(0, producer_num-1):
-                producer_stage_id = self.producer_stage_ids[i]
+                producer_stage_id = producer_stage_ids[i]
                 producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
                 producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
                 subscribe_forward_futures[i+1] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
             
         else:
             for i in range(producer_num):
-                producer_stage_id = self.producer_stage_ids[i]
+                producer_stage_id = producer_stage_ids[i]
                 producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
                 producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
                 #producer_partition_name = self.pp_rank_to_partition_name[producer_stage_id]
@@ -364,7 +375,6 @@ class WorkerBase(ABC):
         # add work_item to work_list
         with self.work_list_condition_lock:
             key = UniqueKey(microbatch_id, Phase.FORWARD)
-            assert key not in self.work_list
             self.work_list[key] = work_item_from_producer
             self.work_list_condition_lock.notify_all()
 
@@ -372,6 +382,9 @@ class WorkerBase(ABC):
         """
         You should call this function asynchronously
         """
+        with self.producer_consumer_init_lock:
+            self.producer_consumer_init_lock.wait_for(lambda: self._producer_consumer_initialized)
+        
         assert self.producer_stage_ids is not None
         consumer_num = len(self.consumer_stage_ids)
         assert consumer_num > 0, "only stage that has consumers can subscribe comsumers"
@@ -421,33 +434,46 @@ class WorkerBase(ABC):
                 # TODO get by offset
                 else:
                     DAG = self.get_DAG()
+                    producer_outputs = {}
                     cur_DAG_node_name = self.pp_rank_to_partition_name(self.pp_rank)
                     #cur_DAG_node = DAG[self.pp_rank_to_partition_name(self.pp_rank)]
-                    print(f'{len(args_or_kwargs)=}')
                     for i, args_from_one_mod in enumerate(args_or_kwargs):
                         producer_output_offsets = []
                         if self.need_model_input():
-                            print(f'need_model_input')
                             if i == 0:
                                 producer_DAG_node = DAG['input_partition']
+                                producer_partition_name = 'MODEL_INPUT'
                                 offset = 0
                                 for arg_info in producer_DAG_node.values():
                                     if cur_DAG_node_name in arg_info['output']:
                                         producer_output_offsets.append(offset)
                                     offset += 1
-                                print(f'input_tensor: {producer_output_offsets}')
                             else:
                                 producer_rank = self.producer_stage_ids[i-1]
-                                producer_DAG_node = DAG[self.pp_rank_to_partition_name(producer_rank)]
+                                producer_partition_name = self.pp_rank_to_partition_name(producer_rank)
+                                producer_DAG_node = DAG[producer_partition_name]
                                 producer_output_offsets = producer_DAG_node['output'][cur_DAG_node_name]
-                                print(f'prev rank{producer_rank}: {producer_output_offsets}')
-                            
                         else:
                             producer_rank = self.producer_stage_ids[i]
-                            producer_DAG_node = DAG[self.pp_rank_to_partition_name(producer_rank)]
+                            producer_partition_name = self.pp_rank_to_partition_name(producer_rank)
+                            producer_DAG_node = DAG[producer_partition_name]
                             producer_output_offsets = producer_DAG_node['output'][cur_DAG_node_name]
-                        for offset in producer_output_offsets:
-                            flatten_args.append(args_from_one_mod[offset]) 
+                            
+                        producer_outputs[producer_partition_name] = [args_from_one_mod[offset] for offset in producer_output_offsets]
+                        
+                    cur_DAG_node_input = DAG[cur_DAG_node_name]['input']
+                    
+                    def get_input_len(DAG_node_input):
+                        res = 0
+                        for offsets in DAG_node_input.values():
+                            res += len(offsets)
+                        return res
+                    
+                    input_len = get_input_len(cur_DAG_node_input)
+                    flatten_args = [None] * input_len
+                    for producer_partition_name, args_input_offsets in cur_DAG_node_input.items():
+                        for i, args_input_offset in enumerate(args_input_offsets):
+                            flatten_args[args_input_offset] = producer_outputs[producer_partition_name][i]
 
                 args_or_kwargs = flatten_args
         return args_or_kwargs
@@ -478,8 +504,6 @@ class WorkerBase(ABC):
             else:
                 prev_rank = self.partition_name_to_pp_rank(partition_name)
                 self.producer_stage_ids.append(prev_rank)
-                
-        print(f'{self.pp_rank=} | {self.producer_stage_ids=}')
         
         for partition_name in DAG_node['output'].keys():
             if partition_name == 'MODEL_OUTPUT':
@@ -487,6 +511,10 @@ class WorkerBase(ABC):
             else:
                 next_rank = self.partition_name_to_pp_rank(partition_name)
                 self.consumer_stage_ids.append(next_rank)
+        
+        with self.producer_consumer_init_lock:
+            self._producer_consumer_initialized = True
+            self.producer_consumer_init_lock.notify_all()
 
     @abstractmethod
     def _get_work_item_key(self) -> UniqueKey: # TODO maybe not release input WorkItem?
@@ -554,7 +582,6 @@ class WorkerBase(ABC):
 
             if forward_only:
                 with torch.no_grad():
-                    print(f'rank: {self.pp_rank}')
                     consume_result = self.module_partition(*args, **kwargs)
 
                 if is_last_stage and self.criterion:

@@ -148,6 +148,29 @@ def split_module(
                 use_partition.inputs.setdefault(def_node.name)
                 if def_partition_name is not None:
                     use_partition.partitions_dependent_on.setdefault(def_partition_name)
+                    
+    def record_output(
+        def_node: torch.fx.node.Node, use_node: Optional[torch.fx.node.Node]
+    ):  # noqa: B950
+        def_partition_name = getattr(def_node, "_fx_partition", None)
+        use_partition_name = getattr(use_node, "_fx_partition", None)
+        if def_partition_name != use_partition_name:
+            if def_partition_name is not None:
+                def_partition = partitions[def_partition_name]
+                def_partition.outputs.setdefault(def_node.name)
+                if use_partition_name is not None:
+                    def_partition.partition_dependents.setdefault(use_partition_name)
+
+            if use_partition_name is not None:
+                use_partition = partitions[use_partition_name]
+                use_partition.inputs.setdefault(def_node.name)
+                if def_partition_name is not None:
+                    use_partition.partitions_dependent_on.setdefault(def_partition_name)
+            use_partition.outputs.setdefault(def_node.name)
+        else:
+            if use_partition_name is not None:
+                use_partition = partitions[use_partition_name]
+                use_partition.outputs.setdefault(def_node.name)
 
     # split nodes into parititons
     for node in m.graph.nodes:
@@ -156,7 +179,7 @@ def split_module(
         if node.op in ["placeholder"]:
             continue
         if node.op == 'output':
-            torch.fx.graph.map_arg(node.args[0], lambda n: record_cross_partition_use(n, None))
+            torch.fx.graph.map_arg(node.args[0], lambda n: record_output(n, node.prev))
             continue
         partition_name = str(split_callback(node))
 
@@ -285,7 +308,6 @@ def split_module(
     new_gm = torch.fx.graph_module.GraphModule(base_mod_attrs, base_mod_graph)
     
     DAG = get_DAG(new_gm)
-    print(f'{DAG=}')
     
     for _, submodule in new_gm.named_modules():
         if isinstance(submodule, torch.fx.GraphModule):
