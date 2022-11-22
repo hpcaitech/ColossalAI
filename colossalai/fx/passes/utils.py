@@ -192,9 +192,13 @@ def find_def_in_partition(node, partitions, input_partitions=None):
     return None
         
 def find_user_in_partition(node, partitions, output_partitions=None):
+    user_partition_names = []
     for partition in partitions:
         if node in partition.args or node == partition:
-            return partition.name
+            user_partition_names.append(partition.name)
+            
+    if len(user_partition_names) > 0:
+        return user_partition_names
     
     is_output = False
     def find_output(def_node, output_node):
@@ -207,7 +211,7 @@ def find_user_in_partition(node, partitions, output_partitions=None):
         torch.fx.graph.map_arg(output_node.args[0], lambda n: find_output(node, n))
     
     if is_output:
-        return 'MODEL_OUTPUT'
+        return ['MODEL_OUTPUT']
     
     print(f'Not found user in partition {node.name}')
     return None
@@ -226,12 +230,13 @@ def get_partition_depends(partition, partitions, input_partitions=None, output_p
         input[def_partition_name].append(offset)
         
     for offset, user in enumerate(partition.users.keys()):
-        user_partition_name = find_user_in_partition(user, partitions, output_partitions)
-        if user_partition_name is None:
+        user_partition_names = find_user_in_partition(user, partitions, output_partitions)
+        if user_partition_names is None:
             continue
-        if user_partition_name not in output:
-            output[user_partition_name] = []
-        output[user_partition_name].append(offset)
+        for user_partition_name in user_partition_names:
+            if user_partition_name not in output:
+                output[user_partition_name] = []
+            output[user_partition_name].append(offset)
     
     return input, output
 

@@ -41,7 +41,7 @@ class UniqueKey:
         return f'Key(microbatch_id={self.microbatch_id}, phase={self.phase})'
 
 class WorkItem:
-    __slots__ = ('stage_id', 'phase', 'args', 'kwargs', 'output', 'refcount', 'num_user', 'microbatch_id', 'batch_id',
+    __slots__ = ('stage_id', 'phase', 'args', 'kwargs', 'output', 'refcount', 'microbatch_id', 'batch_id',
                  'num_microbatches', 'forward_only')
 
     stage_id: int
@@ -51,7 +51,6 @@ class WorkItem:
     output: Future
     microbatch_id: int
     refcount: int
-    num_user: int
     batch_id: int
     num_microbatches: int
     forward_only: bool
@@ -63,7 +62,6 @@ class WorkItem:
                  kwargs,
                  output,
                  microbatch_id,
-                 num_user,
                  batch_id,
                  num_microbatches,
                  forward_only,
@@ -129,6 +127,7 @@ class WorkerBase(ABC):
         # topology info
         self.producer_stage_ids: List[int] = None
         self.consumer_stage_ids: List[int] = None
+        self.input_consumer_stage_ids: List[int] = None
 
         # module partitions
         self.partition_fn = partition_fn
@@ -193,7 +192,7 @@ class WorkerBase(ABC):
         # construction of partition is executed after the registion of pp_rank_to_worker_rref
         self._initialize_partition()
 
-    def get_output_by_key(self, key: UniqueKey, offset=None) -> Any:
+    def get_output_by_key(self, key: UniqueKey) -> Any:
         with self.output_list_condition_lock:
             self.output_list_condition_lock.wait_for(lambda: key in self.output_list)
             output_work_item = self.output_list[key]
@@ -201,13 +200,20 @@ class WorkerBase(ABC):
         output = output_work_item.output
         if isinstance(output, Future):
             output = output.wait()
+            
+        # if offsets is not None:
+        #     output = tuple([output[i] for i in offsets])
 
         output_work_item.refcount += 1
 
         # all consumers have been satisfied, the work_item can be released
-        with self.output_list_condition_lock:
-            if output_work_item.refcount >= len(self.consumer_stage_ids):
-                self.output_list.pop(key)
+        # with self.output_list_condition_lock:
+        #     num_user = len(self.consumer_stage_ids)
+        #     if key.phase == Phase.INPUT:
+        #         num_user = len(self.input_consumer_stage_ids)
+        #     if output_work_item.refcount >= num_user:
+        #         self.output_list.pop(key)
+
         return output
 
     def get_parameters(self) -> List[torch.Tensor]:
@@ -233,7 +239,7 @@ class WorkerBase(ABC):
 
     def _make_args_kwargs(self, microbatch):
         if isinstance(microbatch, dict):
-            return microbatch.values()
+            return list(microbatch.values())
         elif isinstance(microbatch, torch.Tensor):
             return [microbatch]
         elif isinstance(microbatch, (tuple, list)):
@@ -254,7 +260,6 @@ class WorkerBase(ABC):
     def set_input(self, microbatch_id: int, microbatch: Tuple[Any], forward_only: bool):
         assert self.consumer_stage_ids is not None
         key = UniqueKey(microbatch_id, Phase.FORWARD)
-        output = self._get_future_by_device()
 
         # make args and kwargs
         arg_lst = self._make_args_kwargs(microbatch)
@@ -262,33 +267,18 @@ class WorkerBase(ABC):
         # first stage assign correct input into other stages
         DAG = self.get_DAG()
         DAG_node = DAG['input_partition']
-        recv_ranks = []
         self_input_offsets = []
         recv_input_key = UniqueKey(microbatch_id, Phase.INPUT)
         # notify rank which should receive extra input
         offset = 0
-        for _, details in DAG_node.items():
-            for partition_name, _ in details['output']:
+        for details in DAG_node.values():
+            for partition_name in details['output'].keys():
                 recv_rank = self.partition_name_to_pp_rank(partition_name)
                 if recv_rank == self.pp_rank:
                     self_input_offsets.append(offset)
-                elif recv_rank not in recv_ranks:
-                    recv_ranks.append(recv_rank)
+                elif recv_rank not in self.input_consumer_stage_ids:
+                    self.input_consumer_stage_ids.append(recv_rank)
             offset += 1
-            
-        for recv_rank in recv_ranks:
-            recv_worker_rref = self.pp_rank_to_worker_rref[recv_rank]
-            recv_worker_rref.rpc_async().get_output_by_key(recv_input_key)
-        
-        # put input tensor which other nodes need into output_list
-        num_user = len(recv_ranks)
-        work_item_remote = WorkItem(self.pp_rank, Phase.INPUT, [], {}, output, microbatch_id, num_user, None,
-                             self.num_microbatches, forward_only)
-        work_item_remote.output.set_default(arg_lst)
-        
-        with self.output_list_condition_lock:
-            self.output_list[recv_input_key] = work_item_remote
-            self.output_list_condition_lock.notify_all()
 
         # set input for self rank
         output = self._get_future_by_device()
@@ -300,6 +290,14 @@ class WorkerBase(ABC):
         with self.work_list_condition_lock:
             self.work_list[key] = work_item
             self.work_list_condition_lock.notify_all()
+            
+        # put input tensor which other nodes need into output_list
+        work_item_remote = WorkItem(self.pp_rank, Phase.INPUT, [], {}, arg_lst, microbatch_id, None,
+                             self.num_microbatches, forward_only)
+        
+        with self.output_list_condition_lock:
+            self.output_list[recv_input_key] = work_item_remote
+            self.output_list_condition_lock.notify_all()
 
     # just for last pp_rank
     def set_labels(self, microbatch_id: int, microlabels: Any):
@@ -328,17 +326,37 @@ class WorkerBase(ABC):
         """
         assert self.producer_stage_ids is not None
         producer_num = len(self.producer_stage_ids)
+        
+        # TODO get by offset
+        if self.need_model_input():
+            producer_num += 1 # extra one(the last one) for input_tensor
+            
         assert producer_num > 0, "only stage that has producers can subscribe producers"
 
         stage_id = self.pp_rank
         subscribe_forward_futures: List[Future] = [None] * producer_num
         output = self._get_future_by_device()
 
-        for i in range(producer_num):
-            producer_stage_id = self.producer_stage_ids[i]
-            producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
+        # TODO get by offset
+        if self.need_model_input():
+            producer_stage_id = 0
+            producer_output_key = UniqueKey(microbatch_id, Phase.INPUT)
             producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
-            subscribe_forward_futures[i] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
+            subscribe_forward_futures[0] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
+            
+            for i in range(0, producer_num-1):
+                producer_stage_id = self.producer_stage_ids[i]
+                producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
+                producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
+                subscribe_forward_futures[i+1] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
+            
+        else:
+            for i in range(producer_num):
+                producer_stage_id = self.producer_stage_ids[i]
+                producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
+                producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
+                #producer_partition_name = self.pp_rank_to_partition_name[producer_stage_id]
+                subscribe_forward_futures[i] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
 
         work_item_from_producer = WorkItem(stage_id, Phase.FORWARD, subscribe_forward_futures, {}, output,
                                            microbatch_id, None, self.num_microbatches, forward_only)
@@ -388,6 +406,51 @@ class WorkerBase(ABC):
         prefix = 'submod_'
         pp_rank = int(partition_name.split(prefix)[-1])
         return pp_rank
+    
+    def _get_real_args_kwargs(self, args_or_kwargs):
+        args_or_kwargs = pytree_map(args_or_kwargs, fn=lambda x: x.wait(), process_types=Future)
+        # TODO : combine producer and consumer
+        # by default, merge all args in the output args or kwargs
+        if args_or_kwargs is not None:
+            if isinstance(args_or_kwargs, dict):
+                pass
+            else:
+                flatten_args = []     
+                if self.is_first_stage():
+                    pytree_map(args_or_kwargs, fn=lambda x: flatten_args.append(x), map_all=True)
+                # TODO get by offset
+                else:
+                    DAG = self.get_DAG()
+                    cur_DAG_node_name = self.pp_rank_to_partition_name(self.pp_rank)
+                    #cur_DAG_node = DAG[self.pp_rank_to_partition_name(self.pp_rank)]
+                    print(f'{len(args_or_kwargs)=}')
+                    for i, args_from_one_mod in enumerate(args_or_kwargs):
+                        producer_output_offsets = []
+                        if self.need_model_input():
+                            print(f'need_model_input')
+                            if i == 0:
+                                producer_DAG_node = DAG['input_partition']
+                                offset = 0
+                                for arg_info in producer_DAG_node.values():
+                                    if cur_DAG_node_name in arg_info['output']:
+                                        producer_output_offsets.append(offset)
+                                    offset += 1
+                                print(f'input_tensor: {producer_output_offsets}')
+                            else:
+                                producer_rank = self.producer_stage_ids[i-1]
+                                producer_DAG_node = DAG[self.pp_rank_to_partition_name(producer_rank)]
+                                producer_output_offsets = producer_DAG_node['output'][cur_DAG_node_name]
+                                print(f'prev rank{producer_rank}: {producer_output_offsets}')
+                            
+                        else:
+                            producer_rank = self.producer_stage_ids[i]
+                            producer_DAG_node = DAG[self.pp_rank_to_partition_name(producer_rank)]
+                            producer_output_offsets = producer_DAG_node['output'][cur_DAG_node_name]
+                        for offset in producer_output_offsets:
+                            flatten_args.append(args_from_one_mod[offset]) 
+
+                args_or_kwargs = flatten_args
+        return args_or_kwargs
 
     def _get_producer_consumer(self) -> None:
         rank = self.pp_rank
@@ -397,6 +460,7 @@ class WorkerBase(ABC):
         # should be aranged in order, the order of the input of current forward
         self.producer_stage_ids = []
         self.consumer_stage_ids = []
+        self.input_consumer_stage_ids = []
 
         # # Just for demo
         # prev_rank = rank - 1
@@ -414,6 +478,8 @@ class WorkerBase(ABC):
             else:
                 prev_rank = self.partition_name_to_pp_rank(partition_name)
                 self.producer_stage_ids.append(prev_rank)
+                
+        print(f'{self.pp_rank=} | {self.producer_stage_ids=}')
         
         for partition_name in DAG_node['output'].keys():
             if partition_name == 'MODEL_OUTPUT':
@@ -423,7 +489,7 @@ class WorkerBase(ABC):
                 self.consumer_stage_ids.append(next_rank)
 
     @abstractmethod
-    def _get_work_item_key(self) -> UniqueKey:
+    def _get_work_item_key(self) -> UniqueKey: # TODO maybe not release input WorkItem?
         """
             this method control the order of the microbatch to consume
         """
@@ -433,6 +499,9 @@ class WorkerBase(ABC):
 
     def is_last_stage(self):
         return self.pp_rank == self.actual_stage_num - 1
+    
+    def need_model_input(self):
+        return not self.is_first_stage() and self._is_input
 
     def _default_data_process_func(self, args_kwargs):
         if self.is_first_stage():
@@ -470,11 +539,11 @@ class WorkerBase(ABC):
 
             # parse and integrate args and kwargs
             if is_first_stage:
-                args = get_real_args_kwargs(args)
-                kwargs = get_real_args_kwargs(kwargs)
+                args = self._get_real_args_kwargs(args)
+                kwargs = self._get_real_args_kwargs(kwargs)
                 args_kwargs = (args, kwargs)
             else:
-                args_kwargs = get_real_args_kwargs(args)
+                args_kwargs = self._get_real_args_kwargs(args)
 
             args, kwargs = data_process_func(args_kwargs)
 
@@ -485,6 +554,7 @@ class WorkerBase(ABC):
 
             if forward_only:
                 with torch.no_grad():
+                    print(f'rank: {self.pp_rank}')
                     consume_result = self.module_partition(*args, **kwargs)
 
                 if is_last_stage and self.criterion:
@@ -566,7 +636,7 @@ class WorkerBase(ABC):
 
             # overlap recompute and future.wait
             if not is_last_stage:
-                grad_tensors = get_real_args_kwargs(args)
+                grad_tensors = self._get_real_args_kwargs(args)
             else:
                 grad_tensors = None
 
