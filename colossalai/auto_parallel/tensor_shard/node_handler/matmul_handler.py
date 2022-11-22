@@ -363,7 +363,8 @@ class MatMulHandler(NodeHandler):
         elif self.matmul_type == MatMulType.MV:
             generators.append(MatVecStrategyGenerator(op_data_mapping, self.device_mesh))
         elif self.matmul_type == MatMulType.MM:
-            generators.append(LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh))
+            generators.append(
+                LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type='linear'))
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:

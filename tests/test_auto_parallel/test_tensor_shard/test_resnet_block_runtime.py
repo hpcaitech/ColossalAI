@@ -138,7 +138,7 @@ def check_apply_bottleneck(rank, world_size, port):
     graph = tracer.trace(root=model, meta_args=input_sample)
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
-    solver_options = SolverOptions(fast=True)
+    solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 
@@ -162,7 +162,7 @@ def check_apply_bottleneck(rank, world_size, port):
     output = gm(input, sharding_spec_dict, origin_spec_dict, comm_actions_dict)
 
     assert output.shape == origin_output.shape
-    assert_close(output, origin_output)
+    assert_close(output, origin_output, rtol=1e-03, atol=1e-05)
     print("*******************backward starting*******************")
     cuda_rng_state = torch.cuda.get_rng_state()
     output.sum().backward()

@@ -81,6 +81,8 @@ def _shape_consistency_apply(gm: torch.fx.GraphModule):
             continue
 
         for user_node_index, user_node in enumerate(node.strategies_vector.successor_nodes):
+            if node.sharding_spec.sharding_sequence_difference(node.target_sharding_specs[user_node_index]) == 0:
+                continue
             with mod_graph.inserting_before(user_node):
                 shape_consistency_node = mod_graph.create_node('call_function',
                                                                runtime_apply,
