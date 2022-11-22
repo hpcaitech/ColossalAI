@@ -89,8 +89,8 @@ def _mix_gather(tensor, comm_spec):
     ShardingSpec => gather_dim, logical_process_axes
     S0S1 => [b, f], (1, 0)
     S1S0 => [b, f], (0, 1)
-    S01R => [f], (0, 0)
-    RS01 => [b], (0, 0)
+    S01R => [f], (1, 1)
+    RS01 => [b], (1, 1)
     Example:
     mesh_shape = (2,4)
             # [[0, 1, 2, 3],
@@ -117,11 +117,11 @@ def _mix_gather(tensor, comm_spec):
     tmp_tensor_list[1] = torch.cat(((1,0),(1,1)), dim=b)
     tmp_tensor_list[2] = torch.cat(((2,0),(2,1)), dim=b)
     tmp_tensor_list[3] = torch.cat(((3,0),(3,1)), dim=b)
-    S01R:
+    S10R:
     leading_group_dim = 0
     process_group = "[0, 4, 1, 5, 2, 6, 3, 7]"
     tensor_list = [(0,0),(1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0)]
-    S10R:
+    S01R:
     leading_group_dim = 1
     process_group = "[0, 1, 2, 3, 4, 5, 6, 7]"
     tensor_list = [(0,0),(1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0)]
