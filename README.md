@@ -23,6 +23,14 @@
 
 </div>
 
+## Latest News
+
+* [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://medium.com/@yangyou_berkeley/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper-85e970fe207b)
+* [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://medium.com/@yangyou_berkeley/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding-10-000-4c8f0a389cd)
+* [2022/10] [Embedding Training With 1% GPU Memory and 100 Times Less Budget for Super-Large Recommendation Model](https://medium.com/@yangyou_berkeley/embedding-training-with-1-gpu-memory-and-10-times-less-budget-an-open-source-solution-for-6b4c3aba07a8)
+* [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://medium.com/@hpcaitech/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the-892468cc2b02)
+* [2022/07] [Colossal-AI Seamlessly Accelerates Large Models at Low Costs with Hugging Face](https://medium.com/@yangyou_berkeley/colossal-ai-seamlessly-accelerates-large-models-at-low-costs-with-hugging-face-4d1a887e500d)
+
 ## Table of Contents
 <ul>
  <li><a href="#Why-Colossal-AI">Why Colossal-AI</a> </li>
@@ -56,6 +64,7 @@
    <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a> 
    <ul>
+     <li><a href="#AIGC">AIGC: Acceleration of Stable Diffusion</a></li>
      <li><a href="#Biomedicine">Biomedicine: Acceleration of AlphaFold Protein Structure</a></li>
    </ul>
  </li>
@@ -69,11 +78,6 @@
  <li><a href="#Use-Docker">Use Docker</a></li>
  <li><a href="#Community">Community</a></li>
  <li><a href="#contributing">Contributing</a></li>
- <li><a href="#Quick-View">Quick View</a></li>
-   <ul>
-     <li><a href="#Start-Distributed-Training-in-Lines">Start Distributed Training in Lines</a></li>
-     <li><a href="#Write-a-Simple-2D-Parallel-Model">Write a Simple 2D Parallel Model</a></li>
-   </ul>
  <li><a href="#Cite-Us">Cite Us</a></li>
 </ul>
 
@@ -202,6 +206,20 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 ## Colossal-AI in the Real World
 
+### AIGC
+Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion](https://github.com/CompVis/stable-diffusion)
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+</p>
+
+- [Stable Diffusion with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 6.5x faster training and pretraining cost saving, the hardware cost of fine-tuning can be almost 7X cheaper (from RTX3090/4090 to RTX3050/2070)
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+</p>
+
+<p align="right">(<a href="#top">back to top</a>)</p>
+
 ### Biomedicine
 Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 
@@ -296,32 +314,6 @@ Thanks so much to all of our amazing contributors!
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
-## Quick View
-
-### Start Distributed Training in Lines
-
-```python
-parallel = dict(
-    pipeline=2,
-    tensor=dict(mode='2.5d', depth = 1, size=4)
-)
-```
-
-### Start Heterogeneous Training in Lines
-
-```python
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=TensorShardStrategy(),
-        reuse_fp16_shard=True
-    ),
-    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
-)
-
-```
-
-<p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Cite Us
 

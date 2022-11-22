@@ -1,6 +1,6 @@
 name: Synchronize Submodule
 
-on: 
+on:
   workflow_dispatch:
   schedule:
     - cron: "0 0 * * *"
@@ -27,11 +27,11 @@ jobs:
 
       - name: Commit update
         run: |
-          git config --global user.name 'github-actions' 
-          git config --global user.email 'github-actions@github.com' 
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git commit -am "Automated submodule synchronization"
-      
+
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
         with:
@@ -43,4 +43,3 @@ jobs:
           assignees: ${{ github.actor }}
           delete-branch: true
           branch: create-pull-request/patch-sync-submodule
-          

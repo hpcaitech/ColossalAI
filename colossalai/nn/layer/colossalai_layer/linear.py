@@ -1,9 +1,10 @@
-import math
 import inspect
+import math
 from typing import Callable
 
-from colossalai.utils import get_current_device
 from torch import dtype, nn
+
+from colossalai.utils import get_current_device
 
 from ... import init as init
 from ..parallel_1d import *
@@ -14,7 +15,7 @@ from ..utils import get_tensor_parallel_mode
 from ..vanilla import *
 from ._utils import ColossalaiModule
 
-_parallel_linear = {'1d': Linear1D, '2d': Linear2D, '2.5d': Linear2p5D, '3d': Linear3D}
+_parallel_linear = {None: VanillaLinear, '1d': Linear1D, '2d': Linear2D, '2.5d': Linear2p5D, '3d': Linear3D}
 
 _parallel_classifier = {
     None: VanillaClassifier,
@@ -73,26 +74,19 @@ class Linear(ColossalaiModule):
                  bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
                  **kwargs) -> None:
         tensor_parallel = get_tensor_parallel_mode()
-        if tensor_parallel is None:
-            layer = nn.Linear(in_features, out_features, bias=bias).to(dtype).to(get_current_device())
-            weight_initializer(layer.weight, fan_in=in_features, fan_out=out_features)
-            if layer.bias is not None:
-                bias_initializer(layer.bias, fan_in=in_features)
-        else:
-            linear_cls = _parallel_linear[tensor_parallel]
-            gather_output = kwargs.pop('gather_output', None)
-            if 'gather_output' in inspect.signature(
-                    linear_cls.__init__).parameters.keys():    # gather_out arg is available
-                kwargs['gather_output'] = gather_output
-            layer = linear_cls(
-                in_features,
-                out_features,
-                bias=bias,
-                dtype=dtype,
-                weight_initializer=weight_initializer,
-                bias_initializer=bias_initializer,
-                **kwargs,
-            )
+        linear_cls = _parallel_linear[tensor_parallel]
+        gather_output = kwargs.pop('gather_output', None)
+        if 'gather_output' in inspect.signature(linear_cls.__init__).parameters.keys():    # gather_out arg is available
+            kwargs['gather_output'] = gather_output
+        layer = linear_cls(
+            in_features,
+            out_features,
+            bias=bias,
+            dtype=dtype,
+            weight_initializer=weight_initializer,
+            bias_initializer=bias_initializer,
+            **kwargs,
+        )
         super().__init__(layer)
 
 

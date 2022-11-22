@@ -1,0 +1,21 @@
+albumentations==0.4.3
+diffusers
+pudb==2019.2
+datasets
+invisible-watermark
+imageio==2.9.0
+imageio-ffmpeg==0.4.2
+omegaconf==2.1.1
+multiprocess
+test-tube>=0.7.5
+streamlit>=0.73.1
+einops==0.3.0
+torch-fidelity==0.3.0
+transformers==4.19.2
+torchmetrics==0.6.0
+kornia==0.6
+opencv-python==4.6.0.66
+prefetch_generator
+-e git+https://github.com/CompVis/taming-transformers.git@master#egg=taming-transformers
+-e git+https://github.com/openai/CLIP.git@main#egg=clip
+-e .

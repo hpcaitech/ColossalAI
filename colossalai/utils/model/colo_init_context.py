@@ -1,10 +1,13 @@
-from .utils import InsertPostInitMethodToModuleSubClasses
+from typing import Dict, Iterator, Optional, Tuple, Union
+
 import torch
-from colossalai.tensor import ColoTensor, ColoParameter
-from colossalai.nn.parallel.layers import register_colo_module, \
-    ColoLinear, ColoEmbedding
 from torch import nn
-from typing import Iterator, Tuple, Union
+
+from colossalai.nn.parallel.layers import ColoEmbedding, ColoLinear, register_colo_module
+from colossalai.tensor import ColoParameter, ColoTensor, ProcessGroup, ShardSpec
+
+from .utils import InsertPostInitMethodToModuleSubClasses
+
 # find named_params includes replica
 
 
@@ -34,20 +37,24 @@ def ColoModulize(module):
 class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
     def __init__(self,
-                 lazy_memory_allocate: bool = False,
                  device: torch.device = torch.device('cpu'),
-                 dtype: torch.dtype = torch.float):
+                 dtype: torch.dtype = torch.float,
+                 default_pg: Optional[ProcessGroup] = None,
+                 default_dist_spec=None):
         """
         Args:
-            lazy_memory_allocate (bool, optional): whether to allocate memory for the parameter tensors. Defaults to False.
-            device (torch.device, optional): the device parameters initialized are resident on. Defaults to torch.device('cpu').
+            device (torch.device): the device where parameters initialized are resident. Defaults to torch.device('cpu').
+            dtype (torch.dtype): the dtype of parameters initialized. Defults to torch.float.
+            default_pg (ProcessGroup): the default process group for all initialized parameters.
+            default_dist_spec: the default distributed specifications.
         """
         super().__init__()
-        self._lazy_memory_allocate = lazy_memory_allocate
         self._device = device
         self._dtype = dtype
 
         self._register_colo_modules()
+        self._default_pg = default_pg
+        self._default_dist_spec = default_dist_spec
 
     def _register_colo_modules(self):
         register_colo_module(torch.nn.Linear, ColoLinear())
@@ -87,13 +94,26 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
             if param in replaced_tensors:
                 colo_param = replaced_tensors[param]
             else:
-                save_torch_payload = True if not self._lazy_memory_allocate else False
                 # detaching tensor is necessary for optimizers.
                 requires_grad = param.requires_grad
-                # TODO(jiaruifang) we initialize a Default PG memory
+
+                # param is the global tensor.
                 colo_param = ColoParameter(param.to(device=self._device, dtype=self._dtype),
                                            requires_grad=requires_grad)
-                # add mapping record
+
+                # if default_shard_plan exists, shard the param during initialization.
+                # This can reduce the model size after initialization.
+                # NOTE() embedding usually can not be correctly sharded. So I use except to handle
+                # the param that can not be sharded by the default plan
+                if self._default_pg is not None:
+                    colo_param.set_process_group(self._default_pg)
+
+                if self._default_dist_spec is not None:
+                    try:
+                        colo_param.set_dist_spec(self._default_dist_spec)
+                    except:
+                        pass
+
                 replaced_tensors[param] = colo_param
             delattr(submodule, param_name)
             setattr(submodule, param_name, colo_param)

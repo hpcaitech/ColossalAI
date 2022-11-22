@@ -60,7 +60,7 @@ def check_apply(rank, world_size, port):
     graph = tracer.trace(root=model, meta_args=input_sample)
     gm = GraphModule(model, graph, model.__class__.__name__)
     gm.recompile()
-    solver_options = SolverOptions(fast=True)
+    solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
 

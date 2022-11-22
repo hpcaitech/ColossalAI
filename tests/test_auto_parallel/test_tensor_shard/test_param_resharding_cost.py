@@ -79,7 +79,7 @@ def test_linear_module():
     gm.recompile()
     node_list = list(graph.nodes)
 
-    solver_options = SolverOptions(fast=True)
+    solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
     linear_node = node_list[3]
@@ -117,7 +117,7 @@ def test_conv_module():
     gm.recompile()
     node_list = list(graph.nodes)
     conv_node = node_list[3]
-    solver_options = SolverOptions(fast=True)
+    solver_options = SolverOptions()
     strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
     strategies_constructor.build_strategies_and_cost()
     _param_resharding_cost_assertion(conv_node)

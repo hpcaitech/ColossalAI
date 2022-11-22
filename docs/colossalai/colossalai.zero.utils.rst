@@ -9,4 +9,4 @@ colossalai.zero.utils
    :maxdepth: 2
 
    colossalai.zero.utils.zero_hook
-   colossalai.zero.utils.zero_hook_v2
+   colossalai.zero.utils.gemini_hook

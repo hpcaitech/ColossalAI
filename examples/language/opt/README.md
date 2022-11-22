@@ -22,6 +22,9 @@ The following example of [Colossal-AI](https://github.com/hpcaitech/ColossalAI) 
 We are using the pre-training weights of the OPT model provided by Hugging Face Hub on the raw WikiText-2 (no tokens were replaced before
 the tokenization). This training script is adapted from the [HuggingFace Language Modelling examples](https://github.com/huggingface/transformers/tree/main/examples/pytorch/language-modeling).
 
+## Our Modifications
+We adapt the OPT training code to ColossalAI by leveraging Gemini and ZeRO DDP.
+
 ## Quick Start
 You can launch training by using the following bash script
 

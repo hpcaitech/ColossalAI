@@ -1,7 +1,10 @@
-export DATA=/data/scratch/gpt_data/small-gpt-dataset.json
+# distplan in ["colossalai", "zero", "ddp"]
+export DISTPAN="colossalai"
 
-export NODE_RANK=${NODE_RANK:-0}
-export MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
-export MASTER_PORT=${MASTER_PORT:-"12345"}
+# The following options only valid when DISTPAN="colossalai"
+export TPDEGREE=2
+export GPUNUM=4
+export PLACEMENT='cpu'
+export USE_SHARD_INIT=False
 
-env OMP_NUM_THREADS=16 torchrun --standalone --nproc_per_node=2 train_gpt.py --config=gpt2_configs/gpt2_zero3.py --from_torch 2>&1 | tee logs/log
+env OMP_NUM_THREADS=16 torchrun --standalone --nproc_per_node=${GPUNUM} train_gpt_demo.py --tp_degree=${TPDEGREE} --placement ${PLACEMENT} --shardinit ${USE_SHARD_INIT} --distplan ${DISTPAN} 2>&1 | tee run.log

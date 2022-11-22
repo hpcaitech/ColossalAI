@@ -1,12 +1,11 @@
+import json
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from time import sleep, time
-import json
 
 import torch
 
-from colossalai.utils import colo_device_memory_used
-from colossalai.utils import get_current_device
+from colossalai.utils import colo_device_memory_used, get_current_device
 
 
 class MemoryMonitor:
@@ -134,7 +133,13 @@ class SyncCudaMemoryMonitor(MemoryMonitor):
         torch.cuda.synchronize()
         torch.cuda.reset_peak_memory_stats()
 
-    def finish(self):
+    def finish(self) -> int:
+        """
+        return max gpu memory used since latest `start()`.
+
+        Returns:
+            int: max GPU memory
+        """
         torch.cuda.synchronize()
         self.time_stamps.append(time())
         max_usage = torch.cuda.max_memory_allocated()
