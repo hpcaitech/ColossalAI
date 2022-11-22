@@ -19,7 +19,6 @@ def register_elementwise_op(op):
         """
         if 'inplace' in kwargs:
             # TODO(jiaruifang) inplace will cause bugs
-            print(op, 'input_tensor ', type(input_tensor))
             input_tensor = input_tensor.clone()
             return op(input_tensor, *args, **kwargs)
         else:
