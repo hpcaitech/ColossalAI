@@ -128,3 +128,13 @@ class MetaTensor(torch.Tensor):
         if device is not None:
             result = MetaTensor(result, fake_device=device)
         return result
+
+    def cpu(self, *args, **kwargs):
+        if self.device.type == 'cpu':
+            return self.to(*args, **kwargs)
+        return self.to(*args, device='cpu', **kwargs)
+
+    def cuda(self, *args, **kwargs):
+        if self.device.type == 'cuda':
+            return self.to(*args, **kwargs)
+        return self.to(*args, device='cuda', **kwargs)
