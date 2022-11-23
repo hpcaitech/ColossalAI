@@ -34,6 +34,11 @@ def register_elementwise_op(op):
                                                                         dist_attr=input_tensor.dist_spec))
 
 
+@colo_op_impl(Tensor.add_)
+def colo_inline_add(input_tensor: GeneralTensor, *args, **kwargs):
+    return torch.add(input_tensor, *args, **kwargs)
+
+
 # Tensor op
 register_elementwise_op(Tensor.abs)
 register_elementwise_op(Tensor.absolute)
