@@ -1,1 +1,1 @@
-from . import repeated_computed_layer, resnet, nested_model, bert, no_leaf_module, simple_net, gpt
+from . import bert, gpt, inline_op_model, nested_model, no_leaf_module, repeated_computed_layer, resnet, simple_net
