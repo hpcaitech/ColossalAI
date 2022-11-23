@@ -1,9 +1,18 @@
+from contextlib import contextmanager
+from enum import Enum
+from functools import partial
 from typing import List
 
 import torch
 
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.tensor.param_op_hook import ParamOpHook
+
+
+class TrainingPhase(Enum):
+    FORWARD = 0
+    BACKWARD = 1
+
 
 class ParamMemHook(ParamOpHook):
 
@@ -34,7 +43,6 @@ class ParamMemHook(ParamOpHook):
         if len(self._model_data_list):
             self._non_model_data_list.append(cuda_volume - self._model_data_list[-1])
         comm_volume = self._move_params_to_dev(params, 'cuda')
-        # print("comm_volume", comm_volume/1024**2)
         self._model_data_list.append(comm_volume)
         self.mem_monitor.start()
 
@@ -52,3 +60,15 @@ class ParamMemHook(ParamOpHook):
 
     def post_backward(self, params: List[torch.Tensor]) -> None:
         self.post_op(params)
+
+    @contextmanager
+    def switch_training_phase(self, training_phase: TrainingPhase = TrainingPhase.BACKWARD):
+        old_training_phase = self._training_phase
+        try:
+            self._training_phase = training_phase
+            yield
+        finally:
+            self._training_phase = old_training_phase
+
+    switch_to_backward = switch_training_phase
+    switch_to_forward = partial(switch_to_backward, training_phase=TrainingPhase.FORWARD)
