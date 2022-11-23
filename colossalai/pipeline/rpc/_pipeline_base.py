@@ -287,6 +287,7 @@ class WorkerBase(ABC):
         self_arg_lst = []
         for off in self_input_offsets:
             self_arg_lst.append(arg_lst[off])
+            
         work_item = WorkItem(self.pp_rank, Phase.FORWARD, self_arg_lst, {}, output, microbatch_id, None,
                              self.num_microbatches, forward_only)
         with self.work_list_condition_lock:
@@ -453,13 +454,17 @@ class WorkerBase(ABC):
                                 producer_partition_name = self.pp_rank_to_partition_name(producer_rank)
                                 producer_DAG_node = DAG[producer_partition_name]
                                 producer_output_offsets = producer_DAG_node['output'][cur_DAG_node_name]
+                                
                         else:
                             producer_rank = self.producer_stage_ids[i]
                             producer_partition_name = self.pp_rank_to_partition_name(producer_rank)
                             producer_DAG_node = DAG[producer_partition_name]
                             producer_output_offsets = producer_DAG_node['output'][cur_DAG_node_name]
-                            
-                        producer_outputs[producer_partition_name] = [args_from_one_mod[offset] for offset in producer_output_offsets]
+                        
+                        if producer_partition_name != 'MODEL_INPUT' and DAG[producer_partition_name]['output_len'] == 1:
+                            producer_outputs[producer_partition_name] = [args_from_one_mod]
+                        else:
+                            producer_outputs[producer_partition_name] = [args_from_one_mod[offset] for offset in producer_output_offsets]
                         
                     cur_DAG_node_input = DAG[cur_DAG_node_name]['input']
                     
@@ -582,7 +587,11 @@ class WorkerBase(ABC):
 
             if forward_only:
                 with torch.no_grad():
+                    # for i, arg in enumerate(args):
+                    #     print(f'{self.pp_rank=} input| offset: {i} | {type(arg)=}')
                     consume_result = self.module_partition(*args, **kwargs)
+                    # for i, res in enumerate(consume_result):
+                    #     print(f'{self.pp_rank=} output| offset: {i} | {type(res)=} | {type(consume_result)=}')
 
                 if is_last_stage and self.criterion:
                     with self.label_lock:
@@ -746,7 +755,8 @@ class WorkerBase(ABC):
                 self._reset_context()
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
-        self.optimizer: optim.Optimizer = optimizer_class(self.module_partition.parameters(), **kwargs)
+        if len(list(self.module_partition.parameters())) > 0:
+            self.optimizer: optim.Optimizer = optimizer_class(self.module_partition.parameters(), **kwargs)
         self.step_lock = threading.Lock()
         self.step_lock.acquire()
 
@@ -754,8 +764,9 @@ class WorkerBase(ABC):
         self.step_lock.acquire()
 
     def step(self):
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+        if len(list(self.module_partition.parameters())) > 0:
+            self.optimizer.step()
+            self.optimizer.zero_grad()
         self.step_lock.release()
 
 
