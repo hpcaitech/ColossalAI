@@ -12,7 +12,7 @@ def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
             loss = criterion(y, label)
         else:
             loss = model(data, label)
-        loss = loss.half()
+        loss = loss.float()
     model.backward(loss)
 
 def run_param_wrapper_testing():
