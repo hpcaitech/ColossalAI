@@ -63,11 +63,6 @@ class ViewGenerator(FollowingStrategyGenerator):
 
     def generate_strategy(self) -> List[ShardingStrategy]:
         strategy_list = []
-        # For reshape function, to keep the computing correctness we keep the sharding
-        # spec of input is fully replicated. In addition, we will keep the output in
-        # replica status and let the successor node choose the way to resharding the
-        # output node. Therefore, the different strategies of input node with same
-        # output sharding spec will generate same strategy for reshape function.
         for index, strategy in enumerate(self.predecessor_node.strategies_vector):
             dim_partition_dict_mapping = {}
             communication_action_mapping = {}
