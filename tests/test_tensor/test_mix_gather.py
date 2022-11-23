@@ -1,5 +1,6 @@
 from functools import partial
 
+import pytest
 import torch
 import torch.multiprocessing as mp
 
@@ -304,13 +305,13 @@ def check_comm(rank, world_size, port):
     #  [4, 5, 6, 7]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True, need_flatten=True)
 
-    #check_mix_gather_S0S1(device_mesh, rank)
+    check_mix_gather_S0S1(device_mesh, rank)
 
-    #check_two_all_gather_S0S1(device_mesh, rank)
+    check_two_all_gather_S0S1(device_mesh, rank)
 
-    #check_mix_gather_S1S0(device_mesh, rank)
+    check_mix_gather_S1S0(device_mesh, rank)
 
-    #check_two_all_gather_S1S0(device_mesh, rank)
+    check_two_all_gather_S1S0(device_mesh, rank)
 
     check_mix_gather_S01R(device_mesh, rank)
 
@@ -321,6 +322,7 @@ def check_comm(rank, world_size, port):
     check_two_all_gather_RS01(device_mesh, rank)
 
 
+@pytest.mark.skip(reason="Skip because the check functions assume 8 GPUS but CI only have 4 GPUs")
 def test_mix_gather():
     world_size = 8
     run_func = partial(check_comm, world_size=world_size, port=free_port())
