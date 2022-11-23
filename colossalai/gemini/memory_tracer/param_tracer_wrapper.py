@@ -3,15 +3,7 @@ import torch.nn
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.gemini.ophooks import ParamMemHook
-
-def _cast_float(args, dtype: torch.dtype):
-    if isinstance(args, torch.Tensor) and torch.is_floating_point(args):
-        args = args.to(dtype)
-    elif isinstance(args, (list, tuple)):
-        args = type(args)(_cast_float(t, dtype) for t in args)
-    elif isinstance(args, dict):
-        args = {k: _cast_float(v, dtype) for k, v in args.items()}
-    return args
+from colossalai.nn.parallel.data_parallel import _cast_float
 
 
 class ParamWrapper(torch.nn.Module):
@@ -51,7 +43,7 @@ class ParamWrapper(torch.nn.Module):
         last_model_data = self.param_op_hook._model_data_list[-1]
         self.param_op_hook._non_model_data_list.append(cuda_volume - last_model_data)
 
-    def _cast_buffers(self):
+    def _cast_buffers_to_half_cuda(self):
         for buffer in self.module.buffers():
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
