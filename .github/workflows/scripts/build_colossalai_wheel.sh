@@ -18,7 +18,7 @@ if [ $1 == "pip" ]
 then
     wget -nc -q -O ./pip_wheels/$filename $url
     pip install ./pip_wheels/$filename
-    
+
 elif [ $1 == 'conda' ]
 then
     conda install pytorch==$torch_version cudatoolkit=$cuda_version $flags
@@ -34,8 +34,9 @@ fi
 
 python setup.py bdist_wheel
 mv ./dist/* ./all_dist
+# must remove build to enable compilation for
+# cuda extension in the next build
+rm -rf ./build
 python setup.py clean
 conda deactivate
 conda env remove -n $python_version
-
-
