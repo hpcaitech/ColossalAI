@@ -70,7 +70,7 @@ jobs:
           ln -s /github/home/pip_wheels ./pip_wheels
 
           # set the conda package path
-          echo pkgs_dirs:\n\t- $PWD/conda_pkgs > ~/.condarc
+          echo "pkgs_dirs:\n  - $PWD/conda_pkgs" > ~/.condarc
 
           # set safe directory
           git config --global --add safe.directory /__w/ColossalAI/ColossalAI
