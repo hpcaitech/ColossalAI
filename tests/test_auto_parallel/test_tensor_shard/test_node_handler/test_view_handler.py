@@ -16,7 +16,7 @@ class ViewModel(nn.Module):
 
     def forward(self, input, other):
         conv_node = nn.functional.conv2d(input, other)
-        reshape_node = conv_node.view(16, 4, 32, 32, 4)
+        reshape_node = conv_node.view(32, 4, 32, 32, 4)
         return reshape_node
 
 
@@ -32,7 +32,7 @@ def test_view_handler():
     graph = tracer.trace(model,
                          meta_args={
                              "input": torch.rand(8, 8, 66, 66).to('meta'),
-                             "other": torch.rand(8, 16, 3, 3).to('meta'),
+                             "other": torch.rand(16, 8, 3, 3).to('meta'),
                          })
     gm = ColoGraphModule(model, graph)
     physical_mesh_id = torch.arange(0, 4)
@@ -64,13 +64,13 @@ def test_view_handler():
 
     assert mapping['input'].name == "conv2d"
     assert mapping['input'].data.is_meta
-    assert mapping['input'].data.shape == torch.Size([8, 8, 64, 64])
+    assert mapping['input'].data.shape == torch.Size([8, 16, 64, 64])
     assert mapping['input'].type == OperationDataType.ARG
-    assert mapping['input'].logical_shape == torch.Size([8, 8, 64, 64])
+    assert mapping['input'].logical_shape == torch.Size([8, 16, 64, 64])
 
     assert mapping['output'].name == "view"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([16, 4, 32, 32, 4])
+    assert mapping['output'].data.shape == torch.Size([32, 4, 32, 32, 4])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
     # reshape handler is a following strategy handler, so the number of strategies is equal to the predecessor node.
