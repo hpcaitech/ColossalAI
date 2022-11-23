@@ -5,7 +5,7 @@ from colossalai.gemini.ophooks import ParamMemHook
 from colossalai.nn.parallel.data_parallel import _cast_float
 
 
-class ParamWrapper(torch.nn.Module):
+class ParamWrapper():
 
     def __init__(self, module: torch.nn.Module):
         super().__init__()
@@ -13,6 +13,9 @@ class ParamWrapper(torch.nn.Module):
         self.param_op_hook = ParamMemHook()
 
         self._cast_buffers_to_cuda()
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
 
     def _pre_forward(self):
         self.param_op_hook.mem_monitor.start()
