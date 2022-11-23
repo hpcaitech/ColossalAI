@@ -1,19 +1,23 @@
-from colossalai.fx.tracer import meta_patch
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.fx.tracer.meta_patch.patched_function import python_ops
 import torch
-from torchrec.sparse.jagged_tensor import KeyedTensor, KeyedJaggedTensor
-from torchrec.modules.embedding_modules import EmbeddingBagCollection
-from torchrec.modules.embedding_configs import EmbeddingBagConfig
-from torchrec.models import deepfm, dlrm
-import colossalai.fx as fx
-import pdb
-from torch.fx import GraphModule
+
+from colossalai.fx import symbolic_trace
+
+try:
+    from torchrec.models import dlrm
+    from torchrec.modules.embedding_configs import EmbeddingBagConfig
+    from torchrec.modules.embedding_modules import EmbeddingBagCollection
+    from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, KeyedTensor
+    NOT_TORCHREC = False
+except ImportError:
+    NOT_TORCHREC = True
+
+import pytest
 
 BATCH = 2
 SHAPE = 10
 
 
+@pytest.mark.skipif(NOT_TORCHREC, reason='torchrec is not installed')
 def test_torchrec_dlrm_models():
     MODEL_LIST = [
         dlrm.DLRM,
@@ -46,8 +50,6 @@ def test_torchrec_dlrm_models():
 
     # Sparse Features
     sparse_features = torch.rand((BATCH, len(keys), SHAPE))
-    # Tracer
-    tracer = ColoTracer()
 
     for model_cls in MODEL_LIST:
         # Initializing model
@@ -72,12 +74,9 @@ def test_torchrec_dlrm_models():
         # Setup GraphModule
         if model_cls == dlrm.InteractionV2Arch:
             concrete_args = {"dense_features": dense_features, "sparse_features": sparse_features}
-            graph = tracer.trace(model, concrete_args=concrete_args)
+            gm = symbolic_trace(model, concrete_args=concrete_args)
         else:
-            graph = tracer.trace(model)
-
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+            gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()

@@ -1,11 +1,12 @@
-from filecmp import cmp
-import requests
-from bs4 import BeautifulSoup
 import argparse
 import os
 import subprocess
-from packaging import version
+from filecmp import cmp
 from functools import cmp_to_key
+
+import requests
+from bs4 import BeautifulSoup
+from packaging import version
 
 WHEEL_TEXT_ROOT_URL = 'https://github.com/hpcaitech/public_assets/tree/main/colossalai/torch_build/torch_wheels'
 RAW_TEXT_FILE_PREFIX = 'https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/torch_build/torch_wheels'

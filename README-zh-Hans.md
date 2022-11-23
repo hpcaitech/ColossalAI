@@ -22,6 +22,14 @@
 
 </div>
 
+## 新闻
+
+* [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://medium.com/@yangyou_berkeley/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper-85e970fe207b)
+* [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://medium.com/@yangyou_berkeley/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding-10-000-4c8f0a389cd)
+* [2022/10] [Embedding Training With 1% GPU Memory and 100 Times Less Budget for Super-Large Recommendation Model](https://medium.com/@yangyou_berkeley/embedding-training-with-1-gpu-memory-and-10-times-less-budget-an-open-source-solution-for-6b4c3aba07a8)
+* [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://medium.com/@hpcaitech/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the-892468cc2b02)
+* [2022/07] [Colossal-AI Seamlessly Accelerates Large Models at Low Costs with Hugging Face](https://medium.com/@yangyou_berkeley/colossal-ai-seamlessly-accelerates-large-models-at-low-costs-with-hugging-face-4d1a887e500d)
+
 
 ## 目录
 <ul>
@@ -56,6 +64,7 @@
 <li>
    <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
    <ul>
+     <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
      <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
    </ul>
  </li>
@@ -69,11 +78,6 @@
  <li><a href="#使用-Docker">使用 Docker</a></li>
  <li><a href="#社区">社区</a></li>
  <li><a href="#做出贡献">做出贡献</a></li>
- <li><a href="#快速预览">快速预览</a></li>
-   <ul>
-     <li><a href="#几行代码开启分布式训练">几行代码开启分布式训练</a></li>
-     <li><a href="#构建一个简单的2维并行模型">构建一个简单的2维并行模型</a></li>
-   </ul>
  <li><a href="#引用我们">引用我们</a></li>
 </ul>
 
@@ -199,6 +203,21 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## Colossal-AI 成功案例
+
+### AIGC
+加速AIGC(AI内容生成)模型，如[Stable Diffusion](https://github.com/CompVis/stable-diffusion)
+<p id="diffusion_train" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+</p>
+
+- [Colossal-AI优化Stable Diffusion](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 6.5倍训练加速和预训练成本降低, 微调硬件成本下降约7倍(从RTX3090/4090到RTX3050/2070)
+
+<p id="diffusion_demo" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+</p>
+
+<p align="right">(<a href="#top">返回顶端</a>)</p>
+
 ### 生物医药
 
 加速 [AlphaFold](https://alphafold.ebi.ac.uk/) 蛋白质结构预测
@@ -290,31 +309,6 @@ docker run -ti --gpus all --rm --ipc=host colossalai bash
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
-## 快速预览
-
-### 几行代码开启分布式训练
-
-```python
-parallel = dict(
-    pipeline=2,
-    tensor=dict(mode='2.5d', depth = 1, size=4)
-)
-```
-
-### 几行代码开启异构训练
-
-```python
-zero = dict(
-    model_config=dict(
-        tensor_placement_policy='auto',
-        shard_strategy=TensorShardStrategy(),
-        reuse_fp16_shard=True
-    ),
-    optimizer_config=dict(initial_scale=2**5, gpu_margin_mem_ratio=0.2)
-)
-```
-
-<p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 引用我们
 

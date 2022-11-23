@@ -1,18 +1,17 @@
-from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
-from colossalai.utils.memory import colo_device_memory_used, colo_device_memory_capacity
-from colossalai.utils import get_current_device
-from colossalai.gemini.stateful_tensor import StatefulTensor
-from colossalai.gemini.chunk import ChunkManager
-
-import torch
 import time
 from typing import List
+
+import torch
+
+from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
+from colossalai.gemini.stateful_tensor import StatefulTensor
+from colossalai.utils.memory import colo_device_memory_used
 
 
 class MemStatsCollector:
     """
     A Memory statistic collector.
-    It works in two phases. 
+    It works in two phases.
     Phase 1. Collection Phase: collect memory usage statistics of CPU and GPU.
     The first iteration of DNN training.
     Phase 2. Runtime Phase: use the read-only collected stats
@@ -130,23 +129,3 @@ class MemStatsCollector:
         self._start_flag = False
         self._step_idx = 0
         self._step_total = 0
-
-
-class MemStatsCollectorV2(MemStatsCollector):
-
-    def __init__(self, chunk_manager: ChunkManager) -> None:
-        super().__init__()
-        self._chunk_manager = chunk_manager
-
-    def sample_model_data(self) -> None:
-        """Sampling model data statistics.
-        """
-        if self._start_flag:
-            cuda_mem = self._chunk_manager.total_mem['cuda']
-            cpu_mem = self._chunk_manager.total_mem['cpu']
-            self._model_data_cuda_list.append(cuda_mem)
-            self._model_data_cpu_list.append(cpu_mem)
-
-    @property
-    def cuda_margin_mem(self) -> float:
-        return colo_device_memory_capacity(get_current_device()) - max(self.overall_mem_stats('cuda'))

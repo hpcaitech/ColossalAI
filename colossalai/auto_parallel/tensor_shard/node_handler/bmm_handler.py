@@ -2,8 +2,10 @@ from typing import Dict, List, Union
 
 import torch
 
-from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
-from ..utils import recover_sharding_spec_for_broadcast_shape
+from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
+
+from ..sharding_strategy import CommAction, CommType, OperationData, OperationDataType, ShardingStrategy
+from ..utils import comm_actions_for_oprands, recover_sharding_spec_for_broadcast_shape
 from .node_handler import NodeHandler
 from .registry import operator_registry
 from .strategy import BatchedMatMulStrategyGenerator, StrategyGenerator
@@ -91,7 +93,15 @@ class AddBMMFunctionHandler(NodeHandler):
             bias_physical_shape = bias_op_data.data.shape
             bias_logical_shape = bias_op_data.logical_shape
             bias_sharding_spec = strategy.get_sharding_spec_by_name(bias_op_data.name)
-            bias_sharding_spec = recover_sharding_spec_for_broadcast_shape(bias_sharding_spec, bias_logical_shape,
-                                                                           bias_physical_shape)
+            bias_sharding_spec, removed_dims = recover_sharding_spec_for_broadcast_shape(
+                bias_sharding_spec, bias_logical_shape, bias_physical_shape)
             strategy.sharding_specs[bias_op_data] = bias_sharding_spec
+
+            if len(removed_dims) > 0:
+                comm_action = comm_actions_for_oprands(node=self.node,
+                                                       removed_dims=removed_dims,
+                                                       op_data=bias_op_data,
+                                                       sharding_spec=bias_sharding_spec)
+                strategy.communication_actions[bias_op_data] = comm_action
+
         return strategy

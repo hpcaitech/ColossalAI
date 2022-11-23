@@ -1,11 +1,15 @@
-import diffusers
 import pytest
 import torch
 import transformers
-from torch.fx import GraphModule
-from utils import trace_model_and_compare_output
+from hf_tracer_utils import trace_model_and_compare_output
 
-from colossalai.fx import ColoTracer
+from colossalai.fx import symbolic_trace
+
+try:
+    import diffusers
+    HAS_DIFFUSERS = True
+except ImportError:
+    HAS_DIFFUSERS = False
 
 BATCH_SIZE = 2
 SEQ_LENGTH = 5
@@ -16,6 +20,7 @@ LATENTS_SHAPE = (BATCH_SIZE, IN_CHANNELS, HEIGHT // 8, WIDTH // 8)
 TIME_STEP = 2
 
 
+@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not been installed")
 def test_vae():
     MODEL_LIST = [
         diffusers.AutoencoderKL,
@@ -26,11 +31,7 @@ def test_vae():
         model = model_cls()
         sample = torch.zeros(LATENTS_SHAPE)
 
-        tracer = ColoTracer()
-        graph = tracer.trace(root=model)
-
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+        gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()
@@ -80,6 +81,7 @@ def test_clip():
         trace_model_and_compare_output(model, data_gen)
 
 
+@pytest.mark.skipif(not HAS_DIFFUSERS, reason="diffusers has not been installed")
 @pytest.mark.skip(reason='cannot pass the test yet')
 def test_unet():
     MODEL_LIST = [
@@ -91,11 +93,7 @@ def test_unet():
         model = model_cls()
         sample = torch.zeros(LATENTS_SHAPE)
 
-        tracer = ColoTracer()
-        graph = tracer.trace(root=model)
-
-        gm = GraphModule(model, graph, model.__class__.__name__)
-        gm.recompile()
+        gm = symbolic_trace(model)
 
         model.eval()
         gm.eval()

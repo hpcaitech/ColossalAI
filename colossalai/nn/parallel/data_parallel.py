@@ -1,19 +1,22 @@
-import torch
 import itertools
-import torch.distributed as dist
-from functools import partial
-from colossalai.zero.utils.zero_hook_v2 import ZeROHookV2
-from colossalai.tensor.param_op_hook import ParamOpHookManager
-from colossalai.gemini.gemini_mgr import GeminiManager
-from typing import Dict, Iterable, List, Optional, Set
-from colossalai.logging import get_dist_logger
 from collections import OrderedDict
-from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
-from colossalai.tensor import ProcessGroup as ColoProcessGroup
-from .reducer import Reducer
+from functools import partial
+from typing import Dict, Iterable, List, Optional, Set
 
-from colossalai.gemini.chunk import TensorState, Chunk, ChunkManager
+import torch
+import torch.distributed as dist
+
+from colossalai.gemini.chunk import Chunk, ChunkManager, TensorState
+from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.utils import get_temp_total_chunk_on_cuda
+from colossalai.tensor import ProcessGroup as ColoProcessGroup
+from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
+from colossalai.tensor.param_op_hook import ParamOpHookManager
+from colossalai.utils import get_current_device
+from colossalai.zero.utils.gemini_hook import GeminiZeROHook
+
+from .reducer import Reducer
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -185,25 +188,16 @@ class ColoDDP(torch.nn.Module):
 
 
 class ZeroDDP(ColoDDP):
-    """ZeRO-DP for ColoTensor. Nested ZeroDDP is not supported now.
-    We can configure chunk and gemini via ChunkManager and GeminiManager respectively.
+    """ZeRO DDP for ColoTensor.
+    Warning: Nested ZeroDDP is not supported now.
+    It is designed to be used with ChunkManager and GeminiManager.
     For more details, see the API reference of ``ChunkManager`` and ``GeminiManager``.
-
-    Example:
-        >>> model = torch.nn.Linear(20, 1)
-        >>> placement_policy = 'cuda'
-        >>> chunk_size = ChunkManager.search_chunk_size(model, search_range, n_grids) if use_chunk else None
-        >>> chunk_manager = ChunkManager(chunk_size, enable_distributed_storage=use_zero, init_device=GeminiManager.get_default_device(placement_policy))
-        >>> gemini_manager = GeminiManager(placement_policy, chunk_manager)
-        >>> model = ZeroDDP(model, gemini_manager)
-        >>> logits = model(x)
-        >>> loss = criterion(logits, labels)
-        >>> model.backward(loss)
 
     Args:
         module (torch.nn.Module): Module to apply ZeRO-DP.
         gemini_manager (GeminiManager): Manages the chunk manager and heterogeneous momery space.
             For more details, see the API reference of ``GeminiManager``.
+        pin_memory (bool): Chunks on CPU Memory use pin-memory.
         force_outputs_fp32 (bool): If set to True, outputs will be fp32. Otherwise, outputs will be fp16.  Defaults to False.
     """
 
@@ -216,11 +210,12 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager = gemini_manager
         self.chunk_manager: ChunkManager = gemini_manager.chunk_manager
         self.force_outputs_fp32 = force_outputs_fp32
-        self.param_op_hook = ZeROHookV2(gemini_manager)
+        self.param_op_hook = GeminiZeROHook(gemini_manager)
         self.fp32_params: List[ColoTensor] = []
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
 
+        cpu_offload = self.gemini_manager.policy_name != 'cuda'
         # TODO: get param order and filter unused params
         for p in module.parameters():
             assert isinstance(p, ColoParameter)
@@ -232,10 +227,17 @@ class ZeroDDP(ColoDDP):
             fp32_data = p.data.float()
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             p.data = p.data.half()
-
             dp_world_size = p.process_group.dp_world_size()
-            self.chunk_manager.append_tensor(p, 'fp16_param', dp_world_size, pin_memory)
-            self.chunk_manager.append_tensor(fp32_p, 'fp32_param', dp_world_size, pin_memory)
+            self.chunk_manager.append_tensor(tensor=p,
+                                             group_type='fp16_param',
+                                             config_key=dp_world_size,
+                                             cpu_offload=cpu_offload,
+                                             pin_memory=pin_memory)
+            self.chunk_manager.append_tensor(tensor=fp32_p,
+                                             group_type='fp32_param',
+                                             config_key=dp_world_size,
+                                             cpu_offload=cpu_offload,
+                                             pin_memory=pin_memory)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
         self.chunk_manager.close_all_groups()
@@ -247,12 +249,16 @@ class ZeroDDP(ColoDDP):
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
             chunk_32.init_pair(chunk_16)
 
+            # keep gathered chunks are in CUDA
+            if chunk_16.keep_gathered:
+                self.grads_device[p] = get_current_device()
+
         self._logger = get_dist_logger()
 
     def forward(self, *args, **kwargs):
         args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)
-        self.gemini_manager.pre_iter()
+        self.gemini_manager.pre_iter(*args)
         with ParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         if self.force_outputs_fp32:
