@@ -3,7 +3,7 @@
 # refer to https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
 # for more meta_registrations
 
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from torch.utils._pytree import tree_map
@@ -179,10 +179,51 @@ def meta_adaptive_avg_pool2d_backward(
     return grad_input
 
 
+# ================================ RNN =============================================
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/RNN.cpp
+@register_meta(aten._cudnn_rnn.default)
+def meta_cuda_rnn(
+    input: torch.Tensor,
+    weight: torch.Tensor,
+    weight_stride0: int,
+    weight_buf: torch.Tensor,
+    hx: torch.Tensor,
+    cx: Optional[torch.Tensor] = None,
+    *args,
+    **kwargs,
+):
+    if cx is not None:
+        return torch.empty_like(input), torch.empty_like(hx), torch.empty_like(cx)
+    else:
+        return torch.empty_like(input), torch.empty_like(hx), torch.empty((), device='meta')
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cudnn/RNN.cpp
+@register_meta(aten._cudnn_rnn_backward.default)
+def meta_cudnn_rnn_backward(input: torch.Tensor,
+                            weight: torch.Tensor,
+                            weight_stride0: int,
+                            hx: torch.Tensor,
+                            cx: Optional[torch.Tensor] = None,
+                            *args,
+                            **kwargs):
+    print(input, weight, hx, cx)
+    grad_input = torch.empty_like(input)
+    grad_weight = torch.empty_like(weight)
+    grad_hx = torch.empty_like(hx)
+    grad_cx = torch.empty_like(cx) if cx is not None else torch.empty((), device='meta')
+    return grad_input, grad_weight, grad_hx, grad_cx
+
+
 # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Activation.cpp
 # ============================== Activations =======================================
 @register_meta(aten.relu.default)
 def meta_relu(input: torch.Tensor):
+    return torch.empty_like(input)
+
+
+@register_meta(aten.prelu.default)
+def meta_prelu(input: torch.Tensor, weight: torch.Tensor):
     return torch.empty_like(input)
 
 
@@ -278,10 +319,16 @@ def meta_ln_backward(dY: torch.Tensor, input: torch.Tensor, normalized_shape, me
 
 
 # ================================== Misc ==========================================
-#https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
 @register_meta(aten.roll.default)
 def meta_roll(input: torch.Tensor, shifts, dims):
     return input
+
+
+# https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Scalar.cpp
+@register_meta(aten._local_scalar_dense.default)
+def meta_local_scalar_dense(self: torch.Tensor):
+    return 0
 
 
 # https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/TensorCompare.cpp
@@ -317,7 +364,7 @@ def meta_index_Tensor(self, indices):
     indices = result
     assert len(indices) <= self.ndim, f"too many indices for tensor of dimension {self.ndim} (got {len(indices)})"
     # expand_outplace
-    import torch._refs as refs    # avoid import cycle in mypy
+    import torch._refs as refs
 
     indices = list(refs._maybe_broadcast(*indices))
     # add missing null tensors
