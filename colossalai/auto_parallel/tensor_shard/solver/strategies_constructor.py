@@ -82,7 +82,6 @@ class StrategiesConstructor:
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
 
-            print(node)
             if _check_no_strategy_for_node(node):
                 no_strategy_node.append(node)
                 pass
