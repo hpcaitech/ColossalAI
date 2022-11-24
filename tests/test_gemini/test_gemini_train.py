@@ -14,7 +14,7 @@ from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
-def run_gemini_fwd_bwd(rank, world_size, port, model_name: str, iter_num=1):
+def run_gemini_fwd_bwd(rank, world_size, port, model_name: str, iter_num=2):
     PLACEMENT_POLICY = 'cuda'
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
@@ -54,7 +54,7 @@ def run_gemini_fwd_bwd(rank, world_size, port, model_name: str, iter_num=1):
 
 @pytest.mark.parametrize("model_name", ['bert'])
 @rerun_if_address_is_in_use()
-def test_gemini_train(model_name, iter_num=1):
+def test_gemini_train(model_name, iter_num=2):
     run_func = partial(run_gemini_fwd_bwd, world_size=1, port=free_port(), model_name=model_name, iter_num=iter_num)
     mp.spawn(run_func, nprocs=1)
 
@@ -64,4 +64,4 @@ if __name__ == '__main__':
     # bert, gpt, inline_op_model, nested_model, no_leaf_module,
     # repeated_computed_layer, resnet, simple_net
     for model_name in ["bert", "gpt2"]:
-        test_gemini_train(model_name=model_name, iter_num=1)
+        test_gemini_train(model_name=model_name, iter_num=4)
