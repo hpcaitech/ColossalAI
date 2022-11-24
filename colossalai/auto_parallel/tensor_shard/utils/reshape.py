@@ -9,15 +9,15 @@ class PreviousStatus(Enum):
     This class shows the status of previous comparision.
     """
     RESET = 0
-    # ORIGIN means the origin element is larger in the previous comparision.
+    # ORIGIN means the dimension size of original tensor is larger in the previous comparision.
     ORIGIN = 1
-    # TGT means the target element is larger in the previous comparision.
+    # TGT means the dimension size of target tensor is larger in the previous comparision.
     TGT = 2
 
 
 def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> Dict[Tuple[int], Tuple[int]]:
     """
-    This method is used to detect the reshape mapping between origin tensor and target tensor.
+    This method is used to detect the reshape mapping between original tensor and target tensor.
 
     Returns:
         reshape_mapping_dict: The dictionary shows how a tuple of origin dims(keys) mapping to the related
@@ -44,14 +44,14 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
     tgt_len = len(tgt_shape)
     origin_index = 0
     tgt_index = 0
-    origin_element = origin_shape[origin_index]
-    tgt_element = tgt_shape[tgt_index]
+    original_dimension_size = origin_shape[origin_index]
+    tgt_dimension_size = tgt_shape[tgt_index]
     tgt_dims = [tgt_len - tgt_index - 1]
     origin_dims = [origin_len - origin_index - 1]
     previous_label = PreviousStatus.RESET
 
     while origin_index != len(origin_shape) or tgt_index != len(tgt_shape):
-        if origin_element == tgt_element:
+        if original_dimension_size == tgt_dimension_size:
             reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
             origin_index += 1
             tgt_index += 1
@@ -60,29 +60,29 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
             # in the last step.
             if origin_index == len(origin_shape):
                 continue
-            origin_element = origin_shape[origin_index]
-            tgt_element = tgt_shape[tgt_index]
+            original_dimension_size = origin_shape[origin_index]
+            tgt_dimension_size = tgt_shape[tgt_index]
             origin_dims = [origin_len - origin_index - 1]
             tgt_dims = [tgt_len - tgt_index - 1]
             previous_label = PreviousStatus.RESET
 
-        elif origin_element > tgt_element:
+        elif original_dimension_size > tgt_dimension_size:
             tgt_index += 1
 
             if previous_label == PreviousStatus.TGT:
-                # if the target element is larger in the previous comparision, which means
-                # the origin element has already accumulated larger than target element, so
+                # if the target dimension size is larger in the previous comparision, which means
+                # the origin dimension size has already accumulated larger than target dimension size, so
                 # we need to offload the origin dims and tgt dims into the reshape_mapping_dict.
                 reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
-                origin_element = origin_element // tgt_element
+                original_dimension_size = original_dimension_size // tgt_dimension_size
                 origin_dims = [origin_len - origin_index - 1]
-                tgt_element = tgt_shape[tgt_index]
+                tgt_dimension_size = tgt_shape[tgt_index]
                 tgt_dims = [tgt_len - tgt_index - 1, tgt_len - tgt_index]
                 # reset the previous_label after offloading the origin dims and tgt dims
                 previous_label = PreviousStatus.RESET
             else:
-                # accumulate the tgt_element until tgt_element larger than origin_element
-                tgt_element *= tgt_shape[tgt_index]
+                # accumulate the tgt_dimension_size until tgt_dimension_size larger than original_dimension_size
+                tgt_dimension_size *= tgt_shape[tgt_index]
                 tgt_dims.append(tgt_len - tgt_index - 1)
                 previous_label = PreviousStatus.ORIGIN
 
@@ -94,15 +94,15 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
                 # the target element has already accumulated larger than origin element, so
                 # we need to offload the origin dims and tgt dims into the reshape_mapping_dict.
                 reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
-                tgt_element = tgt_element // origin_element
+                tgt_dimension_size = tgt_dimension_size // original_dimension_size
                 tgt_dims = [tgt_len - tgt_index - 1]
-                origin_element = origin_shape[origin_index]
+                original_dimension_size = origin_shape[origin_index]
                 origin_dims = [origin_len - origin_index - 1, origin_len - origin_index]
                 # reset the previous_label after offloading the origin dims and tgt dims
                 previous_label = PreviousStatus.RESET
             else:
-                # accumulate the origin_element until origin_element larger than tgt_element
-                origin_element *= origin_shape[origin_index]
+                # accumulate the original_dimension_size until original_dimension_size larger than tgt_dimension_size
+                original_dimension_size *= origin_shape[origin_index]
                 origin_dims.append(origin_len - origin_index - 1)
                 previous_label = PreviousStatus.TGT
 
