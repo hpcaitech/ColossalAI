@@ -8,18 +8,8 @@ import colossalai
 from colossalai.gemini.memory_tracer import MemtracerWrapper
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
+from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-
-def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
-    with torch.cuda.amp.autocast(enabled=enable_autocast):
-        if criterion:
-            y = model(data)
-            loss = criterion(y, label)
-        else:
-            loss = model(data, label)
-        loss = loss.float()
-    model.backward(loss)
 
 
 def run_tracer(rank, world_size, port, use_grad_check=True):
@@ -43,7 +33,7 @@ def run_tracer(rank, world_size, port, use_grad_check=True):
             data = data.cuda()
             label = label.cuda()
 
-            run_fwd_bwd(model, data, label, criterion, False)
+            run_fwd_bwd(model, data, label, criterion, False, use_init_ctx=False)
 
         model._ophook_list[0].print_non_model_data()
 
@@ -58,4 +48,4 @@ def test_tracer(world_size, use_grad_check):
 
 
 if __name__ == '__main__':
-    test_tracer(1)
+    test_tracer(1, True)
