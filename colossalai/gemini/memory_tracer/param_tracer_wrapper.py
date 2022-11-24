@@ -1,5 +1,6 @@
 import torch.nn
 
+from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.ophooks import ParamMemHook
 from colossalai.nn.parallel.data_parallel import _cast_float
@@ -7,12 +8,17 @@ from colossalai.nn.parallel.data_parallel import _cast_float
 
 class ParamWrapper():
 
-    def __init__(self, module: torch.nn.Module):
+    def __init__(self, module: torch.nn.Module, dtype_flag: torch.dtype = torch.half):
         super().__init__()
         self.module = module
+        self.dtype_flag = dtype_flag
         self.param_op_hook = ParamMemHook()
 
-        self._cast_buffers_to_cuda()
+        for p in module.parameters():
+            assert isinstance(p, ColoParameter)
+            p.data = p.data.to(dtype_flag)
+
+        self._cast_buffers_to_cuda_dtype()
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
@@ -21,7 +27,7 @@ class ParamWrapper():
         self.param_op_hook.mem_monitor.start()
 
     def forward(self, *args, **kwargs):
-        args, kwargs = _cast_float(args, torch.float), _cast_float(kwargs, torch.float)
+        args, kwargs = _cast_float(args, self.dtype_flag), _cast_float(kwargs, self.dtype_flag)
         self.module.zero_grad(set_to_none=True)
         self._pre_forward()
         with ParamOpHookManager.use_hooks(self.param_op_hook):
@@ -38,6 +44,8 @@ class ParamWrapper():
         last_model_data = self.param_op_hook._model_data_list[-1]
         self.param_op_hook._non_model_data_list.append(cuda_volume - last_model_data)
 
-    def _cast_buffers_to_cuda(self):
+    def _cast_buffers_to_cuda_dtype(self):
         for buffer in self.module.buffers():
             buffer.data = buffer.cuda()
+            if torch.is_floating_point(buffer):
+                buffer.data = buffer.data.to(self.dtype_flag)
