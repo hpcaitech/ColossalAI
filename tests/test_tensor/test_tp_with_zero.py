@@ -36,9 +36,9 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module, pg: ProcessGroup):
             "parameter '{}' has problem.".format(key)
 
 
-def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
+def run_fwd_bwd(model, criterion, optimizer, input_ids):
     optimizer.zero_grad()
-    logits = model(input_ids, attn_mask)
+    logits = model(input_ids)
     logits = logits.float()
     loss = criterion(logits, input_ids)
     optimizer.backward(loss)
@@ -117,12 +117,12 @@ def run_gpt(placement_policy, tp_init_spec_func=None):
     torch_model.eval()
 
     set_seed(pg.dp_local_rank())
-    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
+    for i, (input_ids, label) in enumerate(train_dataloader):
         if i > 2:
             break
         input_ids_colo = ColoTensor.from_torch_tensor(input_ids, ColoTensorSpec(pg))
-        zero_logits = run_fwd_bwd(model, criterion, zero_optim, input_ids_colo, attn_mask)
-        torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
+        zero_logits = run_fwd_bwd(model, criterion, zero_optim, input_ids_colo)
+        torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids)
         assert torch.allclose(zero_logits, torch_logits, rtol=1e-3, atol=1e-2)
 
         zero_optim.step()
