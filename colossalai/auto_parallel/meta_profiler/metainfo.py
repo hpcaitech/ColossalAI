@@ -92,8 +92,12 @@ class MetaInfo:
         Compute meta info based on sharding strategy and the given target function.
         """
 
-        assert meta_register.has(self._target.__class__), f'{self._target.__class__} not found in the meta registry'
-        meta_func = meta_register.get(self._target.__class__)
+        try:
+            # module
+            meta_func = meta_register.get(self._target.__class__)
+        except:
+            # function
+            meta_func = meta_register.get(self._target)
 
         # construct args for meta_func
         args = [self.compute_sharded_tensor(k, v) for k, v in self._strategy.sharding_specs.items()]
