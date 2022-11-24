@@ -8,15 +8,15 @@ from colossalai.nn.parallel.data_parallel import _cast_float
 
 class ParamWrapper():
 
-    def __init__(self, module: torch.nn.Module, dtype_flag: torch.dtype = torch.half):
+    def __init__(self, module: torch.nn.Module, dtype: torch.dtype = torch.half):
         super().__init__()
         self.module = module
-        self.dtype_flag = dtype_flag
+        self.dtype = dtype
         self.param_op_hook = ParamMemHook()
 
         for p in module.parameters():
             assert isinstance(p, ColoParameter)
-            p.data = p.data.to(dtype_flag)
+            p.data = p.data.to(dtype)
 
         self._cast_buffers_to_cuda_dtype()
 
@@ -27,7 +27,7 @@ class ParamWrapper():
         self.param_op_hook.mem_monitor.start()
 
     def forward(self, *args, **kwargs):
-        args, kwargs = _cast_float(args, self.dtype_flag), _cast_float(kwargs, self.dtype_flag)
+        args, kwargs = _cast_float(args, self.dtype), _cast_float(kwargs, self.dtype)
         self.module.zero_grad(set_to_none=True)
         self._pre_forward()
         with ParamOpHookManager.use_hooks(self.param_op_hook):
@@ -48,4 +48,4 @@ class ParamWrapper():
         for buffer in self.module.buffers():
             buffer.data = buffer.cuda()
             if torch.is_floating_point(buffer):
-                buffer.data = buffer.data.to(self.dtype_flag)
+                buffer.data = buffer.data.to(self.dtype)
