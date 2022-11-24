@@ -1,5 +1,4 @@
 tensorboard 
-deepspeed 
 apex 
 sphinx 
 sphinx-rtd-theme 
