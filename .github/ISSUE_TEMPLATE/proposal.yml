@@ -13,6 +13,7 @@ body:
       - Bumping a critical dependency's major version;
       - A significant improvement in user-friendliness;
       - Significant refactor;
+      - Optional: Affiliation/email information helps better analyze and evaluate users to improve the project. Welcome to establish in-depth cooperation.
       - ...
 
       Please note this is not for feature request or bug template; such action could make us identify the issue wrongly and close it without doing anything.
