@@ -4,7 +4,7 @@ import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Set
 
 import torch
 import torch.distributed.rpc as rpc
@@ -41,7 +41,7 @@ class UniqueKey:
         return f'Key(microbatch_id={self.microbatch_id}, phase={self.phase})'
 
 class WorkItem:
-    __slots__ = ('stage_id', 'phase', 'args', 'kwargs', 'output', 'refcount', 'microbatch_id', 'batch_id',
+    __slots__ = ('stage_id', 'phase', 'args', 'kwargs', 'output', 'used_stages', 'microbatch_id', 'batch_id',
                  'num_microbatches', 'forward_only')
 
     stage_id: int
@@ -50,7 +50,7 @@ class WorkItem:
     kwargs: Dict[str, Any]
     output: Future
     microbatch_id: int
-    refcount: int
+    used_stages: Set[int]
     batch_id: int
     num_microbatches: int
     forward_only: bool
@@ -65,7 +65,7 @@ class WorkItem:
                  batch_id,
                  num_microbatches,
                  forward_only,
-                 refcount=0) -> None:
+                 used_stages=set()) -> None:
         for attr_name in self.__slots__:
             setattr(self, attr_name, locals()[attr_name])
 
@@ -194,7 +194,7 @@ class WorkerBase(ABC):
         # construction of partition is executed after the registion of pp_rank_to_worker_rref
         self._initialize_partition()
 
-    def get_output_by_key(self, key: UniqueKey) -> Any:
+    def get_output_by_key(self, key: UniqueKey, stage_id=None) -> Any:
         with self.output_list_condition_lock:
             self.output_list_condition_lock.wait_for(lambda: key in self.output_list)
             output_work_item = self.output_list[key]
@@ -203,18 +203,20 @@ class WorkerBase(ABC):
         if isinstance(output, Future):
             output = output.wait()
             
-        # if offsets is not None:
-        #     output = tuple([output[i] for i in offsets])
-
-        output_work_item.refcount += 1
-
+        # manage lifecycle for workitem
         # all consumers have been satisfied, the work_item can be released
-        # with self.output_list_condition_lock:
-        #     num_user = len(self.consumer_stage_ids)
-        #     if key.phase == Phase.INPUT:
-        #         num_user = len(self.input_consumer_stage_ids)
-        #     if output_work_item.refcount >= num_user:
-        #         self.output_list.pop(key)
+        if stage_id is not None:
+            with self.output_list_condition_lock:
+                if stage_id not in output_work_item.used_stages:
+                    output_work_item.used_stages.add(stage_id)
+                    consumer_stages = set(self.consumer_stage_ids)
+                    if key.phase == Phase.INPUT:
+                        consumer_stages = set(self.input_consumer_stage_ids)
+                    if output_work_item.used_stages == consumer_stages:
+                        print(f'send_rank: {self.pp_rank} | recv_rank: {stage_id} | kill when {output_work_item.used_stages=} | {consumer_stages=} | {key}')
+                        self.output_list.pop(key)
+                    else:
+                        print(f'send_rank: {self.pp_rank} | recv_rank: {stage_id} | run {output_work_item.used_stages=} | {consumer_stages=} | {key}')
 
         return output
 
@@ -354,13 +356,13 @@ class WorkerBase(ABC):
             producer_stage_id = 0
             producer_output_key = UniqueKey(microbatch_id, Phase.INPUT)
             producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
-            subscribe_forward_futures[0] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
+            subscribe_forward_futures[0] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key, self.pp_rank)
             
             for i in range(0, producer_num-1):
                 producer_stage_id = producer_stage_ids[i]
                 producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
                 producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
-                subscribe_forward_futures[i+1] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
+                subscribe_forward_futures[i+1] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key, self.pp_rank)
             
         else:
             for i in range(producer_num):
@@ -368,7 +370,7 @@ class WorkerBase(ABC):
                 producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
                 producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
                 #producer_partition_name = self.pp_rank_to_partition_name[producer_stage_id]
-                subscribe_forward_futures[i] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
+                subscribe_forward_futures[i] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key, self.pp_rank)
 
         work_item_from_producer = WorkItem(stage_id, Phase.FORWARD, subscribe_forward_futures, {}, output,
                                            microbatch_id, None, self.num_microbatches, forward_only)
