@@ -259,6 +259,50 @@ def get_partition_depends(partition, partitions, input_partitions=None, output_p
     
     return input, output, offset+1
 
+# DAG just looks like following case.
+# the int in every list represents the offset of the partition's input arg or output arg.
+# {
+# 'input_partition': {
+#     'input_ids': {
+#         'input': {}, 
+#         'output': {'submod_0': [0], 'submod_1': [1]}, 
+#         'output_len': 0}, 
+#     'attention_mask': {
+#         'input': {}, 
+#         'output': {'submod_2': [0]}, 
+#         'output_len': 0}}, 
+# 'submod_0': {
+#     'input': {'MODEL_INPUT': [0]}, 
+#     'output': {'submod_1': [0], 'submod_2': [0, 1]}, 
+#     'output_len': 2}, 
+# 'submod_1': {
+#     'input': {'submod_0': [0], 'MODEL_INPUT': [1]}, 
+#     'output': {'submod_2': [0]}, 
+#     'output_len': 1}, 
+# 'submod_2': {
+#     'input': {'MODEL_INPUT': [0], 'submod_0': [1, 2]}, 
+#     'output': {'submod_3': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+#                             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 
+#                             22, 23, 24]},
+#     'output_len': 25}, 
+# 'submod_3': {
+#     'input': {'submod_2': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+#                                 12, 13, 14, 15, 16, 17, 18, 19, 20, 
+#                                 21, 22, 23, 24]}, 
+#     'output': {'MODEL_OUTPUT': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 
+#                                 11, 12, 13, 14, 15, 16, 17, 18, 19, 
+#                                 20, 21, 22, 23, 24]}, 
+#     'output_len': 25},
+# 'output_partition': {
+#     'input': {'logits': 'submod_3', 'past_key_values': (('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
+#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
+#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
+#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
+#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
+#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'))}, 
+#     'output': {}, 'output_len': 0}
+# }
+
 def get_DAG(gm: GraphModule):
     DAG = {}
     input_partitions = []
