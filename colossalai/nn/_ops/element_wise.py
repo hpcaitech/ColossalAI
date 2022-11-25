@@ -36,10 +36,7 @@ def register_elementwise_op(op):
 
 @colo_op_impl(Tensor.add_)
 def elementwise_op(input_tensor, *args, **kwargs):
-    # pg = input_tensor.get_process_group()
-    # dist_attr = input_tensor.dist_spec
     input_tensor = input_tensor.to_replicate().data.add_(*args, **kwargs)
-    # return ColoTensor.from_torch_tensor(input_tensor, spec=ColoTensorSpec(pg, dist_attr))
     return input_tensor
 
 
