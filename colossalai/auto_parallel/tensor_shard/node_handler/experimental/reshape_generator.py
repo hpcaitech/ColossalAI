@@ -17,7 +17,7 @@ from colossalai.auto_parallel.tensor_shard.utils import (
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 from colossalai.tensor.sharding_spec import ShardingSpec
 
-__all__ = ['ReshapeGenerator', 'ViewGenerator', 'PermuteGenerator']
+__all__ = ['ReshapeGenerator', 'ViewGenerator', 'PermuteGenerator', 'TransposeGenerator']
 
 
 class ReshapeGenerator(FollowingStrategyGenerator):
@@ -166,6 +166,46 @@ class PermuteGenerator(ReshapeGenerator):
                 if permute_dim in dim_partition_dict_for_input:
                     dim_partition_dict_for_output[dim_index] = dim_partition_dict_for_input[permute_dim]
 
+            dim_partition_dict_mapping = {
+                "input": dim_partition_dict_for_input,
+                "output": dim_partition_dict_for_output,
+            }
+            sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
+
+            # add index into name to pass the duplicated check
+            # we keep same strategies with different name for node merging, and it will not increase the searching space,
+            # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
+            name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
+
+            strategy = self.get_sharding_strategy(name=name,
+                                                  sharding_spec_mapping=sharding_spec_mapping,
+                                                  communication_action_mapping=communication_action_mapping)
+            strategy_list.append(strategy)
+
+        return strategy_list
+
+
+class TransposeGenerator(ReshapeGenerator):
+    """
+    TransposeGenerator deals with the sharding strategies of permute op.
+    """
+
+    def collate_strategies(self) -> List[ShardingStrategy]:
+        strategy_list = []
+        for index, strategy in enumerate(self.predecessor_node.strategies_vector):
+            dim_partition_dict_mapping = {}
+            communication_action_mapping = {}
+            input_sharding_spec = strategy.output_sharding_specs[self.op_data["input"]]
+            dim_partition_dict_for_input = input_sharding_spec.dim_partition_dict
+            dim_partition_dict_for_output = {}
+
+            transpose_dims = self.op_data['transpose_dims'].data
+            dim_0 = transpose_dims[0]
+            dim_1 = transpose_dims[1]
+            if dim_0 in dim_partition_dict_for_input:
+                dim_partition_dict_for_output[dim_1] = dim_partition_dict_for_input[dim_0]
+            if dim_1 in dim_partition_dict_for_input:
+                dim_partition_dict_for_output[dim_0] = dim_partition_dict_for_input[dim_1]
             dim_partition_dict_mapping = {
                 "input": dim_partition_dict_for_input,
                 "output": dim_partition_dict_for_output,
