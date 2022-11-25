@@ -17,6 +17,7 @@ body:
       **Expectation** What is your expected content about it?
       **Screenshots** If applicable, add screenshots to help explain your problem.
       **Suggestions** Tell us how we could improve the documentation.
+      **Optional: Affiliation** Institution/email information helps better analyze and evaluate users to improve the project. Welcome to establish in-depth cooperation.
     placeholder: |
       A clear and concise description of the issue.
   validations:

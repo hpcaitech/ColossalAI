@@ -38,7 +38,7 @@ class DummyDataLoader(DummyDataGenerator):
         return data, label
 
 
-@non_distributed_component_funcs.register(name='inline_op_module')
+@non_distributed_component_funcs.register(name='inline_op_model')
 def get_training_components():
 
     def model_builder(checkpoint=True):

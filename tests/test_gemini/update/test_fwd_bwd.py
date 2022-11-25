@@ -30,9 +30,9 @@ def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
         assert torch.allclose(p0, p1.grad, atol=1e-3, rtol=1e-5), "{}".format(torch.max(torch.abs(p0 - p1.grad)).item())
 
 
-def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
+def run_fwd_bwd(model, criterion, optimizer, input_ids):
     optimizer.zero_grad()
-    logits = model(input_ids, attn_mask)
+    logits = model(input_ids)
     logits = logits.float()
     loss = criterion(logits, input_ids)
     optimizer.backward(loss)
@@ -71,16 +71,16 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather):
     torch_model.eval()
 
     set_seed(pg.dp_local_rank())
-    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
+    for i, (input_ids, label) in enumerate(train_dataloader):
         if i > 0:
             break
 
-        logits = model(input_ids, attn_mask)
+        logits = model(input_ids)
         logits = logits.float()
         loss = criterion(logits, input_ids)
         model.backward(loss)
 
-        torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
+        torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids)
         assert torch.allclose(logits, torch_logits, rtol=0), "{} {} {}".format(
             torch.max(torch.abs(logits - torch_logits)).item(), logits, torch_logits)
 
