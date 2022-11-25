@@ -63,5 +63,5 @@ if __name__ == '__main__':
     # for model_name in ["bert", "resnet18", "inline_op_model"]:
     # bert, gpt, inline_op_model, nested_model, no_leaf_module,
     # repeated_computed_layer, resnet, simple_net
-    for model_name in ["nested_model", "no_leaf_module"]:
+    for model_name in ["inline_op_model", "bert", "simple_net"]:
         test_gemini_train(model_name=model_name, iter_num=4)
