@@ -25,7 +25,7 @@ class InlineOpModule(CheckpointModule):
         x.add_(10)
         x = self.proj2(x)
         # inline relu_
-        # x = torch.relu_(x)
+        x = torch.relu_(x)
         x = self.proj2(x)
         return x
 
