@@ -202,10 +202,14 @@ class TransposeGenerator(ReshapeGenerator):
             transpose_dims = self.op_data['transpose_dims'].data
             dim_0 = transpose_dims[0]
             dim_1 = transpose_dims[1]
-            if dim_0 in dim_partition_dict_for_input:
-                dim_partition_dict_for_output[dim_1] = dim_partition_dict_for_input[dim_0]
-            if dim_1 in dim_partition_dict_for_input:
-                dim_partition_dict_for_output[dim_0] = dim_partition_dict_for_input[dim_1]
+            for dim, sharded_dims in dim_partition_dict_for_input.items():
+                if dim == dim_0:
+                    dim_partition_dict_for_output[dim_1] = dim_partition_dict_for_input[dim_0]
+                elif dim == dim_1:
+                    dim_partition_dict_for_output[dim_0] = dim_partition_dict_for_input[dim_1]
+                else:
+                    dim_partition_dict_for_output[dim] = sharded_dims
+
             dim_partition_dict_mapping = {
                 "input": dim_partition_dict_for_input,
                 "output": dim_partition_dict_for_output,

@@ -6,7 +6,7 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 
 from colossalai.auto_parallel.tensor_shard.node_handler.conv_handler import ConvFunctionHandler
-from colossalai.auto_parallel.tensor_shard.node_handler.experimental import PermuteHandler
+from colossalai.auto_parallel.tensor_shard.node_handler.experimental import PermuteHandler, TransposeHandler
 from colossalai.auto_parallel.tensor_shard.node_handler.linear_handler import LinearFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
@@ -19,43 +19,57 @@ from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import numerical_test_for_node_strategy
 
 
-class ConvPermuteModel(nn.Module):
+class ConvReshapeModel(nn.Module):
 
-    def __init__(self, permute_dims):
+    def __init__(self, reshape_dims, call_function):
         super().__init__()
-        self.permute_dims = permute_dims
+        self.reshape_dims = reshape_dims
+        self.call_function = call_function
 
     def forward(self, input, other):
         conv_node = nn.functional.conv2d(input, other, bias=None)
-        permute_node = torch.permute(conv_node, self.permute_dims)
+        # permute_node = torch.permute(conv_node, self.permute_dims)
+        if self.call_function == torch.permute:
+            permute_node = self.call_function(conv_node, self.reshape_dims)
+        else:
+            permute_node = self.call_function(conv_node, *self.reshape_dims)
         return permute_node
 
 
-class LinearPermuteModel(nn.Module):
+class LinearReshapeModel(nn.Module):
 
-    def __init__(self, tgt_shape):
+    def __init__(self, reshape_dims, call_function):
         super().__init__()
-        self.tgt_shape = tgt_shape
+        self.reshape_dims = reshape_dims
+        self.call_function = call_function
 
     def forward(self, input, other):
         linear_node = nn.functional.linear(input, other, bias=None)
-        permute_node = torch.permute(linear_node, self.tgt_shape)
+        # permute_node = torch.permute(linear_node, self.tgt_shape)
+        if self.call_function == torch.permute:
+            permute_node = self.call_function(linear_node, self.reshape_dims)
+        else:
+            permute_node = self.call_function(linear_node, *self.reshape_dims)
         return permute_node
 
 
-def check_view_handler(rank, permute_dims, model_cls, world_size, port):
+def check_view_handler(rank, call_function, reshape_dims, model_cls, world_size, port):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    model = model_cls(permute_dims).cuda()
+    if call_function == torch.permute:
+        reshape_dims = reshape_dims[0]
+    elif call_function == torch.transpose:
+        reshape_dims = reshape_dims[1]
+    model = model_cls(reshape_dims, call_function).cuda()
 
-    if model_cls.__name__ == 'ConvPermuteModel':
+    if model_cls.__name__ == 'ConvReshapeModel':
         input = torch.rand(8, 8, 66, 66).to('cuda')
         other = torch.rand(16, 8, 3, 3).to('cuda')
         # index of conv node in computation graph
         node_index = 2
         # total number of conv strategies
         strategy_number = 16
-    if model_cls.__name__ == 'LinearPermuteModel':
+    if model_cls.__name__ == 'LinearReshapeModel':
         input = torch.rand(8, 16, 64, 32).to('cuda')
         other = torch.rand(64, 32).to('cuda')
         # index of linear node in computation graph
@@ -75,7 +89,7 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
                                      meta_arg_names=['input', 'other'],
                                      node_type='following')
     tracer = ColoTracer()
-    if model_cls.__name__ == 'ConvPermuteModel':
+    if model_cls.__name__ == 'ConvReshapeModel':
         # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
@@ -88,13 +102,13 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
                                  "other": torch.rand(16, 8, 3, 3).to('meta'),
                              })
 
-    if model_cls.__name__ == 'LinearPermuteModel':
+    if model_cls.__name__ == 'LinearReshapeModel':
         # graph():
         #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
         #     %other : torch.Tensor [#users=1] = placeholder[target=other]
         #     %linear : [#users=1] = call_function[target=torch._C._nn.linear](args = (%input_1, %other), kwargs = {bias: None})
-        #     %view : [#users=1] = call_method[target=view](args = (%linear, 32, 4, 32, 32, 4), kwargs = {})
-        #     return view
+        #     %permute : [#users=1] = call_method[target=view](args = (%linear, 32, 4, 32, 32, 4), kwargs = {})
+        #     return permute
         graph = tracer.trace(model,
                              meta_args={
                                  "input": torch.rand(8, 16, 64, 32).to('meta'),
@@ -104,12 +118,12 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
     gm = ColoGraphModule(model, graph)
 
     previous_mod_node = list(graph.nodes)[2]
-    view_node = list(graph.nodes)[3]
-    view_strategies_vector = StrategiesVector(view_node)
+    reshape_node = list(graph.nodes)[3]
+    view_strategies_vector = StrategiesVector(reshape_node)
     previous_strategies_vector = StrategiesVector(previous_mod_node)
 
     # build handler
-    if model_cls.__name__ == 'ConvPermuteModel':
+    if model_cls.__name__ == 'ConvReshapeModel':
 
         conv_handler = ConvFunctionHandler(node=previous_mod_node,
                                            device_mesh=device_mesh,
@@ -117,7 +131,7 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
         conv_handler.register_strategy(compute_resharding_cost=False)
         setattr(previous_mod_node, 'strategies_vector', previous_strategies_vector)
 
-    if model_cls.__name__ == 'LinearPermuteModel':
+    if model_cls.__name__ == 'LinearReshapeModel':
         assert len(previous_strategies_vector) == 0
         linear_handler = LinearFunctionHandler(node=previous_mod_node,
                                                device_mesh=device_mesh,
@@ -125,19 +139,26 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
         linear_handler.register_strategy(compute_resharding_cost=False)
         setattr(previous_mod_node, 'strategies_vector', previous_strategies_vector)
 
-    permute_handler = PermuteHandler(node=view_node, device_mesh=device_mesh, strategies_vector=view_strategies_vector)
+    if call_function == torch.permute:
+        reshape_handler = PermuteHandler(node=reshape_node,
+                                         device_mesh=device_mesh,
+                                         strategies_vector=view_strategies_vector)
+    else:
+        reshape_handler = TransposeHandler(node=reshape_node,
+                                           device_mesh=device_mesh,
+                                           strategies_vector=view_strategies_vector)
 
-    permute_handler.register_strategy(compute_resharding_cost=False)
+    reshape_handler.register_strategy(compute_resharding_cost=False)
 
     # check operation data mapping
-    mapping = permute_handler.get_operation_data_mapping()
+    mapping = reshape_handler.get_operation_data_mapping()
 
     for name, op_data in mapping.items():
         op_data: OperationData
         # make sure they have valid values
         assert op_data.data is not None
 
-    if model_cls.__name__ == 'ConvPermuteModel':
+    if model_cls.__name__ == 'ConvReshapeModel':
         assert mapping['input'].name == "conv2d"
     else:
         assert mapping['input'].name == "linear"
@@ -146,10 +167,16 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
     assert mapping['input'].type == OperationDataType.ARG
     assert mapping['input'].logical_shape == torch.Size([8, 16, 64, 64])
 
-    assert mapping['output'].name == "permute"
-    assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.permute(torch.rand(8, 16, 64, 64), permute_dims).shape
-    assert mapping['output'].type == OperationDataType.OUTPUT
+    if call_function == torch.permute:
+        assert mapping['output'].name == "permute"
+        assert mapping['output'].data.is_meta
+        assert mapping['output'].data.shape == torch.permute(torch.rand(8, 16, 64, 64), reshape_dims).shape
+        assert mapping['output'].type == OperationDataType.OUTPUT
+    else:
+        assert mapping['output'].name == "transpose"
+        assert mapping['output'].data.is_meta
+        assert mapping['output'].data.shape == torch.transpose(torch.rand(8, 16, 64, 64), *reshape_dims).shape
+        assert mapping['output'].type == OperationDataType.OUTPUT
 
     # reshape handler is a following strategy handler, so the number of strategies is equal to the predecessor node.
     assert len(view_strategies_vector) == len(previous_strategies_vector)
@@ -157,9 +184,9 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
     if rank == 0:
         for name in strategy_name_list:
             print(name)
-    if model_cls.__name__ == 'ConvPermuteModel':
+    if model_cls.__name__ == 'ConvReshapeModel':
 
-        if permute_dims == (0, 2, 1, 3):
+        if reshape_dims in ((0, 2, 1, 3), (1, 2)):
             assert '[S0, S1, R, R] -> [S0, R, S1, R]_0' in strategy_name_list
             assert '[S1, S0, R, R] -> [S1, R, S0, R]_1' in strategy_name_list
             assert '[S0, R, R, R] -> [S0, R, R, R]_2' in strategy_name_list
@@ -177,7 +204,7 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
             assert '[R, R, R, R] -> [R, R, R, R]_14' in strategy_name_list
             assert '[R, S01, R, R] -> [R, R, S01, R]_15' in strategy_name_list
 
-        if permute_dims == (2, 0, 1, 3):
+        if reshape_dims == (2, 0, 1, 3):
             assert '[S0, S1, R, R] -> [R, S0, S1, R]_0' in strategy_name_list
             assert '[S1, S0, R, R] -> [R, S1, S0, R]_1' in strategy_name_list
             assert '[S0, R, R, R] -> [R, S0, R, R]_2' in strategy_name_list
@@ -195,9 +222,27 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
             assert '[R, R, R, R] -> [R, R, R, R]_14' in strategy_name_list
             assert '[R, S01, R, R] -> [R, R, S01, R]_15' in strategy_name_list
 
-    if model_cls.__name__ == 'LinearPermuteModel':
+        if reshape_dims == (1, 3):
+            assert '[S0, S1, R, R] -> [S0, R, R, S1]_0' in strategy_name_list
+            assert '[S1, S0, R, R] -> [S1, R, R, S0]_1' in strategy_name_list
+            assert '[S0, R, R, R] -> [S0, R, R, R]_2' in strategy_name_list
+            assert '[S1, R, R, R] -> [S1, R, R, R]_3' in strategy_name_list
+            assert '[S0, R, R, R] -> [S0, R, R, R]_4' in strategy_name_list
+            assert '[S1, R, R, R] -> [S1, R, R, R]_5' in strategy_name_list
+            assert '[R, S1, R, R] -> [R, R, R, S1]_6' in strategy_name_list
+            assert '[R, S0, R, R] -> [R, R, R, S0]_7' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R]_8' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R]_9' in strategy_name_list
+            assert '[R, S0, R, R] -> [R, R, R, S0]_10' in strategy_name_list
+            assert '[R, S1, R, R] -> [R, R, R, S1]_11' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R]_12' in strategy_name_list
+            assert '[S01, R, R, R] -> [S01, R, R, R]_13' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R]_14' in strategy_name_list
+            assert '[R, S01, R, R] -> [R, R, R, S01]_15' in strategy_name_list
 
-        if permute_dims == (0, 2, 1, 3):
+    if model_cls.__name__ == 'LinearReshapeModel':
+
+        if reshape_dims == ((0, 2, 1, 3), (1, 2)):
             assert '[S0, R, R, S1] -> [S0, R, R, S1]_0' in strategy_name_list
             assert '[R, S0, R, S1] -> [R, R, S0, S1]_1' in strategy_name_list
             assert '[R, R, S0, S1] -> [R, S0, R, S1]_2' in strategy_name_list
@@ -222,7 +267,7 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
             assert '[R, R, R, R] -> [R, R, R, R]_21' in strategy_name_list
             assert '[R, R, R, S01] -> [R, R, R, S01]_22' in strategy_name_list
 
-        if permute_dims == (2, 0, 1, 3):
+        if reshape_dims == (2, 0, 1, 3):
             assert '[S0, R, R, S1] -> [R, S0, R, S1]_0' in strategy_name_list
             assert '[R, S0, R, S1] -> [R, R, S0, S1]_1' in strategy_name_list
             assert '[R, R, S0, S1] -> [S0, R, R, S1]_2' in strategy_name_list
@@ -247,16 +292,43 @@ def check_view_handler(rank, permute_dims, model_cls, world_size, port):
             assert '[R, R, R, R] -> [R, R, R, R]_21' in strategy_name_list
             assert '[R, R, R, S01] -> [R, R, R, S01]_22' in strategy_name_list
 
+        if reshape_dims == (1, 3):
+            assert '[S0, R, R, S1] -> [S0, S1, R, R]_0' in strategy_name_list
+            assert '[R, S0, R, S1] -> [R, S1, R, S0]_1' in strategy_name_list
+            assert '[R, R, S0, S1] -> [R, S1, S0, R]_2' in strategy_name_list
+            assert '[S1, R, R, S0] -> [S1, S0, R, R]_3' in strategy_name_list
+            assert '[R, S1, R, S0] -> [R, S0, R, S1]_4' in strategy_name_list
+            assert '[R, R, S1, S0] -> [R, S0, S1, R]_5' in strategy_name_list
+            assert '[S0, R, R, R] -> [S0, R, R, R]_6' in strategy_name_list
+            assert '[R, S0, R, R] -> [R, R, R, S0]_7' in strategy_name_list
+            assert '[R, R, S0, R] -> [R, R, S0, R]_8' in strategy_name_list
+            assert '[S1, R, R, R] -> [S1, R, R, R]_9' in strategy_name_list
+            assert '[R, S1, R, R] -> [R, R, R, S1]_10' in strategy_name_list
+            assert '[R, R, S1, R] -> [R, R, S1, R]_11' in strategy_name_list
+            assert '[R, R, R, S1] -> [R, S1, R, R]_12' in strategy_name_list
+            assert '[R, R, R, S0] -> [R, S0, R, R]_13' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R]_14' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R]_15' in strategy_name_list
+            assert '[R, R, R, S0] -> [R, S0, R, R]_16' in strategy_name_list
+            assert '[R, R, R, S1] -> [R, S1, R, R]_17' in strategy_name_list
+            assert '[S01, R, R, R] -> [S01, R, R, R]_18' in strategy_name_list
+            assert '[R, S01, R, R] -> [R, R, R, S01]_19' in strategy_name_list
+            assert '[R, R, S01, R] -> [R, R, S01, R]_20' in strategy_name_list
+            assert '[R, R, R, R] -> [R, R, R, R]_21' in strategy_name_list
+            assert '[R, R, R, S01] -> [R, S01, R, R]_22' in strategy_name_list
+
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-@parameterize('permute_dims', [(0, 2, 1, 3), (2, 0, 1, 3)])
-@parameterize('model_cls', [ConvPermuteModel, LinearPermuteModel])
-def test_view_handler(permute_dims, model_cls):
+@parameterize('call_function', [torch.permute, torch.transpose])
+@parameterize('reshape_dims', [((0, 2, 1, 3), (1, 2)), ((2, 0, 1, 3), (1, 3))])
+@parameterize('model_cls', [ConvReshapeModel, LinearReshapeModel])
+def test_view_handler(call_function, reshape_dims, model_cls):
     world_size = 4
     run_func = partial(check_view_handler,
-                       permute_dims=permute_dims,
+                       call_function=call_function,
+                       reshape_dims=reshape_dims,
                        model_cls=model_cls,
                        world_size=world_size,
                        port=free_port())
