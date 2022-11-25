@@ -87,6 +87,11 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
             solution_len = len(strategies_constructor.leaf_strategies)
             solution = [0] * solution_len
             solution[node_index] = strategy_index
+        elif node_type == 'following':
+            solution_len = len(strategies_constructor.leaf_strategies)
+            solution = [0] * solution_len
+            solution[node_index] = strategy_index
+            solution[node_index + 1] = strategy_index
         else:
             node_vector = strategies_constructor.leaf_strategies[node_index]
             strategy_to_keep = node_vector[strategy_index]
@@ -121,7 +126,6 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
             grad_to_shard = grad_to_shard_dict[key]
             grad_to_compare = grad_to_compare_dict[key]
             assert_close_helper(grad_to_shard, grad_to_compare, strategy_index=strategy_index, type='input grad')
-
         # extract the strategy used in this iter
         strategy_in_use = target_node.strategies_vector[strategy_index]
         param_to_shard_dict = dict(gm.named_parameters())
