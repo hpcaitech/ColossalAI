@@ -84,7 +84,7 @@ def check_view_handler(rank, tgt_shape, model_cls, world_size, port):
         #     return view
         graph = tracer.trace(model,
                              meta_args={
-                                 "input": torch.rand(8, 16, 66, 66).to('meta'),
+                                 "input": torch.rand(8, 8, 66, 66).to('meta'),
                                  "other": torch.rand(16, 8, 3, 3).to('meta'),
                              })
 
