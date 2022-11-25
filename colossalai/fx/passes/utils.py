@@ -303,6 +303,7 @@ def get_partition_depends(partition, partitions, input_partitions=None, output_p
 #     'output': {}, 'output_len': 0}
 # }
 
+# TODO(jiangziyue) Define a Class for DAG.
 def get_DAG(gm: GraphModule):
     DAG = {}
     input_partitions = []
@@ -318,7 +319,7 @@ def get_DAG(gm: GraphModule):
         # print(f'{node.name=} | {node.args=} | {node.users=}')
 
     for partition in input_partitions:
-        DAG_node = {'input': {}, 'output': {}, 'output_len': 0}
+        DAG_node = {'input': {}, 'output': {}, 'output_len': 1}
         _, output, _ = get_partition_depends(partition, partitions, None, output_partitions)
         DAG_node['output'] = output
         if 'input_partition' not in DAG:
