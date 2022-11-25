@@ -316,7 +316,6 @@ def get_DAG(gm: GraphModule):
             partitions.append(node)
         elif node.op == 'output':
             output_partitions.append(node)
-        # print(f'{node.name=} | {node.args=} | {node.users=}')
 
     for partition in input_partitions:
         DAG_node = {'input': {}, 'output': {}, 'output_len': 1}
