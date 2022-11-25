@@ -103,13 +103,18 @@ class ViewGenerator(FollowingStrategyGenerator):
                 # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
                 if len(total_mesh_dim_list) == 1:
                     total_mesh_dim_list = total_mesh_dim_list[0]
+                    # the total mesh dim list only has one element, so the shard dim has only one element as well.
+                    shard_dim = list(dim_partition_dict_for_input.keys())[0]
                     input_comm_action = self.get_communication_action(
                         sharding_spec=sharding_spec_mapping["input"],
                         communication_pattern=CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
                         logical_process_axis=total_mesh_dim_list,
                         comm_type=CommType.BEFORE,
                         arg_index=0)
-                    input_comm_action.comm_spec.gather_dim = total_mesh_dim_list
+                    # it will gather the input through gather_dim during forward phase.
+                    input_comm_action.comm_spec.gather_dim = shard_dim
+                    # it will split the input activation grad through shard_dim during backward phase.
+                    input_comm_action.comm_spec.shard_dim = shard_dim
 
                 elif len(total_mesh_dim_list) >= 2:
                     source_spec = sharding_spec_mapping["input"]
