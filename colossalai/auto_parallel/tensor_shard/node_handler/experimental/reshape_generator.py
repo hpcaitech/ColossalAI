@@ -17,7 +17,7 @@ from colossalai.auto_parallel.tensor_shard.utils import (
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 from colossalai.tensor.sharding_spec import ShardingSpec
 
-__all__ = ['ReshapeGenerator', 'ViewGenerator', 'PermuteGenerator', 'TransposeGenerator']
+__all__ = ['ReshapeGenerator', 'ViewGenerator', 'PermuteGenerator', 'TransposeGenerator', 'SplitGenerator']
 
 
 class ReshapeGenerator(FollowingStrategyGenerator):
@@ -220,6 +220,76 @@ class TransposeGenerator(ReshapeGenerator):
             # we keep same strategies with different name for node merging, and it will not increase the searching space,
             # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
             name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
+
+            strategy = self.get_sharding_strategy(name=name,
+                                                  sharding_spec_mapping=sharding_spec_mapping,
+                                                  communication_action_mapping=communication_action_mapping)
+            strategy_list.append(strategy)
+
+        return strategy_list
+
+
+class SplitGenerator(ReshapeGenerator):
+    """
+    SplitGenerator deals with the sharding strategies of split op.
+    """
+
+    def collate_strategies(self) -> List[ShardingStrategy]:
+        strategy_list = []
+        for index, strategy in enumerate(self.predecessor_node.strategies_vector):
+            recover_dims = None
+            dim_partition_dict_mapping = {}
+            communication_action_mapping = {}
+            input_sharding_spec = strategy.output_sharding_specs[self.op_data["input"]]
+            dim_partition_dict_for_input = copy.deepcopy(input_sharding_spec.dim_partition_dict)
+            split_size, split_dim = self.op_data['split_info'].data
+
+            if split_dim in dim_partition_dict_for_input:
+                recover_dims = dim_partition_dict_for_input.pop(split_dim)
+
+            dim_partition_dict_for_output = [
+                copy.deepcopy(dim_partition_dict_for_input) for _ in range(len(self.op_data["output"].data))
+            ]
+            assert len(dim_partition_dict_for_output) >= 2
+            dim_partition_dict_mapping = {
+                "input": dim_partition_dict_for_input,
+                "output": dim_partition_dict_for_output,
+            }
+            sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
+            # add index into name to pass the duplicated check
+            # we keep same strategies with different name for node merging, and it will not increase the searching space,
+            # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
+            name = f'{sharding_spec_mapping["input"].sharding_sequence}_{index}'
+
+            # add comm action if the input need to be recovered to replica in the split dimension.
+            if recover_dims:
+                # if there is only one sharding dimension, we should use the value instead of list as logical_process_axis.
+                if len(recover_dims) == 1:
+                    recover_dims = recover_dims[0]
+                    input_comm_action = self.get_communication_action(
+                        sharding_spec=sharding_spec_mapping["input"],
+                        communication_pattern=CollectiveCommPattern.GATHER_FWD_SPLIT_BWD,
+                        logical_process_axis=recover_dims,
+                        comm_type=CommType.BEFORE,
+                        arg_index=0)
+                    # it will gather the input through gather_dim during forward phase.
+                    input_comm_action.comm_spec.gather_dim = split_dim
+                    # it will split the input activation grad through split_dim during backward phase.
+                    input_comm_action.comm_spec.shard_dim = split_dim
+
+                elif len(recover_dims) >= 2:
+                    # original sharding spec
+                    source_spec = input_sharding_spec
+                    # target sharding spec
+                    target_spec = sharding_spec_mapping["input"]
+                    comm_spec = {'src_spec': source_spec, 'tgt_spec': target_spec}
+                    input_comm_action = CommAction(comm_spec=comm_spec, comm_type=CommType.BEFORE, arg_index=0)
+
+                else:
+                    input_comm_action = None
+
+                if input_comm_action is not None:
+                    communication_action_mapping["input"] = input_comm_action
 
             strategy = self.get_sharding_strategy(name=name,
                                                   sharding_spec_mapping=sharding_spec_mapping,
