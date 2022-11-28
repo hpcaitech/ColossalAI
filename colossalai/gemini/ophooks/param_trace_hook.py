@@ -22,6 +22,7 @@ class ParamTracerHook(ParamOpHook):
         self.mem_monitor = SyncCudaMemoryMonitor()
         self._non_model_data_list = []
         self._model_data_list = []
+        self.pre_params = []
 
     def _move_params_to_dev(self, params, dev: str) -> int:
         assert isinstance(dev, str), f"device should be a str not torch.device"
@@ -46,6 +47,8 @@ class ParamTracerHook(ParamOpHook):
         self._model_data_list.append(data_volume)
 
     def pre_op(self, params):
+        if len(self.pre_params):
+            self._move_params_to_dev(self.pre_params, "cpu")
         cuda_volume = self.mem_monitor.finish()
         if len(self._model_data_list):
             self._non_model_data_list.append(cuda_volume - self._model_data_list[-1])
@@ -54,7 +57,8 @@ class ParamTracerHook(ParamOpHook):
         self.mem_monitor.start()
 
     def post_op(self, params):
-        self._move_params_to_dev(params, 'cpu')
+        # self._move_params_to_dev(params, 'cpu')
+        self.pre_params = params
 
     def pre_forward(self, params: List[torch.Tensor]) -> None:
         self.pre_op(params)
