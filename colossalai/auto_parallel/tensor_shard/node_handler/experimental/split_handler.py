@@ -33,7 +33,6 @@ class SplitHandler(NodeHandler):
 
         input_data = self.node.args[0]._meta_data
         physical_input_operand = OperationData(name=str(self.node.args[0]), type=data_type, data=input_data)
-        print(self.node.args, self.node.kwargs)
         split_size = self.node.args[1]
         if len(self.node.args) == 3:
             # (input, split_size, split_dim)
@@ -53,7 +52,6 @@ class SplitHandler(NodeHandler):
         physical_shape_operand = OperationData(name='split_info', type=OperationDataType.ARG, data=split_info)
 
         output_data = self.node._meta_data
-        print(output_data)
         physical_output_operand = OperationData(name=str(self.node), type=OperationDataType.OUTPUT, data=output_data)
 
         mapping = {

@@ -118,10 +118,15 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
         assert_close_helper(output, output_to_compare, strategy_index=strategy_index, type='forward output')
 
         # backward result compare
-        loss = output.sum()
-        loss_to_compare = output_to_compare.sum()
-        loss.backward()
+        if isinstance(output, (tuple, list)):
+            loss = output[0].sum()
+            loss_to_compare = output_to_compare[0].sum()
+        else:
+            loss = output.sum()
+            loss_to_compare = output_to_compare.sum()
+
         loss_to_compare.backward()
+        loss.backward()
         for key in grad_to_shard_dict.keys():
             grad_to_shard = grad_to_shard_dict[key]
             grad_to_compare = grad_to_compare_dict[key]
@@ -157,6 +162,10 @@ def assert_close_helper(first: torch.Tensor,
     """
     # average_diff_tensor = ((first - second)/(second+0.1)).sum()/second.numel()
     try:
-        assert_close(first, second, rtol=rtol, atol=atol)
+        if isinstance(first, (tuple, list)):
+            for first_element, second_element in zip(first, second):
+                assert_close(first_element, second_element, rtol=rtol, atol=atol)
+        else:
+            assert_close(first, second, rtol=rtol, atol=atol)
     except:
         print(f'strategy index {strategy_index} encounter assert_close error on {type}')
