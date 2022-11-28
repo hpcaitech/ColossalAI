@@ -68,9 +68,8 @@ def run_gemini_fwd_bwd(rank, world_size, port, model_name: str, placement_policy
         run_fwd_bwd(model, data.cuda(), label.cuda(), criterion, use_init_ctx=True)
 
     # check_grad(model, torch_model)
-    for p1, p2 in zip(model.parameters(), torch_model.parameters()):
-        torch.allclose(p1.to(torch.float), p2.to(torch.float))
-    print(f'pass test {model_name}')
+    # for p1, p2 in zip(model.parameters(), torch_model.parameters()):
+    #     torch.allclose(p1.to(torch.float), p2.to(torch.float))
 
 
 @pytest.mark.parametrize("model_name", ["inline_op_model", "bert", "simple_net", "gpt2", "resnet18"])
@@ -84,5 +83,5 @@ if __name__ == '__main__':
     # for model_name in ["bert", "resnet18", "inline_op_model"]:
     # bert, gpt, inline_op_model, nested_model, no_leaf_module,
     # repeated_computed_layer, resnet, simple_net
-    for model_name in ["gpt2"]:
-        test_gemini_train(model_name=model_name, iter_num=1)
+    for model_name in ["resnet18"]:
+        test_gemini_train(model_name=model_name, iter_num=4)

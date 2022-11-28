@@ -6,11 +6,13 @@ from ...sharding_strategy import OperationData, OperationDataType
 from ..node_handler import NodeHandler
 from ..registry import operator_registry
 from ..strategy import StrategyGenerator
-from .view_generator import ViewGenerator
+from .reshape_generator import ViewGenerator
 
 __all__ = ['ViewHandler']
 
 
+@operator_registry.register(torch.Tensor.reshape)
+@operator_registry.register(torch.reshape)
 @operator_registry.register(torch.Tensor.view)
 class ViewHandler(NodeHandler):
     """
