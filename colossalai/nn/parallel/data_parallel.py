@@ -272,7 +272,7 @@ class ZeroDDP(ColoDDP):
             p.grad = None
 
     def _post_backward(self):
-        assert self.chunk_manager.accessed_mem == 0
+        # assert self.chunk_manager.accessed_mem == 0
         self._setup_grads_ptr()
         self._logger.debug(
             f'comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}'

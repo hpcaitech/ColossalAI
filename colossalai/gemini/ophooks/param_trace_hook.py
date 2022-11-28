@@ -14,7 +14,7 @@ class TrainingPhase(Enum):
     BACKWARD = 1
 
 
-class ParamMemHook(ParamOpHook):
+class ParamTracerHook(ParamOpHook):
 
     def __init__(self) -> None:
         super().__init__()

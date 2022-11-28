@@ -17,12 +17,12 @@ from colossalai.auto_parallel.tensor_shard.utils import (
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 from colossalai.tensor.sharding_spec import ShardingSpec
 
-__all__ = ['ViewGenerator']
+__all__ = ['ReshapeGenerator', 'ViewGenerator', 'PermuteGenerator', 'TransposeGenerator']
 
 
-class ViewGenerator(FollowingStrategyGenerator):
+class ReshapeGenerator(FollowingStrategyGenerator):
     """
-    ViewGenerator which deals with the sharding strategies of view op.
+    ReshapeGenerator is the base class for all the reshape operation.
     """
 
     def validate(self) -> bool:
@@ -60,6 +60,15 @@ class ViewGenerator(FollowingStrategyGenerator):
                                     parameter=fwd_parameter_cost + bwd_parameter_cost)
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
+
+    def collate_strategies(self) -> List[ShardingStrategy]:
+        return super().collate_strategies()
+
+
+class ViewGenerator(ReshapeGenerator):
+    """
+    ViewGenerator deals with the sharding strategies of view op.
+    """
 
     def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
@@ -129,6 +138,88 @@ class ViewGenerator(FollowingStrategyGenerator):
 
                 if input_comm_action is not None:
                     communication_action_mapping["input"] = input_comm_action
+
+            strategy = self.get_sharding_strategy(name=name,
+                                                  sharding_spec_mapping=sharding_spec_mapping,
+                                                  communication_action_mapping=communication_action_mapping)
+            strategy_list.append(strategy)
+
+        return strategy_list
+
+
+class PermuteGenerator(ReshapeGenerator):
+    """
+    PermuteGenerator deals with the sharding strategies of permute op.
+    """
+
+    def collate_strategies(self) -> List[ShardingStrategy]:
+        strategy_list = []
+        for index, strategy in enumerate(self.predecessor_node.strategies_vector):
+            dim_partition_dict_mapping = {}
+            communication_action_mapping = {}
+            input_sharding_spec = strategy.output_sharding_specs[self.op_data["input"]]
+
+            permute_dims = self.op_data['permute_dims'].data
+            dim_partition_dict_for_input = input_sharding_spec.dim_partition_dict
+            dim_partition_dict_for_output = {}
+            for dim_index, permute_dim in enumerate(permute_dims):
+                if permute_dim in dim_partition_dict_for_input:
+                    dim_partition_dict_for_output[dim_index] = dim_partition_dict_for_input[permute_dim]
+
+            dim_partition_dict_mapping = {
+                "input": dim_partition_dict_for_input,
+                "output": dim_partition_dict_for_output,
+            }
+            sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
+
+            # add index into name to pass the duplicated check
+            # we keep same strategies with different name for node merging, and it will not increase the searching space,
+            # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
+            name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
+
+            strategy = self.get_sharding_strategy(name=name,
+                                                  sharding_spec_mapping=sharding_spec_mapping,
+                                                  communication_action_mapping=communication_action_mapping)
+            strategy_list.append(strategy)
+
+        return strategy_list
+
+
+class TransposeGenerator(ReshapeGenerator):
+    """
+    TransposeGenerator deals with the sharding strategies of permute op.
+    """
+
+    def collate_strategies(self) -> List[ShardingStrategy]:
+        strategy_list = []
+        for index, strategy in enumerate(self.predecessor_node.strategies_vector):
+            dim_partition_dict_mapping = {}
+            communication_action_mapping = {}
+            input_sharding_spec = strategy.output_sharding_specs[self.op_data["input"]]
+            dim_partition_dict_for_input = input_sharding_spec.dim_partition_dict
+            dim_partition_dict_for_output = {}
+
+            transpose_dims = self.op_data['transpose_dims'].data
+            dim_0 = transpose_dims[0]
+            dim_1 = transpose_dims[1]
+            for dim, sharded_dims in dim_partition_dict_for_input.items():
+                if dim == dim_0:
+                    dim_partition_dict_for_output[dim_1] = dim_partition_dict_for_input[dim_0]
+                elif dim == dim_1:
+                    dim_partition_dict_for_output[dim_0] = dim_partition_dict_for_input[dim_1]
+                else:
+                    dim_partition_dict_for_output[dim] = sharded_dims
+
+            dim_partition_dict_mapping = {
+                "input": dim_partition_dict_for_input,
+                "output": dim_partition_dict_for_output,
+            }
+            sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
+
+            # add index into name to pass the duplicated check
+            # we keep same strategies with different name for node merging, and it will not increase the searching space,
+            # because in solver, this node will be merged into other nodes, and solver will not create a new variable for this node.
+            name = f'{sharding_spec_mapping["input"].sharding_sequence} -> {sharding_spec_mapping["output"].sharding_sequence}_{index}'
 
             strategy = self.get_sharding_strategy(name=name,
                                                   sharding_spec_mapping=sharding_spec_mapping,

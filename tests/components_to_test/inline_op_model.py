@@ -16,14 +16,14 @@ class InlineOpModule(CheckpointModule):
     def __init__(self, checkpoint=False) -> None:
         super().__init__(checkpoint=checkpoint)
         self.proj1 = nn.Linear(4, 8)
-        self.weight = nn.Parameter(torch.randn(8, 8))
-        self.proj2 = nn.Linear(8, 4)
+        self.proj2 = nn.Linear(8, 8)
 
     def forward(self, x):
+
         x = self.proj1(x)
         # inline add_
         x.add_(10)
-        x = F.linear(x, self.weight)
+        x = self.proj2(x)
         # inline relu_
         x = torch.relu_(x)
         x = self.proj2(x)
