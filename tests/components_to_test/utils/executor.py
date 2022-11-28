@@ -1,15 +1,30 @@
 import torch
 
 
-def run_fwd_bwd(model, data, label, criterion, enable_autocast=False, use_init_ctx=False):
-    with torch.cuda.amp.autocast(enabled=enable_autocast):
-        if criterion:
-            y = model(data)
-            loss = criterion(y, label)
-        else:
-            loss = model(data, label)
-        loss = loss.float()
+def run_fwd_bwd(model, data, label, criterion, use_init_ctx=False) -> torch.Tensor:
+    """run_fwd_bwd
+    run fwd and bwd for the model
+
+    Args:
+        model (torch.nn.Module): a PyTorch model
+        data (torch.Tensor): input data
+        label (torch.Tensor): label
+        criterion (Optional[Callable]): a function of criterion
+        use_init_ctx (bool, optional): whether the model is initialized under the contxt of ColoInitCtx. Defaults to False.
+
+    Returns:
+        torch.Tensor: loss of fwd
+    """
+    if criterion:
+        y = model(data)
+        y = y.float()
+        loss = criterion(y, label)
+    else:
+        loss = model(data, label)
+
+    loss = loss.float()
     if use_init_ctx:
         model.backward(loss)
     else:
         loss.backward()
+    return loss
