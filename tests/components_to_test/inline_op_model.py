@@ -18,7 +18,7 @@ class InlineOpModule(CheckpointModule):
         self.proj1 = nn.Linear(4, 8)
         self.proj2 = nn.Linear(8, 8)
 
-    def forward(self, x):
+    def _forward(self, x):
 
         x = self.proj1(x)
         # inline add_
@@ -41,7 +41,7 @@ class DummyDataLoader(DummyDataGenerator):
 @non_distributed_component_funcs.register(name='inline_op_model')
 def get_training_components():
 
-    def model_builder(checkpoint=True):
+    def model_builder(checkpoint=False):
         return InlineOpModule(checkpoint)
 
     trainloader = DummyDataLoader()

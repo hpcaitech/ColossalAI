@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
@@ -28,7 +29,7 @@ def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
         chunk_manager.access_chunk(chunk)
 
     for (p0, p1) in zip(model.parameters(), torch_model.parameters()):
-        assert torch.allclose(p0, p1.grad, atol=1e-3, rtol=1e-5), "{}".format(torch.max(torch.abs(p0 - p1.grad)).item())
+        assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
@@ -74,10 +75,8 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_ch
         torch_loss = run_fwd_bwd(torch_model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=False)
         loss = run_fwd_bwd(model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=True)
 
-        assert torch.allclose(loss, torch_loss, rtol=1e-2), "{} {} {}".format(
-            torch.max(torch.abs(loss - torch_loss)).item(), loss, torch_loss)
+        assert torch.equal(torch_loss, loss)
 
-        # FIXME(1SAA) bert and resnet18 can not pass the check_grad
         check_grad(model, torch_model)
 
 
@@ -96,4 +95,4 @@ def test_gpt(world_size):
 
 
 if __name__ == '__main__':
-    test_gpt(1)
+    test_gpt(4)
