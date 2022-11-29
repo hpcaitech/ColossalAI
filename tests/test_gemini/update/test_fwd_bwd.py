@@ -10,6 +10,8 @@ import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
@@ -55,6 +57,8 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_ch
     chunk_manager = ChunkManager(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    optimizer = HybridAdam(model.parameters(), lr=1e-3)
+    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=1)
 
     pg = ProcessGroup()
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
@@ -71,9 +75,9 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_ch
         # after bwd param is grad for Gemini, due to the chunk reuse optimization.
         if i > 0:
             break
-
-        torch_loss = run_fwd_bwd(torch_model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=False)
-        loss = run_fwd_bwd(model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=True)
+        input_ids, label = input_ids.cuda(), label.cuda()
+        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
+        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
 
         assert torch.equal(torch_loss, loss)
 
