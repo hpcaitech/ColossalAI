@@ -53,7 +53,6 @@ def run_master(args):
                                     checkpoint=use_checkpoint)
 
     for _ in range(epoch):
-        print(f'{input_sample.size()=}')
         logits = engine.forward_backward({'x': input_sample}, forward_only=True)
 
 if __name__ == "__main__":

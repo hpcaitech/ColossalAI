@@ -202,9 +202,9 @@ class WorkerBase(ABC):
 
         # TODO(jiangziyue) redesign lifecycle management for DAG scheduler
         # all consumers have been satisfied, the work_item can be released
-        # with self.output_list_condition_lock:
-        #     if output_work_item.refcount >= len(self.consumer_stage_ids):
-        #         self.output_list.pop(key)
+        with self.output_list_condition_lock:
+            if output_work_item.refcount >= len(self.consumer_stage_ids):
+                self.output_list.pop(key)
         return output
 
     def get_parameters(self) -> List[torch.Tensor]:
