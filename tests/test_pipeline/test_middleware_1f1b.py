@@ -55,7 +55,6 @@ def run_master(args):
     for _ in range(epoch):
         print(f'{input_sample.size()=}')
         logits = engine.forward_backward({'x': input_sample}, forward_only=True)
-        break
 
 if __name__ == "__main__":
     args = parse_args()
