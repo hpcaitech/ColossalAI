@@ -18,7 +18,7 @@ class InlineOpModule(CheckpointModule):
         self.proj1 = nn.Linear(4, 8)
         self.proj2 = nn.Linear(8, 8)
 
-    def _forward(self, x):
+    def forward(self, x):
 
         x = self.proj1(x)
         # inline add_

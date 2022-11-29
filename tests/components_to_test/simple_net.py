@@ -22,7 +22,7 @@ class SimpleNet(CheckpointModule):
         self.ln2 = nn.LayerNorm(4)
         self.classifier = nn.Linear(4, 4)
 
-    def _forward(self, x):
+    def forward(self, x):
         x = self.embed(x)
         x = self.proj1(x)
         x = self.ln1(x)

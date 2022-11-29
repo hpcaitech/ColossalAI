@@ -22,7 +22,7 @@ class NetWithRepeatedlyComputedLayers(CheckpointModule):
         self.fc3 = nn.Linear(5, 2)
         self.layers = [self.fc1, self.fc2, self.fc1, self.fc2, self.fc3]
 
-    def _forward(self, x):
+    def forward(self, x):
         for layer in self.layers:
             x = layer(x)
         return x

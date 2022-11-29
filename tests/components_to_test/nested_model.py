@@ -26,7 +26,7 @@ class NestedNet(CheckpointModule):
         self.sub_fc = SubNet(5)
         self.fc2 = nn.Linear(5, 2)
 
-    def _forward(self, x):
+    def forward(self, x):
         x = self.fc1(x)
         x = self.sub_fc(x, self.fc1.weight)
         x = self.fc1(x)

@@ -19,7 +19,7 @@ class NoLeafModule(CheckpointModule):
         self.weight = nn.Parameter(torch.randn(8, 8))
         self.proj2 = nn.Linear(8, 4)
 
-    def _forward(self, x):
+    def forward(self, x):
         x = self.proj1(x)
         x = F.linear(x, self.weight)
         x = self.proj2(x)
