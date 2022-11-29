@@ -160,6 +160,7 @@ class Solver:
                     compute_cost = compute_cost_item.total
                     memory_cost = memory_cost_item.total
 
+                memory_cost = memory_cost.parameter + memory_cost.activation + memory_cost.buffer
                 compute_costs.append(compute_cost)
                 # node in extra_node_costs means it has some extra communication
                 # cost from node merging, so we need to add those extra communication
@@ -366,6 +367,8 @@ class Solver:
             for liveness_stage in liveness_set:
                 mem = 0
                 for live_variable in liveness_stage.unique_live_vars:
+                    if live_variable.node not in self.node_index_dict:
+                        continue
                     node_index = self.node_index_dict[live_variable.node]
                     mem += lpSum(s[node_index][j] * m[node_index][j] for j in range(len(s[node_index])))
                 prob += mem <= memory_budget
