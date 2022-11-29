@@ -19,9 +19,10 @@ from tests.test_tensor.common_utils import debug_print, set_seed
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
 @parameterize('keep_gathered', [True, False])
-def exam_state_dict(placement_policy, keep_gathered):
+@parameterize('model_name', ['gpt2', 'bert'])
+def exam_state_dict(placement_policy, keep_gathered, model_name: str):
     set_seed(431)
-    get_components_func = non_distributed_component_funcs.get_callable('gpt2')
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     with ColoInitContext(device=get_current_device()):
@@ -53,9 +54,10 @@ def exam_state_dict(placement_policy, keep_gathered):
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto'])
 @parameterize('keep_gathered', [True, False])
-def exam_load_state_dict(placement_policy, keep_gathered):
+@parameterize('model_name', ['gpt2', 'bert'])
+def exam_load_state_dict(placement_policy, keep_gathered, model_name: str):
     set_seed(431)
-    get_components_func = non_distributed_component_funcs.get_callable('gpt2')
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     with ColoInitContext(device=get_current_device()):
