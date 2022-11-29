@@ -40,6 +40,7 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
 
 # 'gpt2', 'bert',
 TEST_MODELS = ['gpt2', 'bert']
+# TEST_MODELS = ['simple_net']
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
@@ -90,7 +91,7 @@ def exam_model_step(placement_policy, model_name: str):
         torch_loss = run_fwd_bwd(torch_model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=False)
         loss = run_fwd_bwd(model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=True)
 
-        assert torch.allclose(torch_loss, loss, rtol=1e-3, atol=1e-2)
+        assert torch.allclose(torch_loss, loss, rtol=1e-3, atol=1e-2), f"{torch_loss} vs {loss}"
         # debug_print([0], zero_logits, torch_logits)
 
         zero_optim.step()
@@ -139,7 +140,7 @@ def exam_tiny_example(placement_policy, model_name: str):
         torch_loss = run_fwd_bwd(torch_model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=False)
         loss = run_fwd_bwd(model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=True)
 
-        assert torch.allclose(torch_loss, loss, rtol=1e-3, atol=1e-2)
+        assert torch.allclose(torch_loss, loss, rtol=1e-3, atol=1e-2), f"{torch_loss} vs {loss}"
         # debug_print([0], zero_logits, torch_logits)
 
         zero_optim.step()
@@ -158,10 +159,10 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.parametrize('world_size', [1, 4])
 @rerun_if_address_is_in_use()
-def test_gpt(world_size):
+def test_optim(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_gpt(2)
+    test_optim(2)
