@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from colossalai.nn import CheckpointModule
-from .utils.dummy_data_generator import DummyDataGenerator
+
 from .registry import non_distributed_component_funcs
+from .utils.dummy_data_generator import DummyDataGenerator
 
 
 class NoLeafModule(CheckpointModule):
@@ -35,7 +37,7 @@ class DummyDataLoader(DummyDataGenerator):
 @non_distributed_component_funcs.register(name='no_leaf_module')
 def get_training_components():
 
-    def model_builder(checkpoint=True):
+    def model_builder(checkpoint=False):
         return NoLeafModule(checkpoint)
 
     trainloader = DummyDataLoader()

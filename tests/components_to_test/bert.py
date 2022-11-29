@@ -8,6 +8,7 @@ from .registry import non_distributed_component_funcs
 
 
 def get_bert_data_loader(
+        n_class,
         batch_size,
         total_samples,
         sequence_length,
@@ -16,7 +17,7 @@ def get_bert_data_loader(
 ):
     train_data = torch.randint(
         low=0,
-        high=1000,
+        high=n_class,
         size=(total_samples, sequence_length),
         device=device,
         dtype=torch.long,
@@ -37,7 +38,7 @@ def get_training_components():
     num_head = 4
     sequence_length = 12
     num_layer = 2
-    vocab_size = 30524
+    vocab_size = 32
 
     def bert_model_builder(checkpoint):
         config = BertConfig(vocab_size=vocab_size,
@@ -67,11 +68,13 @@ def get_training_components():
 
         return model
 
-    trainloader = get_bert_data_loader(batch_size=2,
+    trainloader = get_bert_data_loader(n_class=vocab_size,
+                                       batch_size=2,
                                        total_samples=10000,
                                        sequence_length=sequence_length,
                                        is_distrbuted=True)
-    testloader = get_bert_data_loader(batch_size=2,
+    testloader = get_bert_data_loader(n_class=vocab_size,
+                                      batch_size=2,
                                       total_samples=10000,
                                       sequence_length=sequence_length,
                                       is_distrbuted=True)
