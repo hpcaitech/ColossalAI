@@ -40,7 +40,7 @@ def get_training_components():
     num_layer = 2
     vocab_size = 32
 
-    def bert_model_builder(checkpoint):
+    def bert_model_builder(checkpoint: bool = False):
         config = BertConfig(vocab_size=vocab_size,
                             gradient_checkpointing=checkpoint,
                             hidden_size=hidden_dim,
