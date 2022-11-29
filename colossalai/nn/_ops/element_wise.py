@@ -34,17 +34,15 @@ def register_elementwise_op(op):
                                                                         dist_attr=input_tensor.dist_spec))
 
 
-@colo_op_impl(torch.relu_)
-def elementwise_op(input_tensor):
-    torch.relu_(input_tensor.data)
-    return input_tensor
+# @colo_op_impl(torch.relu_)
+# def elementwise_op(input_tensor):
+#     torch.relu_(input_tensor.data)
+#     return input_tensor
 
-
-@colo_op_impl(Tensor.add_)
-def elementwise_op(input_tensor: ColoTensor, *args, **kwargs):
-    input_tensor = input_tensor.data.add_(*args, **kwargs)
-    return input_tensor
-
+# @colo_op_impl(Tensor.add_)
+# def elementwise_op(input_tensor: ColoTensor, *args, **kwargs):
+#     input_tensor = input_tensor.data.add_(*args, **kwargs)
+#     return input_tensor
 
 # Tensor op
 register_elementwise_op(Tensor.abs)
