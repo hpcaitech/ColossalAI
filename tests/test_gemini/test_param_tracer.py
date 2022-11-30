@@ -16,7 +16,7 @@ def run_fwd_bwd(model, data, label, criterion, enable_autocast=False, dtype=torc
     model.backward(loss)
 
 def run_param_wrapper_testing():
-    test_models = ['simple_net']
+    test_models = ['simple_net', 'repeated_computed_layers', 'nested_model']
 
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
