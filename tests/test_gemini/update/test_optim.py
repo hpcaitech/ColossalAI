@@ -159,7 +159,7 @@ def run_dist(rank, world_size, port):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     exam_model_step()
-    # exam_tiny_example()
+    exam_tiny_example()
 
 
 @pytest.mark.dist
