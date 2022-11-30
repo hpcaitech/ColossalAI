@@ -2,10 +2,7 @@ import torch.nn
 
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 from colossalai.gemini.ophooks.param_trace_hook import ParamTracerHook
-from colossalai.gemini.tensor_utils import free_storage
 from colossalai.nn.parallel.data_parallel import _cast_float
-from functools import partial
-
 
 __all__ = ['ParamTracerWrapper']
 
@@ -15,20 +12,15 @@ class ParamTracerWrapper():
         super().__init__()
         self.module = module
         self.dtype = dtype
-        self.param_op_hook = ParamTracerHook(dtype)
+        self.param_op_hook = ParamTracerHook(module, dtype)
 
         for p in module.parameters():
             p.data = p.data.to(dtype)
-            if p.requires_grad:
-                p.register_hook(partial(self.grad_handle))
 
         self._cast_buffers_to_cuda_dtype()
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
-
-    def grad_handle(self, grad):
-        free_storage(grad)
 
     def _pre_forward(self):
         self.param_op_hook.mem_monitor.start()

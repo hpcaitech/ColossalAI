@@ -17,34 +17,60 @@ class TrainingPhase(Enum):
 
 class ParamTracerHook(ParamOpHook):
 
-    def __init__(self, dtype: torch.dtype = torch.half) -> None:
+    def __init__(self, module: torch.nn.Module, dtype: torch.dtype = torch.half) -> None:
         super().__init__()
         self._training_phase = TrainingPhase.FORWARD
         self.mem_monitor = SyncCudaMemoryMonitor()
         self._non_model_data_list = []
         self._model_data_list = []
         self.dtype = dtype
+        self.unreleased_grad_volume = 0
+        self.unreleased_grad_flag = {}
+
+        for p in module.parameters():
+            if p.requires_grad:
+                p.register_hook(partial(self.grad_handle, p))
+                self.unreleased_grad_flag[p] = False
+
+    def grad_handle(self, p, grad):
+        assert self.unreleased_grad_flag[p]
+        free_storage(grad)
+        self.unreleased_grad_volume -= grad.numel() * grad.element_size()
+        self.unreleased_grad_flag[p] = False
 
     def _free_cuda_params(self, params):
         for p in params:
+            if p.data.device.type == "cpu":
+                raise NotImplementedError("Only free cuda memory")
+            p.cpu_data = torch.empty(p.data.shape, dtype=self.dtype, device="cpu")
+            p.cpu_data.copy_(p.data)
             free_storage(p.data)
 
     def _allocate_params_on_cuda(self, params):
         for p in params:
             cur_dev = p.data.device.type
             if cur_dev == "cpu":
-                # p.data = p.data.to("cuda")
-                p.data = torch.randn(p.data.shape, device="cuda", dtype=self.dtype)
+                if p.grad is not None and p.grad.device.type == "cpu":
+                    raise NotImplementedError("Only run in forward propagation")
+                p.cpu_data = p.data
+                p.data = torch.empty(p.data.shape, device="cuda", dtype=self.dtype, requires_grad=p.data.requires_grad)
+                p.data.copy_(p.cpu_data)
             elif cur_dev == "cuda":
                 alloc_storage(p.data)
+                p.data.copy_(p.cpu_data)
+            free_storage(p.cpu_data)
 
     def sample_model_data(self, params):
-        data_volume = 0
+        data_volume = self.unreleased_grad_volume
         for p in params:
-            data_volume += p.data.numel() * p.data.element_size()
-        if self._training_phase == TrainingPhase.BACKWARD:
-            # add param.grad, actually param.grad is None in this time
-            data_volume *= 2
+            cur_model_data_volume = p.data.numel() * p.data.element_size()
+            data_volume += cur_model_data_volume
+            if self._training_phase == TrainingPhase.BACKWARD and p.requires_grad:
+                # add param.grad, actually param.grad is None in this time
+                data_volume += cur_model_data_volume
+                if not self.unreleased_grad_flag[p]:
+                    self.unreleased_grad_volume += cur_model_data_volume
+                    self.unreleased_grad_flag[p] = True
         self._model_data_list.append(data_volume)
 
     def pre_op(self, params):
