@@ -6,6 +6,7 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
@@ -20,7 +21,7 @@ from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import set_seed
+from tests.test_tensor.common_utils import debug_print, set_seed
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -35,27 +36,31 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         # debug_print([0], "max range: ", key, torch.max(torch.abs(value - temp_zero_value)))
-        assert torch.allclose(value, temp_zero_value, rtol=1e-3, atol=1e-2), "parameter '{}' has problem.".format(key)
+        assert_close(value, temp_zero_value, rtol=1e-3, atol=1e-2)
 
 
 # 'gpt2', 'bert',
 TEST_MODELS = ['gpt2', 'bert']
-# TEST_MODELS = ['simple_net']
+EXAMPLE_MODELS = ['simple_net']
 
 
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
+@parameterize('placement_policy', ['cuda'])
 @parameterize('model_name', TEST_MODELS)
 def exam_model_step(placement_policy, model_name: str):
     set_seed(42)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
+    torch_model = model_builder().cuda()
+    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=128)
+    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
+    torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
+    torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
+
     with ColoInitContext(device=get_current_device()):
         model = model_builder()
-
-    torch_model = model_builder().cuda()
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
-        torch_p.data.copy_(p.data)
+        p.data.copy_(torch_p.data)
 
     world_size = torch.distributed.get_world_size()
     config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
@@ -70,12 +75,7 @@ def exam_model_step(placement_policy, model_name: str):
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=2)
-
-    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
-    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
-    torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
-    torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
+    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=128)
 
     model.eval()
     torch_model.eval()
@@ -84,15 +84,13 @@ def exam_model_step(placement_policy, model_name: str):
     for i, (input_ids, label) in enumerate(train_dataloader):
         if i > 2:
             break
-
+        input_ids, label = input_ids.cuda(), label.cuda()
         zero_optim.zero_grad()
         torch_optim.zero_grad()
 
-        torch_loss = run_fwd_bwd(torch_model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=False)
-        loss = run_fwd_bwd(model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=True)
-
-        assert torch.allclose(torch_loss, loss, rtol=1e-3, atol=1e-2), f"{torch_loss} vs {loss}"
-        # debug_print([0], zero_logits, torch_logits)
+        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
+        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
+        assert_close(torch_loss, loss)
 
         zero_optim.step()
         torch_optim.step()
@@ -101,30 +99,28 @@ def exam_model_step(placement_policy, model_name: str):
 
 
 @parameterize('placement_policy', ['cuda', 'cpu'])
-@parameterize('model_name', TEST_MODELS)
+@parameterize('model_name', EXAMPLE_MODELS)
 def exam_tiny_example(placement_policy, model_name: str):
-    set_seed(42)
+    set_seed(2008)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
+    torch_model = model_builder().cuda()
+    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=2)
+    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
+    torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
+    torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
+
     with ColoInitContext(device=get_current_device()):
         model = model_builder()
-
-    torch_model = model_builder().cuda()
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
-        torch_p.data.copy_(p.data)
+        p.data.copy_(torch_p.data)
 
     chunk_manager = init_chunk_manager(model=model, init_device=get_current_device(), search_range_mb=1)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
-
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = ZeroOptimizer(optimizer, model, initial_scale=2)
-
-    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
-    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
-    torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
-    torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
     model.eval()
     torch_model.eval()
@@ -134,14 +130,15 @@ def exam_tiny_example(placement_policy, model_name: str):
         if i > 2:
             break
 
+        input_ids = input_ids.cuda()
+        label = label.cuda()
+
         zero_optim.zero_grad()
         torch_optim.zero_grad()
 
-        torch_loss = run_fwd_bwd(torch_model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=False)
-        loss = run_fwd_bwd(model, input_ids.cuda(), label.cuda(), criterion, use_init_ctx=True)
-
-        assert torch.allclose(torch_loss, loss, rtol=1e-3, atol=1e-2), f"{torch_loss} vs {loss}"
-        # debug_print([0], zero_logits, torch_logits)
+        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
+        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
+        assert_close(torch_loss, loss)
 
         zero_optim.step()
         torch_optim.step()
@@ -165,4 +162,4 @@ def test_optim(world_size):
 
 
 if __name__ == '__main__':
-    test_optim(2)
+    test_optim(1)
