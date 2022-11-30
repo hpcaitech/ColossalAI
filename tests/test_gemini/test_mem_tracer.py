@@ -33,7 +33,7 @@ def run_tracer(rank, world_size, port, use_grad_check=True):
             data = data.cuda()
             label = label.cuda()
 
-            run_fwd_bwd(model, data, label, criterion, use_init_ctx=False)
+            run_fwd_bwd(model, data, label, criterion)
 
         model._ophook_list[0].print_non_model_data()
 
