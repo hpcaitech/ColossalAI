@@ -15,7 +15,7 @@ try:
         raise RuntimeError("Colossal-AI requires Pytorch 1.10 or newer.\n"
                            "The latest stable release can be obtained from https://pytorch.org/")
 except ImportError:
-    raise ModuleNotFoundError('torch is not found. CUDA extension will not be installed')
+    raise ModuleNotFoundError('torch is not found. You need to install PyTorch before installing Colossal-AI.')
 
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
