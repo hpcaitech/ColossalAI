@@ -1,25 +1,25 @@
 from functools import partial
 
-import colossalai
-from colossalai.utils.cuda import get_current_device
 import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from common import CONFIG, check_sharded_model_params
+from torch.nn.parallel import DistributedDataParallel as DDP
+
+import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.nn.optimizer import CPUAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
+from colossalai.zero.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.sharded_model.utils import col_model_deepcopy
 from colossalai.zero.sharded_optim import ShardedOptimizerV2
 from colossalai.zero.sharded_optim._utils import has_inf_or_nan
 from tests.components_to_test.registry import non_distributed_component_funcs
-from torch.nn.parallel import DistributedDataParallel as DDP
-
-from common import CONFIG, check_sharded_model_params
 
 
 def _run_step(model, optimizer, data, label, criterion, enable_autocast=False):
@@ -45,7 +45,7 @@ def _run_step(model, optimizer, data, label, criterion, enable_autocast=False):
 @parameterize("shard_strategy_class", [TensorShardStrategy, BucketTensorShardStrategy])
 @parameterize("gpu_margin_mem_ratio", [0.0, 0.7])
 def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, gpu_margin_mem_ratio):
-    test_models = ['repeated_computed_layers', 'resnet18', 'bert', 'no_leaf_module']
+    test_models = ['repeated_computed_layers', 'resnet18', 'bert', 'hanging_param_model']
     shard_strategy = shard_strategy_class()
 
     if use_cpuadam and cpu_offload is False:
