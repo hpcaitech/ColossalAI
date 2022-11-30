@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 
 from colossalai.gemini.chunk import init_chunk_manager
@@ -14,7 +16,9 @@ class GeminiDDP(ZeroDDP):
                  placement_policy: str = "cpu",
                  pin_memory: bool = False,
                  force_outputs_fp32: bool = False,
-                 search_range_mb: int = 32) -> None:
+                 search_range_mb: int = 32,
+                 hidden_dim: Optional[int] = None,
+                 min_chunk_size_mb: Optional[float] = None) -> None:
         """
         A torch.Module warpper using ZeRO-DP and Genimi.
         ZeRO is for parallel. Gemini is for memory management.
@@ -35,6 +39,10 @@ class GeminiDDP(ZeroDDP):
             force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
             search_range_mb (int, optional): chunk size searching range in MegaByte. Defaults to 32.
         """
-        chunk_manager = init_chunk_manager(model=module, init_device=device, search_range_mb=search_range_mb)
+        chunk_manager = init_chunk_manager(model=module,
+                                           init_device=device,
+                                           hidden_dim=hidden_dim,
+                                           search_range_mb=search_range_mb,
+                                           min_chunk_size_mb=min_chunk_size_mb)
         gemini_manager = GeminiManager(placement_policy, chunk_manager, module)
         super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32)
