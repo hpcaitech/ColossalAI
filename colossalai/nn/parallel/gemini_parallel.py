@@ -38,6 +38,12 @@ class GeminiDDP(ZeroDDP):
             pin_memory (bool, optional): use pin memory on CPU. Defaults to False.
             force_outputs_fp32 (bool, optional): force outputs are fp32. Defaults to False.
             search_range_mb (int, optional): chunk size searching range in MegaByte. Defaults to 32.
+            hidden_dim (int, optional): the hidden dimension of DNN.
+                Users can provide this argument to speed up searching.
+                If users do not know this argument before training, it is ok. We will use a default value 1024.
+            min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
+                If the aggregate size of parameters is still samller than the minimum chunk size,
+                all parameters will be compacted into one small chunk.
         """
         chunk_manager = init_chunk_manager(model=module,
                                            init_device=device,
