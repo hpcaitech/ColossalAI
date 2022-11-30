@@ -96,10 +96,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         The function to call at the end of the constructor of each module.
         FIXME(fjr) The module may be passed to this function multiple times?
         """
-
-        if hasattr(module, '_colo_visited'):
-            return
-
         name_list = []
         for name, param in _named_params_with_replica(module):
             if isinstance(param, ColoTensor):
@@ -130,7 +126,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
             colo_param.shared_param_modules.append(submodule)
 
         module.to(self._device)
-        ColoModulize(module)
 
 
 def post_process_colo_init_ctx(model: torch.nn.Module,
