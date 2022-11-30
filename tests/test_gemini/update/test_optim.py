@@ -44,7 +44,7 @@ TEST_MODELS = ['gpt2', 'bert']
 EXAMPLE_MODELS = ['simple_net']
 
 
-@parameterize('placement_policy', ['cuda'])
+@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 @parameterize('model_name', TEST_MODELS)
 def exam_model_step(placement_policy, model_name: str):
     set_seed(42)
