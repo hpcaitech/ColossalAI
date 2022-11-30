@@ -43,8 +43,6 @@ class ParamTracerHook(ParamOpHook):
         for p in params:
             if p.data.device.type == "cpu":
                 raise NotImplementedError("Only free cuda memory")
-            p.cpu_data = torch.empty(p.data.shape, dtype=self.dtype, device="cpu")
-            p.cpu_data.copy_(p.data)
             free_storage(p.data)
 
     def _allocate_params_on_cuda(self, params):
@@ -53,13 +51,9 @@ class ParamTracerHook(ParamOpHook):
             if cur_dev == "cpu":
                 if p.grad is not None and p.grad.device.type =="cpu":
                     raise NotImplementedError("Only run in forward propagation")
-                p.cpu_data = p.data
                 p.data = torch.empty(p.data.shape, device="cuda", dtype=self.dtype, requires_grad=p.data.requires_grad)
-                p.data.copy_(p.cpu_data)
             elif cur_dev == "cuda":
                 alloc_storage(p.data)
-                p.data.copy_(p.cpu_data)
-            free_storage(p.cpu_data)
 
     def sample_model_data(self, params):
         data_volume = self.unreleased_grad_volume
