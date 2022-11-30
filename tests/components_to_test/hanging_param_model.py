@@ -8,9 +8,10 @@ from .registry import non_distributed_component_funcs
 from .utils.dummy_data_generator import DummyDataGenerator
 
 
-class NoLeafModule(CheckpointModule):
+class HangingParamModule(CheckpointModule):
     """
-    In this no-leaf module, it has subordinate nn.modules and a nn.Parameter.
+    Hanging Parameter: a parameter dose not belong to a leaf Module.
+    It has subordinate nn.modules and a nn.Parameter.
     """
 
     def __init__(self, checkpoint=False) -> None:
@@ -34,11 +35,11 @@ class DummyDataLoader(DummyDataGenerator):
         return data, label
 
 
-@non_distributed_component_funcs.register(name='no_leaf_module')
+@non_distributed_component_funcs.register(name='hanging_param_model')
 def get_training_components():
 
     def model_builder(checkpoint=False):
-        return NoLeafModule(checkpoint)
+        return HangingParamModule(checkpoint)
 
     trainloader = DummyDataLoader()
     testloader = DummyDataLoader()
