@@ -48,7 +48,7 @@ def _get_compatibility_string(versions):
             # return a cross
             return 'x'
         elif idx == 1:
-            # if the patch versions match
+            # if the minor versions match
             # return a tick
             return u'\u2713'
         else:
