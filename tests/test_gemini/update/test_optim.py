@@ -41,8 +41,7 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
 
 
 # 'gpt2', 'bert',
-TEST_MODELS = ['no_leaf_module', 'gpt2', 'bert', 'simple_net']
-# TEST_MODELS = ['gpt2', 'bert', 'simple_net']
+TEST_MODELS = ['no_leaf_module', 'gpt2', 'bert', 'simple_net', 'nested_model', 'repeated_computed_layers']
 
 
 @parameterize('placement_policy', ['cuda'])
