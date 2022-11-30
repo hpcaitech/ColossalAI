@@ -40,8 +40,8 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
 
 
 # 'gpt2', 'bert',
-TEST_MODELS = ['gpt2', 'bert']
-EXAMPLE_MODELS = ['simple_net']
+TEST_MODELS = ['no_leaf_module']
+# TEST_MODELS = ['gpt2', 'bert', 'simple_net']
 
 
 @parameterize('placement_policy', ['cuda'])
@@ -99,7 +99,7 @@ def exam_model_step(placement_policy, model_name: str):
 
 
 @parameterize('placement_policy', ['cuda', 'cpu'])
-@parameterize('model_name', EXAMPLE_MODELS)
+@parameterize('model_name', TEST_MODELS)
 def exam_tiny_example(placement_policy, model_name: str):
     set_seed(2008)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
