@@ -7,12 +7,7 @@ import torch
 
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.tensor.param_op_hook import ParamOpHook
-from colossalai.gemini.chunk.chunk import free_storage, is_storage_empty
-
-
-def allocate_storage(tensor: torch.Tensor) -> None:
-    if is_storage_empty(tensor):
-        tensor.storage().resize_(tensor.numel())
+from colossalai.gemini.tensor_utils import free_storage, alloc_storage
 
 
 class TrainingPhase(Enum):
@@ -34,14 +29,14 @@ class ParamTracerHook(ParamOpHook):
         for p in params:
             free_storage(p.data)
 
-    def _allocate_cuda_params(self, params):
+    def _allocate_params_on_cuda(self, params):
         for p in params:
             cur_dev = p.data.device.type
             if cur_dev == "cpu":
                 # p.data = p.data.to("cuda")
                 p.data = torch.randn(p.data.shape, device="cuda", dtype=self.dtype)
             elif cur_dev == "cuda":
-                allocate_storage(p.data)
+                alloc_storage(p.data)
 
     def sample_model_data(self, params):
         data_volume = 0
@@ -56,7 +51,7 @@ class ParamTracerHook(ParamOpHook):
         cuda_volume = self.mem_monitor.finish()
         if len(self._model_data_list):
             self._non_model_data_list.append(cuda_volume - self._model_data_list[-1])
-        self._allocate_cuda_params(params)
+        self._allocate_params_on_cuda(params)
         self.sample_model_data(params)
         self.mem_monitor.start()
 
