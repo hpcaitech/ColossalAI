@@ -121,3 +121,44 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
 
         module.to(self._device)
         ColoModulize(module)
+
+
+def post_process_colo_init_ctx(model,
+                               device: torch.device = torch.device('cpu'),
+                               dtype: torch.dtype = torch.float,
+                               default_pg: Optional[ProcessGroup] = None,
+                               default_dist_spec=None):
+    # a patch for no leaf Parameter
+
+    torch_params = []
+    for n, p in model.named_parameters():
+        if not isinstance(p, ColoTensor):
+            torch_params.append((n, p))
+
+    for (n, param) in torch_params:
+        # detaching tensor is necessary for optimizers.
+        requires_grad = param.requires_grad
+
+        # param is the global tensor.
+        colo_param = ColoParameter(param.to(device=device, dtype=dtype), requires_grad=requires_grad)
+
+        # if default_shard_plan exists, shard the param during initialization.
+        # This can reduce the model size after initialization.
+        # NOTE() embedding usually can not be correctly sharded. So I use except to handle
+        # the param that can not be sharded by the default plan
+        if default_pg is not None:
+            colo_param.set_process_group(default_pg)
+
+        if default_dist_spec is not None:
+            try:
+                colo_param.set_dist_spec(default_dist_spec)
+            except:
+                pass
+        delattr(model, n)
+        setattr(model, n, colo_param)
+
+    del torch_params
+    for n, p in model.named_parameters():
+        if not isinstance(p, ColoTensor):
+            print(f"{n} is not a ColoTensor")
+            raise RuntimeError
