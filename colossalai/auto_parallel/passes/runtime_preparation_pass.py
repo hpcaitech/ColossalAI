@@ -126,12 +126,13 @@ def _node_args_converting(gm: torch.fx.GraphModule, device_mesh: DeviceMesh):
             if method in (torch.Tensor.view, torch.Tensor.reshape):
                 for arg in node.args:
                     if isinstance(arg, Node):
-                        if isinstance(arg._meta_data, int):
+                        if isinstance(arg._meta_data, (int, tuple, list)):
                             new_args.append(arg._meta_data)
                         else:
                             new_args.append(arg)
                     else:
-                        assert isinstance(arg, int), 'The argument in view node should be either type of Node or int.'
+                        assert isinstance(
+                            arg, (int, tuple, list)), 'The argument in view node should be either type of Node or int.'
                         new_args.append(arg)
 
                 for dim, shard_dims in output_dim_partition_dict.items():
