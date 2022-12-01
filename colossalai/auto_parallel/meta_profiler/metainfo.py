@@ -13,6 +13,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 )
 from colossalai.tensor.sharding_spec import ShardingSpec
 
+from .constants import INPLACE_MODULE
 from .registry import meta_register
 
 __all__ = ['MetaInfo']
@@ -91,11 +92,21 @@ class MetaInfo:
         Compute meta info based on sharding strategy and the given target function.
         """
 
-        assert meta_register.has(self._target), f'{self._target} not found in the meta registry'
-        meta_func = meta_register.get(self._target)
+        try:
+            # module
+            meta_func = meta_register.get(self._target.__class__)
+        except:
+            # function
+            meta_func = meta_register.get(self._target)
 
         # construct args for meta_func
         args = [self.compute_sharded_tensor(k, v) for k, v in self._strategy.sharding_specs.items()]
 
+        # construct kwargs
+        if self.target in INPLACE_MODULE:
+            kwargs = {'inplace': self.target.inplace}
+        else:
+            kwargs = {'inplace': False}
+
         # compute metainfo with meta_func
-        self.compute_cost, self.memory_cost, self.fwd_in = meta_func(*args)
+        self.compute_cost, self.memory_cost, self.fwd_in = meta_func(*args, **kwargs)

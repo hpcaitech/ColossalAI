@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from colossalai.nn import CheckpointModule
-from .utils import DummyDataGenerator
+
 from .registry import non_distributed_component_funcs
+from .utils import DummyDataGenerator
 
 
 class SubNet(nn.Module):
@@ -43,7 +45,7 @@ class DummyDataLoader(DummyDataGenerator):
 @non_distributed_component_funcs.register(name='nested_model')
 def get_training_components():
 
-    def model_builder(checkpoint=True):
+    def model_builder(checkpoint=False):
         return NestedNet(checkpoint)
 
     trainloader = DummyDataLoader()

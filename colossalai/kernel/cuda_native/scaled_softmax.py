@@ -1,9 +1,10 @@
 """This code from NVIDIA Megatron
    with some changes. """
 
+import enum
+
 import torch
 import torch.nn as nn
-import enum
 
 
 class AttnMaskType(enum.Enum):
@@ -23,12 +24,12 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inputs, scale):
         try:
-            import colossal_scaled_upper_triang_masked_softmax
+            import colossalai._C.scaled_upper_triang_masked_softmax
         except ImportError:
             raise RuntimeError('ScaledUpperTriangMaskedSoftmax requires cuda extensions')
 
         scale_t = torch.tensor([scale])
-        softmax_results = colossal_scaled_upper_triang_masked_softmax.forward(inputs, scale_t[0])
+        softmax_results = colossalai._C.scaled_upper_triang_masked_softmax.forward(inputs, scale_t[0])
 
         ctx.save_for_backward(softmax_results, scale_t)
         return softmax_results
@@ -36,12 +37,13 @@ class ScaledUpperTriangMaskedSoftmax(torch.autograd.Function):
     @staticmethod
     def backward(ctx, output_grads):
         try:
-            import colossal_scaled_upper_triang_masked_softmax
+            import colossalai._C.scaled_upper_triang_masked_softmax
         except ImportError:
             raise RuntimeError('ScaledUpperTriangMaskedSoftmax requires cuda extensions')
 
         softmax_results, scale_t = ctx.saved_tensors
-        input_grads = colossal_scaled_upper_triang_masked_softmax.backward(output_grads, softmax_results, scale_t[0])
+        input_grads = colossalai._C.scaled_upper_triang_masked_softmax.backward(output_grads, softmax_results,
+                                                                                scale_t[0])
 
         return input_grads, None
 
@@ -58,26 +60,26 @@ class ScaledMaskedSoftmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inputs, mask, scale):
         try:
-            import colossal_scaled_masked_softmax
+            import colossalai._C.scaled_masked_softmax
         except ImportError:
             raise RuntimeError('ScaledMaskedSoftmax requires cuda extensions')
 
         scale_t = torch.tensor([scale])
 
-        softmax_results = colossal_scaled_masked_softmax.forward(inputs, mask, scale_t[0])
+        softmax_results = colossalai._C.scaled_masked_softmax.forward(inputs, mask, scale_t[0])
         ctx.save_for_backward(softmax_results, scale_t)
         return softmax_results
 
     @staticmethod
     def backward(ctx, output_grads):
         try:
-            import colossal_scaled_masked_softmax
+            import colossalai._C.scaled_masked_softmax
         except ImportError:
             raise RuntimeError('ScaledMaskedSoftmax requires cuda extensions')
 
         softmax_results, scale_t = ctx.saved_tensors
 
-        input_grads = colossal_scaled_masked_softmax.backward(output_grads, softmax_results, scale_t[0])
+        input_grads = colossalai._C.scaled_masked_softmax.backward(output_grads, softmax_results, scale_t[0])
         return input_grads, None, None
 
 
@@ -184,8 +186,8 @@ class FusedScaleMaskSoftmax(nn.Module):
     @staticmethod
     def get_batch_per_block(sq, sk, b, np):
         try:
-            import colossal_scaled_masked_softmax
+            import colossalai._C.scaled_masked_softmax
         except ImportError:
             raise RuntimeError('ScaledMaskedSoftmax requires cuda extensions')
 
-        return colossal_scaled_masked_softmax.get_batch_per_block(sq, sk, b, np)
+        return colossalai._C.scaled_masked_softmax.get_batch_per_block(sq, sk, b, np)

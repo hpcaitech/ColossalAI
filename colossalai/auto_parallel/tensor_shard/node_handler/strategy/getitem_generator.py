@@ -69,7 +69,7 @@ class TensorStrategyGenerator(GetItemStrategyGenerator):
 
     def collate_strategies(self) -> List[ShardingStrategy]:
         strategy_list = []
-        for strategy in self.predecessor_node.strategies_vector:
+        for index, strategy in enumerate(self.predecessor_node.strategies_vector):
             dim_partition_dict_mapping = {}
             communication_action_mapping = {}
             dim_partition_dict_for_input = strategy.output_sharding_specs[self.op_data["input"]].dim_partition_dict
@@ -96,7 +96,7 @@ class TensorStrategyGenerator(GetItemStrategyGenerator):
                     arg_index=0)
                 communication_action_mapping["input"] = input_communication_action
 
-            name = f'{sharding_spec_mapping["output"].sharding_sequence} = {sharding_spec_mapping["input"].sharding_sequence}'
+            name = f'{sharding_spec_mapping["output"].sharding_sequence} = {sharding_spec_mapping["input"].sharding_sequence}_{index}'
 
             strategy = self.get_sharding_strategy(name=name,
                                                   sharding_spec_mapping=sharding_spec_mapping,
@@ -121,7 +121,7 @@ class TensorTupleStrategyGenerator(GetItemStrategyGenerator):
         strategy_list = []
         index = self.op_data["index"].data
 
-        for strategy in self.predecessor_node.strategies_vector:
+        for strategy_index, strategy in enumerate(self.predecessor_node.strategies_vector):
             # the sharding spec for input in this case is a tuple of ShardingSpec.
             sharding_spec_for_input = strategy.output_sharding_specs[self.op_data["input"]]
             dim_partition_dict_for_output = sharding_spec_for_input[index].dim_partition_dict
@@ -132,8 +132,11 @@ class TensorTupleStrategyGenerator(GetItemStrategyGenerator):
             }
             sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
             sharding_spec_mapping["input"] = sharding_spec_for_input
-
-            name = f'{sharding_spec_mapping["output"].sharding_sequence} = {sharding_spec_mapping["input"].sharding_sequence}'
+            input_sharding_info = f"get the {index} element from ("
+            for sharding_spec in sharding_spec_for_input:
+                input_sharding_info += f'{sharding_spec.sharding_sequence}, '
+            input_sharding_info += ")"
+            name = f'{sharding_spec_mapping["output"].sharding_sequence} = {input_sharding_info}_{strategy_index}'
 
             strategy = self.get_sharding_strategy(name=name,
                                                   sharding_spec_mapping=sharding_spec_mapping,

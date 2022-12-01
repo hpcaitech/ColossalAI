@@ -105,6 +105,7 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
                                      dim_mapping={0: i},
                                      physical_shape=output_op_data.data.shape,
                                      inplace=True)
+                strategy_copy.name = f'{strategy.name}_{i}'
                 sharding_strategies.append(strategy_copy)
             except ShardingNotDivisibleError as e:
                 logger.debug(
@@ -140,7 +141,8 @@ class LinearModuleHandler(ModuleHandler):
     def get_strategy_generator(self) -> List[StrategyGenerator]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
-        generators.append(LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh))
+        generators.append(
+            LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type='linear'))
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:
@@ -193,13 +195,14 @@ class LinearModuleHandler(ModuleHandler):
 @operator_registry.register(F.linear)
 class LinearFunctionHandler(NodeHandler):
     """
-    A LinearModuleHandler which deals with the sharding strategies for nn.Linear module.
+    A LinearFunctionHandler which deals with the sharding strategies for F.Linear.
     """
 
     def get_strategy_generator(self) -> List[StrategyGenerator]:
         op_data_mapping = self.get_operation_data_mapping()
         generators = []
-        generators.append(LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh))
+        generators.append(
+            LinearProjectionStrategyGenerator(op_data_mapping, self.device_mesh, linear_projection_type='linear'))
         return generators
 
     def get_operation_data_mapping(self) -> Dict[str, OperationData]:

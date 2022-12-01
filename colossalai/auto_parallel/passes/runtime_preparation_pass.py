@@ -47,6 +47,7 @@ def _solution_annotatation(gm: torch.fx.GraphModule, solution: List[int]):
             target_sharding_spec = user_node.best_strategy.get_sharding_spec_by_name(str(node.name))
             target_sharding_specs.append(target_sharding_spec)
         sharding_spec_convert_dict[index] = target_sharding_specs
+        setattr(node, 'target_sharding_specs', target_sharding_specs)
         # the get_attr node strategy is kind of pending strategy, which means we will change it
         # to the same strategy of the user node.
         if node.op == 'get_attr':
@@ -88,14 +89,98 @@ def _solution_annotatation(gm: torch.fx.GraphModule, solution: List[int]):
     return gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict
 
 
-def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
+def _node_args_converting(gm: torch.fx.GraphModule, device_mesh: DeviceMesh):
+    """
+    This pass will process node args to adapt the distributed tensor layout.
+    """
+    mod_graph = gm.graph
+    nodes = tuple(mod_graph.nodes)
+
+    for node in nodes:
+        # skip the placeholder node added in _solution_annotation pass
+        if not hasattr(node, 'sharding_spec'):
+            continue
+
+        def _process_sharding_spec(sharding_spec):
+            if isinstance(sharding_spec, ShardingSpec):
+                dim_partition_dict = sharding_spec.dim_partition_dict
+                device_mesh = sharding_spec.device_mesh
+                return dim_partition_dict, device_mesh
+            if sharding_spec is None:
+                return None, None
+            assert isinstance(sharding_spec,
+                              (tuple, list)), 'sharding_spec should be type of ShardingSpec, tuple, list or None'
+
+            device_mesh = sharding_spec[0].device_mesh
+            dim_partition_dict = []
+            for element in sharding_spec:
+                dim_partition_dict.append(_process_sharding_spec(element))
+            return dim_partition_dict, sharding_spec
+
+        output_dim_partition_dict, device_mesh = _process_sharding_spec(node.sharding_spec)
+        new_args = []
+
+        if node.op == 'call_method':
+            method = getattr(node.args[0]._meta_data.__class__, node.target)
+            # process the node with (input, *shape) style args
+            if method in (torch.Tensor.view, torch.Tensor.reshape):
+                for arg in node.args:
+                    if isinstance(arg, Node):
+                        if isinstance(arg._meta_data, int):
+                            new_args.append(arg._meta_data)
+                        else:
+                            new_args.append(arg)
+                    else:
+                        assert isinstance(arg, int), 'The argument in view node should be either type of Node or int.'
+                        new_args.append(arg)
+
+                for dim, shard_dims in output_dim_partition_dict.items():
+                    # we will skip the dim with -1 value
+                    if new_args[dim + 1] == -1:
+                        continue
+                    total_shard_size = 1
+                    for shard_dim in shard_dims:
+                        total_shard_size *= device_mesh.shape[shard_dim]
+                    new_args[dim + 1] //= total_shard_size
+                node.args = tuple(new_args)
+
+        elif node.op == 'call_function':
+            target = node.target
+            # process the node with (input, torch.Size) style args
+            if target in (torch.reshape,):
+                for arg in node.args:
+                    if isinstance(arg, Node):
+                        if isinstance(arg._meta_data, (tuple, list)):
+                            new_args.append(list(arg._meta_data))
+                        else:
+                            new_args.append(arg)
+                    else:
+                        assert isinstance(
+                            arg, (tuple, list)), 'The argument in reshape node should be either type of Node or tuple.'
+                        new_args.append(list(arg))
+
+                for dim, shard_dims in output_dim_partition_dict.items():
+                    # we will skip the dim with -1 value
+                    if new_args[1][dim] == -1:
+                        continue
+                    total_shard_size = 1
+                    for shard_dim in shard_dims:
+                        total_shard_size *= device_mesh.shape[shard_dim]
+                    new_args[1][dim] //= total_shard_size
+                node.args = tuple(new_args)
+
+    return gm
+
+
+def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh: DeviceMesh):
     """
     Apply the sharding action to the module parameters and buffers following the
     instructions of solver solution.
     """
     mod_graph = gm.graph
     nodes = tuple(mod_graph.nodes)
-
+    # This stream is created for overlaping the communication and computation.
+    reduction_stream = torch.cuda.Stream()
     for node in nodes:
         if node.op == 'call_module':
             target_module = node.graph.owning_module.get_submodule(node.target)
@@ -122,7 +207,7 @@ def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
                         def wrapper(param, comm_spec):
 
                             def hook_fn(grad):
-                                _all_reduce(grad, comm_spec)
+                                _all_reduce(grad, comm_spec, async_op=False)
 
                             param.register_hook(hook_fn)
 
@@ -172,7 +257,7 @@ def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh):
                     def wrapper(param, comm_spec):
 
                         def hook_fn(grad):
-                            _all_reduce(grad, comm_spec)
+                            _all_reduce(grad, comm_spec, async_op=False)
 
                         param.register_hook(hook_fn)
 
@@ -190,6 +275,7 @@ def implicit_comm_action_apply(gm: torch.fx.GraphModule):
 def runtime_preparation_pass(gm: torch.fx.GraphModule, solution: List[int], device_mesh: DeviceMesh):
     gm, sharding_spec_convert_dict, origin_node_sharding_spec_dict, comm_actions_dict = _solution_annotatation(
         gm, solution)
+    gm = _node_args_converting(gm, device_mesh)
     # TODO: the pass below should be uncommented after the implementation of implicit_comm_action_apply_pass completed.
     # gm = implicit_comm_action_apply(gm)
     gm = _module_params_sharding(gm, device_mesh)

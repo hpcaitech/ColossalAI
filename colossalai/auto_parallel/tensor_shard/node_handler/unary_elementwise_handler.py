@@ -10,8 +10,15 @@ from .strategy import StrategyGenerator, UnaryElementwiseGenerator
 __all__ = ['UnaryElementwiseHandler']
 
 
+@operator_registry.register(torch.Tensor.to)
+@operator_registry.register(torch.Tensor.type)
 @operator_registry.register(torch.abs)
 @operator_registry.register(torch.nn.ReLU)
+# TODO: softmax need to be relocated
+@operator_registry.register(torch.nn.functional.softmax)
+@operator_registry.register(torch.nn.modules.dropout.Dropout)
+@operator_registry.register(torch.Tensor.contiguous)
+@operator_registry.register(torch.nn.functional.dropout)
 class UnaryElementwiseHandler(NodeHandler):
     """
     A UnaryElementwiseHandler which deals with the sharding strategies for UnaryElementwise Op.
