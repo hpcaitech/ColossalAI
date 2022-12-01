@@ -49,12 +49,23 @@ class OutputGenerator(OutputStrategyGenerator):
         """
         Generate replica strategy for output node.
         """
-        dim_partition_dict_mapping = {
-            "output": {},
-        }
+        dim_partition_dict_mapping = {}
+        dim_partition_dict_for_output = []
         for index, _ in enumerate(self.predecessor_nodes):
             mapping_name = f"input_{index}"
-            dim_partition_dict_mapping[mapping_name] = {}
+            if isinstance(self.op_data[mapping_name].data, (tuple, list)):
+                dim_partition_dict_for_input = [{} for _ in range(len(self.op_data[mapping_name].data))]
+            else:
+                dim_partition_dict_for_input = {}
+            dim_partition_dict_mapping[mapping_name] = dim_partition_dict_for_input
+            dim_partition_dict_for_output.append(dim_partition_dict_for_input)
+
+        if len(dim_partition_dict_for_output) == 1:
+            dim_partition_dict_for_output = dim_partition_dict_for_output[0]
+        else:
+            dim_partition_dict_for_output = tuple(dim_partition_dict_for_output)
+
+        dim_partition_dict_mapping['output'] = dim_partition_dict_for_output
 
         communication_action_mapping = {}
         sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)

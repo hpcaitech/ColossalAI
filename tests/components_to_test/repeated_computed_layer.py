@@ -2,9 +2,11 @@
 
 import torch
 import torch.nn as nn
+
 from colossalai.nn import CheckpointModule
-from .utils.dummy_data_generator import DummyDataGenerator
+
 from .registry import non_distributed_component_funcs
+from .utils.dummy_data_generator import DummyDataGenerator
 
 
 class NetWithRepeatedlyComputedLayers(CheckpointModule):
@@ -37,7 +39,7 @@ class DummyDataLoader(DummyDataGenerator):
 @non_distributed_component_funcs.register(name='repeated_computed_layers')
 def get_training_components():
 
-    def model_builder(checkpoint=True):
+    def model_builder(checkpoint=False):
         return NetWithRepeatedlyComputedLayers(checkpoint)
 
     trainloader = DummyDataLoader()

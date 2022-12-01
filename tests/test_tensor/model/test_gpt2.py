@@ -1,21 +1,26 @@
-import pytest
-
 from functools import partial
-from tests.test_tensor.common_utils import tensor_equal, tensor_shard_equal, set_seed
 
+import pytest
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
-from colossalai.testing import rerun_if_address_is_in_use
-from colossalai.utils.cuda import get_current_device
-from colossalai.utils import free_port
-from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.tensor import ShardSpec, ComputePattern, ComputeSpec, ProcessGroup, ColoTensor, ColoTensorSpec
 from colossalai.nn.parallel.data_parallel import ColoDDP
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ProcessGroup, ShardSpec
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
+from colossalai.utils.cuda import get_current_device
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import split_param_col_tp1d, split_param_row_tp1d, debug_print
+from tests.test_tensor.common_utils import (
+    debug_print,
+    set_seed,
+    split_param_col_tp1d,
+    split_param_row_tp1d,
+    tensor_equal,
+    tensor_shard_equal,
+)
 
 
 def init_1d_row_spec(model, pg: ProcessGroup):
@@ -107,10 +112,10 @@ def run_gpt(init_spec_func, use_ddp):
     torch_model.eval()
     set_seed(pg.dp_local_rank())
     torch.distributed.barrier()
-    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
+    for i, (input_ids, label) in enumerate(train_dataloader):
         colo_input = ColoTensor.from_torch_tensor(input_ids, ColoTensorSpec(pg))
-        logits = model(colo_input, attn_mask)
-        torch_logits = torch_model(input_ids, attn_mask)
+        logits = model(colo_input)
+        torch_logits = torch_model(input_ids)
         assert tensor_equal(torch_logits, logits), f"{torch_logits - logits}"
         loss = criterion(logits, input_ids)
         torch_loss = criterion(torch_logits, input_ids)

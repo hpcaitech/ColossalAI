@@ -8,23 +8,13 @@ import colossalai
 from colossalai.gemini.memory_tracer import MemtracerWrapper
 from colossalai.testing import rerun_if_address_is_in_use
 from colossalai.utils import free_port
+from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-
-def run_fwd_bwd(model, data, label, criterion, enable_autocast=False):
-    with torch.cuda.amp.autocast(enabled=enable_autocast):
-        if criterion:
-            y = model(data)
-            loss = criterion(y, label)
-        else:
-            loss = model(data, label)
-        loss = loss.float()
-    model.backward(loss)
 
 
 def run_tracer(rank, world_size, port, use_grad_check=True):
     colossalai.launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    test_models = ['repeated_computed_layers', 'resnet18', 'no_leaf_module', 'bert']
+    test_models = ['repeated_computed_layers', 'resnet18', 'hanging_param_model', 'bert']
     # test_models = ['bert']
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
@@ -43,7 +33,7 @@ def run_tracer(rank, world_size, port, use_grad_check=True):
             data = data.cuda()
             label = label.cuda()
 
-            run_fwd_bwd(model, data, label, criterion, False)
+            run_fwd_bwd(model, data, label, criterion)
 
         model._ophook_list[0].print_non_model_data()
 
@@ -58,4 +48,4 @@ def test_tracer(world_size, use_grad_check):
 
 
 if __name__ == '__main__':
-    test_tracer(1)
+    test_tracer(1, True)

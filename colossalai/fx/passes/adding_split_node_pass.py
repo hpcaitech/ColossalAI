@@ -117,7 +117,7 @@ def uniform_split_pass(gm: torch.fx.GraphModule, pp_size: int):
     return gm
 
 
-def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule):
+def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule, merge_output=False):
     # TODO(lyl): use partition IR to assign partition ID to each node.
     # Currently: analyzing graph -> annotate graph by inserting split node -> use split module pass to split graph
     # In future: graph to partitions -> analyzing partition IR -> recombining partitions to get best performance -> assign partition ID to each node
@@ -129,7 +129,7 @@ def split_with_split_nodes_pass(annotated_gm: torch.fx.GraphModule):
             part_idx += 1
         return part_idx
 
-    split_mod = split_module(annotated_gm, None, split_callback)
+    split_mod = split_module(annotated_gm, None, split_callback, merge_output)
     split_submodules = []
     for name, submodule in split_mod.named_modules():
         if isinstance(submodule, torch.fx.GraphModule):
