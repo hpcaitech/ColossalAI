@@ -280,6 +280,7 @@ def _profile_meta(target: Callable, *args, **kwargs) -> Tuple[Tuple[Any, ...], G
     def unwrap(x):
         return MetaTensor(x) if isinstance(x, torch.Tensor) else x
 
+    print(subgraph)
     return tree_map(unwrap, out), graph_info
 
 

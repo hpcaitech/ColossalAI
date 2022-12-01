@@ -34,9 +34,9 @@ def _adaptiveavgpool_module_mem_test(rank, world_size, port):
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
 
-    # index of conv node in computation graph
+    # index of target node in computation graph
     node_index = 1
-    # total number of conv strategies
+    # total number of target strategies
     strategy_number = 1
     mem_test_for_node_strategy(rank=rank,
                                model=model,
@@ -75,9 +75,9 @@ def _maxpool_module_mem_test(rank, world_size, port):
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
 
-    # index of conv node in computation graph
+    # index of target node in computation graph
     node_index = 1
-    # total number of conv strategies
+    # total number of target node strategies
     strategy_number = 9
     mem_test_for_node_strategy(rank=rank,
                                model=model,

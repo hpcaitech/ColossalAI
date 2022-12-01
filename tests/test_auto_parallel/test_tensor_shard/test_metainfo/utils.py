@@ -101,6 +101,7 @@ def mem_test_for_node_strategy(rank: int,
 
         if rank == 0:
             # print backward memory allocated and peak memory stats in kb
+            print(mem_stamp0 / 1024)
             print(
                 f"backward memory allocated: {(torch.cuda.memory_allocated() - mem_stamp0) / 1024} kb, peak memory stats: {(torch.cuda.max_memory_allocated() - mem_stamp0) / 1024} kb"
             )
