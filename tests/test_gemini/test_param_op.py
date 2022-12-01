@@ -50,7 +50,7 @@ def run_model(model, inputs, label, criterion, use_param_hook=False):
 
 
 def test_base_param_hook():
-    test_models = ['repeated_computed_layers', 'resnet18', 'no_leaf_module', 'inline_op_model']
+    test_models = ['repeated_computed_layers', 'resnet18', 'hanging_param_model', 'inline_op_model']
     # test_models = ['bert']
 
     for model_name in test_models:

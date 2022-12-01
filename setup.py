@@ -4,6 +4,19 @@ import subprocess
 
 from setuptools import Extension, find_packages, setup
 
+try:
+    import torch
+    from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
+    print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
+    TORCH_MAJOR = int(torch.__version__.split('.')[0])
+    TORCH_MINOR = int(torch.__version__.split('.')[1])
+
+    if TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10):
+        raise RuntimeError("Colossal-AI requires Pytorch 1.10 or newer.\n"
+                           "The latest stable release can be obtained from https://pytorch.org/")
+except ImportError:
+    raise ModuleNotFoundError('torch is not found. You need to install PyTorch before installing Colossal-AI.')
+
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
 build_cuda_ext = True
@@ -93,29 +106,24 @@ def fetch_readme():
 
 
 def get_version():
-    with open('version.txt') as f:
+    setup_file_path = os.path.abspath(__file__)
+    project_path = os.path.dirname(setup_file_path)
+    version_txt_path = os.path.join(project_path, 'version.txt')
+    version_py_path = os.path.join(project_path, 'colossalai/version.py')
+
+    with open(version_txt_path) as f:
         version = f.read().strip()
         if build_cuda_ext:
             torch_version = '.'.join(torch.__version__.split('.')[:2])
             cuda_version = '.'.join(get_cuda_bare_metal_version(CUDA_HOME)[1:])
             version += f'+torch{torch_version}cu{cuda_version}'
-        return version
 
+    # write version into version.py
+    with open(version_py_path, 'w') as f:
+        f.write(f"__version__ = '{version}'\n")
 
-if build_cuda_ext:
-    try:
-        import torch
-        from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
-        print("\n\ntorch.__version__  = {}\n\n".format(torch.__version__))
-        TORCH_MAJOR = int(torch.__version__.split('.')[0])
-        TORCH_MINOR = int(torch.__version__.split('.')[1])
+    return version
 
-        if TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 8):
-            raise RuntimeError("Colossal-AI requires Pytorch 1.8 or newer.\n"
-                               "The latest stable release can be obtained from https://pytorch.org/")
-    except ImportError:
-        print('torch is not found. CUDA extension will not be installed')
-        build_cuda_ext = False
 
 if build_cuda_ext:
     build_cuda_ext = check_cuda_availability(CUDA_HOME) and check_cuda_torch_binary_vs_bare_metal(CUDA_HOME)

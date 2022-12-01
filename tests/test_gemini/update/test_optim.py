@@ -15,13 +15,19 @@ from colossalai.gemini.gemini_mgr import GeminiManager
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
+from colossalai.tensor import ColoParameter, ColoTensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import debug_print, set_seed
+
+# this model is large enough to slice to chunks
+TEST_MODELS = ['gpt2']
+# these models are too small, all parameters in these models are compacted into one chunk
+EXAMPLE_MODELS = ['hanging_param_model', 'bert', 'simple_net', 'nested_model', 'repeated_computed_layers']
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -39,11 +45,6 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
         assert_close(value, temp_zero_value, rtol=1e-3, atol=1e-2)
 
 
-# 'gpt2', 'bert',
-TEST_MODELS = ['gpt2', 'bert']
-EXAMPLE_MODELS = ['simple_net']
-
-
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 @parameterize('model_name', TEST_MODELS)
 def exam_model_step(placement_policy, model_name: str):
@@ -57,8 +58,10 @@ def exam_model_step(placement_policy, model_name: str):
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    with ColoInitContext(device=get_current_device()):
+    init_dev = get_current_device()
+    with ColoInitContext(device=init_dev):
         model = model_builder()
+
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
 
@@ -98,7 +101,7 @@ def exam_model_step(placement_policy, model_name: str):
         check_param(model, torch_model)
 
 
-@parameterize('placement_policy', ['cuda', 'cpu'])
+@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 @parameterize('model_name', EXAMPLE_MODELS)
 def exam_tiny_example(placement_policy, model_name: str):
     set_seed(2008)
@@ -111,8 +114,10 @@ def exam_tiny_example(placement_policy, model_name: str):
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
 
-    with ColoInitContext(device=get_current_device()):
+    init_dev = get_current_device()
+    with ColoInitContext(device=init_dev):
         model = model_builder()
+
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         p.data.copy_(torch_p.data)
 
