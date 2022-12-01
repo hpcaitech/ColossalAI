@@ -2,7 +2,7 @@ import torch
 from torch.fx import GraphModule
 from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
 from colossalai.fx import ColoTracer
-from colossalai.fx.passes.topo import Partition, PartitionInputVal, PartitionOutputVal, Topo
+from colossalai.pipeline.middleware import Partition, PartitionInputVal, PartitionOutputVal, Topo
 import random
 import numpy as np
 

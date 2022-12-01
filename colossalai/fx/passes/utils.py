@@ -3,7 +3,7 @@ from typing import Dict
 from torch.fx.node import Node, map_arg
 from torch.fx.graph import Graph
 from torch.fx.graph_module import GraphModule
-from colossalai.fx.passes.topo import Partition, PartitionInputVal, PartitionOutputVal, Topo
+from colossalai.pipeline.middleware import Partition, PartitionInputVal, PartitionOutputVal, Topo
 
 def get_comm_size(prev_partition, next_partition):
     """
@@ -246,7 +246,7 @@ def find_output_in_partition(node, partitions, output_partitions=None):
                         break
     return p_output_val
 
-def get_Topo(gm: GraphModule):
+def get_topology(gm: GraphModule):
     topo = Topo()
     
     topo_partitions = []

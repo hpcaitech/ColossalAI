@@ -1,9 +1,8 @@
 from typing import Dict, List
 from dataclasses import dataclass
 
-# This class is a middleware between partition splitter
-# and Pipeline Scheduler. It records the graph info about
-# partition input/output and provides it to scheduler.
+# This file includes data structure used by Pipeline Middleware.
+
 @dataclass
 class ValPosition:
     partition_id: int
@@ -90,6 +89,18 @@ class Partition(object):
     def __repr__(self) -> str:
         return self.__str__()
 
+# This class is a middleware between partition splitter
+# and Pipeline Scheduler. It records the graph info about
+# partition input/output and provides it to scheduler.
+# There are three kinds of partition in Pipeline Middleware Design
+# which represents the whole process of a model execution: input-fwd-output
+# 1. input_partition: records the input of a model.
+# 2. mid_partition: record the splitted forwards execution of a model.
+# 3. output_partition: records the output of a model.
+# attributes:
+#   _partitions: include all partitions
+#   _input_partition_id: the key represents input_partition
+#   _output_partition_id: the key represents output_partition
 class Topo(object):
     def __init__(self, input_partition_id=None, output_partition_id=None) -> None:
         self._partitions: Dict[int, Partition] = {}

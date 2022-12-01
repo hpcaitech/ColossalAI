@@ -6,8 +6,6 @@ from topo_utils import split_model_and_get_DAG, check_topo, MLP
 BATCH_SIZE = 1
 SEQ_LENGHT = 16
 
-
-@pytest.mark.skip('balance split v2 is not ready')
 def test_opt():
     MODEL_LIST = [
         MLP,
