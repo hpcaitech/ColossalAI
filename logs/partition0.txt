@@ -1,0 +1,14 @@
+GraphModule(
+  (layers_0): Linear(in_features=10, out_features=10, bias=False)
+  (layers_1): Linear(in_features=10, out_features=10, bias=False)
+  (layers_2): Linear(in_features=10, out_features=10, bias=False)
+)
+
+
+
+def forward(self, x):
+    layers_0 = self.layers_0(x);  x = None
+    layers_1 = self.layers_1(layers_0);  layers_0 = None
+    layers_2 = self.layers_2(layers_1);  layers_1 = None
+    return layers_2
+    
