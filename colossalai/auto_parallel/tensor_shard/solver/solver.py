@@ -154,12 +154,15 @@ class Solver:
                 if self.forward_only:
                     origin_communication_cost = communication_cost_item.fwd
                     compute_cost = compute_cost_item.fwd
+                    # extract MemoryCost item from the memory TrainCycleItem
                     memory_cost = memory_cost_item.fwd
                 else:
                     origin_communication_cost = communication_cost_item.total
                     compute_cost = compute_cost_item.total
+                    # extract MemoryCost item from the memory TrainCycleItem
                     memory_cost = memory_cost_item.total
 
+                # extract the memory cost in float from MemoryCost item and sum them up
                 memory_cost = memory_cost.parameter + memory_cost.activation + memory_cost.buffer
                 compute_costs.append(compute_cost)
                 # node in extra_node_costs means it has some extra communication
