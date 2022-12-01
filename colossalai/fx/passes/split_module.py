@@ -3,7 +3,7 @@ from torch.fx.graph_module import GraphModule
 from typing import Callable, List, Dict, Any, Optional
 from torch.fx._compatibility import compatibility
 from packaging import version
-from colossalai.fx.passes.utils import get_DAG
+from colossalai.fx.passes.utils import get_Topo
 import inspect
 
 
@@ -295,10 +295,10 @@ def split_module(
     
     new_gm = torch.fx.graph_module.GraphModule(base_mod_attrs, base_mod_graph)
     
-    DAG = get_DAG(new_gm)
+    topo = get_Topo(new_gm)
     
     for _, submodule in new_gm.named_modules():
         if isinstance(submodule, torch.fx.GraphModule):
-            setattr(submodule, '_DAG', DAG)
+            setattr(submodule, '_topo', topo)
 
     return new_gm

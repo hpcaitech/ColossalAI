@@ -1,8 +1,9 @@
 import torch
-from typing import Dict, Set
+from typing import Dict
 from torch.fx.node import Node, map_arg
 from torch.fx.graph import Graph
 from torch.fx.graph_module import GraphModule
+from colossalai.fx.passes.topo import Partition, PartitionInputVal, PartitionOutputVal, Topo
 
 def get_comm_size(prev_partition, next_partition):
     """
@@ -171,134 +172,86 @@ def get_node_module(node) -> torch.nn.Module:
     module = node.graph.owning_module.get_submodule(node.target)
     return module
 
-def find_def_in_partition(node, partitions, input_partitions=None, direct=False):
-    # find def in input
-    if input_partitions is not None:
-        for placeholder in input_partitions:
-            if placeholder.name == node.name:
-                return 'MODEL_INPUT'
-            
-    # find direct def
-    if direct:
+def partition_name_to_id(partition_name, is_input=False, is_output=False):
+    if is_input:
+        partition_id = 0
+    elif is_output:
+        partition_id = 1
+    else:
+        prefix = 'submod_'
+        partition_id = int(partition_name.split(prefix)[-1]) + 2
+    return partition_id
+
+def find_input_in_partition(node, partitions, input_partitions=None):
+    p_input_val = None
+    direct_def = not node.name.startswith('getitem')
+    # search in input
+    if direct_def and input_partitions is not None:
+        partition_id = partition_name_to_id('', is_input=True)
+        for i, input_node in enumerate(input_partitions):
+            if input_node == node:
+                p_input_val = PartitionInputVal(partition_id=partition_id, offset=i)
+                return p_input_val
+    # search submod in mid part
+    if direct_def:
         for partition in partitions:
-            if node == partition:
-                return partition.name
-    # find def with getitem call
+            if partition == node:
+                partition_id = partition_name_to_id(partition.name)
+                p_input_val = PartitionInputVal(partition_id=partition_id, offset=0)
+                return p_input_val
+    # search temporary value in graph
     else:
         for partition in partitions:
-            if node in partition.users.keys():
-                return partition.name
-
-    print(f'Not found def in partition {node.name}')
-    return None
+            for offset, mid_val in enumerate(partition.users):
+                if mid_val == node:
+                    partition_id = partition_name_to_id(partition.name)
+                    p_input_val = PartitionInputVal(partition_id=partition_id, offset=offset)
+                    return p_input_val
         
-def find_user_in_partition(node, partitions, output_partitions=None, direct=False):
-    user_partition_names = []
-    # find direct user
-    if direct:
+    return p_input_val
+        
+def find_output_in_partition(node, partitions, output_partitions=None):
+    p_output_val = PartitionOutputVal()
+    for user in node.users:
+        direct_use = not user.name.startswith('getitem')
+        # user is mid partition
         for partition in partitions:
-            if node == partition:
-                user_partition_names.append(partition.name)
-                
-    # find user with getitem call
-    else:
-        for partition in partitions:
-            if node in partition.args:
-                user_partition_names.append(partition.name)
-          
-    if output_partitions is not None:
-        output_node = output_partitions[0]
-        if node.op == output_node.op:
-            user_partition_names.append('MODEL_OUTPUT')
-    
-    if len(user_partition_names) > 0:
-        return user_partition_names
-    
-    print(f'Not found user in partition {node.name}')
-    return None
-    
-def get_partition_depends(partition, partitions, input_partitions=None, output_partitions=None):
-    # e.g. Partition2: {input: {Partition0: [sub1_1], Partition1: [sub2_0]}, output:{Output: [sub3_0]}},
-    input = {}
-    output = {}
-    
-    for offset, arg in enumerate(partition.args):
-        def_partition_name = None
-        if not arg.name.startswith('getitem'):
-            def_partition_name = find_def_in_partition(arg, partitions, input_partitions, direct=True)
-        else:
-            def_partition_name = find_def_in_partition(arg, partitions, input_partitions, direct=False)
-        if def_partition_name is None:
-            continue
-        if def_partition_name not in input:
-            input[def_partition_name] = []
-        input[def_partition_name].append(offset)
+            # direct call
+            if direct_use:
+                if user == partition:
+                    partition_id = partition_name_to_id(partition.name)
+                    for i, arg in enumerate(partition.args):
+                        if arg == node:
+                            p_output_val.add(partition_id=partition_id, offset=i)
+                            break
+            # getitem call
+            else:
+                if user in partition.args:
+                    partition_id = partition_name_to_id(partition.name)
+                    for i, arg in enumerate(partition.args):
+                        if arg == user:
+                            p_output_val.add(partition_id=partition_id, offset=i)
+                            break
+        
+        # user is output
+        if output_partitions is not None:
+            output_node = output_partitions[0]
+            if user.op == output_node.op:
+                output_keys = {}
+                partition_id = partition_name_to_id('', is_output=True)
+                torch.fx.graph.map_arg(output_node.args[0], lambda n: output_keys.setdefault(n))
+                for i, arg in enumerate(output_keys):
+                    if arg == node:
+                        p_output_val.add(partition_id=partition_id, offset=i)
+                        break
+    return p_output_val
 
-    offset = -1
-    for user in partition.users.keys():
-        user_partition_names = None
-        if input_partitions is None or not user.name.startswith('getitem'):
-            user_partition_names = find_user_in_partition(user, partitions, output_partitions, direct=True)
-            offset = 0
-        else:
-            user_partition_names = find_user_in_partition(user, partitions, output_partitions, direct=False)
-            offset += 1
-        if user_partition_names is None:
-            continue
-        for user_partition_name in user_partition_names:
-            if user_partition_name not in output:
-                output[user_partition_name] = []
-            output[user_partition_name].append(offset)
+def get_Topo(gm: GraphModule):
+    topo = Topo()
     
-    return input, output, offset+1
-
-# DAG just looks like following case.
-# the int in every list represents the offset of the partition's input arg or output arg.
-# {
-# 'input_partition': {
-#     'input_ids': {
-#         'input': {}, 
-#         'output': {'submod_0': [0], 'submod_1': [1]}, 
-#         'output_len': 0}, 
-#     'attention_mask': {
-#         'input': {}, 
-#         'output': {'submod_2': [0]}, 
-#         'output_len': 0}}, 
-# 'submod_0': {
-#     'input': {'MODEL_INPUT': [0]}, 
-#     'output': {'submod_1': [0], 'submod_2': [0, 1]}, 
-#     'output_len': 2}, 
-# 'submod_1': {
-#     'input': {'submod_0': [0], 'MODEL_INPUT': [1]}, 
-#     'output': {'submod_2': [0]}, 
-#     'output_len': 1}, 
-# 'submod_2': {
-#     'input': {'MODEL_INPUT': [0], 'submod_0': [1, 2]}, 
-#     'output': {'submod_3': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-#                             12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 
-#                             22, 23, 24]},
-#     'output_len': 25}, 
-# 'submod_3': {
-#     'input': {'submod_2': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-#                                 12, 13, 14, 15, 16, 17, 18, 19, 20, 
-#                                 21, 22, 23, 24]}, 
-#     'output': {'MODEL_OUTPUT': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 
-#                                 11, 12, 13, 14, 15, 16, 17, 18, 19, 
-#                                 20, 21, 22, 23, 24]}, 
-#     'output_len': 25},
-# 'output_partition': {
-#     'input': {'logits': 'submod_3', 'past_key_values': (('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
-#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
-#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
-#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
-#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'), 
-#                                                         ('submod_3', 'submod_3'), ('submod_3', 'submod_3'))}, 
-#     'output': {}, 'output_len': 0}
-# }
-
-# TODO(jiangziyue) Define a Class for DAG.
-def get_DAG(gm: GraphModule):
-    DAG = {}
+    topo_partitions = []
+    topo_output_partition = Partition()
+    
     input_partitions = []
     partitions = []
     output_partitions = []
@@ -310,22 +263,45 @@ def get_DAG(gm: GraphModule):
         elif node.op == 'output':
             output_partitions.append(node)
 
+    # set output for input_partition
+    topo_input_partition = Partition()
     for partition in input_partitions:
-        DAG_node = {'input': {}, 'output': {}, 'output_len': 1}
-        _, output, _ = get_partition_depends(partition, partitions, None, output_partitions)
-        DAG_node['output'] = output
-        if 'input_partition' not in DAG:
-            DAG['input_partition'] = {}
-        DAG['input_partition'][partition.name] = DAG_node
+        cur_node = partition
+        p_output_val = find_output_in_partition(cur_node, partitions, output_partitions)
+        topo_input_partition.add_output_val(p_output_val)
+    topo.set_partitions(partition_id=0, partition=topo_input_partition)
+    topo.set_input_partition(partition_id=0)
     
-    for partition in partitions:
-        DAG_node = {'input': {}, 'output': {}}
-        DAG_node['input'], DAG_node['output'], DAG_node['output_len'] = get_partition_depends(partition, partitions, input_partitions, output_partitions)
-        DAG[partition.name] = DAG_node
+    for i, partition in enumerate(partitions):
+        topo_mid_partition = Partition()
+        # set input for submodule
+        for arg in partition.args:
+            cur_node = arg
+            p_input_val = find_input_in_partition(cur_node, partitions, input_partitions)
+            topo_mid_partition.add_input_val(p_input_val)
+        # set output for submodule
+        direct_use = True
+        for user in partition.users:
+            if user.name.startswith('getitem'):
+                direct_use = False
+                break
+        if direct_use:
+            cur_node = partition
+            p_output_val = find_output_in_partition(cur_node, partitions, output_partitions)
+            topo_mid_partition.add_output_val(p_output_val)
+        else:
+            for user in partition.users:
+                cur_node = user
+                p_output_val = find_output_in_partition(cur_node, partitions, output_partitions)
+                topo_mid_partition.add_output_val(p_output_val)  
+        topo.set_partitions(partition_id=i+2, partition=topo_mid_partition)
         
+    # set input for output_partition
     for partition in output_partitions:
-        DAG_node = {'input': {}, 'output': {}, 'output_len': 0}
-        DAG_node['input'] = torch.fx.graph.map_arg(partition.args[0], lambda n: find_def_in_partition(n, partitions, input_partitions))
-        DAG['output_partition'] = DAG_node
+        topo_output_partition = Partition()
+        torch.fx.graph.map_arg(partition.args[0], lambda n: topo_output_partition.add_input_val(
+            find_input_in_partition(n, partitions, input_partitions)))
+    topo.set_partitions(partition_id=1, partition=topo_output_partition)
+    topo.set_output_partition(partition_id=1)
 
-    return DAG
+    return topo
