@@ -51,6 +51,8 @@ class OperationData:
                 """
                 if isinstance(data, torch.Tensor):
                     return data.shape
+                elif isinstance(data, torch.Size):
+                    return None
                 elif isinstance(data, (tuple, list)):
                     data_type = type(data)
                     return data_type([_infer_logical_shape(d) for d in data])

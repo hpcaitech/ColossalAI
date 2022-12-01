@@ -20,6 +20,18 @@ def color_debug(text, prefix=' ', color='blue'):
     color = color.upper()
     print(getattr(Back, color), prefix, Style.RESET_ALL, text)
 
+class MLP(nn.Module):
+    def __init__(self, dim: int, layers: int):
+        super().__init__()
+        self.layers = torch.nn.ModuleList()
+
+        for _ in range(layers):
+            self.layers.append(nn.Linear(dim, dim, bias=False))
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
 
 class RpcTestModel(nn.Module):
 

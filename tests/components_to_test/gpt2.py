@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
-from .registry import non_distributed_component_funcs
 from transformers import GPT2Config, GPT2LMHeadModel
-from .utils.dummy_data_generator import DummyDataGenerator
+
 from colossalai.utils.cuda import get_current_device
+
+from .registry import non_distributed_component_funcs
+from .utils.dummy_data_generator import DummyDataGenerator
 
 
 class DummyDataLoader(DummyDataGenerator):
@@ -15,8 +17,7 @@ class DummyDataLoader(DummyDataGenerator):
         input_ids = torch.randint(0,
                                   DummyDataLoader.vocab_size, (DummyDataLoader.batch_size, DummyDataLoader.seq_len),
                                   device=get_current_device())
-        attention_mask = torch.ones_like(input_ids)
-        return input_ids, attention_mask
+        return input_ids, input_ids
 
 
 class GPTLMModel(nn.Module):
@@ -43,8 +44,9 @@ class GPTLMModel(nn.Module):
         if checkpoint:
             self.model.gradient_checkpointing_enable()
 
-    def forward(self, input_ids, attention_mask):
+    def forward(self, input_ids):
         # Only return lm_logits
+        attention_mask = torch.ones_like(input_ids)
         return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=not self.checkpoint)[0]
 
 

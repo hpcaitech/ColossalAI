@@ -3,6 +3,20 @@ from colossalai.gemini.stateful_tensor import StatefulTensor
 from typing import Union, Tuple
 
 
+def is_storage_empty(tensor: torch.Tensor) -> bool:
+    return tensor.storage().size() == 0
+
+
+def free_storage(tensor: torch.Tensor) -> None:
+    if not is_storage_empty(tensor):
+        tensor.storage().resize_(0)
+
+
+def alloc_storage(tensor: torch.Tensor) -> None:
+    if is_storage_empty(tensor):
+        tensor.storage().resize_(tensor.numel())
+
+
 def colo_tensor_mem_usage(tensor: Union[torch.Tensor, StatefulTensor]) -> Tuple[int, int]:
     if isinstance(tensor, StatefulTensor):
         t = tensor.payload

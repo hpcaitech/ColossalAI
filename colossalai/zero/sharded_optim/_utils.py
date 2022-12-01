@@ -1,11 +1,13 @@
 import math
+
 import torch
+import torch.distributed as dist
 from torch._six import inf
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-from colossalai.core import global_context as gpc
+
 from colossalai.context import ParallelMode
+from colossalai.core import global_context as gpc
 from colossalai.utils import is_model_parallel_parameter
-import torch.distributed as dist
 
 
 def flatten(input_):
@@ -99,19 +101,24 @@ def split_half_float_double(tensor_list):
     return buckets
 
 
-def reduce_tensor(tensor, dtype, dst_rank=None, parallel_mode=ParallelMode.DATA):
+def reduce_tensor(tensor, dtype=None, dst_rank=None, parallel_mode=ParallelMode.DATA):
     """
     Reduce the tensor in the data parallel process group
 
     :param tensor: A tensor object to reduce/all-reduce
     :param dtype: The data type used in communication
     :param dst_rank: The source rank for reduce. If dst_rank is None,
+    :param parallel_mode: Communication parallel mode
     all-reduce will be used instead of reduce. Default is None.
 
     :type tensor: torch.Tensor
-    :type dtype: torch.dtype
+    :type dtype: torch.dtype, optional
     :type dst_rank: int, optional
+    :type parallel_mode: ParallelMode, optional
     """
+    # use the original dtype
+    if dtype is None:
+        dtype = tensor.dtype
 
     # cast the data to specified dtype for reduce/all-reduce
     if tensor.dtype != dtype:
@@ -139,6 +146,7 @@ def reduce_tensor(tensor, dtype, dst_rank=None, parallel_mode=ParallelMode.DATA)
         local_rank = gpc.get_local_rank(parallel_mode)
         if use_all_reduce or dst_rank == local_rank:
             tensor.copy_(tensor_to_reduce)
+
     return tensor
 
 
@@ -238,7 +246,7 @@ def sync_param(flat_tensor, tensor_list):
     Synchronize the flattened tensor and unflattened tensor list. When
     a list of tensor are flattened with `torch._utils._unflatten_dense_tensors`,
     a new tensor is created. Thus, the flat tensor and original tensor list do not
-    share the same memory space. This function will update the tensor list so that 
+    share the same memory space. This function will update the tensor list so that
     they point to the same value.
 
     :param flat_tensor: A flat tensor obtained by calling `torch._utils._unflatten_dense_tensors` on a tensor lsit

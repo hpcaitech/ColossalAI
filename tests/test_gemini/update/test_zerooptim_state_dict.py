@@ -50,11 +50,11 @@ def exam_zero_optim_state_dict(placement_policy, keep_gathered):
 
     set_seed(dist.get_rank() * 3 + 128)
     model.train()
-    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
+    for i, (input_ids, label) in enumerate(train_dataloader):
         if i > 0:
             break
         optim.zero_grad()
-        logits = model(input_ids, attn_mask)
+        logits = model(input_ids)
         logits = logits.float()
         loss = criterion(logits, input_ids)
         optim.backward(loss)

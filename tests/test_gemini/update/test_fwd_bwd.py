@@ -4,19 +4,23 @@ import pytest
 import torch
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
 from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.nn.optimizer import HybridAdam
+from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
+from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
-from tests.test_tensor.common_utils import debug_print, set_seed, tensor_equal, tensor_shard_equal
+from tests.test_tensor.common_utils import set_seed
 
 
 def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -27,29 +31,22 @@ def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
         chunk_manager.access_chunk(chunk)
 
     for (p0, p1) in zip(model.parameters(), torch_model.parameters()):
-        assert torch.allclose(p0, p1.grad, atol=1e-3, rtol=1e-5), "{}".format(torch.max(torch.abs(p0 - p1.grad)).item())
-
-
-def run_fwd_bwd(model, criterion, optimizer, input_ids, attn_mask):
-    optimizer.zero_grad()
-    logits = model(input_ids, attn_mask)
-    logits = logits.float()
-    loss = criterion(logits, input_ids)
-    optimizer.backward(loss)
-    return logits
+        assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 @parameterize('keep_gather', [False, True])
-def exam_gpt_fwd_bwd(placement_policy, keep_gather):
+@parameterize('model_name', ['gpt2', 'bert'])
+@parameterize('use_grad_checkpoint', [False, True])
+def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_checkpoint: bool = False):
     set_seed(42)
-    get_components_func = non_distributed_component_funcs.get_callable('gpt2')
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     with ColoInitContext(device=get_current_device()):
-        model = model_builder()
+        model = model_builder(use_grad_checkpoint)
 
-    torch_model = model_builder().cuda()
+    torch_model = model_builder(use_grad_checkpoint).cuda()
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p.data)
 
@@ -60,6 +57,8 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather):
     chunk_manager = ChunkManager(config_dict)
     gemini_manager = GeminiManager(placement_policy, chunk_manager)
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    optimizer = HybridAdam(model.parameters(), lr=1e-3)
+    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=1)
 
     pg = ProcessGroup()
     amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=1)
@@ -71,18 +70,16 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather):
     torch_model.eval()
 
     set_seed(pg.dp_local_rank())
-    for i, (input_ids, attn_mask) in enumerate(train_dataloader):
+    for i, (input_ids, label) in enumerate(train_dataloader):
+        # you can only test a single fwd + bwd.
+        # after bwd param is grad for Gemini, due to the chunk reuse optimization.
         if i > 0:
             break
+        input_ids, label = input_ids.cuda(), label.cuda()
+        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
+        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
 
-        logits = model(input_ids, attn_mask)
-        logits = logits.float()
-        loss = criterion(logits, input_ids)
-        model.backward(loss)
-
-        torch_logits = run_fwd_bwd(torch_model, criterion, torch_optim, input_ids, attn_mask)
-        assert torch.allclose(logits, torch_logits, rtol=0), "{} {} {}".format(
-            torch.max(torch.abs(logits - torch_logits)).item(), logits, torch_logits)
+        assert torch.equal(torch_loss, loss)
 
         check_grad(model, torch_model)
 
