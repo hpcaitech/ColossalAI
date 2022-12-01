@@ -15,35 +15,46 @@ class TrainingPhase(Enum):
     BACKWARD = 1
 
 
+class MemInfo():
+    model_data_list = []
+    non_model_data_list = []
+    unreleased_grad_flag = {}
+    unreleased_grad_volume = 0
+
+
+class GradHook():
+    def __init__(self, module: torch.nn.Module):
+        self.module = module
+        self.grad_hook_list = []
+
+    def grad_handle(self, p, grad):
+        assert MemInfo.unreleased_grad_flag[p]
+        free_storage(grad)
+        MemInfo.unreleased_grad_volume -= grad.numel() * grad.element_size()
+        MemInfo.unreleased_grad_flag[p] = False
+
+    def register_grad_hook(self):
+        for p in self.module.parameters():
+            if p.requires_grad:
+                self.grad_hook_list.append(p.register_hook(partial(self.grad_handle, p)))
+                MemInfo.unreleased_grad_flag[p] = False
+
+    def remove_grad_hook(self):
+        for hook in self.grad_hook_list:
+            hook.remove()
+
+
 class ParamTracerHook(ParamOpHook):
 
-    def __init__(self, module: torch.nn.Module, dtype: torch.dtype = torch.half) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self._training_phase = TrainingPhase.FORWARD
         self.mem_monitor = SyncCudaMemoryMonitor()
-        self._non_model_data_list = []
-        self._model_data_list = []
-        self.dtype = dtype
-        self.unreleased_grad_volume = 0
-        self.unreleased_grad_flag = {}
-
-        for p in module.parameters():
-            if p.requires_grad:
-                p.register_hook(partial(self.grad_handle, p))
-                self.unreleased_grad_flag[p] = False
-
-    def grad_handle(self, p, grad):
-        assert self.unreleased_grad_flag[p]
-        free_storage(grad)
-        self.unreleased_grad_volume -= grad.numel() * grad.element_size()
-        self.unreleased_grad_flag[p] = False
 
     def _free_cuda_params(self, params):
         for p in params:
             if p.data.device.type == "cpu":
                 raise NotImplementedError("Only free cuda memory")
-            p.cpu_data = torch.empty(p.data.shape, dtype=self.dtype, device="cpu")
-            p.cpu_data.copy_(p.data)
             free_storage(p.data)
 
     def _allocate_params_on_cuda(self, params):
@@ -52,31 +63,28 @@ class ParamTracerHook(ParamOpHook):
             if cur_dev == "cpu":
                 if p.grad is not None and p.grad.device.type == "cpu":
                     raise NotImplementedError("Only run in forward propagation")
-                p.cpu_data = p.data
-                p.data = torch.empty(p.data.shape, device="cuda", dtype=self.dtype, requires_grad=p.data.requires_grad)
-                p.data.copy_(p.cpu_data)
+                p.data = torch.empty(p.data.shape, device="cuda", dtype=p.data.dtype,
+                                     requires_grad=p.data.requires_grad)
             elif cur_dev == "cuda":
                 alloc_storage(p.data)
-                p.data.copy_(p.cpu_data)
-            free_storage(p.cpu_data)
 
     def sample_model_data(self, params):
-        data_volume = self.unreleased_grad_volume
+        data_volume = MemInfo.unreleased_grad_volume
         for p in params:
             cur_model_data_volume = p.data.numel() * p.data.element_size()
             data_volume += cur_model_data_volume
             if self._training_phase == TrainingPhase.BACKWARD and p.requires_grad:
                 # add param.grad, actually param.grad is None in this time
                 data_volume += cur_model_data_volume
-                if not self.unreleased_grad_flag[p]:
-                    self.unreleased_grad_volume += cur_model_data_volume
-                    self.unreleased_grad_flag[p] = True
-        self._model_data_list.append(data_volume)
+                if not MemInfo.unreleased_grad_flag[p]:
+                    MemInfo.unreleased_grad_volume += cur_model_data_volume
+                    MemInfo.unreleased_grad_flag[p] = True
+        MemInfo.model_data_list.append(data_volume)
 
     def pre_op(self, params):
         cuda_volume = self.mem_monitor.finish()
-        if len(self._model_data_list):
-            self._non_model_data_list.append(cuda_volume - self._model_data_list[-1])
+        if len(MemInfo.model_data_list):
+            MemInfo.non_model_data_list.append(cuda_volume - MemInfo.model_data_list[-1])
         self._allocate_params_on_cuda(params)
         self.sample_model_data(params)
         self.mem_monitor.start()
