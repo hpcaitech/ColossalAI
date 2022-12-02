@@ -7,6 +7,8 @@ BATCH_SIZE = 1
 SEQ_LENGTH = 16
 
 
+# TODO: remove this skip once we handle the latest gpt model
+@pytest.mark.skip
 def test_gpt():
     MODEL_LIST = [
         transformers.GPT2Model,
