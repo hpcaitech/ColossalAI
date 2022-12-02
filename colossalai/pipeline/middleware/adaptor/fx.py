@@ -12,6 +12,14 @@ def partition_name_to_id(partition_name, is_input=False, is_output=False):
         partition_id = int(partition_name.split(prefix)[-1]) + 2
     return partition_id
 
+# There are two kinds of def in fx.graph
+# 1. non direct_use & non direct_def, which means the output is used by next partition with a temporary mid value.
+#    e.g. submod1 = call_module(...)
+#         temporary_val = submod1[0]
+#         submod2 = call_module(temporary_val, ...)
+# 2. direct_use & direct_def, which means the output is used by next partition directly.
+#    e.g. submod1 = call_module(...)
+#         submod2 = call_module(submod1, ...)
 def find_input_in_partition(node, partitions, input_partitions=None):
     p_input_val = None
     direct_def = not node.name.startswith('getitem')
