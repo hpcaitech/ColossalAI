@@ -3,6 +3,7 @@ from torch.fx import GraphModule
 from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
 from colossalai.fx import ColoTracer
 from colossalai.pipeline.middleware import Partition, PartitionInputVal, PartitionOutputVal, Topo
+from colossalai.pipeline.middleware.adaptor import get_fx_topology
 import random
 import numpy as np
 
@@ -45,6 +46,11 @@ def split_model_and_get_DAG(model, data_gen):
     # apply transform passes
     annotated_model = balanced_split_pass(gm, 2)
     top_module, split_submodules = split_with_split_nodes_pass(annotated_model)
+    
+    topo = get_fx_topology(top_module)
+    for submodule in split_submodules:
+        if isinstance(submodule, torch.fx.GraphModule):
+            setattr(submodule, '_topo', topo)
 
     return top_module, split_submodules[0]._topo
 
