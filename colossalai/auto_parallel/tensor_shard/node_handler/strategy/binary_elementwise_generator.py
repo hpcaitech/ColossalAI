@@ -85,7 +85,7 @@ class BinaryElementwiseStrategyGenerator(StrategyGenerator):
         strategy_list = []
 
         # convert these dim partition dict to sharding strategy
-        for dim_partition_dict in dim_partition_list:
+        for index, dim_partition_dict in enumerate(dim_partition_list):
             dim_partition_dict_mapping = dict(input=dim_partition_dict,
                                               other=dim_partition_dict,
                                               output=dim_partition_dict)
@@ -96,7 +96,7 @@ class BinaryElementwiseStrategyGenerator(StrategyGenerator):
 
                 # get name
                 sharding_seq = sharding_spec_mapping['input'].sharding_sequence
-                name = f'{sharding_seq} = {sharding_seq} <binary-elementwise-op> {sharding_seq}'
+                name = f'{sharding_seq} = {sharding_seq} <binary-elementwise-op> {sharding_seq}_{index}'
                 sharding_strategy = self.get_sharding_strategy(
                     name=name,
                     sharding_spec_mapping=sharding_spec_mapping,

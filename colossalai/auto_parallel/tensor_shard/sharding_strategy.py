@@ -254,8 +254,9 @@ class StrategiesVector(list):
             if self.node.target in ELEMENTWISE_FUNC_OP:
                 merge_label = True
             # we could merge bcast op if the rhs is a scalar, because it will fall back to the element-wise case.
-            if self.node.target in BCAST_FUNC_OP and len(self.predecessor_nodes) == 1:
-                merge_label = True
+            # TODO: remove this after we support the fall back logic.
+            # if self.node.target in BCAST_FUNC_OP and len(self.predecessor_nodes) == 1:
+            #     merge_label = True
             # we could merge reshape op, because their computation costs are negligible.
             if self.node.target in RESHAPE_FUNC_OP:
                 merge_label = True

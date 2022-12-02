@@ -14,6 +14,8 @@ __all__ = ['UnaryElementwiseHandler']
 @operator_registry.register(torch.Tensor.type)
 @operator_registry.register(torch.abs)
 @operator_registry.register(torch.nn.ReLU)
+@operator_registry.register(torch.nn.Tanh)
+@operator_registry.register(torch.tanh)
 # TODO: softmax need to be relocated
 @operator_registry.register(torch.nn.functional.softmax)
 @operator_registry.register(torch.nn.modules.dropout.Dropout)
