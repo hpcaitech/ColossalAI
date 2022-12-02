@@ -8,18 +8,12 @@ import torch
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.tensor.param_op_hook import ParamOpHook
 from colossalai.gemini.tensor_utils import free_storage, alloc_storage
+from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
 
 
 class TrainingPhase(Enum):
     FORWARD = 0
     BACKWARD = 1
-
-
-class MemInfo():
-    model_data_list = []
-    non_model_data_list = []
-    unreleased_grad_flag = {}
-    unreleased_grad_volume = 0
 
 
 class GradHook():
@@ -28,16 +22,16 @@ class GradHook():
         self.grad_hook_list = []
 
     def grad_handle(self, p, grad):
-        assert MemInfo.unreleased_grad_flag[p]
+        assert GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag[p]
         free_storage(grad)
-        MemInfo.unreleased_grad_volume -= grad.numel() * grad.element_size()
-        MemInfo.unreleased_grad_flag[p] = False
+        GLOBAL_CUDA_MEM_INFO.unreleased_grad_volume -= grad.numel() * grad.element_size()
+        GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag[p] = False
 
     def register_grad_hook(self):
         for p in self.module.parameters():
             if p.requires_grad:
                 self.grad_hook_list.append(p.register_hook(partial(self.grad_handle, p)))
-                MemInfo.unreleased_grad_flag[p] = False
+                GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag[p] = False
 
     def remove_grad_hook(self):
         for hook in self.grad_hook_list:
@@ -69,22 +63,22 @@ class ParamTracerHook(ParamOpHook):
                 alloc_storage(p.data)
 
     def sample_model_data(self, params):
-        data_volume = MemInfo.unreleased_grad_volume
+        data_volume = GLOBAL_CUDA_MEM_INFO.unreleased_grad_volume
         for p in params:
             cur_model_data_volume = p.data.numel() * p.data.element_size()
             data_volume += cur_model_data_volume
             if self._training_phase == TrainingPhase.BACKWARD and p.requires_grad:
                 # add param.grad, actually param.grad is None in this time
                 data_volume += cur_model_data_volume
-                if not MemInfo.unreleased_grad_flag[p]:
-                    MemInfo.unreleased_grad_volume += cur_model_data_volume
-                    MemInfo.unreleased_grad_flag[p] = True
-        MemInfo.model_data_list.append(data_volume)
+                if not GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag[p]:
+                    GLOBAL_CUDA_MEM_INFO.unreleased_grad_volume += cur_model_data_volume
+                    GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag[p] = True
+        GLOBAL_CUDA_MEM_INFO.model_data_list.append(data_volume)
 
     def pre_op(self, params):
         cuda_volume = self.mem_monitor.finish()
-        if len(MemInfo.model_data_list):
-            MemInfo.non_model_data_list.append(cuda_volume - MemInfo.model_data_list[-1])
+        if len(GLOBAL_CUDA_MEM_INFO.model_data_list):
+            GLOBAL_CUDA_MEM_INFO.non_model_data_list.append(cuda_volume - GLOBAL_CUDA_MEM_INFO.model_data_list[-1])
         self._allocate_params_on_cuda(params)
         self.sample_model_data(params)
         self.mem_monitor.start()

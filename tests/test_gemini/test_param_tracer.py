@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from colossalai.gemini.memory_tracer.param_tracer_wrapper import ParamTracerWrapper
-from colossalai.gemini.ophooks.param_trace_hook import MemInfo
+from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
 
@@ -36,9 +36,9 @@ def run_param_wrapper_testing():
 
             run_fwd_bwd(model, data, label, criterion, False)
 
-        cuda_non_model_data_list = np.array(MemInfo.non_model_data_list) / 1024 ** 2
+        cuda_non_model_data_list = np.array(GLOBAL_CUDA_MEM_INFO.non_model_data_list) / 1024 ** 2
         print("cuda_non_model_data_list", len(cuda_non_model_data_list))
-        # print(MemInfo.non_model_data_list)
+        # print(GLOBAL_CUDA_MEM_INFO.non_model_data_list)
 
         del model
 

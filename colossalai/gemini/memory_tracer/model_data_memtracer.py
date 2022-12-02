@@ -106,4 +106,15 @@ class ModelDataTracer(metaclass=SingletonMeta):
         return self._get_mem_usage()
 
 
+class CudaMemInfo(metaclass=SingletonMeta):
+
+    def __init__(self) -> None:
+        self.model_data_list = []
+        self.non_model_data_list = []
+        self.unreleased_grad_flag = {}
+        self.unreleased_grad_volume = 0
+
+
 GLOBAL_MODEL_DATA_TRACER = ModelDataTracer()
+
+GLOBAL_CUDA_MEM_INFO = CudaMemInfo()

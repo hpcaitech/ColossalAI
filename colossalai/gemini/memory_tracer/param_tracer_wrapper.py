@@ -1,7 +1,8 @@
 import torch.nn
 
 from colossalai.tensor.param_op_hook import ParamOpHookManager
-from colossalai.gemini.ophooks.param_trace_hook import ParamTracerHook, GradHook, MemInfo
+from colossalai.gemini.ophooks.param_trace_hook import ParamTracerHook, GradHook
+from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
 from colossalai.nn.parallel.data_parallel import _cast_float
 
 __all__ = ['ParamTracerWrapper']
@@ -36,7 +37,7 @@ class ParamTracerWrapper():
         self.cpu_param_data_dict.clear()
 
     def _pre_forward(self):
-        self._clear_mem_info()
+        self._clear_cuda_mem_info()
         self._save_param_data_on_cpu()
         self.grad_hook.register_grad_hook()
         self.param_op_hook.mem_monitor.start()
@@ -56,16 +57,16 @@ class ParamTracerWrapper():
 
     def _post_backward(self):
         cuda_volume = self.param_op_hook.mem_monitor.finish()
-        last_model_data = MemInfo.model_data_list[-1]
-        MemInfo.non_model_data_list.append(cuda_volume - last_model_data)
+        last_model_data = GLOBAL_CUDA_MEM_INFO.model_data_list[-1]
+        GLOBAL_CUDA_MEM_INFO.non_model_data_list.append(cuda_volume - last_model_data)
         self.grad_hook.remove_grad_hook()
         self._restore_param_data()
 
-    def _clear_mem_info(self):
-        MemInfo.model_data_list.clear()
-        MemInfo.non_model_data_list.clear()
-        MemInfo.unreleased_grad_flag.clear()
-        MemInfo.unreleased_grad_volume = 0
+    def _clear_cuda_mem_info(self):
+        GLOBAL_CUDA_MEM_INFO.model_data_list.clear()
+        GLOBAL_CUDA_MEM_INFO.non_model_data_list.clear()
+        GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag.clear()
+        GLOBAL_CUDA_MEM_INFO.unreleased_grad_volume = 0
 
     def _cast_buffers_to_cuda_dtype(self):
         for buffer in self.module.buffers():
