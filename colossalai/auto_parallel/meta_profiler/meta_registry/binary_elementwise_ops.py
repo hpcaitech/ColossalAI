@@ -43,7 +43,7 @@ def binary_elementwise_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, Train
     param_mem_cost = activation_size(
         [arg.data for arg in [input_op_data, other_op_data] if arg.type == OperationDataType.PARAM])
     fwd_mem_cost = MemoryCost(
-        activation=activation_size(output_op_data.data),
+        activation=activation_size([input_op_data.data, output_op_data.data]),
         parameter=param_mem_cost,
     )
     bwd_mem_cost = MemoryCost(
