@@ -53,17 +53,38 @@ def detect_reshape_mapping(origin_shape: torch.Size, tgt_shape: torch.Size) -> D
     while origin_index != len(origin_shape) or tgt_index != len(tgt_shape):
         if original_dimension_size == tgt_dimension_size:
             reshape_mapping_dict[tuple(origin_dims)] = tuple(tgt_dims)
-            origin_index += 1
-            tgt_index += 1
+            # if the origin_dims has no element, it means the original tensor has been fully matched.
+            # Therefore, we do not have to increase the origin_index for that case.
+            if len(origin_dims) > 0:
+                origin_index += 1
+            # if the tgt_dims has no element, it means the original tensor has been fully matched.
+            # Therefore, we do not have to increase the tgt_index for that case.
+            if len(tgt_dims) > 0:
+                tgt_index += 1
             # the last step of loop should always end with condition
             # so we need to manually skip the preparation for next step
             # in the last step.
-            if origin_index == len(origin_shape):
+            if origin_index == len(origin_shape) and tgt_index == len(tgt_shape):
                 continue
-            original_dimension_size = origin_shape[origin_index]
-            tgt_dimension_size = tgt_shape[tgt_index]
-            origin_dims = [origin_len - origin_index - 1]
-            tgt_dims = [tgt_len - tgt_index - 1]
+
+            # If origin_index equals to origin_len, we just need to set the original_dimension_size
+            # to 1 to match the remaining '1's in the target tensor shape.
+            if origin_index == len(origin_shape):
+                original_dimension_size = 1
+                origin_dims = []
+            else:
+                original_dimension_size = origin_shape[origin_index]
+                origin_dims = [origin_len - origin_index - 1]
+
+            # If tgt_index equals to tgt_len, we just need to set the tgt_dimension_size
+            # to 1 to match the remaining '1's in the original tensor shape.
+            if tgt_index == len(tgt_shape):
+                tgt_dimension_size = 1
+                tgt_dims = []
+            else:
+                tgt_dimension_size = tgt_shape[tgt_index]
+                tgt_dims = [tgt_len - tgt_index - 1]
+
             previous_label = PreviousStatus.RESET
 
         elif original_dimension_size > tgt_dimension_size:
@@ -141,6 +162,9 @@ def check_keep_sharding_status(input_dim_partition_dict: Dict[int, List[int]],
     """
     sharded_dims = list(input_dim_partition_dict.keys())
     for input_dims in reshape_mapping_dict.keys():
+        # if input_dims has no element, we could just skip this iteration.
+        if len(input_dims) == 0:
+            continue
         min_element = min(input_dims)
         for dim in input_dims:
             if dim in sharded_dims and dim is not min_element:
