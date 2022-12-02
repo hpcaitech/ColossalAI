@@ -338,17 +338,6 @@ class WorkerBase(ABC):
                 producer_num += 1 # for input partition
             subscribe_forward_futures: List[Future] = [None] * producer_num
 
-            # producer_stage_ids = []
-            # with self.producer_consumer_init_lock:
-            #     self.producer_consumer_init_lock.wait_for(lambda: self._producer_consumer_initialized)
-            #     producer_stage_ids = self.producer_stage_ids
-            # producer_num = len(producer_stage_ids)
-            
-            # # TODO(jiangziyue) get single value instead of the whole output
-            # if self.need_model_input():
-            #     producer_num += 1 # extra one(the last one) for input_tensor
-            # subscribe_forward_futures: List[Future] = [None] * producer_num
-
             # TODO(jiangziyue) get single value instead of the whole output
             if self.need_model_input():
                 producer_stage_id = 0
