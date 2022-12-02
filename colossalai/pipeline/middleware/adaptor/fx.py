@@ -98,6 +98,8 @@ def get_topology(gm: GraphModule):
             partitions.append(node)
         elif node.op == 'output':
             output_partitions.append(node)
+        else:
+            continue
 
     # set output for input_partition
     topo_input_partition = Partition()
