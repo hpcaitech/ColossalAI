@@ -110,7 +110,8 @@ def maxpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, 
 
     # calculate memory cost
     # NOTE: the index matrix will be discarded in backward phase
-    fwd_mem_cost = MemoryCost(activation=activation_size(output_tensor) + activation_size(index_matrix))
+    # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
+    fwd_mem_cost = MemoryCost(activation=activation_size([input_tensor, output_tensor, index_matrix]))
 
     # temp memory for backward is the index matrix to be discarded
     bwd_mem_cost = MemoryCost(activation=activation_size(input_tensor) - activation_size(index_matrix),
