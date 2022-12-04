@@ -49,10 +49,12 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
 
     # calculate memory cost
     # NOTE: the inplace ReLU don't have forward memory cost
-    fwd_memory_cost = MemoryCost(activation=0 if inplace else activation_size(output_tensor),
-                                 parameter=0,
-                                 temp=0,
-                                 buffer=0)
+    # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
+    fwd_memory_cost = MemoryCost(
+        activation=activation_size(input_tensor) if inplace else activation_size([output_tensor, input_tensor]),
+        parameter=0,
+        temp=0,
+        buffer=0)
 
     bwd_memory_cost = MemoryCost(activation=activation_size(input_tensor), parameter=0, temp=0, buffer=0)
 
