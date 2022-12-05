@@ -68,16 +68,17 @@ def get_training_components():
 
         return model
 
+    is_distrbuted = torch.distributed.is_initialized()
     trainloader = get_bert_data_loader(n_class=vocab_size,
                                        batch_size=2,
                                        total_samples=10000,
                                        sequence_length=sequence_length,
-                                       is_distrbuted=True)
+                                       is_distrbuted=is_distrbuted)
     testloader = get_bert_data_loader(n_class=vocab_size,
                                       batch_size=2,
                                       total_samples=10000,
                                       sequence_length=sequence_length,
-                                      is_distrbuted=True)
+                                      is_distrbuted=is_distrbuted)
 
     criterion = None
     return bert_model_builder, trainloader, testloader, torch.optim.Adam, criterion

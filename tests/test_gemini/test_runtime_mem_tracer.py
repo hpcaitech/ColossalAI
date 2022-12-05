@@ -21,14 +21,15 @@ def run_fwd_bwd(model, data, label, criterion, enable_autocast=False, dtype=torc
     model.backward(loss)
 
 
-def run_param_wrapper_testing():
-    test_models = ['simple_net', 'repeated_computed_layers', 'nested_model']
+def test_runtime_mem_tracer():
+    test_models = ['gpt2', 'bert', 'simple_net', 'repeated_computed_layers', 'nested_model']
+
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
 
         with ColoInitContext(device=torch.device('cpu')):
-            model = model_builder(checkpoint=False)
+            model = model_builder(checkpoint=True)
 
         model_bk = deepcopy(model)
         runtime_mem_tracer = RuntimeMemTracer(model)
@@ -52,4 +53,4 @@ def run_param_wrapper_testing():
 
 
 if __name__ == '__main__':
-    run_param_wrapper_testing()
+    test_runtime_mem_tracer()
