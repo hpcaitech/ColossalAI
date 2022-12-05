@@ -3,7 +3,7 @@ import torch.nn
 from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
 from colossalai.gemini.ophooks.runtime_mem_tracer_hook import GradMemTracerHook, ParamMemTracerHook
 from colossalai.nn.parallel.data_parallel import _cast_float
-from colossalai.tensor.param_op_hook import ParamOpHookManager
+from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 
 __all__ = ['RuntimeMemTracer']
 
@@ -53,12 +53,12 @@ class RuntimeMemTracer():
         args, kwargs = _cast_float(args, self.dtype), _cast_float(kwargs, self.dtype)
         self.module.zero_grad(set_to_none=True)
         self._pre_forward()
-        with ParamOpHookManager.use_hooks(self.param_op_hook):
+        with ColoParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         return outputs
 
     def backward(self, loss):
-        with self.param_op_hook.switch_to_backward(), ParamOpHookManager.use_hooks(self.param_op_hook):
+        with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             loss.backward()
         self._post_backward()
 

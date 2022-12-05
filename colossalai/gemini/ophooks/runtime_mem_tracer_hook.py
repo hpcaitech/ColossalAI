@@ -8,7 +8,7 @@ import torch
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
 from colossalai.gemini.tensor_utils import alloc_storage, free_storage
-from colossalai.tensor.param_op_hook import ParamOpHook
+from colossalai.tensor.param_op_hook import ColoParamOpHook
 
 
 class TrainingPhase(Enum):
@@ -39,7 +39,7 @@ class GradMemTracerHook():
             hook.remove()
 
 
-class ParamMemTracerHook(ParamOpHook):
+class ParamMemTracerHook(ColoParamOpHook):
 
     def __init__(self) -> None:
         super().__init__()
