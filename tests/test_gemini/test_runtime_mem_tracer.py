@@ -10,7 +10,7 @@ from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
-def run_fwd_bwd(model, data, label, criterion, enable_autocast=False, dtype=torch.half):
+def _run_fwd_bwd(model, data, label, criterion, enable_autocast=False, dtype=torch.half):
     with torch.cuda.amp.autocast(enabled=enable_autocast):
         if criterion:
             y = model(data)
@@ -28,7 +28,7 @@ def test_runtime_mem_tracer():
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
         model_builder, train_dataloader, _, _, criterion = get_components_func()
 
-        with ColoInitContext(device=torch.device('cpu')):
+        with ColoInitContext(device='cpu'):
             model = model_builder(checkpoint=False)
 
         model_bk = deepcopy(model)
@@ -40,7 +40,7 @@ def test_runtime_mem_tracer():
             data = data.cuda()
             label = label.cuda()
 
-            run_fwd_bwd(runtime_mem_tracer, data, label, criterion, False)
+            run_fwd_bwd(runtime_mem_tracer, data, label, criterion, None)
 
         for p1, p2 in zip(model_bk.parameters(), model.parameters()):
             torch.allclose(p1.to(torch.half), p2)
