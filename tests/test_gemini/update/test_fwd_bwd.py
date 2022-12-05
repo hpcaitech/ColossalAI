@@ -36,7 +36,7 @@ def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 @parameterize('keep_gather', [False, True])
-@parameterize('model_name', ['gpt2', 'bert'])
+@parameterize('model_name', ['gpt2', 'bert', 'albert'])
 @parameterize('use_grad_checkpoint', [False, True])
 def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_checkpoint: bool = False):
     set_seed(42)

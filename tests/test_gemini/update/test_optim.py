@@ -27,7 +27,7 @@ from tests.test_tensor.common_utils import debug_print, set_seed
 # this model is large enough to slice to chunks
 TEST_MODELS = ['gpt2']
 # these models are too small, all parameters in these models are compacted into one chunk
-EXAMPLE_MODELS = ['hanging_param_model', 'bert', 'simple_net', 'nested_model', 'repeated_computed_layers']
+EXAMPLE_MODELS = ['albert', 'hanging_param_model', 'bert', 'simple_net', 'nested_model', 'repeated_computed_layers']
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
