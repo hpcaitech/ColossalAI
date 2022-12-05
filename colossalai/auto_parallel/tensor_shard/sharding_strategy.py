@@ -207,7 +207,7 @@ class ShardingStrategy:
         sharding_specs = _deepcopy_dict_vals(self.sharding_specs) if self.sharding_specs is not None else None
         # We need to deepcopy it when self.communication_actions is not None, instead of checking its __bool__ value.
         # Consider the examples below:
-        # If self.communication_actions is a empty dictionary {}, then self.communication_actions is not None, but its __bool__ value is False.
+        # If self.communication_actions is an empty dictionary {}, then self.communication_actions is not None, but its __bool__ value is False.
         # In this case, if we set None to the new object, program will crash when we try to access the communication_actions.items.
         communication_actions = _deepcopy_dict_vals(
             self.communication_actions) if self.communication_actions is not None else None
