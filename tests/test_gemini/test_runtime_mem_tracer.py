@@ -22,7 +22,7 @@ def run_fwd_bwd(model, data, label, criterion, enable_autocast=False, dtype=torc
 
 
 def test_runtime_mem_tracer():
-    test_models = ['gpt2', 'bert', 'simple_net', 'repeated_computed_layers', 'nested_model']
+    test_models = ['gpt2', 'bert', 'simple_net', 'repeated_computed_layers', 'nested_model', 'albert']
 
     for model_name in test_models:
         get_components_func = non_distributed_component_funcs.get_callable(model_name)
