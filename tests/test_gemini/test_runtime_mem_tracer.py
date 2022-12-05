@@ -29,7 +29,7 @@ def test_runtime_mem_tracer():
         model_builder, train_dataloader, _, _, criterion = get_components_func()
 
         with ColoInitContext(device=torch.device('cpu')):
-            model = model_builder(checkpoint=True)
+            model = model_builder(checkpoint=False)
 
         model_bk = deepcopy(model)
         runtime_mem_tracer = RuntimeMemTracer(model)
@@ -47,7 +47,7 @@ def test_runtime_mem_tracer():
 
         cuda_non_model_data_list = np.array(GLOBAL_CUDA_MEM_INFO.non_model_data_list) / 1024**2
         print("cuda_non_model_data_list", len(cuda_non_model_data_list))
-        # print(GLOBAL_CUDA_MEM_INFO.non_model_data_list)
+        print(GLOBAL_CUDA_MEM_INFO.non_model_data_list)
 
         del model
 

@@ -1,7 +1,7 @@
 import torch.nn
 
 from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
-from colossalai.gemini.ophooks.param_trace_hook import GradHook, ParamTracerHook
+from colossalai.gemini.ophooks.runtime_mem_tracer_hook import GradMemTracerHook, ParamMemTracerHook
 from colossalai.nn.parallel.data_parallel import _cast_float
 from colossalai.tensor.param_op_hook import ParamOpHookManager
 
@@ -14,8 +14,8 @@ class RuntimeMemTracer():
         super().__init__()
         self.module = module
         self.dtype = dtype
-        self.param_op_hook = ParamTracerHook()
-        self.grad_hook = GradHook(module)
+        self.param_op_hook = ParamMemTracerHook()
+        self.grad_hook = GradMemTracerHook(module)
         self.cpu_param_data_dict = {}
 
         for p in module.parameters():
