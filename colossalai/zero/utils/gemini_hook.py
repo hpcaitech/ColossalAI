@@ -7,7 +7,7 @@ import torch
 
 from colossalai.gemini import TensorState
 from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.tensor.param_op_hook import ParamOpHook
+from colossalai.tensor.param_op_hook import ColoParamOpHook
 
 
 class TrainingPhase(Enum):
@@ -15,7 +15,7 @@ class TrainingPhase(Enum):
     BACKWARD = 1
 
 
-class GeminiZeROHook(ParamOpHook):
+class GeminiZeROHook(ColoParamOpHook):
 
     def __init__(self, gemini_manager: GeminiManager) -> None:
         super().__init__()
