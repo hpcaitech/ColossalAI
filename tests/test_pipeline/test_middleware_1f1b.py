@@ -24,7 +24,7 @@ def create_partition_module(pp_rank: int, stage_num: int, model, data_kwargs):
     for submodule in split_submodules:
         if isinstance(submodule, torch.fx.GraphModule):
             setattr(submodule, '_topo', topo)
-    return split_submodules[pp_rank]
+    return split_submodules[pp_rank+1]
 
 def partition(data_kwargs: dict, pp_rank: int, chunk: int, stage_num: int):
     torch.manual_seed(1024)

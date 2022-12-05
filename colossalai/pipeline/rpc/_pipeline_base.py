@@ -484,7 +484,7 @@ class WorkerBase(ABC):
             if args_or_kwargs is not None:
                 if isinstance(args_or_kwargs, dict):
                     pass
-                else:
+                else: 
                     flatten_args = []     
                     if self.is_first_stage():
                         pytree_map(args_or_kwargs, fn=lambda x: flatten_args.append(x), map_all=True)
@@ -508,6 +508,9 @@ class WorkerBase(ABC):
                             src_partition_id = val_pos.partition_id
                             src_offset = val_pos.offset
                             src_index = base
+                            src_partition = topo.get_partition_by_id(src_partition_id)
+                            output_len = len(src_partition.get_output_vals())
+                            # data from not-input partition
                             if src_partition_id != model_input_partition_id:
                                 src_stage_id = self.partition_id_to_pp_rank(src_partition_id, topo)
                                 src_index = base
@@ -515,7 +518,13 @@ class WorkerBase(ABC):
                                     if stage_id == src_stage_id:
                                         src_index += i
                                         break
-                            target = args_or_kwargs[src_index][src_offset]
+                            else: # data from input partition
+                                src_index = 0
+                            # when output_len = 1, not iterable
+                            if output_len == 1:
+                                target = args_or_kwargs[src_index]
+                            else:
+                                target = args_or_kwargs[src_index][src_offset]
                             flatten_args.append(target)
                     args_or_kwargs = flatten_args
         return args_or_kwargs
