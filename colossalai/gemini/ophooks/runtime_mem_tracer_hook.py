@@ -6,9 +6,9 @@ from typing import List
 import torch
 
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
-from colossalai.tensor.param_op_hook import ParamOpHook
-from colossalai.gemini.tensor_utils import free_storage, alloc_storage
 from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
+from colossalai.gemini.tensor_utils import alloc_storage, free_storage
+from colossalai.tensor.param_op_hook import ParamOpHook
 
 
 class TrainingPhase(Enum):
@@ -16,7 +16,8 @@ class TrainingPhase(Enum):
     BACKWARD = 1
 
 
-class GradHook():
+class GradMemTracerHook():
+
     def __init__(self, module: torch.nn.Module):
         self.module = module
         self.grad_hook_list = []
@@ -38,7 +39,7 @@ class GradHook():
             hook.remove()
 
 
-class ParamTracerHook(ParamOpHook):
+class ParamMemTracerHook(ParamOpHook):
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,7 +58,9 @@ class ParamTracerHook(ParamOpHook):
             if cur_dev == "cpu":
                 if p.grad is not None and p.grad.device.type == "cpu":
                     raise NotImplementedError("Only run in forward propagation")
-                p.data = torch.empty(p.data.shape, device="cuda", dtype=p.data.dtype,
+                p.data = torch.empty(p.data.shape,
+                                     device="cuda",
+                                     dtype=p.data.dtype,
                                      requires_grad=p.data.requires_grad)
             elif cur_dev == "cuda":
                 alloc_storage(p.data)

@@ -1,11 +1,12 @@
 import torch
+
 from colossalai.registry import OPHOOKS
 
 from . import BaseOpHook
 
 
 @OPHOOKS.register_module
-class ShardGradHook(BaseOpHook):
+class ShardGradMemTracerHook(BaseOpHook):
     """
     A hook to process sharded param before and afther FWD and BWD operator executing.
     """
