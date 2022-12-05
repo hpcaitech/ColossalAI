@@ -165,7 +165,7 @@ class ShardingSpec:
     Argument:
         device_mesh(DeviceMesh): A logical view of a physical mesh.
         entire_shape(torch.Size): The entire shape of tensor before sharded.
-        dim_partition_dict(Dict[int, List[int]]， optional): The key is the dimension of tensor to be sharded,
+        dim_partition_dict(Dict[int, List[int]], optional): The key is the dimension of tensor to be sharded,
             and the value of the key decribe which logical axis will be sharded in that dimension.
         sharding_sequence(List[_DimSpec], optional): A straight view of ShardingSpec looks like [R, R, S0, S1].
     '''

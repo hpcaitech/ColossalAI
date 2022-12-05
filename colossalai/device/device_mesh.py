@@ -52,7 +52,8 @@ class DeviceMesh:
             self.process_groups_dict = self.create_process_groups_for_logical_mesh()
         if self.need_flatten:
             self.flatten_device_mesh = self.flatten()
-            # Create a new member `flatten_device_meshes` to distinguish from original flatten methods (Because I'm not sure if there are functions that rely on the self.flatten())
+            # Create a new member `flatten_device_meshes` to distinguish from original flatten methods
+            # (Because I'm not sure if there are functions that rely on the self.flatten())
             self.flatten_device_meshes = FlattenDeviceMesh(self.physical_mesh_id, self.mesh_shape, self.mesh_alpha,
                                                            self.mesh_beta)
 
