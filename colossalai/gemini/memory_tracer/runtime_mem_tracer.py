@@ -1,13 +1,14 @@
 import torch.nn
 
-from colossalai.tensor.param_op_hook import ParamOpHookManager
-from colossalai.gemini.ophooks.param_trace_hook import ParamTracerHook, GradHook
 from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
+from colossalai.gemini.ophooks.param_trace_hook import GradHook, ParamTracerHook
 from colossalai.nn.parallel.data_parallel import _cast_float
+from colossalai.tensor.param_op_hook import ParamOpHookManager
 
-__all__ = ['ParamTracerWrapper']
+__all__ = ['RuntimeMemTracer']
 
-class ParamTracerWrapper():
+
+class RuntimeMemTracer():
 
     def __init__(self, module: torch.nn.Module, dtype: torch.dtype = torch.half):
         super().__init__()
@@ -25,12 +26,18 @@ class ParamTracerWrapper():
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
-    def _save_param_data_on_cpu(self):
+    def _backup_params(self):
+        """
+        The function is called before forward. Backup model params on cpu.
+        """
         for p in self.module.parameters():
             self.cpu_param_data_dict[p] = torch.empty(p.data.shape, dtype=self.dtype, device="cpu")
             self.cpu_param_data_dict[p].copy_(p.data)
 
-    def _restore_param_data(self):
+    def _restore_params(self):
+        """
+        This function is called after backward. Restore model params.
+        """
         for p in self.module.parameters():
             p.data = torch.empty(p.data.shape, dtype=self.dtype, device="cpu", requires_grad=p.data.requires_grad)
             p.data.copy_(self.cpu_param_data_dict[p])
@@ -38,7 +45,7 @@ class ParamTracerWrapper():
 
     def _pre_forward(self):
         self._clear_cuda_mem_info()
-        self._save_param_data_on_cpu()
+        self._backup_params()
         self.grad_hook.register_grad_hook()
         self.param_op_hook.mem_monitor.start()
 
@@ -60,7 +67,7 @@ class ParamTracerWrapper():
         last_model_data = GLOBAL_CUDA_MEM_INFO.model_data_list[-1]
         GLOBAL_CUDA_MEM_INFO.non_model_data_list.append(cuda_volume - last_model_data)
         self.grad_hook.remove_grad_hook()
-        self._restore_param_data()
+        self._restore_params()
 
     def _clear_cuda_mem_info(self):
         GLOBAL_CUDA_MEM_INFO.model_data_list.clear()
