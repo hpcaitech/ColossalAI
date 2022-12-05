@@ -15,6 +15,7 @@ from .output_generator import OutputGenerator
 from .placeholder_generator import PlaceholderGenerator
 from .reshape_generator import ReshapeGenerator
 from .strategy_generator import StrategyGenerator
+from .tensor_constructor_generator import TensorConstructorGenerator
 from .unary_elementwise_generator import UnaryElementwiseGenerator
 from .where_generator import WhereGenerator
 
@@ -23,5 +24,6 @@ __all__ = [
     'BatchedMatMulStrategyGenerator', 'ConvStrategyGenerator', 'UnaryElementwiseGenerator',
     'BatchNormStrategyGenerator', 'GetItemStrategyGenerator', 'TensorStrategyGenerator', 'TensorTupleStrategyGenerator',
     'LayerNormGenerator', 'ReshapeGenerator', 'PlaceholderGenerator', 'OutputGenerator', 'WhereGenerator',
-    'ReshapeGenerator', 'NormalPoolStrategyGenerator', 'BinaryElementwiseStrategyGenerator', 'GetattrGenerator'
+    'ReshapeGenerator', 'NormalPoolStrategyGenerator', 'BinaryElementwiseStrategyGenerator', 'GetattrGenerator',
+    'TensorConstructorGenerator'
 ]
