@@ -13,3 +13,7 @@ You can launch training by using the following bash script.
 pip install -r requirements.txt
 bash run.sh
 ```
+## install
+```
+pip install colossalai
+```
