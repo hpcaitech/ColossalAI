@@ -39,14 +39,6 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy: 
     last_logical_output_dims = len(output_op_data.logical_shape) - 1
     last_physical_output_dims = output_op_data.data.dim() - 1
 
-    if last_logical_output_dims in output_sharding_spec.dim_partition_dict:
-        update_partition_dim(
-            sharding_spec=output_sharding_spec,
-            dim_mapping={last_logical_output_dims: last_physical_output_dims},
-            physical_shape=output_op_data.data.shape,
-            inplace=True,
-        )
-
     # get logger for debug message
     logger = get_dist_logger()
 
@@ -68,12 +60,20 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy: 
                                      dim_mapping={0: i},
                                      physical_shape=input_op_data.data.shape,
                                      inplace=True)
+
+                if last_logical_output_dims in output_sharding_spec.dim_partition_dict:
+                    dim_mapping = {0: i, last_logical_output_dims: last_physical_output_dims}
+                else:
+                    dim_mapping = {0: i}
+
                 update_partition_dim(sharding_spec=output_sharding_spec,
-                                     dim_mapping={0: i},
+                                     dim_mapping=dim_mapping,
                                      physical_shape=output_op_data.data.shape,
                                      inplace=True)
+
                 strategy_copy.name = f'{strategy.name}_{i}'
                 sharding_strategies.append(strategy_copy)
+
             except ShardingNotDivisibleError as e:
                 logger.debug(
                     f'Errored occurred when converting the logical sharding spec to the physical one. Error details: {e}'
@@ -91,11 +91,18 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_embedding(strategy: 
                              dim_mapping={},
                              physical_shape=input_op_data.data.shape,
                              inplace=True)
+
+        if last_logical_output_dims in output_sharding_spec.dim_partition_dict:
+            dim_mapping = {last_logical_output_dims: last_physical_output_dims}
+        else:
+            dim_mapping = {}
+
         update_partition_dim(sharding_spec=output_sharding_spec,
-                             dim_mapping={},
+                             dim_mapping=dim_mapping,
                              physical_shape=output_op_data.data.shape,
                              inplace=True)
         sharding_strategies.append(strategy_copy)
+
     return sharding_strategies
 
 
