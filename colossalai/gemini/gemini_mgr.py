@@ -26,27 +26,13 @@ class GeminiManager:
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
     """
 
-    def __init__(self,
-                 placement_policy: str,
-                 chunk_manager: ChunkManager,
-                 module: Optional[torch.nn.Module] = None,
-                 use_static_memstats: bool = False) -> None:
+    def __init__(self, placement_policy: str, chunk_manager: ChunkManager) -> None:
 
         assert placement_policy in PlacementPolicyFactory.get_polocy_names()
         self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
-        # self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager) if policy_cls.need_mem_stats else None
-        self.use_static_memstats = use_static_memstats
-        if policy_cls.need_mem_stats:
-            if use_static_memstats:
-                assert module is not None
-                self._mem_stats_collector = StaticMemStatsCollector(module, chunk_manager)
-            else:
-                self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager)
-        else:
-            self._mem_stats_collector = None
-
+        self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager) if policy_cls.need_mem_stats else None
         self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
@@ -60,11 +46,7 @@ class GeminiManager:
 
     def pre_iter(self, *args):
         if self._mem_stats_collector and self._warmup:
-            if self.use_static_memstats:
-                self._mem_stats_collector.init_mem_stats(*args)
-                self._warmup = False
-            else:
-                self._mem_stats_collector.start_collection()
+            self._mem_stats_collector.start_collection()
 
     def post_iter(self):
         """This function must be called when each iteration finishes

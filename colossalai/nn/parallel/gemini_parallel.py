@@ -50,5 +50,5 @@ class GeminiDDP(ZeroDDP):
                                            hidden_dim=hidden_dim,
                                            search_range_mb=search_range_mb,
                                            min_chunk_size_mb=min_chunk_size_mb)
-        gemini_manager = GeminiManager(placement_policy, chunk_manager, module)
+        gemini_manager = GeminiManager(placement_policy, chunk_manager)
         super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32)
