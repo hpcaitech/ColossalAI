@@ -17,7 +17,7 @@ def _delete_free_var_from_last_use(user_to_last_uses):
                 user_to_last_uses[key].remove(n)
 
 
-class NodeIndexTracer(object):
+class IndexTracer(object):
     def __init__(self, gm) -> None:
         self.gm = gm
         self.nodes_list = list(gm.graph.nodes)
@@ -683,7 +683,7 @@ class ChunkRegionSearch(object):
         self.gm = gm
         self.node_list = list(gm.graph.nodes)
         self.memory_estimator = MemoryEstimator()
-        self.index_tracer = NodeIndexTracer(gm)
+        self.index_tracer = IndexTracer(gm)
         self.index_tracer.trace_node_idx()
 
     def _find_peak_node(self, mem_peak):
