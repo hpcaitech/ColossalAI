@@ -36,6 +36,8 @@ class MemStats(object):
             raise TypeError
 
     def append_non_model_data(self, device_type: str):
+        if len(self._overall_cuda_list) == 0 or len(self._model_data_cuda_list) == 0:
+            return
         if device_type == 'cuda':
             self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
         elif device_type == 'cpu':

@@ -34,9 +34,10 @@ def test_runtime_mem_tracer():
         for p1, p2 in zip(model_bk.parameters(), model.parameters()):
             torch.allclose(p1.to(torch.half), p2)
 
-        cuda_non_model_data_list = np.array(GLOBAL_CUDA_MEM_INFO.non_model_data_list) / 1024**2
+        non_model_data_list = runtime_mem_tracer._memstats.non_model_data_list('cuda')
+        cuda_non_model_data_list = np.array(non_model_data_list) / 1024**2
         print("cuda_non_model_data_list", len(cuda_non_model_data_list))
-        print(GLOBAL_CUDA_MEM_INFO.non_model_data_list)
+        print(non_model_data_list)
 
         del model
 
