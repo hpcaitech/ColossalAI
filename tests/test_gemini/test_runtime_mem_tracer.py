@@ -3,7 +3,6 @@ from copy import deepcopy
 import numpy as np
 import torch
 
-from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
 from colossalai.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test import run_fwd_bwd
@@ -34,9 +33,10 @@ def test_runtime_mem_tracer():
         for p1, p2 in zip(model_bk.parameters(), model.parameters()):
             torch.allclose(p1.to(torch.half), p2)
 
-        cuda_non_model_data_list = np.array(GLOBAL_CUDA_MEM_INFO.non_model_data_list) / 1024**2
+        non_model_data_list = runtime_mem_tracer._memstats.non_model_data_list('cuda')
+        cuda_non_model_data_list = np.array(non_model_data_list) / 1024**2
         print("cuda_non_model_data_list", len(cuda_non_model_data_list))
-        print(GLOBAL_CUDA_MEM_INFO.non_model_data_list)
+        print(non_model_data_list)
 
         del model
 

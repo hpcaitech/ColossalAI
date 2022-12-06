@@ -41,9 +41,10 @@ class GradMemTracerHook():
 
 class ParamMemTracerHook(ColoParamOpHook):
 
-    def __init__(self) -> None:
+    def __init__(self, memstats) -> None:
         super().__init__()
         self._training_phase = TrainingPhase.FORWARD
+        self._memstats = memstats
         self.mem_monitor = SyncCudaMemoryMonitor()
 
     def _free_cuda_params(self, params):
@@ -76,12 +77,14 @@ class ParamMemTracerHook(ColoParamOpHook):
                 if not GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag[p]:
                     GLOBAL_CUDA_MEM_INFO.unreleased_grad_volume += cur_model_data_volume
                     GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag[p] = True
-        GLOBAL_CUDA_MEM_INFO.model_data_list.append(data_volume)
+        # GLOBAL_CUDA_MEM_INFO.model_data_list.append(data_volume)
+        self._memstats.append_model_data('cuda', data_volume)
 
     def pre_op(self, params):
         cuda_volume = self.mem_monitor.finish()
-        if len(GLOBAL_CUDA_MEM_INFO.model_data_list):
-            GLOBAL_CUDA_MEM_INFO.non_model_data_list.append(cuda_volume - GLOBAL_CUDA_MEM_INFO.model_data_list[-1])
+        self._memstats.append_model_data('cuda', cuda_volume)
+        # if len(GLOBAL_CUDA_MEM_INFO.model_data_list):
+        #     GLOBAL_CUDA_MEM_INFO.non_model_data_list.append(cuda_volume - GLOBAL_CUDA_MEM_INFO.model_data_list[-1])
         self._allocate_params_on_cuda(params)
         self.sample_model_data(params)
         self.mem_monitor.start()
