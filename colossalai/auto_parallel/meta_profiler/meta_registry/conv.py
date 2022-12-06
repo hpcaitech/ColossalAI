@@ -22,6 +22,9 @@ __all__ = ['convnd_meta_info']
 @meta_register.register(torch.nn.Conv1d)
 @meta_register.register(torch.nn.Conv2d)
 @meta_register.register(torch.nn.Conv3d)
+@meta_register.register(torch.nn.functional.conv1d)
+@meta_register.register(torch.nn.functional.conv2d)
+@meta_register.register(torch.nn.functional.conv3d)
 def convnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
     """torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d meta info generator
     The atens graph of torch.nn.Convnd with bias is
@@ -57,12 +60,19 @@ def convnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
     has_bias: bool = False
     input_tensor = next(filter(lambda x: x.type == OperationDataType.ARG, args)).data
     output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
-    weight_tensor = next(filter(lambda x: x.name == 'weight', args)).data
+    weight_tensors = [x.data for x in args if x.type == OperationDataType.PARAM]
 
     # check if conv has bias
-    if len(args) == 4:
-        bias_tensor = next(filter(lambda x: x.name == 'bias', args)).data
+    if len(weight_tensors) > 1:
         has_bias = True
+        # bias tensor's shape only has one dimension
+        if len(weight_tensors[0].shape) == 1:
+            bias_tensor, weight_tensor = weight_tensors
+        else:
+            weight_tensor, bias_tensor = weight_tensors
+
+    else:
+        weight_tensor = weight_tensors[0]
 
     # construct input args for forward
     fwd_args = [None] * 9
