@@ -3,6 +3,7 @@ from .batch_norm_handler import BatchNormModuleHandler
 from .binary_elementwise_handler import BinaryElementwiseHandler
 from .bmm_handler import AddBMMFunctionHandler, BMMFunctionHandler
 from .conv_handler import ConvFunctionHandler, ConvModuleHandler
+from .embedding_handler import EmbeddingFunctionHandler, EmbeddingModuleHandler
 from .experimental import PermuteHandler, ViewHandler
 from .getatrr_handler import GetattrHandler
 from .getitem_handler import GetItemHandler
@@ -23,5 +24,6 @@ __all__ = [
     'LayerNormModuleHandler', 'BatchNormModuleHandler', 'ConvModuleHandler', 'ConvFunctionHandler',
     'UnaryElementwiseHandler', 'ReshapeHandler', 'PlacehodlerHandler', 'OuputHandler', 'WhereHandler',
     'NormPoolingHandler', 'BinaryElementwiseHandler', 'MatMulHandler', 'operator_registry', 'ADDMMFunctionHandler',
-    'GetItemHandler', 'GetattrHandler', 'ViewHandler', 'PermuteHandler', 'TensorConstructorHandler'
+    'GetItemHandler', 'GetattrHandler', 'ViewHandler', 'PermuteHandler', 'TensorConstructorHandler',
+    'EmbeddingModuleHandler', 'EmbeddingFunctionHandler'
 ]
