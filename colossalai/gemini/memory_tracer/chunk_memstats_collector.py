@@ -11,15 +11,16 @@ class ChunkMemStatsCollector(MemStatsCollector):
         super().__init__()
         self._chunk_manager = chunk_manager
 
+    # override
     def sample_model_data(self) -> None:
         """Sampling model data statistics.
         """
         if self._start_flag:
             cuda_mem = self._chunk_manager.total_mem['cuda']
             cpu_mem = self._chunk_manager.total_mem['cpu']
-            self._model_data_cuda_list.append(cuda_mem)
-            self._model_data_cpu_list.append(cpu_mem)
+            self._mem_stats.append_model_data(cuda_mem)
+            self._mem_stats.append_non_model_data(cpu_mem)
 
     @property
     def cuda_margin_mem(self) -> float:
-        return colo_device_memory_capacity(get_current_device()) - max(self.overall_mem_stats('cuda'))
+        return colo_device_memory_capacity(get_current_device()) - self._mem_stats.max_overall_cuda('cuda')
