@@ -3,7 +3,6 @@ from copy import deepcopy
 import numpy as np
 import torch
 
-from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
 from colossalai.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test import run_fwd_bwd
