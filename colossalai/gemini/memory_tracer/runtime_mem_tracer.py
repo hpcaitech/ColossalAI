@@ -1,8 +1,7 @@
 import torch.nn
 
 from colossalai.gemini.memory_tracer import MemStats
-from colossalai.gemini.memory_tracer.model_data_memtracer import GLOBAL_CUDA_MEM_INFO
-from colossalai.gemini.ophooks.runtime_mem_tracer_hook import GradMemTracerHook, ParamMemTracerHook
+from colossalai.gemini.ophooks.runtime_mem_tracer_hook import GradMemStats, GradMemTracerHook, ParamMemTracerHook
 from colossalai.nn.parallel.data_parallel import _cast_float
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 
@@ -25,9 +24,10 @@ class RuntimeMemTracer():
         super().__init__()
         self.module = module
         self.dtype = dtype
+        self._gradstat = GradMemStats()
         self._memstats = MemStats()
-        self.param_op_hook = ParamMemTracerHook(self._memstats)
-        self.grad_hook = GradMemTracerHook(module)
+        self.param_op_hook = ParamMemTracerHook(self._memstats, self._gradstat)
+        self.grad_hook = GradMemTracerHook(self._gradstat)
         self.cpu_param_data_dict = {}
 
         for p in module.parameters():
@@ -58,7 +58,7 @@ class RuntimeMemTracer():
     def _pre_forward(self):
         self._clear_cuda_mem_info()
         self._backup_params()
-        self.grad_hook.register_grad_hook()
+        self.grad_hook.register_grad_hook(self.module)
         self.param_op_hook.mem_monitor.start()
 
     def forward(self, *args, **kwargs):
@@ -78,17 +78,12 @@ class RuntimeMemTracer():
         cuda_volume = self.param_op_hook.mem_monitor.finish()
         self._memstats.append_model_data('cuda', cuda_volume)
         self._memstats.append_non_model_data('cuda')
-        # last_model_data = GLOBAL_CUDA_MEM_INFO.model_data_list[-1]
-        # GLOBAL_CUDA_MEM_INFO.non_model_data_list.append(cuda_volume - last_model_data)
         self.grad_hook.remove_grad_hook()
         self._restore_params()
 
     def _clear_cuda_mem_info(self):
-        # GLOBAL_CUDA_MEM_INFO.model_data_list.clear()
-        # GLOBAL_CUDA_MEM_INFO.non_model_data_list.clear()
         self._memstats.clear()
-        GLOBAL_CUDA_MEM_INFO.unreleased_grad_flag.clear()
-        GLOBAL_CUDA_MEM_INFO.unreleased_grad_volume = 0
+        self._gradstat.clear()
 
     def _cast_buffers_to_cuda_dtype(self):
         for buffer in self.module.buffers():
