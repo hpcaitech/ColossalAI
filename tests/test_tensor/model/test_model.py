@@ -117,7 +117,7 @@ def run_1d_hybrid_tp(model_name):
             else:
                 output_torch = model_torch(data, label)
                 loss_torch = output_torch
-            assert torch.allclose(loss, loss_torch, rtol=1e-2)
+            assert torch.allclose(loss, loss_torch, rtol=1e-2), f"model_name {model_name} failed"
         torch.distributed.barrier()
 
         loss.backward()

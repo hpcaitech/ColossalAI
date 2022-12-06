@@ -9,6 +9,16 @@ __all__ = ['RuntimeMemTracer']
 
 
 class RuntimeMemTracer():
+    """RuntimeMemTracer for the module training using ColoParameter.
+
+    Trace non-model memory usage during fwd+bwd process.
+    It is obtained by using a tensor with the same shape as the training process as the inputs
+    and running an single fwd+bwd to trace the statistics.
+
+    NOTE()
+    1. The premise to use this tracer is that the target DNN execute the same operations at each iterations,
+    2. Module buffers are viewed as non-model data.
+    """
 
     def __init__(self, module: torch.nn.Module, dtype: torch.dtype = torch.half):
         super().__init__()
