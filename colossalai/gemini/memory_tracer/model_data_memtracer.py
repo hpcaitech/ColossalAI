@@ -1,6 +1,8 @@
-from colossalai.context.singleton_meta import SingletonMeta
+from typing import Optional, Tuple
+
 import torch
-from typing import Tuple, Optional
+
+from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.logging import DistributedLogger
 
 
@@ -20,7 +22,7 @@ def colo_model_optimizer_usage(optim) -> Tuple[int, int]:
 
 
 def colo_model_mem_usage(model: torch.nn.Module) -> Tuple[int, int]:
-    """ 
+    """
     Trace the model memory usage.
     Args:
         model (torch.nn.Module): a torch model
@@ -106,15 +108,4 @@ class ModelDataTracer(metaclass=SingletonMeta):
         return self._get_mem_usage()
 
 
-class CudaMemInfo(metaclass=SingletonMeta):
-
-    def __init__(self) -> None:
-        self.model_data_list = []
-        self.non_model_data_list = []
-        self.unreleased_grad_flag = {}
-        self.unreleased_grad_volume = 0
-
-
 GLOBAL_MODEL_DATA_TRACER = ModelDataTracer()
-
-GLOBAL_CUDA_MEM_INFO = CudaMemInfo()
