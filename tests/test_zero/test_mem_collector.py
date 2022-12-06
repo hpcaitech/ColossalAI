@@ -55,7 +55,8 @@ def run_mem_collector_testing():
     cuda_model_data_list = model._memstats_collector._memstats.model_data_list('cuda')
     assert cuda_model_data_list == [1311744, 1836032, 1836032, 1311744, 1836032, 1836032]
 
-    cuda_non_model_data_list = model._memstats_collector.non_model_data_list('cuda')
+    cuda_non_model_data_list = model._memstats_collector._memstats.non_model_data_list('cuda')
+    print('cuda_non_model_data_list ', cuda_non_model_data_list)
     assert cuda_non_model_data_list[0] > cuda_non_model_data_list[1]
     assert cuda_non_model_data_list[-2] > cuda_non_model_data_list[-1]
 

@@ -18,9 +18,9 @@ class ChunkMemStatsCollector(MemStatsCollector):
         if self._start_flag:
             cuda_mem = self._chunk_manager.total_mem['cuda']
             cpu_mem = self._chunk_manager.total_mem['cpu']
-            self._mem_stats.append_model_data('cuda', cuda_mem)
-            self._mem_stats.append_model_data('cpu', cpu_mem)
+            self._memstats.append_model_data('cuda', cuda_mem)
+            self._memstats.append_model_data('cpu', cpu_mem)
 
     @property
     def cuda_margin_mem(self) -> float:
-        return colo_device_memory_capacity(get_current_device()) - self._mem_stats.max_overall_cuda('cuda')
+        return colo_device_memory_capacity(get_current_device()) - self._memstats.max_overall_cuda('cuda')
