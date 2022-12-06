@@ -32,6 +32,21 @@ class MLP(nn.Module):
         for layer in self.layers:
             x = layer(x)
         return x
+    
+class DAG_MLP(nn.Module):
+    def __init__(self, dim: int, layers: int):
+        super().__init__()
+        self.layers = torch.nn.ModuleList()
+        self.dag_layer = nn.Linear(dim, dim, bias=False)
+
+        for _ in range(layers):
+            self.layers.append(nn.Linear(dim, dim, bias=False))
+
+    def forward(self, x, y):
+        for layer in self.layers:
+            x = layer(x)
+            y = self.dag_layer(y)
+        return x, y
 
 class RpcTestModel(nn.Module):
 
