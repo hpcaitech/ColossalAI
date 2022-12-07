@@ -5,7 +5,7 @@ from typing import List
 
 import torch
 
-from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
+from colossalai.gemini.memory_tracer import MemStats, SyncCudaMemoryMonitor
 from colossalai.gemini.tensor_utils import alloc_storage, free_storage
 from colossalai.tensor.param_op_hook import ColoParamOpHook
 
@@ -51,7 +51,7 @@ class GradMemTracerHook():
 
 class ParamMemTracerHook(ColoParamOpHook):
 
-    def __init__(self, memstats, gradstats: GradMemStats) -> None:
+    def __init__(self, memstats: MemStats, gradstats: GradMemStats) -> None:
         super().__init__()
         self._training_phase = TrainingPhase.FORWARD
         self._memstats = memstats
@@ -92,7 +92,9 @@ class ParamMemTracerHook(ColoParamOpHook):
 
     def pre_op(self, params):
         cuda_volume = self.mem_monitor.finish()
-        self._memstats.append_model_data('cuda', cuda_volume)
+        last_model_data_val = self._memstats.last_model_data('cuda')
+        if last_model_data_val is not None:
+            self._memstats.append_non_model_data('cuda', cuda_volume - last_model_data_val)
         self._allocate_params_on_cuda(params)
         self.sample_model_data(params)
         self.mem_monitor.start()

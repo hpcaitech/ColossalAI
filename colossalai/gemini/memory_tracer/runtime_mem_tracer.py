@@ -76,8 +76,7 @@ class RuntimeMemTracer():
 
     def _post_backward(self):
         cuda_volume = self.param_op_hook.mem_monitor.finish()
-        self._memstats.append_model_data('cuda', cuda_volume)
-        self._memstats.append_non_model_data('cuda')
+        self._memstats.append_non_model_data('cuda', cuda_volume - self._memstats.last_model_data('cuda'))
         self.grad_hook.remove_grad_hook()
         self._restore_params()
 

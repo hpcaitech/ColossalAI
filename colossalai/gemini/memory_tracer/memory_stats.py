@@ -35,13 +35,31 @@ class MemStats(object):
         else:
             raise TypeError
 
-    def append_non_model_data(self, device_type: str):
-        if len(self._overall_cuda_list) == 0 or len(self._model_data_cuda_list) == 0:
-            return
+    def last_model_data(self, device_type: str):
+        if len(self._model_data_cuda_list) == 0:
+            return None
         if device_type == 'cuda':
-            self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
+            return self._model_data_cuda_list[-1]
         elif device_type == 'cpu':
-            self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
+            return self._model_data_cpu_list[-1]
+        else:
+            raise TypeError
+
+    def append_non_model_data(self, device_type: str, val=None):
+        if device_type == 'cuda':
+            if val is None:
+                if len(self._overall_cuda_list) == 0 or len(self._model_data_cuda_list) == 0:
+                    return
+                self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
+            else:
+                self._non_model_data_cuda_list.append(val)
+        elif device_type == 'cpu':
+            if val is None:
+                if len(self._overall_cuda_list) == 0 or len(self._model_data_cuda_list) == 0:
+                    return
+                self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
+            else:
+                self._non_model_data_cuda_list.append(val)
         else:
             raise TypeError
 
