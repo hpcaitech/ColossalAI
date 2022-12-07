@@ -1,12 +1,14 @@
 import torch
-from torch import nn
+import pytest
 
+from torch import nn
 from colossalai.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
 from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
 from colossalai.fx import ColoTracer
 from colossalai.pipeline.middleware.adaptor import get_fx_topology
 from rpc_test_utils import rpc_run, parse_args, MLP, DAG_MLP
 from functools import partial
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 
 # global variable for model created
 batch_size = 16
@@ -31,7 +33,7 @@ def partition(model, data_kwargs: dict, pp_rank: int, chunk: int, stage_num: int
     partition = create_partition_module(pp_rank, stage_num, model, data_kwargs)
     return partition
 
-def run_master(args):
+def run_master(model_cls, args):
     torch.manual_seed(100)
 
     epoch = args.epoch
@@ -40,31 +42,26 @@ def run_master(args):
     chunk = args.chunk
     num_microbatches = args.num_microbatches
     use_checkpoint = args.use_checkpoint
-
-    def data_gen(model: str):
-        if model == 'MLP':
+    
+    if model_cls == MLP:
+        def data_gen():
             x = torch.zeros((batch_size, dim))
             kwargs = dict(x=x)
             return kwargs
-        elif model == 'DAG_MLP':
+        model = model_cls(dim, stage_num * 3)
+    elif model_cls == DAG_MLP:
+        def data_gen():
             x = torch.zeros((batch_size, dim))
             y = torch.zeros((batch_size, dim))
             kwargs = dict(x=x, y=y)
             return kwargs
-        else:
-            pass
+        model = model_cls(dim, stage_num * 3)
+    else:
+        pass
     
-    data_kwargs = [
-        data_gen('MLP'),
-        data_gen('DAG_MLP'),
-    ]
-    model = [
-        MLP(dim, stage_num * 3),
-        DAG_MLP(dim, stage_num * 3),
-    ]
+    data_kwargs = data_gen()
 
-    i = 1
-    engine = OneFOneBPipelineEngine(partition_fn=partial(partition, model[i], data_kwargs[i]),
+    engine = OneFOneBPipelineEngine(partition_fn=partial(partition, model, data_kwargs),
                                     stage_num=stage_num,
                                     num_microbatches=num_microbatches,
                                     device=device,
@@ -76,9 +73,15 @@ def run_master(args):
         input_y = torch.randn((batch_size, dim), device=device)
         logits = engine.forward_backward({'x': input_x, 'y': input_y}, forward_only=True)
 
-if __name__ == "__main__":
+@parameterize('model_cls', [MLP, DAG_MLP])
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+def test_pp_middleware_fwd(model_cls):
     args = parse_args()
     args.epoch = 10
     args.world_size = 4
     args.num_microbatches = 8
-    rpc_run(args, run_master)
+    rpc_run(args, partial(run_master, model_cls))
+
+if __name__ == "__main__":
+    test_pp_middleware_fwd()

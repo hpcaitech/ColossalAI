@@ -184,9 +184,7 @@ class WorkerBase(ABC):
 
     def get_output_by_key(self, key: UniqueKey, recv_rank=None) -> Any:
         with self.output_list_condition_lock:
-            #print(f'rank {self.pp_rank} waiting for {key} to recv rank {recv_rank}')
             self.output_list_condition_lock.wait_for(lambda: key in self.output_list)
-            #print(f'rank {self.pp_rank} get {key}')
             output_work_item = self.output_list[key]
             self.output_list.pop(key) 
             
@@ -371,6 +369,10 @@ class WorkerBase(ABC):
         key = UniqueKey(microbatch_id, Phase.FORWARD)
         with self.work_list_condition_lock:
             if key not in self.work_list:
+                # On current PP middleware design for DAG, get_output_by_key used by _subscribe_producer
+                # can only be executed once for every producer-consumer stage pair, which is necessary
+                # to count the lifecycle of work_item. So, keeping the _subscribe_producer in the same
+                # lock of work_item queue operation gurantees the consistency of lifecycle counter.
                 work_item_from_producer = self._subscribe_producer(microbatch_id, forward_only)
                 self.work_list[key] = work_item_from_producer
                 self.work_list_condition_lock.notify_all()
