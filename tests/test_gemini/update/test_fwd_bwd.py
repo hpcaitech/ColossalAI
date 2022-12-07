@@ -34,18 +34,25 @@ def check_grad(model: ZeroDDP, torch_model: torch.nn.Module):
         assert_close(p0, p1.grad, rtol=1e-3, atol=5e-5)
 
 
+@parameterize('init_device', [get_current_device()])
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
 @parameterize('keep_gather', [False, True])
 @parameterize('model_name', ['gpt2', 'bert', 'albert'])
 @parameterize('use_grad_checkpoint', [False, True])
-def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_checkpoint: bool = False):
-    set_seed(42)
+def exam_gpt_fwd_bwd(placement_policy,
+                     keep_gather,
+                     model_name: str,
+                     use_grad_checkpoint: bool = False,
+                     init_device=get_current_device()):
+
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
-    with ColoInitContext(device=get_current_device()):
+    set_seed(42)
+    with ColoInitContext(device=init_device):
         model = model_builder(use_grad_checkpoint)
 
+    set_seed(42)
     torch_model = model_builder(use_grad_checkpoint).cuda()
     for torch_p, p in zip(torch_model.parameters(), model.parameters()):
         torch_p.data.copy_(p.data)
@@ -66,9 +73,6 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_ch
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
 
-    model.eval()
-    torch_model.eval()
-
     set_seed(pg.dp_local_rank())
     for i, (input_ids, label) in enumerate(train_dataloader):
         # you can only test a single fwd + bwd.
@@ -76,7 +80,14 @@ def exam_gpt_fwd_bwd(placement_policy, keep_gather, model_name: str, use_grad_ch
         if i > 0:
             break
         input_ids, label = input_ids.cuda(), label.cuda()
+
+        torch_optim.zero_grad()
+        zero_optim.zero_grad()
+
+        # set random seed is same as torch_model.eval()
+        set_seed(42)
         torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
+        set_seed(42)
         loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
 
         assert torch.equal(torch_loss, loss)
