@@ -1,5 +1,5 @@
 import time
-from typing import List
+from typing import List, Optional
 
 import torch
 
@@ -22,14 +22,19 @@ class MemStatsCollector:
     It has a Sampling counter which is reset after DNN training iteration.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, memstats: Optional[MemStats] = None) -> None:
         self._mem_monitor = SyncCudaMemoryMonitor()
         self._sampling_time = []
 
         self._start_flag = False
         self._step_idx = 0
         self._step_total = 0
-        self._memstats = MemStats()
+        if memstats is not None:
+            self.use_outside_memstats = True
+            self._memstats = memstats
+        else:
+            self.use_outside_memstats = False
+            self._memstats = MemStats()
 
     def next_period_non_model_data_usage(self, device_type: str) -> int:
         """Get max non model data memory usage of current sampling period
@@ -63,7 +68,7 @@ class MemStatsCollector:
     def sample_model_data(self) -> None:
         """Sampling model data statistics.
         """
-        if self._start_flag:
+        if self._start_flag and not self.use_outside_memstats:
             cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
             cpu_mem = StatefulTensor.GST_MGR.total_mem['cpu']
             self._memstats.append_model_data('cuda', cuda_mem)
@@ -72,7 +77,7 @@ class MemStatsCollector:
     def sample_overall_data(self) -> None:
         """Sampling non model data statistics.
         """
-        if self._start_flag:
+        if self._start_flag and not self.use_outside_memstats:
             # overall data recording is after model data recording
             if len(self._memstats._model_data_cuda_list) == 0:
                 return
@@ -84,8 +89,10 @@ class MemStatsCollector:
 
             self._memstats.append_non_model_data('cuda')
             self._memstats.append_non_model_data('cpu')
-            self._sampling_time.append(time.time())
             self._mem_monitor.start()
+
+        if self._start_flag:
+            self._sampling_time.append(time.time())
 
     def clear(self) -> None:
         self._memstats.clear()

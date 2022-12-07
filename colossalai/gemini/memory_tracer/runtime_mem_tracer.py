@@ -35,6 +35,9 @@ class RuntimeMemTracer():
 
         self._cast_buffers_to_cuda_dtype()
 
+    def memstats(self):
+        return self._memstats
+
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
