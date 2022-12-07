@@ -73,9 +73,6 @@ def exam_gpt_fwd_bwd(placement_policy,
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[pg.rank()], process_group=pg.dp_process_group())
 
-    # model.eval()
-    # torch_model.eval()
-
     set_seed(pg.dp_local_rank())
     for i, (input_ids, label) in enumerate(train_dataloader):
         # you can only test a single fwd + bwd.
@@ -87,6 +84,7 @@ def exam_gpt_fwd_bwd(placement_policy,
         torch_optim.zero_grad()
         zero_optim.zero_grad()
 
+        # set random seed is same as torch_model.eval()
         set_seed(42)
         torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
         set_seed(42)
