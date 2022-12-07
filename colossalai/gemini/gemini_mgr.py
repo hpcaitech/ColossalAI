@@ -5,8 +5,9 @@ from typing import List, Optional, Tuple
 import torch
 
 from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.gemini.memory_tracer import MemStats
 
-from .memory_tracer import ChunkMemStatsCollector, StaticMemStatsCollector
+from .memory_tracer import ChunkMemStatsCollector
 from .placement_policy import PlacementPolicyFactory
 
 
@@ -26,13 +27,14 @@ class GeminiManager:
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
     """
 
-    def __init__(self, placement_policy: str, chunk_manager: ChunkManager) -> None:
+    def __init__(self, placement_policy: str, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
 
         assert placement_policy in PlacementPolicyFactory.get_polocy_names()
         self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
-        self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager) if policy_cls.need_mem_stats else None
+        self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager,
+                                                           memstats) if policy_cls.need_mem_stats else None
         self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
