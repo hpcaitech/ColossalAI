@@ -106,6 +106,7 @@ class LinearBasedBiasFunc(BiasAdditionFunc):
 func_to_func_dict = {
     torch.addmm: F.linear,
     torch.addbmm: torch.bmm,
+    F.linear: F.linear,
 }
 
 method_to_func_dict = {

@@ -102,8 +102,13 @@ class ColoTracer(Tracer):
         handle = None
         if kind == "call_function":
             if bias_addition_function.has(target):
-                function_to_substitute = func_to_func_dict[target]
-                handle = bias_addition_function.get(target)(self, target, args, kwargs, function_to_substitute)
+                if target == torch.nn.functional.linear:
+                    if 'bias' in kwargs and kwargs['bias'] is not None:
+                        function_to_substitute = func_to_func_dict[target]
+                        handle = bias_addition_function.get(target)(self, target, args, kwargs, function_to_substitute)
+                else:
+                    function_to_substitute = func_to_func_dict[target]
+                    handle = bias_addition_function.get(target)(self, target, args, kwargs, function_to_substitute)
             elif bias_addition_function.has(target.__name__):
                 # use name for some builtin op like @ (matmul)
                 function_to_substitute = func_to_func_dict[target]
