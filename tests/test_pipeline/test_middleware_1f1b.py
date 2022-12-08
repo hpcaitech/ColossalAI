@@ -1,16 +1,26 @@
 import torch
-from torch import nn
+import pytest
+import os
+import torch.multiprocessing as mp
+import torch.distributed.rpc as rpc
 
+from torch import nn
+from torch._C._distributed_rpc import _is_current_rpc_agent_set
+from colossalai import launch
+from colossalai.logging import disable_existing_loggers
+from colossalai.pipeline.pipeline_process_group import ppg
 from colossalai.pipeline.rpc._pipeline_schedule import OneFOneBPipelineEngine
 from colossalai.fx.passes.adding_split_node_pass import split_with_split_nodes_pass, balanced_split_pass
 from colossalai.fx import ColoTracer
 from colossalai.pipeline.middleware.adaptor import get_fx_topology
-from rpc_test_utils import rpc_run, parse_args, MLP
+from rpc_test_utils import MLP, DAG_MLP
 from functools import partial
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 
 # global variable for model created
 batch_size = 16
 dim = 10
+rpc_is_initialized = _is_current_rpc_agent_set
 
 def create_partition_module(pp_rank: int, stage_num: int, model, data_kwargs):
     model.eval()
@@ -26,40 +36,82 @@ def create_partition_module(pp_rank: int, stage_num: int, model, data_kwargs):
             setattr(submodule, '_topo', topo)
     return split_submodules[pp_rank+1]
 
-def partition(data_kwargs: dict, pp_rank: int, chunk: int, stage_num: int):
+def partition(model, data_kwargs: dict, pp_rank: int, chunk: int, stage_num: int):
     torch.manual_seed(1024)
-    model = MLP(dim, stage_num * 3)
     partition = create_partition_module(pp_rank, stage_num, model, data_kwargs)
     return partition
 
-def run_master(args):
+def run_master(model_cls, world_size):
     torch.manual_seed(100)
 
-    epoch = args.epoch
-    device = args.device
-    stage_num = args.world_size
-    chunk = args.chunk
-    num_microbatches = args.num_microbatches
-    use_checkpoint = args.use_checkpoint
-
-    input_sample = torch.randn((batch_size, dim), device=device)
+    epoch = 10
+    device = 'cuda'
+    stage_num = world_size
+    chunk = 1
+    num_microbatches = 8
+    use_checkpoint = 'store_true'
     
-    def data_gen():
-        x = torch.zeros((batch_size, dim))
-        kwargs = dict(x=x)
-        return kwargs
+    if model_cls == MLP:
+        def data_gen():
+            x = torch.zeros((batch_size, dim))
+            kwargs = dict(x=x)
+            return kwargs
+        model = model_cls(dim, stage_num * 3)
+    elif model_cls == DAG_MLP:
+        def data_gen():
+            x = torch.zeros((batch_size, dim))
+            y = torch.zeros((batch_size, dim))
+            kwargs = dict(x=x, y=y)
+            return kwargs
+        model = model_cls(dim, stage_num * 3)
+    else:
+        pass
     
     data_kwargs = data_gen()
-    engine = OneFOneBPipelineEngine(partition_fn=partial(partition, data_kwargs),
+
+    engine = OneFOneBPipelineEngine(partition_fn=partial(partition, model, data_kwargs),
                                     stage_num=stage_num,
                                     num_microbatches=num_microbatches,
                                     device=device,
                                     chunk=chunk,
-                                    checkpoint=use_checkpoint)
+                                    checkpoint=use_checkpoint,)
 
     for _ in range(epoch):
-        logits = engine.forward_backward({'x': input_sample}, forward_only=True)
+        input_x = torch.randn((batch_size, dim), device=device)
+        input_y = torch.randn((batch_size, dim), device=device)
+        logits = engine.forward_backward({'x': input_x, 'y': input_y}, forward_only=True)
+        
+def run_worker(rank, model_cls, world_size, master_func):
+    master_addr = 'localhost'
+    master_port = 29020
+    os.environ['MASTER_ADDR'] = master_addr
+    os.environ['MASTER_PORT'] = str(master_port)
+    
+    disable_existing_loggers()
+
+    launch(dict(), rank, world_size, master_addr, master_port, 'nccl', verbose=False)
+    ppg.set_global_info(rank=rank,
+                        world_size=world_size,
+                        dp_degree=1,
+                        tp_degree=1,
+                        num_worker_threads=128,
+                        device='cuda')
+
+    # in rpc mode, only rank 0 is needed to be coded
+    if rank == 0:
+        master_func(model_cls, world_size)
+    # barrier here
+    if rpc_is_initialized():
+        rpc.shutdown()
+    
+@pytest.mark.skip("skip due to CI torch version 1.11")
+@parameterize('model_cls', [MLP, DAG_MLP])
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+def test_pp_middleware_fwd(model_cls):
+    world_size = 4
+    master_func = run_master
+    mp.spawn(run_worker, args=(model_cls, world_size, master_func), nprocs=world_size)
 
 if __name__ == "__main__":
-    args = parse_args()
-    rpc_run(args, run_master)
+    test_pp_middleware_fwd()
