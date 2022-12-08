@@ -1,11 +1,14 @@
 from typing import Optional, Tuple, Union
 
 import torch
-# from transformers.models.gpt2.modeling_gpt2 import GPT2Attention
 import torch.nn as nn
 import transformers
 from torch.fx import GraphModule
-from transformers.models.gpt2.modeling_gpt2 import GPT2MLP
+from transformers.models.gpt2.modeling_gpt2 import (
+    GPT2MLP,
+    BaseModelOutputWithPastAndCrossAttentions,
+    GPT2PreTrainedModel,
+)
 from transformers.pytorch_utils import Conv1D
 
 from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
@@ -173,8 +176,91 @@ class GPT2Block(nn.Module):
         return outputs    # hidden_states, present, (attentions, cross_attentions)
 
 
+class GPT2Model(GPT2PreTrainedModel):
+    _keys_to_ignore_on_load_missing = ["attn.masked_bias"]
+
+    def __init__(self, config):
+        super().__init__(config)
+
+        self.embed_dim = config.hidden_size
+
+        self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
+        self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
+
+        self.drop = nn.Dropout(config.embd_pdrop)
+        self.h = nn.ModuleList([GPT2Block(config, layer_idx=i) for i in range(config.num_hidden_layers)])
+        self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
+        input_shape = input_ids.size()
+        input_ids = input_ids.view(-1, input_shape[-1])
+        batch_size = input_ids.shape[0]
+
+        device = input_ids.device
+
+        token_type_ids = token_type_ids.view(-1, input_shape[-1])
+
+        past_length = 0
+        past_key_values = tuple([None] * len(self.h))
+
+        position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device)
+        position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+
+        # GPT2Attention mask.
+        attention_mask = attention_mask.view(batch_size, -1)
+        attention_mask = attention_mask[:, None, None, :]
+        attention_mask = attention_mask.to(dtype=self.dtype)    # fp16 compatibility
+        attention_mask = (1.0 - attention_mask) * -10000.0
+
+        encoder_attention_mask = None
+
+        # Prepare head mask if needed
+        # 1.0 in head_mask indicate we keep the head
+        # attention_probs has shape bsz x n_heads x N x N
+        # head_mask has shape n_layer x batch x n_heads x N x N
+        head_mask = self.get_head_mask(head_mask, self.config.n_layer)
+
+        inputs_embeds = self.wte(input_ids)
+        position_embeds = self.wpe(position_ids)
+        # add_2
+        hidden_states = inputs_embeds + position_embeds
+
+        token_type_embeds = self.wte(token_type_ids)
+        hidden_states = hidden_states + token_type_embeds
+
+        # transformer_drop
+        hidden_states = self.drop(hidden_states)
+        # comment to run pipeline
+        # add_3
+        output_shape = input_shape + (hidden_states.size(-1),)
+
+        presents = None
+        all_self_attentions = None
+        all_cross_attentions = None
+        all_hidden_states = None
+        for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
+            outputs = block(hidden_states, attention_mask=attention_mask, head_mask=head_mask[i])
+            hidden_states = outputs[0]
+
+        hidden_states = self.ln_f(hidden_states)
+        # comment to run pipeline
+        hidden_states = hidden_states.view(output_shape)
+
+        return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions, all_cross_attentions]
+                     if v is not None)
+
+
 @run_on_environment_flag(name='AUTO_PARALLEL')
-@parameterize('model_cls', [GPT2Block, GPT2Attention, GPT2MLP])
+@parameterize('model_cls', [GPT2Block, GPT2Attention, GPT2MLP, GPT2Model])
 def test_self_attention_block(model_cls):
     config = transformers.GPT2Config(n_position=64, n_layer=4, n_head=16, n_embd=HIDDEN_DIM)
     if model_cls == GPT2MLP:
@@ -193,11 +279,17 @@ def test_self_attention_block(model_cls):
         input_sample = {
             'hidden_states': torch.rand(BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM).to('meta'),
         }
-    else:
+    elif model_cls in (GPT2Attention, GPT2Block):
         input_sample = {
             'hidden_states': torch.rand(BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM).to('meta'),
             'attention_mask': torch.rand(1, SEQ_LENGTH).to('meta'),
         }
+    else:
+        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
+        token_type_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
+        attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
+        kwargs = dict(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+        input_sample = {k: v.to('meta') for k, v in kwargs.items()}
 
     graph = tracer.trace(root=model, meta_args=input_sample)
 
