@@ -104,7 +104,7 @@ def run_worker(rank, model_cls, world_size, master_func):
     if rpc_is_initialized():
         rpc.shutdown()
     
-
+@pytest.mark.skip("skip due to CI torch version 1.11")
 @parameterize('model_cls', [MLP, DAG_MLP])
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
