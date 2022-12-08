@@ -40,7 +40,7 @@ class BiasAdditionFunc(ABC):
         A whole restructure computation graph will contain a weight node, a bias node, a non-bias addition computation node,
         a bias reshape node if needed and a bias addition node.
 
-        Use Conv2d module as an example:
+        Use torch.addmm as an example:
         The origin node is:
             %addmm: call_func[target=torch.addmm](args = (%input_1, m1, m2), kwargs = {beta=1, alpha=1})
         Restructured graph is:
