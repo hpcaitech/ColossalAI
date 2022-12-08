@@ -152,9 +152,9 @@ def check_linear_function_handler(rank, input_shape, world_size, port):
         assert weight_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[1]
 
 
-@parameterize('input_shape', [(16,), (4, 16)])
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
+@parameterize('input_shape', [(16,), (4, 16)])
 @rerun_if_address_is_in_use()
 def test_addmm_handler(input_shape):
     world_size = 4
