@@ -58,14 +58,14 @@ class Addbmm(LinearBasedBiasFunc):
         if 'beta' in kwargs:
             beta = kwargs['beta']
             # doing the multiplication with beta if it exists(temp_2 = beta * input)
-            beta_proxy = self.coefficent_for_addmm(self.args[0], beta)
+            beta_proxy = self.create_mul_node(self.args[0], beta)
         else:
             beta_proxy = self.args[0]
 
         if 'alpha' in kwargs:
             alpha = kwargs['alpha']
             # doing the multiplication with alpha if it exists(temp_3 = alpha * temp_1)
-            alpha_proxy = self.coefficent_for_addmm(alpha, sum_proxy)
+            alpha_proxy = self.create_mul_node(alpha, sum_proxy)
         else:
             alpha_proxy = sum_proxy
 

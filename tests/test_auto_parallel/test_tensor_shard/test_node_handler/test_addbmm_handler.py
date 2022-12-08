@@ -19,20 +19,36 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 class AddBMMTensorMethodModule(nn.Module):
 
+    def __init__(self, using_kwargs):
+        super().__init__()
+        self.using_kwargs = using_kwargs
+
     def forward(self, bias, x1, x2):
-        return bias.addbmm(x1, x2)
+        if self.using_kwargs:
+            output = bias.addbmm(x1, x2, alpha=2, beta=3)
+        else:
+            output = bias.addbmm(x1, x2)
+        return output
 
 
 class AddBMMTorchFunctionModule(nn.Module):
 
+    def __init__(self, using_kwargs):
+        super().__init__()
+        self.using_kwargs = using_kwargs
+
     def forward(self, bias, x1, x2):
-        return torch.addbmm(bias, x1, x2)
+        if self.using_kwargs:
+            output = torch.addbmm(bias, x1, x2, alpha=2, beta=3)
+        else:
+            output = torch.addbmm(bias, x1, x2)
+        return output
 
 
-def check_2d_device_mesh(rank, module, bias_shape, world_size, port):
+def check_2d_device_mesh(rank, module, bias_shape, using_kwargs, world_size, port):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    model = module().cuda()
+    model = module(using_kwargs).cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
@@ -135,13 +151,13 @@ def check_2d_device_mesh(rank, module, bias_shape, world_size, port):
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
-def check_1d_device_mesh(rank, module, bias_shape, world_size, port):
+def check_1d_device_mesh(rank, module, bias_shape, using_kwargs, world_size, port):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (1, 4)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
-    model = module().cuda()
+    model = module(using_kwargs).cuda()
     x1 = torch.rand(4, 8, 16).cuda()
     x2 = torch.rand(4, 16, 8).cuda()
     bias = torch.rand(bias_shape).cuda()
@@ -161,6 +177,14 @@ def check_1d_device_mesh(rank, module, bias_shape, world_size, port):
                                      meta_arg_names=meta_arg_names)
 
     tracer = ColoTracer()
+    # graph():
+    #     %bias : torch.Tensor [#users=1] = placeholder[target=bias]
+    #     %x1 : torch.Tensor [#users=1] = placeholder[target=x1]
+    #     %x2 : torch.Tensor [#users=1] = placeholder[target=x2]
+    #     %bmm : [#users=1] = call_function[target=torch.bmm](args = (%x1, %x2), kwargs = {})
+    #     %sum_1 : [#users=1] = call_function[target=torch.sum](args = (%bmm, 0), kwargs = {})
+    #     %add : [#users=1] = call_function[target=operator.add](args = (%sum_1, %bias), kwargs = {})
+    #     return add
     graph = tracer.trace(model,
                          meta_args={
                              'bias': torch.rand(*bias_shape).to('meta'),
@@ -222,13 +246,15 @@ def check_1d_device_mesh(rank, module, bias_shape, world_size, port):
 @pytest.mark.dist
 @parameterize('module', [AddBMMTorchFunctionModule, AddBMMTensorMethodModule])
 @parameterize('bias_shape', [[8], [1, 8], [8, 8]])
+@parameterize('using_kwargs', [True, False])
 @rerun_if_address_is_in_use()
-def test_2d_device_mesh(module, bias_shape):
+def test_2d_device_mesh(module, bias_shape, using_kwargs):
     world_size = 4
     run_func = partial(check_2d_device_mesh,
                        module=module,
                        bias_shape=bias_shape,
                        world_size=world_size,
+                       using_kwargs=using_kwargs,
                        port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
@@ -238,12 +264,14 @@ def test_2d_device_mesh(module, bias_shape):
 @pytest.mark.dist
 @parameterize('module', [AddBMMTorchFunctionModule, AddBMMTensorMethodModule])
 @parameterize('bias_shape', [[8], [1, 8], [8, 8]])
+@parameterize('using_kwargs', [True, False])
 @rerun_if_address_is_in_use()
-def test_1d_device_mesh(module, bias_shape):
+def test_1d_device_mesh(module, bias_shape, using_kwargs):
     world_size = 4
     run_func = partial(check_1d_device_mesh,
                        module=module,
                        bias_shape=bias_shape,
+                       using_kwargs=using_kwargs,
                        world_size=world_size,
                        port=free_port())
     mp.spawn(run_func, nprocs=world_size)
