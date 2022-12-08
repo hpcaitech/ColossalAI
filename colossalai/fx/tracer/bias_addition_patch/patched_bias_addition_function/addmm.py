@@ -3,10 +3,11 @@ import operator
 import torch
 import torch.nn.functional as F
 
-from ...registry import bias_addition_function
+from ...registry import bias_addition_function, bias_addition_method
 from .bias_addition_function import LinearBasedBiasFunc
 
 
+@bias_addition_method.register(torch.Tensor.addmm)
 @bias_addition_function.register(torch.addmm)
 class Addmm(LinearBasedBiasFunc):
 
@@ -17,23 +18,6 @@ class Addmm(LinearBasedBiasFunc):
         if 'alpha' in self.kwargs:
             kwargs['alpha'] = self.kwargs['alpha']
         return kwargs
-
-    def coefficent_for_addmm(self, input_proxy, coefficent):
-        """
-        This method is used to create a coefficent node for the numerical correctness.
-        The formula for torch.addmm is out = beta * input + alpha * (m1 @ m2)
-        Therefore, we need to use this method insert two more operator.mul nodes for
-        the computation graph to compute the final result.
-        """
-        node_kind = 'call_function'
-        node_target = operator.mul
-        node_args = (
-            input_proxy,
-            coefficent,
-        )
-        node_kwargs = {}
-        mul_proxy = self.tracer.create_proxy(node_kind, node_target, node_args, node_kwargs)
-        return mul_proxy
 
     def transpose_other_operand_for_linear(self, other_proxy):
         '''
@@ -61,13 +45,13 @@ class Addmm(LinearBasedBiasFunc):
 
         if 'beta' in kwargs:
             beta = kwargs['beta']
-            beta_proxy = self.coefficent_for_addmm(self.args[0], beta)
+            beta_proxy = self.create_mul_node(self.args[0], beta)
         else:
             beta_proxy = self.args[0]
 
         if 'alpha' in kwargs:
             alpha = kwargs['alpha']
-            alpha_proxy = self.coefficent_for_addmm(alpha, non_bias_linear_func_proxy)
+            alpha_proxy = self.create_mul_node(alpha, non_bias_linear_func_proxy)
         else:
             alpha_proxy = non_bias_linear_func_proxy
 

@@ -52,6 +52,23 @@ class BiasAdditionFunc(ABC):
         """
         pass
 
+    def create_mul_node(self, input_proxy, coefficent):
+        """
+        This method is used to create a coefficent node for the numerical correctness.
+        The formula for torch.addmm is out = beta * input + alpha * (m1 @ m2)
+        Therefore, we need to use this method insert two more operator.mul nodes for
+        the computation graph to compute the final result.
+        """
+        node_kind = 'call_function'
+        node_target = operator.mul
+        node_args = (
+            input_proxy,
+            coefficent,
+        )
+        node_kwargs = {}
+        mul_proxy = self.tracer.create_proxy(node_kind, node_target, node_args, node_kwargs)
+        return mul_proxy
+
 
 class LinearBasedBiasFunc(BiasAdditionFunc):
     """
@@ -88,4 +105,10 @@ class LinearBasedBiasFunc(BiasAdditionFunc):
 
 func_to_func_dict = {
     torch.addmm: F.linear,
+    torch.addbmm: torch.bmm,
+}
+
+method_to_func_dict = {
+    torch.Tensor.addmm: F.linear,
+    torch.Tensor.addbmm: torch.bmm,
 }
