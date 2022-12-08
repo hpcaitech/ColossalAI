@@ -15,6 +15,7 @@ from .output_handler import OuputHandler
 from .placeholder_handler import PlacehodlerHandler
 from .registry import operator_registry
 from .reshape_handler import ReshapeHandler
+from .sum_handler import SumHandler
 from .tensor_constructor_handler import TensorConstructorHandler
 from .unary_elementwise_handler import UnaryElementwiseHandler
 from .where_handler import WhereHandler
@@ -25,5 +26,5 @@ __all__ = [
     'UnaryElementwiseHandler', 'ReshapeHandler', 'PlacehodlerHandler', 'OuputHandler', 'WhereHandler',
     'NormPoolingHandler', 'BinaryElementwiseHandler', 'MatMulHandler', 'operator_registry', 'ADDMMFunctionHandler',
     'GetItemHandler', 'GetattrHandler', 'ViewHandler', 'PermuteHandler', 'TensorConstructorHandler',
-    'EmbeddingModuleHandler', 'EmbeddingFunctionHandler'
+    'EmbeddingModuleHandler', 'EmbeddingFunctionHandler', 'SumHandler'
 ]
