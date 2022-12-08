@@ -5,7 +5,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler import AddBMMFunctionHandler
+from colossalai.auto_parallel.tensor_shard.node_handler import BMMFunctionHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
@@ -54,6 +54,14 @@ def check_2d_device_mesh(rank, module, bias_shape, world_size, port):
                                      input_args=input_args,
                                      meta_arg_names=meta_arg_names)
     tracer = ColoTracer()
+    # graph():
+    #     %bias : torch.Tensor [#users=1] = placeholder[target=bias]
+    #     %x1 : torch.Tensor [#users=1] = placeholder[target=x1]
+    #     %x2 : torch.Tensor [#users=1] = placeholder[target=x2]
+    #     %bmm : [#users=1] = call_function[target=torch.bmm](args = (%x1, %x2), kwargs = {})
+    #     %sum_1 : [#users=1] = call_function[target=torch.sum](args = (%bmm, 0), kwargs = {})
+    #     %add : [#users=1] = call_function[target=operator.add](args = (%sum_1, %bias), kwargs = {})
+    #     return add
     graph = tracer.trace(model,
                          meta_args={
                              'bias': torch.rand(*bias_shape).to('meta'),
@@ -62,11 +70,11 @@ def check_2d_device_mesh(rank, module, bias_shape, world_size, port):
                          })
     gm = ColoGraphModule(model, graph)
 
-    linear_mod_node = list(graph.nodes)[3]
-    strategies_vector = StrategiesVector(linear_mod_node)
+    bmm_mod_node = list(graph.nodes)[3]
+    strategies_vector = StrategiesVector(bmm_mod_node)
 
     # build handler
-    handler = AddBMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
+    handler = BMMFunctionHandler(node=bmm_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
     # check operation data mapping
     mapping = handler.get_operation_data_mapping()
@@ -89,19 +97,15 @@ def check_2d_device_mesh(rank, module, bias_shape, world_size, port):
     assert mapping['other'].type == OperationDataType.ARG
     assert mapping['other'].logical_shape == torch.Size([4, 16, 8])
 
-    assert mapping['bias'].name == "bias"
-    assert mapping['bias'].data.is_meta
-    assert mapping['bias'].data.shape == torch.Size(bias_shape)
-    assert mapping['bias'].type == OperationDataType.ARG
-    assert mapping['bias'].logical_shape == torch.Size([8, 8])
-
-    assert mapping['output'].name == "addbmm"
+    assert mapping['output'].name == "bmm"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([8, 8])
+    assert mapping['output'].data.shape == torch.Size([4, 8, 8])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
     strategy_name_list = [val.name for val in strategies_vector]
+    for name in strategy_name_list:
+        print(name)
     # one batch dim
     assert 'Sb0 = Sb0 x Sb0' not in strategy_name_list
 
@@ -123,14 +127,12 @@ def check_2d_device_mesh(rank, module, bias_shape, world_size, port):
     for strategy in strategies_vector:
         input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
         other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
-        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
-        output_sharding_spec = strategy.get_sharding_spec_by_name('addbmm')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('bmm')
 
         # make sure the sharding matches across different operation data
-        assert input_sharding_spec.sharding_sequence[1] == output_sharding_spec.sharding_sequence[0]
+        assert input_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[0]
         assert other_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
-        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
 def check_1d_device_mesh(rank, module, bias_shape, world_size, port):
@@ -166,11 +168,11 @@ def check_1d_device_mesh(rank, module, bias_shape, world_size, port):
                              'x2': torch.rand(4, 16, 8).to('meta')
                          })
     gm = ColoGraphModule(model, graph)
-    linear_mod_node = list(graph.nodes)[3]
-    strategies_vector = StrategiesVector(linear_mod_node)
+    bmm_mod_node = list(graph.nodes)[3]
+    strategies_vector = StrategiesVector(bmm_mod_node)
 
     # build handler
-    handler = AddBMMFunctionHandler(node=linear_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
+    handler = BMMFunctionHandler(node=bmm_mod_node, device_mesh=device_mesh, strategies_vector=strategies_vector)
 
     # check operation data mapping
     mapping = handler.get_operation_data_mapping()
@@ -193,15 +195,9 @@ def check_1d_device_mesh(rank, module, bias_shape, world_size, port):
     assert mapping['other'].type == OperationDataType.ARG
     assert mapping['other'].logical_shape == torch.Size([4, 16, 8])
 
-    assert mapping['bias'].name == "bias"
-    assert mapping['bias'].data.is_meta
-    assert mapping['bias'].data.shape == torch.Size(bias_shape)
-    assert mapping['bias'].type == OperationDataType.ARG
-    assert mapping['bias'].logical_shape == torch.Size([8, 8])
-
-    assert mapping['output'].name == "addbmm"
+    assert mapping['output'].name == "bmm"
     assert mapping['output'].data.is_meta
-    assert mapping['output'].data.shape == torch.Size([8, 8])
+    assert mapping['output'].data.shape == torch.Size([4, 8, 8])
     assert mapping['output'].type == OperationDataType.OUTPUT
 
     strategies_vector = handler.register_strategy(compute_resharding_cost=False)
@@ -213,14 +209,12 @@ def check_1d_device_mesh(rank, module, bias_shape, world_size, port):
     for strategy in strategies_vector:
         input_sharding_spec = strategy.get_sharding_spec_by_name('x1')
         other_sharding_spec = strategy.get_sharding_spec_by_name('x2')
-        bias_sharding_spec = strategy.get_sharding_spec_by_name('bias')
-        output_sharding_spec = strategy.get_sharding_spec_by_name('addbmm')
+        output_sharding_spec = strategy.get_sharding_spec_by_name('bmm')
 
         # make sure the sharding matches across different operation data
-        assert input_sharding_spec.sharding_sequence[1] == output_sharding_spec.sharding_sequence[0]
+        assert input_sharding_spec.sharding_sequence[0] == output_sharding_spec.sharding_sequence[0]
         assert other_sharding_spec.sharding_sequence[1] == input_sharding_spec.sharding_sequence[-1]
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
-        assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
 @pytest.mark.skip("skip due to bias cases not ready")
