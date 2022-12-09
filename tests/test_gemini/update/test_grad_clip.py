@@ -10,24 +10,18 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.amp import convert_to_apex_amp
-from colossalai.gemini.chunk import ChunkManager, init_chunk_manager, search_chunk_configuration
+from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.gemini.gemini_mgr import GeminiManager
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
-from colossalai.tensor import ColoParameter, ColoTensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test import run_fwd_bwd
 from tests.components_to_test.registry import non_distributed_component_funcs
 from tests.test_tensor.common_utils import debug_print, set_seed
-
-# this model is large enough to slice to chunks
-TEST_MODELS = ['gpt2']
-# these models are too small, all parameters in these models are compacted into one chunk
-EXAMPLE_MODELS = ['albert', 'hanging_param_model', 'bert', 'simple_net', 'nested_model', 'repeated_computed_layers']
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -46,14 +40,14 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
-@parameterize('model_name', TEST_MODELS)
-def exam_model_step(placement_policy, model_name: str):
-    set_seed(42)
+@parameterize('model_name', ['gpt2'])
+def exam_grad_clipping(placement_policy, model_name: str):
+    set_seed(1912)
     get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
 
     torch_model = model_builder().cuda()
-    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=128)
+    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=32)
     torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
     torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
     torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
@@ -78,75 +72,29 @@ def exam_model_step(placement_policy, model_name: str):
     model = ZeroDDP(model, gemini_manager, pin_memory=True)
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=128)
+    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=32, clipping_norm=1.0)
 
-    model.eval()
-    torch_model.eval()
-
-    set_seed(dist.get_rank() * 3 + 128)
-    for i, (input_ids, label) in enumerate(train_dataloader):
-        if i > 2:
-            break
-        input_ids, label = input_ids.cuda(), label.cuda()
-        zero_optim.zero_grad()
-        torch_optim.zero_grad()
-
-        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
-        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
-        assert_close(torch_loss, loss)
-
-        zero_optim.step()
-        torch_optim.step()
-
-        check_param(model, torch_model)
-
-
-@parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
-@parameterize('model_name', EXAMPLE_MODELS)
-def exam_tiny_example(placement_policy, model_name: str):
-    set_seed(2008)
-    get_components_func = non_distributed_component_funcs.get_callable(model_name)
-    model_builder, train_dataloader, test_dataloader, optimizer_class, criterion = get_components_func()
-
-    torch_model = model_builder().cuda()
-    amp_config = dict(opt_level='O2', keep_batchnorm_fp32=False, loss_scale=2)
-    torch_optim = torch.optim.Adam(torch_model.parameters(), lr=1e-3)
-    torch_model, torch_optim = convert_to_apex_amp(torch_model, torch_optim, amp_config)
-    torch_model = DDP(torch_model, device_ids=[dist.get_rank()])
-
-    init_dev = get_current_device()
-    with ColoInitContext(device=init_dev):
-        model = model_builder()
-
-    for torch_p, p in zip(torch_model.parameters(), model.parameters()):
-        p.data.copy_(torch_p.data)
-
-    chunk_manager = init_chunk_manager(model=model, init_device=get_current_device(), search_range_mb=1)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
-    optimizer = HybridAdam(model.parameters(), lr=1e-3)
-    zero_optim = ZeroOptimizer(optimizer, model, initial_scale=2)
-
-    model.eval()
-    torch_model.eval()
+    model.train()
+    torch_model.train()
 
     set_seed(dist.get_rank() * 3 + 128)
-    for i, (input_ids, label) in enumerate(train_dataloader):
+    for i, (data, label) in enumerate(train_dataloader):
         if i > 2:
             break
-
-        input_ids = input_ids.cuda()
+        data = data.cuda()
         label = label.cuda()
 
         zero_optim.zero_grad()
         torch_optim.zero_grad()
 
-        torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
-        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
+        torch_loss = run_fwd_bwd(torch_model, data, label, criterion, torch_optim)
+        loss = run_fwd_bwd(model, data, label, criterion, zero_optim)
         assert_close(torch_loss, loss)
 
-        zero_optim.step()
+        import apex.amp as apex_amp
+        torch.nn.utils.clip_grad_norm_(apex_amp.master_params(torch_optim), 1.0)
         torch_optim.step()
+        zero_optim.step()
 
         check_param(model, torch_model)
 
@@ -154,17 +102,16 @@ def exam_tiny_example(placement_policy, model_name: str):
 def run_dist(rank, world_size, port):
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
-    exam_model_step()
-    exam_tiny_example()
+    exam_grad_clipping()
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize('world_size', [1, 4])
+@pytest.mark.parametrize('world_size', [1, 2])
 @rerun_if_address_is_in_use()
-def test_optim(world_size):
+def test_grad_clip(world_size):
     run_func = partial(run_dist, world_size=world_size, port=free_port())
     mp.spawn(run_func, nprocs=world_size)
 
 
 if __name__ == '__main__':
-    test_optim(1)
+    test_grad_clip(2)

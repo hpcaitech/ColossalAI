@@ -302,7 +302,11 @@ class ZeroDDP(ColoDDP):
                     chunk.chunk_total.div_(chunk.pg_size)
                 else:
                     chunk.cuda_shard.div_(chunk.pg_size)
+                # check overflow elements
                 self.overflow_counter += chunk.has_inf_or_nan
+                # record l2 norm for gradient clipping
+                if chunk.l2_norm_flag:
+                    chunk.set_l2_norm()
                 self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
 
