@@ -4,7 +4,7 @@ import torch
 class ParamRuntimeOrder(object):
     """ParamRuntimeOrder
 
-    Contain the order of parameters visied during runtime.
+    Contain the order of parameters visited during runtime.
     """
 
     def __init__(self) -> None:
