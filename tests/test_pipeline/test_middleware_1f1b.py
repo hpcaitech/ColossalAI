@@ -41,10 +41,10 @@ def partition(model, data_kwargs: dict, pp_rank: int, chunk: int, stage_num: int
     partition = create_partition_module(pp_rank, stage_num, model, data_kwargs)
     return partition
 
-def run_master(model_cls, world_size):
+def run_master(model_cls, world_size, forward_only):
     torch.manual_seed(100)
 
-    epoch = 10
+    epoch = 3
     device = 'cuda'
     stage_num = world_size
     chunk = 1
@@ -57,6 +57,10 @@ def run_master(model_cls, world_size):
             kwargs = dict(x=x)
             return kwargs
         model = model_cls(dim, stage_num * 3)
+        if forward_only:
+            labels = None
+        else:
+            labels = 1
     elif model_cls == DAG_MLP:
         def data_gen():
             x = torch.zeros((batch_size, dim))
@@ -64,24 +68,30 @@ def run_master(model_cls, world_size):
             kwargs = dict(x=x, y=y)
             return kwargs
         model = model_cls(dim, stage_num * 3)
+        if forward_only:
+            labels = None
+        else:
+            labels = 1
     else:
         pass
     
     data_kwargs = data_gen()
-
+    
     engine = OneFOneBPipelineEngine(partition_fn=partial(partition, model, data_kwargs),
                                     stage_num=stage_num,
                                     num_microbatches=num_microbatches,
                                     device=device,
                                     chunk=chunk,
                                     checkpoint=use_checkpoint,)
+    if not forward_only:
+        engine.initialize_optimizer(getattr(torch.optim, 'SGD'), lr=1e-3)
 
     for _ in range(epoch):
         input_x = torch.randn((batch_size, dim), device=device)
         input_y = torch.randn((batch_size, dim), device=device)
-        logits = engine.forward_backward({'x': input_x, 'y': input_y}, forward_only=True)
+        logits = engine.forward_backward({'x': input_x, 'y': input_y}, labels=labels, forward_only=forward_only)
         
-def run_worker(rank, model_cls, world_size, master_func):
+def run_worker(rank, model_cls, world_size, forward_only, master_func):
     master_addr = 'localhost'
     master_port = 29020
     os.environ['MASTER_ADDR'] = master_addr
@@ -99,19 +109,20 @@ def run_worker(rank, model_cls, world_size, master_func):
 
     # in rpc mode, only rank 0 is needed to be coded
     if rank == 0:
-        master_func(model_cls, world_size)
+        master_func(model_cls, world_size, forward_only)
     # barrier here
     if rpc_is_initialized():
         rpc.shutdown()
     
 @pytest.mark.skip("skip due to CI torch version 1.11")
 @parameterize('model_cls', [MLP, DAG_MLP])
+@parameterize('forward_only', [True, False])
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_pp_middleware_fwd(model_cls):
+def test_pp_middleware_fwd(model_cls, forward_only):
     world_size = 4
     master_func = run_master
-    mp.spawn(run_worker, args=(model_cls, world_size, master_func), nprocs=world_size)
+    mp.spawn(run_worker, args=(model_cls, world_size, forward_only, master_func), nprocs=world_size)
 
 if __name__ == "__main__":
     test_pp_middleware_fwd()
