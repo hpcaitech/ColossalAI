@@ -1,3 +1,4 @@
+from .param_runtime_order import ParamRuntimeOrder    # isort:skip
 from .memory_stats import MemStats    # isort:skip
 from .memory_monitor import AsyncMemoryMonitor, SyncCudaMemoryMonitor    # isort:skip
 from .memstats_collector import MemStatsCollector    # isort:skip
@@ -6,5 +7,5 @@ from .static_memstats_collector import StaticMemStatsCollector    # isort:skip
 
 __all__ = [
     'AsyncMemoryMonitor', 'SyncCudaMemoryMonitor', 'MemStatsCollector', 'ChunkMemStatsCollector',
-    'StaticMemStatsCollector', 'MemStats'
+    'StaticMemStatsCollector', 'MemStats', 'ParamRuntimeOrder'
 ]
