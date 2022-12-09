@@ -38,7 +38,7 @@ def _convert_to_coloparam(param: torch.nn.Parameter,
     requires_grad = param.requires_grad
 
     if param.device.type == 'meta':
-        raise NotImplemented(
+        raise NotImplementedError(
             "ColoInitContext is initializing a model with meta parameters! This is not allowed right now!")
     else:
         # param is the global tensor.
