@@ -3,7 +3,7 @@ from abc import ABC
 import torch
 
 
-class ParamOrder(ABC):
+class ParamGenerator(ABC):
 
     def append(self, param: torch.nn.Parameter):
         pass
@@ -15,7 +15,7 @@ class ParamOrder(ABC):
         pass
 
 
-class OrderedParamGenerator(ParamOrder):
+class OrderedParamGenerator(ParamGenerator):
     """OrderedParamGenerator
 
     Contain the order of parameters visited during runtime.
