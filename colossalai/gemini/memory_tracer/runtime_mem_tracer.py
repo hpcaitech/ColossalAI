@@ -1,6 +1,6 @@
 import torch.nn
 
-from colossalai.gemini.memory_tracer import MemStats
+from colossalai.gemini.memory_tracer import MemStats, ParamRuntimeOrder
 from colossalai.gemini.ophooks.runtime_mem_tracer_hook import GradMemStats, GradMemTracerHook, ParamMemTracerHook
 from colossalai.nn.parallel.data_parallel import _cast_float
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
@@ -34,6 +34,9 @@ class RuntimeMemTracer():
             p.data = p.data.to(dtype)
 
         self._cast_buffers_to_cuda_dtype()
+
+    def parameters_in_runtime_order(self):
+        return self._memstats._param_runtime_order.generate()
 
     def memstats(self):
         return self._memstats

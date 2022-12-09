@@ -99,6 +99,10 @@ class ParamMemTracerHook(ColoParamOpHook):
         self.sample_model_data(params)
         self.mem_monitor.start()
 
+        # register the order of visited.
+        for p in params:
+            self._memstats._param_runtime_order.append(p)
+
     def post_op(self, params):
         self._free_cuda_params(params)
 
