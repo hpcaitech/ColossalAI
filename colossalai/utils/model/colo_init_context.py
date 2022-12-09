@@ -36,8 +36,13 @@ def _convert_to_coloparam(param: torch.nn.Parameter,
         return param
     # detaching tensor is necessary for optimizers.
     requires_grad = param.requires_grad
-    # param is the global tensor.
-    colo_param = ColoParameter(param.to(device=device, dtype=dtype), requires_grad=requires_grad)
+
+    if param.device.type == 'meta':
+        raise NotImplemented(
+            "ColoInitContext is initializing a model with meta parameters! This is not allowed right now!")
+    else:
+        # param is the global tensor.
+        colo_param = ColoParameter(param.to(device=device, dtype=dtype), requires_grad=requires_grad)
 
     # if default_shard_plan exists, shard the param during initialization.
     # This can reduce the model size after initialization.
