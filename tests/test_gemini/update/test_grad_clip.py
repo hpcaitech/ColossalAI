@@ -36,7 +36,7 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         # debug_print([0], "max range: ", key, torch.max(torch.abs(value - temp_zero_value)))
-        assert_close(value, temp_zero_value, rtol=1e-3, atol=2e-3)
+        assert_close(value, temp_zero_value, rtol=1e-3, atol=4e-3)
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])
