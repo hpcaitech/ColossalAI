@@ -12,7 +12,8 @@ def in_ddp(param: nn.Parameter) -> bool:
 
 
 def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) -> None:
-    """Filter those parameters whose size is too large from others.
+    """
+    Filter those parameters whose size is too large (more than 3x standard deviations) from others.
     """
     params_size = [p.numel() for p in model.parameters() if in_ddp(p)]
     params_size_arr = np.array(params_size)
@@ -39,8 +40,17 @@ def _get_unused_byte(size_list: List[int], chunk_size: int) -> int:
     return left + acc
 
 
-def clasify_params(model: nn.Module) -> Dict[int, List[ColoParameter]]:
-    """Clasify each parameter by its size of DP group.
+def classify_params_by_dp_degree(model: nn.Module) -> Dict[int, List[ColoParameter]]:
+    """classify_params_by_dp_degree
+
+    Classify the parameters by their dp degree
+
+    Args:
+        model (nn.Module): model
+
+    Returns:
+        Dict[int, List[ColoParameter]]: a dict contains the classification results.
+        The keys are dp_degrees and the values are parameters.
     """
     params_dict: Dict[int, List[ColoParameter]] = dict()
     for param in model.parameters():
@@ -63,23 +73,35 @@ def search_chunk_configuration(
         search_interval_byte: int,    # hidden size is the best value for the interval
         min_chunk_size_mb: float = 32,
         filter_exlarge_params: bool = True) -> Tuple[Dict, int]:
+    """search_chunk_configuration
+
+    Args:
+        model (nn.Module): torch module
+        search_range_mb (float): searching range in mega byte.
+        search_interval_byte (int): searching interval in byte.
+        filter_exlarge_params (bool, optional): filter extreme large parameters. Defaults to True.
+
+    Returns:
+        Tuple[Dict, int]: chunk config and its memory chunk waste in byte.
+    """
+
     search_range_byte = round(search_range_mb * 1024**2)
     min_chunk_size_byte = round(min_chunk_size_mb * 1024**2)
     assert search_range_byte >= 0
 
-    params_dict = clasify_params(model)
+    params_dict = classify_params_by_dp_degree(model)
     config_dict: Dict[int, Dict] = dict()
 
     size_dict: Dict[int, List[int]] = dict()
-    for key in params_dict:
-        params_list = params_dict[key]
+    for dp_degree in params_dict:
+        params_list = params_dict[dp_degree]
         size_list = [p.numel() for p in params_list]
         # let small parameters keep gathered in CUDA all the time
         total_size = sum(size_list)
         if total_size < min_chunk_size_byte:
-            config_dict[key] = dict(chunk_size=total_size, keep_gathered=True)
+            config_dict[dp_degree] = dict(chunk_size=total_size, keep_gathered=True)
         else:
-            size_dict[key] = size_list
+            size_dict[dp_degree] = size_list
 
     if filter_exlarge_params:
         _filter_exlarge_params(model, size_dict)
@@ -100,9 +122,9 @@ def search_chunk_configuration(
             min_chunk_waste = temp_waste
             best_chunk_size = chunk_size
 
-    for key in params_dict:
-        if key in config_dict:
+    for dp_degree in params_dict:
+        if dp_degree in config_dict:
             continue
-        config_dict[key] = dict(chunk_size=best_chunk_size, keep_gathered=False)
+        config_dict[dp_degree] = dict(chunk_size=best_chunk_size, keep_gathered=False)
 
     return config_dict, min_chunk_waste
