@@ -1,3 +1,4 @@
+import math
 from enum import Enum
 from typing import Any, Dict, Set, Tuple
 
@@ -137,26 +138,29 @@ class ZeroOptimizer(ColossalaiOptimizer):
         return self._found_overflow.item() > 0
 
     def _calc_global_norm(self) -> float:
-        total_norm: float = 0.0
+        norm_sqr: float = 0.0
         group_to_norm = dict()
         for c16 in self.chunk16_set:
             assert c16.l2_norm is not None
 
             if c16.is_gathered:
-                total_norm += c16.l2_norm
+                norm_sqr += c16.l2_norm
             else:
                 # this chunk is sharded, use communication to collect total norm
                 if c16.torch_pg not in group_to_norm:
                     group_to_norm[c16.torch_pg] = 0.0
                 group_to_norm[c16.torch_pg] += c16.l2_norm
 
+            c16.l2_norm = None    # clear l2 norm
+
         comm_buffer = torch.zeros(1, dtype=torch.float, device=get_current_device())
         for group, part_norm in group_to_norm.items():
             comm_buffer.fill_(part_norm)
-            dist.all_reduce(group, part_norm)
-            total_norm += comm_buffer.item()
+            dist.all_reduce(comm_buffer, group=group)
+            norm_sqr += comm_buffer.item()
 
-        return total_norm
+        global_norm = math.sqrt(norm_sqr)
+        return global_norm
 
     def _unscale_and_clip_grads(self):
         assert self.optim_state == OptimState.SCALED
