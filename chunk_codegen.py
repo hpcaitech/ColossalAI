@@ -49,7 +49,9 @@ def _is_non_compute_node(node):
 
 
 def _is_non_compute_node_except_placeholder(node):
-    if (any(i in node.op for i in ["get_attr", "output"]) or any(i in node.name for i in ["getitem", "getattr"])):
+    if any(i in node.op for i in ["get_attr", "output"]) or any(
+        i in node.name for i in ["getitem", "getattr"]
+    ):
         return True
     return False
 
