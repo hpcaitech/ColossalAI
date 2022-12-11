@@ -87,7 +87,7 @@ def search_chunk_configuration(
     """
 
     param_order = OrderedParamGenerator()
-    for p in model.named_parameters():
+    for p in model.parameters():
         param_order.append(p)
 
     search_range_byte = round(search_range_mb * 1024**2)
