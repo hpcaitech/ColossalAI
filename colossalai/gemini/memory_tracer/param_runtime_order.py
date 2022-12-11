@@ -1,8 +1,22 @@
+from abc import ABC
+
 import torch
 
 
-class ParamRuntimeOrder(object):
-    """ParamRuntimeOrder
+class ParamGenerator(ABC):
+
+    def append(self, param: torch.nn.Parameter):
+        pass
+
+    def generate(self):
+        pass
+
+    def clear(self):
+        pass
+
+
+class OrderedParamGenerator(ParamGenerator):
+    """OrderedParamGenerator
 
     Contain the order of parameters visited during runtime.
     """

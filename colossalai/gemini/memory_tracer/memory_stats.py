@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 
-from colossalai.gemini.memory_tracer import ParamRuntimeOrder
+from colossalai.gemini.memory_tracer import OrderedParamGenerator
 
 
 class MemStats(object):
@@ -21,7 +21,7 @@ class MemStats(object):
         self._non_model_data_cuda_list = []
         self._non_model_data_cpu_list = []
 
-        self._param_runtime_order = ParamRuntimeOrder()
+        self._param_runtime_order = OrderedParamGenerator()
 
     def append_overall_data(self, device_type: str, val: float):
         if device_type == 'cuda':

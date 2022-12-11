@@ -1,6 +1,6 @@
 import torch.nn
 
-from colossalai.gemini.memory_tracer import MemStats, ParamRuntimeOrder
+from colossalai.gemini.memory_tracer import MemStats
 from colossalai.gemini.ophooks.runtime_mem_tracer_hook import GradMemStats, GradMemTracerHook, ParamMemTracerHook
 from colossalai.nn.parallel.data_parallel import _cast_float
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager

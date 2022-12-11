@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch.nn as nn
 
+from colossalai.gemini.memory_tracer import OrderedParamGenerator
 from colossalai.tensor import ColoParameter
 
 
@@ -40,20 +41,20 @@ def _get_unused_byte(size_list: List[int], chunk_size: int) -> int:
     return left + acc
 
 
-def classify_params_by_dp_degree(model: nn.Module) -> Dict[int, List[ColoParameter]]:
+def classify_params_by_dp_degree(param_order: OrderedParamGenerator) -> Dict[int, List[ColoParameter]]:
     """classify_params_by_dp_degree
 
     Classify the parameters by their dp degree
 
     Args:
-        model (nn.Module): model
+        param_order (OrderedParamGenerator): the order of param be visied
 
     Returns:
         Dict[int, List[ColoParameter]]: a dict contains the classification results.
         The keys are dp_degrees and the values are parameters.
     """
     params_dict: Dict[int, List[ColoParameter]] = dict()
-    for param in model.parameters():
+    for param in param_order.generate():
         assert isinstance(param, ColoParameter), "please init model in the ColoInitContext"
         if not in_ddp(param):
             continue
@@ -85,11 +86,15 @@ def search_chunk_configuration(
         Tuple[Dict, int]: chunk config and its memory chunk waste in byte.
     """
 
+    param_order = OrderedParamGenerator()
+    for p in model.parameters():
+        param_order.append(p)
+
     search_range_byte = round(search_range_mb * 1024**2)
     min_chunk_size_byte = round(min_chunk_size_mb * 1024**2)
     assert search_range_byte >= 0
 
-    params_dict = classify_params_by_dp_degree(model)
+    params_dict = classify_params_by_dp_degree(param_order)
     config_dict: Dict[int, Dict] = dict()
 
     size_dict: Dict[int, List[int]] = dict()
