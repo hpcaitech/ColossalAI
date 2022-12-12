@@ -8,6 +8,7 @@ import torch.distributed as dist
 
 from colossalai.gemini.chunk import Chunk, ChunkManager, TensorState
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.gemini.memory_tracer import OrderedParamGenerator
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.utils import get_temp_total_chunk_on_cuda
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
@@ -216,8 +217,18 @@ class ZeroDDP(ColoDDP):
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
 
         cpu_offload = self.gemini_manager.policy_name != 'cuda'
-        # TODO: get param order and filter unused params
-        for p in module.parameters():
+
+        if self.gemini_manager._premade_memstats_:
+            # build chunk in param runtime visited order.
+            param_order = self.gemini_manager.memstats()._param_runtime_order
+        else:
+            # build chunk in param initialized order.
+            # Note: in this way, it can not get filter unused params during runtime.
+            param_order = OrderedParamGenerator()
+            for p in module.parameters():
+                param_order.append(p)
+
+        for p in param_order.generate():
             assert isinstance(p, ColoParameter)
 
             if getattr(p, '_ddp_to_ignore', False):
@@ -243,7 +254,7 @@ class ZeroDDP(ColoDDP):
         self.chunk_manager.close_all_groups()
         self._cast_buffers()
 
-        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        params_list = [p for p in param_order.generate() if not getattr(p, '_ddp_to_ignore', False)]
         for p, fp32_p in zip(params_list, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)

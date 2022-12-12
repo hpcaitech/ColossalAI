@@ -1,5 +1,4 @@
 from functools import partial
-from time import time
 
 import pytest
 import torch

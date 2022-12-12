@@ -8,7 +8,8 @@ import colossalai
 from colossalai.gemini.chunk import ChunkManager, search_chunk_configuration
 from colossalai.gemini.gemini_mgr import GeminiManager
 from colossalai.gemini.memory_tracer.runtime_mem_tracer import RuntimeMemTracer
-from colossalai.nn.parallel import ZeroDDP
+from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
+from colossalai.nn.parallel import GeminiDDP, ZeroDDP
 from colossalai.tensor import ProcessGroup
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
@@ -44,29 +45,27 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
             run_fwd_bwd(runtime_mem_tracer, input_ids, label, criterion, runtime_mem_tracer)
     memstats = runtime_mem_tracer.memstats()
     runtime_tracer_non_model_data = runtime_mem_tracer._memstats._non_model_data_cuda_list
-    print('runtime tracer: ', runtime_tracer_non_model_data)
+    print('runtime tracer non model data points: ', len(runtime_tracer_non_model_data))
 
-    world_size = torch.distributed.get_world_size()
-    config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
-    config_dict[world_size]['chunk_size'] = 5000
-    config_dict[world_size]['keep_gathered'] = keep_gather
-    chunk_manager = ChunkManager(config_dict)
-    gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
-    model = ZeroDDP(model, gemini_manager, pin_memory=True)
+    model = GeminiDDP(model, device='cuda', placement_policy=placement_policy, search_range_mb=1, memstats=memstats)
+    zero_optim = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=1)
 
     pg = ProcessGroup()
     set_seed(pg.dp_local_rank())
     for i, (input_ids, label) in enumerate(train_dataloader):
         # you can only test a single fwd + bwd.
         # after bwd param is grad for Gemini, due to the chunk reuse optimization.
-        if i > 1:
+        # print(f'iteration {i}')
+        if i > 4:
             break
         input_ids, label = input_ids.cuda(), label.cuda()
 
+        zero_optim.zero_grad()
         set_seed(42)
-        loss = run_fwd_bwd(model, input_ids, label, criterion, model)
+        loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
+        zero_optim.step()
 
-    gemini_non_model_data = gemini_manager._mem_stats_collector._memstats.non_model_data_list('cuda')
+    gemini_non_model_data = model.gemini_manager._mem_stats_collector._memstats.non_model_data_list('cuda')
 
     # print('gemini non model data:', gemini_non_model_data)
 

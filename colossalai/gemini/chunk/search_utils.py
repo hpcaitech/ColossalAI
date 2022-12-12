@@ -1,10 +1,10 @@
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch.nn as nn
 
-from colossalai.gemini.memory_tracer import OrderedParamGenerator
+from colossalai.gemini.memory_tracer import MemStats, OrderedParamGenerator
 from colossalai.tensor import ColoParameter
 
 
@@ -73,7 +73,8 @@ def search_chunk_configuration(
         search_range_mb: float,
         search_interval_byte: int,    # hidden size is the best value for the interval
         min_chunk_size_mb: float = 32,
-        filter_exlarge_params: bool = True) -> Tuple[Dict, int]:
+        filter_exlarge_params: bool = True,
+        memstas: Optional[MemStats] = None) -> Tuple[Dict, int]:
     """search_chunk_configuration
 
     Args:
@@ -86,9 +87,13 @@ def search_chunk_configuration(
         Tuple[Dict, int]: chunk config (a dict of dp_degree -> chunk init args) and its memory chunk waste in byte.
     """
 
-    param_order = OrderedParamGenerator()
-    for p in model.parameters():
-        param_order.append(p)
+    if memstas is not None:
+        param_order = memstas.param_order()
+    else:
+        # build the param visited order right now
+        param_order = OrderedParamGenerator()
+        for p in model.parameters():
+            param_order.append(p)
 
     search_range_byte = round(search_range_mb * 1024**2)
     min_chunk_size_byte = round(min_chunk_size_mb * 1024**2)
