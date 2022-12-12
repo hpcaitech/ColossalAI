@@ -71,7 +71,7 @@ class Chunk:
             chunk_size (int): the number of elements in the chunk
             process_group (ColoProcessGroup): the process group of this chunk
             dtype (torch.dtype): the data type of the chunk
-            init_device (torch.device): optional, the device where the chunk is allocated
+            init_device (torch.device): optional, During the chunk construction process, where the tensor is stored.
                 The default value is None, which is the current GPU
             cpu_shard_init (bool): a flag indicates the local chunk shard is resident on CPU.
             keep_gathered (bool): optional, if True, this chunk is always gathered in CUDA memory
