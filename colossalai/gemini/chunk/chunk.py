@@ -51,7 +51,6 @@ def alloc_storage(tensor: torch.Tensor) -> None:
 
 
 class Chunk:
-
     _total_number = 0
 
     def __init__(self,
@@ -140,6 +139,10 @@ class Chunk:
         # if the cpu_shard has been visited during the training step, the flag is True
         self.cpu_vis_flag = False
 
+        # whether to record l2 norm for the gradient clipping calculation
+        self.l2_norm_flag = False
+        self.l2_norm = None
+
     @property
     def memory_usage(self) -> Dict[str, int]:
         cuda_memory = 0
@@ -213,15 +216,27 @@ class Chunk:
 
     @property
     def has_inf_or_nan(self) -> bool:
-        """Check if the chunk has inf or nan values in CUDA.
+        """Check if the chunk has inf or nan values on CUDA.
         """
         if self.is_gathered:
             valid_tensor = self.chunk_total[:self.utilized_size]
         else:
-            assert self.cuda_shard is not None    # only check in CUDA
+            assert self.cuda_shard is not None    # only check on CUDA
             valid_tensor = self.cuda_shard[:self.valid_end]
 
         return torch.isinf(valid_tensor).any().item() | torch.isnan(valid_tensor).any().item()
+
+    def set_l2_norm(self) -> None:
+        """Record l2 norm of this chunks on CUDA.
+        """
+        assert self.l2_norm is None, "you are calculating the l2 norm twice"
+        if self.is_gathered:
+            valid_tensor = self.chunk_total[:self.utilized_size]
+        else:
+            assert self.cuda_shard is not None    # calculate on CUDA
+            valid_tensor = self.cuda_shard[:self.valid_end]
+        chunk_l2_norm = valid_tensor.data.float().norm(2)
+        self.l2_norm = chunk_l2_norm.item()**2
 
     def append_tensor(self, tensor: torch.Tensor):
         """Add a tensor to the chunk.
