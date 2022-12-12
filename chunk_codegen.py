@@ -1210,8 +1210,6 @@ class ChunkRegionSearch(object):
         return chunk_infos
 
     def _find_free_dim(self, input_trace, output_trace, start_idx, end_idx):
-        if start_idx == 71 and end_idx == 126:
-            print(1)
         start_traces = input_trace[start_idx]
         end_trace = output_trace[end_idx]
         end_node = self.node_list[end_idx]
@@ -1345,15 +1343,6 @@ def _gen_chunk_slice_dim(chunk_dim, chunk_idx_name, shape):
         new_shape += ", "
     new_shape = new_shape[:-2] + "]"
     return new_shape
-
-
-def _get_first_non_single_dim(shape):
-    for idx, i in enumerate(shape):
-        if i == 1:
-            continue
-        else:
-            return idx
-    raise RuntimeError("can not get first non single dim for shape", shape)
 
 
 def _gen_loop_start(chunk_input, chunk_output, chunk_ouput_dim, chunk_size=2):
