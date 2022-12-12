@@ -83,7 +83,7 @@ def search_chunk_configuration(
         filter_exlarge_params (bool, optional): filter extreme large parameters. Defaults to True.
 
     Returns:
-        Tuple[Dict, int]: chunk config and its memory chunk waste in byte.
+        Tuple[Dict, int]: chunk config (a dict of dp_degree -> chunk init args) and its memory chunk waste in byte.
     """
 
     param_order = OrderedParamGenerator()
