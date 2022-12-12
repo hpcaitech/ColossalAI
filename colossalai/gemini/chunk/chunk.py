@@ -294,7 +294,7 @@ class Chunk:
         self.chunk_temp = None
 
         self.__scatter()
-        # always gathered chunk does not have shard
+        # always gathered chunk does not have shard chunk
         if self.keep_gathered:
             return
 
