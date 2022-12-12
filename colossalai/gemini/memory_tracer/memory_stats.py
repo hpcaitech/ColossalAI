@@ -23,6 +23,12 @@ class MemStats(object):
 
         self._param_runtime_order = OrderedParamGenerator()
 
+    def param_order(self):
+        if self._param_runtime_order.is_empty():
+            raise RuntimeError
+        else:
+            return self._param_runtime_order
+
     def append_overall_data(self, device_type: str, val: float):
         if device_type == 'cuda':
             self._overall_cuda_list.append(val)

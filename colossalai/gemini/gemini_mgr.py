@@ -25,6 +25,7 @@ class GeminiManager:
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
             Note that 'auto' policy can only work well when no other processes use CUDA during your training.
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
+        memstats (MemStats, optional): a mem stats collected by a runtime mem tracer. if None then GeminiManager will collect it during a warmup iteration.
     """
 
     def __init__(self, placement_policy: str, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
@@ -33,8 +34,11 @@ class GeminiManager:
         self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
+
+        self._premade_memstats_ = memstats is not None
+        self._memstats = memstats
         self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager,
-                                                           memstats) if policy_cls.need_mem_stats else None
+                                                           self._memstats) if policy_cls.need_mem_stats else None
         self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
@@ -45,6 +49,19 @@ class GeminiManager:
         self._evict_time = 0
         self._warmup = True
         self._comp_cuda_demand_time = 0
+
+    def memstats(self):
+        """memstats
+
+        get the memory statistics during training.
+        The stats could be collected by a runtime memory tracer, or collected by the GeminiManager.
+        Note, for the latter， you can not access the memstats before warmup iteration finishes.
+        """
+        if self._premade_memstats_:
+            return self._memstats
+        else:
+            assert not self._warmup, "Gemini Manager has memstats after warm up! Now is during warmup."
+            return self._mem_stats_collector._memstats
 
     def pre_iter(self, *args):
         if self._mem_stats_collector and self._warmup:

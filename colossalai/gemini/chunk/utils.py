@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from colossalai.gemini.chunk import ChunkManager
 from colossalai.gemini.chunk.search_utils import in_ddp, search_chunk_configuration
+from colossalai.gemini.memory_tracer import MemStats
 
 
 def init_chunk_manager(model: nn.Module,
@@ -14,7 +15,8 @@ def init_chunk_manager(model: nn.Module,
                        hidden_dim: Optional[int] = None,
                        search_range_mb: Optional[float] = None,
                        min_chunk_size_mb: Optional[float] = None,
-                       filter_exlarge_params: Optional[bool] = None) -> ChunkManager:
+                       filter_exlarge_params: Optional[bool] = None,
+                       memstats: Optional[MemStats] = None) -> ChunkManager:
 
     kwargs_dict = dict()
 

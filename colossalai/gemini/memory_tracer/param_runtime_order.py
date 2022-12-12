@@ -35,5 +35,8 @@ class OrderedParamGenerator(ParamGenerator):
             visited_set.add(p)
         del visited_set
 
+    def is_empty(self):
+        return len(self.param_visited_order) > 0
+
     def clear(self):
         self.param_visited_order = []
