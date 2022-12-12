@@ -1,6 +1,7 @@
 import enum
 import functools
 import inspect
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import torch
@@ -170,6 +171,12 @@ class ColoTracer(Tracer):
         self._disable_module_getattr = False
         self.proxy_buffer_attributes = True
 
+        # whether the tracer will record the usage of torch.utils.checkpoint
+        self.trace_act_ckpt = trace_act_ckpt
+        # whether the current tracing occurs within the activation checkpoint functions
+        self.inside_torch_checkpoint_func = False
+        self.act_ckpt_region_count = 0
+
     def proxy(self, node: Node) -> 'ColoProxy':
         return ColoProxy(node, self)
 
@@ -182,42 +189,50 @@ class ColoTracer(Tracer):
                      type_expr: Optional[Any] = None,
                      proxy_factory_fn: Callable[[Node], 'Proxy'] = None):
         proxy: ColoProxy = super().create_proxy(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
-        unwrap_fn = lambda p: p.data if isinstance(p, ColoProxy) else p
-        if kind == 'placeholder':
-            proxy.data = self.meta_args[target] if target in self.meta_args else self.concrete_args.get(
-                _truncate_suffix(target), None)
-        elif kind == 'get_attr':
-            self._disable_module_getattr = True
-            try:
-                attr_itr = self.root
-                atoms = target.split(".")
-                for atom in atoms:
-                    attr_itr = getattr(attr_itr, atom)
-                proxy.data = attr_itr
-            finally:
-                self._disable_module_getattr = False
-        elif kind == 'call_function':
-            proxy.data = target(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
-        elif kind == 'call_method':
-            self._disable_module_getattr = True
-            try:
-                if target == '__call__':
-                    proxy.data = unwrap_fn(args[0])(*tree_map(unwrap_fn, args[1:]), **tree_map(unwrap_fn, kwargs))
-                else:
-                    if target not in _TensorPropertyMethod:
-                        proxy._data = getattr(unwrap_fn(args[0]), target)(*tree_map(unwrap_fn, args[1:]),
-                                                                          **tree_map(unwrap_fn, kwargs))
-            finally:
-                self._disable_module_getattr = False
-        elif kind == 'call_module':
-            mod = self.root.get_submodule(target)
-            unwrap_fn = lambda p: p.data if isinstance(p, ColoProxy) else p
-            self._disable_module_getattr = True
-            try:
-                proxy.data = mod.forward(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
-            finally:
-                self._disable_module_getattr = True
+        # unwrap_fn = lambda p: p.data if isinstance(p, ColoProxy) else p
+        # if kind == 'placeholder':
+        #     proxy.data = self.meta_args[target] if target in self.meta_args else self.concrete_args.get(
+        #         _truncate_suffix(target), None)
+        # elif kind == 'get_attr':
+        #     self._disable_module_getattr = True
+        #     try:
+        #         attr_itr = self.root
+        #         atoms = target.split(".")
+        #         for atom in atoms:
+        #             attr_itr = getattr(attr_itr, atom)
+        #         proxy.data = attr_itr
+        #     finally:
+        #         self._disable_module_getattr = False
+        # elif kind == 'call_function':
+        #     proxy.data = target(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+        # elif kind == 'call_method':
+        #     self._disable_module_getattr = True
+        #     try:
+        #         if target == '__call__':
+        #             proxy.data = unwrap_fn(args[0])(*tree_map(unwrap_fn, args[1:]), **tree_map(unwrap_fn, kwargs))
+        #         else:
+        #             if target not in _TensorPropertyMethod:
+        #                 proxy._data = getattr(unwrap_fn(args[0]), target)(*tree_map(unwrap_fn, args[1:]),
+        #                                                                   **tree_map(unwrap_fn, kwargs))
+        #     finally:
+        #         self._disable_module_getattr = False
+        # elif kind == 'call_module':
+        #     mod = self.root.get_submodule(target)
+        #     unwrap_fn = lambda p: p.data if isinstance(p, ColoProxy) else p
+        #     self._disable_module_getattr = True
+        #     try:
+        #         proxy.data = mod.forward(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+        #     finally:
+        #         self._disable_module_getattr = True
         return proxy
+
+    def create_node(self, *args, **kwargs) -> Node:
+        node = super().create_node(*args, **kwargs)
+
+        if self.inside_torch_checkpoint_func:
+            # annotate the activation checkpoint module
+            node.meta['activation_checkpoint'] = self.act_ckpt_region_count
+        return node
 
     def trace(self,
               root: torch.nn.Module,
@@ -259,10 +274,41 @@ class ColoTracer(Tracer):
         self.concrete_args = concrete_args
         self.meta_args = meta_args
 
-        with _TorchTensorOverride(self):
+        with _TorchTensorOverride(self), self.trace_activation_checkpoint(enabled=self.trace_act_ckpt):
             self.graph = super().trace(root, concrete_args=concrete_args)
         self.graph.lint()
         return self.graph
+
+
+    @contextmanager
+    def trace_activation_checkpoint(self, enabled: bool):
+        if enabled:
+            orig_ckpt_func = torch.utils.checkpoint.CheckpointFunction
+
+            class PatchedCheckpointFunction(torch.autograd.Function):
+
+                @staticmethod
+                def forward(ctx, run_function, preserve_rng_state, *args):
+                    # signal that the current tracing occurs within activaton checkpoint part
+                    self.inside_torch_checkpoint_func = True
+                    out = run_function(*args)
+                    self.inside_torch_checkpoint_func = False
+                    self.act_ckpt_region_count += 1
+                    return out
+
+                @staticmethod
+                def backward(ctx: Any, *grad_outputs: Any) -> Any:
+                    raise NotImplementedError(
+                        "We do not implement the backward pass as we only trace the forward pass.")
+
+            # override the checkpoint function
+            torch.utils.checkpoint.CheckpointFunction = PatchedCheckpointFunction
+        yield
+
+        if enabled:
+            # recover the checkpoint function upon exit
+            torch.utils.checkpoint.CheckpointFunction = orig_ckpt_func
+
 
     def _post_check(self, non_concrete_arg_names: Set[str]):
         # This is necessary because concrete args are added as input to the traced module since
