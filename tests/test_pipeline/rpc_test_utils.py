@@ -31,7 +31,7 @@ class MLP(nn.Module):
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
-        return x
+        return x.sum()
     
 class DAG_MLP(nn.Module):
     def __init__(self, dim: int, layers: int):
@@ -46,7 +46,7 @@ class DAG_MLP(nn.Module):
         for layer in self.layers:
             x = layer(x)
             y = self.dag_layer(y)
-        return x, y
+        return x.sum(), y.sum()
 
 class RpcTestModel(nn.Module):
 
