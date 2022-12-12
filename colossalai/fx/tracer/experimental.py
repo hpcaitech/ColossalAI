@@ -8,6 +8,14 @@ from torch.fx import Graph, Node, Proxy, Tracer
 from torch.utils._pytree import tree_map
 
 from colossalai.fx import ColoGraphModule, compatibility, is_compatible_with_meta
+from colossalai.fx.tracer._tracer_utils import extract_meta, is_element_in_list
+from colossalai.fx.tracer.registry import (
+    bias_addition_function,
+    bias_addition_method,
+    bias_addition_module,
+    meta_patched_function,
+    meta_patched_module,
+)
 
 if is_compatible_with_meta():
     from colossalai.fx.profiler import MetaTensor
@@ -29,18 +37,6 @@ _TensorPropertyMethod = ["dtype", "shape", "device", "requires_grad", "grad", "g
 def _truncate_suffix(s: str):
     import re
     return re.sub(r'_\d+$', '', s)
-
-
-def is_element_in_list(elements: Union[List[Any], Any], list_: List[Any]):
-    if isinstance(elements, (tuple, list, set)):
-        for ele in elements:
-            if ele not in list_:
-                return False, ele
-    else:
-        if elements not in list_:
-            return False, elements
-
-    return True, None
 
 
 def default_device():
@@ -392,3 +388,77 @@ class _TorchTensorOverride(object):
     def __exit__(self, exc_type, exc_val, exc_tb):
         for name, (wrapper, orig) in self.overrides.items():
             setattr(torch, name, orig)
+
+
+def set_meta_data_for_node(gm: ColoGraphModule, root: torch.nn.Module, meta_args: Optional[Dict[str, Any]]=None):
+    for node in gm.graph.nodes:
+        node._meta_data = _meta_data_computing(meta_args, root, node.op, node.target, node.args, node.kwargs)
+
+def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
+    if kind == "placeholder" and target in meta_args and meta_args[target].is_meta:
+        meta_out = meta_args[target]
+        return meta_out
+
+    if callable(getattr(torch, target)) and target.__name__ in _TorchNewMethod:
+        # NOTE: tensor constructors in PyTorch define the `device` argument as
+        # *kwargs-only*. That is why this works. If you add methods to
+        # _TORCH_METHODS_TO_PATCH that do not define `device` as kwarg-only,
+        # this will break and you will likely see issues where we cannot infer
+        # the size of the output.
+        if "device" in kwargs:
+            kwargs["device"] = "meta"
+
+    try:
+        args_metas, kwargs_metas = extract_meta(*args, **kwargs)
+        unwrap_fn = lambda p: p._meta_data if isinstance(p, Node) else p
+
+        if kind == "call_function":
+            # fetch patched function
+            if meta_patched_function.has(target):
+                meta_target = meta_patched_function.get(target)
+            elif meta_patched_function.has(target.__name__):
+                # use name for some builtin op like @ (matmul)
+                meta_target = meta_patched_function.get(target.__name__)
+            else:
+                meta_target = target
+
+            meta_out = meta_target(*tree_map(unwrap_fn, args_metas), **tree_map(unwrap_fn, kwargs_metas))
+
+            if isinstance(meta_out, torch.Tensor):
+                meta_out = meta_out.to(device="meta")
+        elif kind == "call_method":
+            method = getattr(args_metas[0].__class__, target)
+
+            # fetch patched method
+            if meta_patched_function.has(method):
+                meta_target = meta_patched_function.get(method)
+            else:
+                meta_target = method
+
+            meta_out = meta_target(*tree_map(unwrap_fn, args_metas), **tree_map(unwrap_fn, kwargs_metas))
+        elif kind == "call_module":
+            mod = root.get_submodule(target)
+            mod_type = type(mod)
+            if meta_patched_module.has(mod_type):
+                meta_out = meta_patched_module.get(mod_type)(mod, *tree_map(unwrap_fn, args_metas),
+                                                             **tree_map(unwrap_fn, kwargs_metas))
+            else:
+                meta_out = mod(*tree_map(unwrap_fn, args_metas), **tree_map(unwrap_fn, kwargs_metas))
+        elif kind == "get_attr":
+            attr_itr = root
+            atoms = target.split(".")
+            for atom in atoms:
+                attr_itr = getattr(attr_itr, atom)
+            if isinstance(attr_itr, torch.nn.parameter.Parameter):
+                meta_out = torch.nn.Parameter(attr_itr.to(device="meta"))
+            elif isinstance(attr_itr, torch.Tensor):
+                meta_out = attr_itr.to(device="meta")
+            else:
+                meta_out = attr_itr
+        else:
+            return None
+
+    except Exception as e:
+        raise RuntimeError(f"Could not compute metadata for {kind} target {target}: {e}")
+
+    return meta_out
