@@ -87,7 +87,7 @@ class Chunk:
         self.pg_size = dist.get_world_size(self.torch_pg)
         self.pg_rank = dist.get_rank(self.torch_pg)
 
-        # the chunk size should be divisible of the number of dp degree
+        # the chunk size should be divisible by the dp degree
         if not keep_gathered:
             assert chunk_size % self.pg_size == 0
         self.shard_size = chunk_size // self.pg_size
