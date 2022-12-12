@@ -71,7 +71,7 @@ def test_adam(adamw, step, p_dtype, g_dtype):
         weight_decay = 0
 
         multi_tensor_applier(fused_adam, dummy_overflow_buf, [[g], [p], [m], [v]], lr, beta1, beta2, eps, step, adamw,
-                             True, weight_decay)
+                             True, weight_decay, -1)
 
         torch_adam_update(
             step,
