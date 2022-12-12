@@ -299,7 +299,7 @@ class ZeroDDP(ColoDDP):
             reduced = self.chunk_manager.reduce_chunk(chunk)
             if reduced:
                 if chunk.is_gathered:
-                    chunk.chunk_total.div_(chunk.pg_size)
+                    chunk.cuda_global_chunk.div_(chunk.pg_size)
                 else:
                     chunk.cuda_shard.div_(chunk.pg_size)
                 # check overflow elements
@@ -529,7 +529,7 @@ class ZeroDDP(ColoDDP):
                 load(parameter_name, tensor, partial(load_fp32_parameter, parameter_slice))
 
             if chunk.is_gathered:
-                chunk.chunk_total.copy_(temp_chunk)
+                chunk.cuda_global_chunk.copy_(temp_chunk)
             elif chunk.cuda_shard is not None:
                 chunk.cuda_shard.copy_(temp_chunk[chunk.shard_begin:chunk.shard_end])
             else:

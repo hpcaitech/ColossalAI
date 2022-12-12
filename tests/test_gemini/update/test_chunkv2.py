@@ -69,7 +69,7 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
         assert my_chunk.can_move
         my_chunk.shard_move(get_current_device())
     else:
-        assert my_chunk.chunk_total.size(0) == 1024
+        assert my_chunk.cuda_global_chunk.size(0) == 1024
         assert my_chunk.device_type == 'cuda'
         assert not my_chunk.can_move
 
@@ -82,27 +82,27 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     for param, param_cp in zip(param_list, param_cp_list):
         check_euqal(param, param_cp)
 
-    assert my_chunk.tensors_state_monitor[TensorState.HOLD] == 4
+    assert my_chunk.tensor_state_cnter[TensorState.HOLD] == 4
     my_chunk.tensor_trans_state(param_list[0], TensorState.COMPUTE)
-    assert my_chunk.tensors_state_monitor[TensorState.HOLD] == 3
-    assert my_chunk.tensors_state_monitor[TensorState.COMPUTE] == 1
+    assert my_chunk.tensor_state_cnter[TensorState.HOLD] == 3
+    assert my_chunk.tensor_state_cnter[TensorState.COMPUTE] == 1
     assert not my_chunk.can_release
 
     for param in param_list:
         my_chunk.tensor_trans_state(param, TensorState.COMPUTE)
         my_chunk.tensor_trans_state(param, TensorState.READY_FOR_REDUCE)
 
-    assert my_chunk.tensors_state_monitor[TensorState.READY_FOR_REDUCE] == 4
+    assert my_chunk.tensor_state_cnter[TensorState.READY_FOR_REDUCE] == 4
     assert my_chunk.can_reduce
     my_chunk.reduce()
-    assert my_chunk.tensors_state_monitor[TensorState.HOLD] == 4
+    assert my_chunk.tensor_state_cnter[TensorState.HOLD] == 4
 
     if keep_gathered is False:
         assert my_chunk.cuda_shard.size(0) == 1024 // world_size
         assert my_chunk.device_type == 'cuda'
         assert my_chunk.can_move
     else:
-        assert my_chunk.chunk_total.size(0) == 1024
+        assert my_chunk.cuda_global_chunk.size(0) == 1024
         assert my_chunk.device_type == 'cuda'
         assert not my_chunk.can_move
 

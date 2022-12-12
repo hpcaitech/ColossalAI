@@ -9,10 +9,11 @@ from colossalai.tensor.tensor_spec import ColoTensorSpec
 
 
 class ColoParamOpHook(ABC):
-    """Hook which is triggered by each operation when operands contain ColoParameter.
+    """
+    Hook which is triggered by each operation when operands contain ColoParameter.
     To customize it, you must inherit this abstract class, and implement ``pre_forward``,
-    ``post_forward``, ``pre_backward`` and ``post_backward``. These four methods take a list
-    of ColoParameter.
+    ``post_forward``, ``pre_backward`` and ``post_backward``.
+    These four methods apply a list of ColoParameter as input args.
     """
 
     @abstractmethod
@@ -33,7 +34,8 @@ class ColoParamOpHook(ABC):
 
 
 class ColoParamOpHookManager:
-    """Manage your param op hooks. It only has static methods.
+    """
+    Manage your param op hooks. It only has static methods.
     The only static method you should call is ``use_hooks(*hooks)``.
     """
     hooks: Tuple[ColoParamOpHook, ...] = tuple()
