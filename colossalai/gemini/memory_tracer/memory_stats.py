@@ -1,4 +1,6 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+import torch
 
 from colossalai.gemini.memory_tracer import OrderedParamGenerator
 
@@ -10,6 +12,12 @@ class MemStats(object):
         Store the non model data statistics used for Gemini and ZeroOptimizer.
         """
         # p -> list of non_model data volumn visied in order.
+
+        # (preop_moment, List[param])
+        self._step_param_dict = dict()
+        self._param_step_dict = dict()
+
+        # (param, List[preop_moment])
         self.param_non_model_data_map: Dict(Any, List[int]) = {}
 
         self._model_data_cuda_list = []
@@ -22,6 +30,8 @@ class MemStats(object):
         self._non_model_data_cpu_list = []
 
         self._param_runtime_order = OrderedParamGenerator()
+
+        self._preop_step = 0
 
     def param_order(self):
         if self._param_runtime_order.is_empty():
@@ -113,6 +123,38 @@ class MemStats(object):
         else:
             raise TypeError
 
+    def increase_preop_step(self, param_list: List[torch.nn.Parameter]):
+        """
+        the time step is increased. param list is used between current and the next
+        time step.
+
+        Args:
+            param_list (List[torch.nn.Parameter]): a list of torch paramters.
+        """
+        for p in param_list:
+            if p not in self._param_step_dict:
+                self._param_step_dict[p] = [self._preop_step]
+            else:
+                self._param_step_dict[p].append(self._preop_step)
+            self._param_runtime_order.append(p)
+        self._step_param_dict[self._preop_step] = param_list
+        self._preop_step += 1
+
+    def param_used_timestep(self, param: torch.nn.Parameter) -> Optional[List[int]]:
+        """param_used_timestep
+        get the timestep list using the param
+
+        Args:
+            param (torch.nn.Parameter): a torch param
+
+        Returns:
+            Optional[List[int]]: a list of int indicates the time step of preop hook.
+        """
+        if param not in self._param_step_dict:
+            return None
+        else:
+            return self._param_step_dict[param]
+
     def clear(self):
         self._model_data_cuda_list = []
         self._overall_cuda_list = []
@@ -124,3 +166,6 @@ class MemStats(object):
         self._non_model_data_cuda_list = []
 
         self._param_runtime_order.clear()
+        self._step_param_dict.clear()
+        self._param_step_dict.clear()
+        self._preop_step = 0
