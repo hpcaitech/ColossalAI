@@ -46,6 +46,8 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     memstats = runtime_mem_tracer.memstats()
     runtime_tracer_non_model_data = runtime_mem_tracer._memstats._non_model_data_cuda_list
     print('runtime tracer non model data points: ', len(runtime_tracer_non_model_data))
+    print('runtime tracer: ', runtime_tracer_non_model_data)
+    print([memstats.param_used_timestep(p) for p in model.parameters()])
 
     world_size = torch.distributed.get_world_size()
     config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)

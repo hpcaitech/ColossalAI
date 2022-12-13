@@ -64,7 +64,16 @@ class ParamMemTracerHook(ColoParamOpHook):
                 raise NotImplementedError("Only free cuda memory")
             free_storage(p.data)
 
-    def _allocate_params_on_cuda(self, params):
+    def _allocate_params_on_cuda(self, params: List[torch.nn.Parameter]):
+        """
+        move params to cuda
+
+        Args:
+            params (List[torch.nn.Parameter]): target params
+
+        Raises:
+            NotImplementedError: raise error when param has cpu grad
+        """
         for p in params:
             cur_dev = p.data.device.type
             if cur_dev == "cpu":
@@ -78,6 +87,9 @@ class ParamMemTracerHook(ColoParamOpHook):
                 alloc_storage(p.data)
 
     def sample_model_data(self, params):
+        """
+        get cuda model data used by params
+        """
         data_volume = self._grad_stats.unreleased_grad_volume
         for p in params:
             cur_model_data_volume = p.data.numel() * p.data.element_size()
@@ -89,14 +101,21 @@ class ParamMemTracerHook(ColoParamOpHook):
                     self._grad_stats.unreleased_grad_volume += cur_model_data_volume
                     self._grad_stats.unreleased_grad_flag[p] = True
         self._memstats.append_model_data('cuda', data_volume)
+        # record max non model data used for this Op
+        self._memstats.record_max_cuda_model_data(data_volume)
 
     def pre_op(self, params):
-        cuda_volume = self.mem_monitor.finish()
-        last_model_data_val = self._memstats.last_model_data('cuda')
-        if last_model_data_val is not None:
-            self._memstats.append_non_model_data('cuda', cuda_volume - last_model_data_val)
+        # get overall cuda data.
+        max_cuda_vol_of_period = self.mem_monitor.finish()
+        # record max cuda overall data for prev Op.
+        self._memstats.record_max_cuda_overall_data(max_cuda_vol_of_period)
+        self._memstats.record_max_cuda_non_model_data()
+        max_cuda_model_data_val = self._memstats.last_model_data('cuda')
+        if max_cuda_model_data_val is not None:
+            self._memstats.append_non_model_data('cuda', max_cuda_vol_of_period - max_cuda_model_data_val)
         self._allocate_params_on_cuda(params)
         self.sample_model_data(params)
+
         self.mem_monitor.start()
         self._memstats.increase_preop_step(params)
 

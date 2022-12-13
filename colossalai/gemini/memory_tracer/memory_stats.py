@@ -11,13 +11,19 @@ class MemStats(object):
         """
         Store the non model data statistics used for Gemini and ZeroOptimizer.
         """
-        # p -> list of non_model data volumn visied in order.
-
-        # (preop_moment, List[param])
+        # (preop_step, List[param])
         self._step_param_dict = dict()
+        # (param, List[preop_step])
         self._param_step_dict = dict()
+        # (preop_step, non_model_data)
+        self._step_nmd_dict = dict()
+        self._param_runtime_order = OrderedParamGenerator()
 
-        # (param, List[preop_moment])
+        self._preop_step = 0
+
+        self._prev_overall_cuda = -1
+        self._prev_md_cuda = -1
+        # old version
         self.param_non_model_data_map: Dict(Any, List[int]) = {}
 
         self._model_data_cuda_list = []
@@ -29,9 +35,15 @@ class MemStats(object):
         self._non_model_data_cuda_list = []
         self._non_model_data_cpu_list = []
 
-        self._param_runtime_order = OrderedParamGenerator()
+    def record_max_cuda_non_model_data(self):
+        if self._prev_overall_cuda != -1 and self._prev_md_cuda != -1:
+            self._step_nmd_dict[self._preop_step] = self._prev_overall_cuda - self._prev_md_cuda
 
-        self._preop_step = 0
+    def record_max_cuda_model_data(self, val):
+        self._prev_md_cuda = val
+
+    def record_max_cuda_overall_data(self, val):
+        self._prev_overall_cuda = val
 
     def param_order(self):
         if self._param_runtime_order.is_empty():
@@ -168,4 +180,8 @@ class MemStats(object):
         self._param_runtime_order.clear()
         self._step_param_dict.clear()
         self._param_step_dict.clear()
+        self._step_nmd_dict.clear()
         self._preop_step = 0
+
+        self._prev_overall_cuda = -1
+        self._prev_md_cuda = -1
