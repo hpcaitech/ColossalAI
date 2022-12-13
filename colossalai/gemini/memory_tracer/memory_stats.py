@@ -64,8 +64,8 @@ class MemStats(object):
         self._step_param_dict[self._preop_step] = param_list
         self._preop_step += 1
 
-    def param_used_timestep(self, param: torch.nn.Parameter) -> Optional[List[int]]:
-        """param_used_timestep
+    def param_used_step(self, param: torch.nn.Parameter) -> Optional[List[int]]:
+        """param_used_step
         get the timestep list using the param
 
         Args:
