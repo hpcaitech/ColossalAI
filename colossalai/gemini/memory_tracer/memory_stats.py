@@ -166,6 +166,6 @@ class MemStats(object):
         self._non_model_data_cuda_list = []
 
         self._param_runtime_order.clear()
-        self._step_param_dict = dict()
-        self._param_step_dict = dict()
+        self._step_param_dict.clear()
+        self._param_step_dict.clear()
         self._preop_step = 0
