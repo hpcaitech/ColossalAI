@@ -29,7 +29,6 @@ def size_processing(size: Union[int, torch.Size],
     """
     This method will be invoked during runtime to convert size node value depending on distributed information.
     """
-    print(f'{node_name} input size: {size}')
     if target_dim is not None:
         assert isinstance(size, int)
         if target_dim in dim_partition_dict:
@@ -48,7 +47,6 @@ def size_processing(size: Union[int, torch.Size],
                 size[dim] = dim_size * total_shard_size
         size = torch.Size(size)
 
-    print(f'{node_name} processed size: {size}')
     return size
 
 
@@ -138,9 +136,9 @@ def _solution_annotatation(gm: torch.fx.GraphModule,
 def _size_value_converting(gm: torch.fx.GraphModule, device_mesh: DeviceMesh):
     """
     In the auto parallel system, tensors may get shard on different devices, so the size of tensors
-    need to be converted to the size of original tensor. And then, the value of size will be managed
-    by the users, such as torch.view, torch.reshape, etc. These nodes have enough information like input
-    sharding_spec and output sharding_spec to decide how to convert the size value.
+    need to be converted to the size of original tensor and managed by the users, such as torch.view,
+    torch.reshape, etc. These nodes have enough information like input sharding_spec and
+    output sharding_spec to decide how to convert the size value.
     """
     mod_graph = gm.graph
     nodes = tuple(mod_graph.nodes)
