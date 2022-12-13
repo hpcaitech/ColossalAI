@@ -133,9 +133,9 @@ class GeminiManager:
         if self._mem_stats_collector:
             self._mem_stats_collector.sample_overall_data()
 
-    def sample_model_data(self):
+    def record_model_data_volume(self):
         if self._mem_stats_collector:
-            self._mem_stats_collector.sample_model_data()
+            self._mem_stats_collector.record_model_data_volume()
 
     @property
     def chunk_manager(self):

@@ -86,7 +86,7 @@ class ParamMemTracerHook(ColoParamOpHook):
             elif cur_dev == "cuda":
                 alloc_storage(p.data)
 
-    def sample_model_data(self, params):
+    def record_model_data_volume(self, params):
         """
         get cuda model data used by params
         """
@@ -100,21 +100,19 @@ class ParamMemTracerHook(ColoParamOpHook):
                 if not self._grad_stats.unreleased_grad_flag[p]:
                     self._grad_stats.unreleased_grad_volume += cur_model_data_volume
                     self._grad_stats.unreleased_grad_flag[p] = True
-        self._memstats.append_model_data('cuda', data_volume)
         # record max non model data used for this Op
         self._memstats.record_max_cuda_model_data(data_volume)
 
     def pre_op(self, params):
         # get overall cuda data.
         max_cuda_vol_of_period = self.mem_monitor.finish()
-        # record max cuda overall data for prev Op.
+        # record max cuda overall data for prev OP.
         self._memstats.record_max_cuda_overall_data(max_cuda_vol_of_period)
         self._memstats.record_max_cuda_non_model_data()
-        max_cuda_model_data_val = self._memstats.last_model_data('cuda')
-        if max_cuda_model_data_val is not None:
-            self._memstats.append_non_model_data('cuda', max_cuda_vol_of_period - max_cuda_model_data_val)
+
         self._allocate_params_on_cuda(params)
-        self.sample_model_data(params)
+        # max model data usage of OP(params)
+        self.record_model_data_volume(params)
 
         self.mem_monitor.start()
         self._memstats.increase_preop_step(params)
