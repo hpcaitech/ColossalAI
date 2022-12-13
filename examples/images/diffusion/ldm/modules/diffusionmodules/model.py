@@ -4,9 +4,22 @@ import torch
 import torch.nn as nn
 import numpy as np
 from einops import rearrange
+from typing import Optional, Any
 
-from ldm.util import instantiate_from_config
-from ldm.modules.attention import LinearAttention
+try:
+    from lightning.pytorch.utilities import rank_zero_info
+except:
+    from pytorch_lightning.utilities import rank_zero_info
+
+from ldm.modules.attention import MemoryEfficientCrossAttention
+
+try:
+    import xformers
+    import xformers.ops
+    XFORMERS_IS_AVAILBLE = True
+except:
+    XFORMERS_IS_AVAILBLE = False
+    print("No module 'xformers'. Proceeding without it.")
 
 
 def get_timestep_embedding(timesteps, embedding_dim):
@@ -141,12 +154,6 @@ class ResnetBlock(nn.Module):
         return x+h
 
 
-class LinAttnBlock(LinearAttention):
-    """to match AttnBlock usage"""
-    def __init__(self, in_channels):
-        super().__init__(dim=in_channels, heads=1, dim_head=in_channels)
-
-
 class AttnBlock(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
@@ -174,7 +181,6 @@ class AttnBlock(nn.Module):
                                         stride=1,
                                         padding=0)
 
-
     def forward(self, x):
         h_ = x
         h_ = self.norm(h_)
@@ -201,21 +207,100 @@ class AttnBlock(nn.Module):
 
         return x+h_
 
+class MemoryEfficientAttnBlock(nn.Module):
+    """
+        Uses xformers efficient implementation,
+        see https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
+        Note: this is a single-head self-attention operation
+    """
+    #
+    def __init__(self, in_channels):
+        super().__init__()
+        self.in_channels = in_channels
 
-def make_attn(in_channels, attn_type="vanilla"):
-    assert attn_type in ["vanilla", "linear", "none"], f'attn_type {attn_type} unknown'
-    print(f"making attention of type '{attn_type}' with {in_channels} in_channels")
+        self.norm = Normalize(in_channels)
+        self.q = torch.nn.Conv2d(in_channels,
+                                 in_channels,
+                                 kernel_size=1,
+                                 stride=1,
+                                 padding=0)
+        self.k = torch.nn.Conv2d(in_channels,
+                                 in_channels,
+                                 kernel_size=1,
+                                 stride=1,
+                                 padding=0)
+        self.v = torch.nn.Conv2d(in_channels,
+                                 in_channels,
+                                 kernel_size=1,
+                                 stride=1,
+                                 padding=0)
+        self.proj_out = torch.nn.Conv2d(in_channels,
+                                        in_channels,
+                                        kernel_size=1,
+                                        stride=1,
+                                        padding=0)
+        self.attention_op: Optional[Any] = None
+
+    def forward(self, x):
+        h_ = x
+        h_ = self.norm(h_)
+        q = self.q(h_)
+        k = self.k(h_)
+        v = self.v(h_)
+
+        # compute attention
+        B, C, H, W = q.shape
+        q, k, v = map(lambda x: rearrange(x, 'b c h w -> b (h w) c'), (q, k, v))
+
+        q, k, v = map(
+            lambda t: t.unsqueeze(3)
+            .reshape(B, t.shape[1], 1, C)
+            .permute(0, 2, 1, 3)
+            .reshape(B * 1, t.shape[1], C)
+            .contiguous(),
+            (q, k, v),
+        )
+        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
+
+        out = (
+            out.unsqueeze(0)
+            .reshape(B, 1, out.shape[1], C)
+            .permute(0, 2, 1, 3)
+            .reshape(B, out.shape[1], C)
+        )
+        out = rearrange(out, 'b (h w) c -> b c h w', b=B, h=H, w=W, c=C)
+        out = self.proj_out(out)
+        return x+out
+
+
+class MemoryEfficientCrossAttentionWrapper(MemoryEfficientCrossAttention):
+    def forward(self, x, context=None, mask=None):
+        b, c, h, w = x.shape
+        x = rearrange(x, 'b c h w -> b (h w) c')
+        out = super().forward(x, context=context, mask=mask)
+        out = rearrange(out, 'b (h w) c -> b c h w', h=h, w=w, c=c)
+        return x + out
+
+
+def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
+    assert attn_type in ["vanilla", "vanilla-xformers", "memory-efficient-cross-attn", "linear", "none"], f'attn_type {attn_type} unknown'
+    if XFORMERS_IS_AVAILBLE and attn_type == "vanilla":
+        attn_type = "vanilla-xformers"
+    rank_zero_info(f"making attention of type '{attn_type}' with {in_channels} in_channels")
     if attn_type == "vanilla":
+        assert attn_kwargs is None
         return AttnBlock(in_channels)
+    elif attn_type == "vanilla-xformers":
+        rank_zero_info(f"building MemoryEfficientAttnBlock with {in_channels} in_channels...")
+        return MemoryEfficientAttnBlock(in_channels)
+    elif type == "memory-efficient-cross-attn":
+        attn_kwargs["query_dim"] = in_channels
+        return MemoryEfficientCrossAttentionWrapper(**attn_kwargs)
     elif attn_type == "none":
         return nn.Identity(in_channels)
     else:
-        return LinAttnBlock(in_channels)
+        raise NotImplementedError()
 
-class temb_module(nn.Module):
-    def __init__(self):
-        super().__init__()
-        pass
 
 class Model(nn.Module):
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
@@ -233,8 +318,7 @@ class Model(nn.Module):
         self.use_timestep = use_timestep
         if self.use_timestep:
             # timestep embedding
-            # self.temb = nn.Module()
-            self.temb = temb_module()
+            self.temb = nn.Module()
             self.temb.dense = nn.ModuleList([
                 torch.nn.Linear(self.ch,
                                 self.temb_ch),
@@ -265,8 +349,7 @@ class Model(nn.Module):
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type))
-            # down = nn.Module()
-            down = Down_module()
+            down = nn.Module()
             down.block = block
             down.attn = attn
             if i_level != self.num_resolutions-1:
@@ -275,8 +358,7 @@ class Model(nn.Module):
             self.down.append(down)
 
         # middle
-        # self.mid = nn.Module()
-        self.mid = Mid_module()
+        self.mid = nn.Module()
         self.mid.block_1 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
@@ -304,8 +386,7 @@ class Model(nn.Module):
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type))
-            # up = nn.Module()
-            up = Up_module()
+            up = nn.Module()
             up.block = block
             up.attn = attn
             if i_level != 0:
@@ -372,21 +453,6 @@ class Model(nn.Module):
     def get_last_layer(self):
         return self.conv_out.weight
 
-class Down_module(nn.Module):
-    def __init__(self):
-        super().__init__()
-        pass
-
-class Up_module(nn.Module):
-    def __init__(self):
-        super().__init__()
-        pass
-
-class Mid_module(nn.Module):
-    def __init__(self):
-        super().__init__()
-        pass
-
 
 class Encoder(nn.Module):
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
@@ -426,8 +492,7 @@ class Encoder(nn.Module):
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type))
-            # down = nn.Module()
-            down = Down_module()
+            down = nn.Module()
             down.block = block
             down.attn = attn
             if i_level != self.num_resolutions-1:
@@ -436,8 +501,7 @@ class Encoder(nn.Module):
             self.down.append(down)
 
         # middle
-        # self.mid = nn.Module()
-        self.mid = Mid_module()
+        self.mid = nn.Module()
         self.mid.block_1 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
@@ -505,7 +569,7 @@ class Decoder(nn.Module):
         block_in = ch*ch_mult[self.num_resolutions-1]
         curr_res = resolution // 2**(self.num_resolutions-1)
         self.z_shape = (1,z_channels,curr_res,curr_res)
-        print("Working with z of shape {} = {} dimensions.".format(
+        rank_zero_info("Working with z of shape {} = {} dimensions.".format(
             self.z_shape, np.prod(self.z_shape)))
 
         # z to block_in
@@ -516,8 +580,7 @@ class Decoder(nn.Module):
                                        padding=1)
 
         # middle
-        # self.mid = nn.Module()
-        self.mid = Mid_module()
+        self.mid = nn.Module()
         self.mid.block_1 = ResnetBlock(in_channels=block_in,
                                        out_channels=block_in,
                                        temb_channels=self.temb_ch,
@@ -542,8 +605,7 @@ class Decoder(nn.Module):
                 block_in = block_out
                 if curr_res in attn_resolutions:
                     attn.append(make_attn(block_in, attn_type=attn_type))
-            # up = nn.Module()
-            up = Up_module()
+            up = nn.Module()
             up.block = block
             up.attn = attn
             if i_level != 0:
@@ -758,7 +820,7 @@ class Upsampler(nn.Module):
         assert out_size >= in_size
         num_blocks = int(np.log2(out_size//in_size))+1
         factor_up = 1.+ (out_size % in_size)
-        print(f"Building {self.__class__.__name__} with in_size: {in_size} --> out_size {out_size} and factor {factor_up}")
+        rank_zero_info(f"Building {self.__class__.__name__} with in_size: {in_size} --> out_size {out_size} and factor {factor_up}")
         self.rescaler = LatentRescaler(factor=factor_up, in_channels=in_channels, mid_channels=2*in_channels,
                                        out_channels=in_channels)
         self.decoder = Decoder(out_ch=out_channels, resolution=out_size, z_channels=in_channels, num_res_blocks=2,
@@ -777,7 +839,7 @@ class Resize(nn.Module):
         self.with_conv = learned
         self.mode = mode
         if self.with_conv:
-            print(f"Note: {self.__class__.__name} uses learned downsampling and will ignore the fixed {mode} mode")
+            rank_zero_info(f"Note: {self.__class__.__name} uses learned downsampling and will ignore the fixed {mode} mode")
             raise NotImplementedError()
             assert in_channels is not None
             # no asymmetric padding in torch conv, must do it ourselves
@@ -793,70 +855,3 @@ class Resize(nn.Module):
         else:
             x = torch.nn.functional.interpolate(x, mode=self.mode, align_corners=False, scale_factor=scale_factor)
         return x
-
-class FirstStagePostProcessor(nn.Module):
-
-    def __init__(self, ch_mult:list, in_channels,
-                 pretrained_model:nn.Module=None,
-                 reshape=False,
-                 n_channels=None,
-                 dropout=0.,
-                 pretrained_config=None):
-        super().__init__()
-        if pretrained_config is None:
-            assert pretrained_model is not None, 'Either "pretrained_model" or "pretrained_config" must not be None'
-            self.pretrained_model = pretrained_model
-        else:
-            assert pretrained_config is not None, 'Either "pretrained_model" or "pretrained_config" must not be None'
-            self.instantiate_pretrained(pretrained_config)
-
-        self.do_reshape = reshape
-
-        if n_channels is None:
-            n_channels = self.pretrained_model.encoder.ch
-
-        self.proj_norm = Normalize(in_channels,num_groups=in_channels//2)
-        self.proj = nn.Conv2d(in_channels,n_channels,kernel_size=3,
-                            stride=1,padding=1)
-
-        blocks = []
-        downs = []
-        ch_in = n_channels
-        for m in ch_mult:
-            blocks.append(ResnetBlock(in_channels=ch_in,out_channels=m*n_channels,dropout=dropout))
-            ch_in = m * n_channels
-            downs.append(Downsample(ch_in, with_conv=False))
-
-        self.model = nn.ModuleList(blocks)
-        self.downsampler = nn.ModuleList(downs)
-
-
-    def instantiate_pretrained(self, config):
-        model = instantiate_from_config(config)
-        self.pretrained_model = model.eval()
-        # self.pretrained_model.train = False
-        for param in self.pretrained_model.parameters():
-            param.requires_grad = False
-
-
-    @torch.no_grad()
-    def encode_with_pretrained(self,x):
-        c = self.pretrained_model.encode(x)
-        if isinstance(c, DiagonalGaussianDistribution):
-            c = c.mode()
-        return  c
-
-    def forward(self,x):
-        z_fs = self.encode_with_pretrained(x)
-        z = self.proj_norm(z_fs)
-        z = self.proj(z)
-        z = nonlinearity(z)
-
-        for submodel, downmodel in zip(self.model,self.downsampler):
-            z = submodel(z,temb=None)
-            z = downmodel(z)
-
-        if self.do_reshape:
-            z = rearrange(z,'b c h w -> b (h w) c')
-        return z
-
