@@ -55,7 +55,7 @@ class GeminiManager:
 
         get the memory statistics during training.
         The stats could be collected by a runtime memory tracer, or collected by the GeminiManager.
-        Note, for the latter， you can not access the memstats before warmup iteration finishes.
+        Note, for the latter, you can not access the memstats before warmup iteration finishes.
         """
         if self._premade_memstats_:
             return self._memstats

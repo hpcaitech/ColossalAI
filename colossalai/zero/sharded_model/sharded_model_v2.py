@@ -255,8 +255,8 @@ class ShardedModelV2(nn.Module):
             # the way to calculate margin space is based on the assumption that
             # model data is fixed in cuda during training.
             # cuda margin space can be used to store OS.
-            self._cuda_margin_space = colo_device_memory_capacity(get_current_device()) - max(
-                self._memstats_collector._memstats.max_overall_cuda)
+            self._cuda_margin_space = colo_device_memory_capacity(
+                get_current_device()) - self._memstats_collector._memstats.max_overall_cuda
 
     @torch.no_grad()
     def _post_backward_operations(self) -> None:
