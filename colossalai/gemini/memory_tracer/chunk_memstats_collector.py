@@ -11,18 +11,25 @@ from .memstats_collector import MemStatsCollector
 class ChunkMemStatsCollector(MemStatsCollector):
 
     def __init__(self, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
+        """
+
+        Memory Statistic Collector for Chunks.
+
+        Args:
+            chunk_manager (ChunkManager): the chunk manager.
+            memstats (Optional[MemStats], optional): memory statistics collected by RMT. Defaults to None.
+        """
         super().__init__(memstats)
         self._chunk_manager = chunk_manager
 
     # override
     def record_model_data_volume(self) -> None:
-        """Sampling model data statistics.
+        """
+        record model data volumn on cuda and cpu.
         """
         if self._start_flag and not self.use_outside_memstats:
             cuda_mem = self._chunk_manager.total_mem['cuda']
-            cpu_mem = self._chunk_manager.total_mem['cpu']
-            self._memstats.append_model_data('cuda', cuda_mem)
-            self._memstats.append_model_data('cpu', cpu_mem)
+            self._memstats.record_max_cuda_model_data(cuda_mem)
 
     @property
     def cuda_margin_mem(self) -> float:
