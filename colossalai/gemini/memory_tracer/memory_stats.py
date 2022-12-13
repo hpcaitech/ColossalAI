@@ -182,3 +182,6 @@ class MemStats(object):
         self._param_step_dict.clear()
         self._step_nmd_dict.clear()
         self._preop_step = 0
+
+        self._prev_overall_cuda = -1
+        self._prev_md_cuda = -1
