@@ -55,6 +55,7 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
             if idx < 4:
                 assert len(step_list) == 4
 
+
     world_size = torch.distributed.get_world_size()
     config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
     config_dict[world_size]['chunk_size'] = 5000
