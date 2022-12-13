@@ -37,7 +37,7 @@ class MemStatsCollector:
             self._memstats = MemStats()
 
     def next_period_non_model_data_usage(self, device_type: str) -> int:
-        """Get max non model data memory usage of current sampling period
+        """Maximum non model data memory usage during the next Op run
 
         Args:
             device_type (str): device type, can be 'cpu' or 'cuda'.
@@ -47,6 +47,9 @@ class MemStatsCollector:
         """
         assert not self._start_flag, 'Cannot get mem stats info during collection phase.'
         assert self._step_total > 0, 'Cannot get mem stats info before collection phase.'
+        assert len(self._memstats.non_model_data_list(device_type)) > self._step_idx, \
+            f"{len(self._memstats.non_model_data_list(device_type))} should be > than step idx {self._step_idx}, "\
+                f"step total {self._step_total}"
         next_non_model_data = self._memstats.non_model_data_list(device_type)[self._step_idx]
         self._step_idx = (self._step_idx + 1) % self._step_total
         return next_non_model_data
@@ -61,7 +64,8 @@ class MemStatsCollector:
 
     def finish_collection(self):
         self.sample_overall_data()
-        self._step_total = len(self._sampling_time)
+        # self._step_total = len(self._sampling_time)
+        self._step_total = len(self._memstats.non_model_data_list('cuda'))
         self._start_flag = False
         self._mem_monitor.finish()
 

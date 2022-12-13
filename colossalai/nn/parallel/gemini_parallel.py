@@ -4,6 +4,7 @@ import torch
 
 from colossalai.gemini.chunk import init_chunk_manager
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.gemini.memory_tracer import MemStats
 
 from .data_parallel import ZeroDDP
 
@@ -18,7 +19,8 @@ class GeminiDDP(ZeroDDP):
                  force_outputs_fp32: bool = False,
                  search_range_mb: int = 32,
                  hidden_dim: Optional[int] = None,
-                 min_chunk_size_mb: Optional[float] = None) -> None:
+                 min_chunk_size_mb: Optional[float] = None,
+                 memstats: Optional[MemStats] = None) -> None:
         """
         A torch.Module warpper using ZeRO-DP and Genimi.
         ZeRO is for parallel. Gemini is for memory management.
@@ -44,11 +46,12 @@ class GeminiDDP(ZeroDDP):
             min_chunk_size_mb (float, optional): the minimum chunk size in MegaByte.
                 If the aggregate size of parameters is still samller than the minimum chunk size,
                 all parameters will be compacted into one small chunk.
+            memstats (MemStats, optional) the memory statistics collector by a runtime memory tracer.
         """
         chunk_manager = init_chunk_manager(model=module,
                                            init_device=device,
                                            hidden_dim=hidden_dim,
                                            search_range_mb=search_range_mb,
                                            min_chunk_size_mb=min_chunk_size_mb)
-        gemini_manager = GeminiManager(placement_policy, chunk_manager)
+        gemini_manager = GeminiManager(placement_policy, chunk_manager, memstats)
         super().__init__(module, gemini_manager, pin_memory, force_outputs_fp32)

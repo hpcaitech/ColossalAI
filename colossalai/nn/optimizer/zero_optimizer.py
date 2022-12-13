@@ -10,9 +10,11 @@ from torch.optim import Optimizer
 from colossalai.amp.naive_amp.grad_scaler import DynamicGradScaler
 from colossalai.gemini.chunk import Chunk, ChunkManager
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import ColossalaiOptimizer
+from colossalai.nn.optimizer import ColossalaiOptimizer, CPUAdam, FusedAdam, HybridAdam
 from colossalai.nn.parallel.data_parallel import ZeroDDP
 from colossalai.utils import disposable, get_current_device
+
+_AVAIL_OPTIM_LIST = {FusedAdam, CPUAdam, HybridAdam}
 
 
 class OptimState(Enum):
@@ -62,6 +64,7 @@ class ZeroOptimizer(ColossalaiOptimizer):
                  **defaults: Any):
         super().__init__(optim)
         assert isinstance(module, ZeroDDP)
+        assert type(optim) in _AVAIL_OPTIM_LIST, "you should use the optimizer in the available list"
         self.module = module
         self.gemini_manager = module.gemini_manager
         self.chunk_manager: ChunkManager = self.gemini_manager.chunk_manager
@@ -162,21 +165,24 @@ class ZeroOptimizer(ColossalaiOptimizer):
         global_norm = math.sqrt(norm_sqr)
         return global_norm
 
-    def _unscale_and_clip_grads(self):
-        assert self.optim_state == OptimState.SCALED
+    def _get_combined_scale(self):
+        loss_scale = 1
 
-        combined_scale = self.loss_scale
+        if self.optim_state == OptimState.SCALED:
+            loss_scale = self.loss_scale
+            self.optim_state = OptimState.UNSCALED
+
+        combined_scale = loss_scale
         if self.clipping_flag:
             total_norm = self._calc_global_norm()
-            clip = ((total_norm / self.loss_scale) + 1e-6) / self.max_norm
+            clip = ((total_norm / loss_scale) + 1e-6) / self.max_norm
             if clip > 1:
-                combined_scale = clip * self.loss_scale
+                combined_scale = clip * loss_scale
 
-        for group in self.optim.param_groups:
-            for p in group['params']:
-                if p.grad is not None:
-                    p.grad.data.div_(combined_scale)
-        self.optim_state = OptimState.UNSCALED
+        if combined_scale == 1:
+            return -1
+        else:
+            return combined_scale
 
     @property
     def loss_scale(self):
@@ -199,12 +205,12 @@ class ZeroOptimizer(ColossalaiOptimizer):
             self._update_fp16_params()
             return
 
-        # unscale grads if scaled
-        if self.optim_state == OptimState.SCALED:
-            self._unscale_and_clip_grads()
+        # get combined scale. combined scale = loss scale * clipping norm
+        # so that gradient = gradient / combined scale
+        combined_scale = self._get_combined_scale()
         self.grad_scaler.update(found_inf)
 
-        ret = self.optim.step(*args, **kwargs)
+        ret = self.optim.step(div_scale=combined_scale, *args, **kwargs)
         self._register_states()
         self.zero_grad()
         self._update_fp16_params()
