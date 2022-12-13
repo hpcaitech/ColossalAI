@@ -59,6 +59,7 @@ class MemStatsCollector:
         return [t - self._sampling_time[0] for t in self._sampling_time]
 
     def start_collection(self):
+        print('start collection')
         self._start_flag = True
         self._mem_monitor.start()
 
@@ -68,31 +69,24 @@ class MemStatsCollector:
         self._step_total = len(self._memstats.non_model_data_list('cuda'))
         self._start_flag = False
         self._mem_monitor.finish()
+        print(f'finish_collection {self._step_total}')
 
+    # deprecated
     def record_model_data_volume(self) -> None:
         """Sampling model data statistics.
         """
         if self._start_flag and not self.use_outside_memstats:
-            cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
-            cpu_mem = StatefulTensor.GST_MGR.total_mem['cpu']
-            self._memstats.append_model_data('cuda', cuda_mem)
-            self._memstats.append_model_data('cpu', cpu_mem)
+            raise NotImplementedError("MemStatsCollector has not implemented record_model_data_volume")
 
     def sample_overall_data(self) -> None:
-        """Sampling non model data statistics.
+        """
+        Sampling overall and non model data cuda memory statistics.
         """
         if self._start_flag and not self.use_outside_memstats:
-            # overall data recording is after model data recording
-            if len(self._memstats._model_data_cuda_list) == 0:
-                return
+            cuda_overall = self._mem_monitor.finish()
+            self._memstats.record_max_cuda_overall_data(cuda_overall)
+            self._memstats.calc_max_cuda_non_model_data()
 
-            self._memstats.append_overall_data('cuda', self._mem_monitor.finish())
-            self._memstats.append_overall_data('cpu', colo_device_memory_used(torch.device('cpu')))
-
-            assert len(self._memstats._model_data_cuda_list) == len(self._memstats._overall_cuda_list)
-
-            self._memstats.append_non_model_data('cuda')
-            self._memstats.append_non_model_data('cpu')
             self._mem_monitor.start()
 
         if self._start_flag:
