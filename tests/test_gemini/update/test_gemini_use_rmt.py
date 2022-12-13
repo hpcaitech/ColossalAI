@@ -23,7 +23,7 @@ from tests.test_tensor.common_utils import set_seed
 
 @parameterize('placement_policy', ['auto'])
 @parameterize('keep_gather', [False])
-@parameterize('model_name', ['bert', 'albert', 'gpt2'])
+@parameterize('model_name', ['repeated_computed_layers', 'bert', 'albert', 'gpt2'])
 @parameterize('use_grad_checkpoint', [False, True])
 def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_checkpoint: bool = False):
     set_seed(42)
@@ -48,6 +48,13 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     print('runtime tracer non model data points: ', len(runtime_tracer_non_model_data))
     print('runtime tracer: ', runtime_tracer_non_model_data)
     print([memstats.param_used_timestep(p) for p in model.parameters()])
+
+    if model_name == 'repeated_computed_layers':
+        for idx, p in enumerate(model.parameters()):
+            step_list = memstats.param_used_timestep(p)
+            if idx < 4:
+                assert len(step_list) == 4
+
 
     world_size = torch.distributed.get_world_size()
     config_dict, _ = search_chunk_configuration(model, search_range_mb=1, search_interval_byte=100)
