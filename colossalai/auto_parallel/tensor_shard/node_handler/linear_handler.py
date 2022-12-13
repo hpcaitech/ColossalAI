@@ -28,8 +28,9 @@ def _update_sharding_spec_for_transposed_weight_for_linear(strategy: ShardingStr
     # switch the dimensions of the transposed weight
     sharding_spec = strategy.get_sharding_spec_by_name(weight_name)
     op_data = strategy.get_op_data_by_name(weight_name)
-    assert op_data.logical_shape != op_data.data.shape, \
-        "Expected the logical and physical shape of the linear operator's weight to be different, but found them to be the same"
+    assert op_data.logical_shape[0] == op_data.data.shape[1] and \
+           op_data.logical_shape[1] == op_data.data.shape[0], \
+           "Expected the logical shape  of the linear operator's weight is equal to transposed physical shape"
     dim_size = len(op_data.logical_shape)
     transpose_partition_dim(sharding_spec, 0, dim_size - 1)
     return strategy
