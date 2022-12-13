@@ -47,7 +47,13 @@ def run_gemini_use_rmt(placement_policy, keep_gather, model_name: str, use_grad_
     runtime_tracer_non_model_data = runtime_mem_tracer._memstats._non_model_data_cuda_list
     print('runtime tracer non model data points: ', len(runtime_tracer_non_model_data))
     print('runtime tracer: ', runtime_tracer_non_model_data)
-    print([memstats.param_used_timestep(p) for p in model.parameters()])
+    print([memstats.param_used_step(p) for p in model.parameters()])
+
+    if model_name == 'repeated_computed_layers':
+        for idx, p in enumerate(model.parameters()):
+            step_list = memstats.param_used_step(p)
+            if idx < 4:
+                assert len(step_list) == 4
 
     if model_name == 'repeated_computed_layers':
         for idx, p in enumerate(model.parameters()):

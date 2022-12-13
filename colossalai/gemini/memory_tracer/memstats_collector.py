@@ -69,7 +69,7 @@ class MemStatsCollector:
         self._start_flag = False
         self._mem_monitor.finish()
 
-    def sample_model_data(self) -> None:
+    def record_model_data_volume(self) -> None:
         """Sampling model data statistics.
         """
         if self._start_flag and not self.use_outside_memstats:
