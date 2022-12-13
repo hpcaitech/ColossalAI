@@ -25,7 +25,6 @@ import ldm.modules.image_degradation.utils_image as util
 # --------------------------------------------
 """
 
-
 def modcrop_np(img, sf):
     '''
     Args:
@@ -254,7 +253,7 @@ def srmd_degradation(x, k, sf=3):
           year={2018}
         }
     '''
-    x = ndimage.filters.convolve(x, np.expand_dims(k, axis=2), mode='wrap')  # 'nearest' | 'mirror'
+    x = ndimage.convolve(x, np.expand_dims(k, axis=2), mode='wrap')  # 'nearest' | 'mirror'
     x = bicubic_degradation(x, sf=sf)
     return x
 
@@ -277,7 +276,7 @@ def dpsr_degradation(x, k, sf=3):
         }
     '''
     x = bicubic_degradation(x, sf=sf)
-    x = ndimage.filters.convolve(x, np.expand_dims(k, axis=2), mode='wrap')
+    x = ndimage.convolve(x, np.expand_dims(k, axis=2), mode='wrap')
     return x
 
 
@@ -290,7 +289,7 @@ def classical_degradation(x, k, sf=3):
     Return:
         downsampled LR image
     '''
-    x = ndimage.filters.convolve(x, np.expand_dims(k, axis=2), mode='wrap')
+    x = ndimage.convolve(x, np.expand_dims(k, axis=2), mode='wrap')
     # x = filters.correlate(x, np.expand_dims(np.flip(k), axis=2))
     st = 0
     return x[st::sf, st::sf, ...]
@@ -335,7 +334,7 @@ def add_blur(img, sf=4):
         k = anisotropic_Gaussian(ksize=random.randint(2, 11) + 3, theta=random.random() * np.pi, l1=l1, l2=l2)
     else:
         k = fspecial('gaussian', random.randint(2, 4) + 3, wd * random.random())
-    img = ndimage.filters.convolve(img, np.expand_dims(k, axis=2), mode='mirror')
+    img = ndimage.convolve(img, np.expand_dims(k, axis=2), mode='mirror')
 
     return img
 
@@ -497,7 +496,7 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
                 k = fspecial('gaussian', 25, random.uniform(0.1, 0.6 * sf))
                 k_shifted = shift_pixel(k, sf)
                 k_shifted = k_shifted / k_shifted.sum()  # blur with shifted kernel
-                img = ndimage.filters.convolve(img, np.expand_dims(k_shifted, axis=2), mode='mirror')
+                img = ndimage.convolve(img, np.expand_dims(k_shifted, axis=2), mode='mirror')
                 img = img[0::sf, 0::sf, ...]  # nearest downsampling
             img = np.clip(img, 0.0, 1.0)
 
@@ -531,7 +530,7 @@ def degradation_bsrgan(img, sf=4, lq_patchsize=72, isp_model=None):
 
 
 # todo no isp_model?
-def degradation_bsrgan_variant(image, sf=4, isp_model=None):
+def degradation_bsrgan_variant(image, sf=4, isp_model=None, up=False):
     """
     This is the degradation model of BSRGAN from the paper
     "Designing a Practical Degradation Model for Deep Blind Image Super-Resolution"
@@ -589,7 +588,7 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None):
                 k = fspecial('gaussian', 25, random.uniform(0.1, 0.6 * sf))
                 k_shifted = shift_pixel(k, sf)
                 k_shifted = k_shifted / k_shifted.sum()  # blur with shifted kernel
-                image = ndimage.filters.convolve(image, np.expand_dims(k_shifted, axis=2), mode='mirror')
+                image = ndimage.convolve(image, np.expand_dims(k_shifted, axis=2), mode='mirror')
                 image = image[0::sf, 0::sf, ...]  # nearest downsampling
 
             image = np.clip(image, 0.0, 1.0)
@@ -617,6 +616,8 @@ def degradation_bsrgan_variant(image, sf=4, isp_model=None):
     # add final JPEG compression noise
     image = add_JPEG_noise(image)
     image = util.single2uint(image)
+    if up:
+        image = cv2.resize(image, (w1, h1), interpolation=cv2.INTER_CUBIC)  # todo: random, as above? want to condition on it then
     example = {"image": image}
     return example
 

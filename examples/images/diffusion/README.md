@@ -1,4 +1,5 @@
-# Stable Diffusion with Colossal-AI
+# ColoDiffusion: Stable Diffusion with Colossal-AI
+
 *[Colosssal-AI](https://github.com/hpcaitech/ColossalAI) provides a faster and lower cost solution for pretraining and
 fine-tuning for AIGC (AI-Generated Content) applications such as the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/).*
 
@@ -6,6 +7,7 @@ We take advantage of [Colosssal-AI](https://github.com/hpcaitech/ColossalAI) to 
 , e.g. data parallelism, tensor parallelism, mixed precision & ZeRO, to scale the training to multiple GPUs.
 
 ## Stable Diffusion
+
 [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) is a latent text-to-image diffusion
 model.
 Thanks to a generous compute donation from [Stability AI](https://stability.ai/) and support from [LAION](https://laion.ai/), we were able to train a Latent Diffusion Model on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database.
@@ -23,6 +25,7 @@ this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on te
 </p>
 
 ## Requirements
+
 A suitable [conda](https://conda.io/) environment named `ldm` can be created
 and activated with:
 
@@ -34,14 +37,24 @@ conda activate ldm
 You can also update an existing [latent diffusion](https://github.com/CompVis/latent-diffusion) environment by running
 
 ```
-conda install pytorch torchvision -c pytorch
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
 pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
 ```
 
-### Install [Colossal-AI v0.1.10](https://colossalai.org/download/) From Our Official Website
+### install lightning
+
 ```
-pip install colossalai==0.1.10+torch1.11cu11.3 -f https://release.colossalai.org
+git clone https://github.com/1SAA/lightning.git
+git checkout strategy/colossalai
+export PACKAGE_NAME=pytorch
+pip install .
+```
+
+### Install [Colossal-AI v0.1.10](https://colossalai.org/download/) From Our Official Website
+
+```
+pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
 ```
 
 > The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
@@ -49,6 +62,7 @@ pip install colossalai==0.1.10+torch1.11cu11.3 -f https://release.colossalai.org
 ## Download the model checkpoint from pretrained
 
 ### stable-diffusion-v1-4
+
 Our default model config use the weight from [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4?text=A+mecha+robot+in+a+favela+in+expressionist+style)
 
 ```
@@ -57,6 +71,7 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
 ### stable-diffusion-v1-5 from runway
+
 If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) wiegh from runwayml
 
 ```
@@ -64,23 +79,24 @@ git lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
-
 ## Dataset
+
 The dataSet is from [LAION-5B](https://laion.ai/blog/laion-5b/), the subset of [LAION](https://laion.ai/),
 you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-We provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml`
+We provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml` and `train_ddp.yaml`
 
 For example, you can run the training from colossalai by
 ```
-python main.py --logdir /tmp -t --postfix test -b configs/train_colossalai.yaml
+python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
 ```
 
 - you can change the `--logdir` the save the log information and the last checkpoint
 
 ### Training config
+
 You can change the trainging config in the yaml file
 
 - accelerator: acceleratortype, default 'gpu'
@@ -88,26 +104,24 @@ You can change the trainging config in the yaml file
 - max_epochs: max training epochs
 - precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
 
-## Example
+## Finetone Example
+### Training on Teyvat Datasets
 
-### Training on cifar10
+We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is create by BLIP generated captions.
 
-We provide the finetuning example on CIFAR10 dataset
-
-You can run by config `train_colossalai_cifar10.yaml`
+You can run by config `configs/Teyvat/train_colossalai_teyvat.yaml`
 ```
-python main.py --logdir /tmp -t --postfix test -b configs/train_colossalai_cifar10.yaml 
+python main.py --logdir /tmp/ -t -b configs/Teyvat/train_colossalai_teyvat.yaml
 ```
 
 ## Inference
 you can get yout training last.ckpt and train config.yaml in your `--logdir`, and run by
 ```
-python scripts/txt2img.py --prompt "a photograph of an astronaut riding a horse" --plms 
+python scripts/txt2img.py --prompt "a photograph of an astronaut riding a horse" --plms
     --outdir ./output \
     --config path/to/logdir/checkpoints/last.ckpt \
     --ckpt /path/to/logdir/configs/project.yaml  \
 ```
-
 
 ```commandline
 usage: txt2img.py [-h] [--prompt [PROMPT]] [--outdir [OUTDIR]] [--skip_grid] [--skip_save] [--ddim_steps DDIM_STEPS] [--plms] [--laion400m] [--fixed_code] [--ddim_eta DDIM_ETA]
@@ -143,7 +157,6 @@ optional arguments:
   --precision {full,autocast}
                         evaluate at this precision
 ```
-
 
 ## Comments
 

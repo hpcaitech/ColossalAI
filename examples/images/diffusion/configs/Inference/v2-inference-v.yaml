@@ -8,8 +8,8 @@ model:
     num_timesteps_cond: 1
     log_every_t: 200
     timesteps: 1000
-    first_stage_key: image
-    cond_stage_key: txt
+    first_stage_key: "jpg"
+    cond_stage_key: "txt"
     image_size: 64
     channels: 4
     cond_stage_trainable: false
@@ -17,16 +17,6 @@ model:
     monitor: val/loss_simple_ema
     scale_factor: 0.18215
     use_ema: False # we set this to false because this is an inference only config
-
-    scheduler_config: # 10000 warmup steps
-      target: ldm.lr_scheduler.LambdaLinearScheduler
-      params:
-        warm_up_steps: [ 1 ] # NOTE for resuming. use 10000 if starting from scratch
-        cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
-        f_start: [ 1.e-6 ]
-        f_max: [ 1.e-4 ]
-        f_min: [ 1.e-10 ]
-
 
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.UNetModel
@@ -76,45 +66,3 @@ model:
       params:
         freeze: True
         layer: "penultimate"
-
-data:
-  target: main.DataModuleFromConfig
-  params:
-    batch_size: 64
-    wrap: False
-    train:
-      target: ldm.data.base.Txt2ImgIterableBaseDataset
-      params:
-        file_path: "/data/scratch/diffuser/laion_part0/"
-        world_size: 1
-        rank: 0
-
-lightning:
-  trainer:
-    accelerator: 'gpu'
-    devices: 1
-    log_gpu_memory: all
-    max_epochs: 2
-    precision: 16
-    auto_select_gpus: False
-    strategy:
-      target: strategies.ColossalAIStrategy
-      params:
-        use_chunk: True
-        enable_distributed_storage: True
-        placement_policy: auto
-        force_outputs_fp32: true
-
-    log_every_n_steps: 2
-    logger: True
-    default_root_dir: "/tmp/diff_log/"
-    # profiler: pytorch
-
-  logger_config:
-    wandb:
-      target: loggers.WandbLogger
-      params:
-          name: nowname
-          save_dir: "/tmp/diff_log/"
-          offline: opt.debug
-          id: nowname
