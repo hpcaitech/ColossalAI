@@ -1,11 +1,13 @@
 import time
-from typing import List
+from typing import List, Optional
 
 import torch
 
 from colossalai.gemini.memory_tracer import SyncCudaMemoryMonitor
 from colossalai.gemini.stateful_tensor import StatefulTensor
 from colossalai.utils.memory import colo_device_memory_used
+
+from .memory_stats import MemStats
 
 
 class MemStatsCollector:
@@ -20,48 +22,22 @@ class MemStatsCollector:
     It has a Sampling counter which is reset after DNN training iteration.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, memstats: Optional[MemStats] = None) -> None:
         self._mem_monitor = SyncCudaMemoryMonitor()
-        self._model_data_cuda_list = []
-        self._overall_cuda_list = []
-
-        self._model_data_cpu_list = []
-        self._overall_cpu_list = []
-
-        self._non_model_data_cuda_list = []
-        self._non_model_data_cpu_list = []
         self._sampling_time = []
 
         self._start_flag = False
         self._step_idx = 0
         self._step_total = 0
-
-    def overall_mem_stats(self, device_type: str) -> List[int]:
-        if device_type == 'cuda':
-            return self._overall_cuda_list
-        elif device_type == 'cpu':
-            return self._overall_cpu_list
+        if memstats is not None:
+            self.use_outside_memstats = True
+            self._memstats = memstats
         else:
-            raise TypeError
-
-    def model_data_list(self, device_type: str) -> List[int]:
-        if device_type == 'cuda':
-            return self._model_data_cuda_list
-        elif device_type == 'cpu':
-            return self._model_data_cpu_list
-        else:
-            raise TypeError
-
-    def non_model_data_list(self, device_type: str) -> List[int]:
-        if device_type == 'cuda':
-            return self._non_model_data_cuda_list
-        elif device_type == 'cpu':
-            return self._non_model_data_cpu_list
-        else:
-            raise TypeError
+            self.use_outside_memstats = False
+            self._memstats = MemStats()
 
     def next_period_non_model_data_usage(self, device_type: str) -> int:
-        """Get max non model data memory usage of current sampling period
+        """Maximum non model data memory usage during the next Op run
 
         Args:
             device_type (str): device type, can be 'cpu' or 'cuda'.
@@ -71,7 +47,10 @@ class MemStatsCollector:
         """
         assert not self._start_flag, 'Cannot get mem stats info during collection phase.'
         assert self._step_total > 0, 'Cannot get mem stats info before collection phase.'
-        next_non_model_data = self.non_model_data_list(device_type)[self._step_idx]
+        assert len(self._memstats.non_model_data_list(device_type)) > self._step_idx, \
+            f"{len(self._memstats.non_model_data_list(device_type))} should be > than step idx {self._step_idx}, "\
+                f"step total {self._step_total}"
+        next_non_model_data = self._memstats.non_model_data_list(device_type)[self._step_idx]
         self._step_idx = (self._step_idx + 1) % self._step_total
         return next_non_model_data
 
@@ -85,47 +64,42 @@ class MemStatsCollector:
 
     def finish_collection(self):
         self.sample_overall_data()
-        self._step_total = len(self._sampling_time)
+        # self._step_total = len(self._sampling_time)
+        self._step_total = len(self._memstats.non_model_data_list('cuda'))
         self._start_flag = False
         self._mem_monitor.finish()
 
     def sample_model_data(self) -> None:
         """Sampling model data statistics.
         """
-        if self._start_flag:
+        if self._start_flag and not self.use_outside_memstats:
             cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
             cpu_mem = StatefulTensor.GST_MGR.total_mem['cpu']
-            self._model_data_cuda_list.append(cuda_mem)
-            self._model_data_cpu_list.append(cpu_mem)
+            self._memstats.append_model_data('cuda', cuda_mem)
+            self._memstats.append_model_data('cpu', cpu_mem)
 
     def sample_overall_data(self) -> None:
         """Sampling non model data statistics.
         """
-        if self._start_flag:
+        if self._start_flag and not self.use_outside_memstats:
             # overall data recording is after model data recording
-            if len(self._model_data_cuda_list) == 0:
+            if len(self._memstats._model_data_cuda_list) == 0:
                 return
 
-            self._overall_cuda_list.append(self._mem_monitor.finish())
-            self._overall_cpu_list.append(colo_device_memory_used(torch.device('cpu')))
+            self._memstats.append_overall_data('cuda', self._mem_monitor.finish())
+            self._memstats.append_overall_data('cpu', colo_device_memory_used(torch.device('cpu')))
 
-            assert len(self._model_data_cuda_list) == len(self._overall_cuda_list)
+            assert len(self._memstats._model_data_cuda_list) == len(self._memstats._overall_cuda_list)
 
-            self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
-            self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
-            self._sampling_time.append(time.time())
+            self._memstats.append_non_model_data('cuda')
+            self._memstats.append_non_model_data('cpu')
             self._mem_monitor.start()
 
+        if self._start_flag:
+            self._sampling_time.append(time.time())
+
     def clear(self) -> None:
-        self._model_data_cuda_list = []
-        self._overall_cuda_list = []
-
-        self._model_data_cpu_list = []
-        self._overall_cpu_list = []
-
-        self._non_model_data_cpu_list = []
-        self._non_model_data_cuda_list = []
-
+        self._memstats.clear()
         self._start_flag = False
         self._step_idx = 0
         self._step_total = 0

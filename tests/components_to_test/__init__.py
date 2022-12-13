@@ -9,3 +9,5 @@ from . import (
     simple_net,
 )
 from .utils import run_fwd_bwd
+
+from . import albert    # isort:skip

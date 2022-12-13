@@ -1,12 +1,13 @@
 import torch
 import torch.distributed as dist
+
 from colossalai.gemini.chunk import Chunk
 from colossalai.utils import get_current_device
 
 
 def get_temp_total_chunk_on_cuda(chunk: Chunk):
     if chunk.is_gathered:
-        return chunk.chunk_total
+        return chunk.cuda_global_chunk
 
     if chunk.cuda_shard is not None:
         shard_temp = chunk.cuda_shard

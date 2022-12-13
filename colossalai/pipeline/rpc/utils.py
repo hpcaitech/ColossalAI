@@ -57,7 +57,6 @@ def split_batch(batch: Any, start, stop, device: str):
 def type_detail(obj):
     return pytree_map(obj, lambda x: type(x), map_all=True)
 
-
 def pytree_filter(fn, obj, process_types):
     if obj is None:
         return None

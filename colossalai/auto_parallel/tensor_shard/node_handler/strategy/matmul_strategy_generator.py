@@ -263,6 +263,9 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
         # RS01 = RR x RS01
         strategies.append(self.split_rhs_2nd_dim_1d(0, 1))
 
+        # RR = RR x RR
+        strategies.append(self.non_split())
+
         return strategies
 
     @ignore_sharding_exception
@@ -660,6 +663,29 @@ class LinearProjectionStrategyGenerator(MatMulStrategyGenerator):
             comm_type=CommType.BEFORE,
             arg_index=0)
         communication_action_mapping['input'] = input_comm_action
+
+        return self.get_sharding_strategy(name=name,
+                                          sharding_spec_mapping=sharding_spec_mapping,
+                                          communication_action_mapping=communication_action_mapping)
+
+    @ignore_sharding_exception
+    def non_split(self):
+        name = f'RR = RR x RR'
+
+        # get sharding spec
+        dim_partition_dict_mapping = {
+            "input": {},
+            "other": {},
+            "bias": {},
+            "output": {},
+        }
+
+        # We don't have to do anything special for bias here, because
+        # the bias is already the same sharding spec as the output.
+        sharding_spec_mapping = self.to_sharding_spec_mapping(dim_partition_dict_mapping)
+
+        # get communication action
+        communication_action_mapping = {}
 
         return self.get_sharding_strategy(name=name,
                                           sharding_spec_mapping=sharding_spec_mapping,

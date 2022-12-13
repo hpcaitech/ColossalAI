@@ -13,7 +13,7 @@ from colossalai.auto_parallel.tensor_shard.solver.solver import Solver
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx.tracer.tracer import ColoTracer
 from colossalai.tensor.shape_consistency import to_global
-from colossalai.testing.comparison import assert_close, assert_close_loose
+from colossalai.testing.comparison import assert_close
 
 
 def _build_model_to_compare(model: torch.nn.Module, input_args: List[torch.Tensor],
@@ -32,8 +32,12 @@ def _build_model_to_compare(model: torch.nn.Module, input_args: List[torch.Tenso
             param.register_hook(hook_fn)
 
         arg_to_compare = copy.deepcopy(input_tensor)
-        arg_to_compare.requires_grad = True
-        wrapper(arg_to_compare, arg_index)
+
+        # only Tensors of floating point and complex dtype can require gradients
+        if arg_to_compare.dtype != torch.int64:
+            arg_to_compare.requires_grad = True
+            wrapper(arg_to_compare, arg_index)
+
         args_to_compare.append(arg_to_compare)
 
     for name, input_kwarg in input_kwargs.items():
@@ -46,8 +50,12 @@ def _build_model_to_compare(model: torch.nn.Module, input_args: List[torch.Tenso
             param.register_hook(hook_fn)
 
         kwarg_to_compare = copy.deepcopy(input_kwarg)
-        kwarg_to_compare.requires_grad = True
-        wrapper(kwarg_to_compare, name)
+
+        # only Tensors of floating point and complex dtype can require gradients
+        if kwarg_to_compare.dtype != torch.int64:
+            kwarg_to_compare.requires_grad = True
+            wrapper(kwarg_to_compare, name)
+
         kwargs_to_compare[name] = kwarg_to_compare
 
     return model_to_compare, args_to_compare, kwargs_to_compare
@@ -160,7 +168,6 @@ def assert_close_helper(first: torch.Tensor,
     """
     This method is used to check whether the average difference between two tensors is as close as expected.
     """
-    # average_diff_tensor = ((first - second)/(second+0.1)).sum()/second.numel()
     try:
         if isinstance(first, (tuple, list)):
             for first_element, second_element in zip(first, second):

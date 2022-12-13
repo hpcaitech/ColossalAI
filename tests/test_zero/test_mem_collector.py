@@ -1,17 +1,19 @@
-import torch
-import colossalai
+from functools import partial
+
 import pytest
+import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
+
+import colossalai
+from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.memory import colo_device_memory_capacity, colo_set_process_memory_fraction
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.sharded_model import ShardedModelV2
 from colossalai.zero.shard_utils import BucketTensorShardStrategy
-from colossalai.utils import free_port
-from colossalai.testing import rerun_if_address_is_in_use
-from functools import partial
+from colossalai.zero.sharded_model import ShardedModelV2
 
 
 class MyTestModel(torch.nn.Module):
@@ -50,10 +52,11 @@ def run_mem_collector_testing():
     loss = torch.mean(output)
     model.backward(loss)
 
-    cuda_model_data_list = model._memstats_collector.model_data_list('cuda')
+    cuda_model_data_list = model._memstats_collector._memstats.model_data_list('cuda')
     assert cuda_model_data_list == [1311744, 1836032, 1836032, 1311744, 1836032, 1836032]
 
-    cuda_non_model_data_list = model._memstats_collector.non_model_data_list('cuda')
+    cuda_non_model_data_list = model._memstats_collector._memstats.non_model_data_list('cuda')
+    print('cuda_non_model_data_list ', cuda_non_model_data_list)
     assert cuda_non_model_data_list[0] > cuda_non_model_data_list[1]
     assert cuda_non_model_data_list[-2] > cuda_non_model_data_list[-1]
 
