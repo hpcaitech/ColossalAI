@@ -64,15 +64,15 @@ class ParamMemTracerHook(ColoParamOpHook):
                 raise NotImplementedError("Only free cuda memory")
             free_storage(p.data)
 
-    def _allocate_params_on_cuda(self, params):
+    def _allocate_params_on_cuda(self, params: List[torch.nn.Parameter]):
         """
         move params to cuda
 
         Args:
-            params (): target params
+            params (List[torch.nn.Parameter]): target params
 
         Raises:
-            NotImplementedError: _description_
+            NotImplementedError: raise error when param has cpu grad
         """
         for p in params:
             cur_dev = p.data.device.type
