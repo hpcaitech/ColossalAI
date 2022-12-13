@@ -104,14 +104,14 @@ class ParamMemTracerHook(ColoParamOpHook):
         self._memstats.record_max_cuda_model_data(data_volume)
 
     def pre_op(self, params):
-        # get overall cuda data.
-        max_cuda_vol_of_period = self.mem_monitor.finish()
+        max_cuda_used_pre_op = self.mem_monitor.finish()
         # record max cuda overall data for prev OP.
-        self._memstats.record_max_cuda_overall_data(max_cuda_vol_of_period)
-        self._memstats.record_max_cuda_non_model_data()
+        self._memstats.record_max_cuda_overall_data(max_cuda_used_pre_op)
+        # record max cuda non model data for prev OP.
+        self._memstats.calc_max_cuda_non_model_data()
 
         self._allocate_params_on_cuda(params)
-        # max model data usage of OP(params)
+        # record max cuda  model data for current OP
         self.record_model_data_volume(params)
 
         self.mem_monitor.start()

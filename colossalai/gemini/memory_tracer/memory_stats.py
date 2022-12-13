@@ -15,7 +15,7 @@ class MemStats(object):
         self._step_param_dict = dict()
         # (param, List[preop_step])
         self._param_step_dict = dict()
-        # (preop_step, non_model_data)
+        # (preop_step, non_model_data) non model data used during preop_step ~ (preop_step+1)
         self._step_nmd_dict = dict()
         self._param_runtime_order = OrderedParamGenerator()
 
@@ -34,12 +34,12 @@ class MemStats(object):
         self._non_model_data_cuda_list = []
         self._non_model_data_cpu_list = []
 
-    def record_max_cuda_non_model_data(self):
+    def calc_max_cuda_non_model_data(self):
         if self._prev_overall_cuda != -1 and self._prev_md_cuda != -1:
-            self._step_nmd_dict[self._preop_step] = self._prev_overall_cuda - self._prev_md_cuda
-
+            max_cuda_non_model_data = self._prev_overall_cuda - self._prev_md_cuda
+            self._step_nmd_dict[self._preop_step - 1] = max_cuda_non_model_data
             # compatibility of the old version.
-            self._non_model_data_cuda_list.append(self._step_nmd_dict[self._preop_step])
+            self._non_model_data_cuda_list.append(max_cuda_non_model_data)
 
     def record_max_cuda_model_data(self, val):
         self._prev_md_cuda = val
