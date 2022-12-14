@@ -10,6 +10,7 @@ from torch.utils._pytree import tree_map
 
 from colossalai.fx import ColoGraphModule, compatibility, is_compatible_with_meta
 from colossalai.fx.tracer._tracer_utils import extract_meta, is_element_in_list
+from colossalai.fx.tracer.bias_addition_patch import func_to_func_dict, method_to_func_dict, module_to_func_dict
 from colossalai.fx.tracer.registry import (
     bias_addition_function,
     bias_addition_method,
@@ -49,24 +50,24 @@ class ColoProxy(Proxy):
 
     def __init__(self, *args, data=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self._data = data
+        self._meta_data = data
 
     @property
-    def data(self):
-        return self._data
+    def meta_data(self):
+        return self._meta_data
 
-    @data.setter
-    def data(self, args):
+    @meta_data.setter
+    def meta_data(self, args):
         wrap_fn = lambda x: MetaTensor(x) if isinstance(x, torch.Tensor) else x
-        self._data = tree_map(wrap_fn, args)
+        self._meta_data = tree_map(wrap_fn, args)
 
     @classmethod
     def __torch_function__(cls, orig_method, types, args=(), kwargs=None):
         proxy = cls.from_torch_proxy(super().__torch_function__(orig_method, types, args, kwargs))
-        unwrap_fn = lambda p: p.data if isinstance(p, ColoProxy) else p
+        unwrap_fn = lambda p: p.meta_data if isinstance(p, ColoProxy) else p
         kwargs = {} if kwargs is None else kwargs
-        if proxy.data is None:
-            proxy.data = orig_method(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+        if proxy.meta_data is None:
+            proxy.meta_data = orig_method(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
         return proxy
 
     @classmethod
@@ -74,28 +75,28 @@ class ColoProxy(Proxy):
         return cls(proxy.node, proxy.tracer)
 
     def __repr__(self):
-        return f"ColoProxy({self.node.name}, data={self.data})"
+        return f"ColoProxy({self.node.name}, meta_data={self.meta_data})"
 
     def __len__(self):
-        return len(self.data)
+        return len(self.meta_data)
 
     def __int__(self):
-        return int(self.data)
+        return int(self.meta_data)
 
     def __index__(self):
         try:
-            return int(self.data)
+            return int(self.meta_data)
         except:
-            return torch.zeros(self.data.shape, dtype=torch.bool).numpy().__index__()
+            return torch.zeros(self.meta_data.shape, dtype=torch.bool).numpy().__index__()
 
     def __float__(self):
-        return float(self.data)
+        return float(self.meta_data)
 
     def __bool__(self):
-        return self.data
+        return self.meta_data
 
     def __getattr__(self, k):
-        return ColoAttribute(self, k, getattr(self._data, k, None))
+        return ColoAttribute(self, k, getattr(self._meta_data, k, None))
 
     def __contains__(self, key):
         if self.node.op == "placeholder":
@@ -106,26 +107,26 @@ class ColoProxy(Proxy):
         return super().__contains__(key)
 
     def __isinstancecheck__(self, type):
-        return isinstance(self.data, type)
+        return isinstance(self.meta_data, type)
 
     @property
     def shape(self):
-        return self.data.shape
+        return self.meta_data.shape
 
     @property
     def ndim(self):
-        return self.data.ndim
+        return self.meta_data.ndim
 
     @property
     def device(self):
         proxy = self.tracer.create_proxy('call_function', getattr, (self, 'device'), {})
-        proxy.data = self.data.device
+        proxy.meta_data = self.meta_data.device
         return proxy
 
     @property
     def dtype(self):
         proxy = self.tracer.create_proxy('call_function', getattr, (self, 'dtype'), {})
-        proxy.data = self.data.dtype
+        proxy.meta_data = self.meta_data.dtype
         return proxy
 
     def to(self, *args, **kwargs):
@@ -145,7 +146,7 @@ class ColoAttribute(ColoProxy):
         self.root = root
         self.attr = attr
         self.tracer = root.tracer
-        self._data = data
+        self._meta_data = data
         self._node: Optional[Node] = None
 
     @property
@@ -189,41 +190,41 @@ class ColoTracer(Tracer):
                      type_expr: Optional[Any] = None,
                      proxy_factory_fn: Callable[[Node], 'Proxy'] = None):
         proxy: ColoProxy = super().create_proxy(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
-        # unwrap_fn = lambda p: p.data if isinstance(p, ColoProxy) else p
-        # if kind == 'placeholder':
-        #     proxy.data = self.meta_args[target] if target in self.meta_args else self.concrete_args.get(
-        #         _truncate_suffix(target), None)
-        # elif kind == 'get_attr':
-        #     self._disable_module_getattr = True
-        #     try:
-        #         attr_itr = self.root
-        #         atoms = target.split(".")
-        #         for atom in atoms:
-        #             attr_itr = getattr(attr_itr, atom)
-        #         proxy.data = attr_itr
-        #     finally:
-        #         self._disable_module_getattr = False
-        # elif kind == 'call_function':
-        #     proxy.data = target(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
-        # elif kind == 'call_method':
-        #     self._disable_module_getattr = True
-        #     try:
-        #         if target == '__call__':
-        #             proxy.data = unwrap_fn(args[0])(*tree_map(unwrap_fn, args[1:]), **tree_map(unwrap_fn, kwargs))
-        #         else:
-        #             if target not in _TensorPropertyMethod:
-        #                 proxy._data = getattr(unwrap_fn(args[0]), target)(*tree_map(unwrap_fn, args[1:]),
-        #                                                                   **tree_map(unwrap_fn, kwargs))
-        #     finally:
-        #         self._disable_module_getattr = False
-        # elif kind == 'call_module':
-        #     mod = self.root.get_submodule(target)
-        #     unwrap_fn = lambda p: p.data if isinstance(p, ColoProxy) else p
-        #     self._disable_module_getattr = True
-        #     try:
-        #         proxy.data = mod.forward(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
-        #     finally:
-        #         self._disable_module_getattr = True
+        unwrap_fn = lambda p: p.meta_data if isinstance(p, ColoProxy) else p
+        if kind == 'placeholder':
+            proxy.meta_data = self.meta_args[target] if target in self.meta_args else self.concrete_args.get(
+                _truncate_suffix(target), None)
+        elif kind == 'get_attr':
+            self._disable_module_getattr = True
+            try:
+                attr_itr = self.root
+                atoms = target.split(".")
+                for atom in atoms:
+                    attr_itr = getattr(attr_itr, atom)
+                proxy.meta_data = attr_itr
+            finally:
+                self._disable_module_getattr = False
+        elif kind == 'call_function':
+            proxy.meta_data = target(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+        elif kind == 'call_method':
+            self._disable_module_getattr = True
+            try:
+                if target == '__call__':
+                    proxy.meta_data = unwrap_fn(args[0])(*tree_map(unwrap_fn, args[1:]), **tree_map(unwrap_fn, kwargs))
+                else:
+                    if target not in _TensorPropertyMethod:
+                        proxy._meta_data = getattr(unwrap_fn(args[0]), target)(*tree_map(unwrap_fn, args[1:]),
+                                                                               **tree_map(unwrap_fn, kwargs))
+            finally:
+                self._disable_module_getattr = False
+        elif kind == 'call_module':
+            mod = self.root.get_submodule(target)
+            unwrap_fn = lambda p: p.meta_data if isinstance(p, ColoProxy) else p
+            self._disable_module_getattr = True
+            try:
+                proxy.meta_data = mod.forward(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+            finally:
+                self._disable_module_getattr = True
         return proxy
 
     def create_node(self, *args, **kwargs) -> Node:
@@ -436,7 +437,7 @@ class _TorchTensorOverride(object):
             setattr(torch, name, orig)
 
 
-def set_meta_data_for_node(gm: ColoGraphModule, root: torch.nn.Module, meta_args: Optional[Dict[str, Any]]=None):
+def meta_prop_pass(gm: ColoGraphModule, root: torch.nn.Module, meta_args: Optional[Dict[str, Any]]=None):
     for node in gm.graph.nodes:
         node._meta_data = _meta_data_computing(meta_args, root, node.op, node.target, node.args, node.kwargs)
 
@@ -445,7 +446,7 @@ def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
         meta_out = meta_args[target]
         return meta_out
 
-    if callable(getattr(torch, target)) and target.__name__ in _TorchNewMethod:
+    if target in [getattr(torch, torch_func) for torch_func in _TorchNewMethod]:
         # NOTE: tensor constructors in PyTorch define the `device` argument as
         # *kwargs-only*. That is why this works. If you add methods to
         # _TORCH_METHODS_TO_PATCH that do not define `device` as kwarg-only,
@@ -455,8 +456,9 @@ def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
             kwargs["device"] = "meta"
 
     try:
-        args_metas, kwargs_metas = extract_meta(*args, **kwargs)
-        unwrap_fn = lambda p: p._meta_data if isinstance(p, Node) else p
+        unwrap_fn = lambda n: n._meta_data if isinstance(n, Node) else n
+        args_metas = tree_map(unwrap_fn, args)
+        kwargs_metas = tree_map(unwrap_fn, kwargs)
 
         if kind == "call_function":
             # fetch patched function
@@ -468,7 +470,7 @@ def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
             else:
                 meta_target = target
 
-            meta_out = meta_target(*tree_map(unwrap_fn, args_metas), **tree_map(unwrap_fn, kwargs_metas))
+            meta_out = meta_target(*args_metas, **kwargs_metas)
 
             if isinstance(meta_out, torch.Tensor):
                 meta_out = meta_out.to(device="meta")
@@ -481,15 +483,14 @@ def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
             else:
                 meta_target = method
 
-            meta_out = meta_target(*tree_map(unwrap_fn, args_metas), **tree_map(unwrap_fn, kwargs_metas))
+            meta_out = meta_target(*args_metas, **kwargs_metas)
         elif kind == "call_module":
             mod = root.get_submodule(target)
             mod_type = type(mod)
             if meta_patched_module.has(mod_type):
-                meta_out = meta_patched_module.get(mod_type)(mod, *tree_map(unwrap_fn, args_metas),
-                                                             **tree_map(unwrap_fn, kwargs_metas))
+                meta_out = meta_patched_module.get(mod_type)(mod, *args_metas, **kwargs_metas)
             else:
-                meta_out = mod(*tree_map(unwrap_fn, args_metas), **tree_map(unwrap_fn, kwargs_metas))
+                meta_out = mod(*args_metas, **kwargs_metas)
         elif kind == "get_attr":
             attr_itr = root
             atoms = target.split(".")
@@ -508,3 +509,77 @@ def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
         raise RuntimeError(f"Could not compute metadata for {kind} target {target}: {e}")
 
     return meta_out
+
+
+def bias_addition_pass(gm: ColoGraphModule, root_model: torch.nn.Module, meta_args: Optional[Dict[str, Any]]=None):
+    meta_prop_pass(gm, root_model, meta_args)
+    result_graph = Graph()
+    value_remap = {}
+    unwrap_fn = lambda n: n._meta_data if isinstance(n, Node) else n
+
+    for ori_node in gm.graph.nodes:
+        kind = ori_node.op
+        target = ori_node.target
+        args = ori_node.args
+        kwargs = ori_node.kwargs
+
+        args_metas = tree_map(unwrap_fn, args)
+        tracer = ColoTracer()
+        tracer.graph = Graph(tracer_cls=ColoTracer)
+        tracer.root = root_model
+
+        def wrap_fn(n):
+            if isinstance(n, Node):
+                proxy = ColoProxy(n, tracer)
+                proxy.meta_data = n._meta_data
+                return proxy
+            return n
+
+        args_proxy = tree_map(wrap_fn, args)
+        kwargs_proxy = tree_map(wrap_fn, kwargs)
+
+        handle = None
+        if kind == "call_function":
+            if bias_addition_function.has(target):
+                if target == torch.nn.functional.linear:
+                    if 'bias' in kwargs and kwargs['bias'] is not None:
+                        function_to_substitute = func_to_func_dict[target]
+                        handle = bias_addition_function.get(target)(tracer, target, args_proxy, kwargs_proxy, function_to_substitute)
+                else:
+                    function_to_substitute = func_to_func_dict[target]
+                    handle = bias_addition_function.get(target)(tracer, target, args_proxy, kwargs_proxy, function_to_substitute)
+            elif bias_addition_function.has(target.__name__):
+                # use name for some builtin op like @ (matmul)
+                function_to_substitute = func_to_func_dict[target]
+                handle = bias_addition_function.get(target.__name__)(tracer, target, args_proxy, kwargs_proxy, function_to_substitute)
+
+        elif kind == "call_method":
+            method = getattr(args_metas[0].__class__, target)
+            if bias_addition_method.has(method):
+                function_to_substitute = method_to_func_dict[method]
+                handle = bias_addition_method.get(method)(tracer, target, args_proxy, kwargs_proxy, function_to_substitute)
+
+        elif kind == "call_module":
+            # if not hasattr(self, "orig_forward"):
+            #     raise AttributeError(f"{self} does not have an attribute called orig_forward")
+            mod = gm.get_submodule(target)
+            mod_type = type(mod)
+            if bias_addition_module.has(mod_type) and mod.bias is not None:
+                function_to_substitute = module_to_func_dict[mod_type]
+                handle = bias_addition_module.get(mod_type)(tracer, target, args_proxy, kwargs_proxy, function_to_substitute)
+
+        if handle is not None:
+            handle.generate()
+            for node_inserted in tracer.graph.nodes:
+                value_remap[node_inserted] = result_graph.node_copy(node_inserted, lambda n : value_remap[n])
+                last_node = value_remap[node_inserted]
+            value_remap[ori_node] = last_node
+        else:
+            value_remap[ori_node] = result_graph.node_copy(ori_node, lambda n : value_remap[n])
+
+        del tracer
+
+    gm.graph = result_graph
+    gm.recompile()
+    meta_prop_pass(gm, root_model, meta_args)
+
