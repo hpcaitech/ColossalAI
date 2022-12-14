@@ -511,16 +511,16 @@ def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
 
 
 def bias_addition_pass(gm: ColoGraphModule, root_model: torch.nn.Module, meta_args: Optional[Dict[str, Any]]=None):
-    meta_prop_pass(gm, root_model, meta_args)
     result_graph = Graph()
     value_remap = {}
     unwrap_fn = lambda n: n._meta_data if isinstance(n, Node) else n
 
-    for ori_node in gm.graph.nodes:
-        kind = ori_node.op
-        target = ori_node.target
-        args = ori_node.args
-        kwargs = ori_node.kwargs
+    for orig_node in gm.graph.nodes:
+        assert hasattr(orig_node, "_meta_data")
+        kind = orig_node.op
+        target = orig_node.target
+        args = orig_node.args
+        kwargs = orig_node.kwargs
 
         args_metas = tree_map(unwrap_fn, args)
         tracer = ColoTracer()
@@ -572,9 +572,9 @@ def bias_addition_pass(gm: ColoGraphModule, root_model: torch.nn.Module, meta_ar
             for node_inserted in tracer.graph.nodes:
                 value_remap[node_inserted] = result_graph.node_copy(node_inserted, lambda n : value_remap[n])
                 last_node = value_remap[node_inserted]
-            value_remap[ori_node] = last_node
+            value_remap[orig_node] = last_node
         else:
-            value_remap[ori_node] = result_graph.node_copy(ori_node, lambda n : value_remap[n])
+            value_remap[orig_node] = result_graph.node_copy(orig_node, lambda n : value_remap[n])
 
         del tracer
 
