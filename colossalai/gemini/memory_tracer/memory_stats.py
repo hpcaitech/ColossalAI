@@ -22,6 +22,7 @@ class MemStats(object):
         self._preop_step = 0
 
         self._prev_overall_cuda = -1
+        self._max_overall_cuda = 0
         self._prev_md_cuda = -1
 
         # old version
@@ -46,6 +47,11 @@ class MemStats(object):
 
     def record_max_cuda_overall_data(self, val):
         self._prev_overall_cuda = val
+        self._max_overall_cuda = max(self._max_overall_cuda, val)
+
+    @property
+    def max_overall_cuda(self):
+        return self._max_overall_cuda
 
     def increase_preop_step(self, param_list: List[torch.nn.Parameter]):
         """
@@ -84,67 +90,6 @@ class MemStats(object):
             raise RuntimeError
         else:
             return self._param_runtime_order
-
-    ## APIs to be depracated
-    def append_overall_data(self, device_type: str, val: float):
-        if device_type == 'cuda':
-            self._overall_cuda_list.append(val)
-        elif device_type == 'cpu':
-            self._overall_cpu_list.append(val)
-        else:
-            raise TypeError
-
-    def append_model_data(self, device_type: str, val: float):
-        if device_type == 'cuda':
-            self._model_data_cuda_list.append(val)
-        elif device_type == 'cpu':
-            self._model_data_cpu_list.append(val)
-        else:
-            raise TypeError
-
-    def last_model_data(self, device_type: str):
-        if len(self._model_data_cuda_list) == 0:
-            return None
-        if device_type == 'cuda':
-            return self._model_data_cuda_list[-1]
-        elif device_type == 'cpu':
-            return self._model_data_cpu_list[-1]
-        else:
-            raise TypeError
-
-    def append_non_model_data(self, device_type: str, val=None):
-        if device_type == 'cuda':
-            if val is None:
-                if len(self._overall_cuda_list) == 0 or len(self._model_data_cuda_list) == 0:
-                    return
-                self._non_model_data_cuda_list.append(self._overall_cuda_list[-1] - self._model_data_cuda_list[-1])
-            else:
-                self._non_model_data_cuda_list.append(val)
-        elif device_type == 'cpu':
-            if val is None:
-                if len(self._overall_cuda_list) == 0 or len(self._model_data_cuda_list) == 0:
-                    return
-                self._non_model_data_cpu_list.append(self._overall_cpu_list[-1] - self._model_data_cpu_list[-1])
-            else:
-                self._non_model_data_cuda_list.append(val)
-        else:
-            raise TypeError
-
-    def overall_mem_stats(self, device_type: str) -> List[int]:
-        if device_type == 'cuda':
-            return self._overall_cuda_list
-        elif device_type == 'cpu':
-            return self._overall_cpu_list
-        else:
-            raise TypeError
-
-    def model_data_list(self, device_type: str) -> List[int]:
-        if device_type == 'cuda':
-            return self._model_data_cuda_list
-        elif device_type == 'cpu':
-            return self._model_data_cpu_list
-        else:
-            raise TypeError
 
     def non_model_data_list(self, device_type: str) -> List[int]:
         if device_type == 'cuda':
