@@ -219,12 +219,11 @@ class ColoTracer(Tracer):
                 self._disable_module_getattr = False
         elif kind == 'call_module':
             mod = self.root.get_submodule(target)
-            unwrap_fn = lambda p: p.meta_data if isinstance(p, ColoProxy) else p
             self._disable_module_getattr = True
             try:
                 proxy.meta_data = mod.forward(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
             finally:
-                self._disable_module_getattr = True
+                self._disable_module_getattr = False
         return proxy
 
     def create_node(self, *args, **kwargs) -> Node:
