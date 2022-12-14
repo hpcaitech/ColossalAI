@@ -41,6 +41,7 @@ class StrategiesConstructor:
         self.leaf_strategies = []
         self.strategy_map = {}
         self.solver_options = solver_options
+        self.no_strategy_nodes = []
 
     def remove_duplicated_strategy(self, strategies_vector):
         '''
@@ -78,12 +79,11 @@ class StrategiesConstructor:
 
             return _check_no_strategy_for_data(node._meta_data)
 
-        no_strategy_node = []
         for node in self.nodes:
             strategies_vector = StrategiesVector(node)
 
             if _check_no_strategy_for_node(node):
-                no_strategy_node.append(node)
+                self.no_strategy_nodes.append(node)
                 pass
 
             # placeholder node

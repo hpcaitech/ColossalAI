@@ -64,7 +64,16 @@ class ParamMemTracerHook(ColoParamOpHook):
                 raise NotImplementedError("Only free cuda memory")
             free_storage(p.data)
 
-    def _allocate_params_on_cuda(self, params):
+    def _allocate_params_on_cuda(self, params: List[torch.nn.Parameter]):
+        """
+        move params to cuda
+
+        Args:
+            params (List[torch.nn.Parameter]): target params
+
+        Raises:
+            NotImplementedError: raise error when param has cpu grad
+        """
         for p in params:
             cur_dev = p.data.device.type
             if cur_dev == "cpu":
@@ -77,7 +86,10 @@ class ParamMemTracerHook(ColoParamOpHook):
             elif cur_dev == "cuda":
                 alloc_storage(p.data)
 
-    def sample_model_data(self, params):
+    def record_model_data_volume(self, params):
+        """
+        get cuda model data used by params
+        """
         data_volume = self._grad_stats.unreleased_grad_volume
         for p in params:
             cur_model_data_volume = p.data.numel() * p.data.element_size()
@@ -88,20 +100,22 @@ class ParamMemTracerHook(ColoParamOpHook):
                 if not self._grad_stats.unreleased_grad_flag[p]:
                     self._grad_stats.unreleased_grad_volume += cur_model_data_volume
                     self._grad_stats.unreleased_grad_flag[p] = True
-        self._memstats.append_model_data('cuda', data_volume)
+        # record max non model data used for this Op
+        self._memstats.record_max_cuda_model_data(data_volume)
 
     def pre_op(self, params):
-        cuda_volume = self.mem_monitor.finish()
-        last_model_data_val = self._memstats.last_model_data('cuda')
-        if last_model_data_val is not None:
-            self._memstats.append_non_model_data('cuda', cuda_volume - last_model_data_val)
-        self._allocate_params_on_cuda(params)
-        self.sample_model_data(params)
-        self.mem_monitor.start()
+        max_cuda_used_pre_op = self.mem_monitor.finish()
+        # record max cuda overall data for prev OP.
+        self._memstats.record_max_cuda_overall_data(max_cuda_used_pre_op)
+        # record max cuda non model data for prev OP.
+        self._memstats.calc_max_cuda_non_model_data()
 
-        # register the order of visited.
-        for p in params:
-            self._memstats._param_runtime_order.append(p)
+        self._allocate_params_on_cuda(params)
+        # record max cuda  model data for current OP
+        self.record_model_data_volume(params)
+
+        self.mem_monitor.start()
+        self._memstats.increase_preop_step(params)
 
     def post_op(self, params):
         self._free_cuda_params(params)
