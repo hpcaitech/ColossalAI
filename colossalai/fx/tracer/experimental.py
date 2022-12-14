@@ -45,6 +45,11 @@ def default_device():
     return torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 
+class TracerType(enum.Enum):
+    DEFAULT = 1
+    META = 2
+
+
 @compatibility(is_backward_compatible=False)
 class ColoProxy(Proxy):
 
@@ -169,6 +174,7 @@ class ColoTracer(Tracer):
 
     def __init__(self, trace_act_ckpt: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.tracer_type = TracerType.META
         self._disable_module_getattr = False
         self.proxy_buffer_attributes = True
 
@@ -177,6 +183,16 @@ class ColoTracer(Tracer):
         # whether the current tracing occurs within the activation checkpoint functions
         self.inside_torch_checkpoint_func = False
         self.act_ckpt_region_count = 0
+
+    def _configure_tracer_type(self, tracer_type: TracerType):
+        if tracer_type == TracerType.DEFAULT:
+            self.proxy_cls = Proxy
+            self.tracer_type = TracerType.DEFAULT
+        elif tracer_type == TracerType.META:
+            self.proxy_cls = ColoProxy
+            self.tracer_type = TracerType.META
+        else:
+            raise ValueError(f"Unrecognised tracer type {tracer_type}")
 
     def proxy(self, node: Node) -> 'ColoProxy':
         return ColoProxy(node, self)
@@ -189,7 +205,13 @@ class ColoTracer(Tracer):
                      name: Optional[str] = None,
                      type_expr: Optional[Any] = None,
                      proxy_factory_fn: Callable[[Node], 'Proxy'] = None):
+
         proxy: ColoProxy = super().create_proxy(kind, target, args, kwargs, name, type_expr, proxy_factory_fn)
+        if self.tracer_type == TracerType.DEFAULT:
+            # since meta_args is not given
+            # we just fall back to the original torch.fx.Tracer
+            return proxy
+
         unwrap_fn = lambda p: p.meta_data if isinstance(p, ColoProxy) else p
         if kind == 'placeholder':
             proxy.meta_data = self.meta_args[target] if target in self.meta_args else self.concrete_args.get(
@@ -244,6 +266,11 @@ class ColoTracer(Tracer):
 
         if concrete_args is None:
             concrete_args = {}
+
+        if len(meta_args) == 0:
+            self._configure_tracer_type(TracerType.DEFAULT)
+        else:
+            self._configure_tracer_type(TracerType.META)
 
         # check concrete and meta args have valid names
         sig = inspect.signature(root.forward)
