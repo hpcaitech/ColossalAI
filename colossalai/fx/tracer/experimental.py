@@ -463,11 +463,62 @@ class _TorchTensorOverride(object):
             setattr(torch, name, orig)
 
 
-def meta_prop_pass(gm: ColoGraphModule, root: torch.nn.Module, meta_args: Optional[Dict[str, Any]]=None):
-    for node in gm.graph.nodes:
-        node._meta_data = _meta_data_computing(meta_args, root, node.op, node.target, node.args, node.kwargs)
+def meta_prop_pass(gm: ColoGraphModule,
+                   root: torch.nn.Module,
+                   meta_args: Optional[Dict[str, Any]] = None,
+                   concrete_args: Optional[Dict[str, torch.Tensor]] = None):
 
-def _meta_data_computing(meta_args, root, kind, target, args, kwargs):
+    if meta_args is None:
+        meta_args = {}
+
+    if concrete_args is None:
+        concrete_args = {}
+
+    # check concrete and meta args have valid names
+    sig = inspect.signature(root.forward)
+    sig_names = set(sig.parameters.keys())
+    meta_arg_names = set(meta_args.keys())
+
+    # update concrete args with default values
+    non_meta_arg_names = sig_names - meta_arg_names
+    for k, v in sig.parameters.items():
+        if k in non_meta_arg_names and \
+                k not in concrete_args and \
+                v.default is not inspect.Parameter.empty:
+            concrete_args[k] = v.default
+
+    for node in gm.graph.nodes:
+        node._meta_data = _meta_data_computing(meta_args, concrete_args, root, node.op, node.target, node.args,
+                                               node.kwargs)
+
+def _meta_data_computing(meta_args, concrete_args, root, kind, target, args, kwargs):
+    unwrap_fn = lambda n: n._meta_data if isinstance(n, Node) else n
+    if kind == 'placeholder':
+        meta_out = meta_args[target] if target in meta_args else concrete_args.get(
+            _truncate_suffix(target), None)
+    elif kind == 'get_attr':
+        attr_itr = root
+        atoms = target.split(".")
+        for atom in atoms:
+            attr_itr = getattr(attr_itr, atom)
+        meta_out = attr_itr
+    elif kind == 'call_function':
+        meta_out = target(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+    elif kind == 'call_method':
+        if target == '__call__':
+            meta_out = unwrap_fn(args[0])(*tree_map(unwrap_fn, args[1:]), **tree_map(unwrap_fn, kwargs))
+        else:
+            if target not in _TensorPropertyMethod:
+                meta_out = getattr(unwrap_fn(args[0]), target)(*tree_map(unwrap_fn, args[1:]),
+                                                                       **tree_map(unwrap_fn, kwargs))
+    elif kind == 'call_module':
+        mod = root.get_submodule(target)
+        meta_out = mod.forward(*tree_map(unwrap_fn, args), **tree_map(unwrap_fn, kwargs))
+    else:
+        meta_out = None
+    return meta_out
+
+def _meta_data_computing_v0(meta_args, root, kind, target, args, kwargs):
     if kind == "placeholder" and target in meta_args and meta_args[target].is_meta:
         meta_out = meta_args[target]
         return meta_out
