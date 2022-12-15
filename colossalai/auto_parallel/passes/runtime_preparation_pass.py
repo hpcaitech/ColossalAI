@@ -404,7 +404,9 @@ def _module_params_sharding(gm: torch.fx.GraphModule, device_mesh: DeviceMesh):
                 target_module = root
                 target = getattr(root, atoms[0])
             else:
-                target_module = root.get_submodule(atoms[-2])
+                target_module = root
+                for atom in atoms[:-1]:
+                    target_module = getattr(target_module, atom)
                 target = getattr(target_module, atoms[-1])
 
             target_sharding_spec = node.sharding_spec
