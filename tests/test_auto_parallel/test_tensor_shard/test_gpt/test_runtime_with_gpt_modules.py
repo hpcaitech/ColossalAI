@@ -45,8 +45,8 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 
-def _check_module_grad(module: torch.nn.Module, origin_param_dict: Dict[str, torch.Tensor], \
-    best_sharding_spec_dict: Dict[str, ShardingSpec]):
+def _check_module_grad(module: torch.nn.Module, origin_param_dict: Dict[str, torch.Tensor],
+                       best_sharding_spec_dict: Dict[str, ShardingSpec]):
     for name, param in module.named_parameters():
         param_grad = param.grad
         origin_param_grad = origin_param_dict[name].grad
