@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
+from transformers import GPT2Config, GPT2LMHeadModel
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -16,7 +17,7 @@ from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from transformers import GPT2Config, GPT2LMHeadModel
+from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
 
 
 def parse_args():
@@ -25,7 +26,7 @@ def parse_args():
         "--distplan",
         type=str,
         default='colossalai',
-        help="The distributed plan [colossalai, ddp, zero].",
+        help="The distributed plan [colossalai, zero1, zero2, torch_ddp, torch_zero].",
     )
     parser.add_argument(
         "--tp_degree",
@@ -238,16 +239,28 @@ def main():
         # optimizer = ZeroOptimizer(optimizer, model, initial_scale=2**5)
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
 
-    elif args.distplan == "ddp":
+    elif args.distplan == "torch_ddp":
         model = gpt2_medium(checkpoint=True).cuda()
         ddp_model = DDP(model)
         optimizer = torch.optim.Adam(ddp_model.parameters(), lr=0.01)
 
-    elif args.distplan == "zero":
+    elif args.distplan == "torch_zero":
         from torch.distributed.optim import ZeroRedundancyOptimizer
         model = gpt2_medium(checkpoint=True).cuda()
         ddp_model = DDP(model)
         optimizer = ZeroRedundancyOptimizer(ddp_model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
+
+    elif args.distplan == "zero1":
+        model = gpt2_medium(checkpoint=True).cuda()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        optimizer = LowLevelZeroOptimizer(optimizer, overlap_communication=True, partition_grad=False, verbose=True)
+        # notice that the model is still in fp32
+
+    elif args.distplan == "zero2":
+        model = gpt2_medium(checkpoint=True).cuda()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        optimizer = LowLevelZeroOptimizer(optimizer, overlap_communication=True, partition_grad=True, verbose=True)
+        # notice that the model is still in fp32
     else:
         raise TypeError(f"{args.distplan} is error")
 
@@ -265,12 +278,13 @@ def main():
         outputs = model(input_ids, attn_mask)
         loss = criterion(outputs, input_ids)
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Forward '), ranks=[0])
-        if args.distplan == "colossalai":
+        if args.distplan in ["colossalai", "zero1", "zero2"]:
             optimizer.backward(loss)
-        elif args.distplan in ["ddp", "zero"]:
+        elif args.distplan in ["torch_ddp", "torch_zero"]:
             loss.backward()
-
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Backward '), ranks=[0])
+        if args.distplan in ["zero1", "zero2"]:
+            optimizer.sync_grad()
         optimizer.step()
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Optimizer step '), ranks=[0])
         step_time = time() - start

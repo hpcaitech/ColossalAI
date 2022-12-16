@@ -35,7 +35,7 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             optimizer: Optimizer,
 
     # grad scaler config
-            initial_scale=2**32,
+            initial_scale=2**16,
             min_scale=1,
             growth_factor=2,
             backoff_factor=0.5,
