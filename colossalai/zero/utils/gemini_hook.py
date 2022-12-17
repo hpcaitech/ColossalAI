@@ -32,7 +32,9 @@ class GeminiZeROHook(ColoParamOpHook):
         self._gemini_manager.adjust_layout(chunks)
         for chunk in chunks:
             self._chunk_manager.access_chunk(chunk)
-        self._gemini_manager.sample_model_data()
+
+        # record cuda model data of the current OP
+        self._gemini_manager.record_model_data_volume()
 
     def post_op(self, params):
         params = [p for p in params if not getattr(p, '_ddp_to_ignore', False)]

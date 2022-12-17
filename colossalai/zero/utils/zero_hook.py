@@ -67,7 +67,7 @@ class ZeroHook(BaseOpHook):
 
         # record model data statistics
         if self._memstarts_collector:
-            self._memstarts_collector.sample_model_data()
+            self._memstarts_collector.record_model_data_volume()
 
     def pre_fwd_exec(self, module: torch.nn.Module, *args):
         self.adjust_module_data(module)
