@@ -415,7 +415,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             comm_action_sequence (List[CommSpec]): list of communication actions
 
         Returns:
-            TrainCycleItem: memory cost of such comm_action_sequence
+            TrainCycleItem: memory (numel) cost of such comm_action_sequence
         """
 
         def compute_shape(sharding_spec: ShardingSpec):
@@ -424,7 +424,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 shape[dim] = shape[dim] // len(shard)
             return shape
 
-        def gather_analysis(comm_spec: CommSpec, discard_input: bool, alloc_mem: int, peak_mem: int):
+        def gather_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """analyze all_gather memory footprint
             all_gather will allocate memory for the output tensor, and there will be temp memory for
             all_gather operation, which is twice the size of output tensor
@@ -432,18 +432,18 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             Args:
                 comm_spec (CommSpec): input CommSpec
                 discard_input (bool): whether to discard the input tensor
-                alloc_mem (int): current allocated memory
-                peak_mem (int): current peak memory
+                alloc_numel (int): current allocated numel
+                peak_numel (int): current peak numel
             """
             input_shape = compute_shape(comm_spec.sharding_spec)
             input_numel = np.prod(input_shape)
             output_numel = input_numel * comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis]
-            peak_mem = max(peak_mem, alloc_mem + output_numel * 2)
-            alloc_mem += output_numel
+            peak_numel = max(peak_numel, alloc_numel + output_numel * 2)
+            alloc_numel += output_numel
             if discard_input:
-                alloc_mem -= input_numel
+                alloc_numel -= input_numel
 
-        def split_analysis(comm_spec: CommSpec, discard_input: bool, alloc_mem: int, peak_mem: int):
+        def split_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """analyze split memory footprint
             split will allocate memory for the output tensor if we don't apply shard on the first dimension of
             the input tensor. If we apply shard on the first dimension, the `torch.tensor.contiguous()` will not
@@ -452,8 +452,8 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             Args:
                 comm_spec (CommSpec): input CommSpec
                 discard_input (bool): whether to discard the input tensor
-                alloc_mem (int): current allocated memory
-                peak_mem (int): current peak memory
+                alloc_numel (int): current allocated numel
+                peak_numel (int): current peak numel
             """
             shard_dim = comm_spec.shard_dim
             if shard_dim != 0:
@@ -462,10 +462,10 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 input_shape = compute_shape(comm_spec.sharding_spec)
                 input_numel = np.prod(input_shape)
                 output_numel = input_numel // comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axes]
-                alloc_mem += output_numel
-                peak_mem = max(peak_mem, alloc_mem)
+                alloc_numel += output_numel
+                peak_numel = max(peak_numel, alloc_numel)
                 if discard_input:
-                    alloc_mem -= input_numel
+                    alloc_numel -= input_numel
             else:
                 # if we shard the tensor on the first dimension, the split action will not generate
                 # a new tensor, and as it will preserve a reference to the input tensor, we could
@@ -480,13 +480,13 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 # kind of weird, and I think we could ignore it for now.
                 pass
 
-        def reduce_analysis(comm_spec: CommSpec, discard_input: bool, alloc_mem: int, peak_mem: int):
+        def reduce_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """
             a dummy function for reduce memory footprint analysis, as the reduce action doesn't allocate extra memory
             """
             pass
 
-        def all2all_analysis(comm_spec: CommSpec, discard_input: bool, alloc_mem: int, peak_mem: int):
+        def all2all_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """analyze all_to_all memory footprint
             all_to_all will allocate memory for the output tensor, and temp memory of all_to_all action
             is twice the size of output tensor if we shard input tensor on the first dimension, otherwise
@@ -495,22 +495,22 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             Args:
                 comm_spec (CommSpec): input CommSpec
                 discard_input (bool): whether to discard the input tensor
-                alloc_mem (int): current allocated memory
-                peak_mem (int): current peak memory
+                alloc_numel (int): current allocated numel
+                peak_numel (int): current peak numel
             """
             input_shape = compute_shape(comm_spec.sharding_spec)
             input_numel = np.prod(input_shape)
             output_numel = input_numel
             shard_dim = comm_spec.shard_dim
             if shard_dim != 0:
-                peak_mem = max(peak_mem, alloc_mem + output_numel * 3)
+                peak_numel = max(peak_numel, alloc_numel + output_numel * 3)
             else:
-                peak_mem = max(peak_mem, alloc_mem + output_numel * 2)
-            alloc_mem += output_numel
+                peak_numel = max(peak_numel, alloc_numel + output_numel * 2)
+            alloc_numel += output_numel
             if discard_input:
-                alloc_mem -= input_numel
+                alloc_numel -= input_numel
 
-        def identity_analysis(comm_spec: CommSpec, discard_input: bool, alloc_mem: int, peak_mem: int):
+        def identity_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """
             a dummy function for identity memory footprint analysis, as the identity action doesn't allocate extra memory
             """
@@ -536,24 +536,24 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             bwd_actions.append(bwd_action)
 
         # analyze memory footprint of forward comm actions sequence
-        fwd_alloc_mem = 0
-        fwd_peak_mem = 0
+        fwd_alloc_numel = 0
+        fwd_peak_numel = 0
         for idx, fwd_action, comm_spec in enumerate(zip(fwd_actions, comm_action_sequence)):
             # the first forward comm action will not discard input
             if idx == 0:
-                fwd_action(comm_spec, False, fwd_alloc_mem, fwd_peak_mem)
+                fwd_action(comm_spec, False, fwd_alloc_numel, fwd_peak_numel)
             else:
-                fwd_action(comm_spec, True, fwd_alloc_mem, fwd_peak_mem)
+                fwd_action(comm_spec, True, fwd_alloc_numel, fwd_peak_numel)
 
         # analyze memory footprint for backward comm actions sequence
-        bwd_alloc_mem = 0
-        bwd_peak_mem = 0
+        bwd_alloc_numel = 0
+        bwd_peak_numel = 0
         for idx, bwd_action, comm_spec in enumerate(zip(reversed(bwd_actions), reversed(comm_action_sequence))):
-            bwd_action(comm_spec, True, bwd_alloc_mem, bwd_peak_mem)
+            bwd_action(comm_spec, True, bwd_alloc_numel, bwd_peak_numel)
 
-        fwd_mem = MemoryCost(activation=fwd_alloc_mem, temp=fwd_peak_mem - fwd_alloc_mem)
-        bwd_mem = MemoryCost(activation=bwd_alloc_mem, temp=bwd_peak_mem - bwd_alloc_mem)
-        total_mem = MemoryCost(activation=fwd_alloc_mem + bwd_alloc_mem)
+        fwd_mem = MemoryCost(activation=fwd_alloc_numel, temp=fwd_peak_numel - fwd_alloc_numel)
+        bwd_mem = MemoryCost(activation=bwd_alloc_numel, temp=bwd_peak_numel - bwd_alloc_numel)
+        total_mem = MemoryCost(activation=fwd_alloc_numel + bwd_alloc_numel)
 
         return TrainCycleItem(fwd_mem, bwd_mem, total_mem)
 
