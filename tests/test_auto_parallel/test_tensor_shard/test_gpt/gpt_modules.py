@@ -123,7 +123,6 @@ class GPT2Attention(nn.Module):
         present = (key, value)
 
         attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
-        attn_output = attn_output
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
         # attn_output = self.resid_dropout(attn_output)
@@ -155,9 +154,8 @@ class GPT2Block(nn.Module):
             attention_mask=attention_mask,
             head_mask=head_mask,
         )
-        attn_output = attn_outputs
         # residual connection
-        hidden_states = attn_output + residual
+        hidden_states = attn_outputs + residual
         residual = hidden_states
         hidden_states = self.ln_2(hidden_states)
         feed_forward_hidden_states = self.mlp(hidden_states)
@@ -246,5 +244,4 @@ class GPT2Model(GPT2PreTrainedModel):
         # comment to run pipeline
         hidden_states = hidden_states.view(output_shape)
 
-        return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions, all_cross_attentions]
-                     if v is not None)
+        return hidden_states
