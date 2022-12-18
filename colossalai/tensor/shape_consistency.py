@@ -445,8 +445,9 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
 
         def split_analysis(comm_spec: CommSpec, discard_input: bool, alloc_mem: int, peak_mem: int):
             """analyze split memory footprint
-            split will allocate memory for the output tensor if we apply shard on the first dimension of
-            the input tensor
+            split will allocate memory for the output tensor if we don't apply shard on the first dimension of
+            the input tensor. If we apply shard on the first dimension, the `torch.tensor.contiguous()` will not
+            generate new tensor in this case, so no memory will be allocated.
 
             Args:
                 comm_spec (CommSpec): input CommSpec
