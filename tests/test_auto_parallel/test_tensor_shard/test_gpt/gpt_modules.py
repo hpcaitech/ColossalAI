@@ -217,25 +217,19 @@ class GPT2Model(GPT2PreTrainedModel):
         # attention_probs has shape bsz x n_heads x N x N
         # head_mask has shape n_layer x batch x n_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
-
         inputs_embeds = self.wte(input_ids)
         position_embeds = self.wpe(position_ids)
+
         # add_2
         hidden_states = inputs_embeds + position_embeds
 
         token_type_embeds = self.wte(token_type_ids)
         hidden_states = hidden_states + token_type_embeds
 
-        # transformer_drop
-        hidden_states = self.drop(hidden_states)
         # comment to run pipeline
         # add_3
         output_shape = input_shape + (hidden_states.size(-1),)
 
-        presents = None
-        all_self_attentions = None
-        all_cross_attentions = None
-        all_hidden_states = None
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
             outputs = block(hidden_states, attention_mask=attention_mask, head_mask=head_mask[i])
             hidden_states = outputs

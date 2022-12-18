@@ -30,7 +30,7 @@ from colossalai.tensor.shape_consistency import ShapeConsistencyManager, to_glob
 from colossalai.testing import assert_close, assert_close_loose, parameterize, rerun_if_address_is_in_use
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from colossalai.utils import free_port
-from tests.test_auto_parallel.test_tensor_shard.test_gpt.gpt_modules import GPT2MLP, GPT2Attention, GPT2Block
+from tests.test_auto_parallel.test_tensor_shard.test_gpt.gpt_modules import GPT2MLP, GPT2Attention, GPT2Block, GPT2Model
 
 BATCH_SIZE = 1
 SEQ_LENGTH = 32
@@ -70,7 +70,7 @@ def check_attention_layer(rank, model_cls, world_size, port):
     disable_existing_loggers()
     launch(config={}, rank=rank, world_size=world_size, host='localhost', port=port, backend='nccl')
 
-    config = transformers.GPT2Config(n_position=64, n_layer=4, n_head=16, n_embd=HIDDEN_DIM)
+    config = transformers.GPT2Config(n_position=64, n_layer=1, n_head=16, n_embd=HIDDEN_DIM)
 
     if model_cls == GPT2MLP:
         model = model_cls(intermediate_size=4 * config.hidden_size, config=config).to('cuda')
@@ -141,7 +141,6 @@ def check_attention_layer(rank, model_cls, world_size, port):
         gm, solution, device_mesh, strategies_constructor)
     gm = runtime_apply_pass(gm)
     gm.recompile()
-
     nodes = [strategies_vector.node for strategies_vector in strategies_constructor.leaf_strategies]
     best_sharding_spec_dict = {}
     for index, node in enumerate(nodes):
@@ -198,7 +197,7 @@ def check_attention_layer(rank, model_cls, world_size, port):
 
 @run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
-@parameterize('model_cls', [GPT2MLP, GPT2Block, GPT2Attention])
+@parameterize('model_cls', [GPT2MLP, GPT2Block, GPT2Attention, GPT2Model])
 @rerun_if_address_is_in_use()
 def test_mlp_layer(model_cls):
     world_size = 4
