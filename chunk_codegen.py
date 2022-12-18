@@ -574,7 +574,7 @@ class IndexTracer(object):
             node_idx (int)
         """
         self._assign_index_as_input(node, idx)
-        self._mark_computation(node, idx, [-1, -2])
+        self._mark_computation(node, idx, [-1])
 
     def _assign_elementwise_index(self, node, idx):
         """
