@@ -50,5 +50,5 @@ The `train_gpt_demo.py` provides three distributed plans, you can choose the pla
 - Colossal-AI
 - ZeRO1 (Colossal-AI)
 - ZeRO2 (Colossal-AI)
-- PyTorch DDP
-- Pytroch ZeRO
+- Pytorch DDP
+- Pytorch ZeRO
