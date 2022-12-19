@@ -103,7 +103,6 @@ class ColoTensor(torch.Tensor):
                 self.process_group = spec.pg
 
         self._type = TensorType.NONMODEL
-        self._graph_node = None
 
     def has_compute_spec(self) -> bool:
         return self.compute_spec is not None
