@@ -1,5 +1,5 @@
 # distplan in ["colossalai", "zero1", "zero2", "torch_ddp", "torch_zero"]
-export DISTPAN="zero2"
+export DISTPAN="colossalai"
 
 # The following options only valid when DISTPAN="colossalai"
 export TPDEGREE=2

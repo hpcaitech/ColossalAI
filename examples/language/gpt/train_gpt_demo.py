@@ -203,6 +203,9 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
 def main():
     args = parse_args()
 
+    if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
+        raise TypeError(f"{args.distplan} is error")
+
     BATCH_SIZE = 8
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
@@ -238,31 +241,24 @@ def main():
         # optimizer = HybridAdam(model.parameters(), lr=1e-3)
         # optimizer = ZeroOptimizer(optimizer, model, initial_scale=2**5)
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
-
-    elif args.distplan == "torch_ddp":
-        model = gpt2_medium(checkpoint=True).cuda()
-        ddp_model = DDP(model)
-        optimizer = torch.optim.Adam(ddp_model.parameters(), lr=0.01)
-
-    elif args.distplan == "torch_zero":
-        from torch.distributed.optim import ZeroRedundancyOptimizer
-        model = gpt2_medium(checkpoint=True).cuda()
-        ddp_model = DDP(model)
-        optimizer = ZeroRedundancyOptimizer(ddp_model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
-
-    elif args.distplan == "zero1":
-        model = gpt2_medium(checkpoint=True).cuda()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        optimizer = LowLevelZeroOptimizer(optimizer, overlap_communication=True, partition_grad=False, verbose=True)
-        # notice that the model is still in fp32
-
-    elif args.distplan == "zero2":
-        model = gpt2_medium(checkpoint=True).cuda()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        optimizer = LowLevelZeroOptimizer(optimizer, overlap_communication=True, partition_grad=True, verbose=True)
-        # notice that the model is still in fp32
     else:
-        raise TypeError(f"{args.distplan} is error")
+        model = gpt2_medium(checkpoint=True).cuda()
+
+    if args.distplan.startswith("torch"):
+        model = DDP(model)
+        if args.distplan.endswith("ddp"):
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        elif args.distplan.endswith("zero"):
+            from torch.distributed.optim import ZeroRedundancyOptimizer
+            optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
+    elif args.distplan.startswith("zero"):
+        partition_flag = args.distplan == "zero2"
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        optimizer = LowLevelZeroOptimizer(optimizer,
+                                          overlap_communication=True,
+                                          partition_grad=partition_flag,
+                                          verbose=True)
+        # notice that the model is still in fp32
 
     numel = sum([p.numel() for p in model.parameters()])
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
