@@ -102,7 +102,6 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         FIXME(fjr) The module may be passed to this function multiple times?
         """
         name_list = []
-        # print(type(module))
         for name, param in _named_params_with_replica(module):
             if isinstance(param, ColoTensor):
                 continue
@@ -176,7 +175,7 @@ def post_process_colo_init_ctx(model: torch.nn.Module,
     torch_params = []
     for n, p in model.named_parameters():
         if not isinstance(p, ColoParameter):
-            # print(f"{n} is not a ColoParameter. We are going to converting it to ColoParameter")
+            print(f"{n} is not a ColoParameter. We are going to converting it to ColoParameter")
             torch_params.append((n, p))
 
     for (n, param) in torch_params:
