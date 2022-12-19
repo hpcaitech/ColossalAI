@@ -210,34 +210,6 @@ class UninitializedParameter(UninitializedTensor, nn.Parameter):
 
 
 class LazyInitContext():
-    """
-    A context to allow for lazy weight initialization of PyTorch modules. It intercepts the tensor
-    initialization functions for lazy initialization
-
-    Note:
-        This API is only experimental and subject to future changes.
-
-    Usage:
-        with LazyInitContext() as ctx:
-            model = nn.Linear(10, 10)
-            model.weight.zero_()
-
-        # make sure the weight is a meta tensor
-        assert model.weight.is_meta
-
-        # initialize weights
-        ctx.lazy_init_parameters(model)
-
-        # make sure the weight is not a meta tensor
-        # and initialized correctly
-        assert not model.weight.is_meta and torch.all(model.weight == 0)
-
-    Args:
-        to_meta (bool): optional, whether to initialize the model with meta tensors, default is True. This
-            argument exists for now because some corner cases such as self.weight = torch.zeros(...) cannot be captured yet.
-        extra_torch_tensor_func (List[str]): extra torch tensor functions related
-            to value setting, such as `zero_` and `triu_`. `zero_` is pre-added by default.
-    """
 
     def __init__(self):
         self.overrides = {}
