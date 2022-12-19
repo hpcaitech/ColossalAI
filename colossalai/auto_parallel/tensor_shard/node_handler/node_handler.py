@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple, Union
 import torch
 from torch.fx.node import Node
 
+from colossalai.auto_parallel.meta_profiler.metainfo import MetaInfo
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     OperationData,
     OperationDataType,
@@ -133,6 +134,26 @@ class NodeHandler(ABC):
         strategy.resharding_costs = resharding_costs
         return strategy
 
+    def get_target_function(self) -> callable:
+        """
+        This function is used to get the target function for the node handler.
+        The target function is used to analyze the costs of strategies.
+        """
+        if self.node.op in ('placeholder', 'get_attr', 'output'):
+            return None
+
+        if self.node.op == 'call_module':
+            submod = self.node.graph.owning_module.get_submodule(self.node.target)
+            target = type(submod)
+        elif self.node.op == 'call_function':
+            target = self.node.target
+        elif self.node.op == 'call_method':
+            target = getattr(self.node.args[0]._meta_data.__class__, self.node.target)
+        else:
+            raise ValueError(f'Unsupported node type: {self.node.op}')
+
+        return target
+
     def register_strategy(self, compute_resharding_cost: bool = True) -> StrategiesVector:
         """
         Register different sharding strategies for the current node.
@@ -204,6 +225,29 @@ class NodeHandler(ABC):
         pass
 
 
+class MetaInfoNodeHandler(NodeHandler):
+    """
+    This is a base class to handle the nodes patched in the meta profiler.
+
+    Note: this class will be integrated into the NodeHandler class in the future, after
+    all the functions are patched.
+    """
+
+    def register_strategy(self, compute_resharding_cost: bool = True) -> StrategiesVector:
+        """
+        This method is inherited from NodeHandler. It will register the strategies first,
+        and rewrite the memory_cost and compute_cost of the strategy using the MetaInfo class.
+        """
+        super().register_strategy(compute_resharding_cost=compute_resharding_cost)
+        target = self.get_target_function()
+        for strategy in self.strategies_vector:
+            metainfo = MetaInfo(strategy, target)
+            strategy.compute_cost = metainfo.compute_cost
+            strategy.memory_cost = metainfo.memory_cost
+
+        return self.strategies_vector
+
+
 class ModuleHandler(NodeHandler):
 
     def __init__(self, *args, **kwargs) -> None:
@@ -221,3 +265,26 @@ class ModuleHandler(NodeHandler):
         self.module = module
         self.named_parameters = named_parameters
         self.named_buffers = named_buffers
+
+
+class MetaInfoModuleHandler(ModuleHandler):
+    """
+    This is a base class to handle the module patched in the meta profiler.
+
+    Note: this class will be integrated into the ModuleHandler class in the future, after
+    all the modules are patched.
+    """
+
+    def register_strategy(self, compute_resharding_cost: bool = True) -> StrategiesVector:
+        """
+        This method is inherited from NodeHandler. It will register the strategies first,
+        and rewrite the memory_cost and compute_cost of the strategy using the MetaInfo class.
+        """
+        super().register_strategy(compute_resharding_cost=compute_resharding_cost)
+        target = self.get_target_function()
+        for strategy in self.strategies_vector:
+            metainfo = MetaInfo(strategy, target)
+            strategy.compute_cost = metainfo.compute_cost
+            strategy.memory_cost = metainfo.memory_cost
+
+        return self.strategies_vector
