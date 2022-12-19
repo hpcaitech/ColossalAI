@@ -135,11 +135,15 @@ class ColoInitContext(InsertPostInitMethodToModuleSubClasses):
         for param in module.parameters():
             if param.device.type=="meta":
                 meta_param_flag = 1
-                break
+            if meta_param_flag == 1 and param.device.type!="meta":
+                raise ValueError("Meta parameters and valued parameters can not  be in the same model")
+            
         for buffer in module.buffers():
             if buffer.device.type=="meta":
                 meta_buffer_flag = 1
-                break
+            if meta_buffer_flag == 1 and buffer.device.type!="meta":
+                raise ValueError("Meta buffers and valued buffers can not be in the same model")
+        
         if meta_param_flag==1 and meta_buffer_flag==1:
             pass
         elif meta_buffer_flag==0 and meta_param_flag==1:
@@ -175,7 +179,7 @@ def post_process_colo_init_ctx(model: torch.nn.Module,
     torch_params = []
     for n, p in model.named_parameters():
         if not isinstance(p, ColoParameter):
-            print(f"{n} is not a ColoParameter. We are going to converting it to ColoParameter")
+            # print(f"{n} is not a ColoParameter. We are going to converting it to ColoParameter")
             torch_params.append((n, p))
 
     for (n, param) in torch_params:
