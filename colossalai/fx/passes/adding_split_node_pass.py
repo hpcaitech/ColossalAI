@@ -15,7 +15,6 @@ def avgnode_split_pass(gm: torch.fx.GraphModule, pp_size: int):
     """
     mod_graph = gm.graph
     avg_num_node = len(mod_graph.nodes) // pp_size
-    print(f'{avg_num_node=} | {pp_size=}')
     accumulate_num_node = 0
     for node in mod_graph.nodes:
         if pp_size <= 1:
