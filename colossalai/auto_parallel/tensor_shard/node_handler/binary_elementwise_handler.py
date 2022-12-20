@@ -3,18 +3,12 @@ from typing import Dict, List, Union
 import torch
 from torch.fx.node import Node
 
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
-    CommAction,
-    CommType,
-    OperationData,
-    OperationDataType,
-    ShardingStrategy,
-)
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, ShardingStrategy
 from colossalai.tensor.shape_consistency import CollectiveCommPattern, CommSpec, ShapeConsistencyManager
 
 from ..constants import BCAST_FUNC_OP
 from ..utils import comm_actions_for_oprands, recover_sharding_spec_for_broadcast_shape
-from .node_handler import NodeHandler
+from .node_handler import MetaInfoNodeHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import BinaryElementwiseStrategyGenerator, StrategyGenerator
 
@@ -22,7 +16,7 @@ __all__ = ['BinaryElementwiseHandler']
 
 
 @operator_registry.register(BCAST_FUNC_OP)
-class BinaryElementwiseHandler(NodeHandler):
+class BinaryElementwiseHandler(MetaInfoNodeHandler):
     """
     An BinaryBcastOpHandler is a node handler which deals with operations which have two
     operands and broadcasting occurs such as torch.add.
