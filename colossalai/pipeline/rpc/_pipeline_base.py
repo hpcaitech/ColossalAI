@@ -882,10 +882,9 @@ class WorkerBase(ABC):
 
             # if is last step in one batch reset context and do step
             if self._is_last_step(work_item):
-                self._hook_before_step()
-                if hasattr(self, 'optimizer') and not work_item.forward_only:
-                    self.step()
+                print(f'{self.pp_rank} wait_for_reset')
                 self._wait_for_reset()
+                print(f'{self.pp_rank} end wait_for_reset')
 
     # reset context and resume loop
     def reset_context(self):
@@ -904,23 +903,12 @@ class WorkerBase(ABC):
             self.reset_condition.notify_all()
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
-        # TODO(jiangziyue) it's temporary code to deal with empty module partition.
-        # After tracer fixed, remove this part.
-        if len(list(self.module_partition.parameters())) > 0:
-            self.optimizer: optim.Optimizer = optimizer_class(self.module_partition.parameters(), **kwargs)
-        self.step_lock = threading.Lock()
-        self.step_lock.acquire()
-
-    def wait_for_step(self):
-        self.step_lock.acquire()
+        self.optimizer: optim.Optimizer = optimizer_class(self.module_partition.parameters(), **kwargs)
 
     def step(self):
-        # TODO(jiangziyue) it's temporary code to deal with empty module partition.
-        # After tracer fixed, remove this part.
-        if len(list(self.module_partition.parameters())) > 0:
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-        self.step_lock.release()
+        self._hook_before_step()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
 
 
 class PipelineEngineBase(ABC, nn.Module):
@@ -1170,18 +1158,19 @@ class PipelineEngineBase(ABC, nn.Module):
             self._subscribe_forward(microbatch_id, output_pp_ranks, ret_future)
 
         # wait for first rank to ensure all backwards are done
+        print(f'ensure_backward')
         self._ensure_backward(forward_only, input_pp_ranks)
+        print(f'end ensure_backward')
 
         # collect forward result
         forward_result = self._collect_forward_result(output_pp_ranks, ret_future)
 
         if not forward_only and hasattr(self, 'optimizer_class'):
-            # wait for all step
-            for pp_rank in self.pp_rank_to_worker_rref:
-                worker_rref = self.pp_rank_to_worker_rref[pp_rank]
-                worker_rref.rpc_sync().wait_for_step()
+            self.step()
 
+        print(f'reset_worker')
         self._reset_worker()    # reset worker attributes for next batch
+        print(f'end reset_worker')
         return forward_result
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
