@@ -23,6 +23,7 @@ class GetItemFromTensorModel(nn.Module):
         return x
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_getitem_from_tensor_handler():
     model = GetItemFromTensorModel()
     tracer = ColoTracer()
@@ -96,6 +97,7 @@ class GetItemFromTupleModel(nn.Module):
         return x
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_getitem_from_tuple_handler():
     model = GetItemFromTupleModel()
     tracer = ColoTracer()

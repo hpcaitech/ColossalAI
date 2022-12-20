@@ -22,6 +22,7 @@ class ReLuModel(nn.Module):
         return relu_node
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_elementwise_handler():
     model = ReLuModel()
     tracer = ColoTracer()

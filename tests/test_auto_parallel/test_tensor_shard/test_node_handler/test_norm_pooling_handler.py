@@ -2,15 +2,15 @@ import pytest
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.normal_pooling_handler import \
-    NormPoolingHandler
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (OperationData, OperationDataType, StrategiesVector)
+from colossalai.auto_parallel.tensor_shard.node_handler.normal_pooling_handler import NormPoolingHandler
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
 from colossalai.fx.tracer.meta_patch.patched_module import linear
 from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_norm_pool_handler():
     model = nn.Sequential(nn.MaxPool2d(4, padding=1).to('meta'))
     tracer = ColoTracer()
