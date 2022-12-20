@@ -35,13 +35,13 @@ class LowLevelZeroOptimizer(ColossalaiOptimizer):
             optimizer: Optimizer,
 
     # grad scaler config
-            initial_scale=2**32,
+            initial_scale=2**16,
             min_scale=1,
             growth_factor=2,
             backoff_factor=0.5,
-            growth_interval=1000,
+            growth_interval=2000,
             hysteresis=2,
-            max_scale: int = 2**32,
+            max_scale: int = 2**24,
 
     # grad clipping
             clip_grad_norm=0.0,

@@ -10,6 +10,7 @@ from colossalai.auto_parallel.tensor_shard.solver import (
 )
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
+from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
 
 def _param_resharding_cost_assertion(node):
@@ -51,6 +52,7 @@ class ConvModel(torch.nn.Module):
         return x
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_linear_module():
     model = LinearModel(4, 8)
     physical_mesh_id = torch.arange(0, 4)
@@ -86,6 +88,7 @@ def test_linear_module():
     _param_resharding_cost_assertion(linear_node)
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 def test_conv_module():
     model = ConvModel(3, 6, 2)
     physical_mesh_id = torch.arange(0, 4)

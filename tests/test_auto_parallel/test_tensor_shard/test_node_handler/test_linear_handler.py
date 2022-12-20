@@ -308,8 +308,8 @@ def check_linear_function_handler(rank, bias, input_shape, world_size, port):
             assert bias_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
-@parameterize('input_shape', [(1, 4, 4, 16), (4, 4, 4, 16)])
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@parameterize('input_shape', [(1, 4, 4, 16), (4, 4, 4, 16)])
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_linear_handler(input_shape, bias=False):

@@ -66,9 +66,13 @@ def linear_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
     """
 
     has_bias: bool = False
-    input_tensor = next(filter(lambda x: x.type == OperationDataType.ARG, args)).data
-    output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
-    weight_tensors = [x.data for x in args if x.type == OperationDataType.PARAM]
+
+    input_tensor = args[0].data
+    output_tensor = args[2].data
+    if len(args) == 4:
+        weight_tensors = [args[1].data, args[3].data]
+    else:
+        weight_tensors = [args[1].data]
 
     # process the dimension of input and output
     if len(input_tensor.shape) > 2:

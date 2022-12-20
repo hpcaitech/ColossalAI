@@ -203,8 +203,8 @@ def check_1d_device_mesh(rank, module, world_size, port):
         assert other_sharding_spec.sharding_sequence[-1] == output_sharding_spec.sharding_sequence[-1]
 
 
-@parameterize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
 @run_on_environment_flag(name='AUTO_PARALLEL')
+@parameterize('module', [BMMTensorMethodModule, BMMTorchFunctionModule])
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_bmm_handler(module):
