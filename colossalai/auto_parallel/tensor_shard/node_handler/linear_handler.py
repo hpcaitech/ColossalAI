@@ -3,12 +3,16 @@ from typing import Dict, List, Union
 import torch
 import torch.nn.functional as F
 
-from colossalai.auto_parallel.tensor_shard.utils import transpose_partition_dim, update_partition_dim
+from colossalai.auto_parallel.tensor_shard.utils import (
+    check_sharding_spec_validity,
+    transpose_partition_dim,
+    update_partition_dim,
+)
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.sharding_spec import ShardingNotDivisibleError
 
-from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
-from .node_handler import ModuleHandler, NodeHandler
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy, StrategiesVector
+from .node_handler import MetaInfoModuleHandler, MetaInfoNodeHandler, ModuleHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import LinearProjectionStrategyGenerator, StrategyGenerator
 
@@ -139,7 +143,7 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
 
 
 @operator_registry.register(torch.nn.Linear)
-class LinearModuleHandler(ModuleHandler):
+class LinearModuleHandler(MetaInfoModuleHandler):
     """
     A LinearModuleHandler which deals with the sharding strategies for nn.Linear module.
     """
@@ -199,7 +203,7 @@ class LinearModuleHandler(ModuleHandler):
 
 
 @operator_registry.register(F.linear)
-class LinearFunctionHandler(NodeHandler):
+class LinearFunctionHandler(MetaInfoNodeHandler):
     """
     A LinearFunctionHandler which deals with the sharding strategies for F.Linear.
     """
