@@ -33,4 +33,4 @@ class ChunkMemStatsCollector(MemStatsCollector):
 
     @property
     def cuda_margin_mem(self) -> float:
-        return colo_device_memory_capacity(get_current_device()) - self._memstats.max_overall_cuda('cuda')
+        return colo_device_memory_capacity(get_current_device()) - self._memstats.max_overall_cuda
