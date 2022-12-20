@@ -6,15 +6,16 @@ import torch.multiprocessing as mp
 import colossalai
 from colossalai.nn.parallel.utils import convert_to_torch_module
 from colossalai.tensor import ColoTensor
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from tests.components_to_test.registry import non_distributed_component_funcs
 
 
-def run_convert_torch_module():
-    get_components_func = non_distributed_component_funcs.get_callable('resnet18')
+@parameterize('model_name', ['resnet18', 'bert'])
+def run_convert_torch_module(model_name: str):
+    get_components_func = non_distributed_component_funcs.get_callable(model_name)
     model_builder, _, _, _, _ = get_components_func()
 
     with ColoInitContext(device='cpu'):

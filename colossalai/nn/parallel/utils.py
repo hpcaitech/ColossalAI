@@ -33,8 +33,6 @@ def _add_param(model, name, param):
 def convert_to_torch_module(gemini_ddp_model) -> torch.nn.Module:
     """convert_to_torch_module
 
-    Warning: can not deal with module with shared param!
-
     Args:
         gemini_ddp_model (GeminiDDP): a gemini ddp model
 
