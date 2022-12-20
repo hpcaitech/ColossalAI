@@ -3,9 +3,9 @@ from typing import Dict, List
 import torch
 import torch.nn.functional as F
 
-from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy, StrategiesVector
 from ..utils import transpose_partition_dim
-from .node_handler import ModuleHandler, NodeHandler
+from .node_handler import MetaInfoModuleHandler, MetaInfoNodeHandler, ModuleHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import ConvStrategyGenerator, StrategyGenerator
 
@@ -15,7 +15,7 @@ __all__ = ['ConvModuleHandler', 'ConvFunctionHandler']
 @operator_registry.register(torch.nn.Conv1d)
 @operator_registry.register(torch.nn.Conv2d)
 @operator_registry.register(torch.nn.Conv3d)
-class ConvModuleHandler(ModuleHandler):
+class ConvModuleHandler(MetaInfoModuleHandler):
     """
     A ConvModuleHandler which deals with the sharding strategies for nn.Convxd module.
     """
@@ -63,7 +63,7 @@ class ConvModuleHandler(ModuleHandler):
 @operator_registry.register(F.conv1d)
 @operator_registry.register(F.conv2d)
 @operator_registry.register(F.conv3d)
-class ConvFunctionHandler(NodeHandler):
+class ConvFunctionHandler(MetaInfoNodeHandler):
     """
     A ConvFunctionHandler which deals with the sharding strategies for nn.functional.ConvXd functions.
     """

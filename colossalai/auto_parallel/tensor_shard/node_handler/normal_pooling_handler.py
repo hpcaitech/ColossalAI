@@ -3,7 +3,7 @@ from typing import Dict, List
 import torch
 
 from ..sharding_strategy import OperationData, OperationDataType
-from .node_handler import ModuleHandler
+from .node_handler import MetaInfoModuleHandler, ModuleHandler
 from .registry import operator_registry
 from .strategy import NormalPoolStrategyGenerator, StrategyGenerator
 
@@ -16,7 +16,7 @@ __all__ = ['NormPoolingHandler']
 @operator_registry.register(torch.nn.AvgPool1d)
 @operator_registry.register(torch.nn.AvgPool2d)
 @operator_registry.register(torch.nn.AvgPool3d)
-class NormPoolingHandler(ModuleHandler):
+class NormPoolingHandler(MetaInfoModuleHandler):
     """
     A NormPoolingHandler which deals with the sharding strategies for nn.MaxPoolxd module.
     """
