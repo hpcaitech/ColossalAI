@@ -98,6 +98,11 @@ class ColoProxy(Proxy):
     def __getattr__(self, k):
         return ColoAttribute(self, k, getattr(self._meta_data, k, None))
 
+    def __setitem__(self, key, value):
+        proxy = self.tracer.create_proxy('call_method', "__setitem__", (self, key, value), {})
+        proxy.meta_data = self._meta_data
+        return proxy
+
     def __contains__(self, key):
         if self.node.op == "placeholder":
             # this is used to handle like
