@@ -199,38 +199,30 @@ class WorkerBase(ABC):
         with self.output_list_condition_lock:
             self.output_list_condition_lock.wait_for(lambda: key in self.output_list)
             output_work_item = self.output_list[key]
-            self.output_list.pop(key)
+            output = output_work_item.output
+            if not ref_use and output_work_item.phase != Phase.INPUT:
+                self.output_list.pop(key)
 
-        if not ref_use:
+        if not ref_use and output_work_item.phase != Phase.INPUT:
             output_work_item.refcount += 1
-        refcount = output_work_item.refcount
-        output = output_work_item.output
-
-        if output_work_item.phase == Phase.FORWARD:
+            refcount = output_work_item.refcount
             # lifecycle management for DAG scheduler
-            lifecycle = len(self.get_consumer_stage_ids())
-            if self.is_model_output():    # an extra reference for scheduler collecting results
-                lifecycle += 1
+            if output_work_item.phase == Phase.FORWARD:
+                lifecycle = len(self.get_consumer_stage_ids())
+                if self.is_model_output():    # an extra reference for scheduler collecting results
+                    lifecycle += 1
+            elif output_work_item.phase == Phase.BACKWARD:
+                lifecycle = len(self.get_producer_stage_ids())
+                if self._is_last_step(output_work_item):    # an extra reference for ensure_backward
+                    lifecycle += 1
+            else:
+                lifecycle = 0
+                refcount = 0
+
             with self.output_list_condition_lock:
-                # all consumers have been satisfied, the work_item can be released
-                # or put it into work list again.
                 if refcount < lifecycle:
                     self.output_list[key] = output_work_item
                     self.output_list_condition_lock.notify_all()
-        elif output_work_item.phase == Phase.BACKWARD:
-            lifecycle = len(self.get_producer_stage_ids())
-            if self._is_last_step(output_work_item):
-                lifecycle += 1    # an extra reference for scheduler collecting results
-            with self.output_list_condition_lock:
-                # all producers have been satisfied, the work_item can be released
-                # or put it into work list again.
-                if refcount < lifecycle:
-                    self.output_list[key] = output_work_item
-                    self.output_list_condition_lock.notify_all()
-        else:
-            with self.output_list_condition_lock:
-                self.output_list[key] = output_work_item
-                self.output_list_condition_lock.notify_all()
 
         if isinstance(output, Future):
             output = output.wait()
@@ -882,9 +874,7 @@ class WorkerBase(ABC):
 
             # if is last step in one batch reset context and do step
             if self._is_last_step(work_item):
-                print(f'{self.pp_rank} wait_for_reset')
                 self._wait_for_reset()
-                print(f'{self.pp_rank} end wait_for_reset')
 
     # reset context and resume loop
     def reset_context(self):
@@ -1158,9 +1148,7 @@ class PipelineEngineBase(ABC, nn.Module):
             self._subscribe_forward(microbatch_id, output_pp_ranks, ret_future)
 
         # wait for first rank to ensure all backwards are done
-        print(f'ensure_backward')
         self._ensure_backward(forward_only, input_pp_ranks)
-        print(f'end ensure_backward')
 
         # collect forward result
         forward_result = self._collect_forward_result(output_pp_ranks, ret_future)
@@ -1168,9 +1156,7 @@ class PipelineEngineBase(ABC, nn.Module):
         if not forward_only and hasattr(self, 'optimizer_class'):
             self.step()
 
-        print(f'reset_worker')
         self._reset_worker()    # reset worker attributes for next batch
-        print(f'end reset_worker')
         return forward_result
 
     def initialize_optimizer(self, optimizer_class: type, **kwargs):
