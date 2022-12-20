@@ -1,31 +1,14 @@
 import contextlib
 import copy
 import pprint
-from typing import Callable, List
+from typing import Callable, List, Union
 
 import torch
 import torch.nn as nn
-from torch.types import _bool, _device, _dtype
 from torch.utils._pytree import tree_map
 
 from colossalai.fx.profiler import MetaTensor
 from colossalai.tensor import ColoParameter, ColoTensor, ColoTensorSpec
-from colossalai.utils.model.utils import substitute_init_recursively
-
-init = torch.nn.init
-
-# reference: https://github.com/pytorch/pytorch/blob/master/torch/nn/parameter.py#L73
-_TorchTensorMethods = [
-    torch.Tensor.half,
-    torch.Tensor.float,
-    torch.Tensor.double,
-    torch.Tensor.char,
-    torch.Tensor.short,
-    torch.Tensor.int,
-    torch.Tensor.long,
-    torch.Tensor.cuda,
-    torch.Tensor.cpu,
-]
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _TorchFactoryFunc = [
@@ -41,19 +24,12 @@ _TorchFactoryFunc = [
     "randint",
     "randperm",
     "zeros",
+    "tensor",
 ]
-
-
-def init_from_spec(cls, t: torch.Tensor, spec: ColoTensorSpec):
-    if cls == ColoTensor:
-        return cls.from_torch_tensor(t, spec)
-    else:
-        return cls.from_torch_tensor(t, t.requires_grad, spec)
 
 
 class UninitializedTensor(torch.Tensor):
 
-    _cls_to_become = ColoTensor
     _repr = True
 
     @staticmethod
@@ -67,7 +43,7 @@ class UninitializedTensor(torch.Tensor):
                                                 layout=elem.layout,
                                                 device=device if device is not None else torch.device('cpu'),
                                                 requires_grad=elem.requires_grad)
-        r._data = MetaTensor(elem, fake_device=device)
+        r._meta_data = MetaTensor(elem, fake_device=device)
         return r
 
     def __init__(self, func, *args, dtype=None, device=None, **kwargs):
@@ -79,7 +55,7 @@ class UninitializedTensor(torch.Tensor):
         if self._repr:
             self.__class__._repr = False
             s = f'UninitializedTensor: {self._factory_fn}\n'\
-                f'_data: {self._data}\n'\
+                f'meta_data: {self._meta_data}\n'\
                 f'cached_fn: {pprint.pformat(self._cached_fn)}\n'\
                 f'spec: {self._spec}'
             self.__class__._repr = True
@@ -87,7 +63,7 @@ class UninitializedTensor(torch.Tensor):
         else:
             return 'UninitializedTensor(...)'
 
-    def materialize(self):
+    def materialize(self) -> Union[ColoParameter, ColoTensor]:
         func, args, kwargs = self._factory_fn
         t = func(*args, **kwargs)
 
@@ -95,22 +71,37 @@ class UninitializedTensor(torch.Tensor):
         t = self._apply_cache(t)
 
         # apply spec
-        return init_from_spec(self._cls_to_become, t, self._spec)
+        if isinstance(self, nn.Parameter):
+            return ColoParameter.from_torch_tensor(t, t.requires_grad, self._spec)
+        else:
+            return ColoTensor.from_torch_tensor(t, self._spec)
 
-    # TODO(super-dainiu): device seems incorrect
-    def traceable(self):
+    def traceable(self) -> MetaTensor:
         func, args, kwargs = self._factory_fn
         t = MetaTensor(func(*args, **{**kwargs, 'device': 'meta'}), fake_device=kwargs['device'])
-        return self._apply_cache(t)
+        if isinstance(self, nn.Parameter):
+            return nn.Parameter(self._apply_cache(t), requires_grad=self.requires_grad)
+        else:
+            return self._apply_cache(t)
 
-    def _apply_cache(self, t):
+    def _apply_cache(self, t) -> torch.Tensor:
         # apply cached methods
         # super-dainiu: support methods for single Tensor only
         replace = lambda x: t if isinstance(x, UninitializedTensor) else x
+        packed = None
 
         for (func, args, kwargs) in self._cached_fn:
-            o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
-            t = o if isinstance(o, torch.Tensor) else t    # if func returns non-Tensor, discard the value
+            if func == torch.Tensor.requires_grad_:
+                packed = func, args, kwargs    # requires grad should be set at last
+            else:
+                o = func(*tree_map(replace, args), **tree_map(replace, kwargs))
+                t = o if isinstance(o, torch.Tensor) else t    # if func returns non-Tensor, discard the value
+
+        # super-dainiu: set requires_grad after all inplace-ops are done
+        if packed is not None:
+            func, args, kwargs = packed
+            func(*tree_map(replace, args), **tree_map(replace, kwargs))
+
         return t
 
     # cache everything
@@ -120,31 +111,32 @@ class UninitializedTensor(torch.Tensor):
             kwargs = {}
         t = None
 
-        if func in _TorchTensorMethods:
+        unwrap = lambda t: t._meta_data if isinstance(t, UninitializedTensor) else t
+
+        if isinstance(func, torch._C.ScriptMethod):
             t: UninitializedTensor = args[0].clone()
             t._cached_fn.append((func, (t,) + args[1:], kwargs))
-            t._data = func(t._data, *args[1:], **kwargs)
-            if isinstance(t._data, MetaTensor):
-                return t
-            else:
-                return t._data
+            t._meta_data = getattr(t._meta_data, func.name)(*tree_map(unwrap, args[1:]), **tree_map(unwrap, kwargs))
 
-        def unwrap(t_):
-            nonlocal t
-            if isinstance(t_, UninitializedTensor):
-                t = t_.clone()
-                t._cached_fn.append((func, args, kwargs))
-                t_ = t_._data
-            return t_
+        else:
 
-        args = tree_map(unwrap, args)
-        kwargs = tree_map(unwrap, kwargs)
-        t._data = func(*args, **kwargs)
+            def unwrap(t_):
+                nonlocal t
+                if isinstance(t_, UninitializedTensor):
+                    t = t_ if (func.__name__.endswith('_')
+                               or func.__name__ == "__set__") and not (func.__name__.endswith('__')) else t_.clone()
+                    t._cached_fn.append((func, args, kwargs))
+                    t_ = t_._meta_data
+                return t_
 
-        if isinstance(t._data, MetaTensor):
+            args = tree_map(unwrap, args)
+            kwargs = tree_map(unwrap, kwargs)
+            t._meta_data = func(*args, **kwargs)
+
+        if isinstance(t._meta_data, MetaTensor):
             return t
         else:
-            return t._data
+            return t._meta_data
 
     @classmethod
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
@@ -153,7 +145,7 @@ class UninitializedTensor(torch.Tensor):
     def to(self, *args, **kwargs) -> "UninitializedTensor":
         t = self.clone()
         t._cached_fn.append((torch.Tensor.to, (t,) + args, kwargs))
-        t._data = t._data.to(*args, **kwargs)
+        t._meta_data = t._meta_data.to(*args, **kwargs)
         return t
 
     def clone(self) -> "UninitializedTensor":
@@ -171,42 +163,8 @@ class UninitializedTensor(torch.Tensor):
     def spec(self, other: ColoTensorSpec):
         self._spec = other
 
-
-# TODO: Not correct
-class UninitializedParameter(UninitializedTensor, nn.Parameter):
-
-    _cls_to_become = ColoParameter
-
-    @staticmethod
-    def __new__(cls, elem=None, requires_grad=True):
-        if elem is None:
-            elem = UninitializedTensor(torch.empty, 0)
-        if type(elem) is UninitializedTensor or type(elem) is UninitializedParameter:
-            # For ease of BC maintenance, keep this path for standard Tensor.
-            # Eventually (tm), we should change the behavior for standard Tensor to match.
-            r = torch.Tensor._make_wrapper_subclass(cls,
-                                                    elem.size(),
-                                                    strides=elem.stride(),
-                                                    storage_offset=elem.storage_offset(),
-                                                    dtype=elem.dtype,
-                                                    layout=elem.layout,
-                                                    device=elem.device,
-                                                    requires_grad=requires_grad)
-            r._data = elem._data
-            return r
-        raise RuntimeError(f"Creating an `UninitializedParameter` with `Tensor.subclasses` of "
-                           f"`{type(elem).__name__}` is unexpected. Should be one of `UninitializedParameter`"
-                           f", `UnintializedTensor`, or None.")
-
-    def __init__(self, elem=None, requires_grad=True):
-        self._factory_fn = elem._factory_fn
-        self._cached_fn = elem._cached_fn
-        self._spec = elem._spec
-
-    def clone(self):
-        return UninitializedParameter(super().clone(), requires_grad=self.requires_grad)
-
-    __torch_function__ = torch._C._disabled_torch_function_impl
+    def detach(self):
+        return self.clone()
 
 
 class LazyInitContext():
@@ -247,13 +205,9 @@ class LazyInitContext():
         for name, (wrapper, orig) in self.overrides.items():
             setattr(torch, name, wrapper)
 
-        # cannot monkey patch nn.Parameter because it is a class (????)
-        setattr(torch.nn.parameter, 'Parameter', UninitializedParameter)
-
     def __exit__(self, exc_type, exc_val, exc_tb):
         for name, (wrapper, orig) in self.overrides.items():
             setattr(torch, name, orig)
-        setattr(torch.nn.parameter, 'Parameter', self._orig_nn_param)
 
     @staticmethod
     def materialize(module: torch.nn.Module):
@@ -310,8 +264,3 @@ class LazyInitContext():
         # restore original values
         for (module, name), val in orig_val.items():
             setattr(module, name, val)
-
-    # Things to hack:
-    # 1. torch.Tensor factory function (DONE)
-    # 2. nn.Parameter
-    # 3. init (DONE)

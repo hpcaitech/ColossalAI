@@ -72,12 +72,12 @@ class MetaTensor(torch.Tensor):
                 x = x.to(torch.device('meta'))
             return x
 
+        args = tree_map(unwrap, args)
+        kwargs = tree_map(unwrap, kwargs)
+
         if 'device' in kwargs:
             fake_device = kwargs['device']
             kwargs['device'] = torch.device('meta')
-
-        args = tree_map(unwrap, args)
-        kwargs = tree_map(unwrap, kwargs)
 
         # run aten for backend=CPU but actually on backend=Meta
         out = func(*args, **kwargs)
@@ -124,7 +124,6 @@ class MetaTensor(torch.Tensor):
             return x
 
         elem = self._tensor.to(*tree_map(replace, args), **tree_map(replace, kwargs))
-        print(fake_device)
         return MetaTensor(elem, fake_device=fake_device)
 
     def cpu(self, *args, **kwargs):
@@ -132,7 +131,7 @@ class MetaTensor(torch.Tensor):
             return self.to(*args, **kwargs)
         return self.to(*args, device='cpu', **kwargs)
 
-    def cuda(self, *args, **kwargs):
-        if self.device.type == 'cuda':
-            return self.to(*args, **kwargs)
-        return self.to(*args, device='cuda', **kwargs)
+    def cuda(self, device=None, non_blocking=False):
+        if device is not None:
+            return self.to(device=device, non_blocking=non_blocking)
+        return self.to(device='cuda:0', non_blocking=non_blocking)
