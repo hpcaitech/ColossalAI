@@ -1,5 +1,6 @@
 import enum
 import functools
+import operator
 import inspect
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -99,7 +100,7 @@ class ColoProxy(Proxy):
         return ColoAttribute(self, k, getattr(self._meta_data, k, None))
 
     def __setitem__(self, key, value):
-        proxy = self.tracer.create_proxy('call_method', "__setitem__", (self, key, value), {})
+        proxy = self.tracer.create_proxy('call_function', operator.setitem, (self, key, value), {})
         proxy.meta_data = self._meta_data
         return proxy
 
