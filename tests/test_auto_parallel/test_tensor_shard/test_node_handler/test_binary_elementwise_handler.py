@@ -207,9 +207,9 @@ def check_binary_elementwise_handler_with_int(rank, op, other_dim, world_size, p
         assert input_sharding_spec.sharding_sequence == output_sharding_spec.sharding_sequence
 
 
+@run_on_environment_flag(name='AUTO_PARALLEL')
 @parameterize('op', [torch.add])
 @parameterize('other_dim', [1, 2])
-@run_on_environment_flag(name='AUTO_PARALLEL')
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_binary_elementwise_handler(op, other_dim):
