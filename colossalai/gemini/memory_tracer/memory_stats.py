@@ -107,14 +107,6 @@ class MemStats(object):
         else:
             raise TypeError
 
-    def max_overall_cuda(self, device_type: str) -> float:
-        if device_type == 'cuda':
-            return max(self._overall_cuda_list)
-        elif device_type == 'cpu':
-            return max(self._overall_cpu_list)
-        else:
-            raise TypeError
-
     def clear(self):
         self._model_data_cuda_list = []
         self._overall_cuda_list = []

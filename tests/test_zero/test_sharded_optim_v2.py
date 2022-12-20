@@ -64,7 +64,7 @@ def _run_test_sharded_optim_v2(cpu_offload, shard_strategy_class, use_cpuadam, g
         zero_model = ShardedModelV2(
             zero_model,
             shard_strategy,
-            tensor_placement_policy='cpu' if cpu_offload else 'cuda',
+            tensor_placement_policy='cpu' if cpu_offload else 'auto',
             reuse_fp16_shard=use_cpuadam,
         )
 
