@@ -1,0 +1,35 @@
+{
+    "train_batch_size": 32,
+    "gradient_accumulation_steps": 4,
+    "steps_per_print": 2000,
+    "max_grad_norm": 0.5,
+    "optimizer": {
+      "type": "Adam",
+      "params": {
+        "lr": 0.0002,
+        "betas": [
+          0.8,
+          0.999
+        ],
+        "eps": 1e-8
+      }
+    },
+    "fp16": {
+      "enabled": true,
+      "loss_scale": 0,
+      "loss_scale_window": 1000,
+      "hysteresis": 2,
+      "min_loss_scale": 1
+    },
+    "scheduler": {
+      "type": "WarmupLR",
+      "params": {
+        "warmup_min_lr": 0,
+        "warmup_max_lr": 0.0002,
+        "warmup_num_steps": 1000
+      }
+    },
+    "zero_optimization": true,
+    "wall_clock_breakdown": false
+  }
+  
