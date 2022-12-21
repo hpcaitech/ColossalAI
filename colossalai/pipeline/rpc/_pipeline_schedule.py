@@ -89,9 +89,6 @@ class OneFOneBWorker(WorkerBase):
             elif target_key.microbatch_id == num_microbatches - 1:
                 self.outstanding_range = (0, 0)
 
-        with self.work_list_condition_lock:
-            self.work_list_condition_lock.wait_for(lambda: target_key in self.work_list)
-
         return target_key
 
 

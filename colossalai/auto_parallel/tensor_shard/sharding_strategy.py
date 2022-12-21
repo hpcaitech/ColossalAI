@@ -6,10 +6,17 @@ from typing import Any, Dict, List, Tuple, Union
 import torch
 from torch.fx.node import Node
 
-from colossalai.tensor.shape_consistency import CommSpec
+from colossalai.tensor.comm_spec import CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
 
-from .constants import BCAST_FUNC_OP, ELEMENTWISE_FUNC_OP, ELEMENTWISE_MODULE_OP, RESHAPE_FUNC_OP
+from .constants import (
+    BCAST_FUNC_OP,
+    ELEMENTWISE_FUNC_OP,
+    ELEMENTWISE_METHOD_OP,
+    ELEMENTWISE_MODULE_OP,
+    RESHAPE_FUNC_OP,
+    RESHAPE_METHOD_OP,
+)
 
 __all__ = ['OperationDataType', 'OperationData', 'TrainCycleItem', 'MemoryCost', 'ShardingStrategy', 'StrategiesVector']
 
@@ -197,9 +204,15 @@ class ShardingStrategy:
         def _deepcopy_dict_vals(data: Dict):
             return {k: deepcopy(v) for k, v in data.items()}
 
-        sharding_specs = _deepcopy_dict_vals(self.sharding_specs) if self.sharding_specs else None
-        communication_actions = _deepcopy_dict_vals(self.communication_actions) if self.communication_actions else None
-        resharding_costs = _deepcopy_dict_vals(self.resharding_costs) if self.resharding_costs else None
+        sharding_specs = _deepcopy_dict_vals(self.sharding_specs) if self.sharding_specs is not None else None
+        # We need to deepcopy it when self.communication_actions is not None, instead of checking its __bool__ value.
+        # Consider the examples below:
+        # If self.communication_actions is an empty dictionary {}, then self.communication_actions is not None, but its __bool__ value is False.
+        # In this case, if we set None to the new object, program will crash when we try to access the communication_actions.items.
+        communication_actions = _deepcopy_dict_vals(
+            self.communication_actions) if self.communication_actions is not None else None
+        # same reason as communication_actions
+        resharding_costs = _deepcopy_dict_vals(self.resharding_costs) if self.resharding_costs is not None else None
         compute_cost = deepcopy(self.compute_cost)
         communication_cost = deepcopy(self.communication_cost)
         memory_cost = deepcopy(self.memory_cost)
@@ -247,10 +260,18 @@ class StrategiesVector(list):
             if self.node.target in ELEMENTWISE_FUNC_OP:
                 merge_label = True
             # we could merge bcast op if the rhs is a scalar, because it will fall back to the element-wise case.
-            if self.node.target in BCAST_FUNC_OP and len(self.predecessor_nodes) == 1:
-                merge_label = True
-            # we could merge reshape op, because the output sharding spec of reshape op is always fully replicated.
+            # TODO: remove this after we support the fall back logic.
+            # if self.node.target in BCAST_FUNC_OP and len(self.predecessor_nodes) == 1:
+            #     merge_label = True
+            # we could merge reshape op, because their computation costs are negligible.
             if self.node.target in RESHAPE_FUNC_OP:
                 merge_label = True
 
+        if self.node.op == 'call_method':
+            # we could merge reshape op, because their computation costs are negligible.
+            method = getattr(self.node.args[0]._meta_data.__class__, self.node.target)
+            if method in RESHAPE_METHOD_OP:
+                merge_label = True
+            if method in ELEMENTWISE_METHOD_OP:
+                merge_label = True
         return merge_label

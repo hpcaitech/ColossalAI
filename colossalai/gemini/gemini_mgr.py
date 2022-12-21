@@ -5,8 +5,9 @@ from typing import List, Optional, Tuple
 import torch
 
 from colossalai.gemini.chunk import Chunk, ChunkManager
+from colossalai.gemini.memory_tracer import MemStats
 
-from .memory_tracer import ChunkMemStatsCollector, StaticMemStatsCollector
+from .memory_tracer import ChunkMemStatsCollector
 from .placement_policy import PlacementPolicyFactory
 
 
@@ -24,29 +25,20 @@ class GeminiManager:
             If it's 'auto', they are moving dynamically based on CPU and CUDA memory usage. It will utilize heterogeneous memory space evenly and well.
             Note that 'auto' policy can only work well when no other processes use CUDA during your training.
         chunk_manager (ChunkManager): A ``ChunkManager`` instance.
+        memstats (MemStats, optional): a mem stats collected by a runtime mem tracer. if None then GeminiManager will collect it during a warmup iteration.
     """
 
-    def __init__(self,
-                 placement_policy: str,
-                 chunk_manager: ChunkManager,
-                 module: Optional[torch.nn.Module] = None,
-                 use_static_memstats: bool = False) -> None:
+    def __init__(self, placement_policy: str, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
 
         assert placement_policy in PlacementPolicyFactory.get_polocy_names()
         self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
-        # self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager) if policy_cls.need_mem_stats else None
-        self.use_static_memstats = use_static_memstats
-        if policy_cls.need_mem_stats:
-            if use_static_memstats:
-                assert module is not None
-                self._mem_stats_collector = StaticMemStatsCollector(module, chunk_manager)
-            else:
-                self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager)
-        else:
-            self._mem_stats_collector = None
 
+        self._premade_memstats_ = memstats is not None
+        self._memstats = memstats
+        self._mem_stats_collector = ChunkMemStatsCollector(chunk_manager,
+                                                           self._memstats) if policy_cls.need_mem_stats else None
         self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
@@ -58,13 +50,22 @@ class GeminiManager:
         self._warmup = True
         self._comp_cuda_demand_time = 0
 
+    def memstats(self):
+        """memstats
+
+        get the memory statistics during training.
+        The stats could be collected by a runtime memory tracer, or collected by the GeminiManager.
+        Note, for the latter, you can not access the memstats before warmup iteration finishes.
+        """
+        if self._premade_memstats_:
+            return self._memstats
+        else:
+            assert not self._warmup, "Gemini Manager has memstats after warm up! Now is during warmup."
+            return self._mem_stats_collector._memstats
+
     def pre_iter(self, *args):
         if self._mem_stats_collector and self._warmup:
-            if self.use_static_memstats:
-                self._mem_stats_collector.init_mem_stats(*args)
-                self._warmup = False
-            else:
-                self._mem_stats_collector.start_collection()
+            self._mem_stats_collector.start_collection()
 
     def post_iter(self):
         """This function must be called when each iteration finishes
@@ -132,9 +133,9 @@ class GeminiManager:
         if self._mem_stats_collector:
             self._mem_stats_collector.sample_overall_data()
 
-    def sample_model_data(self):
+    def record_model_data_volume(self):
         if self._mem_stats_collector:
-            self._mem_stats_collector.sample_model_data()
+            self._mem_stats_collector.record_model_data_volume()
 
     @property
     def chunk_manager(self):

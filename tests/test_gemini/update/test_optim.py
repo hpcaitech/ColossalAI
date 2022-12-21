@@ -1,5 +1,4 @@
 from functools import partial
-from time import time
 
 import pytest
 import torch
@@ -27,7 +26,7 @@ from tests.test_tensor.common_utils import debug_print, set_seed
 # this model is large enough to slice to chunks
 TEST_MODELS = ['gpt2']
 # these models are too small, all parameters in these models are compacted into one chunk
-EXAMPLE_MODELS = ['hanging_param_model', 'bert', 'simple_net', 'nested_model', 'repeated_computed_layers']
+EXAMPLE_MODELS = ['albert', 'hanging_param_model', 'bert', 'simple_net', 'nested_model', 'repeated_computed_layers']
 
 
 def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
@@ -42,7 +41,7 @@ def check_param(model: ZeroDDP, torch_model: torch.nn.Module):
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         # debug_print([0], "max range: ", key, torch.max(torch.abs(value - temp_zero_value)))
-        assert_close(value, temp_zero_value, rtol=1e-3, atol=1e-2)
+        assert_close(value, temp_zero_value, rtol=1e-3, atol=4e-3)
 
 
 @parameterize('placement_policy', ['cuda', 'cpu', 'auto', 'const'])

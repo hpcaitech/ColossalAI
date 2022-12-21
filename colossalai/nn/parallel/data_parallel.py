@@ -8,11 +8,12 @@ import torch.distributed as dist
 
 from colossalai.gemini.chunk import Chunk, ChunkManager, TensorState
 from colossalai.gemini.gemini_mgr import GeminiManager
+from colossalai.gemini.memory_tracer import OrderedParamGenerator
 from colossalai.logging import get_dist_logger
 from colossalai.nn.parallel.utils import get_temp_total_chunk_on_cuda
 from colossalai.tensor import ProcessGroup as ColoProcessGroup
 from colossalai.tensor.colo_parameter import ColoParameter, ColoTensor, ColoTensorSpec
-from colossalai.tensor.param_op_hook import ParamOpHookManager
+from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device
 from colossalai.zero.utils.gemini_hook import GeminiZeROHook
 
@@ -216,8 +217,18 @@ class ZeroDDP(ColoDDP):
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
 
         cpu_offload = self.gemini_manager.policy_name != 'cuda'
-        # TODO: get param order and filter unused params
-        for p in module.parameters():
+
+        if self.gemini_manager._premade_memstats_:
+            # build chunk in param runtime visited order.
+            param_order = self.gemini_manager.memstats()._param_runtime_order
+        else:
+            # build chunk in param initialized order.
+            # Note: in this way, it can not get filter unused params during runtime.
+            param_order = OrderedParamGenerator()
+            for p in module.parameters():
+                param_order.append(p)
+
+        for p in param_order.generate():
             assert isinstance(p, ColoParameter)
 
             if getattr(p, '_ddp_to_ignore', False):
@@ -228,22 +239,22 @@ class ZeroDDP(ColoDDP):
             fp32_p = ColoTensor(fp32_data, spec=ColoTensorSpec(p.process_group))
             p.data = p.data.half()
             dp_world_size = p.process_group.dp_world_size()
-            self.chunk_manager.append_tensor(tensor=p,
-                                             group_type='fp16_param',
-                                             config_key=dp_world_size,
-                                             cpu_offload=cpu_offload,
-                                             pin_memory=pin_memory)
-            self.chunk_manager.append_tensor(tensor=fp32_p,
-                                             group_type='fp32_param',
-                                             config_key=dp_world_size,
-                                             cpu_offload=cpu_offload,
-                                             pin_memory=pin_memory)
+            self.chunk_manager.register_tensor(tensor=p,
+                                               group_type='fp16_param',
+                                               config_key=dp_world_size,
+                                               cpu_offload=cpu_offload,
+                                               pin_memory=pin_memory)
+            self.chunk_manager.register_tensor(tensor=fp32_p,
+                                               group_type='fp32_param',
+                                               config_key=dp_world_size,
+                                               cpu_offload=cpu_offload,
+                                               pin_memory=pin_memory)
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
         self.chunk_manager.close_all_groups()
         self._cast_buffers()
 
-        params_list = [p for p in module.parameters() if not getattr(p, '_ddp_to_ignore', False)]
+        params_list = [p for p in param_order.generate() if not getattr(p, '_ddp_to_ignore', False)]
         for p, fp32_p in zip(params_list, self.fp32_params):
             chunk_16 = self.chunk_manager.get_chunk(p)
             chunk_32 = self.chunk_manager.get_chunk(fp32_p)
@@ -259,7 +270,7 @@ class ZeroDDP(ColoDDP):
         args, kwargs = _cast_float(args, torch.half), _cast_float(kwargs, torch.half)
         self.module.zero_grad(set_to_none=True)
         self.gemini_manager.pre_iter(*args)
-        with ParamOpHookManager.use_hooks(self.param_op_hook):
+        with ColoParamOpHookManager.use_hooks(self.param_op_hook):
             outputs = self.module(*args, **kwargs)
         if self.force_outputs_fp32:
             return _cast_float(outputs, torch.float)
@@ -280,12 +291,12 @@ class ZeroDDP(ColoDDP):
         self.gemini_manager.post_iter()
 
     def backward(self, loss: torch.Tensor):
-        with self.param_op_hook.switch_to_backward(), ParamOpHookManager.use_hooks(self.param_op_hook):
+        with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             loss.backward()
         self._post_backward()
 
     def backward_by_grad(self, tensor, grad):
-        with self.param_op_hook.switch_to_backward(), ParamOpHookManager.use_hooks(self.param_op_hook):
+        with self.param_op_hook.switch_to_backward(), ColoParamOpHookManager.use_hooks(self.param_op_hook):
             torch.autograd.backward(tensor, grad)
         self._post_backward()
 
@@ -299,10 +310,14 @@ class ZeroDDP(ColoDDP):
             reduced = self.chunk_manager.reduce_chunk(chunk)
             if reduced:
                 if chunk.is_gathered:
-                    chunk.chunk_total.div_(chunk.pg_size)
+                    chunk.cuda_global_chunk.div_(chunk.pg_size)
                 else:
                     chunk.cuda_shard.div_(chunk.pg_size)
+                # check overflow elements
                 self.overflow_counter += chunk.has_inf_or_nan
+                # record l2 norm for gradient clipping
+                if chunk.l2_norm_flag:
+                    chunk.set_l2_norm()
                 self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
         return empty_grad
 
@@ -525,7 +540,7 @@ class ZeroDDP(ColoDDP):
                 load(parameter_name, tensor, partial(load_fp32_parameter, parameter_slice))
 
             if chunk.is_gathered:
-                chunk.chunk_total.copy_(temp_chunk)
+                chunk.cuda_global_chunk.copy_(temp_chunk)
             elif chunk.cuda_shard is not None:
                 chunk.cuda_shard.copy_(temp_chunk[chunk.shard_begin:chunk.shard_end])
             else:

@@ -3,22 +3,21 @@
 
 from functools import partial
 
-import colossalai
 import pytest
 import torch
 import torch.multiprocessing as mp
+from common import CONFIG
+
+import colossalai
+from colossalai.gemini.memory_tracer.utils import colo_model_mem_usage
 from colossalai.logging import get_dist_logger
 from colossalai.testing import parameterize, rerun_if_address_is_in_use
 from colossalai.utils import free_port
 from colossalai.utils.cuda import get_current_device
-from colossalai.gemini.memory_tracer.model_data_memtracer import \
-    colo_model_mem_usage
 from colossalai.utils.memory import colo_device_memory_used
 from colossalai.zero.init_ctx import ZeroInitContext
-from colossalai.zero.shard_utils import (BucketTensorShardStrategy, TensorShardStrategy)
+from colossalai.zero.shard_utils import BucketTensorShardStrategy, TensorShardStrategy
 from tests.components_to_test.registry import non_distributed_component_funcs
-
-from common import CONFIG
 
 
 @parameterize("init_device_type", ['cpu', 'cuda'])

@@ -81,7 +81,7 @@ class FusedAdam(torch.optim.Optimizer):
         else:
             super(FusedAdam, self).zero_grad()
 
-    def step(self, closure=None, grads=None, output_params=None, scale=None, grad_norms=None):
+    def step(self, closure=None, grads=None, output_params=None, scale=None, grad_norms=None, div_scale: float = -1):
         """Performs a single optimization step.
 
         Arguments:
@@ -137,6 +137,6 @@ class FusedAdam(torch.optim.Optimizer):
 
             multi_tensor_applier(self.multi_tensor_adam, self._dummy_overflow_buf, [g_l, p_l, m_l, v_l], group['lr'],
                                  beta1, beta2, group['eps'], group['step'], self.adamw_mode, bias_correction,
-                                 group['weight_decay'])
+                                 group['weight_decay'], div_scale)
 
         return loss

@@ -2,8 +2,10 @@ from typing import Dict, List
 
 import torch
 
-from ..sharding_strategy import OperationData, OperationDataType
-from .node_handler import ModuleHandler
+from colossalai.auto_parallel.meta_profiler.metainfo import MetaInfo
+
+from ..sharding_strategy import OperationData, OperationDataType, StrategiesVector
+from .node_handler import MetaInfoModuleHandler, ModuleHandler
 from .registry import operator_registry
 from .strategy import BatchNormStrategyGenerator, StrategyGenerator
 
@@ -13,7 +15,7 @@ __all__ = ['BatchNormModuleHandler']
 @operator_registry.register(torch.nn.BatchNorm1d)
 @operator_registry.register(torch.nn.BatchNorm2d)
 @operator_registry.register(torch.nn.BatchNorm3d)
-class BatchNormModuleHandler(ModuleHandler):
+class BatchNormModuleHandler(MetaInfoModuleHandler):
     """
     A BatchNormModuleHandler which deals with the sharding strategies for nn.BatchNormXd module.
     """

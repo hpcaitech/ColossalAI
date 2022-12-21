@@ -26,7 +26,14 @@ ELEMENTWISE_METHOD_OP = [
     # TODO: contiguous maybe need some extra processes.
     torch.Tensor.contiguous
 ]
-RESHAPE_FUNC_OP = [torch.flatten, torch.reshape]
+RESHAPE_FUNC_OP = [
+    torch.flatten,
+    torch.reshape,
+    torch.transpose,
+    torch.split,
+    torch.permute,
+    operator.getitem,
+]
 RESHAPE_METHOD_OP = [
     torch.Tensor.view,
     torch.Tensor.unsqueeze,

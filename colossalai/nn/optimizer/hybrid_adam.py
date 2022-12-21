@@ -89,7 +89,7 @@ class HybridAdam(NVMeOptimizer):
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure=None, div_scale: float = -1):
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -126,7 +126,7 @@ class HybridAdam(NVMeOptimizer):
                     self._pre_update(p, 'exp_avg', 'exp_avg_sq')
                     self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'], group['weight_decay'],
                                           group['bias_correction'], p.data, p.grad.data, state['exp_avg'],
-                                          state['exp_avg_sq'], -1)
+                                          state['exp_avg_sq'], div_scale)
                     self._post_update(p, 'exp_avg', 'exp_avg_sq')
 
                 elif target_device.type == 'cuda':
@@ -146,6 +146,6 @@ class HybridAdam(NVMeOptimizer):
                 bias_correction = 1 if group['bias_correction'] else 0
                 multi_tensor_applier(self.gpu_adam_op, self._dummy_overflow_buf, [g_l, p_l, m_l, v_l], group['lr'],
                                      group['betas'][0], group['betas'][1], group['eps'], group_step, adamw_mode,
-                                     bias_correction, group['weight_decay'])
+                                     bias_correction, group['weight_decay'], div_scale)
         self._post_step()
         return loss

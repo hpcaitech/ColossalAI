@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from colossalai.gemini.chunk import ChunkManager
 from colossalai.gemini.chunk.search_utils import in_ddp, search_chunk_configuration
+from colossalai.gemini.memory_tracer import MemStats
 
 
 def init_chunk_manager(model: nn.Module,
@@ -37,13 +38,13 @@ def init_chunk_manager(model: nn.Module,
     total_size = sum(params_sizes) / 1024**2
 
     dist.barrier()
-    begine = time()
+    begin = time()
 
     config_dict, wasted_size = search_chunk_configuration(model, **kwargs_dict)
 
     dist.barrier()
     end = time()
-    span_s = end - begine
+    span_s = end - begin
     wasted_size /= 1024**2
 
     if dist.get_rank() == 0:

@@ -117,7 +117,7 @@ class CPUAdam(NVMeOptimizer):
         data.addcdiv_(exp_avg, denom, value=-step_size)
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure=None, div_scale: float = -1):
         loss = None
         if closure is not None:
             with torch.enable_grad():
@@ -152,9 +152,10 @@ class CPUAdam(NVMeOptimizer):
                     self._pre_update(p, 'exp_avg', 'exp_avg_sq')
                     self.cpu_adam_op.step(state['step'], group['lr'], beta1, beta2, group['eps'], group['weight_decay'],
                                           group['bias_correction'], p.data, p.grad.data, state['exp_avg'],
-                                          state['exp_avg_sq'], -1)
+                                          state['exp_avg_sq'], div_scale)
                     self._post_update(p, 'exp_avg', 'exp_avg_sq')
                 elif target_device.type == 'cuda':
+                    assert div_scale == -1, "div_scale should remain default"
                     assert state['exp_avg'].device.type == 'cuda', "exp_avg should stay on cuda"
                     assert state['exp_avg_sq'].device.type == 'cuda', "exp_avg should stay on cuda"
 

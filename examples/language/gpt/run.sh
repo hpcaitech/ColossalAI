@@ -1,4 +1,4 @@
-# distplan in ["colossalai", "zero", "ddp"]
+# distplan in ["colossalai", "zero1", "zero2", "torch_ddp", "torch_zero"]
 export DISTPAN="colossalai"
 
 # The following options only valid when DISTPAN="colossalai"

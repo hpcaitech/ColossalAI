@@ -11,6 +11,7 @@ __all__ = ['ReshapeHandler']
 
 
 @operator_registry.register(torch.flatten)
+@operator_registry.register(torch.Tensor.unsqueeze)
 @operator_registry.register(torch.nn.AdaptiveAvgPool2d)
 class ReshapeHandler(NodeHandler):
     """

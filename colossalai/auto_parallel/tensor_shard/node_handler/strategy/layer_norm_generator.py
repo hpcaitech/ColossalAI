@@ -12,6 +12,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 from colossalai.auto_parallel.tensor_shard.utils import (
     enumerate_all_possible_1d_sharding,
     enumerate_all_possible_2d_sharding,
+    ignore_sharding_exception,
 )
 from colossalai.tensor.shape_consistency import CollectiveCommPattern
 
@@ -94,6 +95,7 @@ class LayerNormGenerator(StrategyGenerator):
         memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
         strategy.memory_cost = memory_cost
 
+    @ignore_sharding_exception
     def _generate_strategy_with_dim_partition(self, dim_partition):
         dim_partition_dict_mapping = {
             "input": dim_partition,
@@ -151,6 +153,7 @@ class LayerNormGenerator(StrategyGenerator):
             strategy_list.append(strategy)
         return strategy_list
 
+    @ignore_sharding_exception
     def non_split(self):
         name = f'RR = RR x R'
         dim_partition_dict_mapping = {

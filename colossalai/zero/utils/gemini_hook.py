@@ -7,7 +7,7 @@ import torch
 
 from colossalai.gemini import TensorState
 from colossalai.gemini.gemini_mgr import GeminiManager
-from colossalai.tensor.param_op_hook import ParamOpHook
+from colossalai.tensor.param_op_hook import ColoParamOpHook
 
 
 class TrainingPhase(Enum):
@@ -15,7 +15,7 @@ class TrainingPhase(Enum):
     BACKWARD = 1
 
 
-class GeminiZeROHook(ParamOpHook):
+class GeminiZeROHook(ColoParamOpHook):
 
     def __init__(self, gemini_manager: GeminiManager) -> None:
         super().__init__()
@@ -32,7 +32,9 @@ class GeminiZeROHook(ParamOpHook):
         self._gemini_manager.adjust_layout(chunks)
         for chunk in chunks:
             self._chunk_manager.access_chunk(chunk)
-        self._gemini_manager.sample_model_data()
+
+        # record cuda model data of the current OP
+        self._gemini_manager.record_model_data_volume()
 
     def post_op(self, params):
         params = [p for p in params if not getattr(p, '_ddp_to_ignore', False)]

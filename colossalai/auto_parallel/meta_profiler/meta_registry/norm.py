@@ -45,7 +45,7 @@ def batchnormnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleIt
         Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]: compute cost, memory cost and forward inputs
     """
 
-    input_tensor = next(filter(lambda x: x.type == OperationDataType.ARG, args)).data
+    input_tensor = args[0].data
     output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
     weight_tensor = next(filter(lambda x: x.name == "weight", args)).data
     bias_tensor = next(filter(lambda x: x.name == "bias", args)).data
@@ -76,7 +76,8 @@ def batchnormnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleIt
 
     # calculate memory cost
     # the fwd activation cost is output plus saved mean and saved inv std
-    fwd_memory_cost = MemoryCost(activation=activation_size([output_tensor, mean_tensor, var_tensor]),
+    # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
+    fwd_memory_cost = MemoryCost(activation=activation_size([input_tensor, output_tensor, mean_tensor, var_tensor]),
                                  parameter=activation_size([weight_tensor, bias_tensor]),
                                  temp=0,
                                  buffer=activation_size([mean_tensor, var_tensor]))

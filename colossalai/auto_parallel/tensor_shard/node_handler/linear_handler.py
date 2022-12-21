@@ -3,12 +3,16 @@ from typing import Dict, List, Union
 import torch
 import torch.nn.functional as F
 
-from colossalai.auto_parallel.tensor_shard.utils import transpose_partition_dim, update_partition_dim
+from colossalai.auto_parallel.tensor_shard.utils import (
+    check_sharding_spec_validity,
+    transpose_partition_dim,
+    update_partition_dim,
+)
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.sharding_spec import ShardingNotDivisibleError
 
-from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy
-from .node_handler import ModuleHandler, NodeHandler
+from ..sharding_strategy import OperationData, OperationDataType, ShardingStrategy, StrategiesVector
+from .node_handler import MetaInfoModuleHandler, MetaInfoNodeHandler, ModuleHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import LinearProjectionStrategyGenerator, StrategyGenerator
 
@@ -28,8 +32,9 @@ def _update_sharding_spec_for_transposed_weight_for_linear(strategy: ShardingStr
     # switch the dimensions of the transposed weight
     sharding_spec = strategy.get_sharding_spec_by_name(weight_name)
     op_data = strategy.get_op_data_by_name(weight_name)
-    assert op_data.logical_shape != op_data.data.shape, \
-        "Expected the logical and physical shape of the linear operator's weight to be different, but found them to be the same"
+    assert op_data.logical_shape[0] == op_data.data.shape[1] and \
+           op_data.logical_shape[1] == op_data.data.shape[0], \
+           "Expected the logical shape  of the linear operator's weight is equal to transposed physical shape"
     dim_size = len(op_data.logical_shape)
     transpose_partition_dim(sharding_spec, 0, dim_size - 1)
     return strategy
@@ -64,20 +69,14 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
     last_physical_output_dims = output_op_data.data.dim() - 1
 
     if last_logical_input_dims in input_sharding_spec.dim_partition_dict:
-        update_partition_dim(
-            sharding_spec=input_sharding_spec,
-            dim_mapping={last_logical_input_dims: last_physical_input_dims},
-            physical_shape=input_op_data.data.shape,
-            inplace=True,
-        )
+        input_last_dim_mapping = {last_logical_input_dims: last_physical_input_dims}
+    else:
+        input_last_dim_mapping = {}
 
     if last_logical_output_dims in output_sharding_spec.dim_partition_dict:
-        update_partition_dim(
-            sharding_spec=output_sharding_spec,
-            dim_mapping={last_logical_output_dims: last_physical_output_dims},
-            physical_shape=output_op_data.data.shape,
-            inplace=True,
-        )
+        output_last_dim_mapping = {last_logical_output_dims: last_physical_output_dims}
+    else:
+        output_last_dim_mapping = {}
 
     # get logger for debug message
     logger = get_dist_logger()
@@ -97,12 +96,18 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
             output_sharding_spec = strategy_copy.get_sharding_spec_by_name(output_op_data.name)
             try:
                 # replace the 0th dimension in the logical sharding with ith dimension in the physical sharding
+                input_dim_mapping = {0: i}
+                input_dim_mapping.update(input_last_dim_mapping)
+
                 update_partition_dim(sharding_spec=input_sharding_spec,
-                                     dim_mapping={0: i},
+                                     dim_mapping=input_dim_mapping,
                                      physical_shape=input_op_data.data.shape,
                                      inplace=True)
+                output_dim_mapping = {0: i}
+                output_dim_mapping.update(output_last_dim_mapping)
+
                 update_partition_dim(sharding_spec=output_sharding_spec,
-                                     dim_mapping={0: i},
+                                     dim_mapping=output_dim_mapping,
                                      physical_shape=output_op_data.data.shape,
                                      inplace=True)
                 strategy_copy.name = f'{strategy.name}_{i}'
@@ -120,12 +125,17 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
         output_sharding_spec = strategy_copy.get_sharding_spec_by_name(output_op_data.name)
 
         # after updating, the logical shape will be replaced by the physical shape
+        input_dim_mapping = {}
+        input_dim_mapping.update(input_last_dim_mapping)
         update_partition_dim(sharding_spec=input_sharding_spec,
-                             dim_mapping={},
+                             dim_mapping=input_dim_mapping,
                              physical_shape=input_op_data.data.shape,
                              inplace=True)
+
+        output_dim_mapping = {}
+        output_dim_mapping.update(output_last_dim_mapping)
         update_partition_dim(sharding_spec=output_sharding_spec,
-                             dim_mapping={},
+                             dim_mapping=output_dim_mapping,
                              physical_shape=output_op_data.data.shape,
                              inplace=True)
         sharding_strategies.append(strategy_copy)
@@ -133,7 +143,7 @@ def _convert_logical_sharding_to_physical_sharding_spec_for_linear(strategy: Sha
 
 
 @operator_registry.register(torch.nn.Linear)
-class LinearModuleHandler(ModuleHandler):
+class LinearModuleHandler(MetaInfoModuleHandler):
     """
     A LinearModuleHandler which deals with the sharding strategies for nn.Linear module.
     """
@@ -193,7 +203,7 @@ class LinearModuleHandler(ModuleHandler):
 
 
 @operator_registry.register(F.linear)
-class LinearFunctionHandler(NodeHandler):
+class LinearFunctionHandler(MetaInfoNodeHandler):
     """
     A LinearFunctionHandler which deals with the sharding strategies for F.Linear.
     """
