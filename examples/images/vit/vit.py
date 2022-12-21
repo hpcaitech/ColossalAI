@@ -1,9 +1,34 @@
+from abc import ABC, abstractmethod
+
 import torch
 import torch.nn as nn
-from utils.dummy_data_generator import DummyDataGenerator
+from transformers import ViTConfig, ViTForImageClassification
 
 from colossalai.utils.cuda import get_current_device
-from transformers import ViTConfig, ViTForImageClassification
+
+
+class DummyDataGenerator(ABC):
+
+    def __init__(self, length=10):
+        self.length = length
+
+    @abstractmethod
+    def generate(self):
+        pass
+
+    def __iter__(self):
+        self.step = 0
+        return self
+
+    def __next__(self):
+        if self.step < self.length:
+            self.step += 1
+            return self.generate()
+        else:
+            raise StopIteration
+
+    def __len__(self):
+        return self.length
 
 
 class DummyDataLoader(DummyDataGenerator):

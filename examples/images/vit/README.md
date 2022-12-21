@@ -13,7 +13,7 @@ We use model **vision_transformer** from timm [Link](https://github.com/rwightma
 
 # Requirement
 
-You should install colossalai from main branch with commit 561e904.
+Install colossalai version >= 0.1.11
 
 ## Unit test
 To run unit test, you should install pytest, transformers with:
