@@ -6,6 +6,13 @@ from .ops import OutProductMean
 from .triangle import PairStack
 
 
+def print_memory(init_mem, text=None):
+    now_mem = torch.cuda.memory_allocated() / 1024 ** 2 - init_mem
+    max_mem = torch.cuda.max_memory_allocated() / 1024 ** 2 - init_mem
+    print("%s now:%.2f max:%.2f" % ("" if text is None else text, now_mem, max_mem))
+    torch.cuda.reset_peak_memory_stats()
+
+
 class EvoformerBlock(nn.Module):
 
     def __init__(self, d_node, d_pair):
@@ -16,9 +23,9 @@ class EvoformerBlock(nn.Module):
         self.pair_stack = PairStack(d_pair=d_pair)
 
     def forward(self, node, pair):
-        node = node + self.msa_stack(node, pair)
+        node = self.msa_stack(node, pair)
         pair = pair + self.communication(node)
-        pair = pair + self.pair_stack(pair)
+        pair = self.pair_stack(pair)
         return node, pair
 
 
