@@ -16,6 +16,7 @@ from colossalai.pipeline.middleware import Partition, PartitionInputVal, Partiti
 from colossalai.pipeline.pipeline_process_group import ppg
 from colossalai.pipeline.rpc.utils import (
     get_batch_lengths,
+    pyobj_map,
     pytree_filter,
     pytree_map,
     split_batch,
@@ -681,10 +682,12 @@ class WorkerBase(ABC):
             else:
                 args_kwargs = self._get_real_args_kwargs_fwd(args)
 
-            if not forward_only:
-                pytree_map(args_kwargs,
-                           lambda x: x.requires_grad_(True) if torch.is_floating_point(x) else x.requires_grad_(False),
-                           process_types=torch.Tensor)
+            # if not forward_only:
+            #     pytree_map(args_kwargs,
+            #                lambda x: x.requires_grad_(True) if torch.is_floating_point(x) else x.requires_grad_(False),
+            #                process_types=torch.Tensor)
+            args_kwargs = pyobj_map(args_kwargs, fn=lambda x: x.to(self.device).detach(),
+                                    process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
 
             args, kwargs = data_process_func(args_kwargs)
 
@@ -754,6 +757,9 @@ class WorkerBase(ABC):
                 if is_last_stage:    # if it is the last stage, trigger backward automatic
                     self._begin_backward(microbatch_id)
 
+            consume_result = pyobj_map(consume_result, fn=lambda x: x.to('cpu'),
+                                       process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
+
         elif phase == Phase.BACKWARD:
             # remind its producer to get data before backward
             if not is_first_stage:
@@ -799,6 +805,8 @@ class WorkerBase(ABC):
                 stage_outputs = filtered_outputs
                 grad_tensors = filtered_grads
 
+            grad_tensors = pyobj_map(grad_tensors, fn=lambda x: x.to(self.device),
+                                     process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
             autograd.backward(stage_outputs, grad_tensors=grad_tensors)
 
             # collect grad of input tensor
@@ -810,6 +818,9 @@ class WorkerBase(ABC):
                         consume_result.append(arg.grad)
                     else:
                         consume_result.append(None)
+                consume_result = pyobj_map(
+                    consume_result, fn=lambda x: x.to('cpu'),
+                    process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
 
         else:
             raise TypeError(f"Unknown phase appears in _consume_work_item_by_phase {phase}")
