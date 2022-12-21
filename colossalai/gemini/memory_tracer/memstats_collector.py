@@ -79,9 +79,7 @@ class MemStatsCollector:
         if self._start_flag and not self.use_outside_memstats:
             # The following code work for ZeroInitContext, which is deprecated in v0.1.12
             cuda_mem = StatefulTensor.GST_MGR.total_mem['cuda']
-            cpu_mem = StatefulTensor.GST_MGR.total_mem['cpu']
-            self._memstats.append_model_data('cuda', cuda_mem)
-            self._memstats.append_model_data('cpu', cpu_mem)
+            self._memstats.record_max_cuda_model_data(cuda_mem)
 
     def sample_overall_data(self) -> None:
         """
