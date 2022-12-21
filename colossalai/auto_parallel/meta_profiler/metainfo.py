@@ -33,10 +33,13 @@ class MetaInfo:
         self.memory_cost: TrainCycleItem
 
         # list of input tensors
-        self.fwd_in: list[OperationData]
+        self.fwd_in: list[torch.Tensor]
 
-        # bool type to indicate whether the function will save forward activation
-        self.save_fwd_in: bool
+        # list of buffer tensors
+        self.fwd_buffer: list[torch.Tensor]
+
+        # list of output tensors
+        self.fwd_out: list[torch.Tensor]
 
         # sharding strategy
         self._strategy = strategy
@@ -99,14 +102,14 @@ class MetaInfo:
             # module
             meta_func = meta_register.get(self._target.__class__)
 
-            # check whether the target in the module list that we don't need to save activation
-            self.save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
+            # check whether the target in the list that we don't need to save activation
+            save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
         except:
             # function
             meta_func = meta_register.get(self._target)
 
-            # check whether the target in the module list that we don't need to save activation
-            self.save_fwd_in = self._target not in NO_SAVE_ACTIVATION
+            # check whether the target in the list that we don't need to save activation
+            save_fwd_in = self._target not in NO_SAVE_ACTIVATION
 
         # construct args for meta_func
         args = [self.compute_sharded_tensor(k, v) for k, v in self._strategy.sharding_specs.items()]
@@ -118,4 +121,8 @@ class MetaInfo:
             kwargs = {'inplace': False}
 
         # compute metainfo with meta_func
-        self.compute_cost, self.memory_cost, self.fwd_in = meta_func(*args, **kwargs)
+        self.compute_cost, self.memory_cost, self.fwd_in, self.fwd_buffer, self.fwd_out = meta_func(*args, **kwargs)
+
+        # process corner case for NO_SAVE_ACTIVATION
+        if not save_fwd_in:
+            self.fwd_in = []

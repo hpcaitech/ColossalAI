@@ -95,7 +95,9 @@ def batchnormnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleIt
 
     memory_cost = TrainCycleItem(fwd=fwd_memory_cost, bwd=bwd_memory_cost, total=total_cost)
 
-    # store fwd_in
-    fwd_in = [input_tensor]
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = [torch.zeros_like(input_tensor, device='meta')]
+    fwd_buffer = [torch.zeros_like(mean_tensor, device='meta'), torch.zeros_like(var_tensor, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
-    return compute_cost, memory_cost, fwd_in
+    return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out
