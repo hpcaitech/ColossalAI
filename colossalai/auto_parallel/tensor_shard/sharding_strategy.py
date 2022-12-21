@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Tuple, Union
 import torch
 from torch.fx.node import Node
 
-from colossalai.tensor.shape_consistency import CommSpec
+from colossalai.tensor.comm_spec import CommSpec
 from colossalai.tensor.sharding_spec import ShardingSpec
 
 from .constants import (
