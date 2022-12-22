@@ -45,6 +45,26 @@ def runtime_apply_for_iterable_object(node: Node, origin_dict: Dict, input_dict:
     return rst
 
 
+def get_mem_cost(node: Node, origin_dict: Dict, input_dict: Dict, node_index: int, user_node_index: int):
+    """
+    This method is used to calculate the memory cost of the shape_consistency
+    """
+    origin_sharding_spec = origin_dict[node_index]
+    target_sharding_spec = input_dict[node_index][user_node_index]
+    _, comm_action_sequence, _ = shape_consistency_manager.shape_consistency(origin_sharding_spec, target_sharding_spec)
+
+    # NOTE: the cost in shape_consistency_manager.mem_cost is the count in number of numel
+    numel_cost = shape_consistency_manager.mem_cost(comm_action_sequence)
+    element_length = node._meta_data.element_size()
+    numel_cost.fwd.activation *= element_length
+    numel_cost.fwd.temp *= element_length
+    numel_cost.bwd.activation *= element_length
+    numel_cost.bwd.temp *= element_length
+    numel_cost.total.activation *= element_length
+
+    return numel_cost
+
+
 def runtime_comm_spec_apply(tensor: torch.Tensor, comm_actions_dict: Dict, node_index: int, op_data_name: str):
     """
     This method will be invoked during runtime to apply the comm action following the instruction of comm spec.
@@ -126,6 +146,9 @@ def _shape_consistency_apply(gm: torch.fx.GraphModule):
                                                                    runtime_apply,
                                                                    args=(node, origin_dict_node, input_dict_node,
                                                                          node_to_index_dict[node], user_node_index))
+                    mem_cost = get_mem_cost(node, origin_dict_node, input_dict_node, node_to_index_dict[node],
+                                            user_node_index)
+                    setattr(shape_consistency_node, 'mem_cost', mem_cost)
 
             new_args = list(user_node.args)
             new_kwargs = dict(user_node.kwargs)
