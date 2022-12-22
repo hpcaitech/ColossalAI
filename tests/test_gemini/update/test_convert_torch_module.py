@@ -31,17 +31,6 @@ def run_convert_torch_module(model_name: str):
     for n, p in pytorch_model.named_parameters():
         assert not isinstance(p, ColoTensor)
 
-    if torch.distributed.get_rank() != 0:
-        return
-
-    os.remove("./tmp")
-    torch.save(pytorch_model.state_dict(), "./tmp")
-    pytorch_model_copy = model_builder(checkpoint=False)
-    pytorch_model_copy.load_state_dict(torch.load("./tmp"))
-
-    for p1, p2 in zip(pytorch_model.parameters(), pytorch_model_copy.parameters()):
-        assert torch.allclose(p1, p2.half().cuda())
-
 
 def run_dist(rank, world_size, port):
     config = {}
