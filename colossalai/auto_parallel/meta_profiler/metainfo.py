@@ -97,19 +97,20 @@ class MetaInfo:
         """
         Compute meta info based on sharding strategy and the given target function.
         """
-
-        try:
+        assert meta_register.has(self._target.__class__) or meta_register.has(self._target), \
+            f"Meta info for {self._target} is not registered."
+        if meta_register.has(self._target.__class__):
             # module
             meta_func = meta_register.get(self._target.__class__)
 
             # check whether the target in the list that we don't need to save activation
             save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
-        except:
+        else:
             # function
             meta_func = meta_register.get(self._target)
 
             # check whether the target in the list that we don't need to save activation
-            save_fwd_in = self._target not in NO_SAVE_ACTIVATION
+            save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
 
         # construct args for meta_func
         args = [self.compute_sharded_tensor(k, v) for k, v in self._strategy.sharding_specs.items()]
