@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.profiler import ProfilerActivity, profile, record_function, schedule, tensorboard_trace_handler
 from transformers import GPT2Config, GPT2LMHeadModel
 
 import colossalai
@@ -17,7 +18,6 @@ from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
 
 
 def parse_args():
@@ -26,7 +26,7 @@ def parse_args():
         "--distplan",
         type=str,
         default='colossalai',
-        help="The distributed plan [colossalai, zero1, zero2, torch_ddp, torch_zero].",
+        help="The distributed plan [colossalai, ddp, zero].",
     )
     parser.add_argument(
         "--tp_degree",
@@ -113,7 +113,7 @@ def get_data(batch_size, seq_len, vocab_size):
 
 
 def gpt2_medium(checkpoint=False):
-    return GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=checkpoint)
+    return GPTLMModel(hidden_size=4096, num_layers=4, num_attention_heads=32, checkpoint=False)
 
 
 def gpt2_xl(checkpoint=True):
@@ -203,11 +203,8 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
 def main():
     args = parse_args()
 
-    if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
-        raise TypeError(f"{args.distplan} is error")
-
-    BATCH_SIZE = 8
-    SEQ_LEN = 1024
+    BATCH_SIZE = 16
+    SEQ_LEN = 128
     VOCAB_SIZE = 50257
     NUM_STEPS = 10
 
@@ -241,24 +238,19 @@ def main():
         # optimizer = HybridAdam(model.parameters(), lr=1e-3)
         # optimizer = ZeroOptimizer(optimizer, model, initial_scale=2**5)
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
-    else:
-        model = gpt2_medium(checkpoint=True).cuda()
 
-    if args.distplan.startswith("torch"):
-        model = DDP(model)
-        if args.distplan.endswith("ddp"):
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        elif args.distplan.endswith("zero"):
-            from torch.distributed.optim import ZeroRedundancyOptimizer
-            optimizer = ZeroRedundancyOptimizer(model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
-    elif args.distplan.startswith("zero"):
-        partition_flag = args.distplan == "zero2"
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        optimizer = LowLevelZeroOptimizer(optimizer,
-                                          overlap_communication=True,
-                                          partition_grad=partition_flag,
-                                          verbose=True)
-        # notice that the model is still in fp32
+    elif args.distplan == "ddp":
+        model = gpt2_medium(checkpoint=True).cuda()
+        ddp_model = DDP(model)
+        optimizer = torch.optim.Adam(ddp_model.parameters(), lr=0.01)
+
+    elif args.distplan == "zero":
+        from torch.distributed.optim import ZeroRedundancyOptimizer
+        model = gpt2_medium(checkpoint=True).cuda()
+        ddp_model = DDP(model)
+        optimizer = ZeroRedundancyOptimizer(ddp_model.parameters(), optimizer_class=torch.optim.Adam, lr=0.01)
+    else:
+        raise TypeError(f"{args.distplan} is error")
 
     numel = sum([p.numel() for p in model.parameters()])
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
@@ -266,6 +258,12 @@ def main():
 
     torch.cuda.synchronize()
     model.train()
+    # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+    #                  schedule=schedule(wait=1, warmup=2, active=2),
+    #                  on_trace_ready=tensorboard_trace_handler(
+    #                      f'log/dummy_data/normal_bs32_seq128'),
+    #                  record_shapes=True,
+    #                  profile_memory=True) as prof:
     for n in range(NUM_STEPS):
         # we just use randomly generated data here
         input_ids, attn_mask = get_data(BATCH_SIZE, SEQ_LEN, VOCAB_SIZE)
@@ -274,15 +272,15 @@ def main():
         outputs = model(input_ids, attn_mask)
         loss = criterion(outputs, input_ids)
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Forward '), ranks=[0])
-        if args.distplan in ["colossalai", "zero1", "zero2"]:
+        if args.distplan == "colossalai":
             optimizer.backward(loss)
-        elif args.distplan in ["torch_ddp", "torch_zero"]:
+        elif args.distplan in ["ddp", "zero"]:
             loss.backward()
+
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Backward '), ranks=[0])
-        if args.distplan in ["zero1", "zero2"]:
-            optimizer.sync_grad()
         optimizer.step()
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Optimizer step '), ranks=[0])
+        # prof.step()
         step_time = time() - start
         logger.info(
             f'[{n+1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}',
