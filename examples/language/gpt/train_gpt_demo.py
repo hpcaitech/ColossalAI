@@ -283,6 +283,7 @@ def main():
             optimizer.sync_grad()
         optimizer.step()
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Optimizer step '), ranks=[0])
+        torch.cuda.synchronize()
         step_time = time() - start
         logger.info(
             f'[{n+1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}',

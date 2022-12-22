@@ -1,6 +1,8 @@
+import os
 from functools import partial
 
 import pytest
+import torch
 import torch.multiprocessing as mp
 
 import colossalai
