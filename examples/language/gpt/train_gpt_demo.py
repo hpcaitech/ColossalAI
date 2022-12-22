@@ -89,6 +89,7 @@ class GPTLMModel(nn.Module):
 
     def forward(self, input_ids, attention_mask):
         # Only return lm_logits
+        # use_cache： Whether or not the model should return the last key/values attentions (not used by all models).
         return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=not self.checkpoint)[0]
 
 
@@ -113,7 +114,8 @@ def get_data(batch_size, seq_len, vocab_size):
 
 
 def gpt2_medium(checkpoint=False):
-    return GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=checkpoint)
+    # return GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=checkpoint)
+    return GPTLMModel(hidden_size=4096, num_layers=4, num_attention_heads=32, checkpoint=False)
 
 
 def gpt2_xl(checkpoint=True):
@@ -206,8 +208,8 @@ def main():
     if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
         raise TypeError(f"{args.distplan} is error")
 
-    BATCH_SIZE = 8
-    SEQ_LEN = 1024
+    BATCH_SIZE = 16
+    SEQ_LEN = 128    #1024
     VOCAB_SIZE = 50257
     NUM_STEPS = 10
 
@@ -283,6 +285,7 @@ def main():
             optimizer.sync_grad()
         optimizer.step()
         logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Optimizer step '), ranks=[0])
+        torch.cuda.synchronize()
         step_time = time() - start
         logger.info(
             f'[{n+1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}',
