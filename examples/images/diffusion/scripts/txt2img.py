@@ -174,6 +174,12 @@ def parse_args():
         default=1,
         help="repeat each prompt in file this often",
     )
+    parser.add_argument(
+        "--use_int8",
+        type=bool,
+        default=False,
+        help="use int8 for inference",
+    )
     opt = parser.parse_args()
     return opt
 
@@ -193,12 +199,14 @@ def main(opt):
     model = load_model_from_config(config, f"{opt.ckpt}")
     
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
     model = model.to(device)
     
-    # # quant 
-    # model = replace_module(model)
-    # # to compute the model size
-    # getModelSize(model)
+    # quantize model
+    if opt.use_int8:
+        model = replace_module(model)
+        # # to compute the model size
+        # getModelSize(model)
     
     if opt.plms:
         sampler = PLMSSampler(model)
