@@ -2,10 +2,10 @@ import os
 import sys
 from pathlib import Path
 
-from .builder import CUDAOpBuilder
+from .builder import Builder
 
 
-class CPUAdamBuilder(object):
+class CPUAdamBuilder(Builder):
     NAME = "cpu_adam"
     BASE_DIR = "cuda_native"
 

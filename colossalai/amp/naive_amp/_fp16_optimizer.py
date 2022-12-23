@@ -5,9 +5,11 @@ import torch
 import torch.distributed as dist
 
 try:
-    import colossalai._C.fused_optim
+    from colossalai._C import fused_optim
 except:
     print('Colossalai should be built with cuda extension to use the FP16 optimizer')
+    from colossalai.kernel.op_builder.fused_optim import FusedOptimBuilder
+    fused_optim = FusedOptimBuilder().load()
 
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
@@ -35,7 +37,7 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
     if overflow_buf:
         overflow_buf.fill_(0)
         # Scaling with factor `1.0` is equivalent to copy.
-        multi_tensor_applier(colossalai._C.fused_optim.multi_tensor_scale, overflow_buf, [this, that], 1.0)
+        multi_tensor_applier(fused_optim.multi_tensor_scale, overflow_buf, [this, that], 1.0)
     else:
         for this_, that_ in zip(this, that):
             that_.copy_(this_)
