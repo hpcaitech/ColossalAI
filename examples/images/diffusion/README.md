@@ -104,7 +104,7 @@ You can change the trainging config in the yaml file
 - max_epochs: max training epochs
 - precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
 
-## Finetone Example
+## Finetune Example
 ### Training on Teyvat Datasets
 
 We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is create by BLIP generated captions.
