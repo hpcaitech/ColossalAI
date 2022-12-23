@@ -80,13 +80,16 @@ class FusedSGD(Optimizer):
         self.wd_after_momentum = wd_after_momentum
 
         if multi_tensor_applier.available:
-            import colossalai._C.fused_optim
-
+            try:
+                from colossalai._C import fused_optim
+            except:
+                from colossalai.kernel.op_builder import FusedOptimBuilder
+                fused_optim = FusedOptimBuilder().load()
             # Skip buffer
             self._dummy_overflow_buf = torch.tensor([0],
                                                     dtype=torch.int,
                                                     device=self.param_groups[0]["params"][0].device)
-            self.multi_tensor_sgd = colossalai._C.fused_optim.multi_tensor_sgd
+            self.multi_tensor_sgd = fused_optim.multi_tensor_sgd
         else:
             raise RuntimeError('FusedSGD requires cuda extensions')
 
