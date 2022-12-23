@@ -22,7 +22,7 @@ from imwatermark import WatermarkEncoder
 from scripts.txt2img import put_watermark
 from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
-
+from utils import replace_module, getModelSize
 
 def chunk(it, size):
     it = iter(it)
@@ -44,7 +44,6 @@ def load_model_from_config(config, ckpt, verbose=False):
         print("unexpected keys:")
         print(u)
 
-    model.cuda()
     model.eval()
     return model
 
@@ -192,7 +191,10 @@ def main():
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
-
+    
+    # # quant
+    # model = replace_module(model)
+    
     sampler = DDIMSampler(model)
 
     os.makedirs(opt.outdir, exist_ok=True)
