@@ -6,7 +6,6 @@ from .builder import CUDAOpBuilder
 
 
 class CPUAdamBuilder(object):
-    BUILD_VAR = "DS_BUILD_CPU_ADAM"
     NAME = "cpu_adam"
     BASE_DIR = "cuda_native"
 
