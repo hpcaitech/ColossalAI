@@ -147,12 +147,12 @@ class LazyTensor(torch.Tensor):
         if self._spec is None:
             raise RuntimeError('ShardingSpec is not set for\n{self}')
         spec, device_mesh = self._spec, self._spec.device_mesh
-        t = self.materialize()
+        target = self.materialize()
 
         # TODO(some man): better not be coupled with auto-parallel
-        t.data = scm.apply_for_autoparallel_runtime(t.data, ShardingSpec(device_mesh, t.shape, {}),
-                                                    spec).detach().clone()
-        return t
+        target.data = scm.apply_for_autoparallel_runtime(target.data, ShardingSpec(device_mesh, target.shape, {}),
+                                                         spec).detach().clone()
+        return target
 
     def _realize_cached_data(self) -> torch.Tensor:
         # self._cached_data should be generated after the first call of this function
