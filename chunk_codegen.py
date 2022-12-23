@@ -1899,7 +1899,7 @@ def emit_code_with_chunk(
 
     chunk_outputs = [i["outputs"][0] for i in chunk_search]
     chunk_outputs_dim = [i["outputs_dim"] for i in chunk_search]
-    
+
     chunk_prepose_nodes = [i["args"]["prepose_nodes"] for i in chunk_search]
 
     node_idx = 0
@@ -1933,7 +1933,9 @@ def emit_code_with_chunk(
                 emit_node_func(node, body)
                 # replace input var with chunk var
                 for input_node_idx, input_node in enumerate(chunk_inputs[region_idx]):
-                    for idx, dim in chunk_inputs_dim[region_idx][input_node_idx].items():
+                    for idx, dim in chunk_inputs_dim[region_idx][
+                        input_node_idx
+                    ].items():
                         if idx == node_idx:
                             chunk_slice = _gen_chunk_slice_dim(
                                 dim, "chunk_idx", _get_node_shape(input_node)
