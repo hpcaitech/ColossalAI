@@ -397,7 +397,7 @@ class OpBuilder(ABC):
         self.error_log = f"{msg}"
         print(f"{WARNING} {msg}")
 
-    def deepspeed_src_path(self, code_path):
+    def colossalai_src_path(self, code_path):
         if os.path.isabs(code_path):
             return code_path
         else:
