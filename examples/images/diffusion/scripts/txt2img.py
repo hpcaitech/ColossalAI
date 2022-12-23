@@ -20,6 +20,7 @@ from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 from ldm.models.diffusion.dpm_solver import DPMSolverSampler
+from utils import replace_module, getModelSize
 
 torch.set_grad_enabled(False)
 
@@ -43,7 +44,6 @@ def load_model_from_config(config, ckpt, verbose=False):
         print("unexpected keys:")
         print(u)
 
-    model.cuda()
     model.eval()
     return model
 
@@ -191,10 +191,15 @@ def main(opt):
 
     config = OmegaConf.load(f"{opt.config}")
     model = load_model_from_config(config, f"{opt.ckpt}")
-
+    
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    model = model.half()
     model = model.to(device)
-
+    
+    model = replace_module(model)
+    # # to compute the model size
+    # getModelSize(model)
+    
     if opt.plms:
         sampler = PLMSSampler(model)
     elif opt.dpm:
@@ -290,3 +295,5 @@ def main(opt):
 if __name__ == "__main__":
     opt = parse_args()
     main(opt)
+    # # to compute the mem allocated
+    # print(torch.cuda.max_memory_allocated() / 1024 / 1024)
