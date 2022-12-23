@@ -76,11 +76,7 @@ class FusedLAMB(torch.optim.Optimizer):
                         max_grad_norm=max_grad_norm)
         super(FusedLAMB, self).__init__(params, defaults)
         if multi_tensor_applier.available:
-            try:
-                from colossalai._C import fused_optim
-            except:
-                from colossalai.kernel.op_builder.fused_optim import FusedOptimBuilder
-                fused_optim = FusedOptimBuilder().load()
+            from colossalai.kernel import fused_optim
 
             self.multi_tensor_l2norm = fused_optim.multi_tensor_l2norm
             # Skip buffer
