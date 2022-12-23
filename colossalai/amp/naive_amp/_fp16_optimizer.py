@@ -3,19 +3,12 @@
 
 import torch
 import torch.distributed as dist
-
-try:
-    from colossalai._C import fused_optim
-except:
-    print('Colossalai should be built with cuda extension to use the FP16 optimizer')
-    from colossalai.kernel.op_builder.fused_optim import FusedOptimBuilder
-    fused_optim = FusedOptimBuilder().load()
-
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.kernel import fused_optim
 from colossalai.logging import get_dist_logger
 from colossalai.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes, multi_tensor_applier
 

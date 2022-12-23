@@ -4,28 +4,21 @@ import functools
 import os
 import random
 import socket
+from collections import defaultdict
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import torch
+import torch.distributed as dist
 from torch._six import inf
 from torch.nn.parameter import Parameter
-
-try:
-    from colossalai._C import fused_optim
-except:
-    from colossalai.kernel.op_builder import FusedOptimBuilder
-    fused_optim = FusedOptimBuilder().load()
-
-from collections import defaultdict
-from contextlib import contextmanager
-
-import torch.distributed as dist
 
 from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARALLEL_ATTRIBUTES
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
+from colossalai.kernel import fused_optim
 from colossalai.tensor import ColoParameter, ProcessGroup
 
 from .multi_tensor_apply import multi_tensor_applier
