@@ -407,9 +407,6 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
 
     def mem_cost(self, comm_action_sequence: List[CommSpec]) -> TrainCycleItem:
         """memory cost of the communication action sequence
-        TODO: Currently we just consider tensor numel in the shape consistency manger,
-        as the manager itself doesn't have the access to tensor dtype, we need to take
-        it into consideration in memory estimation.
 
         Args:
             comm_action_sequence (List[CommSpec]): list of communication actions
