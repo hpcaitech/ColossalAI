@@ -24,6 +24,7 @@ from ldm.util import instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 from utils import replace_module, getModelSize
 
+
 def chunk(it, size):
     it = iter(it)
     return iter(lambda: tuple(islice(it, size)), ())
@@ -182,6 +183,12 @@ def main():
         choices=["full", "autocast"],
         default="autocast"
     )
+    parser.add_argument(
+        "--use_int8",
+        type=bool,
+        default=False,
+        help="use int8 for inference",
+    )
 
     opt = parser.parse_args()
     seed_everything(opt.seed)
@@ -191,9 +198,12 @@ def main():
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
-    
-    # # quant
-    # model = replace_module(model)
+
+    # quantize model
+    if opt.use_int8:
+        model = replace_module(model)
+        # # to compute the model size
+        # getModelSize(model)
     
     sampler = DDIMSampler(model)
 
@@ -282,3 +292,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # # to compute the mem allocated
+    # print(torch.cuda.max_memory_allocated() / 1024 / 1024)
