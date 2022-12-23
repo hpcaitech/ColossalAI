@@ -67,14 +67,13 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
         exp_avg_sq_copy = exp_avg_sq.clone()
 
         try:
-            import colossalai._C.cpu_optim
-            cpu_adam_op = colossalai._C.cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, adamw)
-            print("use prebuilt CPUAdamOptimizer")
+            from colossalai._C import cpu_optim
         except:
-            from colossalai.kernel.op_builder.cpu_adam import CPUAdamBuilder
-            lib = CPUAdamBuilder().load()
-            cpu_adam_op = lib.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, adamw)
+            from colossalai.kernel.op_builder import CPUAdamBuilder
+            cpu_optim = CPUAdamBuilder().load()
             print("build CPUAdamOptimizer at runtime")
+
+        cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, adamw)
 
         cpu_adam_op.step(
             step,

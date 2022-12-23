@@ -1,8 +1,7 @@
 import os
-import sys
-from pathlib import Path
 
 from .builder import Builder
+from .utils import append_nvcc_threads
 
 
 class CPUAdamBuilder(Builder):
@@ -28,16 +27,9 @@ class CPUAdamBuilder(Builder):
         ]
 
     def include_paths(self):
-        import torch
         from torch.utils.cpp_extension import CUDA_HOME
         cuda_include = os.path.join(CUDA_HOME, "include")
         return [os.path.join(CPUAdamBuilder.BASE_DIR, "includes"), cuda_include]
-
-    def colossalai_src_path(self, code_path):
-        if os.path.isabs(code_path):
-            return code_path
-        else:
-            return os.path.join(Path(__file__).parent.parent.absolute(), code_path)
 
     def strip_empty_entries(self, args):
         '''
@@ -45,20 +37,25 @@ class CPUAdamBuilder(Builder):
         '''
         return [x for x in args if len(x) > 0]
 
-    def builder(self):
+    def builder(self, name) -> 'CUDAExtension':
+        """
+        get a CUDAExtension instance used for setup.py
+        """
         from torch.utils.cpp_extension import CUDAExtension
+
         return CUDAExtension(
-            name=self.name,
+            name=name,
             sources=[os.path.join('colossalai/kernel/cuda_native/csrc', path) for path in self.sources],
             include_dirs=self.extra_include_paths,
             extra_compile_args={
-                'cxx': ['-O3'] + self.version_dependent_macros + self.extra_cxx_flags,
-                'nvcc': ['-O3', '--use_fast_math'] + self.extra_cuda_flags
+                'cxx': ['-O3'] + self.version_dependent_macros + self.extra_cuda_flags,
+                'nvcc':
+                    append_nvcc_threads(['-O3', '--use_fast_math'] + self.version_dependent_macros +
+                                        self.extra_cuda_flags)
             })
 
     def load(self, verbose=True):
         """
-
         load and compile cpu_adam lib at runtime
 
         Args:

@@ -7,7 +7,7 @@ from .builder import Builder
 
 
 class FusedOptimBuilder(Builder):
-    NAME = "fused_optim"
+    NAME = 'fused_optim'
     BASE_DIR = "cuda_native/csrc"
 
     def __init__(self):
@@ -41,10 +41,10 @@ class FusedOptimBuilder(Builder):
         cuda_include = os.path.join(CUDA_HOME, "include")
         return [os.path.join(FusedOptimBuilder.BASE_DIR, "includes"), cuda_include]
 
-    def builder(self):
+    def builder(self, name):
         from torch.utils.cpp_extension import CUDAExtension
         return CUDAExtension(
-            name=self.name,
+            name=name,
             sources=[os.path.join('colossalai/kernel/cuda_native/csrc', path) for path in self.sources],
             include_dirs=self.extra_include_paths,
             extra_compile_args={
