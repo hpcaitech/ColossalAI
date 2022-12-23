@@ -2,32 +2,30 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import transformers
-from torch.fx import GraphModule
-from transformers.models.gpt2.modeling_gpt2 import (
-    GPT2MLP,
-    BaseModelOutputWithPastAndCrossAttentions,
-    GPT2PreTrainedModel,
-)
+from transformers.activations import ACT2FN
+from transformers.models.gpt2.modeling_gpt2 import BaseModelOutputWithPastAndCrossAttentions, GPT2PreTrainedModel
 from transformers.pytorch_utils import Conv1D
 
-from colossalai.auto_parallel.tensor_shard.constants import BATCHNORM_MODULE_OP
-from colossalai.auto_parallel.tensor_shard.solver import (
-    CostGraph,
-    GraphAnalyser,
-    Solver,
-    SolverOptions,
-    StrategiesConstructor,
-)
-from colossalai.device.device_mesh import DeviceMesh
-from colossalai.fx.tracer.tracer import ColoTracer
-from colossalai.tensor.shape_consistency import ShapeConsistencyManager
-from colossalai.testing import parameterize
-from colossalai.testing.pytest_wrapper import run_on_environment_flag
 
-BATCH_SIZE = 1
-SEQ_LENGTH = 32
-HIDDEN_DIM = 768
+class GPT2MLP(nn.Module):
+
+    def __init__(self, intermediate_size, config):
+        super().__init__()
+        embed_dim = config.hidden_size
+        self.c_fc = Conv1D(intermediate_size, embed_dim)
+        self.c_proj = Conv1D(embed_dim, intermediate_size)
+        self.act = ACT2FN[config.activation_function]
+        # We temporarily banned the Dropout layer because the rng state need
+        # to process to get the correct result.
+        # self.dropout = nn.Dropout(config.resid_pdrop)
+
+    def forward(self, hidden_states: Optional[Tuple[torch.FloatTensor]]) -> torch.FloatTensor:
+        hidden_states = self.c_fc(hidden_states)
+        hidden_states = self.act(hidden_states)
+        hidden_states = self.c_proj(hidden_states)
+        # TODO: the rng state need to be fixed for distributed runtime
+        # hidden_states = self.dropout(hidden_states)
+        return hidden_states
 
 
 # The reason Why we don't import GPT2Attention from transformers directly is that:
@@ -89,7 +87,7 @@ class GPT2Attention(nn.Module):
 
         # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
         attn_weights = attn_weights.type(value.dtype)
-        attn_weights = self.attn_dropout(attn_weights)
+        # attn_weights = self.attn_dropout(attn_weights)
 
         # Mask heads if we want to
         if head_mask is not None:
@@ -125,15 +123,10 @@ class GPT2Attention(nn.Module):
         present = (key, value)
 
         attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
-
         attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
         attn_output = self.c_proj(attn_output)
-        attn_output = self.resid_dropout(attn_output)
-
-        outputs = (attn_output, present)
-        outputs += (attn_weights,)
-
-        return outputs    # a, present, (attentions)
+        # attn_output = self.resid_dropout(attn_output)
+        return attn_output
 
 
 class GPT2Block(nn.Module):
@@ -161,19 +154,15 @@ class GPT2Block(nn.Module):
             attention_mask=attention_mask,
             head_mask=head_mask,
         )
-        attn_output = attn_outputs[0]    # output_attn: a, present, (attentions)
-        outputs = attn_outputs[1:]
         # residual connection
-        hidden_states = attn_output + residual
+        hidden_states = attn_outputs + residual
         residual = hidden_states
         hidden_states = self.ln_2(hidden_states)
         feed_forward_hidden_states = self.mlp(hidden_states)
         # residual connection
         hidden_states = residual + feed_forward_hidden_states
 
-        outputs = (hidden_states,) + outputs[1:]
-
-        return outputs    # hidden_states, present, (attentions, cross_attentions)
+        return hidden_states
 
 
 class GPT2Model(GPT2PreTrainedModel):
@@ -228,103 +217,25 @@ class GPT2Model(GPT2PreTrainedModel):
         # attention_probs has shape bsz x n_heads x N x N
         # head_mask has shape n_layer x batch x n_heads x N x N
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
-
         inputs_embeds = self.wte(input_ids)
         position_embeds = self.wpe(position_ids)
+
         # add_2
         hidden_states = inputs_embeds + position_embeds
 
         token_type_embeds = self.wte(token_type_ids)
         hidden_states = hidden_states + token_type_embeds
 
-        # transformer_drop
-        hidden_states = self.drop(hidden_states)
         # comment to run pipeline
         # add_3
         output_shape = input_shape + (hidden_states.size(-1),)
 
-        presents = None
-        all_self_attentions = None
-        all_cross_attentions = None
-        all_hidden_states = None
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
             outputs = block(hidden_states, attention_mask=attention_mask, head_mask=head_mask[i])
-            hidden_states = outputs[0]
+            hidden_states = outputs
 
         hidden_states = self.ln_f(hidden_states)
         # comment to run pipeline
         hidden_states = hidden_states.view(output_shape)
 
-        return tuple(v for v in [hidden_states, presents, all_hidden_states, all_self_attentions, all_cross_attentions]
-                     if v is not None)
-
-
-@run_on_environment_flag(name='AUTO_PARALLEL')
-@parameterize('model_cls', [GPT2Block, GPT2Attention, GPT2MLP, GPT2Model])
-def test_self_attention_block(model_cls):
-    config = transformers.GPT2Config(n_position=64, n_layer=4, n_head=16, n_embd=HIDDEN_DIM)
-    if model_cls == GPT2MLP:
-        model = model_cls(intermediate_size=4 * config.hidden_size, config=config)
-    else:
-        model = model_cls(config=config)
-    physical_mesh_id = torch.arange(0, 4)
-    mesh_shape = (2, 2)
-    # [[0, 1]
-    #  [2, 3]]
-    device_mesh = DeviceMesh(physical_mesh_id, mesh_shape)
-    shape_consistency_manager = ShapeConsistencyManager()
-
-    tracer = ColoTracer()
-    if model_cls == GPT2MLP:
-        input_sample = {
-            'hidden_states': torch.rand(BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM).to('meta'),
-        }
-    elif model_cls in (GPT2Attention, GPT2Block):
-        input_sample = {
-            'hidden_states': torch.rand(BATCH_SIZE, SEQ_LENGTH, HIDDEN_DIM).to('meta'),
-            'attention_mask': torch.rand(1, SEQ_LENGTH).to('meta'),
-        }
-    else:
-        input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        token_type_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        kwargs = dict(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
-        input_sample = {k: v.to('meta') for k, v in kwargs.items()}
-
-    graph = tracer.trace(root=model, meta_args=input_sample)
-
-    gm = GraphModule(model, graph, model.__class__.__name__)
-    print(gm.graph)
-    gm.recompile()
-    graph_analyser = GraphAnalyser(gm)
-    liveness_list = graph_analyser.liveness_analysis()
-    solver_options = SolverOptions()
-    strategies_constructor = StrategiesConstructor(graph, device_mesh, solver_options)
-    strategies_constructor.build_strategies_and_cost()
-
-    cost_graph = CostGraph(strategies_constructor.leaf_strategies)
-    cost_graph.simplify_graph()
-    solver = Solver(gm.graph, strategies_constructor, cost_graph, graph_analyser, memory_budget=-1)
-    ret = solver.call_solver_serialized_args()
-    strategies_list = solver.last_s_val
-    nodes = [strategies_vector.node for strategies_vector in strategies_constructor.leaf_strategies]
-
-    computation_cost = 0
-    communication_cost = 0
-    memory_cost = 0
-    for index, node in enumerate(nodes):
-        print(node.name, node.strategies_vector[strategies_list[index]].name)
-        computation_cost += node.strategies_vector[strategies_list[index]].compute_cost.total
-        communication_cost += node.strategies_vector[strategies_list[index]].communication_cost.total
-        node_memory_cost = node.strategies_vector[strategies_list[index]].memory_cost.total
-        if isinstance(node_memory_cost, tuple):
-            node_memory_cost = node_memory_cost[0]
-        memory_cost += node_memory_cost.activation + node_memory_cost.parameter
-
-    print(f'computation cost is {computation_cost}')
-    print(f'communication cost is {communication_cost}')
-    print(f'memory cost is {memory_cost}')
-
-
-if __name__ == '__main__':
-    test_self_attention_block()
+        return hidden_states
