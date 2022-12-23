@@ -920,9 +920,13 @@ class IndexTracer(object):
 
             # loop cur node's all arg until out of chunk
             while len(tmp_cur_prepose_nodes) > 0:
+                if prepose_flag == False:
+                    break
                 tmp_next_prepose_nodes = []
                 tmp_cur_related_prepose_nodes.extend(tmp_cur_prepose_nodes)
                 for cur_prepose_node in tmp_cur_prepose_nodes:
+                    if prepose_flag == False:
+                        break
                     for cur_prepose_node_arg in cur_prepose_node.args:
                         if type(cur_prepose_node_arg) != type(cur_prepose_node):
                             continue
@@ -941,8 +945,6 @@ class IndexTracer(object):
                                 tmp_next_prepose_nodes.append(cur_prepose_node_arg)
                             else:
                                 prepose_flag = False
-                                break
-                                break
                                 break
                         # non compute op
                         else:
