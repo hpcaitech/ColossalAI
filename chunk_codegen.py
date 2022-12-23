@@ -1497,8 +1497,8 @@ class ChunkRegionSearch(object):
             chunk_info = self._step_search(mem_peak, active_node, chunk_infos)
             if chunk_info is None:
                 break
-
             chunk_infos.append(chunk_info)
+
             (
                 mem_peak,
                 _,
