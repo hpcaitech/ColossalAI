@@ -186,7 +186,7 @@ if build_cuda_ext:
 
     ### Gemini Adam kernel ####
     from colossalai.kernel.op_builder import CPUAdamBuilder
-    ext_modules.append(CPUAdamBuilder().builder('colossalai._C.cpu_adam'))
+    ext_modules.append(CPUAdamBuilder().builder('colossalai._C.cpu_optim'))
 
 setup(name='colossalai',
       version=get_version(),
