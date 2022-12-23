@@ -2,10 +2,14 @@ import operator
 from functools import reduce
 
 import torch
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import (enumerate_all_possible_1d_sharding,
-                                                                     enumerate_all_possible_2d_sharding,
-                                                                     generate_sharding_size, ignore_sharding_exception)
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
+
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import (
+    enumerate_all_possible_1d_sharding,
+    enumerate_all_possible_2d_sharding,
+    generate_sharding_size,
+    ignore_sharding_exception,
+)
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
 
 from .operator_handler import OperatorHandler
 
@@ -63,19 +67,19 @@ class LayerNormHandler(OperatorHandler):
         Argument:
             sharding_size_forward(int): The forward activation will be divided
                 into sharding_size_forward number partions.
-            sharding_size_backward_activation(int): The backward activation will 
+            sharding_size_backward_activation(int): The backward activation will
                 be divided into sharding_size_backward_activation number partions.
             sharding_size_weight(int): The backward weight will be divided
                 into sharding_size_weight number partions.
 
         Return:
-            memory_cost(Tuple[float]): Memory cost per device with this 
+            memory_cost(Tuple[float]): Memory cost per device with this
                 specific strategy, the first element of this tuple is forward
                 memory cost, and the second element of this tuple is backward
                 memory cost.
-            memory_cost_forward(float): Memory cost of forward activation per 
+            memory_cost_forward(float): Memory cost of forward activation per
                 device with this specific strategy.
-            memory_cost_backward_activation(float): Memory cost of backward activation 
+            memory_cost_backward_activation(float): Memory cost of backward activation
                 per device with this specific strategy.
         '''
         # compute the memory cost of this strategy
@@ -216,7 +220,7 @@ class LayerNormHandler(OperatorHandler):
             norm_handler.register_strategy()
             for strategy in norm_handler.strategies_vector:
                 print(f'{strategy.name}, computation_cost: {strategy.compute_cost}, memory_cost: {strategy.memory_cost}')
-        
+
         Output:
             RS0 = RS0 x S0, computation_cost: 131072, memory_cost: 524288.0
             RS1 = RS1 x S1, computation_cost: 131072, memory_cost: 524288.0

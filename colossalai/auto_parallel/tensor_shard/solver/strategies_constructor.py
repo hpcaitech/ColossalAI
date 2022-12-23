@@ -9,8 +9,8 @@ from torch.fx import Graph, Node
 
 from colossalai.auto_parallel.tensor_shard.node_handler import (
     GetattrHandler,
-    OuputHandler,
-    PlacehodlerHandler,
+    OutputHandler,
+    PlaceholderHandler,
     operator_registry,
 )
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import StrategiesVector
@@ -93,7 +93,7 @@ class StrategiesConstructor:
                 else:
                     assert self.solver_options.dataloader_option == DataloaderOption.REPLICATED, f'placeholder_option {self.solver_options.dataloader_option} is not supported'
                     placeholder_option = 'replicated'
-                placeholder_handler = PlacehodlerHandler(node,
+                placeholder_handler = PlaceholderHandler(node,
                                                          self.device_mesh,
                                                          strategies_vector,
                                                          placeholder_option=placeholder_option)
@@ -111,18 +111,27 @@ class StrategiesConstructor:
                 submod_type = type(submod)
                 handler = operator_registry.get(submod_type)(node, self.device_mesh, strategies_vector)
                 handler.register_strategy()
+                # attach metainfo_vector to node
+                if hasattr(handler, 'metainfo_vector'):
+                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
 
             # call_function node
             elif node.op == 'call_function':
                 target = node.target
                 handler = operator_registry.get(target)(node, self.device_mesh, strategies_vector)
                 handler.register_strategy()
+                # attach metainfo_vector to node
+                if hasattr(handler, 'metainfo_vector'):
+                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
 
             # call_method node
             elif node.op == 'call_method':
                 method = getattr(node.args[0]._meta_data.__class__, node.target)
                 handler = operator_registry.get(method)(node, self.device_mesh, strategies_vector)
                 handler.register_strategy()
+                # attach metainfo_vector to node
+                if hasattr(handler, 'metainfo_vector'):
+                    setattr(node, 'metainfo_vector', handler.metainfo_vector)
 
             # output node
             elif node.op == 'output':
@@ -131,7 +140,7 @@ class StrategiesConstructor:
                 else:
                     assert self.solver_options.dataloader_option == DataloaderOption.REPLICATED, f'placeholder_option {self.solver_options.dataloader_option} is not supported'
                     output_option = 'replicated'
-                output_handler = OuputHandler(node, self.device_mesh, strategies_vector, output_option=output_option)
+                output_handler = OutputHandler(node, self.device_mesh, strategies_vector, output_option=output_option)
                 output_handler.register_strategy()
 
             self.remove_duplicated_strategy(strategies_vector)

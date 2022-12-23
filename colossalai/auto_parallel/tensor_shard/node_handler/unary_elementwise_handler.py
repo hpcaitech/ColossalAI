@@ -3,7 +3,7 @@ from typing import Dict, List
 import torch
 
 from ..sharding_strategy import OperationData, OperationDataType
-from .node_handler import NodeHandler
+from .node_handler import MetaInfoNodeHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import StrategyGenerator, UnaryElementwiseGenerator
 
@@ -19,7 +19,7 @@ __all__ = ['UnaryElementwiseHandler']
 @operator_registry.register(torch.nn.modules.dropout.Dropout)
 @operator_registry.register(torch.Tensor.contiguous)
 @operator_registry.register(torch.nn.functional.dropout)
-class UnaryElementwiseHandler(NodeHandler):
+class UnaryElementwiseHandler(MetaInfoNodeHandler):
     """
     A UnaryElementwiseHandler which deals with the sharding strategies for UnaryElementwise Op.
     """

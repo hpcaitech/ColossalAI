@@ -6,7 +6,7 @@ import torch
 from ..sharding_strategy import OperationData, OperationDataType
 from .node_handler import NodeHandler
 from .registry import operator_registry
-from .strategy import (StrategyGenerator, TensorStrategyGenerator, TensorTupleStrategyGenerator)
+from .strategy import StrategyGenerator, TensorStrategyGenerator, TensorTupleStrategyGenerator
 
 __all__ = ['GetItemHandler']
 

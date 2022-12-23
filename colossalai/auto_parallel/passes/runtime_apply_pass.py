@@ -4,11 +4,13 @@ from typing import Dict, List
 import torch
 from torch.fx.node import Node
 
+from colossalai.auto_parallel.meta_profiler import MetaInfo
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     CommAction,
     CommType,
     OperationData,
     OperationDataType,
+    TrainCycleItem,
 )
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.comm_spec import CommSpec

@@ -14,6 +14,7 @@ __all__ = ["avgpool_meta_info", "maxpool_meta_info"]
 @meta_register.register(torch.nn.AdaptiveAvgPool1d)
 @meta_register.register(torch.nn.AdaptiveAvgPool2d)
 @meta_register.register(torch.nn.AdaptiveAvgPool3d)
+@meta_register.register(torch.flatten)
 def avgpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, List[torch.Tensor]]:
     """Meta info for AdaptiveAvgPool
     The aten graph of AdaptiveAvgPool is
@@ -32,6 +33,7 @@ def avgpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, 
 
     input_tensor = args[0].data
     output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
+    is_inplace = kwargs.get("inplace", False)
 
     # construct forward args for flop mapping
     fwd_in_args = [input_tensor]
@@ -51,18 +53,20 @@ def avgpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, 
     compute_cost = TrainCycleItem(fwd=fwd_compute_cost, bwd=bwd_compute_cost, total=fwd_compute_cost + bwd_compute_cost)
 
     # calculate memory cost
-    fwd_mem_cost = MemoryCost(activation=activation_size(output_tensor))
-    bwd_mem_cost = MemoryCost(activation=activation_size(input_tensor))
+    fwd_mem_cost = MemoryCost() if is_inplace else MemoryCost(activation=activation_size(output_tensor))
+    bwd_mem_cost = MemoryCost() if is_inplace else MemoryCost(activation=activation_size(input_tensor))
 
     # total cost
     total_mem_cost = MemoryCost(activation=fwd_mem_cost.activation + bwd_mem_cost.activation)
 
     mem_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
 
-    # store_fwd_in
-    fwd_in = [input_tensor]
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = []
+    fwd_buffer = []
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
-    return compute_cost, mem_cost, fwd_in
+    return compute_cost, mem_cost, fwd_in, fwd_buffer, fwd_out
 
 
 @meta_register.register(torch.nn.MaxPool1d)
@@ -122,7 +126,9 @@ def maxpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, 
 
     mem_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
 
-    # store_fwd_in
-    fwd_in = [input_tensor]
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = [torch.zeros_like(input_tensor, device='meta')]
+    fwd_buffer = [torch.zeros_like(index_matrix, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
-    return compute_cost, mem_cost, fwd_in
+    return compute_cost, mem_cost, fwd_in, fwd_buffer, fwd_out

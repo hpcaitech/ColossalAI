@@ -1,30 +1,35 @@
 # ColoDiffusion: Stable Diffusion with Colossal-AI
 
-*[Colosssal-AI](https://github.com/hpcaitech/ColossalAI) provides a faster and lower cost solution for pretraining and
-fine-tuning for AIGC (AI-Generated Content) applications such as the model [stable-diffusion](https://github.com/CompVis/stable-diffusion) from [Stability AI](https://stability.ai/).*
 
-We take advantage of [Colosssal-AI](https://github.com/hpcaitech/ColossalAI) to exploit multiple optimization strategies
-, e.g. data parallelism, tensor parallelism, mixed precision & ZeRO, to scale the training to multiple GPUs.
-
-## Stable Diffusion
-
-[Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) is a latent text-to-image diffusion
-model.
-Thanks to a generous compute donation from [Stability AI](https://stability.ai/) and support from [LAION](https://laion.ai/), we were able to train a Latent Diffusion Model on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database.
-Similar to Google's [Imagen](https://arxiv.org/abs/2205.11487),
-this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts.
+Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) and [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion).
 
 <p id="diffusion_train" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
 </p>
 
-[Stable Diffusion with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion) provides **6.5x faster training and pretraining cost saving, the hardware cost of fine-tuning can be almost 7X cheaper** (from RTX3090/4090 24GB to RTX3050/2070 8GB).
+- [Training](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): Reduce Stable Diffusion memory consumption by up to 5.6x and hardware cost by up to 46x (from A100 to RTX3060).
 
 <p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
 </p>
 
-## Requirements
+
+- [DreamBooth Fine-tuning](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): Personalize your model using just 3-5 images of the desired subject.
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
+</p>
+
+
+- [Inference](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): Reduce inference GPU memory consumption by 2.5x.
+
+
+More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper) and [blog of Stable Diffusion v2](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0).
+
+## Installation
+
+### Option #1: install from source
+#### Step 1: Requirements
 
 A suitable [conda](https://conda.io/) environment named `ldm` can be created
 and activated with:
@@ -42,22 +47,68 @@ pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
 ```
 
-### install lightning
+##### Step 2: install lightning
 
-```
-git clone https://github.com/1SAA/lightning.git
-git checkout strategy/colossalai
-export PACKAGE_NAME=pytorch
-pip install .
-```
+Install Lightning version later than 2022.01.04. We suggest you install lightning from source.
 
-### Install [Colossal-AI v0.1.10](https://colossalai.org/download/) From Our Official Website
+https://github.com/Lightning-AI/lightning.git
+
+
+##### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
+
+For example, you can install  v0.1.12 from our official website.
 
 ```
 pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
 ```
 
-> The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
+### Option #2: Use Docker
+
+To use the stable diffusion Docker image, you can either build using the provided the [Dockerfile](./docker/Dockerfile) or pull a Docker image from our Docker hub.
+
+```
+# 1. build from dockerfile
+cd docker
+docker build -t hpcaitech/diffusion:0.2.0  .
+
+# 2. pull from our docker hub
+docker pull hpcaitech/diffusion:0.2.0
+```
+
+Once you have the image ready, you can launch the image with the following command:
+
+```bash
+########################
+# On Your Host Machine #
+########################
+# make sure you start your image in the repository root directory
+cd Colossal-AI
+
+# run the docker container
+docker run --rm \
+  -it --gpus all \
+  -v $PWD:/workspace \
+  -v <your-data-dir>:/data/scratch \
+  -v <hf-cache-dir>:/root/.cache/huggingface \
+  hpcaitech/diffusion:0.2.0 \
+  /bin/bash
+
+########################
+#  Insider Container   #
+########################
+# Once you have entered the docker container, go to the stable diffusion directory for training
+cd examples/images/diffusion/
+
+# start training with colossalai
+bash train_colossalai.sh
+```
+
+It is important for you to configure your volume mapping in order to get the best training experience.
+1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine.
+2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to repliace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
+3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
+
+
 
 ## Download the model checkpoint from pretrained
 
@@ -86,23 +137,24 @@ you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-We provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml` and `train_ddp.yaml`
+We provide the script `train_colossalai.sh` to run the training task with colossalai,
+and can also use `train_ddp.sh` to run the training task with ddp to compare.
 
-For example, you can run the training from colossalai by
+In `train_colossalai.sh` the main command is:
 ```
 python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
 ```
 
-- you can change the `--logdir` the save the log information and the last checkpoint
+- you can change the `--logdir` to decide where to save the log information and the last checkpoint.
 
 ### Training config
 
 You can change the trainging config in the yaml file
 
-- accelerator: acceleratortype, default 'gpu'
-- devices: device number used for training, default 4
-- max_epochs: max training epochs
-- precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
+- devices: device number used for training, default 8
+- max_epochs: max training epochs, default 2
+- precision: the precision type used in training, default 16 (fp16), you must use fp16 if you want to apply colossalai
+- more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 
 ## Finetune Example
 ### Training on Teyvat Datasets
@@ -154,6 +206,7 @@ optional arguments:
   --config CONFIG       path to config which constructs model
   --ckpt CKPT           path to checkpoint of model
   --seed SEED           the seed (for reproducible sampling)
+  --use_int8            whether to use quantization method
   --precision {full,autocast}
                         evaluate at this precision
 ```

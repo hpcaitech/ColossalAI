@@ -3,19 +3,12 @@
 
 import torch
 import torch.distributed as dist
-
-try:
-    from colossalai._C import fused_optim
-except:
-    print('Colossalai should be built with cuda extension to use the FP16 optimizer')
-    from colossalai.kernel.op_builder.fused_optim import FusedOptimBuilder
-    fused_optim = FusedOptimBuilder().load()
-
 from torch.distributed import ProcessGroup
 from torch.optim import Optimizer
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
+from colossalai.kernel import fused_optim
 from colossalai.logging import get_dist_logger
 from colossalai.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes, multi_tensor_applier
 
@@ -77,8 +70,8 @@ class FP16Optimizer(Optimizer):
 
         # get process group
         def _get_process_group(parallel_mode):
-            if gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA):
-                return gpc.get_group(ParallelMode.DATA)
+            if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode):
+                return gpc.get_group(parallel_mode)
             else:
                 return None
 
@@ -153,6 +146,12 @@ class FP16Optimizer(Optimizer):
                 f"grad_scaler = {self._grad_scaler.__class__.__name__}"
                 f"==========================================",
                 ranks=[0])
+
+    @property
+    def max_norm(self):
+        """Returns the maximum norm of gradient clipping.
+        """
+        return self._clip_grad_max_norm
 
     @property
     def grad_scaler(self):

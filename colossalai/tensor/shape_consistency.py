@@ -407,9 +407,6 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
 
     def mem_cost(self, comm_action_sequence: List[CommSpec]) -> TrainCycleItem:
         """memory cost of the communication action sequence
-        TODO: Currently we just consider tensor numel in the shape consistency manger,
-        as the manager itself doesn't have the access to tensor dtype, we need to take
-        it into consideration in memory estimation.
 
         Args:
             comm_action_sequence (List[CommSpec]): list of communication actions
@@ -420,9 +417,10 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
 
         def compute_shape(sharding_spec: ShardingSpec):
             shape = sharding_spec.entire_shape
+            new_shape = []
             for dim, shard in sharding_spec.dim_partition_dict.items():
-                shape[dim] = shape[dim] // len(shard)
-            return shape
+                new_shape.append(shape[dim] // len(shard))
+            return new_shape
 
         def gather_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """analyze all_gather memory footprint
@@ -443,6 +441,8 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             if discard_input:
                 alloc_numel -= input_numel
 
+            return alloc_numel, peak_numel
+
         def split_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """analyze split memory footprint
             split will allocate memory for the output tensor if we don't apply shard on the first dimension of
@@ -461,7 +461,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 # generate a new tensor
                 input_shape = compute_shape(comm_spec.sharding_spec)
                 input_numel = np.prod(input_shape)
-                output_numel = input_numel // comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axes]
+                output_numel = input_numel // comm_spec.device_mesh.mesh_shape[comm_spec.logical_process_axis]
                 alloc_numel += output_numel
                 peak_numel = max(peak_numel, alloc_numel)
                 if discard_input:
@@ -480,11 +480,13 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
                 # kind of weird, and I think we could ignore it for now.
                 pass
 
+            return alloc_numel, peak_numel
+
         def reduce_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """
             a dummy function for reduce memory footprint analysis, as the reduce action doesn't allocate extra memory
             """
-            pass
+            return alloc_numel, peak_numel
 
         def all2all_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """analyze all_to_all memory footprint
@@ -510,11 +512,13 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
             if discard_input:
                 alloc_numel -= input_numel
 
+            return alloc_numel, peak_numel
+
         def identity_analysis(comm_spec: CommSpec, discard_input: bool, alloc_numel: int, peak_numel: int):
             """
             a dummy function for identity memory footprint analysis, as the identity action doesn't allocate extra memory
             """
-            pass
+            return alloc_numel, peak_numel
 
         pattern_to_func_dict = {
             CollectiveCommPattern.GATHER_FWD_SPLIT_BWD: [gather_analysis, split_analysis],
@@ -538,18 +542,21 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
         # analyze memory footprint of forward comm actions sequence
         fwd_alloc_numel = 0
         fwd_peak_numel = 0
-        for idx, fwd_action, comm_spec in enumerate(zip(fwd_actions, comm_action_sequence)):
+        for idx, action_spec_pair in enumerate(zip(fwd_actions, comm_action_sequence)):
             # the first forward comm action will not discard input
-            if idx == 0:
-                fwd_action(comm_spec, False, fwd_alloc_numel, fwd_peak_numel)
-            else:
-                fwd_action(comm_spec, True, fwd_alloc_numel, fwd_peak_numel)
+            fwd_action, comm_spec = action_spec_pair
+            fwd_alloc_numel, fwd_peak_numel = fwd_action(comm_spec, False, fwd_alloc_numel,
+                                                         fwd_peak_numel) if idx == 0 else fwd_action(
+                                                             comm_spec, True, fwd_alloc_numel, fwd_peak_numel)
 
         # analyze memory footprint for backward comm actions sequence
         bwd_alloc_numel = 0
         bwd_peak_numel = 0
-        for idx, bwd_action, comm_spec in enumerate(zip(reversed(bwd_actions), reversed(comm_action_sequence))):
-            bwd_action(comm_spec, True, bwd_alloc_numel, bwd_peak_numel)
+        for idx, action_spec_pair in enumerate(zip(reversed(bwd_actions), reversed(comm_action_sequence))):
+            bwd_action, comm_spec = action_spec_pair
+            bwd_alloc_numel, bwd_peak_numel = bwd_action(comm_spec, False, bwd_alloc_numel,
+                                                         bwd_peak_numel) if idx == 0 else bwd_action(
+                                                             comm_spec, True, bwd_alloc_numel, bwd_peak_numel)
 
         fwd_mem = MemoryCost(activation=fwd_alloc_numel, temp=fwd_peak_numel - fwd_alloc_numel)
         bwd_mem = MemoryCost(activation=bwd_alloc_numel, temp=bwd_peak_numel - bwd_alloc_numel)

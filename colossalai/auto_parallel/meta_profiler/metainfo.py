@@ -1,6 +1,5 @@
-from typing import Callable
+from typing import Callable, List
 
-import numpy as np
 import torch
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
@@ -13,7 +12,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 )
 from colossalai.tensor.sharding_spec import ShardingSpec
 
-from .constants import INPLACE_MODULE, NO_SAVE_ACTIVATION
+from .constants import INPLACE_MODULE, INPLACE_OPS, NO_SAVE_ACTIVATION
 from .registry import meta_register
 
 __all__ = ['MetaInfo']
@@ -33,10 +32,13 @@ class MetaInfo:
         self.memory_cost: TrainCycleItem
 
         # list of input tensors
-        self.fwd_in: list[OperationData]
+        self.fwd_in: List[torch.Tensor]
 
-        # bool type to indicate whether the function will save forward activation
-        self.save_fwd_in: bool
+        # list of buffer tensors
+        self.fwd_buffer: List[torch.Tensor]
+
+        # list of output tensors
+        self.fwd_out: List[torch.Tensor]
 
         # sharding strategy
         self._strategy = strategy
@@ -68,25 +70,12 @@ class MetaInfo:
         if self._strategy is not None and self._target is not None:
             self.compute_metainfo()
 
-    def compute_sharded_tensor(self, operation_data: OperationData, sharding_spec: ShardingSpec) -> torch.Tensor:
+    def compute_sharded_opdata(self, operation_data: OperationData, sharding_spec: ShardingSpec) -> torch.Tensor:
         """
-        Compute sharded meta tensor based on the given data and sharding spec.
+        Compute sharded opdata based on the given data and sharding spec.
         """
-        shard_sequnce = sharding_spec.sharding_sequence
-        device_mesh = sharding_spec.device_mesh
-        shape = operation_data.data.shape
-
-        new_shape = []
-        for dim, shard in zip(shape, shard_sequnce):
-            if shard.is_replica:
-                # replica
-                new_shape.append(dim)
-            else:
-                # sharded according to device_mesh shape
-                new_shape.append(dim // np.prod(np.array([device_mesh.mesh_shape[i] for i in shard.shard_list])))
-
         return OperationData(name=operation_data.name,
-                             data=torch.zeros(new_shape, device="meta"),
+                             data=torch.zeros(sharding_spec.get_sharded_shape_per_device(), device="meta"),
                              type=operation_data.type,
                              logical_shape=operation_data.logical_shape)
 
@@ -94,28 +83,35 @@ class MetaInfo:
         """
         Compute meta info based on sharding strategy and the given target function.
         """
-
-        try:
+        assert meta_register.has(self._target.__class__) or meta_register.has(self._target), \
+            f"Meta info for {self._target} is not registered."
+        if meta_register.has(self._target.__class__):
             # module
             meta_func = meta_register.get(self._target.__class__)
 
-            # check whether the target in the module list that we don't need to save activation
-            self.save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
-        except:
+            # check whether the target in the list that we don't need to save activation
+            save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
+        else:
             # function
             meta_func = meta_register.get(self._target)
 
-            # check whether the target in the module list that we don't need to save activation
-            self.save_fwd_in = self._target not in NO_SAVE_ACTIVATION
+            # check whether the target in the list that we don't need to save activation
+            save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
 
         # construct args for meta_func
-        args = [self.compute_sharded_tensor(k, v) for k, v in self._strategy.sharding_specs.items()]
+        args = [self.compute_sharded_opdata(k, v) for k, v in self._strategy.sharding_specs.items()]
 
         # construct kwargs
         if self.target in INPLACE_MODULE:
             kwargs = {'inplace': self.target.inplace}
+        elif self.target in INPLACE_OPS:
+            kwargs = {'inplace': True}
         else:
             kwargs = {'inplace': False}
 
         # compute metainfo with meta_func
-        self.compute_cost, self.memory_cost, self.fwd_in = meta_func(*args, **kwargs)
+        self.compute_cost, self.memory_cost, self.fwd_in, self.fwd_buffer, self.fwd_out = meta_func(*args, **kwargs)
+
+        # process corner case for NO_SAVE_ACTIVATION
+        if not save_fwd_in:
+            self.fwd_in = []

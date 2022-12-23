@@ -34,7 +34,7 @@ class _Linear3D(torch.autograd.Function):
         ctx.output_parallel_mode = output_parallel_mode
 
         input_ = all_gather(input_, 0, input_parallel_mode)
-        weight = all_gather(weight, -1, weight_parallel_mode)
+        weight = all_gather(weight, 0, weight_parallel_mode)
         ctx.save_for_backward(input_, weight)
 
         output = torch.matmul(input_, weight)
@@ -53,7 +53,7 @@ class _Linear3D(torch.autograd.Function):
 
         weight_grad = torch.matmul(
             input_.reshape(-1, input_.shape[-1]).transpose(0, 1), output_grad.reshape(-1, output_grad.shape[-1]))
-        weight_grad, op = reduce_scatter(weight_grad, -1, ctx.weight_parallel_mode, async_op=True)
+        weight_grad, op = reduce_scatter(weight_grad, 0, ctx.weight_parallel_mode, async_op=True)
         weight_grad = push_async_grad(op, weight_grad, ctx.weight_id)
 
         input_op.wait()
@@ -205,7 +205,7 @@ class _VocabParallelClassifier3D(torch.autograd.Function):
         ctx.weight_id = weight_id
 
         input_ = all_gather(input_, 0, input_parallel_mode)
-        weight = all_gather(weight.transpose(0, 1), -1, weight_parallel_mode)
+        weight = all_gather(weight, 0, weight_parallel_mode).transpose(0, 1)
         ctx.save_for_backward(input_, weight)
 
         output = torch.matmul(input_, weight)

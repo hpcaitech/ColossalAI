@@ -151,5 +151,5 @@ def parse_args():
     parser.add_argument('--device', type=str, choices=['cpu', 'cuda'], default='cuda')
     parser.add_argument('--master_addr', type=str, default='localhost')
     parser.add_argument('--master_port', type=str, default='29020')
-    parser.add_argument('--num_worker_threads', type=str, default=128)
+    parser.add_argument('--num_worker_threads', type=int, default=128)
     return parser.parse_args()

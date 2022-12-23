@@ -8,12 +8,12 @@ from ..sharding_strategy import OperationData, OperationDataType, StrategiesVect
 from .node_handler import NodeHandler
 from .strategy import OutputGenerator, StrategyGenerator
 
-__all__ = ['OuputHandler']
+__all__ = ['OutputHandler']
 
 
-class OuputHandler(NodeHandler):
+class OutputHandler(NodeHandler):
     """
-    A OuputHandler which deals with the sharding strategies for Output Node.
+    A OutputHandler which deals with the sharding strategies for Output Node.
     """
 
     def __init__(self, node: torch.fx.node.Node, device_mesh: DeviceMesh, strategies_vector: StrategiesVector,

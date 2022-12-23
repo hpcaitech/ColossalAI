@@ -30,7 +30,7 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
 
     input_tensor = args[0].data
     output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
-    inplace = kwargs.get("inplace", False)
+    is_inplace = kwargs.get("inplace", False)
 
     # construct input args for forward
     fwd_in_args = [input_tensor]
@@ -51,7 +51,7 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
     # NOTE: the inplace ReLU don't have forward memory cost
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
     fwd_memory_cost = MemoryCost(
-        activation=activation_size(input_tensor) if inplace else activation_size([output_tensor, input_tensor]),
+        activation=activation_size(input_tensor) if is_inplace else activation_size([output_tensor, input_tensor]),
         parameter=0,
         temp=0,
         buffer=0)
@@ -64,7 +64,11 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
 
     memory_cost = TrainCycleItem(fwd=fwd_memory_cost, bwd=bwd_memory_cost, total=total_cost)
 
-    # store fwd_in
-    fwd_in = [input_tensor]
+    # store fwd_in, fwd_buffer, fwd_out
+    # NOTE: It might seems a little bit weird here, we just want to align it with the older version
+    # of MetaInfoProp. In the future we might modify this part to make it clearer.
+    fwd_in = []
+    fwd_buffer = [torch.zeros_like(output_tensor, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
-    return compute_cost, memory_cost, fwd_in
+    return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out

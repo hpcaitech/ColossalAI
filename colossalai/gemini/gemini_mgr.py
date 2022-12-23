@@ -30,7 +30,7 @@ class GeminiManager:
 
     def __init__(self, placement_policy: str, chunk_manager: ChunkManager, memstats: Optional[MemStats] = None) -> None:
 
-        assert placement_policy in PlacementPolicyFactory.get_polocy_names()
+        assert placement_policy in PlacementPolicyFactory.get_policy_names()
         self.policy_name = placement_policy
         policy_cls = PlacementPolicyFactory.create(placement_policy)
         self._chunk_manager = chunk_manager
