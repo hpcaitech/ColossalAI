@@ -8,6 +8,7 @@ from torch.fx import GraphModule
 from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_map
 
+from colossalai.auto_parallel.meta_profiler import MetaInfo
 from colossalai.fx._compatibility import compatibility, is_compatible_with_meta
 from colossalai.fx.profiler import GraphInfo
 from colossalai.fx.profiler.constants import OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
@@ -95,6 +96,7 @@ class MetaInfoProp:
         assert hasattr(node, 'best_metainfo'), f"Cannot find best_metainfo in node {node}"
         graph_info = GraphInfo()
         meta_info = node.best_metainfo
+        meta_info: MetaInfo
 
         # set data_ptr for input_tensor in MetaInfo class
         input_tensor: List[torch.Tensor] = meta_info.fwd_in
@@ -105,12 +107,18 @@ class MetaInfoProp:
             for par in node._input_nodes:
                 if par.meta:
                     if len(par.meta["fwd_out"]) > 0:
-                        # set data_ptr for the input_tensor of current node
+                        # set data_ptr for the input_tensor of current node from the output_tensor of its parent node
                         for tensor in par.meta["fwd_out"]:
                             tensor: torch.Tensor
                             target_tensor = next(
                                 (x for x in input_tensor if not x.data_ptr() and x.shape == tensor.shape), None)
                             target_tensor.data_ptr = tensor.data_ptr
+
+            # set data_ptr for tensor in input_tensor that is not set
+            for tensor in input_tensor:
+                if not tensor.data_ptr():
+                    self._set_data_ptr(tensor)
+
         # attach it to graph_info
         graph_info.fwd_in = input_tensor
 
@@ -141,5 +149,10 @@ class MetaInfoProp:
                 self._set_data_ptr(tensor)
             # attach it to graph_info
             graph_info.fwd_out = output_tensor
+
+        # fetch other memory informations
+        memory_cost = meta_info.memory_cost
+        graph_info.fwd_mem_tmp = memory_cost.fwd.temp
+        graph_info.bwd_mem_tmp = memory_cost.bwd.temp
 
         node.meta = {**asdict(graph_info)}
