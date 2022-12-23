@@ -1,9 +1,7 @@
 import os
-import sys
-from pathlib import Path
 
 from .builder import Builder
-from .utils import append_nvcc_threads, get_cuda_bare_metal_version
+from .utils import append_nvcc_threads
 
 
 class CPUAdamBuilder(Builder):
