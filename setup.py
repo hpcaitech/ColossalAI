@@ -138,7 +138,7 @@ if build_cuda_ext:
 
     #### fused optim kernels ###
     from colossalai.kernel.op_builder import FusedOptimBuilder
-    ext_modules.append(FusedOptimBuilder().builder())
+    ext_modules.append(FusedOptimBuilder().builder('colossalai._C.fused_optim'))
 
     #### N-D parallel kernels ###
     cc_flag = []
@@ -186,7 +186,7 @@ if build_cuda_ext:
 
     ### Gemini Adam kernel ####
     from colossalai.kernel.op_builder import CPUAdamBuilder
-    ext_modules.append(CPUAdamBuilder().builder())
+    ext_modules.append(CPUAdamBuilder().builder('colossalai._C.cpu_adam'))
 
 setup(name='colossalai',
       version=get_version(),

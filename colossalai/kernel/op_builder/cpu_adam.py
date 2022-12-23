@@ -37,14 +37,14 @@ class CPUAdamBuilder(Builder):
         '''
         return [x for x in args if len(x) > 0]
 
-    def builder(self) -> 'CUDAExtension':
+    def builder(self, name) -> 'CUDAExtension':
         """
         get a CUDAExtension instance used for setup.py
         """
         from torch.utils.cpp_extension import CUDAExtension
 
         return CUDAExtension(
-            name=self.name,
+            name=name,
             sources=[os.path.join('colossalai/kernel/cuda_native/csrc', path) for path in self.sources],
             include_dirs=self.extra_include_paths,
             extra_compile_args={
