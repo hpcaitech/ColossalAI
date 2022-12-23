@@ -16,9 +16,8 @@ from colossalai.fx.profiler.constants import OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 @compatibility(is_backward_compatible=False)
 class MetaInfoProp:
 
-    def __init__(self, module: GraphModule, **meta_args) -> None:
+    def __init__(self, module: GraphModule) -> None:
         self.module = module
-        self.meta_args = meta_args
         self.func_dict = {
             'placeholder': self.placeholder_handler,
             'get_attr': self.get_attr_handler,
@@ -60,12 +59,11 @@ class MetaInfoProp:
         """
         Handle the placeholder node.
         """
-        assert node.name in self.meta_args, f"Cannot find placeholder {node.name} in meta_args"
         graph_info = GraphInfo()
-        out = torch.zeros_like(self.meta_args[node.name], device='meta')
-        self._set_data_ptr(out)
-        out = [out]
-        graph_info.fwd_out = out
+        out = getattr(node, '_meta_data', None)
+        if out is not None:
+            out = [out]
+            graph_info.fwd_out = out
         node.meta = {**asdict(graph_info)}
 
     @compatibility(is_backward_compatible=False)
