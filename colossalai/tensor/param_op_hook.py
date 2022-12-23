@@ -82,16 +82,24 @@ class ColoParamOpHookManager:
     @staticmethod
     def pre_op(params: List[torch.Tensor], *args: Any) -> list:
         ColoParamOpHookManager._trigger_pre_forward(params)
-        args_info = _get_colo_tensors_info(*args)
-        rets = PreFwdPostBwd.apply(params, *args)
-        return _update_colo_tensors(args_info, *rets)
+        pack_info, unpacked_args = _unpack_args(*args)
+        # unpacked_args = args
+        colo_info = _get_colo_tensors_info(*unpacked_args)
+        rets = PreFwdPostBwd.apply(params, *unpacked_args)
+        update_args = _update_colo_tensors(colo_info, *rets)
+        return _pack_args(pack_info, *update_args)
+        # return update_args
 
     @staticmethod
     def post_op(params: List[torch.Tensor], arg: Any) -> Any:
         ColoParamOpHookManager._trigger_post_forward(params)
-        arg_info = _get_colo_tensors_info(arg)
+        colo_info = _get_colo_tensors_info(arg)
         ret = PostFwdPreBwd.apply(params, arg)
-        return _unpack_args(_update_colo_tensors(arg_info, ret))
+        res = _update_colo_tensors(colo_info, ret)
+        if len(res) == 1:
+            return res[0]
+        else:
+            return res
 
     @staticmethod
     def has_hook() -> bool:
@@ -103,7 +111,7 @@ class PreFwdPostBwd(torch.autograd.Function):
     @staticmethod
     def forward(ctx, params, *args):
         ctx.params = params
-        return _unpack_args(args)
+        return args
 
     @staticmethod
     def backward(ctx, *grads):
@@ -124,10 +132,44 @@ class PostFwdPreBwd(torch.autograd.Function):
         return (None,) + grads
 
 
-def _unpack_args(args):
-    if len(args) == 1:
-        return args[0]
-    return args
+def _unpack_args(*args):
+    unpacked_args_list = []
+
+    def get_pack_info(original_args):
+        pack_info_list = []
+        if isinstance(original_args, tuple) or isinstance(original_args, list):
+            for oa in original_args:
+                pack_info_list.append(get_pack_info(oa))
+        elif isinstance(original_args, dict):
+            raise RuntimeError("Found Dict: ColoParameterOp hooks can't support such complicated arguments")
+        else:
+            unpacked_args_list.append(original_args)    # appends a single arguement
+            return type(original_args)    # returns the type of the arguement
+        if isinstance(original_args, tuple):
+            pack_info_list = tuple(pack_info_list)
+        return pack_info_list
+
+    pack_info = get_pack_info(args)
+    return pack_info, tuple(unpacked_args_list)
+
+
+def _pack_args(pack_info, *args):
+    cursor = 0
+
+    def dfs_pack(cur_pack_info):
+        pack_list = []
+        if isinstance(cur_pack_info, tuple) or isinstance(cur_pack_info, list):
+            for cpi in cur_pack_info:
+                pack_list.append(dfs_pack(cpi))
+        else:
+            nonlocal cursor
+            cursor += 1
+            return args[cursor - 1]
+        if isinstance(cur_pack_info, tuple):
+            pack_list = tuple(pack_list)
+        return pack_list
+
+    return dfs_pack(pack_info)
 
 
 def _get_colo_tensors_info(*args) -> list:
