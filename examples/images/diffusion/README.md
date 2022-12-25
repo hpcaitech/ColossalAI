@@ -46,6 +46,7 @@ pip install -e .
 
 ```
 git clone https://github.com/1SAA/lightning.git
+cd lightning
 git checkout strategy/colossalai
 export PACKAGE_NAME=pytorch
 pip install .
