@@ -6,6 +6,7 @@ import torch
 from torch.fx import symbolic_trace
 from torch.fx.node import Node
 
+from colossalai.auto_parallel.tensor_shard.constants import RESHAPE_FUNC_OP
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     CommAction,
     CommType,
@@ -96,27 +97,23 @@ def _solution_annotatation(gm: torch.fx.GraphModule,
         # to the same strategy of the user node.
         if node.op == 'get_attr':
             assert len(target_sharding_specs) == 1, f'sharing weight is not supported in current version.'
-            new_sharding_spec = target_sharding_specs[0]
-            user_strategy = node.strategies_vector.successor_nodes[0].best_strategy
-            op_data_in_user = user_strategy.get_op_data_by_name(str(node))
-            origin_node_sharding_spec_dict[index] = new_sharding_spec
+            target_node = node.strategies_vector.successor_nodes[0]
+            node_name = str(node)
+            if target_node.op == 'call_function' and target_node.target in RESHAPE_FUNC_OP:
+                node_name = str(target_node)
+                target_node = target_node.strategies_vector.successor_nodes[0]
+            user_strategy = target_node.best_strategy
+            op_data_in_user = user_strategy.get_op_data_by_name(node_name)
             origin_pending_strategy = node.best_strategy
             origin_op_data = origin_pending_strategy.get_op_data_by_name(str(node))
-            new_sharding_specs = origin_pending_strategy.sharding_specs
-            new_sharding_specs[origin_op_data] = new_sharding_spec
+
             new_communication_actions = {}
             if op_data_in_user in user_strategy.communication_actions:
                 new_communication_action = user_strategy.communication_actions.pop(op_data_in_user)
                 new_communication_action.arg_index = 0
                 new_communication_actions[origin_op_data] = new_communication_action
-            new_strategy = ShardingStrategy(name=str(new_sharding_spec.sharding_sequence),
-                                            sharding_specs=new_sharding_specs,
-                                            compute_cost=origin_pending_strategy.compute_cost,
-                                            communication_cost=origin_pending_strategy.communication_cost,
-                                            memory_cost=origin_pending_strategy.memory_cost,
-                                            communication_actions=new_communication_actions)
-            setattr(node, 'best_strategy', new_strategy)
-            setattr(node, 'sharding_spec', new_sharding_spec)
+            node.best_strategy.communication_actions = new_communication_actions
+
         comm_action_dict = {}
         for op_data, comm_action in node.best_strategy.communication_actions.items():
             comm_action_dict[op_data.name] = comm_action
