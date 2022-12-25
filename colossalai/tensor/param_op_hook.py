@@ -82,13 +82,15 @@ class ColoParamOpHookManager:
     @staticmethod
     def pre_op(params: List[torch.Tensor], *args: Any) -> list:
         ColoParamOpHookManager._trigger_pre_forward(params)
-        pack_info, unpacked_args = _unpack_args(*args)
-        # unpacked_args = args
-        colo_info = _get_colo_tensors_info(*unpacked_args)
-        rets = PreFwdPostBwd.apply(params, *unpacked_args)
+        grad_args, rear_args = _get_grad_args(*args)
+        colo_info = _get_colo_tensors_info(*grad_args)
+        rets = PreFwdPostBwd.apply(params, *grad_args)
         update_args = _update_colo_tensors(colo_info, *rets)
-        return _pack_args(pack_info, *update_args)
-        # return update_args
+        if rear_args is None:
+            return update_args
+        else:
+            arg_zero = (tuple(update_args),)
+            return arg_zero + rear_args
 
     @staticmethod
     def post_op(params: List[torch.Tensor], arg: Any) -> Any:
@@ -132,44 +134,29 @@ class PostFwdPreBwd(torch.autograd.Function):
         return (None,) + grads
 
 
-def _unpack_args(*args):
-    unpacked_args_list = []
-
-    def get_pack_info(original_args):
-        pack_info_list = []
-        if isinstance(original_args, tuple) or isinstance(original_args, list):
-            for oa in original_args:
-                pack_info_list.append(get_pack_info(oa))
-        elif isinstance(original_args, dict):
-            raise RuntimeError("Found Dict: ColoParameterOp hooks can't support such complicated arguments")
-        else:
-            unpacked_args_list.append(original_args)    # appends a single arguement
-            return type(original_args)    # returns the type of the arguement
-        if isinstance(original_args, tuple):
-            pack_info_list = tuple(pack_info_list)
-        return pack_info_list
-
-    pack_info = get_pack_info(args)
-    return pack_info, tuple(unpacked_args_list)
+def _is_grad_tensor(obj) -> bool:
+    if torch.is_tensor(obj):
+        if obj.grad_fn is not None or obj.requires_grad:
+            return True
+    return False
 
 
-def _pack_args(pack_info, *args):
-    cursor = 0
-
-    def dfs_pack(cur_pack_info):
-        pack_list = []
-        if isinstance(cur_pack_info, tuple) or isinstance(cur_pack_info, list):
-            for cpi in cur_pack_info:
-                pack_list.append(dfs_pack(cpi))
-        else:
-            nonlocal cursor
-            cursor += 1
-            return args[cursor - 1]
-        if isinstance(cur_pack_info, tuple):
-            pack_list = tuple(pack_list)
-        return pack_list
-
-    return dfs_pack(pack_info)
+def _get_grad_args(*args):
+    # returns the identical args if there is a grad tensor
+    for obj in args:
+        if _is_grad_tensor(obj):
+            return args, None
+    # otherwise, the first arguement should be a tuple of grad tensors
+    # if there is no grad tensor, the backward of PreFwdPostBwd can't be triggered
+    arg_zero = args[0]
+    if not isinstance(arg_zero, tuple):
+        raise NotImplementedError("Some torch function is incompatible because of its complcated inputs.")
+    check_grad_flag = False
+    for obj in arg_zero:
+        check_grad_flag |= _is_grad_tensor(obj)
+    if not check_grad_flag:
+        raise NotImplementedError("Some torch function is incompatible because of its complcated inputs.")
+    return arg_zero, args[1:]
 
 
 def _get_colo_tensors_info(*args) -> list:
