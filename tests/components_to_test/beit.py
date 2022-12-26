@@ -38,5 +38,5 @@ def get_training_components():
     trainloader = DummyDataLoader()
     testloader = DummyDataLoader()
 
-    criterion = torch.nn.CrossEntropyLoss
+    criterion = torch.nn.CrossEntropyLoss()
     return model_buider, trainloader, testloader, torch.optim.Adam, criterion
