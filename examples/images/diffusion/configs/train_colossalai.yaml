@@ -80,19 +80,22 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 64
+    batch_size: 128
     wrap: False
+    # num_workwers should be 2 * batch_size, and total num less than 1024
+    # e.g. if use 8 devices, no more than 128
+    num_workers: 128
     train:
       target: ldm.data.base.Txt2ImgIterableBaseDataset
       params:
-        file_path: "/data/scratch/diffuser/laion_part0/"
+        file_path: # YOUR DATASET_PATH
         world_size: 1
         rank: 0
 
 lightning:
   trainer:
     accelerator: 'gpu'
-    devices: 4
+    devices: 8
     log_gpu_memory: all
     max_epochs: 2
     precision: 16
