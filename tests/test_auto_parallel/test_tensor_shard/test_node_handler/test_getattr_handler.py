@@ -39,6 +39,7 @@ def test_getattr_handler():
                                      strategies_vector=getattr_strategies_vector)
 
     getattr_handler.register_strategy(compute_resharding_cost=False)
+
     # check operation data mapping
     mapping = getattr_handler.get_operation_data_mapping()
 
@@ -51,7 +52,15 @@ def test_getattr_handler():
     assert mapping['output'].data.shape == torch.Size((16, 4, 3, 3))
     assert mapping['output'].type == OperationDataType.OUTPUT
     strategy_name_list = [val.name for val in getattr_handler.strategies_vector]
-    assert "Replica Attribute" in strategy_name_list
+    assert 'get_attr [S0, S1, R, R]' in strategy_name_list
+    assert 'get_attr [S1, S0, R, R]' in strategy_name_list
+    assert 'get_attr [S01, R, R, R]' in strategy_name_list
+    assert 'get_attr [R, S01, R, R]' in strategy_name_list
+    assert 'get_attr [S0, R, R, R]' in strategy_name_list
+    assert 'get_attr [R, S0, R, R]' in strategy_name_list
+    assert 'get_attr [S1, R, R, R]' in strategy_name_list
+    assert 'get_attr [R, S1, R, R]' in strategy_name_list
+    assert 'get_attr [R, R, R, R]' in strategy_name_list
 
 
 if __name__ == '__main__':
