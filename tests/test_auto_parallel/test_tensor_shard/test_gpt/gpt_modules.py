@@ -113,6 +113,7 @@ class GPT2Attention(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]], ...]:
+
         # query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
         qkv = self.c_attn(hidden_states)
 
@@ -187,7 +188,6 @@ class GPT2Model(GPT2PreTrainedModel):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
     ) -> Union[Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         input_shape = input_ids.size()
@@ -195,8 +195,6 @@ class GPT2Model(GPT2PreTrainedModel):
         batch_size = input_ids.shape[0]
 
         device = input_ids.device
-
-        token_type_ids = token_type_ids.view(-1, input_shape[-1])
 
         past_length = 0
         past_key_values = tuple([None] * len(self.h))
@@ -223,9 +221,6 @@ class GPT2Model(GPT2PreTrainedModel):
         # add_2
         hidden_states = inputs_embeds + position_embeds
 
-        token_type_embeds = self.wte(token_type_ids)
-        hidden_states = hidden_states + token_type_embeds
-
         # comment to run pipeline
         # add_3
         output_shape = input_shape + (hidden_states.size(-1),)
@@ -239,3 +234,46 @@ class GPT2Model(GPT2PreTrainedModel):
         hidden_states = hidden_states.view(output_shape)
 
         return hidden_states
+
+
+class GPT2LMHeadModel(GPT2PreTrainedModel):
+    _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.transformer = GPT2Model(config)
+        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+
+        # Model parallel
+        self.model_parallel = False
+        self.device_map = None
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+    ):
+        transformer_outputs = self.transformer(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+
+        lm_logits = self.lm_head(transformer_outputs)
+
+        return lm_logits
+
+
+class GPTLMLoss(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.loss_fn = nn.CrossEntropyLoss()
+
+    def forward(self, logits, labels):
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        # Flatten the tokens
+        return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
