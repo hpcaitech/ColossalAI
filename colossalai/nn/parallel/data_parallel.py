@@ -306,8 +306,9 @@ class ZeroDDP(ColoDDP):
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
         with torch._C.DisableTorchFunction():
-            self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
             chunk = self.chunk_manager.get_chunk(p)
+            assert chunk.tensors_info[p].state == TensorState.HOLD_AFTER_BWD
+            self.chunk_manager.trans_tensor_state(p, TensorState.READY_FOR_REDUCE)
             chunk.copy_tensor_to_chunk_slice(p, grad)
             reduced = self.chunk_manager.reduce_chunk(chunk)
             if reduced:
