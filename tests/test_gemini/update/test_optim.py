@@ -142,7 +142,7 @@ def exam_tiny_example(placement_policy, model_name: str):
 
         torch_loss = run_fwd_bwd(torch_model, input_ids, label, criterion, torch_optim)
         loss = run_fwd_bwd(model, input_ids, label, criterion, zero_optim)
-        assert_close(torch_loss, loss)
+        assert_close(torch_loss, loss, rtol=1.5e-6, atol=2e-5)    # atol should be 2e-5 for torch lower than 1.12
 
         zero_optim.step()
         torch_optim.step()
