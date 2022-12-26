@@ -87,14 +87,15 @@ you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-We provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml` and `train_ddp.yaml`
+We provide the script `train_colossalai.sh` to run the training task with colossalai,
+and can also use `train_ddp.sh` to run the training task with ddp to compare.
 
-For example, you can run the training from colossalai by
+In `train_colossalai.sh` the main command is:
 ```
 python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
 ```
 
-- you can change the `--logdir` the save the log information and the last checkpoint
+- you can change the `--logdir` to decide where to save the log information and the last checkpoint.
 
 ### Training config
 
@@ -155,6 +156,7 @@ optional arguments:
   --config CONFIG       path to config which constructs model
   --ckpt CKPT           path to checkpoint of model
   --seed SEED           the seed (for reproducible sampling)
+  --use_int8            whether to use quantization method
   --precision {full,autocast}
                         evaluate at this precision
 ```
