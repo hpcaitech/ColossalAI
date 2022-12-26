@@ -48,7 +48,7 @@ class CPUAdamBuilder(Builder):
             sources=[os.path.join('colossalai/kernel/cuda_native/csrc', path) for path in self.sources],
             include_dirs=self.extra_include_paths,
             extra_compile_args={
-                'cxx': ['-O3'] + self.version_dependent_macros + self.extra_cuda_flags,
+                'cxx': ['-O3'] + self.version_dependent_macros + self.extra_cxx_flags,
                 'nvcc':
                     append_nvcc_threads(['-O3', '--use_fast_math'] + self.version_dependent_macros +
                                         self.extra_cuda_flags)
