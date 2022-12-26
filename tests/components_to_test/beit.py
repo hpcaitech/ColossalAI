@@ -1,5 +1,5 @@
 import torch
-from timm.models import Beit
+from timm.models.beit import Beit
 
 from colossalai.utils.cuda import get_current_device
 
@@ -28,11 +28,12 @@ class DummyDataLoader(DummyDataGenerator):
 def get_training_components():
 
     def model_buider(checkpoint=False):
-        return Beit(img_size=DummyDataLoader.img_size,
-                    num_classes=DummyDataLoader.num_class,
-                    embed_dim=32,
-                    depth=2,
-                    num_heads=4)
+        model = Beit(img_size=DummyDataLoader.img_size,
+                     num_classes=DummyDataLoader.num_class,
+                     embed_dim=32,
+                     depth=2,
+                     num_heads=4)
+        return model
 
     trainloader = DummyDataLoader()
     testloader = DummyDataLoader()
