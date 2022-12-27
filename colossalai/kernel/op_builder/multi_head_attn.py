@@ -9,6 +9,7 @@ class MultiHeadAttnBuilder(Builder):
         self.base_dir = "cuda_native/csrc"
         self.name = 'multihead_attention'
         super().__init__()
+        self.extra_cxx_flags = []
         self.extra_cuda_flags = [
             '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__',
             '-U__CUDA_NO_HALF2_OPERATORS__', '-DTHRUST_IGNORE_CUB_VERSION_CHECK'
@@ -31,7 +32,7 @@ class MultiHeadAttnBuilder(Builder):
 
     def include_paths(self):
         import torch
-        from torch.utils.cpp_extension import CUDA_HOME
+
         ret = []
         cuda_include = os.path.join(CUDA_HOME, "include")
         ret = [os.path.join(self.base_dir, "includes"), cuda_include]
