@@ -37,7 +37,7 @@ class MetaInfoProp:
                 data_ptr = uuid.uuid4()
                 x.data_ptr = lambda: data_ptr
 
-    def _is_inpalce(self, node: Node):
+    def _is_inplace(self, node: Node):
         """
         Check if the node is inplace operation.
         """
@@ -122,7 +122,7 @@ class MetaInfoProp:
         # attach it to graph_info
         graph_info.fwd_in = input_tensor
 
-        if self._is_inpalce(node):
+        if self._is_inplace(node):
             # inplace operation will not create new tensor
             # set data_ptr for buffer_tensor and output_tensor of current node
             for tensor in input_tensor:
