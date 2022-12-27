@@ -10,13 +10,11 @@ from transformers import GPT2Config, GPT2LMHeadModel
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.optimizer import HybridAdam
 from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext
+from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
 from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
 
 
@@ -46,6 +44,12 @@ def parse_args():
         default=False,
         help=
         "Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="batch size per GPU.",
     )
     args = parser.parse_args()
     return args
@@ -124,6 +128,18 @@ def gpt2_10b(checkpoint=True):
     return GPTLMModel(hidden_size=4096, num_layers=50, num_attention_heads=16, checkpoint=checkpoint)
 
 
+def gpt2_28b(checkpoint=True):
+    return GPTLMModel(hidden_size=8192, num_layers=35, num_attention_heads=16, checkpoint=checkpoint)
+
+
+def gpt2_36b(checkpoint=True):
+    return GPTLMModel(hidden_size=8192, num_layers=45, num_attention_heads=16, checkpoint=checkpoint)
+
+
+def gpt2_14b(checkpoint=True):
+    return GPTLMModel(hidden_size=4096, num_layers=70, num_attention_heads=16, checkpoint=checkpoint)
+
+
 def get_cpu_mem():
     return psutil.Process().memory_info().rss / 1024**2
 
@@ -185,7 +201,7 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
         model = GeminiDDP(model,
                           device=get_current_device(),
                           placement_policy=placememt_policy,
-                          pin_memory=True,
+                          pin_memory=False,
                           hidden_dim=4096,
                           search_range_mb=64)
         if placememt_policy == 'const':
@@ -210,7 +226,7 @@ def main():
     if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
         raise TypeError(f"{args.distplan} is error")
 
-    BATCH_SIZE = 64
+    BATCH_SIZE = args.batch_size
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
 
@@ -221,6 +237,7 @@ def main():
 
     logger = get_dist_logger()
     logger.info(f"using dist plan {args.distplan}", ranks=[0])
+    logger.info(f"batch size {BATCH_SIZE}", ranks=[0])
 
     # build criterion
     criterion = GPTLMLoss()
@@ -232,12 +249,20 @@ def main():
         default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
 
         # build GPT model
-        with ColoInitContext(device=get_current_device(), default_dist_spec=default_dist_spec, default_pg=default_pg):
-            model = gpt2_10b(checkpoint=True)
+        logger.info(f'begin building model', ranks=[0])
 
+        with ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg):
+            model = gpt2_14b(checkpoint=True)
+
+        numel = sum([p.numel() for p in model.parameters()])
+        logger.info(f'Model numel per GPU: {numel/1e9} Billion Parameters', ranks=[0])
+
+        logger.info(get_mem_info(prefix='building model finished '), ranks=[0])
         pg = default_pg
         # Tensor Parallelism (TP)
         tensor_parallelize(model, pg)
+
+        logger.info(get_mem_info(prefix='applying tensor parallel finished '), ranks=[0])
 
         # Gemini + ZeRO DP, Note it must be used after TP
         model = gemini_zero_dpp(model, pg, args.placement)
