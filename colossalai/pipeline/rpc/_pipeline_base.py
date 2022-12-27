@@ -196,7 +196,7 @@ class WorkerBase(ABC):
 
     # res_use works for lifecycle counter,
     # if ref_use is True, lifecycle won't add.
-    def get_output_by_key(self, key: UniqueKey, ref_use=False) -> Any:
+    def get_output_by_key(self, key: UniqueKey, ref_use=False, rank=None) -> Any:
         with self.output_list_condition_lock:
             self.output_list_condition_lock.wait_for(lambda: key in self.output_list)
             output_work_item = self.output_list[key]
@@ -214,7 +214,8 @@ class WorkerBase(ABC):
                     lifecycle += 1
             elif output_work_item.phase == Phase.BACKWARD:
                 lifecycle = len(self.get_producer_stage_ids())
-                if self._is_last_step(output_work_item):    # an extra reference for ensure_backward
+                if self.is_model_input() and self._is_last_step(
+                        output_work_item):    # an extra reference for ensure_backward
                     lifecycle += 1
             else:
                 lifecycle = 0
@@ -361,14 +362,15 @@ class WorkerBase(ABC):
                 producer_stage_id = 0
                 producer_output_key = UniqueKey(microbatch_id, Phase.INPUT)
                 producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
-                subscribe_forward_futures[0] = producer_worker_rref.rpc_async().get_output_by_key(producer_output_key)
+                subscribe_forward_futures[0] = producer_worker_rref.rpc_async().get_output_by_key(
+                    producer_output_key, self.pp_rank)
 
                 for i in range(0, producer_num - 1):
                     producer_stage_id = producer_stage_ids[i]
                     producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
                     producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
                     subscribe_forward_futures[i + 1] = producer_worker_rref.rpc_async().get_output_by_key(
-                        producer_output_key)
+                        producer_output_key, self.pp_rank)
 
             else:
                 for i in range(producer_num):
@@ -376,7 +378,7 @@ class WorkerBase(ABC):
                     producer_output_key = UniqueKey(microbatch_id, Phase.FORWARD)
                     producer_worker_rref = self.pp_rank_to_worker_rref[producer_stage_id]
                     subscribe_forward_futures[i] = producer_worker_rref.rpc_async().get_output_by_key(
-                        producer_output_key)
+                        producer_output_key, self.pp_rank)
 
         work_item_from_producer = WorkItem(stage_id, Phase.FORWARD, subscribe_forward_futures, {}, output,
                                            microbatch_id, None, self.num_microbatches, forward_only)
@@ -412,7 +414,8 @@ class WorkerBase(ABC):
             consumer_stage_id = consumer_stage_ids[i]
             consumer_output_key = UniqueKey(microbatch_id, Phase.BACKWARD)
             consumer_worker_rref = self.pp_rank_to_worker_rref[consumer_stage_id]
-            subscribe_backward_futures[i] = consumer_worker_rref.rpc_async().get_output_by_key(consumer_output_key)
+            subscribe_backward_futures[i] = consumer_worker_rref.rpc_async().get_output_by_key(
+                consumer_output_key, self.pp_rank)
 
         # flatten args
         work_item_from_consumer = WorkItem(stage_id, Phase.BACKWARD, subscribe_backward_futures, {}, output,
@@ -574,7 +577,8 @@ class WorkerBase(ABC):
                     pytree_map(args_or_kwargs, fn=lambda x: flatten_args.append(x), map_all=True)
                     args_or_kwargs = flatten_args
         else:
-            args_or_kwargs = pytree_map(args_or_kwargs, fn=lambda x: x.wait(), process_types=Future)
+            for i, arg in enumerate(args_or_kwargs):
+                args_or_kwargs[i] = arg.wait()
             if args_or_kwargs is not None:
                 flatten_args = []
                 # TODO get by offset
@@ -682,10 +686,6 @@ class WorkerBase(ABC):
             else:
                 args_kwargs = self._get_real_args_kwargs_fwd(args)
 
-            # if not forward_only:
-            #     pytree_map(args_kwargs,
-            #                lambda x: x.requires_grad_(True) if torch.is_floating_point(x) else x.requires_grad_(False),
-            #                process_types=torch.Tensor)
             args_kwargs = pyobj_map(args_kwargs, fn=lambda x: x.to(self.device).detach(),
                                     process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
 
@@ -752,13 +752,13 @@ class WorkerBase(ABC):
                                                                                     stage_input_kwargs,
                                                                                     stage_outputs,
                                                                                     checkpoint=use_checkpoint)
+            consume_result = pyobj_map(consume_result, fn=lambda x: x.to('cpu'),
+                                       process_types=torch.Tensor)    # torch rpc doesn't support args or rets in
+
             # if not forward_only, do the backward
             if not forward_only:
                 if is_last_stage:    # if it is the last stage, trigger backward automatic
                     self._begin_backward(microbatch_id)
-
-            consume_result = pyobj_map(consume_result, fn=lambda x: x.to('cpu'),
-                                       process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
 
         elif phase == Phase.BACKWARD:
             # remind its producer to get data before backward
@@ -803,10 +803,8 @@ class WorkerBase(ABC):
                         filtered_grads.append(grad)
 
                 stage_outputs = filtered_outputs
-                grad_tensors = filtered_grads
-
-            grad_tensors = pyobj_map(grad_tensors, fn=lambda x: x.to(self.device),
-                                     process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
+                grad_tensors = pyobj_map(filtered_grads, fn=lambda x: x.to(self.device),
+                                         process_types=torch.Tensor)    # torch rpc doesn't support args or rets in GPU
             autograd.backward(stage_outputs, grad_tensors=grad_tensors)
 
             # collect grad of input tensor
@@ -940,8 +938,6 @@ class PipelineEngineBase(ABC, nn.Module):
         self.data_process_func = data_process_func
 
         self.pp_rank_to_worker_rref: Dict[int, PyRRef] = dict()
-
-        self.step_futs: List[Future] = []
 
         self._check_argument()
         self._create_pp_rank_to_rpc_worker_id()
@@ -1087,10 +1083,15 @@ class PipelineEngineBase(ABC, nn.Module):
 
     def _ensure_backward(self, forward_only: bool, input_pp_ranks: List[int]):
         if not forward_only:
+            backward_result = []
             for pp_rank in input_pp_ranks:
                 worker_rref = self.pp_rank_to_worker_rref[pp_rank]
                 key = UniqueKey(self.num_microbatches - 1, Phase.BACKWARD)
-                worker_rref.rpc_sync().get_output_by_key(key)
+                fut = worker_rref.rpc_async().get_output_by_key(key)
+                backward_result.append(fut)
+
+            for fut in backward_result:
+                fut.wait()
 
     def _collect_forward_result(self, output_pp_ranks: List[int], ret_future: Dict[int, List[Future]]):
         forward_result = []
@@ -1109,12 +1110,13 @@ class PipelineEngineBase(ABC, nn.Module):
 
     def _reset_worker(self):
         actual_stage_num = self._get_actual_stage_num()
+        reset_futs: List[Future] = []
         for pp_rank in range(actual_stage_num):
             worker_rref = self.pp_rank_to_worker_rref[pp_rank]
             fut = worker_rref.rpc_async().reset_context()
-            self.step_futs.append(fut)
+            reset_futs.append(fut)
 
-        for fut in self.step_futs:
+        for fut in reset_futs:
             fut.wait()
 
     def forward_backward(self, batch: torch.Tensor, labels: torch.Tensor = None, forward_only: bool = False):
@@ -1141,7 +1143,7 @@ class PipelineEngineBase(ABC, nn.Module):
         for microbatch_id in range(num_microbatches):
             # control data input  speed
             # to prevent exceed of wait limitations
-            self._consume_constraint(microbatch_id, forward_only, input_pp_ranks, output_pp_ranks, ret_future)
+            #self._consume_constraint(microbatch_id, forward_only, input_pp_ranks, output_pp_ranks, ret_future)
             batch_start = microbatch_size * microbatch_id
             batch_end = min(batch_start + microbatch_size, batch_length)
 
@@ -1178,10 +1180,11 @@ class PipelineEngineBase(ABC, nn.Module):
 
     def step(self):
         actual_stage_num = self._get_actual_stage_num()
+        step_futs: List[Future] = []
         for pp_rank in range(actual_stage_num):
             worker_rref = self.pp_rank_to_worker_rref[pp_rank]
             fut = worker_rref.rpc_async().step()
-            self.step_futs.append(fut)
+            step_futs.append(fut)
 
-        for fut in self.step_futs:
+        for fut in step_futs:
             fut.wait()
