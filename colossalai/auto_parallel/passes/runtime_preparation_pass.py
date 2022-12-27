@@ -223,7 +223,8 @@ def _size_value_converting(gm: torch.fx.GraphModule, device_mesh: DeviceMesh):
                 node.args = new_args
 
             elif isinstance(getitem_index, (tuple, list)):
-                assert isinstance(getitem_index[0], slice)
+                if not isinstance(getitem_index[0], slice):
+                    continue
                 new_slice_items = []
 
                 for slice_item in getitem_index:
