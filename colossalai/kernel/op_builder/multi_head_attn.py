@@ -31,8 +31,7 @@ class MultiHeadAttnBuilder(Builder):
         ]
 
     def include_paths(self):
-        import torch
-
+        from torch.utils.cpp_extension import CUDA_HOME
         ret = []
         cuda_include = os.path.join(CUDA_HOME, "include")
         ret = [os.path.join(self.base_dir, "includes"), cuda_include]
