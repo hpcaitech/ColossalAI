@@ -14,7 +14,7 @@ from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
+from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
 
 
@@ -201,7 +201,7 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
         model = GeminiDDP(model,
                           device=get_current_device(),
                           placement_policy=placememt_policy,
-                          pin_memory=False,
+                          pin_memory=True,
                           hidden_dim=4096,
                           search_range_mb=64)
         if placememt_policy == 'const':
