@@ -1750,10 +1750,13 @@ class ChunkRegionSearch(object):
                 _,
                 active_node,
             ) = self.memory_estimator.estimate_chunk_inference_mem(
-                self.index_tracer.node_list, chunk_infos, print_mem=True
+                self.index_tracer.node_list, chunk_infos
             )
             if self._stop_search(init_mem_peak, mem_peak):
                 break
+        # self.memory_estimator.estimate_chunk_inference_mem(
+        #     self.index_tracer.node_list, chunk_infos, print_mem=True
+        # )
         return chunk_infos
 
 
