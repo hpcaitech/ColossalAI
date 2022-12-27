@@ -16,7 +16,7 @@ __all__ = ['BinaryElementwiseHandler']
 
 
 @operator_registry.register(BCAST_FUNC_OP)
-class BinaryElementwiseHandler(MetaInfoNodeHandler):
+class BinaryElementwiseHandler(NodeHandler):
     """
     An BinaryBcastOpHandler is a node handler which deals with operations which have two
     operands and broadcasting occurs such as torch.add.
