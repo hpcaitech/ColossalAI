@@ -172,17 +172,9 @@ if build_cuda_ext:
         cuda_ext_helper('colossalai._C.layer_norm', ['layer_norm_cuda.cpp', 'layer_norm_cuda_kernel.cu'],
                         extra_cuda_flags + cc_flag))
 
-    extra_cuda_flags = [
-        '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__',
-        '-DTHRUST_IGNORE_CUB_VERSION_CHECK'
-    ]
-
-    ext_modules.append(
-        cuda_ext_helper('colossalai._C.multihead_attention', [
-            'multihead_attention_1d.cpp', 'kernels/cublas_wrappers.cu', 'kernels/transform_kernels.cu',
-            'kernels/dropout_kernels.cu', 'kernels/normalize_kernels.cu', 'kernels/softmax_kernels.cu',
-            'kernels/general_kernels.cu', 'kernels/cuda_util.cu'
-        ], extra_cuda_flags + cc_flag))
+    ### MultiHeadAttn Kernel ####
+    from colossalai.kernel.op_builder import MultiHeadAttnBuilder
+    ext_modules.append(MultiHeadAttnBuilder().builder('colossalai._C.multihead_attention'))
 
     ### Gemini Adam kernel ####
     from colossalai.kernel.op_builder import CPUAdamBuilder

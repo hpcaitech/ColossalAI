@@ -1,6 +1,25 @@
 import os
+import re
 import sys
 from pathlib import Path
+
+import torch
+
+
+def get_cuda_cc_flag():
+    """get_cuda_cc_flag
+
+    cc flag for your GPU arch
+    """
+    cc_flag = []
+    for arch in torch.cuda.get_arch_list():
+        res = re.search(r'sm_(\d+)', arch)
+        if res:
+            arch_cap = res[1]
+            if int(arch_cap) >= 60:
+                cc_flag.extend(['-gencode', f'arch=compute_{arch_cap},code={arch}'])
+
+    return cc_flag
 
 
 class Builder(object):

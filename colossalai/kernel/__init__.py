@@ -12,4 +12,12 @@ except ImportError:
     from colossalai.kernel.op_builder import CPUAdamBuilder
     cpu_optim = CPUAdamBuilder().load()
 
-__all__ = ["fused_optim", "cpu_optim", "LayerNorm", "FusedScaleMaskSoftmax", "MultiHeadAttention"]
+try:
+    from colossalai._C import multihead_attention
+except ImportError:
+    from colossalai.kernel.op_builder import MultiHeadAttnBuilder
+    multihead_attention = MultiHeadAttnBuilder().load()
+
+__all__ = [
+    "fused_optim", "cpu_optim", "multihead_attention", "LayerNorm", "FusedScaleMaskSoftmax", "MultiHeadAttention"
+]
