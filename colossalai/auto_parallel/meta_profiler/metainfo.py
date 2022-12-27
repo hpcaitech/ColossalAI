@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, List
 
 import numpy as np
 import torch
@@ -33,13 +33,13 @@ class MetaInfo:
         self.memory_cost: TrainCycleItem
 
         # list of input tensors
-        self.fwd_in: list[torch.Tensor]
+        self.fwd_in: List[torch.Tensor]
 
         # list of buffer tensors
-        self.fwd_buffer: list[torch.Tensor]
+        self.fwd_buffer: List[torch.Tensor]
 
         # list of output tensors
-        self.fwd_out: list[torch.Tensor]
+        self.fwd_out: List[torch.Tensor]
 
         # sharding strategy
         self._strategy = strategy
