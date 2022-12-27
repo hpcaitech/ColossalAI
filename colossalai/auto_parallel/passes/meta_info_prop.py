@@ -14,6 +14,12 @@ from colossalai.fx.profiler import GraphInfo
 from colossalai.fx.profiler.constants import OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 
 
+def _normalize_tuple(x):
+    if not isinstance(x, tuple):
+        return (x,)
+    return x
+
+
 @compatibility(is_backward_compatible=False)
 class MetaInfoProp:
 
@@ -61,10 +67,8 @@ class MetaInfoProp:
         Handle the placeholder node.
         """
         graph_info = GraphInfo()
-        out = getattr(node, '_meta_data', None)
-        if out is not None:
-            out = [out]
-            graph_info.fwd_out = out
+        out = _normalize_tuple(getattr(node, '_meta_data', None))
+        graph_info.fwd_out = list(out)
         node.meta = {**asdict(graph_info)}
 
     @compatibility(is_backward_compatible=False)
