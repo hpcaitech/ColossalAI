@@ -159,8 +159,8 @@ class Attention(nn.Module):
         # similarity
 
         #sim = einsum("b h i d, b j d -> b h i j", q, k)
-        sim = matmul (q.transpose(0,1), k.transpose(1,2))
-        sim = sim.transpose(0,1)
+        sim = matmul(q.reshape(q.size(0), q.size(1)*q.size(2), q.size(3)), k.transpose(1,2))
+        sim = sim.reshape(q.size(0), q.size(1), q.size(2), k.size(1))
 
         # causal mask
 
@@ -175,8 +175,8 @@ class Attention(nn.Module):
         # aggregate values
 
         #out = einsum("b h i j, b j d -> b h i d", attn, v)
-        out = matmul(attn.transpose(0,1), v)
-        out = out.transpose(0,1)
+        out = matmul(attn.reshape(attn.size(0), attn.size(1)*attn.size(2), attn.size(3)), v)
+        out = out.reshape(attn.size(0), attn.size(1), attn.size(2), v.size(2))
 
         # merge heads
 
