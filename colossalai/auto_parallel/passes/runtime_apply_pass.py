@@ -174,8 +174,8 @@ def _shape_consistency_apply(gm: torch.fx.GraphModule):
                                                                    runtime_apply,
                                                                    args=(node, origin_dict_node, input_dict_node,
                                                                          node_to_index_dict[node], user_node_index))
-                    meta_info = construct_meta_info(node, user_node)
-                    setattr(shape_consistency_node, 'best_metainfo', meta_info)
+                    # meta_info = construct_meta_info(node, user_node)
+                    # setattr(shape_consistency_node, 'best_metainfo', meta_info)
 
             new_args = list(user_node.args)
             new_kwargs = dict(user_node.kwargs)
