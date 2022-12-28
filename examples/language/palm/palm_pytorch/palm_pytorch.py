@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from einops import rearrange
-from torch import einsum, nn
+from torch import einsum, nn, matmul
 
 # normalization
 # they use layernorm without bias, something that pytorch does not offer
@@ -46,7 +46,8 @@ class RotaryEmbedding(nn.Module):
 
     def forward(self, max_seq_len, *, device):
         seq = torch.arange(max_seq_len, device=device)
-        freqs = einsum("i , j -> i j", seq.type_as(self.inv_freq), self.inv_freq)
+        #freqs = einsum("i , j -> i j", seq.type_as(self.inv_freq), self.inv_freq)
+        freqs = torch.outer(seq.type_as(self.inv_freq), self.inv_freq)
         return torch.cat((freqs, freqs), dim=-1)
 
 
@@ -157,7 +158,9 @@ class Attention(nn.Module):
 
         # similarity
 
-        sim = einsum("b h i d, b j d -> b h i j", q, k)
+        #sim = einsum("b h i d, b j d -> b h i j", q, k)
+        sim = matmul (q.transpose(0,1), k.transpose(1,2))
+        sim = sim.transpose(0,1)
 
         # causal mask
 
@@ -171,7 +174,9 @@ class Attention(nn.Module):
 
         # aggregate values
 
-        out = einsum("b h i j, b j d -> b h i d", attn, v)
+        #out = einsum("b h i j, b j d -> b h i d", attn, v)
+        out = matmul(attn.transpose(0,1), v)
+        out = out.transpose(0,1)
 
         # merge heads
 
