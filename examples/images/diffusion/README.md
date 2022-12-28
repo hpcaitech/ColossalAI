@@ -14,7 +14,7 @@ Thanks to a generous compute donation from [Stability AI](https://stability.ai/)
 Similar to Google's [Imagen](https://arxiv.org/abs/2205.11487),
 this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts.
 
-<p id="diffusion_train" align="center"****>
+<p id="diffusion_train" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
 </p>
 
