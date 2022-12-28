@@ -92,7 +92,7 @@ def _linear_function_mem_test(rank, world_size, port):
                                model=model,
                                device_mesh=device_mesh,
                                node_index=2,
-                               strategy_number=23,
+                               strategy_number=24,
                                input_args=[input],
                                meta_arg_names=["input"])
 

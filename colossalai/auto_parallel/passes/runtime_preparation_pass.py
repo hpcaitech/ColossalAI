@@ -79,6 +79,10 @@ def _solution_annotatation(gm: torch.fx.GraphModule,
         origin_node_sharding_spec_dict[node_index] = strategies_vector[strategy_index].get_sharding_spec_by_name(
             str(node))
 
+        # attach the corresponding metainfo if node has the attribute `metainfo_vector`
+        if hasattr(node, 'metainfo_vector'):
+            setattr(node, 'best_metainfo', node.metainfo_vector[strategy_index])
+
     # the dict to get input sharding specs of user node
     sharding_spec_convert_dict = {}
     # the dict to record comm actions of nodes

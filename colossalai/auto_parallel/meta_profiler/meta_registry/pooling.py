@@ -59,10 +59,12 @@ def avgpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, 
 
     mem_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
 
-    # store_fwd_in
-    fwd_in = [input_tensor]
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = []
+    fwd_buffer = []
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
-    return compute_cost, mem_cost, fwd_in
+    return compute_cost, mem_cost, fwd_in, fwd_buffer, fwd_out
 
 
 @meta_register.register(torch.nn.MaxPool1d)
@@ -122,7 +124,9 @@ def maxpool_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, 
 
     mem_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
 
-    # store_fwd_in
-    fwd_in = [input_tensor]
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = [torch.zeros_like(input_tensor, device='meta')]
+    fwd_buffer = [torch.zeros_like(index_matrix, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
-    return compute_cost, mem_cost, fwd_in
+    return compute_cost, mem_cost, fwd_in, fwd_buffer, fwd_out
