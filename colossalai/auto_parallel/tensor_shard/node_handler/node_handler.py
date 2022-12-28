@@ -235,10 +235,15 @@ class MetaInfoNodeHandler(NodeHandler):
         """
         super().register_strategy(compute_resharding_cost=compute_resharding_cost)
         target = self.get_target_function()
+        metainfo_vector = []
         for strategy in self.strategies_vector:
             metainfo = MetaInfo(strategy, target)
             strategy.compute_cost = metainfo.compute_cost
             strategy.memory_cost = metainfo.memory_cost
+            metainfo_vector.append(metainfo)
+
+        # attach metainfos to the handler
+        setattr(self, "metainfo_vector", metainfo_vector)
 
         return self.strategies_vector
 
@@ -277,9 +282,14 @@ class MetaInfoModuleHandler(ModuleHandler):
         """
         super().register_strategy(compute_resharding_cost=compute_resharding_cost)
         target = self.get_target_function()
+        metainfo_vector = []
         for strategy in self.strategies_vector:
             metainfo = MetaInfo(strategy, target)
             strategy.compute_cost = metainfo.compute_cost
             strategy.memory_cost = metainfo.memory_cost
+            metainfo_vector.append(metainfo)
+
+        # attach metainfos to the handler
+        setattr(self, "metainfo_vector", metainfo_vector)
 
         return self.strategies_vector
