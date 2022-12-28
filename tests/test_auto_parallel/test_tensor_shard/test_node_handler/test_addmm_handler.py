@@ -130,7 +130,10 @@ def check_addmm_function_handler(rank, input_shape, model_cls, world_size, port)
 
     assert mapping['other'].name == "transpose"
     assert mapping['other'].data.shape == torch.Size([16, 8])
-    assert mapping['other'].type == OperationDataType.ARG
+    if model_cls == AddmmModel:
+        assert mapping['other'].type == OperationDataType.ARG
+    else:
+        assert mapping['other'].type == OperationDataType.PARAM
     assert mapping['other'].logical_shape == torch.Size([8, 16])
 
     assert mapping['output'].name == "linear"

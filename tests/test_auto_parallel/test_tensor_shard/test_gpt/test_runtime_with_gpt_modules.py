@@ -102,13 +102,11 @@ def check_attention_layer(rank, model_cls, world_size, port):
     else:
         input_sample = (
             input_ids.to('cuda'),
-            token_type_ids.to('cuda'),
             attention_mask.to('cuda'),
         )
         test_input_sample = copy.deepcopy(input_sample)
         meta_input_sample = {
             'input_ids': input_ids.to('meta'),
-            'token_type_ids': token_type_ids.to('meta'),
             'attention_mask': attention_mask.to('meta'),
         }
 

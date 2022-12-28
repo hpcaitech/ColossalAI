@@ -50,9 +50,8 @@ def test_self_attention_block(model_cls):
         }
     else:
         input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        token_type_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
         attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
-        kwargs = dict(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+        kwargs = dict(input_ids=input_ids, attention_mask=attention_mask)
         input_sample = {k: v.to('meta') for k, v in kwargs.items()}
 
     graph = tracer.trace(root=model, meta_args=input_sample)
