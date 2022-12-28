@@ -90,6 +90,7 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory):
 
     for param in param_list:
         my_chunk.tensor_trans_state(param, TensorState.COMPUTE)
+        my_chunk.tensor_trans_state(param, TensorState.HOLD_AFTER_BWD)
         my_chunk.tensor_trans_state(param, TensorState.READY_FOR_REDUCE)
 
     assert my_chunk.tensor_state_cnter[TensorState.READY_FOR_REDUCE] == 4

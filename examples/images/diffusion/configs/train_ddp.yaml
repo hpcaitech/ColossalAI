@@ -80,25 +80,21 @@ model:
 data:
   target: main.DataModuleFromConfig
   params:
-    batch_size: 16
-    num_workers: 4
+    batch_size: 128
+    # num_workwers should be 2 * batch_size, and the total num less than 1024
+    # e.g. if use 8 devices, no more than 128
+    num_workers: 128
     train:
-      target: ldm.data.teyvat.hf_dataset
+      target: ldm.data.base.Txt2ImgIterableBaseDataset
       params:
-        path: Fazzie/Teyvat
-        image_transforms:
-        - target: torchvision.transforms.Resize
-          params:
-            size: 512
-        - target: torchvision.transforms.RandomCrop
-          params:
-            size: 512
-        - target: torchvision.transforms.RandomHorizontalFlip
+        file_path: # YOUR DATAPATH
+        world_size: 1
+        rank: 0
 
 lightning:
   trainer:
     accelerator: 'gpu' 
-    devices: 2
+    devices: 8
     log_gpu_memory: all
     max_epochs: 2
     precision: 16

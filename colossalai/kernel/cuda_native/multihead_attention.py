@@ -135,11 +135,8 @@ class MultiHeadAttention(nn.Module):
         # Load cuda modules if needed
         global colossal_multihead_attention
         if colossal_multihead_attention is None:
-            try:
-                import colossalai._C.multihead_attention
-                colossal_multihead_attention = colossalai._C.multihead_attention
-            except ImportError:
-                raise RuntimeError('MultiHeadAttention requires cuda extensions')
+            from colossalai.kernel import multihead_attention
+            colossal_multihead_attention = multihead_attention
 
         # create the layer in cuda kernels.
         cuda_module = colossal_multihead_attention

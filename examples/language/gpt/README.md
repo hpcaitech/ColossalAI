@@ -53,3 +53,36 @@ The `train_gpt_demo.py` provides three distributed plans, you can choose the pla
 - ZeRO2 (Colossal-AI)
 - Pytorch DDP
 - Pytorch ZeRO
+
+
+## Performance
+
+Testbed: a cluster of 8xA100 (80GB) and 1xAMD EPYC 7543 32-Core Processor (512 GB). GPUs are connected via PCI-e.
+ColossalAI version 0.1.13.
+
+How dose Batch Size affect the efficency.
+
+| model | #GPU | policy | TP |batch | Tflops |
+| ---------- | --------- |--------- |--------- |--------- |--------- |
+| gpt2_10b |  2  | cpu | 1 | 32 | 122.046 |
+| gpt2_10b |  2  | cpu | 1 | 16 | 82.649 |
+| gpt2_10b |  2  | cpu | 1 | 8 | 61.354 |
+
+
+How dose the Placement Policy affect the efficency.
+
+| model | #GPU | policy | TP |batch | Tflops |
+| ---------- | --------- |--------- |--------- |--------- |--------- |
+| gpt2_10b |  4  | auto | 1 | 8 | 88.657 |
+| gpt2_10b |  4  | cuda | 1 | 8 | OOM |
+| gpt2_10b |  4  | cpu | 1 | 8 | 61.354 |
+| gpt2_10b |  4  | const | 1 | 8 | 82.137 |
+
+How dose the Tensor Parallel Degree affect the efficency.
+
+| model | #GPU | policy | TP |batch | Tflops |
+| ---------- | --------- |--------- |--------- |--------- |--------- |
+| gpt2_10b |  4  | auto | 1 | 8 | 88.657 |
+| gpt2_10b |  4  | auto | 2 | 8 | 56.687 |
+| gpt2_10b |  4  | auto | 4 | 8 | 29.019 |
+| gpt2_10b |  4  | auto | 4 | 64 | 50.411 |

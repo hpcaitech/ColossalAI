@@ -57,7 +57,7 @@ class ColoTensor(torch.Tensor):
     The Colotensor can be initialized with a PyTorch tensor in the following ways.
 
         >>> pg = ProcessGroup()
-        >>> colo_t1 = ColoTensor(torch.randn(2,3), spec = ColoTensorSpec(pg, ReplicaSpec())
+        >>> colo_t1 = ColoTensor(torch.randn(2,3), spec = ColoTensorSpec(pg, ReplicaSpec()))
         >>> # The tensor passed in is a tensor after sharding but not a global tensor.
         >>> shard_spec = ShardSpec(process_group=ProcessGroup(tp=world_size),
         >>>                 dims=[0],
