@@ -49,7 +49,7 @@ def parse_args():
         "--batch_size",
         type=int,
         default=8,
-        help="batch size per GPU of training.",
+        help="batch size per DP group of training.",
     )
     parser.add_argument(
         "--model_type",
@@ -181,6 +181,7 @@ def main():
     if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
         raise TypeError(f"{args.distplan} is error")
 
+    # batch size per DP degree
     BATCH_SIZE = args.batch_size
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
@@ -236,10 +237,14 @@ def main():
                                           overlap_communication=True,
                                           partition_grad=partition_flag,
                                           verbose=True)
-        # notice that the model is still in fp32
 
+    # model is shared after TP
     numel = sum([p.numel() for p in model.parameters()])
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
+
+    # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
+    # = (batch_per_DP_group * dp_degree) * (numel * tp_degree) * seq_len * 8 / (tp_degree * dp_degree)
+    # = batch_per_DP_group * numel * seq_len * 8
     get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LEN)
 
     torch.cuda.synchronize()
