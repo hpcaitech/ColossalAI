@@ -86,3 +86,12 @@ How dose the Tensor Parallel Degree affect the efficency.
 | gpt2_10b |  4  | auto | 2 | 8 | 56.687 |
 | gpt2_10b |  4  | auto | 4 | 8 | 29.019 |
 | gpt2_10b |  4  | auto | 4 | 64 | 50.411 |
+
+Touch the model scale bar
+
+| model | #GPU | policy | TP |batch | Tflops |
+| ---------- | --------- |--------- |--------- |--------- |--------- |
+| gpt2_14b |  4  | cpu | 1 | 64 | 126.420 |
+| gpt2_20b |  4  | cpu | 1 | 64 | CUDA OOM |
+| gpt2_20b |  4  | auto | 1/2 | 64 | CUDA OOM |
+| gpt2_20b |  4  | cpu | 2 | 64 | 121.394 |
