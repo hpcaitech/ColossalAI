@@ -30,6 +30,13 @@ class Builder(object):
         else:
             return os.path.join(Path(__file__).parent.parent.absolute(), code_path)
 
+    def get_cuda_include(self):
+        from torch.utils.cpp_extension import CUDA_HOME
+        if CUDA_HOME is None:
+            raise RuntimeError("CUDA_HOME is None, please set CUDA_HOME to compile C++/CUDA kernels in ColossalAI.")
+        cuda_include = os.path.join(CUDA_HOME, "include")
+        return cuda_include
+
     def strip_empty_entries(self, args):
         '''
         Drop any empty strings from the list of compile and link flags

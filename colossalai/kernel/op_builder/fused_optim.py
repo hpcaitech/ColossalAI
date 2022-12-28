@@ -31,10 +31,7 @@ class FusedOptimBuilder(Builder):
         ]
 
     def include_paths(self):
-        import torch
-        from torch.utils.cpp_extension import CUDA_HOME
-        cuda_include = os.path.join(CUDA_HOME, "include")
-        return [os.path.join(FusedOptimBuilder.BASE_DIR, "includes"), cuda_include]
+        return [os.path.join(FusedOptimBuilder.BASE_DIR, "includes"), self.get_cuda_include()]
 
     def builder(self, name):
         from torch.utils.cpp_extension import CUDAExtension

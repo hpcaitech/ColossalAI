@@ -106,3 +106,8 @@ Touch the bar of model scale and batch size.
 | gpt2_20b |  8  | auto | 2 | 16 | 99.871 |
 | gpt2_20b |  8  | cpu | 2 | 64 | 125.170 |
 | gpt2_20b |  8  | const | 2 | 32 | 105.415 |
+
+
+| model | #GPU | policy | TP | batch per DP | Tflops |
+| ---------- | --------- |--------- |--------- |--------- |--------- |
+| gpt2_20b |  8  | cpu | 2 | 8 | 46.895 |
