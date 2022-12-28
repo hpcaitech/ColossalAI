@@ -27,9 +27,7 @@ class CPUAdamBuilder(Builder):
         ]
 
     def include_paths(self):
-        from torch.utils.cpp_extension import CUDA_HOME
-        cuda_include = os.path.join(CUDA_HOME, "include")
-        return [os.path.join(CPUAdamBuilder.BASE_DIR, "includes"), cuda_include]
+        return [os.path.join(CPUAdamBuilder.BASE_DIR, "includes"), self.get_cuda_include()]
 
     def strip_empty_entries(self, args):
         '''

@@ -218,7 +218,7 @@ def main():
         model = gemini_zero_dpp(model, pg, args.placement)
 
         # build highly optimized cpu optimizer
-        optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
+        optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5, gpu_margin_mem_ratio=0.6)
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
     else:
         model = model_builder(args.model_type)(checkpoint=True).cuda()
