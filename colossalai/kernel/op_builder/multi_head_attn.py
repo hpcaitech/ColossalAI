@@ -38,5 +38,4 @@ class MultiHeadAttnBuilder(Builder):
         ]
         extra_cuda_flags.extend(get_cuda_cc_flag())
         ret = ['-O3', '--use_fast_math'] + extra_cuda_flags
-        print(f'nvcc flag {ret}')
         return ret
