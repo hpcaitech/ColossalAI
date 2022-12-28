@@ -6,7 +6,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, 
 from colossalai.fx.profiler.memory_utils import activation_size
 from colossalai.fx.profiler.opcount import flop_mapping
 
-from ..constants import BCAST_FUNC_OP
+from ..constants import BCAST_FUNC_OP, NO_SAVE_ACTIVATION
 from ..registry import meta_register
 
 __all__ = ['binary_elementwise_meta_info']
@@ -59,7 +59,9 @@ def binary_elementwise_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, Train
 
     memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
 
-    # store fwd_in
-    fwd_in = fwd_in_args
+    # store fwd_in, fwd_buffer, fwd_out
+    fwd_in = [torch.zeros_like(input_op_data.data, device='meta')]
+    fwd_buffer = []
+    fwd_out = [torch.zeros_like(output_op_data.data, device='meta')]
 
-    return compute_cost, memory_cost, fwd_in
+    return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out

@@ -37,7 +37,7 @@ def _batchnorm_module_mem_test(rank, world_size, port):
     # index of target node in computation graph
     node_index = 1
     # total number of target node strategies
-    strategy_number = 4
+    strategy_number = 9
     mem_test_for_node_strategy(rank=rank,
                                model=model,
                                device_mesh=device_mesh,
