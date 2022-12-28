@@ -62,7 +62,7 @@ ColossalAI version 0.1.13.
 
 How dose Batch Size affect the efficency.
 
-| model | #GPU | policy | TP |batch | Tflops |
+| model | #GPU | policy | TP | batch per DP | Tflops |
 | ---------- | --------- |--------- |--------- |--------- |--------- |
 | gpt2_10b |  2  | cpu | 1 | 32 | 122.046 |
 | gpt2_10b |  2  | cpu | 1 | 16 | 82.649 |
@@ -71,7 +71,7 @@ How dose Batch Size affect the efficency.
 
 How dose the Placement Policy affect the efficency.
 
-| model | #GPU | policy | TP |batch | Tflops |
+| model | #GPU | policy | TP | batch per DP | Tflops |
 | ---------- | --------- |--------- |--------- |--------- |--------- |
 | gpt2_10b |  4  | auto | 1 | 8 | 88.657 |
 | gpt2_10b |  4  | cuda | 1 | 8 | OOM |
@@ -80,9 +80,23 @@ How dose the Placement Policy affect the efficency.
 
 How dose the Tensor Parallel Degree affect the efficency.
 
-| model | #GPU | policy | TP |batch | Tflops |
+| model | #GPU | policy | TP | batch per DP | Tflops |
 | ---------- | --------- |--------- |--------- |--------- |--------- |
 | gpt2_10b |  4  | auto | 1 | 8 | 88.657 |
 | gpt2_10b |  4  | auto | 2 | 8 | 56.687 |
 | gpt2_10b |  4  | auto | 4 | 8 | 29.019 |
 | gpt2_10b |  4  | auto | 4 | 64 | 50.411 |
+| gpt2_20b |  1  | cpu | 1 | 8 | 43.102 |
+| gpt2_20b |  4  | cpu | 4 | 8 | 28.491 |
+
+
+Touch the bar of model scale and batch size.
+
+| model | #GPU | policy | TP | batch per DP | Tflops |
+| ---------- | --------- |--------- |--------- |--------- |--------- |
+
+| gpt2_20b |  4  | cpu | 1 | 64 | CUDA OOM |
+| gpt2_20b |  4  | auto | 1/2 | 64 | CUDA OOM |
+| gpt2_20b |  4  | cpu | 2 | 64 | 121.394 |
+| gpt2_20b |  4  | cpu | 2 | 8 | 43.102 |
+| gpt2_20b |  8  | cpu | 2 | 64 | 125.170 |

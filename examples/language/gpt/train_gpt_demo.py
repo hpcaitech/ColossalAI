@@ -6,18 +6,16 @@ import torch
 import torch.nn as nn
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
-from transformers import GPT2Config, GPT2LMHeadModel
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.optimizer import HybridAdam
 from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
+from model_zoo import model_builder
 
 
 def parse_args():
@@ -47,6 +45,18 @@ def parse_args():
         help=
         "Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="batch size per DP group of training.",
+    )
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        default='gpt2_medium',
+        help="model model scale",
+    )
     args = parser.parse_args()
     return args
 
@@ -63,33 +73,6 @@ def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
 
 def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
     split_param_single_dim_tp1d(-1, param, pg)
-
-
-## Define the Model and Loss Based on Huggingface transformers GPT2LMHeadModel
-class GPTLMModel(nn.Module):
-
-    def __init__(self,
-                 hidden_size=768,
-                 num_layers=12,
-                 num_attention_heads=12,
-                 max_seq_len=1024,
-                 vocab_size=50257,
-                 checkpoint=False):
-        super().__init__()
-        self.checkpoint = checkpoint
-        self.model = GPT2LMHeadModel(
-            GPT2Config(n_embd=hidden_size,
-                       n_layer=num_layers,
-                       n_head=num_attention_heads,
-                       n_positions=max_seq_len,
-                       n_ctx=max_seq_len,
-                       vocab_size=vocab_size))
-        if checkpoint:
-            self.model.gradient_checkpointing_enable()
-
-    def forward(self, input_ids, attention_mask):
-        # Only return lm_logits
-        return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=not self.checkpoint)[0]
 
 
 class GPTLMLoss(nn.Module):
@@ -110,18 +93,6 @@ def get_data(batch_size, seq_len, vocab_size):
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
     attention_mask = torch.ones_like(input_ids)
     return input_ids, attention_mask
-
-
-def gpt2_medium(checkpoint=False):
-    return GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=checkpoint)
-
-
-def gpt2_xl(checkpoint=True):
-    return GPTLMModel(hidden_size=1600, num_layers=48, num_attention_heads=32, checkpoint=checkpoint)
-
-
-def gpt2_10b(checkpoint=True):
-    return GPTLMModel(hidden_size=4096, num_layers=50, num_attention_heads=16, checkpoint=checkpoint)
 
 
 def get_cpu_mem():
@@ -210,7 +181,8 @@ def main():
     if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
         raise TypeError(f"{args.distplan} is error")
 
-    BATCH_SIZE = 64
+    # batch size per DP degree
+    BATCH_SIZE = args.batch_size
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
 
@@ -220,7 +192,7 @@ def main():
     colossalai.launch_from_torch(config={})
 
     logger = get_dist_logger()
-    logger.info(f"using dist plan {args.distplan}", ranks=[0])
+    logger.info(f"{args.model_type}, {args.distplan}, batch size {BATCH_SIZE}", ranks=[0])
 
     # build criterion
     criterion = GPTLMLoss()
@@ -232,8 +204,11 @@ def main():
         default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
 
         # build GPT model
-        with ColoInitContext(device=get_current_device(), default_dist_spec=default_dist_spec, default_pg=default_pg):
-            model = gpt2_10b(checkpoint=True)
+        with ColoInitContext(device=get_current_device(),
+                             dtype=torch.half,
+                             default_dist_spec=default_dist_spec,
+                             default_pg=default_pg):
+            model = model_builder(args.model_type)(checkpoint=True)
 
         pg = default_pg
         # Tensor Parallelism (TP)
@@ -246,7 +221,7 @@ def main():
         optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
     else:
-        model = gpt2_10b(checkpoint=True).cuda()
+        model = model_builder(args.model_type)(checkpoint=True).cuda()
 
     if args.distplan.startswith("torch"):
         model = DDP(model)
@@ -262,10 +237,14 @@ def main():
                                           overlap_communication=True,
                                           partition_grad=partition_flag,
                                           verbose=True)
-        # notice that the model is still in fp32
 
+    # model is shared after TP
     numel = sum([p.numel() for p in model.parameters()])
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
+
+    # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
+    # = (batch_per_DP_group * dp_degree) * (numel * tp_degree) * seq_len * 8 / (tp_degree * dp_degree)
+    # = batch_per_DP_group * numel * seq_len * 8
     get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LEN)
 
     torch.cuda.synchronize()
