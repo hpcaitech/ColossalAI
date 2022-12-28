@@ -4,9 +4,9 @@ export DISTPAN="colossalai"
 # The following options only valid when DISTPAN="colossalai"
 export TPDEGREE=2
 export GPUNUM=8
-export PLACEMENT='cpu'
+export PLACEMENT='const'
 export USE_SHARD_INIT=False
-export BATCH_SIZE=64
+export BATCH_SIZE=32
 export MODEL_TYPE="gpt2_20b"
 
 mkdir -p logs

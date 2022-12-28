@@ -92,11 +92,17 @@ How dose the Tensor Parallel Degree affect the efficency.
 
 Touch the bar of model scale and batch size.
 
+1. `cpu` is the most stable policy for large model and large batch size. One 8 GPU with TP=2, largest batch size of `auto`, `const`
+ `cpu` is 64, 32 and 16, respectively.
+
+2. Tensor parallel is necessary for 20B model to reduce model data memory requirement on each GPU.
+
 | model | #GPU | policy | TP | batch per DP | Tflops |
 | ---------- | --------- |--------- |--------- |--------- |--------- |
-
 | gpt2_20b |  4  | cpu | 1 | 64 | CUDA OOM |
 | gpt2_20b |  4  | auto | 1/2 | 64 | CUDA OOM |
-| gpt2_20b |  4  | cpu | 2 | 64 | 121.394 |
 | gpt2_20b |  4  | cpu | 2 | 8 | 43.102 |
+| gpt2_20b |  4  | cpu | 2 | 64 | 121.394 |
+| gpt2_20b |  8  | auto | 2 | 16 | 99.871 |
 | gpt2_20b |  8  | cpu | 2 | 64 | 125.170 |
+| gpt2_20b |  8  | const | 2 | 32 | 105.415 |
