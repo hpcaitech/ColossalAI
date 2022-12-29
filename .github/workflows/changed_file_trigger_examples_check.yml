@@ -45,8 +45,13 @@ jobs:
           done
           echo "$changedFileName was changed"
           res=`python .github/workflows/test.py --fileNameList $changedFileName`
-          echo "$res is res"
-          res1=($res)
+          IFS=':' read -ra ADDR <<< "$res"
+          for i in "${ADDR[@]}"; do
+            # process "$i"
+            echo "${i}"
+          done
+#          echo "$res is res"
+#          res1=($res)
 #          for ii in ${res1[*]}; do
 #            cd "examples/${ii}"
 #            sh test_ci.sh
