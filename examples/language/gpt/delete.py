@@ -1,2 +1,2 @@
-a = 21121111
+a = 1
 print('this is gpt')
