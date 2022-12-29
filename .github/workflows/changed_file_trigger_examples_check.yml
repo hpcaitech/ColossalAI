@@ -46,6 +46,6 @@ jobs:
           echo "$changedFileName was changed"
           res=`python .github/workflows/test.py --fileNameList $changedFileName`
           echo "$res is res"
-          sh ./test.sh res
+          sh .github/workflows/test.sh res
 
       # Note res=() can't have space. res = () is incorrect. Also res=`...` is correct, but not res='...'. res1=($res) is to change "space separated string" into list format. Here I use for ii in ..res1.. is to make sure the direction is correct. Otherwise, the test_ci.sh's code can not use the correct relative direction and will be forced to use absolute direction, which is uncomfortable for example code contributors. The cd here has three layers backwards because the current folder structure has two level, like examples/images/vit/....
