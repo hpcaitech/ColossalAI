@@ -1,24 +1,21 @@
-import copy
-import torch
-import torch.nn.functional as F
-import pytest
-import torch.fx
-import torch.multiprocessing as mp
-from torch.fx import GraphModule
-from colossalai.fx import ColoTracer
-import colossalai
-from colossalai.utils import free_port
-from colossalai.core import global_context as gpc
-from colossalai.fx.graph_module import ColoGraphModule
-from colossalai.fx.passes.meta_info_prop import MetaInfoProp, TensorMetadata
-from colossalai.fx.profiler import MetaTensor
-from evoformer.evoformer import evoformer_base
-from chunk_codegen import ChunkCodeGen
 import time
 
+import torch
+import torch.fx
 
-def _benchmark_evoformer(model: torch.nn.Module, node, pair):
-    loop = 10
+from chunk_codegen import ChunkCodeGen
+from colossalai.fx import ColoTracer
+from colossalai.fx.graph_module import ColoGraphModule
+from colossalai.fx.passes.meta_info_prop import MetaInfoProp
+from colossalai.fx.profiler import MetaTensor
+from evoformer.evoformer import evoformer_base
+
+
+def _benchmark_evoformer(model: torch.nn.Module, node, pair, title):
+    torch.cuda.reset_peak_memory_stats()
+    now_mem = torch.cuda.memory_allocated() / 1024**2
+
+    loop = 16
     with torch.no_grad():
         for _ in range(loop // 4):
             model(node, pair)
@@ -28,7 +25,12 @@ def _benchmark_evoformer(model: torch.nn.Module, node, pair):
             model(node, pair)
         torch.cuda.synchronize()
         time2 = time.time()
-    return (time2 - time1) / loop
+
+    new_max_mem = torch.cuda.max_memory_allocated() / 1024**2
+    print(
+        "%s: time %.4fs, mem %dMB"
+        % (title, (time2 - time1) / loop, new_max_mem - now_mem)
+    )
 
 
 def benchmark_evoformer():
@@ -69,10 +71,8 @@ def benchmark_evoformer():
     code = graph.python_code("self").src
     print(code)
 
-    time_gm = _benchmark_evoformer(gm, node, pair)
-    print("gm %.4fs" % time_gm)
-    time_openfold = _benchmark_evoformer(model, node, pair)
-    print("openfold %.4fs" % time_openfold)
+    _benchmark_evoformer(gm, node, pair, "autochunk")
+    _benchmark_evoformer(model, node, pair, "openfold")
 
 
 if __name__ == "__main__":
