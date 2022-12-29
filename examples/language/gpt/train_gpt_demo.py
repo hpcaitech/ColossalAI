@@ -5,7 +5,6 @@ from time import time
 import psutil
 import torch
 import torch.nn as nn
-from model_zoo import model_builder
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -17,6 +16,7 @@ from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, Proces
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
+from model_zoo import model_builder
 
 
 def parse_args():
@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument(
         "--model_type",
         type=str,
-        default='gpt2_medium',
+        default="gpt2_medium",
         help="model model scale",
     )
     args = parser.parse_args()
@@ -308,6 +308,8 @@ def main():
         )
         if n >= WARMUP_STEPS:
             tflops_list.append(step_tflops)
+
+        logger.info(f"max memory {torch.cuda.memory_allocated() / 1024**2} MB", ranks=[0])
 
     tflops_list.sort()
     median_index = ((NUM_STEPS - WARMUP_STEPS) >> 1) + WARMUP_STEPS
