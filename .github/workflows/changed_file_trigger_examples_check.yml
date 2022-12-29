@@ -4,7 +4,7 @@ on: [pull_request]
   # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
 
 jobs:
-  detect-changed-files:
+  detect:
     runs-on: ubuntu-latest
     outputs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
@@ -26,14 +26,12 @@ jobs:
 
   deploy:
     name: Build and deploy test image
-    needs: detect-changed-files
-    if: needs.detect.outputs.anyChanged == 'true'
+    needs: detect
     runs-on: self-hosted
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     steps:
-
       - name: 📚 Checkout
         uses: actions/checkout@v3
 
@@ -41,7 +39,7 @@ jobs:
       - name: List all changed example files
         run: |
           changedFileName=""
-          for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
+          for file in ${{ needs.detect.outputs.changedFiles  }}; do
             changedFileName="${file}&&&@@@${changedFileName}"
           done
           echo "$changedFileName was changed"
