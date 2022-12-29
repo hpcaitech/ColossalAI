@@ -24,4 +24,4 @@ for loc in name_list:
 
 
 for i in folder_need_check:
-    print(i, end=' ')
+    print(i, end='@')

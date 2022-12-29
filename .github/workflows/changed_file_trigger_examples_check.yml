@@ -46,7 +46,7 @@ jobs:
           echo "$changedFileName was changed"
           res=`python .github/workflows/test.py --fileNameList $changedFileName`
           echo "$res is res"
-          res1=(${str// /})
+          res1=(${str//@/})
 #          for ii in ${res1[*]}; do
 #            cd "examples/${ii}"
 #            sh test_ci.sh
