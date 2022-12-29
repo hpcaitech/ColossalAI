@@ -67,7 +67,5 @@ def model_builder(model_size: str):
     elif model_size == "gpt2_24b":
         return gpt2_24b
 
-    return gpt2_medium
-
 
 __all__ = ['model_builder']
