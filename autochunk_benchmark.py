@@ -9,20 +9,27 @@ from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import MetaTensor
 from evoformer.evoformer import evoformer_base
+from openfold.evoformer import EvoformerBlock
 
 
-def _benchmark_evoformer(model: torch.nn.Module, node, pair, title):
+def _benchmark_evoformer(model: torch.nn.Module, node, pair, title, chunk_size=None):
     torch.cuda.reset_peak_memory_stats()
     now_mem = torch.cuda.memory_allocated() / 1024**2
 
     loop = 16
     with torch.no_grad():
         for _ in range(loop // 4):
-            model(node, pair)
+            if chunk_size:
+                model(node, pair, chunk_size)
+            else:
+                model(node, pair)
         torch.cuda.synchronize()
         time1 = time.time()
         for _ in range(loop):
-            model(node, pair)
+            if chunk_size:
+                model(node, pair, chunk_size)
+            else:
+                model(node, pair)
         torch.cuda.synchronize()
         time2 = time.time()
 
@@ -64,6 +71,26 @@ def _build_autochunk(model, max_memory, node, pair):
     return gm
 
 
+def _build_openfold():
+    model = EvoformerBlock(
+        c_m=256,
+        c_z=128,
+        c_hidden_msa_att=32,
+        c_hidden_opm=32,
+        c_hidden_mul=128,
+        c_hidden_pair_att=32,
+        no_heads_msa=8,
+        no_heads_pair=4,
+        transition_n=4,
+        msa_dropout=0.15,
+        pair_dropout=0.15,
+        inf=1e4,
+        eps=1e-4,
+        is_multimer=False,
+    ).cuda()
+    return model
+
+
 def benchmark_evoformer():
     # init data and model
     msa_len = 300
@@ -74,10 +101,14 @@ def benchmark_evoformer():
 
     # build autochunk model
     max_memory = 3000  # MB
-    autochunk = _build_autochunk(model, max_memory, node, pair)
+    autochunk = _build_autochunk(evoformer_base().cuda(), max_memory, node, pair)
+
+    # build openfold
+    openfold = _build_openfold()
 
     # benchmark
-    _benchmark_evoformer(model, node, pair, "openfold")
+    _benchmark_evoformer(model, node, pair, "base")
+    _benchmark_evoformer(openfold, node, pair, "openfold", chunk_size=4)
     _benchmark_evoformer(autochunk, node, pair, "autochunk")
 
 
