@@ -53,7 +53,7 @@ def gpt2_24b(checkpoint=True):
     return GPTLMModel(hidden_size=8192, num_layers=30, num_attention_heads=16, checkpoint=checkpoint)
 
 
-def model_builder(model_size: str):
+def model_builder(model_size: str) -> callable:
     if model_size == "gpt2_medium":
         return gpt2_medium
     elif model_size == "gpt2_xl":
@@ -66,6 +66,8 @@ def model_builder(model_size: str):
         return gpt2_20b
     elif model_size == "gpt2_24b":
         return gpt2_24b
+    else:
+        raise TypeError(f"model_builder {model_size}")
 
 
 __all__ = ['model_builder']

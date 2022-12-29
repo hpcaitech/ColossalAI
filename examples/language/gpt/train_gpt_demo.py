@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument(
         "--model_type",
         type=str,
-        default='gpt2_medium',
+        default="gpt2_medium",
         help="model model scale",
     )
     args = parser.parse_args()
@@ -271,7 +271,7 @@ def main():
         logger.info(
             f'[{n+1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}',
             ranks=[0])
-
+        logger.info(f"max memory {torch.cuda.memory_allocated() / 1024**2} MB", ranks=[0])
     torch.cuda.synchronize()
 
 
