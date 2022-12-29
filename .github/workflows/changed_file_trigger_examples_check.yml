@@ -6,6 +6,10 @@ on: [pull_request]
 jobs:
   build:
     runs-on: self-hosted
+    container:
+      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+
     name: Test changed-files
     steps:
       - uses: actions/checkout@v3  # This is necessary for the tj-actions/changed...Otherwise that function won't work. Because this step is to pull the code and enter the code.
