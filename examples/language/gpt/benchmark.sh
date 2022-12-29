@@ -1,6 +1,6 @@
-for MODEL_NAME in "GPT2small"
+for MODEL_TYPE in "gpt2_medium"
 do
-for BATCH_SIZE in 8
+for BATCH_SIZE in 16
 do
 for GPUNUM in 1 2 4 8
 do
@@ -11,8 +11,8 @@ then
     continue
 fi
 echo "****************** Begin ***************************"
-echo "* benchmrking MODEL_NAME ${MODEL_NAME} BS ${BATCH_SIZE} BS ${BS} GPUNUM ${GPUNUM} TPDEGREE ${TPDEGREE}"
-bash ./run.sh
+echo "* benchmrking MODEL_TYPE ${MODEL_TYPE} BS ${BATCH_SIZE} BS ${BS} GPUNUM ${GPUNUM} TPDEGREE ${TPDEGREE}"
+MODEL_TYPE=${MODEL_TYPE} BATCH_SIZE=${BATCH_SIZE} GPUNUM=${GPUNUM} TPDEGREE=${TPDEGREE} bash ./run.sh
 echo "****************** Finished ***************************"
 echo ""
 echo ""
