@@ -64,7 +64,11 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
 
     memory_cost = TrainCycleItem(fwd=fwd_memory_cost, bwd=bwd_memory_cost, total=total_cost)
 
-    # store fwd_in
-    fwd_in = [input_tensor]
+    # store fwd_in, fwd_buffer, fwd_out
+    # NOTE: It might seems a little bit weird here, we just want to align it with the older version
+    # of MetaInfoProp. In the future we might modify this part to make it clearer.
+    fwd_in = []
+    fwd_buffer = [torch.zeros_like(output_tensor, device='meta')]
+    fwd_out = [torch.zeros_like(output_tensor, device='meta')]
 
-    return compute_cost, memory_cost, fwd_in
+    return compute_cost, memory_cost, fwd_in, fwd_buffer, fwd_out

@@ -1,18 +1,17 @@
+import os
 from functools import partial
 from time import time
 
 import psutil
 import torch
 import torch.nn as nn
+from model_zoo import model_builder
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
-from transformers import GPT2Config, GPT2LMHeadModel
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
-from colossalai.nn.optimizer import HybridAdam
 from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.optimizer.zero_optimizer import ZeroOptimizer
 from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
@@ -47,6 +46,18 @@ def parse_args():
         help=
         "Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="batch size per DP group of training.",
+    )
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        default='gpt2_medium',
+        help="model model scale",
+    )
     args = parser.parse_args()
     return args
 
@@ -65,33 +76,6 @@ def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
     split_param_single_dim_tp1d(-1, param, pg)
 
 
-## Define the Model and Loss Based on Huggingface transformers GPT2LMHeadModel
-class GPTLMModel(nn.Module):
-
-    def __init__(self,
-                 hidden_size=768,
-                 num_layers=12,
-                 num_attention_heads=12,
-                 max_seq_len=1024,
-                 vocab_size=50257,
-                 checkpoint=False):
-        super().__init__()
-        self.checkpoint = checkpoint
-        self.model = GPT2LMHeadModel(
-            GPT2Config(n_embd=hidden_size,
-                       n_layer=num_layers,
-                       n_head=num_attention_heads,
-                       n_positions=max_seq_len,
-                       n_ctx=max_seq_len,
-                       vocab_size=vocab_size))
-        if checkpoint:
-            self.model.gradient_checkpointing_enable()
-
-    def forward(self, input_ids, attention_mask):
-        # Only return lm_logits
-        return self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=not self.checkpoint)[0]
-
-
 class GPTLMLoss(nn.Module):
 
     def __init__(self):
@@ -105,23 +89,11 @@ class GPTLMLoss(nn.Module):
         return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
 
-## Randomly Generated Data
+# Randomly Generated Data
 def get_data(batch_size, seq_len, vocab_size):
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
     attention_mask = torch.ones_like(input_ids)
     return input_ids, attention_mask
-
-
-def gpt2_medium(checkpoint=False):
-    return GPTLMModel(hidden_size=1024, num_layers=24, num_attention_heads=16, checkpoint=checkpoint)
-
-
-def gpt2_xl(checkpoint=True):
-    return GPTLMModel(hidden_size=1600, num_layers=48, num_attention_heads=32, checkpoint=checkpoint)
-
-
-def gpt2_10b(checkpoint=True):
-    return GPTLMModel(hidden_size=4096, num_layers=50, num_attention_heads=16, checkpoint=checkpoint)
 
 
 def get_cpu_mem():
@@ -138,6 +110,22 @@ def get_mem_info(prefix=''):
 
 def get_tflops(model_numel, batch_size, seq_len, step_time):
     return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12)
+
+
+def get_model_size(model: nn.Module):
+    total_numel = 0
+    for module in model.modules():
+        for p in module.parameters(recurse=False):
+            total_numel += p.numel()
+    return total_numel
+
+
+def set_cpu_maximum_parallelism():
+    conf_str = torch.__config__.parallel_info()
+    inter_str = conf_str.split("hardware_concurrency() : ")[1]
+    max_concurrency = inter_str.split('\n')[0]
+    os.environ["OMP_NUM_THREADS"] = max_concurrency
+    print(f"environmental variable OMP_NUM_THREADS is set to {max_concurrency}.")
 
 
 # Tensor Parallel
@@ -186,10 +174,10 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
                           device=get_current_device(),
                           placement_policy=placememt_policy,
                           pin_memory=True,
-                          hidden_dim=4096,
+                          hidden_dim=8192,
                           search_range_mb=64)
         if placememt_policy == 'const':
-            model.gemini_manager._placement_policy.set_const_memory_boundary(10 * 1024)
+            model.gemini_manager._placement_policy.set_const_memory_boundary(2 * 1024)
     elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
         from colossalai.gemini import ChunkManager, GeminiManager
         chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
@@ -205,22 +193,27 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
 
 
 def main():
+    set_cpu_maximum_parallelism()
     args = parse_args()
 
     if args.distplan not in ["colossalai", "torch_ddp", "torch_zero", "zero1", "zero2"]:
         raise TypeError(f"{args.distplan} is error")
 
-    BATCH_SIZE = 64
+    # batch size per DP degree
+    BATCH_SIZE = args.batch_size
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
 
     NUM_STEPS = 10
+    WARMUP_STEPS = 1
+    assert WARMUP_STEPS < NUM_STEPS, "warmup steps should smaller than the total steps"
+    assert (NUM_STEPS - WARMUP_STEPS) % 2 == 1, "the number of valid steps should be odd to take the median "
 
     disable_existing_loggers()
     colossalai.launch_from_torch(config={})
 
     logger = get_dist_logger()
-    logger.info(f"using dist plan {args.distplan}", ranks=[0])
+    logger.info(f"{args.model_type}, {args.distplan}, batch size {BATCH_SIZE}", ranks=[0])
 
     # build criterion
     criterion = GPTLMLoss()
@@ -232,8 +225,11 @@ def main():
         default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
 
         # build GPT model
-        with ColoInitContext(device=get_current_device(), default_dist_spec=default_dist_spec, default_pg=default_pg):
-            model = gpt2_10b(checkpoint=True)
+        with ColoInitContext(device=get_current_device(),
+                             dtype=torch.half,
+                             default_dist_spec=default_dist_spec,
+                             default_pg=default_pg):
+            model = model_builder(args.model_type)(checkpoint=True)
 
         pg = default_pg
         # Tensor Parallelism (TP)
@@ -243,10 +239,10 @@ def main():
         model = gemini_zero_dpp(model, pg, args.placement)
 
         # build highly optimized cpu optimizer
-        optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5)
+        optimizer = GeminiAdamOptimizer(model, lr=1e-3, initial_scale=2**5, gpu_margin_mem_ratio=0.6)
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
     else:
-        model = gpt2_10b(checkpoint=True).cuda()
+        model = model_builder(args.model_type)(checkpoint=True).cuda()
 
     if args.distplan.startswith("torch"):
         model = DDP(model)
@@ -262,37 +258,60 @@ def main():
                                           overlap_communication=True,
                                           partition_grad=partition_flag,
                                           verbose=True)
-        # notice that the model is still in fp32
 
-    numel = sum([p.numel() for p in model.parameters()])
+    # model is shared after TP
+    numel = get_model_size(model)
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
+
+    # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
+    # = (batch_per_DP_group * dp_degree) * (numel * tp_degree) * seq_len * 8 / (tp_degree * dp_degree)
+    # = batch_per_DP_group * numel * seq_len * 8
     get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LEN)
 
     torch.cuda.synchronize()
     model.train()
+    tflops_list = []
     for n in range(NUM_STEPS):
         # we just use randomly generated data here
         input_ids, attn_mask = get_data(BATCH_SIZE, SEQ_LEN, VOCAB_SIZE)
         optimizer.zero_grad()
+
         start = time()
         outputs = model(input_ids, attn_mask)
         loss = criterion(outputs, input_ids)
-        logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Forward '), ranks=[0])
+        torch.cuda.synchronize()
+        fwd_end = time()
+        fwd_time = fwd_end - start
+        logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Forward '), ranks=[0])
+
         if args.distplan in ["colossalai", "zero1", "zero2"]:
             optimizer.backward(loss)
         elif args.distplan in ["torch_ddp", "torch_zero"]:
             loss.backward()
-        logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Backward '), ranks=[0])
+        torch.cuda.synchronize()
+        bwd_end = time()
+        bwd_time = bwd_end - fwd_end
+        logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Backward '), ranks=[0])
+
         if args.distplan in ["zero1", "zero2"]:
             optimizer.sync_grad()
         optimizer.step()
-        logger.info(get_mem_info(prefix=f'[{n+1}/{NUM_STEPS}] Optimizer step '), ranks=[0])
         torch.cuda.synchronize()
+        optim_time = time() - bwd_end
         step_time = time() - start
-        logger.info(
-            f'[{n+1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}',
-            ranks=[0])
+        logger.info(get_mem_info(prefix=f'[{n + 1}/{NUM_STEPS}] Optimizer step '), ranks=[0])
 
+        step_tflops = get_tflops_func(step_time)
+        logger.info(
+            f"[{n + 1}/{NUM_STEPS}] Loss:{loss.item():.3f}, Step time: {step_time:.3f}s, TFLOPS: {get_tflops_func(step_time):.3f}, FWD time: {fwd_time:.3f}s, BWD time: {bwd_time:.3f}s, OPTIM time: {optim_time:.3f}s",
+            ranks=[0],
+        )
+        if n >= WARMUP_STEPS:
+            tflops_list.append(step_tflops)
+
+    tflops_list.sort()
+    median_index = ((NUM_STEPS - WARMUP_STEPS) >> 1) + WARMUP_STEPS
+    logger.info(f"Median TFLOPS is {tflops_list[median_index]:.3f}")
     torch.cuda.synchronize()
 
 
