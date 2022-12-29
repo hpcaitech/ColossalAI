@@ -1398,13 +1398,14 @@ class MemoryEstimator(object):
 
 class ChunkSelector(object):
     def __init__(
-        self, index_tracer: IndexTracer, memory_estimator: MemoryEstimator, stratge
+        self, index_tracer: IndexTracer, memory_estimator: MemoryEstimator, stratge, max_memory=None
     ):
         self.index_tracer = index_tracer
         self.memory_estimator = memory_estimator
         assert stratge in ["min_memory", "fit_memory"]
+        assert (stratge == "fit_memory" and max_memory is not None) or stratge != "fit_memory"
         self.stratge = stratge
-        self.max_memory = 600  # MB
+        self.max_memory = max_memory  # MB
 
     def _select_best_chunk_region(
         self, possible_chunk_regions, chunk_infos, peak_node, max_chunk_region, mem_peak
@@ -1556,13 +1557,13 @@ class ChunkSelector(object):
 
 
 class ChunkRegionSearch(object):
-    def __init__(self, gm) -> None:
+    def __init__(self, gm, max_memory=None) -> None:
         self.gm = gm
         self.index_tracer = IndexTracer(list(gm.graph.nodes))
         self.index_tracer.trace_index()
         self.memory_estimator = MemoryEstimator(self.index_tracer)
         self.chunk_selector = ChunkSelector(
-            self.index_tracer, self.memory_estimator, stratge="fit_memory"
+            self.index_tracer, self.memory_estimator, stratge="fit_memory", max_memory=max_memory
         )
 
     def _find_peak_node(self, mem_peak):
@@ -1897,6 +1898,7 @@ def emit_code_with_chunk(
     delete_unused_value_func,
     meta_nodes,
     meta_graph,
+    max_memory=None,
 ):
     """Emit code with nested activation checkpoint
     When we detect some of the node.activation_checkpoint is a List, we will use
@@ -1912,7 +1914,7 @@ def emit_code_with_chunk(
     node_list = list(nodes)
 
     # find the chunk regions
-    chunk_region_search = ChunkRegionSearch(meta_graph)
+    chunk_region_search = ChunkRegionSearch(meta_graph, max_memory)
     chunk_search = chunk_region_search.search_region()
 
     chunk_regions = [i["region"] for i in chunk_search]
@@ -1989,9 +1991,10 @@ def emit_code_with_chunk(
 if CODEGEN_AVAILABLE:
 
     class ChunkCodeGen(CodeGen):
-        def __init__(self, meta_graph):
+        def __init__(self, meta_graph, max_memory=None):
             super().__init__()
             self.meta_graph = meta_graph
+            self.max_memory = max_memory
             self.meta_node = list(meta_graph.graph.nodes)
 
         def _gen_python_code(
@@ -2230,6 +2233,7 @@ if CODEGEN_AVAILABLE:
                 delete_unused_values,
                 self.meta_node,
                 self.meta_graph,
+                self.max_memory
             )
 
             if len(body) == 0:
