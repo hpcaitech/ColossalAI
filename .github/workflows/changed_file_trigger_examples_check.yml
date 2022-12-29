@@ -6,24 +6,24 @@ on: [pull_request]
 jobs:
   build:
     runs-on: self-hosted
-    container:
-      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+#    container:
+#      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+#      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
 
-    name: Test changed-files
+    name: Check out all files
     steps:
       - uses: actions/checkout@v3  # This is necessary for the tj-actions/changed...Otherwise that function won't work. Because this step is to pull the code and enter the code.
         with:
           fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
 
       # Example 1
-      - name: Get changed files
+      - name: Get all changed files
         id: changed-files
         uses: tj-actions/changed-files@v35
         with:
           since_last_remote_commit: true  # Important! Last time without this and workflow can not show the changed files!
 
-      - name: List all added files
+      - name: List all changed example files
         run: |
           changedFileName=""
           for file in ${{ steps.changed-files.outputs.all_changed_files  }}; do
