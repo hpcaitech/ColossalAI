@@ -43,7 +43,10 @@ def convert_to_torch_module(gemini_ddp_model) -> torch.nn.Module:
 
     for n, p in module.named_parameters():
         if isinstance(p, ColoTensor):
-            p.to_replicate_()
-            _add_param(module, n, p.data)
+            # p.to_replicate_()
+            print(p)
+            # _add_param(module,
+            #
+            # n, p.data)
 
     return module
