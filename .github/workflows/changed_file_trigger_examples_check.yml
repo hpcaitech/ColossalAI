@@ -1,0 +1,57 @@
+name: GitHub Actions Demo
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+on: [pull_request]
+  # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
+
+
+  # Compare the preceeding commit of main -> to the current commit of the main branch.
+  # (Note: To compare changes between the last pushed commit to the remote main branch set `since_last_remote_commit: true`)
+#  push:
+#    branches:
+#      - main
+  # Compare the last commit of main -> to the current commit of a PR branch.
+  # (Note: To compare changes between the last pushed commit to the remote PR branch set `since_last_remote_commit: true`)
+#  pull_request:
+#    branches:
+#      - main
+
+
+jobs:
+  build:
+    runs-on: [self-hosted, gpu]  # windows-latest | macos-latest
+    name: Test changed-files
+    steps:
+      - uses: actions/checkout@v3  # This is necessary for the tj-actions/changed...Otherwise that function won't work. Because this step is to pull the code and enter the code.
+        with:
+          fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
+
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          
+
+      # Example 1
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v35
+        with:
+          since_last_remote_commit: true  # Important! Last time without this and workflow can not show the changed files!
+
+      - name: List all added files
+        run: |
+          changedFileName=""
+          for file in ${{ steps.changed-files.outputs.all_changed_files  }}; do
+            changedFileName="${file}&&&@@@${changedFileName}"
+          done
+          echo "$changedFileName was changed"
+          res=`python .github/workflows/test.py --fileNameList $changedFileName`
+          res1=($res)  
+          for ii in ${res1[*]}; do
+            cd "examples/${ii}"
+            sh test_ci.sh
+            cd ../../..
+            echo "${ii} haha"
+          done
+      # Note res=() can't have space. res = () is incorrect. Also res=`...` is correct, but not res='...'. res1=($res) is to change "space separated string" into list format. Here I use for ii in ..res1.. is to make sure the direction is correct. Otherwise, the test_ci.sh's code can not use the correct relative direction and will be forced to use absolute direction, which is uncomfortable for example code contributors. The cd here has three layers backwards because the current folder structure has two level, like examples/images/vit/....
