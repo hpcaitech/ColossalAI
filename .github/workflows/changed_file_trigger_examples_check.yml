@@ -5,14 +5,14 @@ on: [pull_request]
 
 jobs:
   build:
-    runs-on: [self-hosted, gpu]  # windows-latest | macos-latest
+    runs-on: self-hosted
     name: Test changed-files
     steps:
       - uses: actions/checkout@v3  # This is necessary for the tj-actions/changed...Otherwise that function won't work. Because this step is to pull the code and enter the code.
         with:
           fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
 
-      # Example 12
+      # Example 1
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v35
