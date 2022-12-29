@@ -34,7 +34,9 @@ jobs:
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     steps:
 
-
+      - uses: actions/checkout@v3  # This is necessary for the tj-actions/changed...Otherwise that function won't work. Because this step is to pull the code and enter the code.
+        with:
+          fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
 
 
       - name: List all changed example files
