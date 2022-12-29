@@ -126,36 +126,32 @@ model = gemini_zero_dpp(model, pg, placement)
 
 optimizer = GeminiAdamOptimizer(model, lr=1e-7, initial_scale=2**5)
 
-# training
-model.train()
-
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10.0, desc="training"):
+    # training
+    model.module.train()
 
     optimizer.zero_grad()
 
     loss = model(next(train_loader))
-    # loss.backward()
     optimizer.backward(loss)
 
     print(f"training loss: {loss.item()}")
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-    # optim.step()
-    # optim.zero_grad()
     optimizer.step()
 
-    # TODO
-    # if i % VALIDATE_EVERY == 0:
-    #     model.eval()
-    #     with torch.no_grad():
-    #         loss = model(next(val_loader))
-    #         print(f"validation loss: {loss.item()}")
+    module = model.module
+    if i % VALIDATE_EVERY == 0:
+        module.eval()
+        with torch.no_grad():
+            loss = module(next(val_loader))
+            print(f"validation loss: {loss.item()}")
 
-    # if i % GENERATE_EVERY == 0:
-    #     model.eval()
-    #     inp = random.choice(val_dataset)[:-1]
-    #     prime = decode_tokens(inp)
-    #     print(f"%s \n\n %s", (prime, "*" * 100))
+    if i % GENERATE_EVERY == 0:
+        module.eval()
+        inp = random.choice(val_dataset)[:-1]
+        prime = decode_tokens(inp)
+        print(f"%s \n\n %s", (prime, "*" * 100))
 
-    #     sample = model.generate(inp[None, ...], GENERATE_LENGTH)
-    #     output_str = decode_tokens(sample[0])
-    #     print(output_str)
+        sample = module.generate(inp[None, ...], GENERATE_LENGTH)
+        output_str = decode_tokens(sample[0])
+        print(output_str)
