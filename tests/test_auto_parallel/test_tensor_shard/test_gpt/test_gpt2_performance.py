@@ -35,13 +35,14 @@ from colossalai.testing.pytest_wrapper import run_on_environment_flag
 from colossalai.utils import free_port
 from tests.test_auto_parallel.test_tensor_shard.test_gpt.gpt_modules import GPT2LMHeadModel, GPTLMLoss
 
-BATCH_SIZE = 128
-SEQ_LENGTH = 128
-HIDDEN_DIM = 4096
-NUM_HEADS = 32
+BATCH_SIZE = 32
+SEQ_LENGTH = 256
+HIDDEN_DIM = 16384
+NUM_HEADS = 128
 NUM_LAYERS = 4
 VOCAB_SIZE = 50257
 NUM_STEPS = 10
+FP16 = True
 
 
 def get_cpu_mem():
@@ -57,7 +58,8 @@ def get_mem_info(prefix=''):
 
 
 def get_tflops(model_numel, batch_size, seq_len, step_time):
-    return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12)
+    # Tflops_per_GPU = global_batch * global_numel * seq_len * 8 / #gpu
+    return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12) / 4
 
 
 # Randomly Generated Data
@@ -72,8 +74,11 @@ def main():
     launch_from_torch(config={})
     logger = get_dist_logger()
     config = transformers.GPT2Config(n_position=SEQ_LENGTH, n_layer=NUM_LAYERS, n_head=NUM_HEADS, n_embd=HIDDEN_DIM)
-
-    model = GPT2LMHeadModel(config=config).to('cuda')
+    if FP16:
+        model = GPT2LMHeadModel(config=config).half().to('cuda')
+    else:
+        model = GPT2LMHeadModel(config=config).to('cuda')
+    global_numel = sum([p.numel() for p in model.parameters()])
 
     input_ids = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
     attention_mask = torch.zeros((BATCH_SIZE, SEQ_LENGTH), dtype=torch.int64)
@@ -108,6 +113,7 @@ def main():
     ret = solver.call_solver_serialized_args()
 
     solution = list(ret[0])
+    # solution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 2, 13, 8, 9, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 12, 8, 8, 8, 0, 0, 20, 12, 12, 12, 6, 6, 6, 6, 2, 6, 0, 0, 4, 0, 0, 0, 4, 0, 4, 3, 3, 12, 3, 3, 8, 8, 8, 8, 8, 8, 8, 8, 3, 8, 2, 2, 11, 4, 4, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 12, 8, 8, 8, 0, 0, 20, 12, 12, 12, 6, 6, 6, 6, 2, 6, 0, 0, 4, 0, 0, 0, 4, 0, 4, 3, 3, 12, 3, 3, 8, 8, 8, 8, 8, 8, 8, 8, 3, 8, 2, 2, 11, 4, 4, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 12, 8, 8, 8, 0, 0, 20, 12, 12, 12, 6, 6, 6, 6, 2, 6, 0, 0, 4, 0, 0, 0, 4, 0, 4, 3, 3, 12, 3, 3, 8, 8, 8, 8, 8, 8, 8, 8, 3, 8, 2, 2, 11, 4, 4, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 12, 8, 8, 8, 0, 0, 20, 12, 12, 12, 6, 6, 6, 6, 2, 6, 0, 0, 4, 0, 0, 0, 4, 0, 4, 3, 3, 12, 3, 3, 8, 8, 8, 8, 8, 8, 8, 8, 3, 8, 2, 2, 11, 4, 4, 9, 0, 0, 8, 0]
     print(solution)
     gm, sharding_spec_dict, origin_spec_dict, comm_actions_dict = runtime_preparation_pass(
         gm, solution, device_mesh, strategies_constructor)
@@ -125,9 +131,8 @@ def main():
     criterion = GPTLMLoss()
 
     optimizer = torch.optim.Adam(gm.parameters(), lr=0.01)
-    numel = sum([p.numel() for p in model.parameters()])
     logger.info(get_mem_info(prefix='After init model, '), ranks=[0])
-    get_tflops_func = partial(get_tflops, numel, BATCH_SIZE, SEQ_LENGTH)
+    get_tflops_func = partial(get_tflops, global_numel, BATCH_SIZE, SEQ_LENGTH)
     torch.cuda.synchronize()
     model.train()
     # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
