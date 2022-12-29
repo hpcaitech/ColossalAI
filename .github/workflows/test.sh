@@ -1,3 +1,5 @@
+#!/bin/bash
+
 res=$1
 res1=($res)
 for ii in ${res1[*]}; do
