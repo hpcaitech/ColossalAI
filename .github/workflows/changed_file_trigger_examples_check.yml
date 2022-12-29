@@ -12,7 +12,7 @@ jobs:
         with:
           fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
 
-      # Example 1
+      # Example 12
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v35
