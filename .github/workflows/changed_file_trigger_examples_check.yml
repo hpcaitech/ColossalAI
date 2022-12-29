@@ -34,7 +34,8 @@ jobs:
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     steps:
 
-      - uses: actions/checkout@v3  # This is necessary for the tj-actions/changed...Otherwise that function won't work. Because this step is to pull the code and enter the code.
+      - name: 📚 Checkout
+        uses: actions/checkout@v2
 
 
       - name: List all changed example files
