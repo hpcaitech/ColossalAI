@@ -33,6 +33,11 @@ jobs:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     steps:
+
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+
+
       - name: List all changed example files
         run: |
           changedFileName=""
