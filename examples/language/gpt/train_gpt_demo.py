@@ -19,7 +19,7 @@ from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from colossalai.zero.sharded_optim import LowLevelZeroOptimizer
 
-
+a = 1
 def parse_args():
     parser = colossalai.get_default_parser()
     parser.add_argument(
