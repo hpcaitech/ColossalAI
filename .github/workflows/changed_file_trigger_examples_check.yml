@@ -4,16 +4,6 @@ on: [pull_request]
   # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
 
 
-  # Compare the preceeding commit of main -> to the current commit of the main branch.
-  # (Note: To compare changes between the last pushed commit to the remote main branch set `since_last_remote_commit: true`)
-#  push:
-#    branches:
-#      - main
-  # Compare the last commit of main -> to the current commit of a PR branch.
-  # (Note: To compare changes between the last pushed commit to the remote PR branch set `since_last_remote_commit: true`)
-#  pull_request:
-#    branches:
-#      - main
 
 
 jobs:
