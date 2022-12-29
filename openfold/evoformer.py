@@ -182,33 +182,28 @@ class EvoformerBlockCore(nn.Module):
         self,
         m: torch.Tensor,
         z: torch.Tensor,
-        msa_mask: torch.Tensor,
-        pair_mask: torch.Tensor,
         chunk_size: Optional[int] = None,
-        _mask_trans: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]: 
         # DeepMind doesn't mask these transitions in the source, so _mask_trans
         # should be disabled to better approximate the exact activations of
         # the original.
-        msa_trans_mask = msa_mask if _mask_trans else None
-        pair_trans_mask = pair_mask if _mask_trans else None
 
         m = m + self.msa_transition(
-            m, mask=msa_trans_mask, chunk_size=chunk_size
+            m, chunk_size=chunk_size
         )
         z = z + self.outer_product_mean(
-            m, mask=msa_mask, chunk_size=chunk_size
+            m, chunk_size=chunk_size
         )
-        z = z + self.ps_dropout_row_layer(self.tri_mul_out(z, mask=pair_mask))
-        z = z + self.ps_dropout_row_layer(self.tri_mul_in(z, mask=pair_mask))
+        z = z + self.ps_dropout_row_layer(self.tri_mul_out(z))
+        z = z + self.ps_dropout_row_layer(self.tri_mul_in(z))
         z = z + self.ps_dropout_row_layer(
-            self.tri_att_start(z, mask=pair_mask, chunk_size=chunk_size)
+            self.tri_att_start(z, chunk_size=chunk_size)
         )
         z = z + self.ps_dropout_col_layer(
-            self.tri_att_end(z, mask=pair_mask, chunk_size=chunk_size)
+            self.tri_att_end(z, chunk_size=chunk_size)
         )
         z = z + self.pair_transition(
-            z, mask=pair_trans_mask, chunk_size=chunk_size
+            z, chunk_size=chunk_size
         )
 
         return m, z
@@ -274,22 +269,16 @@ class EvoformerBlock(nn.Module):
     def forward(self,
         m: torch.Tensor,
         z: torch.Tensor,
-        msa_mask: torch.Tensor,
-        pair_mask: torch.Tensor,
         chunk_size: Optional[int] = None,
-        _mask_trans: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         m = m + self.msa_dropout_layer(
-            self.msa_att_row(m, z=z, mask=msa_mask, chunk_size=chunk_size)
+            self.msa_att_row(m, z=z, chunk_size=chunk_size)
         )
-        m = m + self.msa_att_col(m, mask=msa_mask, chunk_size=chunk_size)
+        m = m + self.msa_att_col(m, chunk_size=chunk_size)
         m, z = self.core(
             m, 
             z, 
-            msa_mask=msa_mask, 
-            pair_mask=pair_mask, 
             chunk_size=chunk_size, 
-            _mask_trans=_mask_trans,
         )
 
         return m, z
