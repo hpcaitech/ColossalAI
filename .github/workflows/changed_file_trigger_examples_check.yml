@@ -27,7 +27,6 @@ jobs:
   deploy:
     name: Build and deploy test image
     needs: detect-changed-files
-    if: needs.detect.outputs.anyChanged == 'true'
     runs-on: self-hosted
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
@@ -35,7 +34,7 @@ jobs:
     steps:
 
       - name: 📚 Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
 
       - name: List all changed example files
