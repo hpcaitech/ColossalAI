@@ -79,10 +79,12 @@ jobs:
             allDir="${i}&&&@@@${allDir}"
             echo "${allDir} is allDir"
           done
-          res=`python .github/workflows/test1.py --fileNameList $allDir`
-
+          python .github/workflows/test1.py --fileNameList $allDir
+          
+          
         
         
+#res=`python .github/workflows/test1.py --fileNameList $allDir`
 
 #  weekly-check:
 #    if: github.event.schedule == '43 6 30 12 *'
