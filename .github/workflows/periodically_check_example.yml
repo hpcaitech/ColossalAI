@@ -4,7 +4,7 @@ on:
 
   schedule:
     # run at 00:00 of every Sunday
-    - cron:  '43 6 30 12 *'
+    - cron:  '55 6 30 12 *'
   # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
 
 jobs:
