@@ -4,7 +4,8 @@
 #include <torch/extension.h>
 #include <torch/torch.h>
 
-#if TORCH_VERSION_MINOR >= 13
+#if TORCH_VERSION_MAJOR > 1 || \
+    (TORCH_VERSION_MAJOR == 1 && TORCH_VERSION_MINOR >= 13)
 #include <torch/csrc/distributed/c10d/Types.hpp>
 #else
 #include <c10d/Types.hpp>
