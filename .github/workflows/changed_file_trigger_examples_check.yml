@@ -81,10 +81,11 @@ jobs:
           done
           res=`python .github/workflows/test1.py --fileNameList $allDir`
           alldir=$( IFS=',' ; echo "${res[*]}" )
-          alldir="[${alldir}]"
+
           echo "${alldir} is alldir"
           echo "::set-output name=matrix::{\"alldir\":$(echo "alldir")}"
 
+#          alldir="[${alldir}]"
 # ${{needs.matrix_preparation.outputs.matrix}}
   weekly-check:
     name: Weekly check all examples
