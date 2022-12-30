@@ -25,5 +25,7 @@ for loc in name_list:
     if loc != 'tutorials':
         folder_need_check.append(loc)
 
+print(folder_need_check, 'folder_need_check')
+
 for i in folder_need_check:
     print(i, end=' ')
