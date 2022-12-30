@@ -81,7 +81,7 @@ jobs:
           done
           res=`python .github/workflows/test1.py --fileNameList $allDir`
 
-          alldir=(${res//@@##/})
+          alldir=(`echo $str | tr '@@##' ' '`) 
           echo "${alldir} 111000"
           alldir="[${alldir}]"
 
