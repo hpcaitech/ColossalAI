@@ -15,7 +15,7 @@ print('22')
 # print('Hi ' + str(args.fileNameList) + str(args.message))
 
 
-print(args.fileNameList)
+print(args.fileNameList, 'args.fileNameList')
 
 
 # name_list = args.fileNameList.split("&&&@@@")
