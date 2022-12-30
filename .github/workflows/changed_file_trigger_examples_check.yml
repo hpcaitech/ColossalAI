@@ -74,7 +74,7 @@ jobs:
       id: set-matrix
       run: |
         dir=`ls ${PWD}/examples`
-        res2=`python .github/workflows/test1.py --fileNameList dir`
+        res2=`python .github/workflows/test1.py --fileNameList ${dir}`
         echo "${res2} enen"
 
 #  weekly-check:
