@@ -79,7 +79,7 @@ jobs:
             allDir="${allDir}@@${i}"
             echo "${allDir} is allDir"
           done
-          res=`python .github/workflows/test1.py --fileNameList allDir`
+          res=`python .github/workflows/test1.py --fileNameList $allDir`
           echo "${res} is res"
         
         
