@@ -65,7 +65,7 @@ jobs:
     name: Prepare Direction List
     runs-on: ubuntu-latest
     outputs:
-      allDirmatrix: ${{ steps.set-matrix.outputs.res }}
+      matrix: ${{ steps.set-matrix.outputs.res }}
     steps:
 
     - name: 📚 Checkout
@@ -82,6 +82,8 @@ jobs:
           res=`python .github/workflows/test1.py --fileNameList $allDir`
           alldir=$( IFS=',' ; echo "${res[*]}" )
           alldir="[${alldir}]"
+          echo "alldir"
+          echo "::set-output name=matrix::{\"alldir\":$(echo "alldir")}"
         
           
   weekly-check:
@@ -89,7 +91,7 @@ jobs:
     needs: matrix_preparation
     runs-on: [self-hosted, gpu]
     strategy:
-      matrix: ${{needs.matrix_preparation.outputs.allDirmatrix}}
+      matrix: ${{needs.matrix_preparation.outputs.matrix}}
 
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
