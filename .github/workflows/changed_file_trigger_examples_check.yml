@@ -80,11 +80,12 @@ jobs:
             echo "${allDir} is allDir"
           done
           res=`python .github/workflows/test1.py --fileNameList $allDir`
-          alldir=(${res//@@##/ }) 
 
+          alldir=$( IFS='@@##' ; echo "${res[*]}" )
+          alldir="[${alldir}]"
 
           echo "${alldir}"
-
+#          alldir=(${res//@@##/ })
 #          echo "::set-output name=matrix::{\"alldir\":$(echo "alldir")}"
 #          alldir="[${alldir}]"
 # ${{needs.matrix_preparation.outputs.matrix}}
