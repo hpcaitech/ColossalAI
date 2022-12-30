@@ -59,7 +59,6 @@ class MemStatsCollector:
         return [t - self._sampling_time[0] for t in self._sampling_time]
 
     def start_collection(self):
-        print('start collection')
         self._start_flag = True
         self._mem_monitor.start()
 
@@ -68,7 +67,6 @@ class MemStatsCollector:
         # self._step_total = len(self._sampling_time)
         self._step_total = len(self._memstats.non_model_data_list('cuda'))
         self._start_flag = False
-        self._mem_monitor.finish()
         print(f'finish_collection {self._step_total}')
 
     # deprecated

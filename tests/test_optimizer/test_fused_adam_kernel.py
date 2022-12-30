@@ -46,12 +46,10 @@ def torch_adam_update(
 @parameterize('p_dtype', [torch.float, torch.half])
 @parameterize('g_dtype', [torch.float, torch.half])
 def test_adam(adamw, step, p_dtype, g_dtype):
-    try:
-        import colossalai._C.fused_optim
-        fused_adam = colossalai._C.fused_optim.multi_tensor_adam
-        dummy_overflow_buf = torch.cuda.IntTensor([0])
-    except:
-        raise ImportError("No colossalai._C.fused_optim kernel installed.")
+    from colossalai.kernel import fused_optim
+    fused_adam = fused_optim.multi_tensor_adam
+
+    dummy_overflow_buf = torch.cuda.IntTensor([0])
 
     count = 0
 

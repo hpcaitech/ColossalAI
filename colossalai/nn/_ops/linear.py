@@ -1,11 +1,13 @@
-import torch.nn.functional as F
-from typing import Optional
-from ._utils import GeneralTensor, convert_to_colo_tensor
-from colossalai.tensor.op_wrapper import colo_op_impl
-from ._utils import reduce_input, reduce_grad
-from colossalai.tensor import ComputePattern, ComputeSpec, ColoTensor, ShardSpec, ReplicaSpec, ColoTensorSpec
-from colossalai.tensor.sharding_spec import ShardingSpec
 from copy import deepcopy
+from typing import Optional
+
+import torch.nn.functional as F
+
+from colossalai.tensor import ColoTensor, ColoTensorSpec, ComputePattern, ComputeSpec, ReplicaSpec, ShardSpec
+from colossalai.tensor.op_wrapper import colo_op_impl
+from colossalai.tensor.sharding_spec import ShardingSpec
+
+from ._utils import GeneralTensor, convert_to_colo_tensor, reduce_grad, reduce_input
 
 
 def colo_linear_1drow(input_tensor: ColoTensor, weight: ColoTensor, bias: Optional[ColoTensor]) -> 'ColoTensor':
@@ -155,17 +157,15 @@ def _new_colo_linear_imp(input_tensor: GeneralTensor,
 
 def _has_sharding_spec(tensor):
     """
-    A tentative function to check whether the tensor is using the new sharding spec API. We assume that the sharding spec object is 
+    A tentative function to check whether the tensor is using the new sharding spec API. We assume that the sharding spec object is
     set as the attribute `sharding_spec` on a tensor.
     """
     return hasattr(tensor, 'sharding_spec')
 
 
 @colo_op_impl(F.linear)
-def colo_linear(input_tensor: GeneralTensor,
-                weight: GeneralTensor,
-                bias: Optional[GeneralTensor] = None) -> 'ColoTensor':
+def colo_linear(input: GeneralTensor, weight: GeneralTensor, bias: Optional[GeneralTensor] = None) -> 'ColoTensor':
     if _has_sharding_spec(weight):
-        return _new_colo_linear_imp(input_tensor, weight, bias)
+        return _new_colo_linear_imp(input, weight, bias)
     else:
-        return colo_linear_imp(input_tensor, weight, bias)
+        return colo_linear_imp(input, weight, bias)

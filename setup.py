@@ -1,8 +1,9 @@
 import os
 import re
-import subprocess
 
 from setuptools import Extension, find_packages, setup
+
+from colossalai.kernel.op_builder.utils import get_cuda_bare_metal_version
 
 try:
     import torch
@@ -24,17 +25,6 @@ ext_modules = []
 
 if int(os.environ.get('NO_CUDA_EXT', '0')) == 1:
     build_cuda_ext = False
-
-
-def get_cuda_bare_metal_version(cuda_dir):
-    raw_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True)
-    output = raw_output.split()
-    release_idx = output.index("release") + 1
-    release = output[release_idx].split(".")
-    bare_metal_major = release[0]
-    bare_metal_minor = release[1][0]
-
-    return raw_output, bare_metal_major, bare_metal_minor
 
 
 def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
@@ -146,6 +136,11 @@ if build_cuda_ext:
                 'nvcc': append_nvcc_threads(['-O3', '--use_fast_math'] + version_dependent_macros + extra_cuda_flags)
             })
 
+    #### fused optim kernels ###
+    from colossalai.kernel.op_builder import FusedOptimBuilder
+    ext_modules.append(FusedOptimBuilder().builder('colossalai._C.fused_optim'))
+
+    #### N-D parallel kernels ###
     cc_flag = []
     for arch in torch.cuda.get_arch_list():
         res = re.search(r'sm_(\d+)', arch)
@@ -154,23 +149,13 @@ if build_cuda_ext:
             if int(arch_cap) >= 60:
                 cc_flag.extend(['-gencode', f'arch=compute_{arch_cap},code={arch}'])
 
-    extra_cuda_flags = ['-lineinfo']
-
-    ext_modules.append(
-        cuda_ext_helper('colossalai._C.fused_optim', [
-            'colossal_C_frontend.cpp', 'multi_tensor_sgd_kernel.cu', 'multi_tensor_scale_kernel.cu',
-            'multi_tensor_adam.cu', 'multi_tensor_l2norm_kernel.cu', 'multi_tensor_lamb.cu'
-        ], extra_cuda_flags + cc_flag))
-
     extra_cuda_flags = [
         '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '--expt-relaxed-constexpr',
         '--expt-extended-lambda'
     ]
 
-    ext_modules.append(
-        cuda_ext_helper('colossalai._C.scaled_upper_triang_masked_softmax',
-                        ['scaled_upper_triang_masked_softmax.cpp', 'scaled_upper_triang_masked_softmax_cuda.cu'],
-                        extra_cuda_flags + cc_flag))
+    from colossalai.kernel.op_builder import ScaledSoftmaxBuilder
+    ext_modules.append(ScaledSoftmaxBuilder().builder('colossalai._C.scaled_upper_triang_masked_softmax'))
 
     ext_modules.append(
         cuda_ext_helper('colossalai._C.scaled_masked_softmax',
@@ -185,20 +170,13 @@ if build_cuda_ext:
         cuda_ext_helper('colossalai._C.layer_norm', ['layer_norm_cuda.cpp', 'layer_norm_cuda_kernel.cu'],
                         extra_cuda_flags + cc_flag))
 
-    extra_cuda_flags = [
-        '-std=c++14', '-U__CUDA_NO_HALF_OPERATORS__', '-U__CUDA_NO_HALF_CONVERSIONS__', '-U__CUDA_NO_HALF2_OPERATORS__',
-        '-DTHRUST_IGNORE_CUB_VERSION_CHECK'
-    ]
+    ### MultiHeadAttn Kernel ####
+    from colossalai.kernel.op_builder import MultiHeadAttnBuilder
+    ext_modules.append(MultiHeadAttnBuilder().builder('colossalai._C.multihead_attention'))
 
-    ext_modules.append(
-        cuda_ext_helper('colossalai._C.multihead_attention', [
-            'multihead_attention_1d.cpp', 'kernels/cublas_wrappers.cu', 'kernels/transform_kernels.cu',
-            'kernels/dropout_kernels.cu', 'kernels/normalize_kernels.cu', 'kernels/softmax_kernels.cu',
-            'kernels/general_kernels.cu', 'kernels/cuda_util.cu'
-        ], extra_cuda_flags + cc_flag))
-
-    extra_cxx_flags = ['-std=c++14', '-lcudart', '-lcublas', '-g', '-Wno-reorder', '-fopenmp', '-march=native']
-    ext_modules.append(cuda_ext_helper('colossalai._C.cpu_optim', ['cpu_adam.cpp'], extra_cuda_flags, extra_cxx_flags))
+    ### Gemini Adam kernel ####
+    from colossalai.kernel.op_builder import CPUAdamBuilder
+    ext_modules.append(CPUAdamBuilder().builder('colossalai._C.cpu_optim'))
 
 setup(name='colossalai',
       version=get_version(),

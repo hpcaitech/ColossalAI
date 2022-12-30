@@ -149,10 +149,20 @@ def numerical_test_for_node_strategy(model: torch.nn.Module,
                 param_sharding_spec = strategy_in_use.get_sharding_spec_by_name(param_name)
             else:
                 if 'weight' in name:
-                    param_sharding_spec = list(graph.nodes)[4].sharding_spec
-                elif 'bias' in name:
-                    param_sharding_spec = list(graph.nodes)[5].sharding_spec
+                    param_sharding_spec = None
 
+                    for node in list(graph.nodes):
+                        if 'weight' in node.name:
+                            param_sharding_spec = node.sharding_spec
+
+                elif 'bias' in name:
+                    param_sharding_spec = None
+
+                    for node in list(graph.nodes):
+                        if 'bias' in node.name:
+                            param_sharding_spec = node.sharding_spec
+
+            assert param_sharding_spec is not None
             grad_sharded = param_to_shard_dict[name].grad
             grad_to_compare = param_to_compare_dict[name].grad
             global_grad = to_global(grad_sharded, param_sharding_spec)

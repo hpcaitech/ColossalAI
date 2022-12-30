@@ -46,12 +46,13 @@ pip install -e .
 
 ```
 git clone https://github.com/1SAA/lightning.git
+cd lightning
 git checkout strategy/colossalai
 export PACKAGE_NAME=pytorch
 pip install .
 ```
 
-### Install [Colossal-AI v0.1.10](https://colossalai.org/download/) From Our Official Website
+### Install [Colossal-AI v0.1.12](https://colossalai.org/download/) From Our Official Website
 
 ```
 pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
@@ -86,23 +87,24 @@ you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-We provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml` and `train_ddp.yaml`
+We provide the script `train_colossalai.sh` to run the training task with colossalai,
+and can also use `train_ddp.sh` to run the training task with ddp to compare.
 
-For example, you can run the training from colossalai by
+In `train_colossalai.sh` the main command is:
 ```
 python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
 ```
 
-- you can change the `--logdir` the save the log information and the last checkpoint
+- you can change the `--logdir` to decide where to save the log information and the last checkpoint.
 
 ### Training config
 
 You can change the trainging config in the yaml file
 
-- accelerator: acceleratortype, default 'gpu'
-- devices: device number used for training, default 4
-- max_epochs: max training epochs
-- precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
+- devices: device number used for training, default 8
+- max_epochs: max training epochs, default 2
+- precision: the precision type used in training, default 16 (fp16), you must use fp16 if you want to apply colossalai
+- more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 
 ## Finetune Example
 ### Training on Teyvat Datasets
@@ -154,6 +156,7 @@ optional arguments:
   --config CONFIG       path to config which constructs model
   --ckpt CKPT           path to checkpoint of model
   --seed SEED           the seed (for reproducible sampling)
+  --use_int8            whether to use quantization method
   --precision {full,autocast}
                         evaluate at this precision
 ```

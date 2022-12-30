@@ -67,10 +67,13 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
         exp_avg_sq_copy = exp_avg_sq.clone()
 
         try:
-            import colossalai._C.cpu_optim
-            cpu_adam_op = colossalai._C.cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, adamw)
+            from colossalai._C import cpu_optim
         except:
-            raise ImportError("Import cpu adam error, please install colossal from source code")
+            from colossalai.kernel.op_builder import CPUAdamBuilder
+            cpu_optim = CPUAdamBuilder().load()
+            print("build CPUAdamOptimizer at runtime")
+
+        cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, adamw)
 
         cpu_adam_op.step(
             step,
@@ -115,3 +118,7 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
         assertTrue(max_exp_avg_diff < threshold, f"max_exp_avg_diff {max_exp_avg_diff}")
         max_exp_avg_sq_diff = torch.max(torch.abs(exp_avg_sq_copy - exp_avg_sq))
         assertTrue(max_exp_avg_sq_diff < threshold, f"max_exp_avg_sq_diff {max_exp_avg_sq_diff}")
+
+
+if __name__ == '__main__':
+    test_cpu_adam()

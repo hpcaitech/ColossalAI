@@ -124,7 +124,7 @@ class DistributedLogger:
         # add file handler
         file_handler = logging.FileHandler(path, mode)
         file_handler.setLevel(getattr(logging, level))
-        formatter = logging.Formatter(_FORMAT)
+        formatter = logging.Formatter('colossalai - %(name)s - %(levelname)s: %(message)s')
         file_handler.setFormatter(formatter)
         self._logger.addHandler(file_handler)
 
