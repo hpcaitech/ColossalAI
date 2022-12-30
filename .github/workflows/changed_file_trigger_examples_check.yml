@@ -74,7 +74,8 @@ jobs:
       id: set-matrix
       run: |
         dir=`ls ${PWD}/examples`
-        dir1=$(echo "${dir[*]}")
+        echo "${dir} is dir"
+        dir1=$(IFS=,; echo "${dir[*]}")
         res2=`python .github/workflows/test1.py --fileNameList ${dir1}`
         echo "${res2} enen"
 
