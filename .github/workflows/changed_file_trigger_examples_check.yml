@@ -92,7 +92,7 @@ jobs:
     runs-on: self-hosted
     strategy:
       matrix:
-        loc: ["language", "images"]
+        loc: ${{needs.matrix_preparation.outputs.matrix}}
 
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
