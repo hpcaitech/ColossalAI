@@ -6,7 +6,7 @@ on:
 
   schedule:
     # run at 00:00 of every Sunday
-    - cron:  '30 6 30 12 *'
+    - cron:  '38 6 30 12 *'
   # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
 
 jobs:
@@ -65,7 +65,7 @@ jobs:
 
 
   weekly-check:
-    if: github.event.schedule
+    if: github.event.schedule == '30 6 30 12 *'
     name: Weekly check all examples
     runs-on: self-hosted
     container:
