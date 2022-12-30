@@ -24,7 +24,10 @@ this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on te
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
 </p>
 
-## Requirements
+## Installation
+
+### Optional #1: install from source
+#### Step 1: Requirements
 
 A suitable [conda](https://conda.io/) environment named `ldm` can be created
 and activated with:
@@ -42,7 +45,7 @@ pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
 ```
 
-### install lightning
+##### Step 2: install lightning
 
 ```
 git clone https://github.com/1SAA/lightning.git
@@ -52,13 +55,20 @@ export PACKAGE_NAME=pytorch
 pip install .
 ```
 
-### Install [Colossal-AI v0.1.12](https://colossalai.org/download/) From Our Official Website
+##### Step 3:Install [Colossal-AI v0.1.12](https://colossalai.org/download/) From Our Official Website
 
 ```
 pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
 ```
 
 > The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
+
+### Optional #2: install from dockerfile
+
+```
+cd docker
+docker build -t hpcaitech/diffusion:0.2.0  .
+```
 
 ## Download the model checkpoint from pretrained
 
