@@ -18,14 +18,12 @@ print('22')
 print(args.fileNameList, 'args.fileNameList')
 
 
-# name_list = args.fileNameList.split("&&&@@@")
-# # print(name_list, 'name_list')
-# folder_need_check = []
-# for loc in name_list:
-#     if loc.split("/")[0] == "examples":
-#         if loc.split("/")[1] + "/" + loc.split("/")[2] not in folder_need_check:
-#             folder_need_check.append(loc.split("/")[1] + "/" + loc.split("/")[2])
-#
-#
-# for i in folder_need_check:
-#     print(i, end=' ')
+name_list = args.fileNameList.split("&&&@@@")
+print(name_list, 'name_list')
+folder_need_check = []
+for loc in name_list:
+    if loc != 'tutorials':
+        folder_need_check.append(loc)
+
+for i in folder_need_check:
+    print(i, end=' ')

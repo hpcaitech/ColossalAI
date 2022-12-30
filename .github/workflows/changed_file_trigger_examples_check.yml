@@ -76,11 +76,11 @@ jobs:
           dir=`ls ${PWD}/examples`
           allDir=""
           for i in ${dir}; do
-            allDir="${allDir}@@${i}"
+            allDir="${i}&&&@@@${allDir}"
             echo "${allDir} is allDir"
           done
           res=`python .github/workflows/test1.py --fileNameList $allDir`
-          echo "${res} is res"
+
         
         
 
