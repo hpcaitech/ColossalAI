@@ -9,7 +9,6 @@ on: [pull_request]
 
 jobs:
   detect-changed-files:
-    if: github.event.pull_request
     runs-on: ubuntu-latest
     outputs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
