@@ -73,11 +73,13 @@ jobs:
     - name: setup matrix
       id: set-matrix
       run: |
-        dir=`ls ${PWD}/examples`
-        echo "${dir} is dir"
-        dir1=$(IFS=,; echo "${dir[*]}")
-        res2=`python .github/workflows/test1.py --fileNameList ${dir1}`
-        echo "${res2} enen"
+          dir=`ls ${PWD}/examples`
+          allDir=""
+          for i in $dir
+            allDir=$allDir"::"$i
+            echo "${allDir} is allDir"
+        
+        
 
 #  weekly-check:
 #    if: github.event.schedule == '43 6 30 12 *'
