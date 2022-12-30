@@ -154,10 +154,8 @@ if build_cuda_ext:
         '--expt-extended-lambda'
     ]
 
-    ext_modules.append(
-        cuda_ext_helper('colossalai._C.scaled_upper_triang_masked_softmax',
-                        ['scaled_upper_triang_masked_softmax.cpp', 'scaled_upper_triang_masked_softmax_cuda.cu'],
-                        extra_cuda_flags + cc_flag))
+    from colossalai.kernel.op_builder import ScaledSoftmaxBuilder
+    ext_modules.append(ScaledSoftmaxBuilder().builder('colossalai._C.scaled_upper_triang_masked_softmax'))
 
     ext_modules.append(
         cuda_ext_helper('colossalai._C.scaled_masked_softmax',

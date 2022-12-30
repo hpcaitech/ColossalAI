@@ -18,6 +18,13 @@ except ImportError:
     from colossalai.kernel.op_builder import MultiHeadAttnBuilder
     multihead_attention = MultiHeadAttnBuilder().load()
 
+try:
+    from colossalai._C import scaled_upper_triang_masked_softmax
+except ImportError:
+    from colossalai.kernel.op_builder import ScaledSoftmaxBuilder
+    scaled_upper_triang_masked_softmax = ScaledSoftmaxBuilder().load()
+
 __all__ = [
-    "fused_optim", "cpu_optim", "multihead_attention", "LayerNorm", "FusedScaleMaskSoftmax", "MultiHeadAttention"
+    "fused_optim", "cpu_optim", "multihead_attention", "LayerNorm", "FusedScaleMaskSoftmax", "MultiHeadAttention",
+    "scaled_upper_triang_masked_softmax"
 ]
