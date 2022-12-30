@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 name: GitHub Actions Demo
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
 on:
@@ -35,3 +36,42 @@ jobs:
                     cd ../../..
                   done
             done
+=======
+name: GitHub Actions Demo
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+on:
+
+  schedule:
+    # run at 00:00 of every Sunday
+    - cron:  '4 7 30 12 *'
+  # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
+
+jobs:
+
+  weekly-check:
+    name: Weekly check all examples
+    runs-on: self-hosted
+    container:
+      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+    steps:
+
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+
+
+      - name: Traverse all files
+        run: |
+          dir=`ls ${PWD}/examples` 
+          for i in $dir
+            do
+                dir1=`ls ${PWD}/examples/${i}` 
+                for j in $dir1
+                  do
+                    echo "$j haha"
+                    cd "${PWD}/examples/${i}/${j}"
+                    sh test_ci.sh
+                    cd ../../..
+                  done
+            done
+>>>>>>> 745c3d194eeab3bba82142dae018ad13a7925f9f
