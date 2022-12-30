@@ -76,7 +76,7 @@ jobs:
           dir=`ls ${PWD}/examples`
           allDir=""
           for i in $dir
-            allDir="$allDir: $i"
+            allDir="${allDir}: ${i}"
             echo "${allDir} is allDir"
         
         
