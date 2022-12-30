@@ -6,7 +6,7 @@ on:
 
   schedule:
     # run at 00:00 of every Sunday
-    - cron:  '17 14 30 12 *'
+    - cron:  '22 14 30 12 *'
   # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
 
 jobs:
@@ -22,12 +22,12 @@ jobs:
         with:
           fetch-depth: 0  # OR "2" -> To retrieve the preceding commit.
 
-      # Example 1
-      - name: Get all changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v35
-        with:
-          since_last_remote_commit: true  # Important! Last time without this and workflow can not show the changed files!
+#      # Example 1
+#      - name: Get all changed files
+#        id: changed-files
+#        uses: tj-actions/changed-files@v35
+#        with:
+#          since_last_remote_commit: true  # Important! Last time without this and workflow can not show the changed files!
 
 
 
