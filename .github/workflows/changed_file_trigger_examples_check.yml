@@ -1,8 +1,6 @@
 name: GitHub Actions Demo
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
-on:
-
-  pull_request:
+on: [pull_request]
 
 #  schedule:
 #    # run at 00:00 of every Sunday
