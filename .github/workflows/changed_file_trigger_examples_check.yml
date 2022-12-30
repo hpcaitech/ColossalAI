@@ -68,8 +68,10 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
 
-
-    - id: set-matrix
+    - name: 📚 Checkout
+      uses: actions/checkout@v3
+    - name: setup matrix
+      id: set-matrix
       run: |
         dir=`ls ${PWD}/examples`
         res2=`python .github/workflows/test1.py --fileNameList dir`
