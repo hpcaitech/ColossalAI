@@ -84,14 +84,14 @@ jobs:
           alldir="[${alldir}]"
           echo "alldir"
           echo "::set-output name=matrix::{\"alldir\":$(echo "alldir")}"
-        
-          
+
+# ${{needs.matrix_preparation.outputs.matrix}}
   weekly-check:
     name: Weekly check all examples
     needs: matrix_preparation
-    runs-on: [self-hosted, gpu]
+    runs-on: self-hosted
     strategy:
-      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+      matrix: ["language", "images"]
 
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
