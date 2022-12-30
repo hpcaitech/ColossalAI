@@ -4,10 +4,10 @@ on:
 
   pull_request:
 
-  schedule:
-    # run at 00:00 of every Sunday
-    - cron:  '43 6 30 12 *'
-  # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
+#  schedule:
+#    # run at 00:00 of every Sunday
+#    - cron:  '43 6 30 12 *'
+
 
 jobs:
   detect-changed-files:
@@ -64,29 +64,43 @@ jobs:
 
 
 
-  weekly-check:
-    if: github.event.schedule == '43 6 30 12 *'
-    name: Weekly check all examples
-    runs-on: self-hosted
-    container:
-      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+  matrix_preparation:
+    name: Prepare Direction List
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
 
-      - name: 📚 Checkout
-        uses: actions/checkout@v3
-      - name: Traverse all files
-        run: |
-          dir=`ls ${PWD}/examples` 
-          for i in $dir
-            do
-                dir1=`ls ${PWD}/examples/${i}` 
-                for j in $dir1
-                  do
-                    echo "$j haha"
-                    cd "${PWD}/examples/${i}/${j}"
-                    cd ../../..
-                  done
-            done
 
-#                    sh test_ci.sh
+    - id: set-matrix
+      run: |
+        dir=`ls ${PWD}/examples`
+        res2=`python .github/workflows/test1.py --fileNameList dir`
+
+
+#  weekly-check:
+#    if: github.event.schedule == '43 6 30 12 *'
+#    name: Weekly check all examples
+#    runs-on: self-hosted
+#    container:
+#      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+#      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+#    steps:
+#
+#      - name: 📚 Checkout
+#        uses: actions/checkout@v3
+#      - name: Traverse all files
+#        run: |
+#          dir=`ls ${PWD}/examples`
+#          for i in $dir
+#            do
+#                dir1=`ls ${PWD}/examples/${i}`
+#                for j in $dir1
+#                  do
+#                    echo "$j haha"
+#                    cd "${PWD}/examples/${i}/${j}"
+#                    cd ../../..
+#                  done
+#            done
+
+#                    bash test_ci.sh
