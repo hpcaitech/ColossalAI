@@ -2,12 +2,12 @@
 export DISTPAN={$DISTPAN:-"colossalai"}
 
 # The following options only valid when DISTPAN="colossalai"
-export TPDEGREE=${1:1}
-export GPUNUM=${1:8}
-export PLACEMENT=${1:'cpu'}
-export USE_SHARD_INIT=${1:False}
-export BATCH_SIZE=${1:8}
-export MODEL_TYPE=${1:"gpt2_medium"}
+export TPDEGREE=1
+export GPUNUM=8
+export PLACEMENT='cpu'
+export USE_SHARD_INIT=False
+export BATCH_SIZE=8
+export MODEL_TYPE="gpt2_medium"
 
 echo "${PLACEMENT} is placement"
 echo "${GPUNUM} is GPUNUM"
