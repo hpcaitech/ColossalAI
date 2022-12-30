@@ -87,14 +87,14 @@ data:
     train:
       target: ldm.data.base.Txt2ImgIterableBaseDataset
       params:
-        file_path: # YOUR DATAPATH
+        file_path: /data/scratch/diffuser/laion_part0/ # YOUR DATAPATH
         world_size: 1
         rank: 0
 
 lightning:
   trainer:
-    accelerator: 'gpu' 
-    devices: 8
+    accelerator: 'gpu'
+    devices: 1
     log_gpu_memory: all
     max_epochs: 2
     precision: 16
