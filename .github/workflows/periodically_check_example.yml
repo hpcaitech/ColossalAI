@@ -31,7 +31,6 @@ jobs:
                   do
                     echo "$j haha"
                     cd "${PWD}/examples/${i}/${j}"
-                    sh test_ci.sh
                     cd ../../..
                   done
             done
