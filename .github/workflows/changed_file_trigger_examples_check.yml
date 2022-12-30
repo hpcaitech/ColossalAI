@@ -80,7 +80,7 @@ jobs:
             echo "${allDir} is allDir"
           done
           res=`python .github/workflows/test1.py --fileNameList $allDir`
-          alldir=(`echo $str | tr '@@##' ' '`) 
+          alldir=(${res//@@##/ }) 
 
 
           echo "${alldir} is alldir"
