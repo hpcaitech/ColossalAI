@@ -15,11 +15,11 @@ args = parser.parse_args()
 # print('Hi ' + str(args.fileNameList) + str(args.message))
 
 
-print(args.fileNameList, 'args.fileNameList')
+# print(args.fileNameList, 'args.fileNameList')
 
 
 name_list = args.fileNameList.split("&&&@@@")
-print(name_list, 'name_list')
+# print(name_list, 'name_list')
 folder_need_check = []
 for loc in name_list:
     if loc != 'tutorial' and loc != '':
