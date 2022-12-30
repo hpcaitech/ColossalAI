@@ -83,9 +83,9 @@ jobs:
           alldir=(${res//@@##/ }) 
 
 
-          echo "${alldir} is alldir"
-          echo "::set-output name=matrix::{\"alldir\":$(echo "alldir")}"
+          echo "${alldir}"
 
+#          echo "::set-output name=matrix::{\"alldir\":$(echo "alldir")}"
 #          alldir="[${alldir}]"
 # ${{needs.matrix_preparation.outputs.matrix}}
   weekly-check:
