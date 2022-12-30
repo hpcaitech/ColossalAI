@@ -91,7 +91,7 @@ jobs:
     needs: matrix_preparation
     runs-on: [self-hosted, gpu]
     strategy:
-      matrix: ${{needs.matrix_preparation.outputs.matrix}}
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
 
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
