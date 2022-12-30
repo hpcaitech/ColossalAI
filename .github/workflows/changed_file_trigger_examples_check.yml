@@ -65,7 +65,7 @@ jobs:
     name: Prepare Direction List
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      allDirmatrix: ${{ steps.set-matrix.outputs.res }}
     steps:
 
     - name: 📚 Checkout
@@ -79,12 +79,39 @@ jobs:
             allDir="${i}&&&@@@${allDir}"
             echo "${allDir} is allDir"
           done
-          python .github/workflows/test1.py --fileNameList $allDir
-          
-          
+          res=`python .github/workflows/test1.py --fileNameList $allDir`
+          alldir=$( IFS=',' ; echo "${res[*]}" )
+          alldir="[${alldir}]"
         
-        
-#res=`python .github/workflows/test1.py --fileNameList $allDir`
+          
+  weekly-check:
+    name: Weekly check all examples
+    needs: matrix_preparation
+    runs-on: [self-hosted, gpu]
+    strategy:
+      matrix: ${{needs.matrix_preparation.outputs.allDirmatrix}}
+
+    container:
+      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+    steps:
+
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+      - name: Traverse all files
+        run: |
+          dir=${{ matrix.alldir }}
+          for i in $dir
+            do
+                dir1=`ls ${PWD}/examples/${i}`
+                for j in $dir1
+                  do
+                    echo "$j haha"
+                    cd "${PWD}/examples/${i}/${j}"
+                    cd ../../..
+                  done
+            done
+
 
 #  weekly-check:
 #    if: github.event.schedule == '43 6 30 12 *'
