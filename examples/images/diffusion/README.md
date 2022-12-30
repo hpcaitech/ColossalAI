@@ -24,7 +24,10 @@ this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on te
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
 </p>
 
-## Requirements
+## Installation
+
+### Option #1: install from source
+#### Step 1: Requirements
 
 A suitable [conda](https://conda.io/) environment named `ldm` can be created
 and activated with:
@@ -42,7 +45,7 @@ pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
 ```
 
-### install lightning
+##### Step 2: install lightning
 
 ```
 git clone https://github.com/1SAA/lightning.git
@@ -52,13 +55,61 @@ export PACKAGE_NAME=pytorch
 pip install .
 ```
 
-### Install [Colossal-AI v0.1.12](https://colossalai.org/download/) From Our Official Website
+##### Step 3:Install [Colossal-AI v0.1.12](https://colossalai.org/download/) From Our Official Website
 
 ```
 pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
 ```
 
 > The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
+
+### Option #2: Use Docker
+
+To use the stable diffusion Docker image, you can either build using the provided the [Dockerfile](./docker/Dockerfile) or pull a Docker image from our Docker hub.
+
+```
+# 1. build from dockerfile
+cd docker
+docker build -t hpcaitech/diffusion:0.2.0  .
+
+# 2. pull from our docker hub
+docker pull hpcaitech/diffusion:0.2.0
+```
+
+Once you have the image ready, you can launch the image with the following command:
+
+```bash
+########################
+# On Your Host Machine #
+########################
+# make sure you start your image in the repository root directory
+cd Colossal-AI
+
+# run the docker container
+docker run --rm \
+  -it --gpus all \
+  -v $PWD:/workspace \
+  -v <your-data-dir>:/data/scratch \
+  -v <hf-cache-dir>:/root/.cache/huggingface \
+  hpcaitech/diffusion:0.2.0 \
+  /bin/bash
+
+########################
+#  Insider Container   #
+########################
+# Once you have entered the docker container, go to the stable diffusion directory for training
+cd examples/images/diffusion/
+
+# start training with colossalai
+bash train_colossalai.sh
+```
+
+It is important for you to configure your volume mapping in order to get the best training experience.
+1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine.
+2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to repliace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
+3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
+
+
 
 ## Download the model checkpoint from pretrained
 
