@@ -2,17 +2,11 @@ name: GitHub Actions Demo
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
 on:
 
+  pull_request:
+
   schedule:
     # run at 00:00 of every Sunday
-<<<<<<< HEAD
-    - cron:  '4 7 30 12 *'
-  # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
-
-jobs:
-
-  weekly-check:
-=======
-    - cron:  '38 6 30 12 *'
+    - cron:  '43 6 30 12 *'
   # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
 
 jobs:
@@ -71,8 +65,7 @@ jobs:
 
 
   weekly-check:
-    if: github.event.schedule == '38 6 30 12 *'
->>>>>>> 745c3d194eeab3bba82142dae018ad13a7925f9f
+    if: github.event.schedule == '43 6 30 12 *'
     name: Weekly check all examples
     runs-on: self-hosted
     container:
@@ -94,7 +87,7 @@ jobs:
                   do
                     echo "$j haha"
                     cd "${PWD}/examples/${i}/${j}"
-                    sh test_ci.sh
+#                    sh test_ci.sh
                     cd ../../..
                   done
             done
