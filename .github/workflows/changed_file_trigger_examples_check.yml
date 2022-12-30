@@ -75,7 +75,7 @@ jobs:
       run: |
         dir=`ls ${PWD}/examples`
         res2=`python .github/workflows/test1.py --fileNameList dir`
-
+        
 
 #  weekly-check:
 #    if: github.event.schedule == '43 6 30 12 *'
