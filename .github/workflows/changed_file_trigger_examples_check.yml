@@ -1,17 +1,10 @@
 name: GitHub Actions Demo
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
-on:
+on: [pull_request]
 
-  pull_request:
-
-  schedule:
-    # run at 00:00 of every Sunday
-    - cron:  '17 14 30 12 *'
-  # Here must use push but not pull_request can show the changed files. But this works strangely...Only the host repo merge can trigger the workflow...
 
 jobs:
   detect-changed-files:
-    if: github.event.pull_request
     runs-on: ubuntu-latest
     outputs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
@@ -44,50 +37,21 @@ jobs:
         uses: actions/checkout@v3
 
 # 暂时注释掉以节省时间。之后要复原！
-#      - name: List all changed example files
-#        run: |
-#          changedFileName=""
-#          for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
-#            changedFileName="${file}&&&@@@${changedFileName}"
-#          done
-#          echo "$changedFileName was changed"
-#          res=`python .github/workflows/test.py --fileNameList $changedFileName`
-#          echo "$res is res"
-#          pip install -r ./requirements/requirements.txt
-#          pip install -e .
-#          bash .github/workflows/test.sh "$res"
+      - name: List all changed example files
+        run: |
+          changedFileName=""
+          for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
+            changedFileName="${file}&&&@@@${changedFileName}"
+          done
+          echo "$changedFileName was changed"
+          res=`python .github/workflows/test.py --fileNameList $changedFileName`
+          echo "$res is res"
+          pip install -r ./requirements/requirements.txt
+          pip install -e .
+          bash .github/workflows/test.sh "$res"
 
       # After changed to company's server, here prompt "Syntax error: "(" unexpected" error. Google solution shows this is because system uses dash but not bash to run it. Strangely, the github action is using bash. But anyway, by forcing to use bash ??.sh and separate it into a single sh file, and add the header "#!/bin/bash", it can run now.
 
       # Note res=() can't have space. res = () is incorrect. Also res=`...` is correct, but not res='...'. res1=($res) is to change "space separated string" into list format. Here I use for ii in ..res1.. is to make sure the direction is correct. Otherwise, the test_ci.sh's code can not use the correct relative direction and will be forced to use absolute direction, which is uncomfortable for example code contributors. The cd here has three layers backwards because the current folder structure has two level, like examples/images/vit/....
 
 
-
-
-  weekly-check:
-    if: github.event.schedule
-    name: Weekly check all examples
-    runs-on: self-hosted
-    container:
-      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
-    steps:
-
-      - name: 📚 Checkout
-        uses: actions/checkout@v3
-        
-        
-      - name: Traverse all files
-        run: |
-          dir=`ls ${PWD}/examples` 
-          for i in $dir
-            do
-                dir1=`ls ${PWD}/examples/${i}` 
-                for j in $dir1
-                  do
-                    echo "$j haha"
-                    cd "${PWD}/examples/${i}/${j}"
-                    sh test_ci.sh
-                    cd ../../..
-                  done
-            done
