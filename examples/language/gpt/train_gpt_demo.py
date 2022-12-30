@@ -324,7 +324,7 @@ def main():
         if n >= WARMUP_STEPS:
             tflops_list.append(step_tflops)
 
-        logger.info(f"max memory {torch.cuda.memory_allocated() / 1024**2} MB", ranks=[0])
+        logger.info(f"max memory {torch.cuda.max_memory_allocated() / 1024**2} MB", ranks=[0])
 
     tflops_list.sort()
     median_index = ((NUM_STEPS - WARMUP_STEPS) >> 1) + WARMUP_STEPS
