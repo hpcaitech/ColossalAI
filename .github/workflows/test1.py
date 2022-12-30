@@ -22,7 +22,7 @@ name_list = args.fileNameList.split("&&&@@@")
 print(name_list, 'name_list')
 folder_need_check = []
 for loc in name_list:
-    if loc != 'tutorials':
+    if loc != 'tutorial' and loc != '':
         folder_need_check.append(loc)
 
 print(folder_need_check, 'folder_need_check')
