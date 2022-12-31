@@ -59,7 +59,6 @@ class MetaInfoProp:
         """
         for node in self.module.graph.nodes:
             node: Node
-            print(node)
             self.func_dict[node.op](node)
 
     @compatibility(is_backward_compatible=False)

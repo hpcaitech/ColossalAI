@@ -10,6 +10,7 @@ from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply, ru
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     CommAction,
     CommType,
+    MemoryCost,
     OperationData,
     OperationDataType,
     TrainCycleItem,
@@ -84,6 +85,7 @@ def _runtime_comm_spec_apply_meta_info(node: Node, comm_actions_dict: Dict) -> M
     if isinstance(comm_action.comm_spec, CommSpec):
         # this case is for all_reduce, there will be no memory cost
         meta_info = MetaInfo()
+        meta_info.memory_cost = TrainCycleItem(MemoryCost(), MemoryCost(), MemoryCost)
         output_node = next(n for n in node.users if hasattr(n, '_meta_data'))
         element_length = output_node._meta_data.element_size()
 
