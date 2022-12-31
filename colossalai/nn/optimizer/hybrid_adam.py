@@ -76,16 +76,11 @@ class HybridAdam(NVMeOptimizer):
         default_args = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, bias_correction=bias_correction)
         super(HybridAdam, self).__init__(model_params, default_args, nvme_offload_fraction, nvme_offload_dir)
         self.adamw_mode = adamw_mode
-        try:
-            import colossalai._C.cpu_optim
-            import colossalai._C.fused_optim
-        except ImportError:
-            raise ImportError('Please install colossalai from source code to use HybridAdam')
 
-        self.cpu_adam_op = colossalai._C.cpu_optim.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay,
-                                                                    adamw_mode)
+        from colossalai.kernel import cpu_optim, fused_optim
+        self.cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)
 
-        self.gpu_adam_op = colossalai._C.fused_optim.multi_tensor_adam
+        self.gpu_adam_op = fused_optim.multi_tensor_adam
         self._dummy_overflow_buf = torch.cuda.IntTensor([0])
 
     @torch.no_grad()

@@ -62,7 +62,8 @@ def construct_meta_info(node: Node, user_node: Node) -> MetaInfo:
         return new_shape
 
     meta_info = MetaInfo()
-    origin_sharding_spec, target_sharding_spec = node.sharding_spec, user_node.sharding_spec
+    origin_sharding_spec, target_sharding_spec = node.sharding_spec, user_node.best_strategy.get_sharding_spec_by_name(
+        str(node.name))
     _, comm_action_sequence, total_cost = shape_consistency_manager.shape_consistency(
         origin_sharding_spec, target_sharding_spec)
 

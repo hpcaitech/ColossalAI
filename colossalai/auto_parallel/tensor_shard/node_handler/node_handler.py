@@ -86,12 +86,7 @@ class NodeHandler(ABC):
                 if prev_sharding_spec is None:
                     return TrainCycleItem(fwd=0, bwd=0, total=0)
                 elif isinstance(prev_sharding_spec, ShardingSpec):
-                    if isinstance(data, torch.nn.parameter.Parameter):
-                        # we won't compute the resharding cost for the parameters,
-                        # since the parameters will be sharded before runtime and
-                        # not converted during runtime.
-                        return TrainCycleItem(fwd=0, bwd=0, total=0)
-                    elif isinstance(data, torch.Tensor):
+                    if isinstance(data, torch.Tensor):
                         dtype = data.dtype
                         size_per_elem_bytes = torch.tensor([], dtype=dtype).element_size()
                         _, _, consistency_cost = shape_consistency_manager.shape_consistency(
@@ -240,10 +235,15 @@ class MetaInfoNodeHandler(NodeHandler):
         """
         super().register_strategy(compute_resharding_cost=compute_resharding_cost)
         target = self.get_target_function()
+        metainfo_vector = []
         for strategy in self.strategies_vector:
             metainfo = MetaInfo(strategy, target)
             strategy.compute_cost = metainfo.compute_cost
             strategy.memory_cost = metainfo.memory_cost
+            metainfo_vector.append(metainfo)
+
+        # attach metainfos to the handler
+        setattr(self, "metainfo_vector", metainfo_vector)
 
         return self.strategies_vector
 
@@ -282,9 +282,14 @@ class MetaInfoModuleHandler(ModuleHandler):
         """
         super().register_strategy(compute_resharding_cost=compute_resharding_cost)
         target = self.get_target_function()
+        metainfo_vector = []
         for strategy in self.strategies_vector:
             metainfo = MetaInfo(strategy, target)
             strategy.compute_cost = metainfo.compute_cost
             strategy.memory_cost = metainfo.memory_cost
+            metainfo_vector.append(metainfo)
+
+        # attach metainfos to the handler
+        setattr(self, "metainfo_vector", metainfo_vector)
 
         return self.strategies_vector

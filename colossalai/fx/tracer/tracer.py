@@ -229,6 +229,15 @@ class ColoTracer(Tracer):
             args_metas, kwargs_metas = extract_meta(*args, **kwargs)
 
             if kind == "call_function":
+                # Our meta data will not record the nn.parameter.Parameter attribute。
+                # It works fine in most of the case, but it may cause some problems after
+                # the bias addition manipulation.
+                # Therefore, I need to record the nn.parameter.Parameter attribute for the operation
+                # added by the bias addition manipulation following the get_attr node.
+                convert_to_parameter = False
+                if target in (torch.transpose, torch.reshape) and isinstance(args_metas[0],
+                                                                             torch.nn.parameter.Parameter):
+                    convert_to_parameter = True
                 # fetch patched function
                 if meta_patched_function.has(target):
                     meta_target = meta_patched_function.get(target)
@@ -241,7 +250,18 @@ class ColoTracer(Tracer):
                 meta_out = meta_target(*args_metas, **kwargs_metas)
                 if isinstance(meta_out, torch.Tensor):
                     meta_out = meta_out.to(device="meta")
+                if convert_to_parameter:
+                    meta_out = torch.nn.Parameter(meta_out)
+
             elif kind == "call_method":
+                # Our meta data will not record the nn.parameter.Parameter attribute。
+                # It works fine in most of the case, but it may cause some problems after
+                # the bias addition manipulation.
+                # Therefore, I need to record the nn.parameter.Parameter attribute for the operation
+                # added by the bias addition manipulation following the get_attr node.
+                convert_to_parameter = False
+                if target in (torch.Tensor.view,) and isinstance(args_metas[0], torch.nn.parameter.Parameter):
+                    convert_to_parameter = True
                 method = getattr(args_metas[0].__class__, target)
 
                 # fetch patched method
@@ -251,6 +271,8 @@ class ColoTracer(Tracer):
                     meta_target = method
 
                 meta_out = meta_target(*args_metas, **kwargs_metas)
+                if convert_to_parameter:
+                    meta_out = torch.nn.Parameter(meta_out)
             elif kind == "call_module":
                 if not hasattr(self, "orig_forward"):
                     raise AttributeError(f"{self} does not have an attribute called orig_forward")

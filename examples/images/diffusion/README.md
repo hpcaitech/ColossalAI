@@ -24,7 +24,10 @@ this model uses a frozen CLIP ViT-L/14 text encoder to condition the model on te
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
 </p>
 
-## Requirements
+## Installation
+
+### Option #1: install from source
+#### Step 1: Requirements
 
 A suitable [conda](https://conda.io/) environment named `ldm` can be created
 and activated with:
@@ -42,22 +45,71 @@ pip install transformers==4.19.2 diffusers invisible-watermark
 pip install -e .
 ```
 
-### install lightning
+##### Step 2: install lightning
 
 ```
 git clone https://github.com/1SAA/lightning.git
+cd lightning
 git checkout strategy/colossalai
 export PACKAGE_NAME=pytorch
 pip install .
 ```
 
-### Install [Colossal-AI v0.1.10](https://colossalai.org/download/) From Our Official Website
+##### Step 3:Install [Colossal-AI v0.1.12](https://colossalai.org/download/) From Our Official Website
 
 ```
 pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
 ```
 
 > The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
+
+### Option #2: Use Docker
+
+To use the stable diffusion Docker image, you can either build using the provided the [Dockerfile](./docker/Dockerfile) or pull a Docker image from our Docker hub.
+
+```
+# 1. build from dockerfile
+cd docker
+docker build -t hpcaitech/diffusion:0.2.0  .
+
+# 2. pull from our docker hub
+docker pull hpcaitech/diffusion:0.2.0
+```
+
+Once you have the image ready, you can launch the image with the following command:
+
+```bash
+########################
+# On Your Host Machine #
+########################
+# make sure you start your image in the repository root directory
+cd Colossal-AI
+
+# run the docker container
+docker run --rm \
+  -it --gpus all \
+  -v $PWD:/workspace \
+  -v <your-data-dir>:/data/scratch \
+  -v <hf-cache-dir>:/root/.cache/huggingface \
+  hpcaitech/diffusion:0.2.0 \
+  /bin/bash
+
+########################
+#  Insider Container   #
+########################
+# Once you have entered the docker container, go to the stable diffusion directory for training
+cd examples/images/diffusion/
+
+# start training with colossalai
+bash train_colossalai.sh
+```
+
+It is important for you to configure your volume mapping in order to get the best training experience.
+1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine.
+2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to repliace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
+3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
+
+
 
 ## Download the model checkpoint from pretrained
 
@@ -86,25 +138,26 @@ you should the change the `data.file_path` in the `config/train_colossalai.yaml`
 
 ## Training
 
-We provide the script `train.sh` to run the training task , and two Stategy in `configs`:`train_colossalai.yaml` and `train_ddp.yaml`
+We provide the script `train_colossalai.sh` to run the training task with colossalai,
+and can also use `train_ddp.sh` to run the training task with ddp to compare.
 
-For example, you can run the training from colossalai by
+In `train_colossalai.sh` the main command is:
 ```
 python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
 ```
 
-- you can change the `--logdir` the save the log information and the last checkpoint
+- you can change the `--logdir` to decide where to save the log information and the last checkpoint.
 
 ### Training config
 
 You can change the trainging config in the yaml file
 
-- accelerator: acceleratortype, default 'gpu'
-- devices: device number used for training, default 4
-- max_epochs: max training epochs
-- precision: usefp16 for training or not, default 16, you must use fp16 if you want to apply colossalai
+- devices: device number used for training, default 8
+- max_epochs: max training epochs, default 2
+- precision: the precision type used in training, default 16 (fp16), you must use fp16 if you want to apply colossalai
+- more information about the configuration of ColossalAIStrategy can be found [here](https://pytorch-lightning.readthedocs.io/en/latest/advanced/model_parallel.html#colossal-ai)
 
-## Finetone Example
+## Finetune Example
 ### Training on Teyvat Datasets
 
 We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is create by BLIP generated captions.
@@ -154,6 +207,7 @@ optional arguments:
   --config CONFIG       path to config which constructs model
   --ckpt CKPT           path to checkpoint of model
   --seed SEED           the seed (for reproducible sampling)
+  --use_int8            whether to use quantization method
   --precision {full,autocast}
                         evaluate at this precision
 ```
