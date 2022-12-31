@@ -59,6 +59,7 @@ class MetaInfoProp:
         """
         for node in self.module.graph.nodes:
             node: Node
+            print(node)
             self.func_dict[node.op](node)
 
     @compatibility(is_backward_compatible=False)
@@ -68,7 +69,7 @@ class MetaInfoProp:
         """
         graph_info = GraphInfo()
         out = _normalize_tuple(getattr(node, '_meta_data', None))
-        graph_info.fwd_out = list(out)
+        graph_info.fwd_out = list(out) if out[0] is not None else []
         node.meta = {**asdict(graph_info)}
 
     @compatibility(is_backward_compatible=False)
@@ -97,7 +98,7 @@ class MetaInfoProp:
         """
         Handle other kind of nodes
         """
-        assert hasattr(node, 'best_metainfo'), f"Cannot find best_metainfo in node {node}"
+        assert hasattr(node, 'best_metainfo'), f"Cannot find best_metainfo in node {node}, {node.op}"
         graph_info = GraphInfo()
         meta_info = node.best_metainfo
         meta_info: MetaInfo
