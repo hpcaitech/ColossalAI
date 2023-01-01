@@ -100,7 +100,8 @@ jobs:
     runs-on: ubuntu-latest  # 有时间得改回self-hostes才能跑所有的example
     strategy:
       matrix:
-        loc: ${{needs.matrix_preparation.outputs.matrix}}
+        loc: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+
 
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
