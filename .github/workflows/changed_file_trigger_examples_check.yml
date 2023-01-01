@@ -65,7 +65,7 @@ jobs:
     name: Prepare Direction List
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.res }}
+      matrix: ${{ steps.set-matrix.outputs.container }}
     steps:
 
     - name: 📚 Checkout
