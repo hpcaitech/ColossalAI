@@ -65,7 +65,7 @@ jobs:
     name: Prepare Direction List
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.container }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
 
     - name: 📚 Checkout
@@ -84,8 +84,9 @@ jobs:
 
         
           container=$( IFS=',' ; echo "${res[*]}" )
+          container="[${container}]"
           echo "$container"
-          echo "matrix=${container}" >> $GITHUB_OUTPUT
+          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
 
 
 #          alldir=(`echo $res | tr ',' ' '` )
@@ -99,8 +100,7 @@ jobs:
     needs: matrix_preparation
     runs-on: ubuntu-latest  # 有时间得改回self-hostes才能跑所有的example
     strategy:
-      matrix:
-        loc: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
 
 
     container:
@@ -112,7 +112,7 @@ jobs:
         uses: actions/checkout@v3
       - name: Traverse all files
         run: |
-          dir=${{ matrix.loc }}
+          dir=${{ matrix.container }}
           for i in $dir
             do
                 dir1=`ls ${PWD}/examples/${i}`
