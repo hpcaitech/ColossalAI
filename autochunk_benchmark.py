@@ -16,9 +16,9 @@ def _benchmark_evoformer(model: torch.nn.Module, node, pair, title, chunk_size=N
     torch.cuda.reset_peak_memory_stats()
     now_mem = torch.cuda.memory_allocated() / 1024**2
 
-    loop = 16
+    loop = 3
     with torch.no_grad():
-        for _ in range(loop // 4):
+        for _ in range(loop // 2 + 1):
             if chunk_size:
                 model(node, pair, chunk_size)
             else:
