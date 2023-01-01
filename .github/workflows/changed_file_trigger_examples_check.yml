@@ -81,7 +81,7 @@ jobs:
           done
           res=`python .github/workflows/test1.py --fileNameList $allDir`
           echo "${res} is res"
-          alldir=container=$( IFS='@@##' ; echo "${res[*]}" )
+          alldir=$( IFS='@@##' ; echo "${res[*]}" )
           echo "${alldir} 111000"
           alldir="[${alldir}]"
 
