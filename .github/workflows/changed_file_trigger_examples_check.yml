@@ -85,7 +85,7 @@ jobs:
         
           container=$( IFS=',' ; echo "${res[*]}" )
           echo "$container"
-          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+          echo "matrix=${container}" >> $GITHUB_OUTPUT
 
 
 #          alldir=(`echo $res | tr ',' ' '` )
