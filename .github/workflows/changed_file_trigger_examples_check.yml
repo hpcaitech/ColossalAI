@@ -28,17 +28,17 @@ jobs:
 
 
 
-  deploy:
-    name: Build and deploy test image
-    needs: detect-changed-files
-    runs-on: self-hosted
-    container:
-      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
-    steps:
-
-      - name: 📚 Checkout
-        uses: actions/checkout@v3
+#  deploy:
+#    name: Build and deploy test image
+#    needs: detect-changed-files
+#    runs-on: self-hosted
+#    container:
+#      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+#      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+#    steps:
+#
+#      - name: 📚 Checkout
+#        uses: actions/checkout@v3
 
 # 暂时注释掉以节省时间。之后要复原！
 #      - name: List all changed example files
@@ -93,7 +93,7 @@ jobs:
   weekly-check:
     name: Weekly check all examples
     needs: matrix_preparation
-    runs-on: self-hosted
+    runs-on: ubuntu-latest  # 有时间得改回self-hostes才能跑所有的example
     strategy:
       matrix:
         loc: ${{needs.matrix_preparation.outputs.matrix}}
