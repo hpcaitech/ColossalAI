@@ -2003,22 +2003,25 @@ def emit_code_with_chunk(
                         )
             # ones like
             if "ones_like" in node.name:
-                chunk_dim = chunk_search[region_idx]["node_chunk_dim"][
-                    chunk_region_search.index_tracer.node_list[node_idx]
-                ]["chunk_dim"]
-                if (
-                    _get_node_shape(
-                        chunk_region_search.index_tracer.node_list[node_idx]
-                    )[chunk_dim]
-                    == 1
-                ):
-                    continue
-                chunk_slice = _gen_chunk_slice_dim(
-                    chunk_dim, "chunk_idx", _get_node_shape(node)
-                )
-                body[-1] = _replace_name(
-                    body[-1], node.args[0].name, node.args[0].name + chunk_slice
-                )
+                meta_node = chunk_region_search.index_tracer.node_list[node_idx]
+                chunk_dim = chunk_search[region_idx]["node_chunk_dim"][meta_node][
+                    "chunk_dim"
+                ]
+                if _get_node_shape(meta_node)[chunk_dim] != 1:
+                    source_node = meta_node.args[0].args[0]
+                    if (
+                        source_node not in chunk_search[region_idx]["node_chunk_dim"]
+                        or chunk_search[region_idx]["node_chunk_dim"][source_node][
+                            "chunk_dim"
+                        ]
+                        is None
+                    ):
+                        chunk_slice = _gen_chunk_slice_dim(
+                            chunk_dim, "chunk_idx", _get_node_shape(node)
+                        )
+                        body[-1] = _replace_name(
+                            body[-1], node.args[0].name, node.args[0].name + chunk_slice
+                        )
             body[-1] = _replace_reshape_size(
                 body[-1], node.name, chunk_search[region_idx]["reshape_size"]
             )
