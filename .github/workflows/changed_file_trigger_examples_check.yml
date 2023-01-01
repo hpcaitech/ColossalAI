@@ -83,7 +83,7 @@ jobs:
 
 
         
-          container=$( IFS=',' ; echo "${alldir[*]}" )
+          container=$( IFS=',' ; echo "${res[*]}" )
           container="[${container}]"
           echo "$container"
           echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
