@@ -30,7 +30,7 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
 
     input_tensor = args[0].data
     output_tensor = next(filter(lambda x: x.type == OperationDataType.OUTPUT, args)).data
-    inplace = kwargs.get("inplace", False)
+    is_inplace = kwargs.get("inplace", False)
 
     # construct input args for forward
     fwd_in_args = [input_tensor]
@@ -51,7 +51,7 @@ def relu_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, Lis
     # NOTE: the inplace ReLU don't have forward memory cost
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
     fwd_memory_cost = MemoryCost(
-        activation=activation_size(input_tensor) if inplace else activation_size([output_tensor, input_tensor]),
+        activation=activation_size(input_tensor) if is_inplace else activation_size([output_tensor, input_tensor]),
         parameter=0,
         temp=0,
         buffer=0)
