@@ -60,7 +60,7 @@ def binary_elementwise_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, Train
     memory_cost = TrainCycleItem(fwd=fwd_mem_cost, bwd=bwd_mem_cost, total=total_mem_cost)
 
     # store fwd_in, fwd_buffer, fwd_out
-    fwd_in = [torch.zeros_like(input_op_data.data, device='meta')]
+    fwd_in = [torch.zeros_like(input_op_data.data, device='meta'), torch.zeros_like(other_op_data.data, device='meta')]
     fwd_buffer = []
     fwd_out = [torch.zeros_like(output_op_data.data, device='meta')]
 

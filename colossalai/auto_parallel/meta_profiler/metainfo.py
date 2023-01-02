@@ -1,6 +1,5 @@
 from typing import Callable, List
 
-import numpy as np
 import torch
 
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
@@ -71,25 +70,12 @@ class MetaInfo:
         if self._strategy is not None and self._target is not None:
             self.compute_metainfo()
 
-    def compute_sharded_tensor(self, operation_data: OperationData, sharding_spec: ShardingSpec) -> torch.Tensor:
+    def compute_sharded_opdata(self, operation_data: OperationData, sharding_spec: ShardingSpec) -> torch.Tensor:
         """
-        Compute sharded meta tensor based on the given data and sharding spec.
+        Compute sharded opdata based on the given data and sharding spec.
         """
-        shard_sequnce = sharding_spec.sharding_sequence
-        device_mesh = sharding_spec.device_mesh
-        shape = operation_data.data.shape
-
-        new_shape = []
-        for dim, shard in zip(shape, shard_sequnce):
-            if shard.is_replica:
-                # replica
-                new_shape.append(dim)
-            else:
-                # sharded according to device_mesh shape
-                new_shape.append(dim // np.prod(np.array([device_mesh.mesh_shape[i] for i in shard.shard_list])))
-
         return OperationData(name=operation_data.name,
-                             data=torch.zeros(new_shape, device="meta"),
+                             data=torch.zeros(sharding_spec.get_sharded_shape_per_device(), device="meta"),
                              type=operation_data.type,
                              logical_shape=operation_data.logical_shape)
 
@@ -113,7 +99,7 @@ class MetaInfo:
             save_fwd_in = self._target.__class__ not in NO_SAVE_ACTIVATION
 
         # construct args for meta_func
-        args = [self.compute_sharded_tensor(k, v) for k, v in self._strategy.sharding_specs.items()]
+        args = [self.compute_sharded_opdata(k, v) for k, v in self._strategy.sharding_specs.items()]
 
         # construct kwargs
         if self.target in INPLACE_MODULE:

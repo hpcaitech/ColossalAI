@@ -138,8 +138,7 @@ class NodeHandler(ABC):
             return None
 
         if self.node.op == 'call_module':
-            submod = self.node.graph.owning_module.get_submodule(self.node.target)
-            target = type(submod)
+            target = self.node.graph.owning_module.get_submodule(self.node.target)
         elif self.node.op == 'call_function':
             target = self.node.target
         elif self.node.op == 'call_method':
