@@ -157,6 +157,7 @@ class MetaInfoProp:
         memory_cost = meta_info.memory_cost
         graph_info.fwd_mem_tmp = memory_cost.fwd.temp
         graph_info.bwd_mem_tmp = memory_cost.bwd.temp
+        graph_info.bwd_mem_out = memory_cost.bwd.activation
 
         # fetch flop information
         # here we use fwd_time and bwd_time to deal with the case that
