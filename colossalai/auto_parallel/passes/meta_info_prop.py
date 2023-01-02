@@ -159,4 +159,11 @@ class MetaInfoProp:
         graph_info.fwd_mem_tmp = memory_cost.fwd.temp
         graph_info.bwd_mem_tmp = memory_cost.bwd.temp
 
+        # fetch flop information
+        # here we use fwd_time and bwd_time to deal with the case that
+        # communication cost is a float
+        compute_cost = meta_info.compute_cost
+        graph_info.fwd_time = compute_cost.fwd
+        graph_info.bwd_time = compute_cost.bwd
+
         node.meta = {**asdict(graph_info)}
