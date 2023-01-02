@@ -3,7 +3,7 @@ from typing import Dict, List
 import torch
 
 from ..sharding_strategy import OperationData, OperationDataType
-from .node_handler import NodeHandler
+from .node_handler import MetaInfoNodeHandler, NodeHandler
 from .registry import operator_registry
 from .strategy import ReshapeGenerator, StrategyGenerator
 
@@ -13,7 +13,7 @@ __all__ = ['ReshapeHandler']
 @operator_registry.register(torch.flatten)
 @operator_registry.register(torch.Tensor.unsqueeze)
 @operator_registry.register(torch.nn.AdaptiveAvgPool2d)
-class ReshapeHandler(NodeHandler):
+class ReshapeHandler(MetaInfoNodeHandler):
     """
     A ReshapeHandler which deals with the sharding strategies for Reshape Op, such as torch.reshape.
     """
