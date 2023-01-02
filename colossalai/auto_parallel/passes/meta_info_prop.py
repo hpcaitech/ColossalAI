@@ -1,15 +1,14 @@
 import uuid
 from dataclasses import asdict
-from typing import Any, Dict, List, NamedTuple, Tuple
+from typing import List
 
 import torch
 import torch.fx
 from torch.fx import GraphModule
-from torch.fx.node import Argument, Node, Target
-from torch.utils._pytree import tree_map
+from torch.fx.node import Node
 
 from colossalai.auto_parallel.meta_profiler import MetaInfo
-from colossalai.fx._compatibility import compatibility, is_compatible_with_meta
+from colossalai.fx._compatibility import compatibility
 from colossalai.fx.profiler import GraphInfo
 from colossalai.fx.profiler.constants import OUTPUT_SAVED_MOD, OUTPUT_SAVED_OPS
 

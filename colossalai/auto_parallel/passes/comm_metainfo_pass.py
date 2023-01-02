@@ -1,5 +1,4 @@
-from copy import deepcopy
-from typing import Dict, List
+from typing import Dict
 
 import torch
 from torch.fx import GraphModule
@@ -7,15 +6,7 @@ from torch.fx.node import Node
 
 from colossalai.auto_parallel.meta_profiler import MetaInfo
 from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply, runtime_comm_spec_apply
-from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
-    CommAction,
-    CommType,
-    MemoryCost,
-    OperationData,
-    OperationDataType,
-    TrainCycleItem,
-)
-from colossalai.device.device_mesh import DeviceMesh
+from colossalai.auto_parallel.tensor_shard.sharding_strategy import MemoryCost, TrainCycleItem
 from colossalai.tensor.comm_spec import CommSpec
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
