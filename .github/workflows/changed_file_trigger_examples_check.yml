@@ -17,7 +17,7 @@ on:
 
 jobs:
   detect-changed-files:
-    if: ${{github.event.workflow_dispatch}} == ''
+    if: $github.event.workflow_dispatch == ''
     runs-on: ubuntu-latest
     outputs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
@@ -37,7 +37,7 @@ jobs:
 
 
   deploy:
-    if: ${{github.event.workflow_dispatch}} == ''
+    if: $github.event.workflow_dispatch == ''
     name: Build and deploy test image
     needs: detect-changed-files
     runs-on: self-hosted
@@ -68,7 +68,7 @@ jobs:
 
 
   matrix_preparation:
-    if: ${{github.event.workflow_dispatch}} == ''
+    if: $github.event.workflow_dispatch == ''
     name: Prepare Direction List
     runs-on: ubuntu-latest
     outputs:
@@ -123,7 +123,7 @@ jobs:
             done
 
   manual_check_matrix_preparation:
-    if: ${{github.event.workflow_dispatch}} != ''
+    if: $github.event.workflow_dispatch != ''
     name: Check the examples user want
     runs-on: ubuntu-latest
     outputs:
