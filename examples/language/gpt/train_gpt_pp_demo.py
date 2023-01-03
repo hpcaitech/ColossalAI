@@ -6,6 +6,7 @@ import torch
 from model_zoo import model_builder
 from torch import nn
 from tqdm import tqdm
+from utils import get_data, get_tflops
 
 from colossalai.fx import ColoTracer
 from colossalai.fx.passes.adding_split_node_pass import avgnode_split_pass, split_with_split_nodes_pass
@@ -122,7 +123,6 @@ def run_master(args):
     pp_engine.initialize_optimizer(HybridAdam, lr=1e-3)
 
     ranks_tflops = {}
-    get_tflops_func = partial(get_tflops, batch_size, SEQ_LEN)
     for n in tqdm(range(NUM_STEPS)):
         # we just use randomly generated data here
         input_ids, attn_mask = get_data(batch_size, SEQ_LEN, VOCAB_SIZE)
@@ -135,7 +135,7 @@ def run_master(args):
         for rank, numel in partition_numels.items():
             if rank not in ranks_tflops:
                 ranks_tflops[rank] = []
-            step_tflops = get_tflops_func(step_time, numel)
+            step_tflops = get_tflops(numel, batch_size, SEQ_LEN, step_time)
 
             if n >= WARMUP_STEPS:
                 ranks_tflops[rank].append(step_tflops)
