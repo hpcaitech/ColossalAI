@@ -44,6 +44,11 @@ For simplicity, the input data is randonly generated here.
 bash run.sh
 ```
 
+Pipeline Parallel
+```bash
+bash run_pp.sh
+```
+
 ### Training config
 
 The `train_gpt_demo.py` provides three distributed plans, you can choose the plan you want in `run.sh`. The Colossal-AI leverages Tensor Parallel and Gemini + ZeRO DDP.
