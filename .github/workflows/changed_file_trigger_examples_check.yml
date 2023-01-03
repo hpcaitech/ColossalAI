@@ -44,7 +44,7 @@ jobs:
 
 # 暂时注释掉以节省时间。之后要复原！
       - name: List all changed example files
-        run: |
+        run: | 
           changedFileName=""
           for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
             changedFileName="${file}&&&@@@${changedFileName}"
