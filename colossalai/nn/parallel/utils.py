@@ -2,7 +2,6 @@ import torch
 import torch.distributed as dist
 
 from colossalai.gemini.chunk import Chunk
-from colossalai.tensor import ColoTensor
 from colossalai.utils import get_current_device
 
 
@@ -45,9 +44,7 @@ def convert_to_torch_module(gemini_ddp_model: 'GeminiDDP') -> torch.nn.Module:
     module = gemini_ddp_model.module
 
     # replace ColoTensor to torch.nn.Tensor in module
-    cnt = 0
     for n, p in gemini_ddp_model.torch_named_parameters():
         _add_param(module, n, p)
-        cnt += 1
 
     return module
