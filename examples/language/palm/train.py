@@ -21,7 +21,7 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 
 # constants
 
-NUM_BATCHES = int(100000)
+NUM_BATCHES = int(1000)
 GRADIENT_ACCUMULATE_EVERY = 1
 LEARNING_RATE = 2e-4
 VALIDATE_EVERY = 100
@@ -104,52 +104,6 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
         raise NotImplemented(f"CAI version {cai_version} is not supported")
     return model
 
-## Parameter Sharding Strategies for Tensor Parallelism
-def split_param_single_dim_tp1d(dim: int, param: ColoParameter, pg: ProcessGroup):
-    spec = (ShardSpec([dim], [pg.tp_world_size()]), ComputeSpec(ComputePattern.TP1D))
-    param.set_tensor_spec(*spec)
-
-
-def split_param_row_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(0, param, pg)
-
-
-def split_param_col_tp1d(param: ColoParameter, pg: ProcessGroup):
-    split_param_single_dim_tp1d(-1, param, pg)
-
-# Tensor Parallel
-def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
-    """tensor_parallelize
-    Sharding the Model Parameters.
-    Args:
-        model (torch.nn.Module): a torch module to be sharded
-    """
-    for mn, module in model.named_modules():
-        for pn, param in module.named_parameters(recurse=False):
-            # NOTE() a param maybe shared by tow modules
-            if hasattr(param, 'visited'):
-                continue
-            param.set_dist_spec(ReplicaSpec())
-            if 'mlp.c_fc' in mn:
-                if 'weight' in pn or 'bias' in pn:
-                    split_param_col_tp1d(param, pg)    # colmn slice
-                    # keep the shape of the output from c_fc
-                    param.compute_spec.set_output_replicate(False)
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'mlp.c_proj' in mn:
-                if 'weight' in pn:
-                    split_param_row_tp1d(param, pg)    # row slice
-                else:
-                    param.set_dist_spec(ReplicaSpec())
-            elif 'wte' in mn or 'wpe' in mn:
-                split_param_col_tp1d(param, pg)    # colmn slice
-            elif 'c_attn' in mn or 'c_proj' in mn:
-                split_param_col_tp1d(param, pg)    # colmn slice
-            else:
-                param.set_dist_spec(ReplicaSpec())
-
-            param.visited = True
 
 args = parse_args()
 if args.distplan not in ["colossalai", "pytorch"]:
