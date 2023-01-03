@@ -17,10 +17,7 @@ class MOEBuilder(Builder):
         return [self.colossalai_src_path(path) for path in ret]
 
     def sources_files(self):
-        ret = [
-            os.path.join(self.base_dir, fname)
-            for fname in ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu']
-        ]
+        ret = [os.path.join(self.base_dir, fname) for fname in ['moe_cuda.cpp', 'moe_cuda_kernel.cu']]
         return [self.colossalai_src_path(path) for path in ret]
 
     def cxx_flags(self):
