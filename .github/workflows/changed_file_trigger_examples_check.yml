@@ -135,17 +135,17 @@ jobs:
       - name: Traverse all files
         run: |
           IFS=','
-          all_mannual_check_dir=()
-
-          for tv in $check_dir
-          do
-            all_mannual_check_dir+=("${tv}")
-          done
-
-          container=$( IFS=',' ; echo "${all_mannual_check_dir[*]}" )
-          container="[${container}]"
-          echo "$container"
-          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+#          all_mannual_check_dir=()
+#
+#          for tv in $check_dir
+#          do
+#            all_mannual_check_dir+=("${tv}")
+#          done
+#
+#          container=$( IFS=',' ; echo "${all_mannual_check_dir[*]}" )
+#          container="[${container}]"
+#          echo "$container"
+#          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
           
 
 #  manual_check:
