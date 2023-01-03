@@ -1,6 +1,6 @@
 python train_dreambooth.py \
-    --pretrained_model_name_or_path= <Your Model Path> \
-    --instance_data_dir= <Your Training Pics Path> \
+    --pretrained_model_name_or_path= ## Your Model Path  \
+    --instance_data_dir=  ## Your Training Input Pics Path \
     --output_dir="path-to-save-model" \
     --instance_prompt="a photo of a dog" \
     --resolution=512 \
