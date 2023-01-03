@@ -114,6 +114,7 @@ jobs:
         run: |
           dir=${{ matrix.container }}
           for i in $dir
+            echo "${i} is i"
             do
                 dir1=`ls ${PWD}/examples/${i}`
                 for j in $dir1
