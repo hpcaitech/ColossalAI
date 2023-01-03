@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument('--num_microbatches', type=int, default=2)
     parser.add_argument('--device', type=str, choices=['cpu', 'cuda'], default='cuda')
     parser.add_argument('--master_addr', type=str, default='localhost')
-    parser.add_argument('--master_port', type=str, default='29020')
+    parser.add_argument('--master_port', type=str, default='29011')
     parser.add_argument('--num_worker_threads', type=int, default=128)
     return parser.parse_args()
 
@@ -50,10 +50,6 @@ def get_data(batch_size, seq_len, vocab_size):
     input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
     attention_mask = torch.ones_like(input_ids)
     return input_ids, attention_mask
-
-
-def get_tflops(batch_size, seq_len, step_time, model_numel):
-    return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12)
 
 
 def create_partition_module(pp_rank: int, stage_num: int, model, data_kwargs):
@@ -123,7 +119,7 @@ def run_master(args):
     pp_engine.initialize_optimizer(HybridAdam, lr=1e-3)
 
     ranks_tflops = {}
-    for n in tqdm(range(NUM_STEPS)):
+    for n in range(NUM_STEPS):
         # we just use randomly generated data here
         input_ids, attn_mask = get_data(batch_size, SEQ_LEN, VOCAB_SIZE)
         batch = {'input_ids': input_ids, 'attention_mask': attn_mask}
@@ -137,13 +133,23 @@ def run_master(args):
                 ranks_tflops[rank] = []
             step_tflops = get_tflops(numel, batch_size, SEQ_LEN, step_time)
 
+            logger.info(
+                f"Rank{rank} , [{n + 1}/{NUM_STEPS}] , Step time: {step_time:.3f}s, TFLOPS: {get_tflops(numel, batch_size, SEQ_LEN, step_time):.3f}",
+                ranks=[0],
+            )
+
             if n >= WARMUP_STEPS:
                 ranks_tflops[rank].append(step_tflops)
 
     median_index = ((NUM_STEPS - WARMUP_STEPS) >> 1) + WARMUP_STEPS
+    gpu_tflops = []
     for rank, tflops_list in ranks_tflops.items():
         tflops_list.sort()
+        gpu_tflops.append(tflops_list[median_index])
         logger.info(f"GPU{rank} Median TFLOPS is {tflops_list[median_index]:.3f}")
+
+    logger.info(f"Total TFLOPS is {sum(gpu_tflops):.3f}")
+    logger.info(f"Avg TFLOPS per GPU is {sum(gpu_tflops) / world_size:.3f}")
 
 
 if __name__ == '__main__':
