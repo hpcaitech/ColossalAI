@@ -1,0 +1,100 @@
+name: Test Examples
+on:
+  pull_request:
+  schedule:
+    # run at 00:00 of every Sunday (here is UTC time Saturday 16:00, which is Singapore time 00:00 Sunday)
+    - cron:  '0 16 * * 6'
+
+jobs:
+# This is for changed files detect and check.
+  detect-changed-files:
+    runs-on: ubuntu-latest
+    container:
+      image: hpcaitech/pytorch-cuda:1.12
+    outputs:
+      changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
+    name: Check out all files
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - run: |
+            pip install -r ./requirements/requirements.txt
+            pip install -e .
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Get all changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v35
+        with:
+          since_last_remote_commit: true  # Using this can trigger action each time a PR is submitted.
+
+  check-all-changed-files:
+    name: Test each changed example files
+    needs: detect-changed-files
+    runs-on: [self-hosted, gpu]
+    steps:
+      - name: List all changed example files
+        run: |
+          changedFileName=""
+          for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
+            changedFileName="${file}:${changedFileName}"
+          done
+          echo "$changedFileName was changed"
+          res=`python .github/workflows/changed_file.py --fileNameList $changedFileName`
+          echo "In example folder, $res are changed"
+          if [ -z "$res" ]
+          then
+                echo "\No change in example folder!"
+          else
+                bash .github/workflows/changed_file.sh "$res"
+          fi
+
+# This is for all files weekly check
+  matrix_preparation:
+    name: Prepare Direction List for All files
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - name: 📚 Checkout
+      uses: actions/checkout@v3
+    - name: setup matrix
+      id: set-matrix
+      run: |
+          dir=`ls ${PWD}/examples`
+          allDir=""
+          for outer_dir in ${dir}; do
+            in_dir=`ls ${PWD}/examples/${outer_dir}`
+            for inner_dir in ${in_dir}; do
+              allDir="${outer_dir}/${inner_dir}:${allDir}"
+              echo "Current directory are ${allDir}"
+            done
+          done
+          res=`python .github/workflows/weekly_check.py --fileNameList $allDir`
+          container=$( IFS=',' ; echo "${res[*]}" )
+          echo "$container"
+          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+
+  weekly_check:
+#    if: github.event.schedule == '0 0 * * *'
+    name: Weekly check all examples
+    needs: matrix_preparation
+    runs-on: [self-hosted, gpu]
+    strategy:
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: hpcaitech/pytorch-cuda:1.12
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+      - name: Traverse all files
+        run: |
+          dir=${{ matrix.container }}
+          echo "${dir} is the current directory"
+          pip install -r ./requirements/requirements.txt
+          pip install -e .
+          pushd "${PWD}/examples/${dir}" > /dev/null
+              bash test_ci.sh
+          popd < /dev/null
