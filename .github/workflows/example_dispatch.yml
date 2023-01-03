@@ -1,4 +1,4 @@
-name: manual check example file
+name: manual_check_example_file
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
 on:
   workflow_dispatch:
