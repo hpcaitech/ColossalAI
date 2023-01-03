@@ -6,7 +6,7 @@ on:
 
   schedule:
     # run at 00:00 of every Sunday
-    - cron:  '18 1 3 1 *'
+    - cron:  '* * * * *'
 
 
 jobs:
@@ -96,7 +96,7 @@ jobs:
 #          alldir="[${alldir}]"
 # ${{needs.matrix_preparation.outputs.matrix}}
   weekly-check:
-    if: github.event.schedule == '18 1 3 1 *'
+    if: github.event.schedule == '* * * * *'
     name: Weekly check all examples
     needs: matrix_preparation
     runs-on: self-hosted  # 有时间得改回self-hostes才能跑所有的example
