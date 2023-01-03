@@ -1,10 +1,12 @@
 name: GitHub Actions Demo
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
-on: [pull_request]
+on:
 
-#  schedule:
-#    # run at 00:00 of every Sunday
-#    - cron:  '43 6 30 12 *'
+  pull_request:
+
+  schedule:
+    # run at 00:00 of every Sunday
+    - cron:  '18 1 3 1 *'
 
 
 jobs:
@@ -28,31 +30,31 @@ jobs:
 
 
 
-#  deploy:
-#    name: Build and deploy test image
-#    needs: detect-changed-files
-#    runs-on: self-hosted
-#    container:
-#      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
-#      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
-#    steps:
-#
-#      - name: 📚 Checkout
-#        uses: actions/checkout@v3
+  deploy:
+    name: Build and deploy test image
+    needs: detect-changed-files
+    runs-on: self-hosted
+    container:
+      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+    steps:
+
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
 
 # 暂时注释掉以节省时间。之后要复原！
-#      - name: List all changed example files
-#        run: |
-#          changedFileName=""
-#          for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
-#            changedFileName="${file}&&&@@@${changedFileName}"
-#          done
-#          echo "$changedFileName was changed"
-#          res=`python .github/workflows/test.py --fileNameList $changedFileName`
-#          echo "$res is res"
-#          pip install -r ./requirements/requirements.txt
-#          pip install -e .
-#          bash .github/workflows/test.sh "$res"
+      - name: List all changed example files
+        run: |
+          changedFileName=""
+          for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
+            changedFileName="${file}&&&@@@${changedFileName}"
+          done
+          echo "$changedFileName was changed"
+          res=`python .github/workflows/test.py --fileNameList $changedFileName`
+          echo "$res is res"
+          pip install -r ./requirements/requirements.txt
+          pip install -e .
+          bash .github/workflows/test.sh "$res"
 
       # After changed to company's server, here prompt "Syntax error: "(" unexpected" error. Google solution shows this is because system uses dash but not bash to run it. Strangely, the github action is using bash. But anyway, by forcing to use bash ??.sh and separate it into a single sh file, and add the header "#!/bin/bash", it can run now.
 
@@ -82,7 +84,6 @@ jobs:
           res=`python .github/workflows/test1.py --fileNameList $allDir`
 
 
-        
           container=$( IFS=',' ; echo "${res[*]}" )
           echo "$container"
           echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
@@ -95,6 +96,7 @@ jobs:
 #          alldir="[${alldir}]"
 # ${{needs.matrix_preparation.outputs.matrix}}
   weekly-check:
+    if: github.event.schedule == '18 1 3 1 *'
     name: Weekly check all examples
     needs: matrix_preparation
     runs-on: self-hosted  # 有时间得改回self-hostes才能跑所有的example
@@ -116,8 +118,9 @@ jobs:
           dir1=`ls ${PWD}/examples/${dir}`
           for j in $dir1
             do
-              echo "$j haha"
+              echo "$j is testing"
               cd "${PWD}/examples/${dir}/${j}"
+              bash test_ci.sh
               cd ../../..
             done
 
