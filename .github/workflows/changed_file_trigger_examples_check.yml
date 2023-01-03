@@ -10,7 +10,7 @@ jobs:
   detect-changed-files:
     runs-on: ubuntu-latest
     container:
-      image: hpcaitech/pytorch-cuda:1.12
+      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
     outputs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
     name: Check out all files
