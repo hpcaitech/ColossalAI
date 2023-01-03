@@ -45,8 +45,11 @@ jobs:
             changedFileName="${file}:${changedFileName}"
           done
           echo "$changedFileName was changed"
-          res=`python .github/workflows/changed_file.py --fileNameList $changedFileName`
+          res=`python .github/workflows/changed_file.py`
           echo "$res is res"
+
+#          res=`python .github/workflows/changed_file.py --fileNameList $changedFileName`
+#          echo "$res is res"
 #          if [ -z "$res" ]
 #          then
 #                echo "\No change in example folder!"
