@@ -1,0 +1,119 @@
+name: Test Example
+on:
+  pull_request:
+    # So only the changes in examples folder will trigger jobs below.
+    paths:
+      - 'examples/**'
+  # run at 00:00 of every Sunday(singapore time) so here is UTC time Saturday 16:00
+  schedule:
+    - cron:  '0 16 * * 6'
+
+jobs:
+  # This is for changed example files detect and output a matrix containing all the corresponding directory name.
+  detect-changed-example:
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    name: Check out all files
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: Get all changed example files
+        id: changed-files
+        uses: tj-actions/changed-files@v35
+        # Using this can trigger action each time a PR is submitted.
+        with:
+          since_last_remote_commit: true
+      - name: setup matrix
+        id: set-matrix
+        run: |
+          changedFileName=""
+          for file in ${{ steps.changed-files.outputs.all_changed_files  }}; do
+            changedFileName="${file}:${changedFileName}"
+          done
+          echo "$changedFileName was changed"
+          res=`python .github/workflows/scripts/changed_example.py --fileNameList $changedFileName`
+          echo "All changed files are $res"
+          loc=$( IFS=',' ; echo "${res[*]}" )
+          echo "$loc"
+          echo "::set-output name=matrix::{\"loc\":$(echo "$loc")}"
+
+  # If no file is changed, it will prompt an error and shows the matrix do not have value.
+  check-all-changed-files:
+    # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+    name: Test each changed example files
+    needs: detect-changed-example
+    runs-on: [self-hosted, gpu]
+    strategy:
+      matrix: ${{fromJson(needs.detect-changed-example.outputs.matrix)}}
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: Install dependancies
+        run: |
+          pip install -r ./requirements/requirements.txt
+          pip install colossalai
+      - name: List all changed example files
+        run: |
+          res=${{ matrix.loc }}
+          cd "${PWD}/examples/${res}"
+          bash test_ci.sh
+
+  # This is for all files' weekly check. Specifically, this job is to find all the directories.
+  matrix_preparation:
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'schedule'
+    name: Prepare Directory List for All files
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - name: 📚 Checkout
+      uses: actions/checkout@v3
+    - name: setup matrix
+      id: set-matrix
+      run: |
+        res=`python .github/workflows/scripts/weekly_check_example.py`
+        all_loc=$( IFS=',' ; echo "${res[*]}" )
+        echo "$all_loc"
+        echo "::set-output name=matrix::{\"all_loc\":$(echo "$all_loc")}"
+
+  weekly_check:
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'schedule'
+    name: Weekly check all examples
+    needs: matrix_preparation
+    runs-on: [self-hosted, gpu]
+    strategy:
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+      - name: Install the requirements
+        run: |
+          pip install -r ./requirements/requirements.txt
+          pip install colossalai
+      - name: Traverse all files
+        run: |
+          dir=${{ matrix.all_loc }}
+          echo "${dir} is current directory"
+          cd "${PWD}/examples/${dir}"
+          bash test_ci.sh
