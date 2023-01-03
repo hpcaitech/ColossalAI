@@ -1,0 +1,62 @@
+name: manual check example file
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+on:
+  workflow_dispatch:
+    inputs:
+      example_direction:
+        type: string
+        description: example direction, separated by comma
+        required: true
+
+
+jobs:
+  manual_check_matrix_preparation:
+    name: Check the examples user want
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix-1.outputs.matrix }}
+    steps:
+    - id: set-matrix-1
+      env:
+        check_dir: ${{ inputs.example_direction }}
+      run: | 
+        
+        IFS=','
+        all_mannual_check_dir=()
+
+        for tv in $check_dir
+        do
+          all_mannual_check_dir+=("${tv}")
+        done
+
+        container=$( IFS=',' ; echo "${all_mannual_check_dir[*]}" )
+        container="[${container}]"
+        echo "$container"
+        echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+          
+
+#  manual_check:
+#    name: Manually check example files
+#    needs: manual_check_matrix_preparation
+#    if: github.event.workflow_dispatch != ''
+#    runs-on: self-hosted
+#    strategy:
+#      matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}
+#    container:
+#      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+#      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+#    steps:
+#      - name: 📚 Checkout
+#        uses: actions/checkout@v3
+#      - name: Traverse all files
+#        run: |
+#          dir=${{ matrix.container }}
+#          echo "${dir} is dir"
+#          dir1=`ls ${PWD}/examples/${dir}`
+#          for j in $dir1
+#            do
+#              echo "$j is testing by manually parameters"
+#              cd "${PWD}/examples/${dir}/${j}"
+#              bash test_ci.sh
+#              cd ../../..
+#            done
