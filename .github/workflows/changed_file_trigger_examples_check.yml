@@ -125,9 +125,9 @@ jobs:
     name: Check the examples user want
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrixManual.outputs.matrix }}
+      matrix: ${{ steps.set-matrix-1.outputs.matrix }}
     steps:
-    - id: set-matrixManual
+    - id: set-matrix-1
       env:
         check_dir: ${{ inputs.example_direction }}
       - name: 📚 Checkout
@@ -137,7 +137,7 @@ jobs:
           IFS=','
           all_mannual_check_dir=()
 
-          for tv in check_dir
+          for tv in $check_dir
           do
             all_mannual_check_dir+=("${tv}")
           done
