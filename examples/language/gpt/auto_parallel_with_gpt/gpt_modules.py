@@ -134,7 +134,6 @@ class GPT2Block(nn.Module):
         head_mask: Optional[torch.FloatTensor] = None,
     ) -> Union[Tuple[torch.Tensor], Optional[Tuple[torch.Tensor, Tuple[torch.FloatTensor, ...]]]]:
         residual = hidden_states
-        # %transformer_h_0_ln_1
         hidden_states = self.ln_1(hidden_states)
         attn_outputs = self.attn(
             hidden_states,
