@@ -25,7 +25,7 @@ jobs:
   check-all-changed-files:
     name: Test each changed example files
     needs: detect-changed-files
-    runs-on: [self-hosted, gpu]
+    runs-on: self-hosted
     container:
       image: hpcaitech/pytorch-cuda:1.12
     steps:
