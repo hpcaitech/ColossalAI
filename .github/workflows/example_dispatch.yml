@@ -5,7 +5,7 @@ on:
     inputs:
       example_direction:
         type: string
-        description: example direction, separated by comma
+        description: example direction, separated by comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
         required: true
 
 
@@ -34,7 +34,6 @@ jobs:
         echo "$container"
         echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
 
-# here the ("\"${tv}\"")  is important! Previously I use ("${tv}") and it was wrong.
 
   manual_check:
     name: Manually check example files
@@ -51,7 +50,7 @@ jobs:
       - name: Traverse all files
         run: |
           dir=${{ matrix.container }}
-          echo "${dir} is dir"
+          echo "${dir} is current direction"
           pip install -r ./requirements/requirements.txt
           pip install -e .
           cd "${PWD}/examples/${dir}"
