@@ -1,4 +1,4 @@
-name: GitHub Actions Demo
+name: change_examples_check_all
 run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
 on:
   pull_request:
