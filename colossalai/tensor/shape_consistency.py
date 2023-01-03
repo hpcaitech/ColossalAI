@@ -555,7 +555,7 @@ class ShapeConsistencyManager(metaclass=SingletonMeta):
         bwd_peak_numel = 0
         for idx, action_spec_pair in enumerate(zip(reversed(bwd_actions), reversed(comm_action_sequence))):
             bwd_action, comm_spec = action_spec_pair
-            bwd_action(comm_spec, True, bwd_alloc_numel, bwd_peak_numel)
+            bwd_alloc_numel, bwd_peak_numel = bwd_action(comm_spec, True, bwd_alloc_numel, bwd_peak_numel)
 
         fwd_mem = MemoryCost(activation=fwd_alloc_numel, temp=fwd_peak_numel - fwd_alloc_numel)
         bwd_mem = MemoryCost(activation=bwd_alloc_numel, temp=bwd_peak_numel - bwd_alloc_numel)
