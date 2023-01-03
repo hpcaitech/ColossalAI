@@ -73,6 +73,8 @@ def main():
 
     # Enable auto-parallel
     gm, solution = initialize_model(model, meta_input_sample, device_mesh, return_solution=True)
+
+    # print solution on rank 0
     if gpc.get_global_rank() == 0:
         for node_strategy in solution:
             print(node_strategy)
