@@ -78,7 +78,7 @@ jobs:
           for i in ${dir}; do
             dir1=`ls ${PWD}/examples/${i}`
             for j in ${dir1}; do
-              allDir="${j}:${allDir}"
+              allDir="${i}/${j}:${allDir}"
               echo "${allDir} is allDir"
             done
           done
