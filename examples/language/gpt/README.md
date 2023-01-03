@@ -39,7 +39,7 @@ If you want to test ZeRO1 and ZeRO2 in Colossal-AI, you need to ensure Colossal-
 For simplicity, the input data is randonly generated here.
 
 ## Training
-We provide two solutions. One utilizes the hybrid parallel strategies using Gemini, DDP/ZeRO, and Tensor Parallelism.
+We provide two solutions. One utilizes the hybrid parallel strategies of Gemini, DDP/ZeRO, and Tensor Parallelism.
 The other one uses Pipeline Parallelism Only.
 In the future, we are going merge them together and they can be used orthogonally to each other.
 
