@@ -130,11 +130,8 @@ jobs:
     - id: set-matrix-1
       env:
         check_dir: ${{ inputs.example_direction }}
-      - name: 📚 Checkout
-        uses: actions/checkout@v3
-      - name: Traverse all files
-        run: |
-          IFS=','
+      run: |
+        IFS=','
 #          all_mannual_check_dir=()
 #
 #          for tv in $check_dir
