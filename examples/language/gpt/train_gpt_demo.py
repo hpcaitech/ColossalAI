@@ -8,6 +8,7 @@ import torch.nn as nn
 from model_zoo import model_builder
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
+from utils import get_data, get_tflops
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -95,13 +96,6 @@ class GPTLMLoss(nn.Module):
         return self.loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
 
-# Randomly Generated Data
-def get_data(batch_size, seq_len, vocab_size):
-    input_ids = torch.randint(0, vocab_size, (batch_size, seq_len), device=torch.cuda.current_device())
-    attention_mask = torch.ones_like(input_ids)
-    return input_ids, attention_mask
-
-
 def get_cpu_mem():
     return psutil.Process().memory_info().rss / 1024**2
 
@@ -112,10 +106,6 @@ def get_gpu_mem():
 
 def get_mem_info(prefix=''):
     return f'{prefix}GPU memory usage: {get_gpu_mem():.2f} MB, CPU memory usage: {get_cpu_mem():.2f} MB'
-
-
-def get_tflops(model_numel, batch_size, seq_len, step_time):
-    return model_numel * batch_size * seq_len * 8 / 1e12 / (step_time + 1e-12)
 
 
 def get_model_size(model: nn.Module):
