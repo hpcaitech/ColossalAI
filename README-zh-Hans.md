@@ -38,12 +38,12 @@
  <li>
    <a href="#并行训练样例展示">并行训练样例展示</a> 
    <ul>
-     <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
      <li><a href="#OPT">OPT</a></li>
+     <li><a href="#ViT">ViT</a></li>
      <li><a href="#推荐系统模型">推荐系统模型</a></li>
    </ul>
  </li>
@@ -59,6 +59,7 @@
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
+     <li><a href="#BLOOM-Inference">1750亿参数 BLOOM</a></li>
    </ul>
  </li>
 <li>
@@ -102,6 +103,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
   - 1维, [2维](https://arxiv.org/abs/2104.05343), [2.5维](https://arxiv.org/abs/2105.14500), [3维](https://arxiv.org/abs/2105.14450) 张量并行
   - [序列并行](https://arxiv.org/abs/2105.13120)
   - [零冗余优化器 (ZeRO)](https://arxiv.org/abs/1910.02054)
+  - [自动并行](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
 - 异构内存管理
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 - 使用友好
@@ -113,12 +115,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## 并行训练样例展示
-### ViT
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
-</p>
 
-- 14倍批大小和5倍训练速度（张量并行=64）
 
 ### GPT-3
 <p align="center">
@@ -153,6 +150,12 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 请访问我们的 [文档](https://www.colossalai.org/) 和 [例程](https://github.com/hpcaitech/ColossalAI-Examples) 以了解详情。
 
+### ViT
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+</p>
+
+- 14倍批大小和5倍训练速度（张量并行=64）
 
 ### 推荐系统模型
 - [Cached Embedding](https://github.com/hpcaitech/CachedEmbedding), 使用软件Cache实现Embeddings，用更少GPU显存训练更大的模型。
@@ -199,22 +202,37 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 - [OPT推理服务](https://service.colossalai.org/opt): 无需注册，免费体验1750亿参数OPT在线推理服务
 
+<p id="BLOOM-Inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
+</p>
+
+- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1750亿参数BLOOM模型部署推理成本超10倍
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
 ## Colossal-AI 成功案例
 
 ### AIGC
-加速AIGC(AI内容生成)模型，如[Stable Diffusion](https://github.com/CompVis/stable-diffusion)
+加速AIGC(AI内容生成)模型，如[Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) 和 [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion)
+
 <p id="diffusion_train" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
 </p>
 
-- [Colossal-AI优化Stable Diffusion](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 6.5倍训练加速和预训练成本降低, 微调硬件成本下降约7倍(从RTX3090/4090到RTX3050/2070)
+- [训练](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 减少5.6倍显存消耗，硬件成本最高降低46倍(从A100到RTX3060)
 
 <p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
 </p>
+
+- [DreamBooth微调](https://github.com/hpcaitech/ColossalAI/tree/hotfix/doc/examples/images/dreambooth): 仅需3-5张目标主题图像个性化微调
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
+</p>
+
+- [推理](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): GPU推理显存消耗降低2.5倍
+
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 

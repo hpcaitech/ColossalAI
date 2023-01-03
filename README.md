@@ -38,12 +38,12 @@
  <li>
    <a href="#Parallel-Training-Demo">Parallel Training Demo</a> 
    <ul>
-     <li><a href="#ViT">ViT</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
      <li><a href="#BERT">BERT</a></li>
      <li><a href="#PaLM">PaLM</a></li>
      <li><a href="#OPT">OPT</a></li>
+     <li><a href="#ViT">ViT</a></li>
      <li><a href="#Recommendation-System-Models">Recommendation System Models</a></li>
    </ul>
  </li>
@@ -59,6 +59,7 @@
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
+     <li><a href="#BLOOM-Inference">175B BLOOM</a></li>
    </ul>
  </li>
    <li>
@@ -104,6 +105,7 @@ distributed training and inference in a few lines.
   - 1D, [2D](https://arxiv.org/abs/2104.05343), [2.5D](https://arxiv.org/abs/2105.14500), [3D](https://arxiv.org/abs/2105.14450) Tensor Parallelism
   - [Sequence Parallelism](https://arxiv.org/abs/2105.13120)
   - [Zero Redundancy Optimizer (ZeRO)](https://arxiv.org/abs/1910.02054)
+  - [Auto-Parallelism](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
 
 - Heterogeneous Memory Management 
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
@@ -119,12 +121,6 @@ distributed training and inference in a few lines.
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo
-### ViT
-<p align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
-</p>
-
-- 14x larger batch size, and 5x faster training for Tensor Parallelism = 64
 
 ### GPT-3
 <p align="center">
@@ -157,6 +153,13 @@ distributed training and inference in a few lines.
 - 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt) 
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
+
+### ViT
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/ViT.png" width="450" />
+</p>
+
+- 14x larger batch size, and 5x faster training for Tensor Parallelism = 64
 
 ### Recommendation System Models
 - [Cached Embedding](https://github.com/hpcaitech/CachedEmbedding), utilize software cache to train larger embedding tables with a smaller GPU memory budget.
@@ -202,21 +205,36 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 - [OPT Serving](https://service.colossalai.org/opt): Try 175-billion-parameter OPT online services for free, without any registration whatsoever.
 
+<p id="BLOOM-Inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
+</p>
+
+- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): Reduce hardware deployment costs of 175-billion-parameter BLOOM by more than 10 times.
+
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Colossal-AI in the Real World
 
 ### AIGC
-Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion](https://github.com/CompVis/stable-diffusion)
+Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) and [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion).
 <p id="diffusion_train" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_train.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
 </p>
 
-- [Stable Diffusion with Colossal-AI](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): 6.5x faster training and pretraining cost saving, the hardware cost of fine-tuning can be almost 7X cheaper (from RTX3090/4090 to RTX3050/2070)
+- [Training](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): Reduce Stable Diffusion memory consumption by up to 5.6x and hardware cost by up to 46x (from A100 to RTX3060).
 
 <p id="diffusion_demo" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/diffusion_demo.png" width=800/>
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
 </p>
+
+- [DreamBooth Fine-tuning](https://github.com/hpcaitech/ColossalAI/tree/hotfix/doc/examples/images/dreambooth): Personalize your model using just 3-5 images of the desired subject.
+
+<p id="inference" align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
+</p>
+
+- [Inference](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): Reduce inference GPU memory consumption by 2.5x.
+
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
