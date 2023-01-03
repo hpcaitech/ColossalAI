@@ -21,18 +21,50 @@ from colossalai.utils.model.colo_init_context import ColoInitContext
 
 # constants
 
-NUM_BATCHES = int(20)
-BATCH_SIZE = 4
+NUM_BATCHES = int(1000)
 GRADIENT_ACCUMULATE_EVERY = 1
 LEARNING_RATE = 2e-4
 VALIDATE_EVERY = 100
 GENERATE_EVERY = 500
 GENERATE_LENGTH = 512
 SEQ_LEN = 1024
-TPDEGREE = 1
-USE_SHARD_INIT = False
-placement = 'cpu'
 
+
+def parse_args():
+    parser = colossalai.get_default_parser()
+    parser.add_argument(
+        "--distplan",
+        type=str,
+        default='colossalai',
+        help="The distributed plan [colossalai, pytorch].",
+    )
+    parser.add_argument(
+        "--tp_degree",
+        type=int,
+        default=1,
+        help="Tensor Parallelism Degree. Valid when using colossalai as dist plan.",
+    )
+    parser.add_argument(
+        "--placement",
+        type=str,
+        default='cpu',
+        help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
+    )
+    parser.add_argument(
+        "--shardinit",
+        type=bool,
+        default=False,
+        help=
+        "Shard the tensors when init the model to shrink peak memory size on the assigned device. Valid when using colossalai as dist plan.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="batch size per DP group of training.",
+    )
+    args = parser.parse_args()
+    return args
 
 # helpers
 def cycle(loader):
@@ -73,22 +105,11 @@ def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: 
     return model
 
 
-# instantiate GPT-like decoder model
-
-parser = colossalai.get_default_parser()
-args = parser.parse_args()
+args = parse_args()
+if args.distplan not in ["colossalai", "pytorch"]:
+        raise TypeError(f"{args.distplan} is error")
 disable_existing_loggers()
-colossalai.launch_from_torch(config=args.config, seed=42)
-
-# instantiate GPT-like decoder model
-
-default_pg = ProcessGroup(tp_degree=TPDEGREE)
-default_dist_spec = ShardSpec([-1], [TPDEGREE]) if USE_SHARD_INIT else None
-ctx = ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg)
-
-with ctx:
-    model = PaLM(num_tokens=256, dim=512, depth=8)
-    model = AutoregressiveWrapper(model, max_seq_len=SEQ_LEN)
+colossalai.launch_from_torch(config={})
 
 with gzip.open("./data/enwik8.gz") as file:
     X = np.fromstring(file.read(int(95e6)), dtype=np.uint8)
@@ -114,34 +135,62 @@ class TextSamplerDataset(Dataset):
 
 train_dataset = TextSamplerDataset(data_train, SEQ_LEN)
 val_dataset = TextSamplerDataset(data_val, SEQ_LEN)
-train_loader = cycle(DataLoader(train_dataset, batch_size=BATCH_SIZE))
-val_loader = cycle(DataLoader(val_dataset, batch_size=BATCH_SIZE))
+train_loader = cycle(DataLoader(train_dataset, batch_size=args.batch_size))
+val_loader = cycle(DataLoader(val_dataset, batch_size=args.batch_size))
 
-#tensor_parallelize(model, pg)
+if args.distplan == "colossalai":
+    # instantiate GPT-like decoder model
 
-pg = default_pg
-model = gemini_zero_dpp(model, pg, placement)
+    default_pg = ProcessGroup(tp_degree=args.tp_degree)
+    default_dist_spec = ShardSpec([-1], [args.tp_degree]) if args.shardinit else None
+    ctx = ColoInitContext(device='cpu', default_dist_spec=default_dist_spec, default_pg=default_pg)
 
-#optimizer
+    with ctx:
+        model = PaLM(num_tokens=256, dim=512, depth=8)
+        model = AutoregressiveWrapper(model, max_seq_len=SEQ_LEN)
 
-optimizer = GeminiAdamOptimizer(model, lr=1e-7, initial_scale=2**5)
+    pg = default_pg
+    #tensor_parallelize(model, pg)
+    model = gemini_zero_dpp(model, pg, args.placement)
+
+    #optimizer
+
+    #optimizer = GeminiAdamOptimizer(model, lr=1e-7, initial_scale=2**5)
+    optimizer = GeminiAdamOptimizer(model, lr=LEARNING_RATE, initial_scale=2**5)
+else:
+    model = PaLM(num_tokens=256, dim=512, depth=8)
+    model = AutoregressiveWrapper(model, max_seq_len=2048)
+    model.cuda()
+    optim = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+
 
 # training
 model.train()
 
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval=10.0, desc="training"):
 
-    optimizer.zero_grad()
+    if args.distplan == "colossalai":
+        optimizer.zero_grad()
 
-    loss = model(next(train_loader))
-    # loss.backward()
-    optimizer.backward(loss)
+        loss = model(next(train_loader))
+        # loss.backward()
+        optimizer.backward(loss)
 
-    print(f"training loss: {loss.item()}")
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-    # optim.step()
-    # optim.zero_grad()
-    optimizer.step()
+        print(f"training loss: {loss.item()}")
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        # optim.step()
+        # optim.zero_grad()
+        optimizer.step()
+    else:
+        for __ in range(GRADIENT_ACCUMULATE_EVERY):
+            loss = model(next(train_loader))
+            loss.backward()
+
+        print(f"training loss: {loss.item()}")
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        optim.step()
+        optim.zero_grad()
 
     # TODO
     # if i % VALIDATE_EVERY == 0:
