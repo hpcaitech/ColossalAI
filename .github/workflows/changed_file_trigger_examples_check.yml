@@ -113,17 +113,16 @@ jobs:
       - name: Traverse all files
         run: |
           dir=${{ matrix.container }}
-          for i in $dir
-            echo "${i} is i"
-            do
-                dir1=`ls ${PWD}/examples/${i}`
-                for j in $dir1
-                  do
-                    echo "$j haha"
-                    cd "${PWD}/examples/${i}/${j}"
-                    cd ../../..
-                  done
-            done
+          echo "${dir} is dir"
+          do
+              dir1=`ls ${PWD}/examples/${dir}`
+              for j in $dir1
+                do
+                  echo "$j haha"
+                  cd "${PWD}/examples/${dir}/${j}"
+                  cd ../../..
+                done
+          done
 
 
 #  weekly-check:
