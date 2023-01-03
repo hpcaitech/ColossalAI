@@ -1,8 +1,8 @@
 python train_dreambooth.py \
-    --pretrained_model_name_or_path="/home/lczht/data2/stable-diffusion-v1-4" \
-    --instance_data_dir="/data2/users/lczht/diffusers/examples/dreambooth/input" \
+    --pretrained_model_name_or_path= <Your Model Path> \
+    --instance_data_dir= <Your Training Pics Path> \
     --output_dir="path-to-save-model" \
-    --instance_prompt="a photo of sks dog" \
+    --instance_prompt="a photo of a dog" \
     --resolution=512 \
     --train_batch_size=1 \
     --gradient_accumulation_steps=1 \
