@@ -151,6 +151,7 @@ class MetaInfoProp:
         # fetch other memory informations
         memory_cost = meta_info.memory_cost
         graph_info.fwd_mem_tmp = memory_cost.fwd.temp
+        graph_info.fwd_mem_out = memory_cost.fwd.activation
         graph_info.bwd_mem_tmp = memory_cost.bwd.temp
         graph_info.bwd_mem_out = memory_cost.bwd.activation
 
