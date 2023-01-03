@@ -12,7 +12,7 @@ from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
 )
 from colossalai.tensor.sharding_spec import ShardingSpec
 
-from .constants import INPLACE_MODULE, NO_SAVE_ACTIVATION
+from .constants import INPLACE_MODULE, INPLACE_OPS, NO_SAVE_ACTIVATION
 from .registry import meta_register
 
 __all__ = ['MetaInfo']
@@ -104,6 +104,8 @@ class MetaInfo:
         # construct kwargs
         if self.target in INPLACE_MODULE:
             kwargs = {'inplace': self.target.inplace}
+        elif self.target in INPLACE_OPS:
+            kwargs = {'inplace': True}
         else:
             kwargs = {'inplace': False}
 
