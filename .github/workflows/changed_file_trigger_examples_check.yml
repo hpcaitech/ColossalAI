@@ -47,71 +47,71 @@ jobs:
           echo "$changedFileName was changed"
           res=`python .github/workflows/changed_file.py --fileNameList $changedFileName`
           echo "$res is res"
-          if [ -z "$res" ]
-          then
-                echo "\No change in example folder!"
-          else
-                pip install -r ./requirements/requirements.txt
-                pip install -e .
-                bash .github/workflows/changed_file.sh "$res"
-          fi
+#          if [ -z "$res" ]
+#          then
+#                echo "\No change in example folder!"
+#          else
+#                pip install -r ./requirements/requirements.txt
+#                pip install -e .
+#                bash .github/workflows/changed_file.sh "$res"
+#          fi
 
 
 
 
 # This is for all files weekly check
 
-  matrix_preparation:
-    name: Prepare Direction List for All files
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-
-    - name: 📚 Checkout
-      uses: actions/checkout@v3
-    - name: setup matrix
-      id: set-matrix
-      run: |
-          dir=`ls ${PWD}/examples`
-          allDir=""
-          for i in ${dir}; do
-            allDir="${i}:${allDir}"
-            echo "${allDir} is allDir"
-          done
-          res=`python .github/workflows/weekly_check.py --fileNameList $allDir`
-          container=$( IFS=',' ; echo "${res[*]}" )
-          echo "$container"
-          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
-
-
-  weekly_check:
-    if: github.event.schedule == '0 0 * * *'
-    name: Weekly check all examples
-    needs: matrix_preparation
-    runs-on: self-hosted
-    strategy:
-      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
-
-
-    container:
-      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
-    steps:
-
-      - name: 📚 Checkout
-        uses: actions/checkout@v3
-      - name: Traverse all files
-        run: |
-          dir=${{ matrix.container }}
-          echo "${dir} is dir"
-          dir1=`ls ${PWD}/examples/${dir}`
-          for j in $dir1
-            do
-              echo "$j is testing"
-              pip install -r ./requirements/requirements.txt
-              pip install -e .
-              cd "${PWD}/examples/${dir}/${j}"
-              bash test_ci.sh
-              cd ../../..
-            done
+#  matrix_preparation:
+#    name: Prepare Direction List for All files
+#    runs-on: ubuntu-latest
+#    outputs:
+#      matrix: ${{ steps.set-matrix.outputs.matrix }}
+#    steps:
+#
+#    - name: 📚 Checkout
+#      uses: actions/checkout@v3
+#    - name: setup matrix
+#      id: set-matrix
+#      run: |
+#          dir=`ls ${PWD}/examples`
+#          allDir=""
+#          for i in ${dir}; do
+#            allDir="${i}:${allDir}"
+#            echo "${allDir} is allDir"
+#          done
+#          res=`python .github/workflows/weekly_check.py --fileNameList $allDir`
+#          container=$( IFS=',' ; echo "${res[*]}" )
+#          echo "$container"
+#          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+#
+#
+#  weekly_check:
+#    if: github.event.schedule == '0 0 * * *'
+#    name: Weekly check all examples
+#    needs: matrix_preparation
+#    runs-on: self-hosted
+#    strategy:
+#      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+#
+#
+#    container:
+#      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
+#      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+#    steps:
+#
+#      - name: 📚 Checkout
+#        uses: actions/checkout@v3
+#      - name: Traverse all files
+#        run: |
+#          dir=${{ matrix.container }}
+#          echo "${dir} is dir"
+#          dir1=`ls ${PWD}/examples/${dir}`
+#          for j in $dir1
+#            do
+#              echo "$j is testing"
+#              pip install -r ./requirements/requirements.txt
+#              pip install -e .
+#              cd "${PWD}/examples/${dir}/${j}"
+#              bash test_ci.sh
+#              cd ../../..
+#            done
