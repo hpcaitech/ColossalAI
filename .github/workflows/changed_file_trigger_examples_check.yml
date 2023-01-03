@@ -74,7 +74,7 @@ jobs:
           echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
 
   weekly_check:
-#    if: github.event.schedule == '0 0 * * *'
+#    if: github.event.schedule == '0 0 * * *'111
     name: Weekly check all examples
     needs: matrix_preparation
     runs-on: [self-hosted, gpu]
