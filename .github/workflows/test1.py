@@ -18,7 +18,7 @@ args = parser.parse_args()
 # print(args.fileNameList, 'args.fileNameList')
 
 
-name_list = args.fileNameList.split("&&&@@@")
+name_list = args.fileNameList.split(":")
 # print(name_list, 'name_list')
 folder_need_check = []
 for loc in name_list:

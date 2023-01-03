@@ -43,7 +43,7 @@ jobs:
         run: | 
           changedFileName=""
           for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
-            changedFileName="${file}&&&@@@${changedFileName}"
+            changedFileName="${file}:${changedFileName}"
           done
           echo "$changedFileName was changed"
           res=`python .github/workflows/test.py --fileNameList $changedFileName`
@@ -75,7 +75,7 @@ jobs:
           dir=`ls ${PWD}/examples`
           allDir=""
           for i in ${dir}; do
-            allDir="${i}&&&@@@${allDir}"
+            allDir="${i}:${allDir}"
             echo "${allDir} is allDir"
           done  
           res=`python .github/workflows/test1.py --fileNameList $allDir`
