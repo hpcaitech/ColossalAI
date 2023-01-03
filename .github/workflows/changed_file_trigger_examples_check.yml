@@ -26,7 +26,7 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v35
         with:
-          since_last_remote_commit: true  # Using this can trigger action each time a PR is submitted.
+          since_last_remote_commit: true  # Using this can trigger action each time a PR is submitted.1
 
 
   deploy:
