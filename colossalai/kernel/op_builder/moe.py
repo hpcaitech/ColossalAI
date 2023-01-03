@@ -7,7 +7,7 @@ class MOEBuilder(Builder):
 
     def __init__(self):
         self.base_dir = "cuda_native/csrc"
-        self.name = 'scaled_upper_triang_masked_softmax'
+        self.name = 'moe'
         super().__init__()
 
     def include_dirs(self):
