@@ -196,8 +196,8 @@ class Linear3D(ParallelLayer):
         self.output_x_weight_parallel_mode = get_parallel_mode_from_env(OUTPUT_X_WEIGHT_3D)
         self.depth = get_depth_from_env()
         self.skip_bias_add = skip_bias_add
-        self.in_features_per_partition = divide(in_features, self.depth)
-        self.out_features_per_partition = divide(out_features, self.depth**2)
+        self.in_features_per_partition = divide(in_features, self.depth**2)
+        self.out_features_per_partition = divide(out_features, self.depth)
         self.bias_features_per_partition = divide(out_features, self.depth)
 
         self.weight = Parameter(
@@ -287,7 +287,7 @@ class Linear3D(ParallelLayer):
             local_state,
             self.weight_parallel_mode,
             dims={
-                weight_key: -1,
+                weight_key: 0,
                 bias_key: 0
             },
             partition_states={
@@ -310,7 +310,7 @@ class Linear3D(ParallelLayer):
             local_state,
             self.weight_parallel_mode,
             dims={
-                weight_key: -1,
+                weight_key: 0,
                 bias_key: 0
             },
             partition_states={
