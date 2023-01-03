@@ -23,15 +23,20 @@ __all__ = ['CheckpointSolverRotor']
 
 class CheckpointSolverRotor(CheckpointSolverBase):
 
-    def __init__(self, graph: Graph, free_memory: float = -1, cnode: List[str] = None, memory_slots: int = 500):
+    def __init__(self,
+                 graph: Graph,
+                 free_memory: float = -1,
+                 cnode: List[str] = None,
+                 memory_slots: int = 500,
+                 optim_multiplier: float = 1.0):
         """This is the simple implementation of dynamic programming algorithm rotor
         in https://hal.inria.fr/hal-02352969. Some code are adapted from
         https://gitlab.inria.fr/hiepacs/rotor.
 
         Usage:
-            Assume that we have a `GraphModule`, and we already applied the `MetaInfoProp`
+            Assume that we have a ``GraphModule``, and we have already done the extractions
             to the graph to retrieve all information needed, then we could use the following
-            code to find a solution using `CheckpointSolverRotor`:
+            code to find a solution using ``CheckpointSolverRotor``:
             >>> solver = CheckpointSolverRotor(gm.graph, free_memory=torch.cuda.mem_get_info(device=0)[0])
             >>> rotor_graph = solver.solve(force_python=True)   # otherwise use C solver
             >>> gm.graph = rotor_graph    # set the graph to a new graph
@@ -42,6 +47,8 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                 Use ``torch.cuda.mem_get_info(device=0)[0]`` to estimate the free_memory. Defaults to -1.
             cnode (List[str], optional): Common node List, should be the subset of input. Defaults to None.
             memory_slots (int, optional): Number of slots for discretizing memory budget. Defaults to 500.
+            optim_multiplier (float, optional): The multiplier of extra weight storage for the
+            ``torch.optim.Optimizer``. Default to 1.0.
         """
         super().__init__(graph, free_memory, True, cnode)
         self.memory_slots = memory_slots
@@ -298,8 +305,8 @@ class CheckpointSolverRotor(CheckpointSolverBase):
             lhs (int): The left index of the interval to backtrack.
             rhs (int): The right index of the interval to backtrack.
             budget (int): The memory budget for processing this interval.
-            cost_table (List[Any]): See `._compute_table()` for definitions
-            back_ptr (List[Any]): See `._compute_table()` for definitions
+            cost_table (List[Any]): See ``._compute_table()`` for definitions
+            back_ptr (List[Any]): See ``._compute_table()`` for definitions
 
         Raises:
             ValueError: Can not process the chain.
@@ -340,7 +347,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
 
     @staticmethod
     def _annotate_from_sequence(sequence: Sequence, node_list: List[List[Node]]):
-        """Annotate the nodes in the node_list with activation checkpoint from the sequence.
+        """Annotate the nodes in the ``node_list`` with activation checkpoint from the sequence.
 
         Args:
             sequence (Sequence): The sequence of executing nodes with activation checkpoint annotations.
