@@ -19,9 +19,9 @@ class CheckpointSolverChen(CheckpointSolverBase):
         Note that this algorithm targets at memory optimization only, using techniques in appendix A.
 
         Usage:
-            Assume that we have a `GraphModule`, and we already applied the `MetaInfoProp`
+            Assume that we have a ``GraphModule``, and we have already done the extractions
             to the graph to retrieve all information needed, then we could use the following
-            code to find a solution using `CheckpointSolverChen`:
+            code to find a solution using ``CheckpointSolverChen``:
             >>> solver = CheckpointSolverChen(gm.graph)
             >>> chen_graph = solver.solve()
             >>> gm.graph = chen_graph    # set the graph to a new graph
@@ -74,7 +74,7 @@ class CheckpointSolverChen(CheckpointSolverBase):
     def grid_search(self) -> Set:
         """
         Search ckpt strategy with b = 0, then run the allocation algorithm again with b = √xy.
-        Grid search over [√2/2 b, √2 b] for ckpt_opt over num_grids as in appendix A.
+        Grid search over [√2/2 b, √2 b] for ``ckpt_opt`` over ``num_grids`` as in appendix A.
         """
         _, b_approx = self.run_chen_greedy(0)
         b_min, b_max = math.floor(b_approx / math.sqrt(2)), math.ceil(b_approx * math.sqrt(2))
