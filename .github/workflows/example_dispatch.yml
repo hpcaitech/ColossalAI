@@ -28,12 +28,13 @@ jobs:
         do
           all_mannual_check_dir+=("\"${tv}\"")  
         done
-
+ 
         container=$( IFS=',' ; echo "${all_mannual_check_dir[*]}" )
         container="[${container}]"
         echo "$container"
         echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
-          
+
+# here the ("\"${tv}\"")  is important! Previously I use ("${tv}") and it was wrong.
 
   manual_check:
     name: Manually check example files
@@ -51,6 +52,8 @@ jobs:
         run: |
           dir=${{ matrix.container }}
           echo "${dir} is dir"
+          pip install -r ./requirements/requirements.txt
+          pip install -e .
           cd "${PWD}/examples/${dir}"
           bash test_ci.sh
           cd ../..
