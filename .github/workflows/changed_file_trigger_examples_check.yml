@@ -114,15 +114,13 @@ jobs:
         run: |
           dir=${{ matrix.container }}
           echo "${dir} is dir"
-          do
-              dir1=`ls ${PWD}/examples/${dir}`
-              for j in $dir1
-                do
-                  echo "$j haha"
-                  cd "${PWD}/examples/${dir}/${j}"
-                  cd ../../..
-                done
-          done
+          dir1=`ls ${PWD}/examples/${dir}`
+          for j in $dir1
+            do
+              echo "$j haha"
+              cd "${PWD}/examples/${dir}/${j}"
+              cd ../../..
+            done
 
 
 #  weekly-check:
