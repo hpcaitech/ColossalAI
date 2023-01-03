@@ -39,8 +39,8 @@ jobs:
       options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
     steps:
 
-      - name: 📚 Checkout
-        uses: actions/checkout@v3
+#      - name: 📚 Checkout
+#        uses: actions/checkout@v3
 
 # 暂时注释掉以节省时间。之后要复原！
       - name: List all changed example files
