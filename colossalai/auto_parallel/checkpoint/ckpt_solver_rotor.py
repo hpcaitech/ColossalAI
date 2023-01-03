@@ -50,7 +50,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
             optim_multiplier (float, optional): The multiplier of extra weight storage for the
             ``torch.optim.Optimizer``. Default to 1.0.
         """
-        super().__init__(graph, free_memory, True, cnode)
+        super().__init__(graph, free_memory, True, cnode, optim_multiplier)
         self.memory_slots = memory_slots
 
         # construct chain
