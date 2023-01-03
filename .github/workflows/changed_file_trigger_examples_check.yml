@@ -36,7 +36,7 @@ jobs:
             changedFileName="${file}:${changedFileName}"
           done
           echo "$changedFileName was changed"
-          res=`python ${PWD}/.github/workflows/changedFile.py --fileNameList $changedFileName`
+          res=`python ${PWD}/.github/workflows/weekly_check.py --fileNameList $changedFileName`
           echo "In example folder, $res are changed"
           if [ -z "$res" ]
           then
