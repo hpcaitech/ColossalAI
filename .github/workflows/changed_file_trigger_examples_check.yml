@@ -13,11 +13,10 @@ jobs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
     name: Check out all files
     steps:
-      - name: 📚 Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-        run: |
+      - run: |
             pip install -r ./requirements/requirements.txt
             pip install -e .
       - uses: actions/checkout@v3
