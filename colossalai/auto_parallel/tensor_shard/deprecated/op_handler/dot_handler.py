@@ -6,9 +6,9 @@ from typing import List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
-    ignore_sharding_exception
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
+
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
 
 from ..constants import LINEAR_FUNC_OP, LINEAR_MODULE_OP
 from .operator_handler import OperatorHandler
@@ -82,13 +82,13 @@ class MatVecStrategyGenerator(StrategyGenerator):
 
 class MatMulStrategyGenerator(StrategyGenerator):
     """
-    MatMulStrategyGenerator is used to generate the sharding strategies when the second tensor is 
+    MatMulStrategyGenerator is used to generate the sharding strategies when the second tensor is
     a 2D tensor. This is used for nn.Linear, F.linear, torch.matmul and torch.addmm.
 
     A matmul can be formulated as [n, p] x [p, q] = [n, q]
 
     Args:
-        is_linear (bool): whether this generator is used for nn.Linear and F.linear. 
+        is_linear (bool): whether this generator is used for nn.Linear and F.linear.
             This will incur extra transformation of the dim partitioning as the weight is transposed.
     """
 
@@ -255,7 +255,7 @@ class BatchedMatMulStrategyGenerator(StrategyGenerator):
     """
     Generate sharding strategies for the batched matrix multiplication.
 
-    A batched matrix multiplication can be viewed as 
+    A batched matrix multiplication can be viewed as
     [b, i, k] x [b, k, j] -> [b, i, j]
     """
 
@@ -431,7 +431,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0], 1: [mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -451,7 +451,7 @@ class DotHandler(OperatorHandler):
 
         # create and register strategy
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
@@ -473,7 +473,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -491,7 +491,7 @@ class DotHandler(OperatorHandler):
         communication_cost_grad_backward = self.device_mesh.all_reduce_cost(weight_memory_cost, mesh_dim_0)
         communication_cost = communication_cost_activation_forward + communication_cost_grad_backward
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
@@ -510,7 +510,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_input)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -529,7 +529,7 @@ class DotHandler(OperatorHandler):
         communication_cost = communication_cost_activation_backward + communication_cost_activation_forward
 
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
@@ -548,7 +548,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -564,7 +564,7 @@ class DotHandler(OperatorHandler):
         # compute the communication cost of this strategy
         communication_cost = self.device_mesh.all_reduce_cost(activation_memory_cost, mesh_dim)
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
@@ -583,7 +583,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -600,7 +600,7 @@ class DotHandler(OperatorHandler):
         communication_cost_activation_backward = self.device_mesh.all_reduce_cost(input_grad_memory_cost, mesh_dim)
         communication_cost = communication_cost_activation_backward
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
@@ -619,7 +619,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {0: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -636,7 +636,7 @@ class DotHandler(OperatorHandler):
         communication_cost_weight_backward = self.device_mesh.flatten_device_mesh.all_reduce_cost(weight_memory_cost, 0)
         communication_cost = communication_cost_weight_backward
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
@@ -655,7 +655,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -673,7 +673,7 @@ class DotHandler(OperatorHandler):
             activation_memory_cost, 0)
         communication_cost = communication_cost_forward_activation
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
@@ -692,7 +692,7 @@ class DotHandler(OperatorHandler):
         sharding_spec_for_weight = self._generate_sharding_spec(self.weight, dim_partition_dict_for_weight)
 
         dim_partition_dict_for_output = {1: [mesh_dim_0, mesh_dim_1]}
-        sharding_spec_for_ouput = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
+        sharding_spec_for_output = self._generate_sharding_spec(self.output_data, dim_partition_dict_for_output)
 
         # generate resharding cost for this strategy
         resharding_costs = self._generate_resharding_costs([sharding_spec_for_input, sharding_spec_for_weight])
@@ -709,7 +709,7 @@ class DotHandler(OperatorHandler):
             input_grad_memory_cost, 0)
         communication_cost = communication_cost_activation_backward
         sharding_strategies = ShardingStrategy(name,
-                                               output_sharding_spec=sharding_spec_for_ouput,
+                                               output_sharding_spec=sharding_spec_for_output,
                                                compute_cost=compute_cost,
                                                communication_cost=communication_cost,
                                                memory_cost=toatl_memory_cost,
