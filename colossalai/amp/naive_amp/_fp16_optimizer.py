@@ -70,8 +70,8 @@ class FP16Optimizer(Optimizer):
 
         # get process group
         def _get_process_group(parallel_mode):
-            if gpc.is_initialized(ParallelMode.DATA) and gpc.get_world_size(ParallelMode.DATA):
-                return gpc.get_group(ParallelMode.DATA)
+            if gpc.is_initialized(parallel_mode) and gpc.get_world_size(parallel_mode):
+                return gpc.get_group(parallel_mode)
             else:
                 return None
 
