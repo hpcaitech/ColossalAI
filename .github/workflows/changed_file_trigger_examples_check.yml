@@ -76,8 +76,11 @@ jobs:
           dir=`ls ${PWD}/examples`
           allDir=""
           for i in ${dir}; do
-            allDir="${i}:${allDir}"
-            echo "${allDir} is allDir"
+            dir1=`ls ${PWD}/examples/${i}`
+            for j in ${dir1}; do
+              allDir="${j}:${allDir}"
+              echo "${allDir} is allDir"
+            done
           done
           res=`python .github/workflows/weekly_check.py --fileNameList $allDir`
           container=$( IFS=',' ; echo "${res[*]}" )
@@ -86,7 +89,7 @@ jobs:
 
 
   weekly_check:
-    if: github.event.schedule == '0 0 * * *'
+#    if: github.event.schedule == '0 0 * * *'
     name: Weekly check all examples
     needs: matrix_preparation
     runs-on: self-hosted
@@ -105,13 +108,8 @@ jobs:
         run: |
           dir=${{ matrix.container }}
           echo "${dir} is dir"
-          dir1=`ls ${PWD}/examples/${dir}`
-          for j in $dir1
-            do
-              echo "$j is testing"
-              pip install -r ./requirements/requirements.txt
-              pip install -e .
-              cd "${PWD}/examples/${dir}/${j}"
-              bash test_ci.sh
-              cd ../../..
-            done
+          pip install -r ./requirements/requirements.txt
+          pip install -e .
+          cd "${PWD}/examples/${dir}"
+          bash test_ci.sh
+          cd ../../..
