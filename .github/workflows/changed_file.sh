@@ -1,11 +1,11 @@
 #!/bin/bash
 
 res=$1
-res1=($res)
-echo "${res1} is current location"
-for ii in ${res1[*]}; do
-  pushd "examples/${ii}" > /dev/null
+listed_res=($res)
+echo "${listed_res} is current directory"
+for sub_dir in ${listed_res[*]}; do
+  pushd "examples/${sub_dir}" > /dev/null
       sh test_ci.sh
   popd < /dev/null
-  echo "${ii} has been executed"
+  echo "${sub_dir} has been executed"
 done

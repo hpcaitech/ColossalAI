@@ -1,13 +1,11 @@
-name: manual_check_example_file
-run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+name: Test Examples Manually by Dispatch
 on:
   workflow_dispatch:
     inputs:
-      example_direction:
+      example_directory:
         type: string
-        description: example direction, separated by comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
+        description: example directory, separated by comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
         required: true
-
 
 jobs:
   manual_check_matrix_preparation:
@@ -18,41 +16,36 @@ jobs:
     steps:
     - id: set-matrix-1
       env:
-        check_dir: ${{ inputs.example_direction }}
+        check_dir: ${{ inputs.example_directory }}
       run: |
-
         IFS=','
         all_mannual_check_dir=()
-
-        for tv in $check_dir
+        for sub_dir in $check_dir
         do
-          all_mannual_check_dir+=("\"${tv}\"")
+          all_mannual_check_dir+=("\"${sub_dir}\"")
         done
-
         container=$( IFS=',' ; echo "${all_mannual_check_dir[*]}" )
         container="[${container}]"
         echo "$container"
         echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
 
-
   manual_check:
     name: Manually check example files
     needs: manual_check_matrix_preparation
-    runs-on: self-hosted
+    runs-on: [self-hosted, gpu]
     strategy:
       matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}
     container:
-      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
-      options: --gpus all --rm -v /data/scratch/cifar-10:/data/scratch/cifar-10
+      image: hpcaitech/pytorch-cuda:1.12
     steps:
       - name: 📚 Checkout
         uses: actions/checkout@v3
       - name: Traverse all files
         run: |
           dir=${{ matrix.container }}
-          echo "${dir} is current direction"
+          echo "${dir} is current directory"
           pip install -r ./requirements/requirements.txt
           pip install -e .
-          cd "${PWD}/examples/${dir}"
-          bash test_ci.sh
-          cd ../..
+          pushd "${PWD}/examples/${dir}" > /dev/null
+              bash test_ci.sh
+          popd < /dev/null
