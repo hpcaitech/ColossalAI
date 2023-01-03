@@ -24,12 +24,11 @@
 </div>
 
 ## Latest News
-
+* [2023/01] [Hardware Savings Up to 46 Times for AIGC and  Automatic Parallelism](https://www.hpc-ai.tech/blog/colossal-ai-0-2-0)
 * [2022/11] [Diffusion Pretraining and Hardware Fine-Tuning Can Be Almost 7X Cheaper](https://www.hpc-ai.tech/blog/diffusion-pretraining-and-hardware-fine-tuning-can-be-almost-7x-cheaper)
 * [2022/10] [Use a Laptop to Analyze 90% of Proteins, With a Single-GPU Inference Sequence Exceeding 10,000](https://www.hpc-ai.tech/blog/use-a-laptop-to-analyze-90-of-proteins-with-a-single-gpu-inference-sequence-exceeding)
 * [2022/10] [Embedding Training With 1% GPU Memory and 100 Times Less Budget for Super-Large Recommendation Model](https://www.hpc-ai.tech/blog/embedding-training-with-1-gpu-memory-and-10-times-less-budget-an-open-source-solution-for)
 * [2022/09] [HPC-AI Tech Completes $6 Million Seed and Angel Round Fundraising](https://www.hpc-ai.tech/blog/hpc-ai-tech-completes-6-million-seed-and-angel-round-fundraising-led-by-bluerun-ventures-in-the)
-* [2022/07] [Colossal-AI Seamlessly Accelerates Large Models at Low Costs with Hugging Face](https://www.hpc-ai.tech/blog/colossal-ai-seamlessly-accelerates-large-models-at-low-costs-with-hugging-face)
 
 ## Table of Contents
 <ul>
