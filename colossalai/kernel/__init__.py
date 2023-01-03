@@ -24,7 +24,19 @@ except ImportError:
     from colossalai.kernel.op_builder import ScaledSoftmaxBuilder
     scaled_upper_triang_masked_softmax = ScaledSoftmaxBuilder().load()
 
+try:
+    from colossalai._C import moe
+except ImportError:
+    from colossalai.kernel.op_builder import MOEBuilder
+    moe = MOEBuilder().load()
+
 __all__ = [
-    "fused_optim", "cpu_optim", "multihead_attention", "LayerNorm", "FusedScaleMaskSoftmax", "MultiHeadAttention",
-    "scaled_upper_triang_masked_softmax"
+    "fused_optim",
+    "cpu_optim",
+    "multihead_attention",
+    "moe",
+    "LayerNorm",
+    "FusedScaleMaskSoftmax",
+    "MultiHeadAttention",
+    "scaled_upper_triang_masked_softmax",
 ]

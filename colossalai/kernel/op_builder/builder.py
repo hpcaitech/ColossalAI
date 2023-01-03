@@ -1,12 +1,12 @@
 import os
 import re
-import sys
 from pathlib import Path
+from typing import List
 
 import torch
 
 
-def get_cuda_cc_flag():
+def get_cuda_cc_flag() -> List:
     """get_cuda_cc_flag
 
     cc flag for your GPU arch

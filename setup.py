@@ -1,7 +1,7 @@
 import os
 import re
 
-from setuptools import Extension, find_packages, setup
+from setuptools import find_packages, setup
 
 from colossalai.kernel.op_builder.utils import get_cuda_bare_metal_version
 
@@ -161,8 +161,8 @@ if build_cuda_ext:
         cuda_ext_helper('colossalai._C.scaled_masked_softmax',
                         ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu'], extra_cuda_flags + cc_flag))
 
-    ext_modules.append(
-        cuda_ext_helper('colossalai._C.moe', ['moe_cuda.cpp', 'moe_cuda_kernel.cu'], extra_cuda_flags + cc_flag))
+    from colossalai.kernel.op_builder import MOEBuilder
+    ext_modules.append(MOEBuilder().builder('colossalai._C.moe'))
 
     extra_cuda_flags = ['-maxrregcount=50']
 
