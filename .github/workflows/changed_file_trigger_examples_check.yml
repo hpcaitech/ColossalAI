@@ -9,18 +9,10 @@ jobs:
 # This is for changed files detect and check.
   detect-changed-files:
     runs-on: ubuntu-latest
-    container:
-      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
     outputs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
     name: Check out all files
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - run: |
-            pip install -r ./requirements/requirements.txt
-            pip install -e .
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -34,6 +26,8 @@ jobs:
     name: Test each changed example files
     needs: detect-changed-files
     runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:1.12
     steps:
       - name: List all changed example files
         run: |
@@ -48,6 +42,8 @@ jobs:
           then
                 echo "\No change in example folder!"
           else
+                pip install -r ./requirements/requirements.txt
+                pip install -e .
                 bash .github/workflows/changed_file.sh "$res"
           fi
 
@@ -85,7 +81,7 @@ jobs:
     strategy:
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
     container:
-      image: hpcaitech/pytorch-cuda:1.12
+      image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
     steps:
       - name: 📚 Checkout
         uses: actions/checkout@v3
