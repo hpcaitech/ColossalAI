@@ -125,7 +125,7 @@ jobs:
             done
 
   manual_check_matrix_preparation:
-    if: ${{github.event.workflow_dispatch.inputs.example_direction != ''}}
+    if: ${{github.event.workflow_dispatch.example_direction != ''}}
     name: Check the examples user want
     runs-on: ubuntu-latest
     outputs:
