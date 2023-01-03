@@ -17,7 +17,7 @@ on:
 
 jobs:
   detect-changed-files:
-    if: github.event.workflow_dispatch.inputs.example_direction == ''
+    if: ${{github.event.workflow_dispatch.inputs.example_direction}} == ''
     runs-on: ubuntu-latest
     outputs:
       changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
@@ -37,7 +37,7 @@ jobs:
 
 
   deploy:
-    if: github.event.workflow_dispatch.inputs.example_direction == ''
+    if: ${{github.event.workflow_dispatch.inputs.example_direction}} == ''
     name: Build and deploy test image
     needs: detect-changed-files
     runs-on: self-hosted
@@ -68,7 +68,7 @@ jobs:
 
 
   matrix_preparation:
-    if: github.event.workflow_dispatch.inputs.example_direction == ''
+    if: ${{github.event.workflow_dispatch.inputs.example_direction}} == ''
     name: Prepare Direction List
     runs-on: ubuntu-latest
     outputs:
@@ -117,13 +117,15 @@ jobs:
           for j in $dir1
             do
               echo "$j is testing"
+              pip install -r ./requirements/requirements.txt
+              pip install -e .
               cd "${PWD}/examples/${dir}/${j}"
               bash test_ci.sh
               cd ../../..
             done
 
   manual_check_matrix_preparation:
-    if: github.event.workflow_dispatch.inputs.example_direction != ''
+    if: ${{github.event.workflow_dispatch.inputs.example_direction}} != ''
     name: Check the examples user want
     runs-on: ubuntu-latest
     outputs:
