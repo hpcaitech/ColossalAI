@@ -78,7 +78,7 @@ jobs:
           for i in ${dir}; do
             allDir="${i}&&&@@@${allDir}"
             echo "${allDir} is allDir"
-          done
+          done  
           res=`python .github/workflows/test1.py --fileNameList $allDir`
 
 
