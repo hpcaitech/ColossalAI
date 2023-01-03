@@ -49,7 +49,7 @@ jobs:
           for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
             changedFileName="${file}&&&@@@${changedFileName}"
           done
-          
+          echo "$changedFileName was changed"
           if [ -z "$changedFileName" ]
           then
                 echo "\No change in example folder!"
