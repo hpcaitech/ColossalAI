@@ -130,7 +130,7 @@ jobs:
     - id: set-matrix-1
       env:
         check_dir: ${{ inputs.example_direction }}
-      run: |
+      run: | 
         IFS=','
 #          all_mannual_check_dir=()
 #
