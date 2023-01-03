@@ -98,7 +98,7 @@ jobs:
   weekly-check:
     name: Weekly check all examples
     needs: matrix_preparation
-    runs-on: ubuntu-latest  # 有时间得改回self-hostes才能跑所有的example
+    runs-on: self-hosted  # 有时间得改回self-hostes才能跑所有的example
     strategy:
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
 
