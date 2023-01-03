@@ -22,6 +22,7 @@ def get_temp_total_chunk_on_cuda(chunk: Chunk):
     return total_temp
 
 
+# TODO() not work for module where two params share the same tensor.
 def _add_param(model, name, param):
     name_list = name.split('.')
     module = model._modules[name_list[0]]
@@ -30,7 +31,7 @@ def _add_param(model, name, param):
     module._parameters[name_list[-1]] = param
 
 
-def convert_to_torch_module(gemini_ddp_model) -> torch.nn.Module:
+def convert_to_torch_module(gemini_ddp_model: 'GeminiDDP') -> torch.nn.Module:
     """convert_to_torch_module
 
     Args:
@@ -39,11 +40,14 @@ def convert_to_torch_module(gemini_ddp_model) -> torch.nn.Module:
     Returns:
         torch.nn.Module: a torch model contains the params of gemini_ddp_model
     """
+    from colossalai.nn.parallel import GeminiDDP
+    assert isinstance(gemini_ddp_model, GeminiDDP)
     module = gemini_ddp_model.module
 
-    for n, p in module.named_parameters():
-        if isinstance(p, ColoTensor):
-            p.to_replicate_()
-            _add_param(module, n, p.data)
+    # replace ColoTensor to torch.nn.Tensor in module
+    cnt = 0
+    for n, p in gemini_ddp_model.torch_named_parameters():
+        _add_param(module, n, p)
+        cnt += 1
 
     return module
