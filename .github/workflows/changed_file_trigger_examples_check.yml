@@ -1,0 +1,128 @@
+name: Test Example
+on:
+  pull_request:
+  schedule:
+    # run at 00:00 of every Sunday(singapore time) so here is UTC time Saturday 16:00
+    - cron:  '0 16 * * 6'
+
+jobs:
+# This is for changed files detect and check.
+  detect-changed-files:
+    runs-on: ubuntu-latest
+    outputs:
+      changedFiles: ${{ steps.changed-files.outputs.all_changed_files }}
+    name: Check out all files
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: Get all changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v35
+        with:
+          since_last_remote_commit: true  # Using this can trigger action each time a PR is submitted.
+
+  prepare-changed-file-matrix:
+    name: Prepare changed file List for checking
+    needs: detect-changed-files
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+    - name: setup matrix
+      id: set-matrix
+      run: |
+          changedFileName=""
+          for file in ${{ needs.detect-changed-files.outputs.changedFiles  }}; do
+            changedFileName="${file}:${changedFileName}"
+          done
+          echo "$changedFileName was changed"
+          res=`python .github/workflows/changed_file.py --fileNameList $changedFileName`
+          echo "All changed files are $res"
+          if [ -z "$res" ]
+          then
+                echo "\No change in example folder!"
+          else
+                var=$( IFS=',' ; echo "${res[*]}" )
+                echo "$var"
+                echo "::set-output name=matrix::{\"var\":$(echo "$var")}"
+          fi
+
+# If no file is changed, it will prompt an error and shows the matrix do not have value.
+  check-all-changed-files:
+    if:
+    name: Test each changed example files
+    needs: prepare-changed-file-matrix
+    runs-on: self-hosted
+    strategy:
+      matrix: ${{fromJson(needs.prepare-changed-file-matrix.outputs.matrix)}}
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: Install dependancies
+        run: |
+            pip install -r ./requirements/requirements.txt
+            pip install -e .
+      - name: List all changed example files
+        run: |
+            res=${{ matrix.var }}
+            cd "${PWD}/examples/${res}"
+            bash test_ci.sh
+            cd ../../..
+
+
+# This is for all files' weekly check
+  matrix_preparation:
+    name: Prepare Directory List for All files
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+    - name: 📚 Checkout
+      uses: actions/checkout@v3
+    - name: setup matrix
+      id: set-matrix
+      run: |
+          dir=`ls ${PWD}/examples`
+          allDir=""
+          for outer_dir in ${dir}; do
+            tmp=`ls ${PWD}/examples/${outer_dir}`
+            for inner_dir in ${tmp}; do
+              allDir="${outer_dir}/${inner_dir}:${allDir}"
+              echo "${allDir} are all directories"
+            done
+          done
+          res=`python .github/workflows/weekly_check.py --fileNameList $allDir`
+          var=$( IFS=',' ; echo "${res[*]}" )
+          echo "$var"
+          echo "::set-output name=matrix::{\"var\":$(echo "$var")}"
+
+  weekly_check:
+    if: ${{ github.event_name == 'schedule' }}
+    name: Weekly check all examples
+    needs: matrix_preparation
+    runs-on: self-hosted
+    strategy:
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+      - name: Install the requirements
+        run: |
+          pip install -r ./requirements/requirements.txt
+          pip install -e .
+      - name: Traverse all files
+        run: |
+          dir=${{ matrix.var }}
+          echo "${dir} is current directory"
+          cd "${PWD}/examples/${dir}"
+          bash test_ci.sh
+          cd ../../..
