@@ -32,7 +32,7 @@ from colossalai.nn.parallel import ZeroDDP
 from colossalai.nn.parallel.utils import convert_to_torch_module
 from colossalai.tensor import ColoTensor, ProcessGroup
 from colossalai.utils import get_current_device
-from colossalai.utils.model.colo_init_context import ColoInitContext, post_process_colo_init_ctx
+from colossalai.utils.model.colo_init_context import ColoInitContext
 
 disable_existing_loggers()
 logger = get_dist_logger()
