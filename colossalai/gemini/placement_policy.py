@@ -236,7 +236,7 @@ class PlacementPolicyFactory:
         return PlacementPolicyFactory.policies[policy_name]
 
     @staticmethod
-    def get_polocy_names():
+    def get_policy_names():
         return tuple(PlacementPolicyFactory.policies.keys())
 
     @staticmethod
