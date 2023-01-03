@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.getatrr_handler import GetattrHandler
+from colossalai.auto_parallel.tensor_shard.node_handler.getattr_handler import GetattrHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer

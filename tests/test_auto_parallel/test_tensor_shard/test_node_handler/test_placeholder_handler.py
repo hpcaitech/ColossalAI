@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlacehodlerHandler
+from colossalai.auto_parallel.tensor_shard.node_handler.placeholder_handler import PlaceholderHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
@@ -36,7 +36,7 @@ def test_placeholder_handler(placeholder_option):
     placeholder_node = list(graph.nodes)[0]
     placeholder_strategies_vector = StrategiesVector(placeholder_node)
     # build handler
-    placeholder_handler = PlacehodlerHandler(node=placeholder_node,
+    placeholder_handler = PlaceholderHandler(node=placeholder_node,
                                              device_mesh=device_mesh,
                                              strategies_vector=placeholder_strategies_vector,
                                              placeholder_option=placeholder_option)
