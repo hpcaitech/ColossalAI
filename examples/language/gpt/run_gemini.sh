@@ -10,4 +10,11 @@ export BATCH_SIZE=${BATCH_SIZE:-16}
 export MODEL_TYPE=${MODEL_TYPE:-"gpt2_medium"}
 
 mkdir -p gemini_logs
-torchrun --standalone --nproc_per_node=${GPUNUM} train_gpt_demo.py --tp_degree=${TPDEGREE} --model_type=${MODEL_TYPE} --batch_size=${BATCH_SIZE} --placement ${PLACEMENT} --shardinit ${USE_SHARD_INIT} --distplan ${DISTPAN} 2>&1 | tee ./gemini_logs/${MODEL_TYPE}_${DISTPAN}_gpu_${GPUNUM}_bs_${BATCH_SIZE}_tp_${TPDEGREE}.log
+torchrun --standalone --nproc_per_node=${GPUNUM} train_gpt_demo.py \
+--tp_degree=${TPDEGREE} \
+--model_type=${MODEL_TYPE} \
+--batch_size=${BATCH_SIZE} \
+--placement=${PLACEMENT} \
+--shardinit=${USE_SHARD_INIT} \
+--distplan=${DISTPAN} \
+2>&1 | tee ./gemini_logs/${MODEL_TYPE}_${DISTPAN}_gpu_${GPUNUM}_bs_${BATCH_SIZE}_tp_${TPDEGREE}_${PLACEMENT}.log

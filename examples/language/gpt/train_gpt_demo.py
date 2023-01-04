@@ -217,8 +217,7 @@ def build_gemini(model: torch.nn.Module, pg: ProcessGroup, placement_policy: str
 
 def main():
     # version check
-    # this example is supposed to work for versions less than 0.2.0 but greater than 0.1.9
-    assert version.parse(CAI_VERSION) < version.parse("0.2.0")
+    # this example is supposed to work for versions greater than 0.1.9
     assert version.parse(CAI_VERSION) >= version.parse("0.1.9")
 
     set_cpu_maximum_parallelism()
