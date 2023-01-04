@@ -6,7 +6,7 @@ from .builder import Builder, get_cuda_cc_flag
 class MultiHeadAttnBuilder(Builder):
 
     def __init__(self):
-        self.base_dir = "colossalai/kernel/cuda_native/csrc"
+        self.base_dir = "cuda_native/csrc"
         self.name = 'multihead_attention'
         super().__init__()
 
