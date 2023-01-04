@@ -1,7 +1,7 @@
 # Colossal-AI
 <div id="top" align="center">
 
-   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
+   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
    Colossal-AI: 一个面向大模型时代的通用深度学习系统
 
