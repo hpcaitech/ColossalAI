@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 
-import torch
-from .base_grad_scaler import BaseGradScaler
 from typing import Optional
+
+import torch
+
+from .base_grad_scaler import BaseGradScaler
 
 __all__ = ['DynamicGradScaler']
 
