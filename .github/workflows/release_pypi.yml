@@ -16,10 +16,13 @@ jobs:
     timeout-minutes: 20
     steps:
     - uses: actions/checkout@v2
+
     - uses: actions/setup-python@v2
-      with:
-        python-version: '3.7.12'
+        with:
+          python-version: '3.8.14'
+
     - run: python setup.py sdist build
+    
     # publish to PyPI if executed on the main branch
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
