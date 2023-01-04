@@ -23,22 +23,37 @@ jobs:
           repository: hpcaitech/TensorNVMe
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
           path: TensorNVMe
+
       - name: Install tensornvme
         run: |
           cd TensorNVMe
           conda install cmake
           pip install -r requirements.txt
           pip install -v .
+
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-      - name: Install Colossal-AI
+      
+      - name: Find the changed files
+        id: find-changed-files
+        uses: tj-actions/changed-files@v34
+        with:
+          files: |
+            op_builder/**
+            colossalai/kernel/**
+            setup.py
+
+      - name: Restore cache
+        if: steps.find-changed-files.outputs.any_changed != 'true'
         run: |
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
-          pip install -r requirements/requirements.txt
+
+      - name: Install Colossal-AI
+        run: |
           pip install -v -e .
-          cp -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
           pip install -r requirements/requirements-test.txt
+
       - name: Unit Testing
         run: |
           PYTHONPATH=$PWD pytest tests
@@ -46,3 +61,7 @@ jobs:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+      
+      - name: Store Cache
+        run: |
+          cp -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
