@@ -43,10 +43,11 @@ class NaiveAMPOptimizer(ColossalaiOptimizer):
         return self.optim.step()
 
     def clip_grad_norm(self, model: nn.Module, max_norm: float):
-        if max_norm > 0.0:
-            raise RuntimeError("NaiveAMP optimizer has clipped gradients during optimizer.step(). "
-                               "If you have supplied clip_grad_norm in the amp_config, "
-                               "executing the method clip_grad_norm is not allowed.")
+        if self.optim.max_norm == max_norm:
+            return
+        raise RuntimeError("NaiveAMP optimizer has clipped gradients during optimizer.step(). "
+                           "If you have supplied clip_grad_norm in the amp_config, "
+                           "executing the method clip_grad_norm is not allowed.")
 
 
 class NaiveAMPModel(nn.Module):
