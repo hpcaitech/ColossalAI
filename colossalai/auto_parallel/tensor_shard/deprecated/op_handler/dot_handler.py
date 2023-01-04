@@ -6,9 +6,9 @@ from typing import List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
-    ignore_sharding_exception
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
+
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
 
 from ..constants import LINEAR_FUNC_OP, LINEAR_MODULE_OP
 from .operator_handler import OperatorHandler
@@ -82,13 +82,13 @@ class MatVecStrategyGenerator(StrategyGenerator):
 
 class MatMulStrategyGenerator(StrategyGenerator):
     """
-    MatMulStrategyGenerator is used to generate the sharding strategies when the second tensor is 
+    MatMulStrategyGenerator is used to generate the sharding strategies when the second tensor is
     a 2D tensor. This is used for nn.Linear, F.linear, torch.matmul and torch.addmm.
 
     A matmul can be formulated as [n, p] x [p, q] = [n, q]
 
     Args:
-        is_linear (bool): whether this generator is used for nn.Linear and F.linear. 
+        is_linear (bool): whether this generator is used for nn.Linear and F.linear.
             This will incur extra transformation of the dim partitioning as the weight is transposed.
     """
 
@@ -255,7 +255,7 @@ class BatchedMatMulStrategyGenerator(StrategyGenerator):
     """
     Generate sharding strategies for the batched matrix multiplication.
 
-    A batched matrix multiplication can be viewed as 
+    A batched matrix multiplication can be viewed as
     [b, i, k] x [b, k, j] -> [b, i, j]
     """
 
