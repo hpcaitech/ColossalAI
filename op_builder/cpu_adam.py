@@ -6,7 +6,7 @@ from .utils import append_nvcc_threads
 
 class CPUAdamBuilder(Builder):
     NAME = "cpu_adam"
-    BASE_DIR = "colossalai/kernel/cuda_native"
+    BASE_DIR = "cuda_native"
 
     def __init__(self):
         self.name = CPUAdamBuilder.NAME

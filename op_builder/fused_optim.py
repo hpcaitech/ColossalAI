@@ -5,7 +5,7 @@ from .builder import Builder, get_cuda_cc_flag
 
 class FusedOptimBuilder(Builder):
     NAME = 'fused_optim'
-    BASE_DIR = "colossalai/kernel/cuda_native/csrc"
+    BASE_DIR = "cuda_native/csrc"
 
     def __init__(self):
         self.name = FusedOptimBuilder.NAME

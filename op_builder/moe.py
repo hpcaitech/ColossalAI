@@ -6,7 +6,7 @@ from .builder import Builder, get_cuda_cc_flag
 class MOEBuilder(Builder):
 
     def __init__(self):
-        self.base_dir = "colossalai/kernel/cuda_native/csrc"
+        self.base_dir = "cuda_native/csrc"
         self.name = 'moe'
         super().__init__()
 
