@@ -3,7 +3,7 @@ import re
 
 from setuptools import find_packages, setup
 
-from colossalai.kernel.op_builder.utils import get_cuda_bare_metal_version
+from op_builder.utils import get_cuda_bare_metal_version
 
 try:
     import torch
@@ -17,6 +17,7 @@ try:
                            "The latest stable release can be obtained from https://pytorch.org/")
 except ImportError:
     raise ModuleNotFoundError('torch is not found. You need to install PyTorch before installing Colossal-AI.')
+
 
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
@@ -137,7 +138,7 @@ if build_cuda_ext:
             })
 
     #### fused optim kernels ###
-    from colossalai.kernel.op_builder import FusedOptimBuilder
+    from op_builder import FusedOptimBuilder
     ext_modules.append(FusedOptimBuilder().builder('colossalai._C.fused_optim'))
 
     #### N-D parallel kernels ###
@@ -154,14 +155,14 @@ if build_cuda_ext:
         '--expt-extended-lambda'
     ]
 
-    from colossalai.kernel.op_builder import ScaledSoftmaxBuilder
+    from op_builder import ScaledSoftmaxBuilder
     ext_modules.append(ScaledSoftmaxBuilder().builder('colossalai._C.scaled_upper_triang_masked_softmax'))
 
     ext_modules.append(
         cuda_ext_helper('colossalai._C.scaled_masked_softmax',
                         ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu'], extra_cuda_flags + cc_flag))
 
-    from colossalai.kernel.op_builder import MOEBuilder
+    from op_builder import MOEBuilder
     ext_modules.append(MOEBuilder().builder('colossalai._C.moe'))
 
     extra_cuda_flags = ['-maxrregcount=50']
@@ -171,11 +172,11 @@ if build_cuda_ext:
                         extra_cuda_flags + cc_flag))
 
     ### MultiHeadAttn Kernel ####
-    from colossalai.kernel.op_builder import MultiHeadAttnBuilder
+    from op_builder import MultiHeadAttnBuilder
     ext_modules.append(MultiHeadAttnBuilder().builder('colossalai._C.multihead_attention'))
 
     ### Gemini Adam kernel ####
-    from colossalai.kernel.op_builder import CPUAdamBuilder
+    from op_builder import CPUAdamBuilder
     ext_modules.append(CPUAdamBuilder().builder('colossalai._C.cpu_optim'))
 
 setup(name='colossalai',
