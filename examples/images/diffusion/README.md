@@ -1,6 +1,6 @@
 # ColoDiffusion: Stable Diffusion with Colossal-AI
 
-Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) and [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion). 
+Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1](https://github.com/CompVis/stable-diffusion) and [Stable Diffusion v2](https://github.com/Stability-AI/stablediffusion).
 <p id="diffusion_train" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20v2.png" width=800/>
 </p>
@@ -44,21 +44,18 @@ pip install -e .
 
 ##### Step 2: install lightning
 
-```
-git clone https://github.com/1SAA/lightning.git
-cd lightning
-git checkout strategy/colossalai
-export PACKAGE_NAME=pytorch
-pip install .
-```
+Install Lightning version later than 2022.01.04. We suggest you install lightning from source.
 
-##### Step 3:Install [Colossal-AI v0.1.12](https://colossalai.org/download/) From Our Official Website
+https://github.com/Lightning-AI/lightning.git
+
+
+##### Step 3:Install [Colossal-AI](https://colossalai.org/download/) From Our Official Website
+
+For example, you can install  v0.1.12 from our official website.
 
 ```
 pip install colossalai==0.1.12+torch1.12cu11.3 -f https://release.colossalai.org
 ```
-
-> The specified version is due to the interface incompatibility caused by the latest update of [Lightning](https://github.com/Lightning-AI/lightning), which will be fixed in the near future.
 
 ### Option #2: Use Docker
 
