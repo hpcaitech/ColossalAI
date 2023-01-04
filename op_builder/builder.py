@@ -104,9 +104,3 @@ class Builder(object):
                 'cxx': self.cxx_flags(),
                 'nvcc': self.nvcc_flags()
             })
-
-
-if __name__ == '__main__':
-    print(Path(__file__))
-    print(os.path.islink(Path(__file__)))
-    print(Path(__file__).parent.parent.absolute())
