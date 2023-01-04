@@ -21,7 +21,6 @@ jobs:
         python-version: '3.7.12'
     - run: python setup.py sdist build
     # publish to PyPI if executed on the main branch
-    # publish to Test PyPI if executed on the develop branch
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
