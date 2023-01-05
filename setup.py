@@ -15,8 +15,9 @@ try:
     if TORCH_MAJOR < 1 or (TORCH_MAJOR == 1 and TORCH_MINOR < 10):
         raise RuntimeError("Colossal-AI requires Pytorch 1.10 or newer.\n"
                            "The latest stable release can be obtained from https://pytorch.org/")
+    TORCH_AVAILABLE = True
 except ImportError:
-    raise ModuleNotFoundError('torch is not found. You need to install PyTorch before installing Colossal-AI.')
+    TORCH_AVAILABLE = False
 
 
 # ninja build does not work unless include_dirs are abs path
@@ -24,7 +25,7 @@ this_dir = os.path.dirname(os.path.abspath(__file__))
 build_cuda_ext = True
 ext_modules = []
 
-if int(os.environ.get('NO_CUDA_EXT', '0')) == 1:
+if int(os.environ.get('NO_CUDA_EXT', '0')) == 1 or not TORCH_AVAILABLE:
     build_cuda_ext = False
 
 
