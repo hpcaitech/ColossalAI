@@ -1,7 +1,9 @@
-# DreamBooth training example
+# [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) by [colossalai](https://github.com/hpcaitech/ColossalAI.git)
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
-The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
+The `train_dreambooth_colossalai.py` script shows how to implement the training procedure and adapt it for stable diffusion.
+
+By accommodating model data in CPU and GPU and moving the data to the computing device when necessary, [Gemini](https://www.colossalai.org/docs/advanced_tutorials/meet_gemini), the Heterogeneous Memory Manager of [Colossal-AI](https://github.com/hpcaitech/ColossalAI) can breakthrough the GPU memory wall by using GPU and CPU memory (composed of CPU DRAM or nvme SSD memory) together at the same time. Moreover, the model scale can be further improved by combining heterogeneous training with the other parallel approaches, such as data parallel, tensor parallel and pipeline parallel.
 
 ## Installing the dependencies
 
@@ -9,6 +11,19 @@ Before running the scripts, make sure to install the library's training dependen
 
 ```bash
 pip install -r requirements_colossalai.txt
+```
+
+### Install [colossalai](https://github.com/hpcaitech/ColossalAI.git)
+
+```bash
+pip install colossalai==0.2.0+torch1.12cu11.3 -f https://release.colossalai.org
+```
+
+**From source**
+
+```bash
+git clone https://github.com/hpcaitech/ColossalAI.git
+python setup.py install
 ```
 
 ## Dataset for Teyvat BLIP captions
@@ -22,10 +37,7 @@ The `text` include the tag `Teyvat`, `Name`,`Element`, `Weapon`, `Region`, `Mode
 
 ## Training
 
-
-By accommodating model data in CPU and GPU and moving the data to the computing device when necessary, [Gemini](https://www.colossalai.org/docs/advanced_tutorials/meet_gemini), the Heterogeneous Memory Manager of [Colossal-AI](https://github.com/hpcaitech/ColossalAI) can breakthrough the GPU memory wall by using GPU and CPU memory (composed of CPU DRAM or nvme SSD memory) together at the same time. Moreover, the model scale can be further improved by combining heterogeneous training with the other parallel approaches, such as data parallel, tensor parallel and pipeline parallel .
-
-The arguement `placement` can be `cpu`, `auto`, `cuda`, with `cpu` the GPU RAM required can be minimized to 6GB but will deceleration, with `cuda` you can also reduce GPU memory by half but accelerated training， with `auto` a more balanced solution for speed and memory can be obtained。
+The arguement `placement` can be `cpu`, `auto`, `cuda`, with `cpu` the GPU RAM required can be minimized to 4GB but will deceleration, with `cuda` you can also reduce GPU memory by half but accelerated training， with `auto` a more balanced solution for speed and memory can be obtained。
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -41,13 +53,13 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \
   --train_batch_size=1 \
-  --gradient_accumulation_steps=1 \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --max_train_steps=400 \
   --placement="cuda"
 ```
+
 
 ### Training with prior-preservation loss
 
@@ -70,45 +82,11 @@ torchrun --nproc_per_node 2 train_dreambooth_colossalai.py \
   --class_prompt="a photo of dog" \
   --resolution=512 \
   --train_batch_size=1 \
-  --gradient_accumulation_steps=1 \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --num_class_images=200 \
-  --max_train_steps=800
-```
-
-### Fine-tune text encoder with the UNet.
-
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.
-Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
-
-___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
-
-```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --train_text_encoder \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --use_8bit_adam \
-  --gradient_checkpointing \
-  --learning_rate=2e-6 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --num_class_images=200 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --placement="cuda"
 ```
 
 ## Inference
@@ -119,68 +97,11 @@ Once you have trained a model using above command, the inference can be done sim
 from diffusers import StableDiffusionPipeline
 import torch
 
-model_id = "path-to-your-trained-model"
+model_id = "path-to-save-model"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("dog-bucket.png")
-```
-
-## Dreambooth for the inpainting model
-
-
-```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
-export INSTANCE_DIR="path-to-instance-images"
-export OUTPUT_DIR="path-to-save-model"
-
-accelerate launch train_dreambooth_inpaint.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=1 \
-  --learning_rate=5e-6 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --max_train_steps=400
-```
-
-The script is also compatible with prior preservation loss and gradient checkpointing
-
-## Fine-tune text encoder with the UNet.
-
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.
-Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
-
-___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
-
-```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
-
-accelerate launch train_dreambooth_inpaint.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --train_text_encoder \
-  --instance_data_dir=$INSTANCE_DIR \
-  --class_data_dir=$CLASS_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --use_8bit_adam \
-  --gradient_checkpointing \
-  --learning_rate=2e-6 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --num_class_images=200 \
-  --max_train_steps=800
 ```

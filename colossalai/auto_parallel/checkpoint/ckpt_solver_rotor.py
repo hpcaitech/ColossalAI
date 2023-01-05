@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple
 from torch import Tensor
 from torch.fx import Graph, Node
 
+from colossalai.auto_parallel.passes.runtime_apply_pass import runtime_apply, runtime_comm_spec_apply
 from colossalai.fx.codegen.activation_checkpoint_codegen import _find_nested_ckpt_regions
 from colossalai.fx.profiler import (
     activation_size,
@@ -22,15 +23,20 @@ __all__ = ['CheckpointSolverRotor']
 
 class CheckpointSolverRotor(CheckpointSolverBase):
 
-    def __init__(self, graph: Graph, free_memory: float = -1, cnode: List[str] = None, memory_slots: int = 500):
+    def __init__(self,
+                 graph: Graph,
+                 free_memory: float = -1,
+                 cnode: List[str] = None,
+                 memory_slots: int = 500,
+                 optim_multiplier: float = 1.0):
         """This is the simple implementation of dynamic programming algorithm rotor
         in https://hal.inria.fr/hal-02352969. Some code are adapted from
         https://gitlab.inria.fr/hiepacs/rotor.
 
         Usage:
-            Assume that we have a `GraphModule`, and we already applied the `MetaInfoProp`
+            Assume that we have a ``GraphModule``, and we have already done the extractions
             to the graph to retrieve all information needed, then we could use the following
-            code to find a solution using `CheckpointSolverRotor`:
+            code to find a solution using ``CheckpointSolverRotor``:
             >>> solver = CheckpointSolverRotor(gm.graph, free_memory=torch.cuda.mem_get_info(device=0)[0])
             >>> rotor_graph = solver.solve(force_python=True)   # otherwise use C solver
             >>> gm.graph = rotor_graph    # set the graph to a new graph
@@ -41,8 +47,10 @@ class CheckpointSolverRotor(CheckpointSolverBase):
                 Use ``torch.cuda.mem_get_info(device=0)[0]`` to estimate the free_memory. Defaults to -1.
             cnode (List[str], optional): Common node List, should be the subset of input. Defaults to None.
             memory_slots (int, optional): Number of slots for discretizing memory budget. Defaults to 500.
+            optim_multiplier (float, optional): The multiplier of extra weight storage for the
+            ``torch.optim.Optimizer``. Default to 1.0.
         """
-        super().__init__(graph, free_memory, True, cnode)
+        super().__init__(graph, free_memory, True, cnode, optim_multiplier)
         self.memory_slots = memory_slots
 
         # construct chain
@@ -128,16 +136,24 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         xbar = 0
         ftime = 0
         btime = 0
+        fwd_mem_peak = 0
         for n in node:
             assert isinstance(n, Node), f'{n} is not a Node'
-            xbar += calculate_fwd_tmp(n) + calculate_fwd_out(n)
+            if n.target == runtime_apply or n.target == runtime_comm_spec_apply:
+                # in this case we need to calculate memory usage directly based on the statics that hooked in node.meta
+                xbar += n.meta['fwd_mem_out']
+                fwd_mem_peak = max(fwd_mem_peak, xbar + n.meta['fwd_mem_tmp'])
+            else:
+                xbar += calculate_fwd_tmp(n) + calculate_fwd_out(n)
+                fwd_mem_peak = max(fwd_mem_peak, xbar + n.meta['fwd_mem_tmp'] + cls._extract_unused_output(n))
+
             # minimum flop count is required
             ftime += max(calculate_fwd_time(n), 1.0)
             btime += max(calculate_bwd_time(n), 1.0)
 
         x = calculate_fwd_out(node[-1])
         xbar = max(x, xbar)
-        ftmp = cls._extract_ftmp(node)
+        ftmp = fwd_mem_peak - xbar
         btmp = cls._extract_btmp(node)
         return ftime, btime, x, xbar, ftmp, btmp
 
@@ -151,10 +167,9 @@ class CheckpointSolverRotor(CheckpointSolverBase):
         return input_tensors
 
     @staticmethod
-    def _extract_ftmp(node: List[Node]) -> int:
-        """Extract ftmp from a list of nodes"""
-        n = node[-1]
-        return activation_size(n.meta['fwd_out']) - calculate_fwd_out(n)
+    def _extract_unused_output(node: Node) -> int:
+        """Extract unused output from `torch.fx.Node`"""
+        return activation_size(node.meta['fwd_out']) - calculate_fwd_out(node)
 
     @staticmethod
     def _extract_btmp(node: List[Node]) -> int:
@@ -290,8 +305,8 @@ class CheckpointSolverRotor(CheckpointSolverBase):
             lhs (int): The left index of the interval to backtrack.
             rhs (int): The right index of the interval to backtrack.
             budget (int): The memory budget for processing this interval.
-            cost_table (List[Any]): See `._compute_table()` for definitions
-            back_ptr (List[Any]): See `._compute_table()` for definitions
+            cost_table (List[Any]): See ``._compute_table()`` for definitions
+            back_ptr (List[Any]): See ``._compute_table()`` for definitions
 
         Raises:
             ValueError: Can not process the chain.
@@ -332,7 +347,7 @@ class CheckpointSolverRotor(CheckpointSolverBase):
 
     @staticmethod
     def _annotate_from_sequence(sequence: Sequence, node_list: List[List[Node]]):
-        """Annotate the nodes in the node_list with activation checkpoint from the sequence.
+        """Annotate the nodes in the ``node_list`` with activation checkpoint from the sequence.
 
         Args:
             sequence (Sequence): The sequence of executing nodes with activation checkpoint annotations.

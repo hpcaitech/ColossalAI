@@ -1,8 +1,9 @@
 import click
 
-from .utils import *
-from .benchmark import run_benchmark
 from colossalai.context import Config
+
+from .benchmark import run_benchmark
+from .utils import *
 
 __all__ = ['benchmark']
 

@@ -3,14 +3,18 @@ import re
 from pathlib import Path
 from typing import List
 
-import torch
-
 
 def get_cuda_cc_flag() -> List:
     """get_cuda_cc_flag
 
     cc flag for your GPU arch
     """
+
+    # only import torch when needed
+    # this is to avoid importing torch when building on a machine without torch pre-installed
+    # one case is to build wheel for pypi release
+    import torch
+    
     cc_flag = []
     for arch in torch.cuda.get_arch_list():
         res = re.search(r'sm_(\d+)', arch)
@@ -25,10 +29,12 @@ def get_cuda_cc_flag() -> List:
 class Builder(object):
 
     def colossalai_src_path(self, code_path):
-        if os.path.isabs(code_path):
-            return code_path
+        current_file_path = Path(__file__)
+        if os.path.islink(current_file_path.parent):
+            # symbolic link
+            return os.path.join(current_file_path.parent.parent.absolute(), code_path)
         else:
-            return os.path.join(Path(__file__).parent.parent.absolute(), code_path)
+            return os.path.join(current_file_path.parent.parent.absolute(), "colossalai", "kernel", code_path)
 
     def get_cuda_home_include(self):
         """

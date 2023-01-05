@@ -16,8 +16,8 @@ from colossalai.auto_parallel.tensor_shard.solver import (
     SolverOptions,
     StrategiesConstructor,
 )
+from colossalai.device.alpha_beta_profiler import AlphaBetaProfiler
 from colossalai.device.device_mesh import DeviceMesh
-from colossalai.device.profile_alpha_beta import profile_alpha_beta
 from colossalai.fx.tracer import ColoTracer
 from colossalai.tensor.sharding_spec import ShardingSpec
 

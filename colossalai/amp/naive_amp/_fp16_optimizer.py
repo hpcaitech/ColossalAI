@@ -148,6 +148,12 @@ class FP16Optimizer(Optimizer):
                 ranks=[0])
 
     @property
+    def max_norm(self):
+        """Returns the maximum norm of gradient clipping.
+        """
+        return self._clip_grad_max_norm
+
+    @property
     def grad_scaler(self):
         """Returns the gradient scaler.
 
