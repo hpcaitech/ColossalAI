@@ -93,22 +93,24 @@ def _build_openfold():
 
 def benchmark_evoformer():
     # init data and model
-    msa_len = 300
-    pair_len = 800
+    msa_len = 256
+    pair_len = 2048
     node = torch.randn(1, msa_len, pair_len, 256).cuda()
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
     model = evoformer_base().cuda()
 
     # build autochunk model
-    max_memory = 3000  # MB
+    max_memory = 10000  # MB fit memory mode
+    # max_memory = None  # min memory mode
     autochunk = _build_autochunk(evoformer_base().cuda(), max_memory, node, pair)
 
     # build openfold
+    chunk_size = 64
     openfold = _build_openfold()
 
     # benchmark
     _benchmark_evoformer(model, node, pair, "base")
-    _benchmark_evoformer(openfold, node, pair, "openfold", chunk_size=4)
+    _benchmark_evoformer(openfold, node, pair, "openfold", chunk_size=chunk_size)
     _benchmark_evoformer(autochunk, node, pair, "autochunk")
 
 
