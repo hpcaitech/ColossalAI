@@ -18,15 +18,22 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
+    CUDA_HOME = None
 
 
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
-build_cuda_ext = True
+build_cuda_ext = False
 ext_modules = []
 
-if int(os.environ.get('NO_CUDA_EXT', '0')) == 1 or not TORCH_AVAILABLE:
-    build_cuda_ext = False
+if int(os.environ.get('CUDA_EXT', '0')) == 1:
+    if not TORCH_AVAILABLE:
+        raise ModuleNotFoundError("PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions")
+
+    if not CUDA_HOME:
+        raise RuntimeError("CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions")
+
+    build_cuda_ext = True
 
 
 def check_cuda_torch_binary_vs_bare_metal(cuda_dir):
