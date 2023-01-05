@@ -39,6 +39,7 @@ jobs:
         id: find-changed-files
         uses: tj-actions/changed-files@v34
         with:
+          since_last_remote_commit: true
           files: |
             op_builder/**
             colossalai/kernel/**
