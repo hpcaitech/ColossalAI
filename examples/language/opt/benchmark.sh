@@ -14,7 +14,7 @@ do
 pkill -9 torchrun
 pkill -9 python
 
-bash ./run_clm.sh $BS $MEMCAP $MODEL $GPUNUM
+env BS=$BS MEM_CAP=$MEMCAP MODEL=$MODEL GPUNUM=$GPUNUM bash ./run_gemini.sh
 done
 done
 done
