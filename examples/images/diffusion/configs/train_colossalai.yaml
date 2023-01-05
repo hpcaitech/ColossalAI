@@ -105,7 +105,7 @@ lightning:
       params:
         use_chunk: True
         enable_distributed_storage: True
-        placement_policy: auto
+        placement_policy: cuda
         force_outputs_fp32: true
 
     log_every_n_steps: 2

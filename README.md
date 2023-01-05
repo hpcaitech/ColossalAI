@@ -1,7 +1,7 @@
 # Colossal-AI
 <div id="top" align="center">
 
-   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Colossal-AI_logo.png)](https://www.colossalai.org/)
+   [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
 
    Colossal-AI: A Unified Deep Learning System for Big Model Era
 
@@ -226,13 +226,13 @@ Acceleration of AIGC (AI-Generated Content) models such as [Stable Diffusion v1]
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/DreamBooth.png" width=800/>
 </p>
 
-- [DreamBooth Fine-tuning](https://github.com/hpcaitech/ColossalAI/tree/hotfix/doc/examples/images/dreambooth): Personalize your model using just 3-5 images of the desired subject.
+- [DreamBooth Fine-tuning](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/dreambooth): Personalize your model using just 3-5 images of the desired subject.
 
 <p id="inference" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/Stable%20Diffusion%20Inference.jpg" width=800/>
 </p>
 
-- [Inference](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): Reduce inference GPU memory consumption by 2.5x.
+- [Inference](https://github.com/hpcaitech/ColossalAI/tree/main/examples/images/diffusion): Reduce inference GPU memory consumption by 2.5x.
 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
