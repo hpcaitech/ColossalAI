@@ -5,13 +5,31 @@ on:
     types: [synchronize, labeled]
 
 jobs:
-  build:
-    name: Build and Test Colossal-AI
+  detect:
+    name: Detect kernel-related file change
     if: |
         github.event.pull_request.draft == false &&
         github.base_ref == 'main' &&
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
         contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
+    outputs:
+      changedFiles: ${{ steps.find-changed-files.outputs.changedFiles }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Find the changed files
+        id: find-changed-files
+        uses: tj-actions/changed-files@v34
+        with:
+          since_last_remote_commit: true
+          files: |
+            op_builder/**
+            colossalai/kernel/**
+            setup.py
+
+  build:
+    name: Build and Test Colossal-AI
+    needs: detect
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:1.11.0-11.3.0
@@ -34,24 +52,15 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-      
-      - name: Find the changed files
-        id: find-changed-files
-        uses: tj-actions/changed-files@v34
-        with:
-          files: |
-            op_builder/**
-            colossalai/kernel/**
-            setup.py
 
       - name: Restore cache
-        if: steps.find-changed-files.outputs.any_changed != 'true'
+        if: needs.detect.outputs.anyChanged == 'true'
         run: |
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
         run: |
-          pip install -v -e .
+          CUDA_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
       - name: Unit Testing
