@@ -14,7 +14,6 @@ class MultiTensorApply(object):
 
     def __init__(self, chunk_size):
         try:
-            from colossalai.kernel import fused_optim
             MultiTensorApply.available = True
             self.chunk_size = chunk_size
         except ImportError as err:

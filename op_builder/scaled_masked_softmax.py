@@ -4,30 +4,29 @@ from .builder import Builder
 from .utils import append_nvcc_threads
 
 
-class CPUAdamBuilder(Builder):
-    NAME = "cpu_adam"
-    PREBUILT_IMPORT_PATH = "colossalai._C.cpu_adam"
+class ScaledMaskedSoftmaxBuilder(Builder):
+    NAME = "scaled_masked_softmax"
+    PREBUILT_IMPORT_PATH = "colossalai._C.scaled_masked_softmax"
 
     def __init__(self):
-        super().__init__(name=CPUAdamBuilder.NAME, prebuilt_import_path=CPUAdamBuilder.PREBUILT_IMPORT_PATH)
-        self.version_dependent_macros = ['-DVERSION_GE_1_1', '-DVERSION_GE_1_3', '-DVERSION_GE_1_5']
+        super().__init__(name=ScaledMaskedSoftmaxBuilder.NAME, prebuilt_import_path=ScaledMaskedSoftmaxBuilder.PREBUILT_IMPORT_PATH)
 
     # necessary 4 functions
     def sources_files(self):
         ret = [
-            self.csrc_abs_path('cpu_adam.cpp'),
+            self.csrc_abs_path(fname) for fname in 
+            ['scaled_masked_softmax.cpp', 'scaled_masked_softmax_cuda.cu']
         ]
         return ret
 
     def include_dirs(self):
         return [
-            self.csrc_abs_path("includes"),
+            self.csrc_abs_path("kernels/include"),
             self.get_cuda_home_include()
         ]
 
     def cxx_flags(self):
-        extra_cxx_flags = ['-std=c++14', '-lcudart', '-lcublas', '-g', '-Wno-reorder', '-fopenmp', '-march=native']
-        return ['-O3'] + self.version_dependent_macros + extra_cxx_flags
+        return ['-O3'] + self.version_dependent_macros
 
     def nvcc_flags(self):
         extra_cuda_flags = [

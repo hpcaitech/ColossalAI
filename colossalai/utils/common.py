@@ -18,10 +18,14 @@ from colossalai.constants import IS_TENSOR_PARALLEL, NUM_PARTITIONS, TENSOR_PARA
 from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.global_variables import tensor_parallel_env as env
-from colossalai.kernel import fused_optim
 from colossalai.tensor import ColoParameter, ProcessGroup
 
 from .multi_tensor_apply import multi_tensor_applier
+
+try:
+    from colossalai._C import fused_optim
+except:
+    fused_optim = None
 
 
 def print_rank_0(msg: str, logger=None):
@@ -123,6 +127,13 @@ def is_model_parallel_parameter(p):
 
 
 def _calc_l2_norm(grads):
+    # we should not 
+    global fused_optim
+
+    if fused_optim is None:
+        from colossalai.kernel.op_builder import FusedOptimBuilder
+        fused_optim = FusedOptimBuilder().load()
+        
     norm = 0.0
     if len(grads) > 0:
         dummy_overflow_buf = torch.cuda.IntTensor([0])

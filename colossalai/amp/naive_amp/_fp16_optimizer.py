@@ -8,7 +8,7 @@ from torch.optim import Optimizer
 
 from colossalai.context import ParallelMode
 from colossalai.core import global_context as gpc
-from colossalai.kernel import fused_optim
+from colossalai.kernel.op_builder import FusedOptimBuilder
 from colossalai.logging import get_dist_logger
 from colossalai.utils import clip_grad_norm_fp32, copy_tensor_parallel_attributes, multi_tensor_applier
 
@@ -30,6 +30,7 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
     if overflow_buf:
         overflow_buf.fill_(0)
         # Scaling with factor `1.0` is equivalent to copy.
+        fused_optim  = FusedOptimBuilder().load()
         multi_tensor_applier(fused_optim.multi_tensor_scale, overflow_buf, [this, that], 1.0)
     else:
         for this_, that_ in zip(this, that):

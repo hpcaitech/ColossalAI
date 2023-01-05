@@ -4,23 +4,24 @@ from .builder import Builder
 from .utils import append_nvcc_threads, get_cuda_cc_flag
 
 
-class MOEBuilder(Builder):
-
-    NAME = "moe"
-    PREBUILT_IMPORT_PATH = "colossalai._C.moe"
+class ScaledUpperTrainglemaskedSoftmaxBuilder(Builder):
+    NAME = "scaled_upper_triangle_masked_softmax"
+    PREBUILT_IMPORT_PATH = "colossalai._C.scaled_upper_triangle_masked_softmax"
 
     def __init__(self):
-        super().__init__(name=MOEBuilder.NAME, prebuilt_import_path=MOEBuilder.PREBUILT_IMPORT_PATH)
+        super().__init__(name=ScaledUpperTrainglemaskedSoftmaxBuilder.NAME, prebuilt_import_path=ScaledUpperTrainglemaskedSoftmaxBuilder.PREBUILT_IMPORT_PATH)
 
     def include_dirs(self):
-        ret = [
+        return [
             self.csrc_abs_path("kernels/include"),
             self.get_cuda_home_include()
         ]
-        return ret
 
     def sources_files(self):
-        ret = [self.csrc_abs_path(fname) for fname in ['moe_cuda.cpp', 'moe_cuda_kernel.cu']]
+        ret = [
+            self.csrc_abs_path(fname)
+            for fname in ['scaled_upper_triang_masked_softmax.cpp', 'scaled_upper_triang_masked_softmax_cuda.cu']
+        ]
         return ret
 
     def cxx_flags(self):
