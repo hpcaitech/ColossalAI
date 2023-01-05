@@ -13,7 +13,7 @@ export MODLE_PATH="facebook/opt-${MODEL}"
 torchrun \
   --nproc_per_node ${GPUNUM} \
   --master_port 19198 \
-  run_clm.py \
+  train_gemini_opt.py \
   --mem_cap ${MEMCAP} \
   --model_name_or_path ${MODLE_PATH} \
   --batch_size ${BS} 2>&1 | tee ./logs/colo_${MODEL}_bs_${BS}_cap_${MEMCAP}_gpu_${GPUNUM}.log

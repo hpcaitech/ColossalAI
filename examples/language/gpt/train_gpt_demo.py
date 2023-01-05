@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from packaging import version
 from torch.nn.parallel import DistributedDataParallel as DDP
+from utils import get_data, get_tflops
 
 import colossalai
 from colossalai.logging import disable_existing_loggers, get_dist_logger
@@ -14,7 +15,6 @@ from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from examples.language.commons.utils import get_data, get_tflops
 from model_zoo import model_builder
 
 CAI_VERSION = colossalai.__version__
