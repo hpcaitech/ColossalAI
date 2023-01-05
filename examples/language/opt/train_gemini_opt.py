@@ -180,32 +180,7 @@ def main():
     numel = sum([p.numel() for p in model.parameters()])
     PLACEMENT_POLICY = 'cpu'
     model = GeminiDDP(model, device=get_current_device(), placement_policy=PLACEMENT_POLICY, pin_memory=True)
-
-    # NOTE if you use grouped parameters
-    # # Split weights in two groups, one with weight decay and the other not.
-    # no_decay = ["bias", "LayerNorm.weight"]
-    # optimizer_grouped_parameters = [
-    #     {
-    #         "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-    #         "weight_decay": args.weight_decay,
-    #     },
-    #     {
-    #         "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-    #         "weight_decay": 0.0,
-    #     },
-    # ]
-
-    # optimizer = HybridAdam(optimizer_grouped_parameters, lr=args.learning_rate)
-    # optimizer = ZeroOptimizer(optimizer, model, initial_scale=2**14)
-
     optimizer = GeminiAdamOptimizer(model, lr=args.learning_rate, initial_scale=2**14, gpu_margin_mem_ratio=0.0)
-
-    # Only show the progress bar once on each machine.
-    # progress_bar = tqdm(range(args.max_train_steps), disable=not is_main_process)
-
-    # k input_ids v torch.Size([16, 1024]) torch.int64
-    # k attention_mask v torch.Size([16, 1024]) torch.int64
-    # k labels v torch.Size([16, 1024]) torch.int64
 
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
