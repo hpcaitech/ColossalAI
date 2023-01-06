@@ -62,58 +62,9 @@ The `train_gpt_demo.py` provides three distributed plans, you can choose the pla
 Testbed: a cluster of 8xA100 (80GB) and 1xAMD EPYC 7543 32-Core Processor (512 GB). GPUs are connected via PCI-e.
 ColossalAI version 0.1.13.
 
-How dose Batch Size affect the efficency.
+[benchmark results on google doc](https://docs.google.com/spreadsheets/d/15A2j3RwyHh-UobAPv_hJgT4W_d7CnlPm5Fp4yEzH5K4/edit#gid=0)
 
-| model | #GPU | policy | TP | batch per DP | Tflops |
-| ---------- | --------- |--------- |--------- |--------- |--------- |
-| gpt2_10b |  2  | cpu | 1 | 32 | 122.046 |
-| gpt2_10b |  2  | cpu | 1 | 16 | 82.649 |
-| gpt2_10b |  2  | cpu | 1 | 8 | 61.354 |
-
-
-How dose the Placement Policy affect the efficency.
-
-| model | #GPU | policy | TP | batch per DP | Tflops |
-| ---------- | --------- |--------- |--------- |--------- |--------- |
-| gpt2_10b |  4  | auto | 1 | 8 | 88.657 |
-| gpt2_10b |  4  | cuda | 1 | 8 | OOM |
-| gpt2_10b |  4  | cpu | 1 | 8 | 61.354 |
-| gpt2_10b |  4  | const | 1 | 8 | 82.137 |
-
-How dose the Tensor Parallel Degree affect the efficency.
-
-| model | #GPU | policy | TP | batch per DP | Tflops |
-| ---------- | --------- |--------- |--------- |--------- |--------- |
-| gpt2_10b |  4  | auto | 1 | 8 | 88.657 |
-| gpt2_10b |  4  | auto | 2 | 8 | 56.687 |
-| gpt2_10b |  4  | auto | 4 | 8 | 29.019 |
-| gpt2_10b |  4  | auto | 4 | 64 | 50.411 |
-| gpt2_20b |  1  | cpu | 1 | 8 | 43.102 |
-| gpt2_20b |  4  | cpu | 4 | 8 | 28.491 |
-
-
-Touch the bar of model scale and batch size.
-
-1. `cpu` is the most stable policy for large model and large batch size. One 8 GPU with TP=2, largest batch size of `auto`, `const`
- `cpu` is 64, 32 and 16, respectively.
-
-2. Tensor parallel is necessary for 20B model to reduce model data memory requirement on each GPU.
-
-| model | #GPU | policy | TP | batch per DP | Tflops |
-| ---------- | --------- |--------- |--------- |--------- |--------- |
-| gpt2_20b |  4  | cpu | 1 | 64 | CUDA OOM |
-| gpt2_20b |  4  | auto | 1/2 | 64 | CUDA OOM |
-| gpt2_20b |  4  | cpu | 2 | 8 | 43.102 |
-| gpt2_20b |  4  | cpu | 2 | 64 | 121.394 |
-| gpt2_20b |  8  | auto | 2 | 16 | 99.871 |
-| gpt2_20b |  8  | cpu | 2 | 64 | 125.170 |
-| gpt2_20b |  8  | const | 2 | 32 | 105.415 |
-
-
-| model | #GPU | policy | TP | batch per DP | Tflops |
-| ---------- | --------- |--------- |--------- |--------- |--------- |
-| gpt2_20b |  8  | cpu | 2 | 8 | 46.895 |
-
+[benchmark results on Tencent doc (for china)](https://docs.qq.com/sheet/DUVpqeVdxS3RKRldk?tab=BB08J2)
 
 ### Experimental Features
 
