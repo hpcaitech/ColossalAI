@@ -167,7 +167,7 @@ def emit_code_with_chunk(
                         )
             # ones like
             if "ones_like" in node.name:
-                meta_node = chunk_region_search.index_tracer.node_list[node_idx]
+                meta_node = chunk_region_search.trace_index.node_list[node_idx]
                 chunk_dim = chunk_infos[region_idx]["node_chunk_dim"][meta_node][
                     "chunk_dim"
                 ]

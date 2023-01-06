@@ -1,4 +1,5 @@
-from .trace_index import TraceIndex, ReorderGraph
+from .trace_index import TraceIndex
+from .reorder_graph import ReorderGraph
 from .estiamte_memory import EstimateMemory
 from .utils import is_non_compute_node
 
