@@ -4,11 +4,10 @@ from functools import reduce
 from typing import Dict, List, Optional, Union
 
 import torch
-from torch.fx.node import Node
-
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
+from torch.fx.node import Node
 
 from ..constants import INFINITY_COST
 
@@ -19,7 +18,7 @@ def generate_sharding_spec(input_: Union[Node, torch.Tensor], device_mesh: Devic
                            dim_partition_dict: Dict[int, List[int]]) -> ShardingSpec:
     """
     Generate the sharding spec of the tensor based on the given dim_partition_dict.
-
+    
 
     Args:
         input_ (Union[Node, torch.Tensor]): the input can be a Node object or a PyTorch tensor. If a node is used, it will look for its meta data associated with this node.
@@ -60,7 +59,7 @@ def generate_resharding_costs(nodes: List[Node],
         nodes (List[Node]): a list of nodes
         sharding_spec_for_input(ShardingSpec): a list of ShardingSpec for the nodes.
         count_backward (Optional[bool]): whether to include the cost of resharding in the backward pass, default is True. False can be used for inference.
-        dtype (Optional[torch.dtype]): the data type for cost calculation, default is None.
+        dtype (Optional[torch.dtype]): the data type for cost calculation, default is None. 
     '''
     # The resharding_cost of weight is counted due to sharing weight cases.
     resharding_costs = {}
