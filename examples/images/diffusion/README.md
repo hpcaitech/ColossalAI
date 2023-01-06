@@ -159,7 +159,7 @@ You can change the training config in the yaml file
 ## Finetune Example
 ### Training on Teyvat Datasets
 
-We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is created by BLIP generated captions.
+We provide the fine-tuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is created by BLIP generated captions.
 
 You can run by config `configs/Teyvat/train_colossalai_teyvat.yaml`
 ```
