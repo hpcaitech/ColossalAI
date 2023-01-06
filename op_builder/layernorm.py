@@ -4,19 +4,15 @@ from .builder import Builder
 from .utils import append_nvcc_threads, get_cuda_cc_flag
 
 
-class FusedOptimBuilder(Builder):
+class LayerNormBuilder(Builder):
     NAME = "fused_optim"
     PREBUILT_IMPORT_PATH = "colossalai._C.fused_optim"
 
     def __init__(self):
-        super().__init__(name=FusedOptimBuilder.NAME, prebuilt_import_path=FusedOptimBuilder.PREBUILT_IMPORT_PATH)
-        
+        super().__init__(name=LayerNormBuilder.NAME, prebuilt_import_path=LayerNormBuilder.PREBUILT_IMPORT_PATH)
+
     def sources_files(self):
-        ret = [
-            self.csrc_abs_path(fname) for fname in [
-                'layer_norm_cuda.cpp', 'layer_norm_cuda_kernel.cu'
-            ]
-        ]
+        ret = [self.csrc_abs_path(fname) for fname in ['layer_norm_cuda.cpp', 'layer_norm_cuda_kernel.cu']]
         return ret
 
     def include_dirs(self):
@@ -31,4 +27,3 @@ class FusedOptimBuilder(Builder):
         extra_cuda_flags.extend(get_cuda_cc_flag())
         ret = ['-O3', '--use_fast_math'] + extra_cuda_flags + self.version_dependent_macros
         return append_nvcc_threads(ret)
-

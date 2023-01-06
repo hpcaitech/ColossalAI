@@ -42,7 +42,7 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
     if overflow_buf:
         overflow_buf.fill_(0)
         # Scaling with factor `1.0` is equivalent to copy.
-        global multi_tensor_scale
+        global fused_optim
         load_fused_optim()
         multi_tensor_applier(fused_optim.multi_tensor_scale, overflow_buf, [this, that], 1.0)
     else:
