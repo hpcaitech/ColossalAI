@@ -389,19 +389,6 @@ class ZeroDDP(ColoDDP):
             del temp_chunk
         return param_to_save_data
 
-    def torch_named_parameters(self):
-        """
-        get named_parameters() of self.module. It is used the same of PyTorch param and returns the real param.data payload.
-        It works the same as torch.Module named_parameters
-        """
-        params_list = [p for p in self.parameters(recurse=True)]
-        param_to_save_data = self._get_param_to_save_data(params_list, False)
-        for (name, _), p in zip(self.named_parameters(recurse=True), params_list):
-            if p is not None:
-                assert p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
-                record_parameter = param_to_save_data[p]
-                yield name, record_parameter
-
     def _save_to_state_dict(self, destination, prefix, keep_vars, only_rank_0=True):
         r"""Saves module state to `destination` dictionary, containing a state
         of the module, but not its descendants. This is called on every
@@ -418,6 +405,7 @@ class ZeroDDP(ColoDDP):
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
         param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
+        # TODO: (HELSON) deal with ddp ignored parameters
         for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
             if p is not None:
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
