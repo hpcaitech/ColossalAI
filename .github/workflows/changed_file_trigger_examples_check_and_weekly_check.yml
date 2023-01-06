@@ -18,7 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+
       exist_changed_file: ${{ steps.exist-detect.outputs.exist }}
+
     name: Check out all files
     steps:
       - uses: actions/checkout@v3
@@ -43,7 +45,9 @@ jobs:
           loc=$( IFS=',' ; echo "${res[*]}" )
           echo "$loc"
           echo "::set-output name=matrix::{\"loc\":$(echo "$loc")}"
+
           echo "::set-output name=exist::{\"loc\":$(echo "$loc")}"
+
 
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
   check-all-changed-files:
