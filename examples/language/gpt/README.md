@@ -64,6 +64,8 @@ ColossalAI version 0.1.13.
 
 [benchmark results on google doc](https://docs.google.com/spreadsheets/d/15A2j3RwyHh-UobAPv_hJgT4W_d7CnlPm5Fp4yEzH5K4/edit#gid=0)
 
+[benchmark results on Tencent doc (for china)](https://docs.qq.com/sheet/DUVpqeVdxS3RKRldk?tab=BB08J2)
+
 ### Experimental Features
 
 #### [Pipeline Parallel](./experiments/pipeline_parallel/)
