@@ -1,4 +1,4 @@
-# Auto-Parallelism with GPT2
+# Pipeline Parallelism Demo with GPT2
 
 ## Requirements
 
@@ -33,5 +33,6 @@ For simplicity, the input data is randonly generated here.
 
 ```bash
 #Run the Pipeline Parallel on GPT with default setting and a dummy dataset.
+#You can change the GPU number or microbatch number in the run.sh .
 bash run.sh
 ```
