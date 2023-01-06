@@ -117,7 +117,7 @@ class ColoTensor(torch.Tensor):
     def set_process_group(self, pg: ProcessGroup):
         """set_process_group
         change the pg of the ColoTensor. Note that the valid use cases is limited.
-        Only existing pg is DP and dist spec is Replica is valid.
+        It works for the target pg is DP and TP only and current dist spec of the Tensor is Replica.
 
         Args:
             pg (ProcessGroup): target pg
