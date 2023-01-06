@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-# 111111
+
 import torch
 import torch.nn as nn
 from transformers import ViTConfig, ViTForImageClassification

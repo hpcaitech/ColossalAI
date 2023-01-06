@@ -32,6 +32,7 @@ jobs:
           since_last_remote_commit: true
       - name: setup matrix
         id: set-matrix
+        # If the file within examples folder does not belong to examples' two level sub-folder, such as examples/README.md, we will recognize it in changed_example.py file and output "no_file_to_check", and then output "no_file" string. So the next job, check-all-changed-files, will be blocked.
         run: |
           changedFileName=""
           for file in ${{ steps.changed-files.outputs.all_changed_files  }}; do
@@ -42,26 +43,21 @@ jobs:
           echo "All changed files are $res"
           loc=$( IFS=',' ; echo "${res[*]}" )
           echo "$loc"
-          
           if [ ${loc} = "no_file_to_check" ];then
-             echo "111"
              echo "::set-output name=exist::{"no_file"}"
           else
-             echo "222"
              echo "::set-output name=exist::{"with_file"}"
           fi
           
           echo "::set-output name=matrix::{\"loc\":$(echo "$loc")}"
 
-
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
   check-all-changed-files:
     # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
-#    if: |
-#        github.event.pull_request.draft == false &&
-#        github.base_ref == 'main' &&
-#        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
-    if: needs.detect-changed-example.outputs.exist == 'with_file'
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' && needs.detect-changed-example.outputs.exist == 'with_file'
     name: Test each changed example files
     needs: detect-changed-example
     runs-on: self-hosted
