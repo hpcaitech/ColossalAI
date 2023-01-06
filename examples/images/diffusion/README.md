@@ -105,7 +105,7 @@ bash train_colossalai.sh
 
 It is important for you to configure your volume mapping in order to get the best training experience.
 1. **Mandatory**, mount your prepared data to `/data/scratch` via `-v <your-data-dir>:/data/scratch`, where you need to replace `<your-data-dir>` with the actual data path on your machine.
-2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to repliace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
+2. **Recommended**, store the downloaded model weights to your host machine instead of the container directory via `-v <hf-cache-dir>:/root/.cache/huggingface`, where you need to replace the `<hf-cache-dir>` with the actual path. In this way, you don't have to repeatedly download the pretrained weights for every `docker run`.
 3. **Optional**, if you encounter any problem stating that shared memory is insufficient inside container, please add `-v /dev/shm:/dev/shm` to your `docker run` command.
 
 
@@ -149,7 +149,7 @@ python main.py --logdir /tmp/ -t -b configs/train_colossalai.yaml
 
 ### Training config
 
-You can change the trainging config in the yaml file
+You can change the training config in the yaml file
 
 - devices: device number used for training, default 8
 - max_epochs: max training epochs, default 2
@@ -159,7 +159,7 @@ You can change the trainging config in the yaml file
 ## Finetune Example
 ### Training on Teyvat Datasets
 
-We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is create by BLIP generated captions.
+We provide the finetuning example on [Teyvat](https://huggingface.co/datasets/Fazzie/Teyvat) dataset, which is created by BLIP generated captions.
 
 You can run by config `configs/Teyvat/train_colossalai_teyvat.yaml`
 ```
