@@ -1,6 +1,5 @@
-import operator
-
 import torch
+import operator
 
 __all__ = [
     'ELEMENTWISE_MODULE_OP', 'ELEMENTWISE_FUNC_OP', 'RESHAPE_FUNC_OP', 'CONV_MODULE_OP', 'CONV_FUNC_OP',

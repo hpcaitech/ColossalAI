@@ -5,9 +5,9 @@ from functools import reduce
 from typing import Dict, List
 
 import torch
-
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import ignore_sharding_exception
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
+    ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 
@@ -42,19 +42,19 @@ class EmbeddingHandler(OperatorHandler):
         Argument:
             sharding_size_forward(int): The forward activation will be divided
                 into sharding_size_forward number partions.
-            sharding_size_backward_activation(int): The backward activation will
+            sharding_size_backward_activation(int): The backward activation will 
                 be divided into sharding_size_backward_activation number partions.
             sharding_size_weight(int): The backward weight will be divided
                 into sharding_size_weight number partions.
 
         Return:
-            memory_cost(Tuple[float]): Memory cost per device with this
+            memory_cost(Tuple[float]): Memory cost per device with this 
                 specific strategy, the first element of this tuple is forward
                 memory cost, and the second element of this tuple is backward
                 memory cost.
-            memory_cost_forward(float): Memory cost of forward activation per
+            memory_cost_forward(float): Memory cost of forward activation per 
                 device with this specific strategy.
-            memory_cost_backward_activation(float): Memory cost of backward activation
+            memory_cost_backward_activation(float): Memory cost of backward activation 
                 per device with this specific strategy.
         '''
         # compute the memory cost of this strategy
