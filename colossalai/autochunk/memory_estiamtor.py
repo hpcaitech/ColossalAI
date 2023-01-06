@@ -16,7 +16,7 @@ from .utils import (
 
 
 class MemoryEstimator(object):
-    def __init__(self, index_tracer: IndexTracer) -> None:
+    def __init__(self) -> None:
         pass
 
     def _get_meta_node_size(self, x):

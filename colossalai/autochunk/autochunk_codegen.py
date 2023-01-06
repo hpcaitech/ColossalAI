@@ -220,7 +220,9 @@ if CODEGEN_AVAILABLE:
             self.max_memory = max_memory
             self.meta_node = list(meta_graph.graph.nodes)
             # find the chunk regions
-            self.chunk_region_search = ChunkRegionSearch(meta_graph, max_memory, print_mem)
+            self.chunk_region_search = ChunkRegionSearch(
+                meta_graph, max_memory, print_mem
+            )
             self.chunk_infos = self.chunk_region_search.search_region()
 
         def _gen_python_code(

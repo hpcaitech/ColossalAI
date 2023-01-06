@@ -1,8 +1,13 @@
+import copy
+
+from .chunk_selector import ChunkSelector
 from .index_tracer import IndexTracer
 from .memory_estiamtor import MemoryEstimator
-from .chunk_selector import ChunkSelector
-import copy
-from .utils import is_non_compute_node, is_non_compute_node_except_placeholder, get_node_shape
+from .utils import (
+    get_node_shape,
+    is_non_compute_node,
+    is_non_compute_node_except_placeholder,
+)
 
 
 class ChunkRegionSearch(object):
@@ -11,7 +16,7 @@ class ChunkRegionSearch(object):
         self.print_mem = print_mem
         self.index_tracer = IndexTracer(list(gm.graph.nodes))
         self.index_tracer.trace_index()
-        self.memory_estimator = MemoryEstimator(self.index_tracer)
+        self.memory_estimator = MemoryEstimator()
         self.chunk_selector = ChunkSelector(
             self.index_tracer, self.memory_estimator, max_memory=max_memory
         )
@@ -211,4 +216,3 @@ class ChunkRegionSearch(object):
                 self.index_tracer.node_list, chunk_infos, print_mem=True
             )
         return chunk_infos
-
