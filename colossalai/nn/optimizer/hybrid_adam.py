@@ -2,6 +2,7 @@ from typing import Any, Optional
 
 import torch
 
+from colossalai.kernel.op_builder import CPUAdamBuilder, FusedOptimBuilder
 from colossalai.registry import OPTIMIZERS
 from colossalai.utils import multi_tensor_applier
 
@@ -78,8 +79,6 @@ class HybridAdam(NVMeOptimizer):
         self.adamw_mode = adamw_mode
 
         # build during runtime if not found
-        
-        from colossalai.kernel.op_builder import CPUAdamBuilder, FusedOptimBuilder
         cpu_optim = CPUAdamBuilder().load()
         fused_optim = FusedOptimBuilder().load()
         self.cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, betas[0], betas[1], eps, weight_decay, adamw_mode)

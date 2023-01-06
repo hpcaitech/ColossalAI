@@ -15,7 +15,19 @@ from colossalai.utils import clip_grad_norm_fp32, copy_tensor_parallel_attribute
 from ._utils import has_inf_or_nan, zero_gard_by_list
 from .grad_scaler import BaseGradScaler
 
+try:
+    from colossalai._C import fused_optim
+except:
+    fused_optim = None
+
 __all__ = ['FP16Optimizer']
+
+
+def load_fused_optim():
+    global fused_optim
+
+    if fused_optim is None:
+        fused_optim = FusedOptimBuilder().load()
 
 
 def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
@@ -30,7 +42,8 @@ def _multi_tensor_copy_this_to_that(this, that, overflow_buf=None):
     if overflow_buf:
         overflow_buf.fill_(0)
         # Scaling with factor `1.0` is equivalent to copy.
-        fused_optim  = FusedOptimBuilder().load()
+        global multi_tensor_scale
+        load_fused_optim()
         multi_tensor_applier(fused_optim.multi_tensor_scale, overflow_buf, [this, that], 1.0)
     else:
         for this_, that_ in zip(this, that):
