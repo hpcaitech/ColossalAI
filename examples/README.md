@@ -1,6 +1,3 @@
-1
-
-
 ## Examples folder document
 
 ## Table of Contents
