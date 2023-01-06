@@ -11,7 +11,10 @@ on:
 jobs:
   # This is for changed example files detect and output a matrix containing all the corresponding directory name.
   detect-changed-example:
-    if: ${{ github.event_name == 'pull_request' }}
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -42,8 +45,11 @@ jobs:
 
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
   check-all-changed-files:
-    # Add this to avoid when schedule triggers the workflow, this should keep silent.
-    if: ${{ github.event_name == 'pull_request' }}
+    # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
     name: Test each changed example files
     needs: detect-changed-example
     runs-on: [self-hosted, gpu]
@@ -67,7 +73,10 @@ jobs:
 
   # This is for all files' weekly check. Specifically, this job is to find all the directories.
   matrix_preparation:
-    if: ${{ github.event_name == 'schedule' }}
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'schedule'
     name: Prepare Directory List for All files
     runs-on: ubuntu-latest
     outputs:
@@ -78,13 +87,16 @@ jobs:
     - name: setup matrix
       id: set-matrix
       run: |
-        res=`python .github/workflows/scripts/weekly_check.py`
+        res=`python .github/workflows/scripts/weekly_check_example.py`
         all_loc=$( IFS=',' ; echo "${res[*]}" )
         echo "$all_loc"
         echo "::set-output name=matrix::{\"all_loc\":$(echo "$all_loc")}"
 
   weekly_check:
-    if: ${{ github.event_name == 'schedule' }}
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'schedule'
     name: Weekly check all examples
     needs: matrix_preparation
     runs-on: [self-hosted, gpu]

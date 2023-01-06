@@ -1,25 +1,24 @@
+## Examples folder document
+
+## Table of Contents
+<ul>
+ <li><a href="#Example-folder-description">Example folder description</a> </li>
+ <li><a href="#Integrate-Your-Example-With-System-Testing">Integrate Your Example With System Testing</a> </li>
+</ul>
+
+## Example folder description
+
+This folder provides several examples using colossalai. The images folder includes model like diffusion, dreambooth and vit. The language folder includes gpt, opt, palm and roberta. The tutorial folder is for concept illustration, such as auto-parallel, hybrid-parallel and so on.
+
+
 ## Integrate Your Example With System Testing
 
-- Overview
-
-To automatically, periodically check the correctness of the example code, the GitHub action is used to examine the code as the implementation of CI/CD(Continuous integration/continuous deployment) concept. This doc is to standardize the example format. Nonstandard pull request(PR) will be blocked automatically. 
+For example code contributor, to meet the expectation and test your code automatically using github workflow function, here are several steps:
 
 
-- Testing Design
-
-The code submitted will be checked by the following three ways: the changed code within examples folder will be checked; all codes within examples folder will be checked each Sunday (Singapore time) 00:00; one can manually assert a sub-folder in examples folder to check. 
-
-All settings should be listed in test_ci.sh file. Some reminders are shown below.
-
-  A. The environment variable should be written in the file, not separately set in the terminal.
-
-  B. The dependent libraries can be listed in requirements.txt and add the command "pip install -r requirements.txt" in the test_ci.sh file. 
-
-  C. The config parameters should be small for fast testing
-
-  D. Add one test_ci.sh file for testing. 
-
-
+- (must) Have a test_ci.sh file in the folder like shown below in 'File Structure Chart'
+- The dataset should be located in the company's machine and can be announced using environment variable and thus no need for a separate terminal command.
+- The model parameters should be small to allow fast testing.
 - File Structure Chart
 
        └─examples

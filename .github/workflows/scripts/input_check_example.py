@@ -2,7 +2,7 @@ import argparse
 import os
 
 
-def det_cor(loc_li):
+def detect_correct(loc_li):
     for loc in loc_li:
         real_loc = 'examples/' + eval(loc)
         if not os.path.exists(real_loc):
@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--fileNameList', type=str)
     args = parser.parse_args()
     name_list = args.fileNameList.split(",")
-    result = det_cor(name_list)
+    result = detect_correct(name_list)
     print(result)
 
 
