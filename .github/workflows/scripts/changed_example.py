@@ -13,8 +13,7 @@ def main():
             folder_need_check.add(loc.split("/")[1] + "/" + loc.split("/")[2])
     # Output the result using print. Then the shell can get the values.
     folder_need_check = list(folder_need_check)
-    print(folder_need_check, 'this is folder_need_check')
-    if len(folder_need_check) == 1 and folder_need_check[0] == '':
+    if len(folder_need_check) == 0:
         print('no_file_to_check')
     else:
         print(list(folder_need_check))
