@@ -213,6 +213,7 @@ class ZeroDDP(ColoDDP):
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(gemini_manager)
         self.fp32_params: List[ColoTensor] = []
+        self.name_to_fp32_params: Dict[str, ColoTensor] = {}
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
 
@@ -228,6 +229,7 @@ class ZeroDDP(ColoDDP):
             for p in module.parameters():
                 param_order.append(p)
 
+        params_to_fp32_params = {}
         for p in param_order.generate():
             assert isinstance(p, ColoParameter)
 
@@ -249,8 +251,14 @@ class ZeroDDP(ColoDDP):
                                                config_key=dp_world_size,
                                                cpu_offload=cpu_offload,
                                                pin_memory=pin_memory)
+            params_to_fp32_params[p] = fp32_p
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
+
+        # Set keep_vars=True to prevent the parameter to be detached
+        for name, p in module.state_dict(keep_vars=True).items():
+            if p in params_to_fp32_params:
+                self.name_to_fp32_params[name] = params_to_fp32_params[p]
         self.chunk_manager.close_all_groups()
         self._cast_buffers()
 
@@ -418,11 +426,15 @@ class ZeroDDP(ColoDDP):
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
         param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
-        for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
-            if p is not None:
+        for name, p in self.module.state_dict().items():
+            if p is not None and name in self.name_to_fp32_params:
+                fp32_p = self.name_to_fp32_params[name]
+
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
                 record_parameter = param_to_save_data[fp32_p]
-                destination[prefix + name] = record_parameter
+            else:
+                record_parameter = p
+            destination[prefix + name] = record_parameter
 
         # save all buffers
         for name, buf in self.named_buffers():
