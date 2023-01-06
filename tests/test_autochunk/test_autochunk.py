@@ -4,7 +4,7 @@ import torch.fx
 import torch.multiprocessing as mp
 
 import colossalai
-from colossalai.autochunk.chunk_codegen import ChunkCodeGen
+from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
 from colossalai.core import global_context as gpc
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
@@ -82,7 +82,7 @@ def _run_offload_codegen(rank):
         MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0")
     )
 
-    codegen = ChunkCodeGen(gm_prop)
+    codegen = AutoChunkCodeGen(gm_prop)
     graph.set_codegen(codegen)
     gm = ColoGraphModule(model, graph)
     gm.recompile()

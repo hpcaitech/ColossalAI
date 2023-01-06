@@ -3,7 +3,7 @@ import time
 import torch
 import torch.fx
 
-from colossalai.autochunk.chunk_codegen import ChunkCodeGen
+from colossalai.autochunk.autochunk_codegen import AutoChunkCodeGen
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
@@ -49,25 +49,29 @@ def _build_autochunk(model, max_memory, node, pair):
             "pair": pair.to(torch.device("meta")),
         },
     )
+
     gm_prop = torch.fx.symbolic_trace(model)  # must use symbolic_trace
     interp = MetaInfoProp(gm_prop)
     interp.propagate(
         MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0")
     )
+
     # now run it twice to get meta info in graph module, not necessary
     gm = torch.fx.GraphModule(model, graph)
     interp = MetaInfoProp(gm)
     interp.propagate(
         MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0")
     )
+
     # set code_gen
-    codegen = ChunkCodeGen(gm_prop, max_memory)
+    codegen = AutoChunkCodeGen(gm_prop, max_memory)
     graph.set_codegen(codegen)
     gm = ColoGraphModule(model, graph)
     gm.recompile()
+
     # print
-    code = graph.python_code("self").src
-    print(code)
+    # code = graph.python_code("self").src
+    # print(code)
     return gm
 
 
