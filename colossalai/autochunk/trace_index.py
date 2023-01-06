@@ -10,7 +10,7 @@ from .utils import (
 )
 
 
-class IndexTracer(object):
+class TraceIndex(object):
     def __init__(self, node_list) -> None:
         self.node_list = node_list
         self.idx_trace_list = self._init_idx_trace_list()
@@ -982,7 +982,7 @@ class IndexTracer(object):
 
 
 class ReorderGraph(object):
-    def __init__(self, index_tracer: IndexTracer) -> None:
+    def __init__(self, index_tracer: TraceIndex) -> None:
         self.index_tracer = index_tracer
         self.all_reorder_map = {i: i for i in range(len(self.index_tracer.idx_trace_list))}
 

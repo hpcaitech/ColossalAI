@@ -1,8 +1,8 @@
 import copy
 
-from .chunk_selector import ChunkSelector
-from .index_tracer import IndexTracer, ReorderGraph
-from .memory_estiamtor import MemoryEstimator
+from .select_chunk import SelectChunk
+from .trace_index import TraceIndex, ReorderGraph
+from .estiamte_memory import EstimateMemory
 from .utils import (
     get_node_shape,
     is_non_compute_node,
@@ -10,15 +10,15 @@ from .utils import (
 )
 
 
-class ChunkRegionSearch(object):
+class SearchChunk(object):
     def __init__(self, gm, max_memory=None, print_mem=False) -> None:
         self.gm = gm
         self.print_mem = print_mem
-        self.index_tracer = IndexTracer(list(gm.graph.nodes))
+        self.index_tracer = TraceIndex(list(gm.graph.nodes))
         self.index_tracer.trace_index()
         self.reorder_graph = ReorderGraph(self.index_tracer)
-        self.memory_estimator = MemoryEstimator()
-        self.chunk_selector = ChunkSelector(
+        self.memory_estimator = EstimateMemory()
+        self.chunk_selector = SelectChunk(
             self.index_tracer, self.memory_estimator, self.reorder_graph, max_memory=max_memory
         )
 

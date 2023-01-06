@@ -1,13 +1,13 @@
-from .index_tracer import IndexTracer, ReorderGraph
-from .memory_estiamtor import MemoryEstimator
+from .trace_index import TraceIndex, ReorderGraph
+from .estiamte_memory import EstimateMemory
 from .utils import is_non_compute_node
 
 
-class ChunkSelector(object):
+class SelectChunk(object):
     def __init__(
         self,
-        index_tracer: IndexTracer,
-        memory_estimator: MemoryEstimator,
+        index_tracer: TraceIndex,
+        memory_estimator: EstimateMemory,
         reorder_graph: ReorderGraph,
         max_memory=None,
     ):

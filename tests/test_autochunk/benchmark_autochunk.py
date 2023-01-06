@@ -104,7 +104,7 @@ def benchmark_evoformer():
     model = evoformer_base().cuda()
 
     # build autochunk model
-    # max_memory = 10000  # MB fit memory mode
+    # max_memory = 1000  # MB fit memory mode
     max_memory = None  # min memory mode
     autochunk = _build_autochunk(evoformer_base().cuda(), max_memory, node, pair)
 

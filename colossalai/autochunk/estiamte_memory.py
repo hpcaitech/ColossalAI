@@ -6,7 +6,6 @@ from torch.fx.node import Node, map_arg
 
 from colossalai.fx.profiler import activation_size, parameter_size
 
-from .index_tracer import IndexTracer
 from .utils import (
     delete_free_var_from_last_use,
     find_idx_by_name,
@@ -15,7 +14,7 @@ from .utils import (
 )
 
 
-class MemoryEstimator(object):
+class EstimateMemory(object):
     def __init__(self) -> None:
         pass
 
