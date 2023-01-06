@@ -19,25 +19,25 @@ import torch.nn as nn
 from typing import Tuple, Optional
 from functools import partial
 
-from openfold.primitives import Linear, LayerNorm
-from openfold.dropout import DropoutRowwise, DropoutColumnwise
-from openfold.msa import (
+from .primitives import Linear, LayerNorm
+from .dropout import DropoutRowwise, DropoutColumnwise
+from .msa import (
     MSARowAttentionWithPairBias,
     MSAColumnAttention,
     MSAColumnGlobalAttention,
 )
-from openfold.outer_product_mean import OuterProductMean
-from openfold.pair_transition import PairTransition
-from openfold.triangular_attention import (
+from .outer_product_mean import OuterProductMean
+from .pair_transition import PairTransition
+from .triangular_attention import (
     TriangleAttentionStartingNode,
     TriangleAttentionEndingNode,
 )
-from openfold.triangular_multiplicative_update import (
+from .triangular_multiplicative_update import (
     TriangleMultiplicationOutgoing,
     TriangleMultiplicationIncoming,
 )
-from openfold.checkpointing import checkpoint_blocks, get_checkpoint_fn
-from openfold.tensor_utils import chunk_layer
+from .checkpointing import checkpoint_blocks, get_checkpoint_fn
+from .tensor_utils import chunk_layer
 
 
 class MSATransition(nn.Module):

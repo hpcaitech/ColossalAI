@@ -21,8 +21,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from openfold.checkpointing import get_checkpoint_fn
-from openfold.tensor_utils import (
+from .checkpointing import get_checkpoint_fn
+from .tensor_utils import (
     permute_final_dims,
     flatten_final_dims,
     _chunk_slice,

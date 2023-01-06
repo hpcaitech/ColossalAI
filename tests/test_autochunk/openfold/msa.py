@@ -18,15 +18,15 @@ import torch
 import torch.nn as nn
 from typing import Optional, List, Tuple
 
-from openfold.primitives import (
+from .primitives import (
     Linear, 
     LayerNorm,
     Attention, 
     GlobalAttention, 
     _attention_chunked_trainable,
 )
-from openfold.checkpointing import get_checkpoint_fn
-from openfold.tensor_utils import (
+from .checkpointing import get_checkpoint_fn
+from .tensor_utils import (
     chunk_layer,
     permute_final_dims,
     flatten_final_dims,
