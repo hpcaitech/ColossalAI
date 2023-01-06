@@ -46,10 +46,10 @@ jobs:
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
   check-all-changed-files:
     # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
-    if: |
-        github.event.pull_request.draft == false &&
-        github.base_ref == 'main' &&
-        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+#    if: |
+#        github.event.pull_request.draft == false &&
+#        github.base_ref == 'main' &&
+#        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
     name: Test each changed example files
     needs: detect-changed-example
     runs-on: self-hosted
