@@ -33,8 +33,7 @@ jobs:
       - name: Install Colossal-AI
         run: |
           [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
-          pip install -r requirements/requirements.txt
-          pip install -v -e .
+          CUDA_EXT=1 pip install -v -e .
           cp -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
           pip install -r requirements/requirements-test.txt
       - name: Unit Testing

@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple, Union
 import torch
 from torch.fx.node import Node
 
-from colossalai.auto_parallel.meta_profiler.metainfo import MetaInfo
+from colossalai.auto_parallel.meta_profiler.metainfo import MetaInfo, meta_register
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import (
     OperationData,
     OperationDataType,
@@ -138,8 +138,7 @@ class NodeHandler(ABC):
             return None
 
         if self.node.op == 'call_module':
-            submod = self.node.graph.owning_module.get_submodule(self.node.target)
-            target = type(submod)
+            target = self.node.graph.owning_module.get_submodule(self.node.target)
         elif self.node.op == 'call_function':
             target = self.node.target
         elif self.node.op == 'call_method':
@@ -235,15 +234,19 @@ class MetaInfoNodeHandler(NodeHandler):
         """
         super().register_strategy(compute_resharding_cost=compute_resharding_cost)
         target = self.get_target_function()
-        metainfo_vector = []
-        for strategy in self.strategies_vector:
-            metainfo = MetaInfo(strategy, target)
-            strategy.compute_cost = metainfo.compute_cost
-            strategy.memory_cost = metainfo.memory_cost
-            metainfo_vector.append(metainfo)
+        # Currently we haven't patched all the torch functions and modules, so if the target
+        # is not patched, we will use the default cost model to compute the cost.
+        # TODO: patch all torch functions and modules to make it clean
+        if meta_register.has(target.__class__) or meta_register.has(target):
+            metainfo_vector = []
+            for strategy in self.strategies_vector:
+                metainfo = MetaInfo(strategy, target)
+                strategy.compute_cost = metainfo.compute_cost
+                strategy.memory_cost = metainfo.memory_cost
+                metainfo_vector.append(metainfo)
 
-        # attach metainfos to the handler
-        setattr(self, "metainfo_vector", metainfo_vector)
+            # attach metainfos to the handler
+            setattr(self, "metainfo_vector", metainfo_vector)
 
         return self.strategies_vector
 
@@ -282,14 +285,18 @@ class MetaInfoModuleHandler(ModuleHandler):
         """
         super().register_strategy(compute_resharding_cost=compute_resharding_cost)
         target = self.get_target_function()
-        metainfo_vector = []
-        for strategy in self.strategies_vector:
-            metainfo = MetaInfo(strategy, target)
-            strategy.compute_cost = metainfo.compute_cost
-            strategy.memory_cost = metainfo.memory_cost
-            metainfo_vector.append(metainfo)
+        # Currently we haven't patched all the torch functions and modules, so if the target
+        # is not patched, we will use the default cost model to compute the cost.
+        # TODO: patch all torch functions and modules to make it clean
+        if meta_register.has(target.__class__) or meta_register.has(target):
+            metainfo_vector = []
+            for strategy in self.strategies_vector:
+                metainfo = MetaInfo(strategy, target)
+                strategy.compute_cost = metainfo.compute_cost
+                strategy.memory_cost = metainfo.memory_cost
+                metainfo_vector.append(metainfo)
 
-        # attach metainfos to the handler
-        setattr(self, "metainfo_vector", metainfo_vector)
+            # attach metainfos to the handler
+            setattr(self, "metainfo_vector", metainfo_vector)
 
         return self.strategies_vector
