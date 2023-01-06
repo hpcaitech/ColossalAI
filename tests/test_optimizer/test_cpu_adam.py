@@ -66,7 +66,8 @@ def test_cpu_adam(adamw, step, p_dtype, g_dtype):
         exp_avg_sq = torch.rand(p_data.shape)
         exp_avg_sq_copy = exp_avg_sq.clone()
 
-        from colossalai.kernel import cpu_optim
+        from colossalai.kernel.op_builder import CPUAdamBuilder
+        cpu_optim = CPUAdamBuilder().load()
 
         cpu_adam_op = cpu_optim.CPUAdamOptimizer(lr, beta1, beta2, eps, weight_decay, adamw)
 
