@@ -123,7 +123,7 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 
 ### stable-diffusion-v1-5 from runway
 
-If you want to useed the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) wiegh from runwayml
+If you want to use the Last [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) wiegh from runwayml
 
 ```
 git lfs install
