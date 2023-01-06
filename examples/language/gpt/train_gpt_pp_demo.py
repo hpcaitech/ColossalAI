@@ -1,4 +1,3 @@
-# 2121222222222
 import argparse
 import time
 from functools import partial
