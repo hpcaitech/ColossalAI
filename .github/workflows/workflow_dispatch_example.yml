@@ -1,0 +1,67 @@
+name: Manual Test Example
+on:
+  workflow_dispatch:
+    inputs:
+      example_directory:
+        type: string
+        description: example directory, separated by space. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
+        required: true
+
+jobs:
+  manual_check_matrix_preparation:
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    name: Check the examples user want
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix-1.outputs.matrix }}
+    steps:
+    - name: 📚 Checkout
+      uses: actions/checkout@v3
+    - name: Get manual directories
+      id: set-matrix-1
+      env:
+        check_dir: ${{ inputs.example_directory }}
+      run: |
+        all_mannual_check_dir=()
+        for cdi in $check_dir
+        do
+          all_mannual_check_dir+=("\"${cdi}\"")
+        done
+        man_loc=$( IFS=',' ; echo "${all_mannual_check_dir[*]}" )
+        res=`python .github/workflows/scripts/input_check_example.py --fileNameList $man_loc`
+        echo "${res} is file existance. 1 for all exist, -1 for at least one file not exist."
+        if [ res == -1 ];then
+           exit(1)
+        fi
+        man_loc="[${man_loc}]"
+        echo "$man_loc"
+        echo "::set-output name=matrix::{\"man_loc\":$(echo "$man_loc")}"
+
+  manual_check:
+    if: |
+        github.event.pull_request.draft == false &&
+        github.base_ref == 'main' &&
+        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    name: Manually check example files
+    needs: manual_check_matrix_preparation
+    runs-on: [self-hosted, gpu]
+    strategy:
+      matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}
+    container:
+      image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+    steps:
+      - name: 📚 Checkout
+        uses: actions/checkout@v3
+      - name: Install the requirements
+        run: |
+          pip install -r ./requirements/requirements.txt
+          pip install colossalai
+      - name: Traverse all files
+        run: |
+          dir=${{ matrix.man_loc }}
+          echo "${dir} is current directory"
+          cd "${PWD}/examples/${dir}"
+          bash test_ci.sh
