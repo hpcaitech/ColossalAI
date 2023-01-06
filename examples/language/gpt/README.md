@@ -113,12 +113,9 @@ Touch the bar of model scale and batch size.
 | model | #GPU | policy | TP | batch per DP | Tflops |
 | ---------- | --------- |--------- |--------- |--------- |--------- |
 | gpt2_20b |  8  | cpu | 2 | 8 | 46.895 |
-<<<<<<< HEAD
-=======
 
 
 ### Experimental Features
 
 #### [Pipeline Parallel](./experiments/pipeline_parallel/)
 #### [Auto Parallel](./experiments/auto_parallel_with_gpt/)
->>>>>>> 509a87f3ff3acd4c43aac8e4363496fe5aa79d9f
