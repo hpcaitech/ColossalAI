@@ -5,8 +5,8 @@ from .utils import append_nvcc_threads, get_cuda_cc_flag
 
 
 class LayerNormBuilder(Builder):
-    NAME = "fused_optim"
-    PREBUILT_IMPORT_PATH = "colossalai._C.fused_optim"
+    NAME = "layernorm"
+    PREBUILT_IMPORT_PATH = "colossalai._C.layernorm"
 
     def __init__(self):
         super().__init__(name=LayerNormBuilder.NAME, prebuilt_import_path=LayerNormBuilder.PREBUILT_IMPORT_PATH)
