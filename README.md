@@ -5,10 +5,10 @@
 
    Colossal-AI: A Unified Deep Learning System for Big Model Era
 
-   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> | 
-   <a href="https://www.colossalai.org/"> Documentation </a> | 
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |   
-   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> | 
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> Paper </a> |
+   <a href="https://www.colossalai.org/"> Documentation </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> Examples </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
    <a href="https://medium.com/@hpcaitech"> Blog </a></h3>
 
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
@@ -17,7 +17,7 @@
    [![HuggingFace badge](https://img.shields.io/badge/%F0%9F%A4%97HuggingFace-Join-yellow)](https://huggingface.co/hpcai-tech)
    [![slack badge](https://img.shields.io/badge/Slack-join-blueviolet?logo=slack&amp)](https://join.slack.com/t/colossalaiworkspace/shared_invite/zt-z7b26eeb-CBp7jouvu~r0~lcFzX832w)
    [![WeChat badge](https://img.shields.io/badge/微信-加入-green?logo=wechat&amp)](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/WeChat.png)
-   
+
 
    | [English](README.md) | [中文](README-zh-Hans.md) |
 
@@ -35,7 +35,7 @@
  <li><a href="#Why-Colossal-AI">Why Colossal-AI</a> </li>
  <li><a href="#Features">Features</a> </li>
  <li>
-   <a href="#Parallel-Training-Demo">Parallel Training Demo</a> 
+   <a href="#Parallel-Training-Demo">Parallel Training Demo</a>
    <ul>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
@@ -47,14 +47,14 @@
    </ul>
  </li>
  <li>
-   <a href="#Single-GPU-Training-Demo">Single GPU Training Demo</a> 
+   <a href="#Single-GPU-Training-Demo">Single GPU Training Demo</a>
    <ul>
      <li><a href="#GPT-2-Single">GPT-2</a></li>
      <li><a href="#PaLM-Single">PaLM</a></li>
    </ul>
  </li>
  <li>
-   <a href="#Inference-Energon-AI-Demo">Inference (Energon-AI) Demo</a> 
+   <a href="#Inference-Energon-AI-Demo">Inference (Energon-AI) Demo</a>
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
@@ -62,7 +62,7 @@
    </ul>
  </li>
    <li>
-   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a> 
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a>
    <ul>
      <li><a href="#AIGC">AIGC: Acceleration of Stable Diffusion</a></li>
      <li><a href="#Biomedicine">Biomedicine: Acceleration of AlphaFold Protein Structure</a></li>
@@ -106,7 +106,7 @@ distributed training and inference in a few lines.
   - [Zero Redundancy Optimizer (ZeRO)](https://arxiv.org/abs/1910.02054)
   - [Auto-Parallelism](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/gpt/auto_parallel_with_gpt)
 
-- Heterogeneous Memory Management 
+- Heterogeneous Memory Management
   - [PatrickStar](https://arxiv.org/abs/2108.05818)
 
 - Friendly Usage
@@ -115,7 +115,7 @@ distributed training and inference in a few lines.
 - Inference
   - [Energon-AI](https://github.com/hpcaitech/EnergonAI)
 
-- Colossal-AI in the Real World 
+- Colossal-AI in the Real World
   - Biomedicine: [FastFold](https://github.com/hpcaitech/FastFold) accelerates training and inference of AlphaFold protein structure
 <p align="right">(<a href="#top">back to top</a>)</p>
 
@@ -149,7 +149,7 @@ distributed training and inference in a few lines.
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), a 175-Billion parameter AI language model released by Meta, which stimulates AI programmers to perform various downstream tasks and application deployments because public pretrained model weights.
-- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt) 
+- 45% speedup fine-tuning OPT at low cost in lines. [[Example]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[Online Serving]](https://service.colossalai.org/opt)
 
 Please visit our [documentation](https://www.colossalai.org/) and [examples](https://github.com/hpcaitech/ColossalAI-Examples) for more details.
 
@@ -277,10 +277,11 @@ pip install -r requirements/requirements.txt
 pip install .
 ```
 
-If you don't want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
+By default, we do not compile CUDA/C++ kernels. ColossalAI will build them during runtime.
+If you want to install and enable CUDA kernel fusion (compulsory installation when using fused optimizer):
 
 ```shell
-NO_CUDA_EXT=1 pip install .
+CUDA_EXT=1 pip install .
 ```
 
 <p align="right">(<a href="#top">back to top</a>)</p>
