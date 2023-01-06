@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
+      exist: ${{ steps.set-matrix.outputs.exist }}
     name: Check out all files
     steps:
       - uses: actions/checkout@v3
@@ -60,6 +61,7 @@ jobs:
 #        github.event.pull_request.draft == false &&
 #        github.base_ref == 'main' &&
 #        github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+    if: needs.detect-changed-example.outputs.exist == "with_file"
     name: Test each changed example files
     needs: detect-changed-example
     runs-on: self-hosted
