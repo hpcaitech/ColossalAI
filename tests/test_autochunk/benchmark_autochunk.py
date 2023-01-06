@@ -64,7 +64,7 @@ def _build_autochunk(model, max_memory, node, pair):
     )
 
     # set code_gen
-    codegen = AutoChunkCodeGen(gm_prop, max_memory)
+    codegen = AutoChunkCodeGen(gm_prop, max_memory, print_mem=False)
     graph.set_codegen(codegen)
     gm = ColoGraphModule(model, graph)
     gm.recompile()

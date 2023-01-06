@@ -6,8 +6,9 @@ from .utils import is_non_compute_node, is_non_compute_node_except_placeholder, 
 
 
 class ChunkRegionSearch(object):
-    def __init__(self, gm, max_memory=None) -> None:
+    def __init__(self, gm, max_memory=None, print_mem=False) -> None:
         self.gm = gm
+        self.print_mem = print_mem
         self.index_tracer = IndexTracer(list(gm.graph.nodes))
         self.index_tracer.trace_index()
         self.memory_estimator = MemoryEstimator(self.index_tracer)
@@ -204,8 +205,10 @@ class ChunkRegionSearch(object):
             )
             if self._stop_search(init_mem_peak, mem_peak):
                 break
-        self.memory_estimator.estimate_chunk_inference_mem(
-            self.index_tracer.node_list, chunk_infos, print_mem=True
-        )
+        if self.print_mem:
+            self.print_mem = False
+            self.memory_estimator.estimate_chunk_inference_mem(
+                self.index_tracer.node_list, chunk_infos, print_mem=True
+            )
         return chunk_infos
 
