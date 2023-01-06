@@ -41,7 +41,17 @@ jobs:
           echo "All changed files are $res"
           loc=$( IFS=',' ; echo "${res[*]}" )
           echo "$loc"
+          
+          if [ ${loc} = "no_file_to_check" ];then
+             echo "111"
+             echo "::set-output name=exist::{"no_file"}"
+          else
+             echo "222"
+             echo "::set-output name=exist::{"with_file"}"
+          fi
+          
           echo "::set-output name=matrix::{\"loc\":$(echo "$loc")}"
+
 
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
   check-all-changed-files:
