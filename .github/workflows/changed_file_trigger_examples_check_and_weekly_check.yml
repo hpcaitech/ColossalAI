@@ -48,7 +48,7 @@ jobs:
           else
              echo "::set-output name=exist::{"with_file"}"
           fi
-          
+
           echo "::set-output name=matrix::{\"loc\":$(echo "$loc")}"
 
   # If no file is changed, it will prompt an error and shows the matrix do not have value.
