@@ -126,14 +126,14 @@ class ChunkSelector(object):
         )
         return chunk_info
 
-    def _chunk_size_binary_search(self, l, r, chunk_region_dict, chunk_infos):
-        if l >= 16:
+    def _chunk_size_binary_search(self, left, right, chunk_region_dict, chunk_infos):
+        if left >= 16:
             gap = 4
         else:
             gap = 1
         chunk_info = chunk_region_dict["reorder_chunk_info"]
-        while r >= l + gap:
-            mid = int((l + r) / 2 + 0.5)
+        while right >= left + gap:
+            mid = int((left + right) / 2 + 0.5)
             chunk_info["chunk_size"] = mid
             cur_chunk_infos = chunk_infos + [chunk_info]
             cur_mem_peak = self.memory_estimator.estimate_chunk_inference_mem(
@@ -143,10 +143,10 @@ class ChunkSelector(object):
                 cur_mem_peak[chunk_info["region"][0] : chunk_info["region"][1] + 1]
             )
             if cur_chunk_max_mem >= self.max_memory:
-                r = mid - gap
+                right = mid - gap
             else:
-                l = mid + gap
-        return l
+                left = mid + gap
+        return left
 
     def _get_compute_node_num(self, start, end):
         count = 0

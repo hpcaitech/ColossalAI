@@ -157,12 +157,12 @@ def _get_minimal_slice_set(
     # start_edges and end_edges both indicate whether, starting from any given
     # dimension, the start/end index is at the top/bottom edge of the
     # corresponding tensor, modeled as a tree
-    def reduce_edge_list(l):
+    def reduce_edge_list(ll):
         tally = 1
-        for i in range(len(l)):
+        for i in range(len(ll)):
             reversed_idx = -1 * (i + 1)
-            l[reversed_idx] *= tally
-            tally = l[reversed_idx]
+            ll[reversed_idx] *= tally
+            tally = ll[reversed_idx]
 
     if(start_edges is None):
         start_edges = [s == 0 for s in start]

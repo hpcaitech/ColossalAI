@@ -67,10 +67,10 @@ class OutProductMean(nn.Module):
         left_act = self.linear_a(M)
         right_act = self.linear_b(M)
 
-        O = torch.einsum('bsid,bsje->bijde', left_act, right_act).contiguous()
+        o = torch.einsum('bsid,bsje->bijde', left_act, right_act).contiguous()
         # O = rearrange(O, 'b i j d e -> b i j (d e)')
-        O = O.reshape(O.shape[0], O.shape[1], O.shape[2], -1)
-        Z = self.o_linear(O)
+        o = o.reshape(o.shape[0], o.shape[1], o.shape[2], -1)
+        Z = self.o_linear(o)
 
         return Z
 
