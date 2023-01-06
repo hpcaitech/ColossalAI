@@ -6,10 +6,11 @@ from functools import reduce
 from typing import Dict, List
 
 import torch
-
-from colossalai.auto_parallel.tensor_shard.deprecated._utils import ignore_sharding_exception
-from colossalai.auto_parallel.tensor_shard.deprecated.constants import INFINITY_COST
-from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import ShardingStrategy, StrategiesVector
+from colossalai.auto_parallel.tensor_shard.deprecated._utils import \
+    ignore_sharding_exception
+from colossalai.auto_parallel.tensor_shard.deprecated.constants import \
+    INFINITY_COST
+from colossalai.auto_parallel.tensor_shard.deprecated.sharding_strategy import (ShardingStrategy, StrategiesVector)
 from colossalai.tensor.shape_consistency import ShapeConsistencyManager
 from colossalai.tensor.sharding_spec import ShardingSpec
 
