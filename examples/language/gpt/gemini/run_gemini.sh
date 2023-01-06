@@ -6,7 +6,7 @@ export DISTPAN=${DISTPAN:-"colossalai"}
 export GPUNUM=${GPUNUM:-1}
 export TPDEGREE=${TPDEGREE:-1}
 export PLACEMENT=${PLACEMENT:-"cpu"}
-export USE_SHARD_INIT=${USE_SHARD_INIT:-True}
+export USE_SHARD_INIT=${USE_SHARD_INIT:-False}
 export BATCH_SIZE=${BATCH_SIZE:-16}
 export MODEL_TYPE=${MODEL_TYPE:-"gpt2_medium"}
 
