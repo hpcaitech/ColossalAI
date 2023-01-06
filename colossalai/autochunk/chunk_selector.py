@@ -1,4 +1,4 @@
-from .index_tracer import IndexTracer
+from .index_tracer import IndexTracer, ReorderGraph
 from .memory_estiamtor import MemoryEstimator
 from .utils import is_non_compute_node
 
@@ -8,10 +8,12 @@ class ChunkSelector(object):
         self,
         index_tracer: IndexTracer,
         memory_estimator: MemoryEstimator,
+        reorder_graph: ReorderGraph,
         max_memory=None,
     ):
         self.index_tracer = index_tracer
         self.memory_estimator = memory_estimator
+        self.reorder_graph = reorder_graph
         if max_memory is not None:
             self.stratge = "fit_memory"
             self.max_memory = max_memory  # MB
@@ -64,7 +66,7 @@ class ChunkSelector(object):
         regions_dict = []
         for region in possible_chunk_regions:
             cur_region = region.copy()
-            cur_node_list, cur_region = self.index_tracer.tmp_reorder(
+            cur_node_list, cur_region = self.reorder_graph.tmp_reorder(
                 self.index_tracer.node_list, cur_region
             )
             cur_chunk_infos = chunk_infos + [cur_region]
@@ -174,7 +176,7 @@ class ChunkSelector(object):
         regions_dict = []
         for region in possible_chunk_regions:
             cur_region = region.copy()
-            cur_node_list, cur_region = self.index_tracer.tmp_reorder(
+            cur_node_list, cur_region = self.reorder_graph.tmp_reorder(
                 self.index_tracer.node_list, cur_region
             )
             cur_chunk_infos = chunk_infos + [cur_region]

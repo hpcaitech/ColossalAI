@@ -103,7 +103,7 @@ def emit_code_with_chunk(
     nodes,
     emit_node_func,
     delete_unused_value_func,
-    chunk_region_search,
+    chunk_region_search: ChunkRegionSearch,
     chunk_infos,
 ):
     """Emit code with nested activation checkpoint
@@ -133,7 +133,7 @@ def emit_code_with_chunk(
     chunk_outputs = [i["outputs"][0] for i in chunk_infos]
     chunk_outputs_dim = [i["outputs_dim"] for i in chunk_infos]
 
-    node_list = chunk_region_search.index_tracer.reorder_node_list(node_list)
+    node_list = chunk_region_search.reorder_graph.reorder_node_list(node_list)
     node_idx = 0
     region_idx = 0
     within_chunk_region = False

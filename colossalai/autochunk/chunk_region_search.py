@@ -1,7 +1,7 @@
 import copy
 
 from .chunk_selector import ChunkSelector
-from .index_tracer import IndexTracer
+from .index_tracer import IndexTracer, ReorderGraph
 from .memory_estiamtor import MemoryEstimator
 from .utils import (
     get_node_shape,
@@ -16,9 +16,10 @@ class ChunkRegionSearch(object):
         self.print_mem = print_mem
         self.index_tracer = IndexTracer(list(gm.graph.nodes))
         self.index_tracer.trace_index()
+        self.reorder_graph = ReorderGraph(self.index_tracer)
         self.memory_estimator = MemoryEstimator()
         self.chunk_selector = ChunkSelector(
-            self.index_tracer, self.memory_estimator, max_memory=max_memory
+            self.index_tracer, self.memory_estimator, self.reorder_graph, max_memory=max_memory
         )
 
     def _find_peak_node(self, mem_peak):
@@ -175,7 +176,7 @@ class ChunkRegionSearch(object):
         best_chunk_region = self.chunk_selector._select_best_chunk_region(
             possible_chunk_regions, chunk_regions, peak_node, max_chunk_region, mem_peak
         )
-        best_chunk_region = self.index_tracer.reorder_all(best_chunk_region)
+        best_chunk_region = self.reorder_graph.reorder_all(best_chunk_region)
         return best_chunk_region
 
     def _stop_search(self, init_mem_peak, mem_peak):
