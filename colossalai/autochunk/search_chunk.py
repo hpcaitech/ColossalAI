@@ -1,10 +1,10 @@
 import copy
 
-from .select_chunk import SelectChunk
-from .trace_index import TraceIndex
-from .reorder_graph import ReorderGraph
 from .estiamte_memory import EstimateMemory
+from .reorder_graph import ReorderGraph
+from .select_chunk import SelectChunk
 from .trace_flow import TraceFlow
+from .trace_index import TraceIndex
 from .utils import (
     get_node_shape,
     is_non_compute_node,
@@ -22,7 +22,10 @@ class SearchChunk(object):
         self.reorder_graph = ReorderGraph(self.trace_index)
         self.estimate_memory = EstimateMemory()
         self.select_chunk = SelectChunk(
-            self.trace_index, self.estimate_memory, self.reorder_graph, max_memory=max_memory
+            self.trace_index,
+            self.estimate_memory,
+            self.reorder_graph,
+            max_memory=max_memory,
         )
 
     def _find_peak_node(self, mem_peak):

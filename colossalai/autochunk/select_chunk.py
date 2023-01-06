@@ -1,19 +1,19 @@
-from .trace_index import TraceIndex
-from .reorder_graph import ReorderGraph
 from .estiamte_memory import EstimateMemory
+from .reorder_graph import ReorderGraph
+from .trace_index import TraceIndex
 from .utils import is_non_compute_node
 
 
 class SelectChunk(object):
     def __init__(
         self,
-        index_tracer: TraceIndex,
-        memory_estimator: EstimateMemory,
+        trace_index: TraceIndex,
+        estimate_memory: EstimateMemory,
         reorder_graph: ReorderGraph,
         max_memory=None,
     ):
-        self.index_tracer = index_tracer
-        self.memory_estimator = memory_estimator
+        self.index_tracer = trace_index
+        self.memory_estimator = estimate_memory
         self.reorder_graph = reorder_graph
         if max_memory is not None:
             self.stratge = "fit_memory"
