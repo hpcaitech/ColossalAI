@@ -12,8 +12,8 @@ from colossalai.core import global_context as gpc
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp, TensorMetadata
 from colossalai.fx.profiler import MetaTensor
-from evoformer.evoformer import evoformer_base
-from chunk_codegen import ChunkCodeGen
+from autochunk.evoformer.evoformer import evoformer_base
+from autochunk.chunk_codegen import ChunkCodeGen
 with_codegen = True
 
 

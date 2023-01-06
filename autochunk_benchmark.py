@@ -3,13 +3,13 @@ import time
 import torch
 import torch.fx
 
-from chunk_codegen import ChunkCodeGen
+from autochunk.chunk_codegen import ChunkCodeGen
 from colossalai.fx import ColoTracer
 from colossalai.fx.graph_module import ColoGraphModule
 from colossalai.fx.passes.meta_info_prop import MetaInfoProp
 from colossalai.fx.profiler import MetaTensor
-from evoformer.evoformer import evoformer_base
-from openfold.evoformer import EvoformerBlock
+from autochunk.evoformer.evoformer import evoformer_base
+from autochunk.openfold.evoformer import EvoformerBlock
 
 
 def _benchmark_evoformer(model: torch.nn.Module, node, pair, title, chunk_size=None):
@@ -94,23 +94,23 @@ def _build_openfold():
 def benchmark_evoformer():
     # init data and model
     msa_len = 256
-    pair_len = 2048
+    pair_len = 1024
     node = torch.randn(1, msa_len, pair_len, 256).cuda()
     pair = torch.randn(1, pair_len, pair_len, 128).cuda()
     model = evoformer_base().cuda()
 
     # build autochunk model
-    max_memory = 10000  # MB fit memory mode
-    # max_memory = None  # min memory mode
+    # max_memory = 10000  # MB fit memory mode
+    max_memory = None  # min memory mode
     autochunk = _build_autochunk(evoformer_base().cuda(), max_memory, node, pair)
 
     # build openfold
     chunk_size = 64
-    openfold = _build_openfold()
+    # openfold = _build_openfold()
 
     # benchmark
-    _benchmark_evoformer(model, node, pair, "base")
-    _benchmark_evoformer(openfold, node, pair, "openfold", chunk_size=chunk_size)
+    # _benchmark_evoformer(model, node, pair, "base")
+    # _benchmark_evoformer(openfold, node, pair, "openfold", chunk_size=chunk_size)
     _benchmark_evoformer(autochunk, node, pair, "autochunk")
 
 
