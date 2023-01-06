@@ -57,12 +57,6 @@ The `train_gpt_demo.py` provides three distributed plans, you can choose the pla
 - Pytorch ZeRO
 
 
-### Pipeline Parallel
-```bash
-bash run_pp.sh
-```
-
-
 ## Performance
 
 Testbed: a cluster of 8xA100 (80GB) and 1xAMD EPYC 7543 32-Core Processor (512 GB). GPUs are connected via PCI-e.
@@ -119,3 +113,12 @@ Touch the bar of model scale and batch size.
 | model | #GPU | policy | TP | batch per DP | Tflops |
 | ---------- | --------- |--------- |--------- |--------- |--------- |
 | gpt2_20b |  8  | cpu | 2 | 8 | 46.895 |
+<<<<<<< HEAD
+=======
+
+
+### Experimental Features
+
+#### [Pipeline Parallel](./experiments/pipeline_parallel/)
+#### [Auto Parallel](./experiments/auto_parallel_with_gpt/)
+>>>>>>> 509a87f3ff3acd4c43aac8e4363496fe5aa79d9f
