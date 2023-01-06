@@ -9,7 +9,7 @@ for MODEL_TYPE in "gpt2_medium"; do
           echo "****************** Begin ***************************"
           echo "* benchmrking MODEL_TYPE ${MODEL_TYPE} BS ${BATCH_SIZE} BS ${BS} GPUNUM ${GPUNUM} TPDEGREE ${TPDEGREE} PLACEMENT ${PLACEMENT}"
           MODEL_TYPE=${MODEL_TYPE} BATCH_SIZE=${BATCH_SIZE} GPUNUM=${GPUNUM} TPDEGREE=${TPDEGREE} PLACEMENT=${PLACEMENT} \
-          bash ./run_gemini.sh
+          bash ./gemini/run_gemini.sh
           echo "****************** Finished ***************************"
           echo ""
           echo ""

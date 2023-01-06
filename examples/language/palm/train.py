@@ -154,8 +154,6 @@ def tensor_parallelize(model: torch.nn.Module, pg: ProcessGroup):
                 split_param_row_tp1d(param, pg)    # row slice
             else:
                 param.set_dist_spec(ReplicaSpec())
-
-
             param.visited = True
 
 

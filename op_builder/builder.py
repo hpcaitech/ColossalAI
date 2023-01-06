@@ -3,14 +3,18 @@ import re
 from pathlib import Path
 from typing import List
 
-import torch
-
 
 def get_cuda_cc_flag() -> List:
     """get_cuda_cc_flag
 
     cc flag for your GPU arch
     """
+
+    # only import torch when needed
+    # this is to avoid importing torch when building on a machine without torch pre-installed
+    # one case is to build wheel for pypi release
+    import torch
+    
     cc_flag = []
     for arch in torch.cuda.get_arch_list():
         res = re.search(r'sm_(\d+)', arch)
