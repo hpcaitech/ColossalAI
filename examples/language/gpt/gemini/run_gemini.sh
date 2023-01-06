@@ -10,7 +10,7 @@ export USE_SHARD_INIT=${USE_SHARD_INIT:-False}
 export BATCH_SIZE=${BATCH_SIZE:-16}
 export MODEL_TYPE=${MODEL_TYPE:-"gpt2_medium"}
 
-export PYTHONPATH=$PWD:$PYTHONPATH
+# export PYTHONPATH=$PWD:$PYTHONPATH
 
 mkdir -p gemini_logs
 

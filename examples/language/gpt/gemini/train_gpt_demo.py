@@ -16,7 +16,6 @@ from colossalai.nn.parallel import ZeroDDP
 from colossalai.tensor import ColoParameter, ComputePattern, ComputeSpec, ProcessGroup, ReplicaSpec, ShardSpec
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
-from model_zoo import model_builder
 
 CAI_VERSION = colossalai.__version__
 

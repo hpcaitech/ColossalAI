@@ -1,5 +1,3 @@
-export PYTHONPATH=$PWD:$PYTHONPATH
-
 for MODEL_TYPE in "gpt2_medium"; do
   for BATCH_SIZE in 16; do
     for GPUNUM in 1 2 4 8; do
