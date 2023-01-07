@@ -16,17 +16,17 @@ class FusedLayerNormAffineFunction(torch.autograd.Function):
     @custom_fwd(cast_inputs=torch.float32)
     def forward(ctx, input, weight, bias, normalized_shape, eps):
         try:
-            import colossalai._C.layer_norm
+            from colossalai._C import layer_norm
         except ImportError:
-            raise RuntimeError('FusedLayerNormAffineFunction requires cuda extensions')
+            from colossalai.kernel.op_builder.layernorm import LayerNormBuilder
+            layer_norm = LayerNormBuilder().load()
 
         ctx.normalized_shape = normalized_shape
         ctx.eps = eps
         input_ = input.contiguous()
         weight_ = weight.contiguous()
         bias_ = bias.contiguous()
-        output, mean, invvar = colossalai._C.layer_norm.forward_affine(input_, ctx.normalized_shape, weight_, bias_,
-                                                                       ctx.eps)
+        output, mean, invvar = layer_norm.forward_affine(input_, ctx.normalized_shape, weight_, bias_, ctx.eps)
         ctx.save_for_backward(input_, weight_, bias_, mean, invvar)
 
         return output
@@ -35,14 +35,15 @@ class FusedLayerNormAffineFunction(torch.autograd.Function):
     @custom_bwd
     def backward(ctx, grad_output):
         try:
-            import colossalai._C.layer_norm
+            from colossalai._C import layer_norm
         except ImportError:
-            raise RuntimeError('FusedLayerNormAffineFunction requires cuda extensions')
+            from colossalai.kernel.op_builder.layernorm import LayerNormBuilder
+            layer_norm = LayerNormBuilder().load()
 
         input_, weight_, bias_, mean, invvar = ctx.saved_tensors
         grad_input = grad_weight = grad_bias = None
         grad_input, grad_weight, grad_bias \
-            = colossalai._C.layer_norm.backward_affine(
+            = layer_norm.backward_affine(
                 grad_output.contiguous(), mean, invvar,
                 input_, ctx.normalized_shape,
                 weight_, bias_, ctx.eps)
