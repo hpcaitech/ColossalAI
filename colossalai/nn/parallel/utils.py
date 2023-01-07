@@ -81,7 +81,7 @@ def get_static_torch_model(gemini_ddp_model,
     from colossalai.nn.parallel import GeminiDDP
     assert isinstance(gemini_ddp_model, GeminiDDP)
 
-    state_dict = gemini_ddp_model.state_dict(only_rank_0=only_rank_0)
+    state_dict = gemini_ddp_model.state_dict(only_rank_0=only_rank_0, strict=False)
     colo_model = gemini_ddp_model.module
     torch_model = _get_shallow_copy_model(colo_model)
 

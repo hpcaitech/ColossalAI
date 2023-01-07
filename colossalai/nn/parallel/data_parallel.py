@@ -18,6 +18,7 @@ from colossalai.utils import get_current_device
 from colossalai.zero.utils.gemini_hook import GeminiZeROHook
 
 from .reducer import Reducer
+from .utils import get_static_torch_model
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX, _IncompatibleKeys
@@ -213,7 +214,6 @@ class ZeroDDP(ColoDDP):
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(gemini_manager)
         self.fp32_params: List[ColoTensor] = []
-        self.name_to_fp32_params: Dict[str, ColoTensor] = {}
         self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = {}
 
@@ -229,7 +229,6 @@ class ZeroDDP(ColoDDP):
             for p in module.parameters():
                 param_order.append(p)
 
-        params_to_fp32_params = {}
         for p in param_order.generate():
             assert isinstance(p, ColoParameter)
 
@@ -251,14 +250,9 @@ class ZeroDDP(ColoDDP):
                                                config_key=dp_world_size,
                                                cpu_offload=cpu_offload,
                                                pin_memory=pin_memory)
-            params_to_fp32_params[p] = fp32_p
             self.fp32_params.append(fp32_p)
             self.grads_device[p] = self.gemini_manager.default_device
 
-        # Set keep_vars=True to prevent the parameter to be detached
-        for name, p in module.state_dict(keep_vars=True).items():
-            if p in params_to_fp32_params:
-                self.name_to_fp32_params[name] = params_to_fp32_params[p]
         self.chunk_manager.close_all_groups()
         self._cast_buffers()
 
@@ -339,12 +333,11 @@ class ZeroDDP(ColoDDP):
         for tensor in chunk.get_tensors():
             self.grads_device[tensor] = device
 
-    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
-        r"""Returns a dictionary containing a whole state of the module.
-
-        Both parameters and persistent buffers (e.g. running averages) are
-        included. Keys are corresponding parameter and buffer names.
-        Parameters and buffers set to ``None`` are not included.
+    def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True, strict: bool = True):
+        r"""
+        Args:
+            strict (bool): whether to reture the whole model state
+                as the original pytorch state_dict()
 
         Returns:
             dict:
@@ -354,7 +347,31 @@ class ZeroDDP(ColoDDP):
 
             >>> module.state_dict().keys()
             ['bias', 'weight']
+        """
+        if strict:
+            return get_static_torch_model(gemini_ddp_model=self, device=get_current_device(),
+                                          only_rank_0=only_rank_0).state_dict(destination=destination,
+                                                                              prefix=prefix,
+                                                                              keep_vars=keep_vars)
+        return self._non_strict_state_dict(destination=destination,
+                                           prefix=prefix,
+                                           keep_vars=keep_vars,
+                                           only_rank_0=only_rank_0)
 
+    def _non_strict_state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
+        r"""Returns a dictionary containing a whole state of the module.
+
+        Both parameters and persistent buffers (e.g. running averages) are
+        included. Keys are corresponding parameter and buffer names.
+        Parameters and buffers set to ``None`` are not included.
+
+        Warning: The non strict state dict would ignore the parameters if the
+            tensors of the parameters are shared with other parameters which
+            have been included in the dictionary.
+
+        Returns:
+            dict:
+                a dictionary containing a whole state of the module
         """
         if destination is None:
             destination = OrderedDict()
@@ -414,15 +431,11 @@ class ZeroDDP(ColoDDP):
 
         param_to_save_data = self._get_param_to_save_data(self.fp32_params, only_rank_0)
         # TODO: (HELSON) deal with ddp ignored parameters
-        for name, p in self.module.state_dict().items():
-            if p is not None and name in self.name_to_fp32_params:
-                fp32_p = self.name_to_fp32_params[name]
-
+        for (name, p), fp32_p in zip(self.named_parameters(), self.fp32_params):
+            if p is not None:
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
                 record_parameter = param_to_save_data[fp32_p]
-            else:
-                record_parameter = p
-            destination[prefix + name] = record_parameter
+                destination[prefix + name] = record_parameter
 
         # save all buffers
         for name, buf in self.named_buffers():
