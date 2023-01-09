@@ -37,18 +37,3 @@ jobs:
           echo "======= running pre-commit on ${file} ======="
           pre-commit run --files $file
         done
-
-    - name: Create comment 
-      if: always() && steps.precommit.outcome != 'success'
-      uses: peter-evans/create-or-update-comment@v2
-      with:
-        body: |
-          Pre-commit check failed because the PR author did not apply pre-commit hooks during `git commit`.
-
-          How to resolve:
-          1. install pre-commit via `pip install pre-commit`
-          2. install pre-commit hooks via `pre-commit install` in the root directory of this repository
-          3. run pre-commit on a single file which is changed in the commit via `pre-commit run --files <file-path>`
-
-          Reference: https://pre-commit.com/
-        reactions: heart  
