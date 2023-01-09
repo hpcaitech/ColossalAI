@@ -349,7 +349,7 @@ class ZeroDDP(ColoDDP):
             ['bias', 'weight']
         """
         if strict:
-            return get_static_torch_model(gemini_ddp_model=self, device=get_current_device(),
+            return get_static_torch_model(zero_ddp_model=self, device=get_current_device(),
                                           only_rank_0=only_rank_0).state_dict(destination=destination,
                                                                               prefix=prefix,
                                                                               keep_vars=keep_vars)
