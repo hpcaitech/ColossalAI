@@ -75,7 +75,7 @@ jobs:
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest --cov=. --cov-report lcov tests/test_amp
+          PYTHONPATH=$PWD pytest --cov=. --cov-report lcov tests
           ls -la
         env:
           DATA: /data/scratch/cifar-10
