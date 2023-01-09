@@ -1,6 +1,6 @@
 import copy
 
-from .estiamte_memory import EstimateMemory
+from .estimate_memory import EstimateMemory
 from .reorder_graph import ReorderGraph
 from .select_chunk import SelectChunk
 from .trace_flow import TraceFlow
