@@ -48,7 +48,7 @@ class SearchChunk(object):
         self.gm = gm
         self.print_mem = print_mem
         self.trace_indice = TraceIndice(list(gm.graph.nodes))
-        self.trace_indice.trace_index()
+        self.trace_indice.trace_indice()
         self.trace_flow = TraceFlow(self.trace_indice)
         self.reorder_graph = ReorderGraph(self.trace_indice)
         self.estimate_memory = EstimateMemory()

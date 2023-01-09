@@ -525,7 +525,7 @@ class TraceIndice(object):
                         merge_to if i == merge_from else i for i in trace["indice"]
                     ]
 
-    def trace_index(self):
+    def trace_indice(self):
         for idx, node in enumerate(self.node_list):
             if node.op == "placeholder":
                 self._assign_all_indice(node, idx)
