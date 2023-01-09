@@ -6,7 +6,7 @@ from .utils import (
 )
 
 
-class TraceIndex(object):
+class TraceIndice(object):
     def __init__(self, node_list) -> None:
         self.node_list = node_list
         self.idx_trace_list = self._init_idx_trace_list()

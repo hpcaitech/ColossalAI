@@ -94,9 +94,9 @@ def _replace_reshape_size(context, node_name, reshape_size_dict):
     return context
 
 
-def _replace_ones_like(search_chunk, chunk_infos, region_idx, node_idx, node, body):
+def _replace_ones_like(search_chunk: SearchChunk, chunk_infos, region_idx, node_idx, node, body):
     if "ones_like" in node.name:
-        meta_node = search_chunk.trace_index.node_list[node_idx]
+        meta_node = search_chunk.trace_indice.node_list[node_idx]
         chunk_dim = chunk_infos[region_idx]["node_chunk_dim"][meta_node]["chunk_dim"]
         if get_node_shape(meta_node)[chunk_dim] != 1:
             source_node = meta_node.args[0].args[0]
