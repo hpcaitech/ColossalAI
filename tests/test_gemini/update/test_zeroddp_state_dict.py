@@ -45,8 +45,6 @@ def exam_state_dict(placement_policy, keep_gathered, model_name: str):
     torch_dict = torch_model.state_dict()
 
     for key, value in torch_dict.items():
-        if key == 'model.lm_head.weight':
-            continue
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         assert torch.equal(value, temp_zero_value), "parameter '{}' has problem.".format(key)
@@ -84,8 +82,6 @@ def exam_load_state_dict(placement_policy, keep_gathered, model_name: str):
     zero_dict = model.state_dict(only_rank_0=False)
 
     for key, value in torch_dict.items():
-        if key == 'model.lm_head.weight':
-            continue
         assert key in zero_dict, "{} not in ZeRO dictionary.".format(key)
         temp_zero_value = zero_dict[key].to(device=value.device, dtype=value.dtype)
         assert torch.equal(value, temp_zero_value), "parameter '{}' has problem.".format(key)
