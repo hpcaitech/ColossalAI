@@ -7,6 +7,22 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Find the changed files
+      id: find-changed-files
+      uses: tj-actions/changed-files@v35
+      with:
+        since_last_remote_commit: true
     - uses: actions/setup-python@v3
-    - uses: pre-commit/action@v3.0.0
+    - name: Set up pre-commit
+      run: |
+        pip install pre-commit
+        pre-commit install
+    - name: List changed files
+      run: |
+        for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
+          echo "======= running pre-commit on ${file} ======="
+          pre-commit run --files $file
+        done
