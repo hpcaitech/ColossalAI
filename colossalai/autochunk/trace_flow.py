@@ -406,7 +406,7 @@ class TraceFlow(object):
         for node in self.trace_indice.node_list[chunk_region[0] : chunk_region[1] + 1]:
             if any(i in node.name for i in ["reshape", "view"]):
                 reshape_args = node.args[1:]
-                reshape_log = self.trace_indice.idx_view_list[node]
+                reshape_log = self.trace_indice.indice_view_list[node]
                 chunk_dim = chunk_info["node_chunk_dim"][node]["chunk_dim"]
                 reshape_size[node.name] = {}
                 for reshape_arg_dim, reshape_arg in enumerate(reshape_args):

@@ -205,7 +205,7 @@ class SearchChunk(object):
             possible_chunk_region (List)
         """
         possible_chunk_region = []
-        output_trace = copy.deepcopy(self.trace_indice.idx_trace_list)
+        output_trace = copy.deepcopy(self.trace_indice.indice_trace_list)
         input_trace = []  # trace of a node's input nodes
         for _, n in enumerate(self.trace_indice.node_list):
             cur_trace = {}

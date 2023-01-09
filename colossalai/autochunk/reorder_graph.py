@@ -6,7 +6,7 @@ class ReorderGraph(object):
     def __init__(self, trace_indice: TraceIndice) -> None:
         self.trace_indice = trace_indice
         self.all_reorder_map = {
-            i: i for i in range(len(self.trace_indice.idx_trace_list))
+            i: i for i in range(len(self.trace_indice.indice_trace_list))
         }
 
     def _get_reorder_map(self, chunk_info):
@@ -60,18 +60,18 @@ class ReorderGraph(object):
 
     def _reorder_idx_trace(self, reorder_map):
         # reorder list
-        new_idx_trace_list = [None for _ in range(len(self.trace_indice.idx_trace_list))]
+        new_idx_trace_list = [None for _ in range(len(self.trace_indice.indice_trace_list))]
         for old_idx, new_idx in reorder_map.items():
-            new_idx_trace_list[new_idx] = self.trace_indice.idx_trace_list[old_idx]
-        self.trace_indice.idx_trace_list = new_idx_trace_list
+            new_idx_trace_list[new_idx] = self.trace_indice.indice_trace_list[old_idx]
+        self.trace_indice.indice_trace_list = new_idx_trace_list
         # update compute
-        for idx_trace in self.trace_indice.idx_trace_list:
+        for idx_trace in self.trace_indice.indice_trace_list:
             compute = idx_trace["compute"]
             for dim_compute in compute:
                 for idx, i in enumerate(dim_compute):
                     dim_compute[idx] = reorder_map[i]
         # update source
-        for idx_trace in self.trace_indice.idx_trace_list:
+        for idx_trace in self.trace_indice.indice_trace_list:
             source = idx_trace["source"]
             for dim_idx, dim_source in enumerate(source):
                 new_dim_source = {}
