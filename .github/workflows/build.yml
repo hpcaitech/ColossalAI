@@ -14,18 +14,27 @@ jobs:
         contains( github.event.pull_request.labels.*.name, 'Run Build and Test')
     outputs:
       changedFiles: ${{ steps.find-changed-files.outputs.changedFiles }}
+      anyChanged: ${{ steps.find-changed-files.outputs.any_changed }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - name: Find the changed files
         id: find-changed-files
-        uses: tj-actions/changed-files@v34
+        uses: tj-actions/changed-files@v35
         with:
           since_last_remote_commit: true
           files: |
             op_builder/**
             colossalai/kernel/**
             setup.py
+      - name: List changed files
+        run: |
+          for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
+            echo "$file was changed"
+          done
+
 
   build:
     name: Build and Test Colossal-AI
@@ -54,9 +63,10 @@ jobs:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
 
       - name: Restore cache
-        if: needs.detect.outputs.anyChanged == 'true'
+        if: needs.detect.outputs.anyChanged != 'true'
         run: |
-          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
 
       - name: Install Colossal-AI
         run: |
@@ -70,7 +80,8 @@ jobs:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
-      
+
       - name: Store Cache
         run: |
-          cp -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
