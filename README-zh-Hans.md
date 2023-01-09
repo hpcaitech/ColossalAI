@@ -5,10 +5,10 @@
 
    Colossal-AI: 一个面向大模型时代的通用深度学习系统
 
-   <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> | 
-   <a href="https://www.colossalai.org/"> 文档 </a> | 
-   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 例程 </a> |   
-   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> | 
+   <h3> <a href="https://arxiv.org/abs/2110.14883"> 论文 </a> |
+   <a href="https://www.colossalai.org/"> 文档 </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI-Examples"> 例程 </a> |
+   <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> |
    <a href="https://medium.com/@hpcaitech"> 博客 </a></h3>
 
    [![Build](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml/badge.svg)](https://github.com/hpcaitech/ColossalAI/actions/workflows/build.yml)
@@ -35,7 +35,7 @@
  <li><a href="#为何选择-Colossal-AI">为何选择 Colossal-AI</a> </li>
  <li><a href="#特点">特点</a> </li>
  <li>
-   <a href="#并行训练样例展示">并行训练样例展示</a> 
+   <a href="#并行训练样例展示">并行训练样例展示</a>
    <ul>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
@@ -47,14 +47,14 @@
    </ul>
  </li>
 <li>
-   <a href="#单GPU训练样例展示">单GPU训练样例展示</a> 
+   <a href="#单GPU训练样例展示">单GPU训练样例展示</a>
    <ul>
      <li><a href="#GPT-2-Single">GPT-2</a></li>
      <li><a href="#PaLM-Single">PaLM</a></li>
    </ul>
  </li>
 <li>
-   <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a> 
+   <a href="#推理-Energon-AI-样例展示">推理 (Energon-AI) 样例展示</a>
    <ul>
      <li><a href="#GPT-3-Inference">GPT-3</a></li>
      <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
@@ -62,7 +62,7 @@
    </ul>
  </li>
 <li>
-   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a> 
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI 成功案例</a>
    <ul>
      <li><a href="#AIGC">AIGC: 加速 Stable Diffusion</a></li>
      <li><a href="#生物医药">生物医药: 加速AlphaFold蛋白质结构预测</a></li>
@@ -131,7 +131,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/(updated)GPT-2.png" width=800>
 
 - 用相同的硬件训练24倍大的模型
-- 超3倍的吞吐量 
+- 超3倍的吞吐量
 
 ### BERT
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BERT.png" width=800/>
@@ -145,7 +145,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/OPT_update.png" width=800/>
 
 - [Open Pretrained Transformer (OPT)](https://github.com/facebookresearch/metaseq), 由Meta发布的1750亿语言模型，由于完全公开了预训练参数权重，因此促进了下游任务和应用部署的发展。
-- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[在线推理]](https://service.colossalai.org/opt) 
+- 加速45%，仅用几行代码以低成本微调OPT。[[样例]](https://github.com/hpcaitech/ColossalAI-Examples/tree/main/language/opt) [[在线推理]](https://service.colossalai.org/opt)
 
 请访问我们的 [文档](https://www.colossalai.org/) 和 [例程](https://github.com/hpcaitech/ColossalAI-Examples) 以了解详情。
 
@@ -255,6 +255,28 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 ## 安装
 
+### 从PyPI安装
+
+您可以用下面的命令直接从PyPI上下载并安装Colossal-AI。我们默认不会安装PyTorch扩展包
+
+```bash
+pip install colossalai
+```
+
+但是，如果你想在安装时就直接构建PyTorch扩展，您可以设置环境变量`CUDA_EXT=1`.
+
+```bash
+CUDA_EXT=1 pip install colossalai
+```
+
+**否则，PyTorch扩展只会在你实际需要使用他们时在运行时里被构建。**
+
+与此同时，我们也每周定时发布Nightly版本，这能让你提前体验到新的feature和bug fix。你可以通过以下命令安装Nightly版本。
+
+```bash
+pip install colossalai-nightly
+```
+
 ### 从官方安装
 
 您可以访问我们[下载](https://www.colossalai.org/download)页面来安装Colossal-AI，在这个页面上发布的版本都预编译了CUDA扩展。
@@ -274,10 +296,10 @@ pip install -r requirements/requirements.txt
 pip install .
 ```
 
-如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装）：
+我们默认在`pip install`时不安装PyTorch扩展，而是在运行时临时编译，如果你想要提前安装这些扩展的话（在使用融合优化器时会用到），可以使用一下命令。
 
 ```shell
-NO_CUDA_EXT=1 pip install .
+CUDA_EXT=1 pip install .
 ```
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
