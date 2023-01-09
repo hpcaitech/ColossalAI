@@ -334,10 +334,9 @@ class ZeroDDP(ColoDDP):
             self.grads_device[tensor] = device
 
     def state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True, strict: bool = True):
-        r"""
+        """
         Args:
-            strict (bool): whether to reture the whole model state
-                as the original pytorch state_dict()
+            strict (bool): whether to reture the whole model state as the pytorch `Module.state_dict()`
 
         Returns:
             dict:
@@ -359,15 +358,15 @@ class ZeroDDP(ColoDDP):
                                            only_rank_0=only_rank_0)
 
     def _non_strict_state_dict(self, destination=None, prefix='', keep_vars=False, only_rank_0: bool = True):
-        r"""Returns a dictionary containing a whole state of the module.
+        """Returns a dictionary containing a whole state of the module.
 
-        Both parameters and persistent buffers (e.g. running averages) are
-        included. Keys are corresponding parameter and buffer names.
+        Both parameters and persistent buffers (e.g. running averages) are included.
+        Keys are corresponding parameter and buffer names.
         Parameters and buffers set to ``None`` are not included.
 
-        Warning: The non strict state dict would ignore the parameters if the
-            tensors of the parameters are shared with other parameters which
-            have been included in the dictionary.
+        Warning: The non strict state dict would ignore the parameters if the tensors of the parameters
+            are shared with other parameters which have been included in the dictionary.
+            When you need to load the state dict, you should set the argument `strict` to False.
 
         Returns:
             dict:
