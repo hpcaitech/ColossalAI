@@ -38,10 +38,7 @@ jobs:
           pre-commit run --files $file
         done
 
-
-        
-
-    - name: Create comment
+    - name: Create comment 
       if: always() && steps.precommit.outcome != 'success'
       uses: peter-evans/create-or-update-comment@v2
       with:
@@ -54,4 +51,4 @@ jobs:
           3. run pre-commit on a single file which is changed in the commit via `pre-commit run --files <file-path>`
 
           Reference: https://pre-commit.com/
-        reactions: heart
+        reactions: heart  
