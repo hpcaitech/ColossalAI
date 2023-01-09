@@ -137,9 +137,9 @@ def emit_code_with_chunk(
 ):
     """
     Emit code with chunk according to chunk_infos.
-    
-    It will generate a for loop in chunk regions, and replace inputs 
-        and outputs of regions with chunked variables.
+
+    It will generate a for loop in chunk regions, and 
+    replace inputs and outputs of regions with chunked variables.
 
     Args:
         body: forward code
@@ -156,9 +156,11 @@ def emit_code_with_chunk(
     chunk_ends = [i["region"][1] for i in chunk_infos]
 
     # chunk inputs
-    chunk_inputs = [i["inputs"] for i in chunk_infos] # input with chunk
-    chunk_inputs_non_chunk = [i["inputs_non_chunk"] for i in chunk_infos] # input without chunk
-    chunk_inputs_dim = [i["inputs_dim"] for i in chunk_infos] # input chunk dim
+    chunk_inputs = [i["inputs"] for i in chunk_infos]  # input with chunk
+    chunk_inputs_non_chunk = [
+        i["inputs_non_chunk"] for i in chunk_infos
+    ]  # input without chunk
+    chunk_inputs_dim = [i["inputs_dim"] for i in chunk_infos]  # input chunk dim
     chunk_inputs_names = [j.name for i in chunk_inputs for j in i] + [
         j.name for i in chunk_inputs_non_chunk for j in i
     ]
