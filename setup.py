@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import datetime
 
 from setuptools import find_packages, setup
 
@@ -20,18 +21,22 @@ except ImportError:
     TORCH_AVAILABLE = False
     CUDA_HOME = None
 
-
 # ninja build does not work unless include_dirs are abs path
 this_dir = os.path.dirname(os.path.abspath(__file__))
 build_cuda_ext = False
 ext_modules = []
+is_nightly = int(os.environ.get('NIGHTLY', '0')) == 1
 
 if int(os.environ.get('CUDA_EXT', '0')) == 1:
     if not TORCH_AVAILABLE:
-        raise ModuleNotFoundError("PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions")
+        raise ModuleNotFoundError(
+            "PyTorch is not found while CUDA_EXT=1. You need to install PyTorch first in order to build CUDA extensions"
+        )
 
     if not CUDA_HOME:
-        raise RuntimeError("CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions")
+        raise RuntimeError(
+            "CUDA_HOME is not found while CUDA_EXT=1. You need to export CUDA_HOME environment vairable or install CUDA Toolkit first in order to build CUDA extensions"
+        )
 
     build_cuda_ext = True
 
@@ -139,8 +144,16 @@ if build_cuda_ext:
         print(f'===== Building Extension {name} =====')
         ext_modules.append(builder_cls().builder())
 
-setup(name='colossalai',
-      version=get_version(),
+if is_nightly:
+    # use date as the nightly version
+    version = datetime.today().strftime('%Y.%m.%d')
+    package_name = 'colossalai-nightly'
+else:
+    version = get_version()
+    package_name = 'colossalai'
+
+setup(name=package_name,
+      version=version,
       packages=find_packages(exclude=(
           'benchmark',
           'docker',
@@ -179,4 +192,9 @@ setup(name='colossalai',
           'Topic :: Scientific/Engineering :: Artificial Intelligence',
           'Topic :: System :: Distributed Computing',
       ],
-      package_data={'colossalai': ['_C/*.pyi', 'kernel/cuda_native/csrc/*', 'kernel/cuda_native/csrc/kernel/*', 'kernel/cuda_native/csrc/kernels/include/*']})
+      package_data={
+          'colossalai': [
+              '_C/*.pyi', 'kernel/cuda_native/csrc/*', 'kernel/cuda_native/csrc/kernel/*',
+              'kernel/cuda_native/csrc/kernels/include/*'
+          ]
+      })
