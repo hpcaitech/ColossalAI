@@ -100,7 +100,7 @@ def calculate_fwd_time(n: Node) -> float:
         fwd_time (float): the result of `fwd_time`
     """
     # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
-    return n.meta["fwd_flop"]
+    return n.meta["fwd_time"]
 
 
 def calculate_bwd_time(n: Node) -> float:
@@ -111,4 +111,4 @@ def calculate_bwd_time(n: Node) -> float:
         bwd_time (float): the result of `bwd_time`
     """
     # TODO(super-dainiu): should divide the time by the number of GPUs as well as TFLOPs
-    return n.meta["bwd_flop"]
+    return n.meta["bwd_time"]

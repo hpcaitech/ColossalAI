@@ -46,7 +46,8 @@ def torch_adam_update(
 @parameterize('p_dtype', [torch.float, torch.half])
 @parameterize('g_dtype', [torch.float, torch.half])
 def test_adam(adamw, step, p_dtype, g_dtype):
-    from colossalai.kernel import fused_optim
+    from colossalai.kernel.op_builder import FusedOptimBuilder
+    fused_optim = FusedOptimBuilder().load()
     fused_adam = fused_optim.multi_tensor_adam
 
     dummy_overflow_buf = torch.cuda.IntTensor([0])

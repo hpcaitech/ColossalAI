@@ -1,22 +1,17 @@
 import argparse
 import hashlib
-import itertools
 import math
 import os
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from huggingface_hub import HfFolder, Repository, whoami
-from packaging import version
 from PIL import Image
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -27,9 +22,7 @@ from colossalai.context.parallel_mode import ParallelMode
 from colossalai.core import global_context as gpc
 from colossalai.logging import disable_existing_loggers, get_dist_logger
 from colossalai.nn.optimizer.gemini_optimizer import GeminiAdamOptimizer
-from colossalai.nn.parallel import ZeroDDP
-from colossalai.nn.parallel.utils import convert_to_torch_module
-from colossalai.tensor import ColoTensor, ProcessGroup
+from colossalai.nn.parallel.utils import get_static_torch_model
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 
@@ -137,7 +130,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--placement",
         type=str,
-        default='cpu',
+        default="cpu",
         help="Placement Policy for Gemini. Valid when using colossalai as dist plan.",
     )
     parser.add_argument("--center_crop",
@@ -350,39 +343,19 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 
 # Gemini + ZeRO DDP
-def gemini_zero_dpp(model: torch.nn.Module, pg: ProcessGroup, placememt_policy: str = "auto"):
-    cai_version = colossalai.__version__
-    if version.parse(cai_version) > version.parse("0.1.10"):
-        from colossalai.nn.parallel import GeminiDDP
-        model = GeminiDDP(model,
-                          device=get_current_device(),
-                          placement_policy=placememt_policy,
-                          pin_memory=True,
-                          search_range_mb=32)
-    elif version.parse(cai_version) <= version.parse("0.1.10") and version.parse(cai_version) >= version.parse("0.1.9"):
-        from colossalai.gemini import ChunkManager, GeminiManager
-        chunk_size = ChunkManager.search_chunk_size(model, 64 * 1024**2, 32)
-        gemini_manager = GeminiManager(placememt_policy, chunk_manager)
-        chunk_manager = ChunkManager(chunk_size,
-                                     pg,
-                                     enable_distributed_storage=True,
-                                     init_device=GeminiManager.get_default_device(placememt_policy))
-        model = ZeroDDP(model, gemini_manager)
-    else:
-        raise NotImplemented(f"CAI version {cai_version} is not supported")
+def gemini_zero_dpp(model: torch.nn.Module, placememt_policy: str = "auto"):
+    from colossalai.nn.parallel import GeminiDDP
+
+    model = GeminiDDP(model,
+                      device=get_current_device(),
+                      placement_policy=placememt_policy,
+                      pin_memory=True,
+                      search_range_mb=64)
     return model
 
 
 def main(args):
-    # config for colossalai
-
-    config = {
-        "BATCH": args.train_batch_size,
-        "gradient_accumulation_steps": args.gradient_accumulation_steps,
-        "clip_grad_norm": args.max_grad_norm,
-    }
-    colossalai.launch_from_torch(config=config)
-    pg = ProcessGroup()
+    colossalai.launch_from_torch(config={})
 
     if args.seed is not None:
         gpc.set_seed(args.seed)
@@ -411,9 +384,11 @@ def main(args):
 
             pipeline.to(get_current_device())
 
-            for example in tqdm(sample_dataloader,
-                                desc="Generating class images",
-                                disable=not gpc.get_local_rank(ParallelMode.DATA) == 0):
+            for example in tqdm(
+                    sample_dataloader,
+                    desc="Generating class images",
+                    disable=not gpc.get_local_rank(ParallelMode.DATA) == 0,
+            ):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
@@ -463,19 +438,21 @@ def main(args):
 
     logger.info(f"Loading text_encoder from {args.pretrained_model_name_or_path}", ranks=[0])
 
-    text_encoder = text_encoder_cls.from_pretrained(args.pretrained_model_name_or_path,
-                                                    subfolder="text_encoder",
-                                                    revision=args.revision,
-                                                    low_cpu_mem_usage=False)
+    text_encoder = text_encoder_cls.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+    )
 
     logger.info(f"Loading AutoencoderKL from {args.pretrained_model_name_or_path}", ranks=[0])
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path,
-                                        subfolder="vae",
-                                        revision=args.revision,
-                                        low_cpu_mem_usage=False)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+    )
 
-    with ColoInitContext(device='cpu'):
-        logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
+    logger.info(f"Loading UNet2DConditionModel from {args.pretrained_model_name_or_path}", ranks=[0])
+    with ColoInitContext(device=get_current_device()):
         unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path,
                                                     subfolder="unet",
                                                     revision=args.revision,
@@ -488,18 +465,18 @@ def main(args):
         unet.enable_gradient_checkpointing()
 
     if args.scale_lr:
-        args.learning_rate = (args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * 2)
+        args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * gpc.get_world_size(ParallelMode.DATA)
 
-    unet = gemini_zero_dpp(unet, pg, args.placement)
+    unet = gemini_zero_dpp(unet, args.placement)
 
     # config optimizer for colossalai zero
-    optimizer = GeminiAdamOptimizer(unet, lr=args.learning_rate, initial_scale=2**5)
+    optimizer = GeminiAdamOptimizer(unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm)
 
     # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     # prepare dataset
-    logger.info(f"Prepare dataset", ranks=[0])
+    logger.info(f"Prepare dataset from {args.instance_data_dir}", ranks=[0])
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
@@ -597,7 +574,7 @@ def main(args):
     for epoch in range(args.num_train_epochs):
         unet.train()
         for step, batch in enumerate(train_dataloader):
-
+            torch.cuda.reset_peak_memory_stats()
             # Move batch to gpu
             for key, value in batch.items():
                 batch[key] = value.to(get_current_device(), non_blocking=True)
@@ -653,22 +630,23 @@ def main(args):
 
             optimizer.step()
             lr_scheduler.step()
-
+            logger.info(f"max GPU_mem cost is {torch.cuda.max_memory_allocated()/2**20} MB", ranks=[0])
             # Checks if the accelerator has performed an optimization step behind the scenes
             progress_bar.update(1)
             global_step += 1
             logs = {
                 "loss": loss.detach().item(),
-                "lr": optimizer.param_groups[0]['lr']
-            }    #lr_scheduler.get_last_lr()[0]}
+                "lr": optimizer.param_groups[0]["lr"],
+            }    # lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step % args.save_steps == 0:
                 torch.cuda.synchronize()
+                torch_unet = get_static_torch_model(unet)
                 if gpc.get_local_rank(ParallelMode.DATA) == 0:
                     pipeline = DiffusionPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
-                        unet=convert_to_torch_module(unet),
+                        unet=torch_unet,
                         revision=args.revision,
                     )
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
@@ -678,13 +656,15 @@ def main(args):
                 break
 
     torch.cuda.synchronize()
+    unet = get_static_torch_model(unet)
 
     if gpc.get_local_rank(ParallelMode.DATA) == 0:
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            unet=convert_to_torch_module(unet),
+            unet=unet,
             revision=args.revision,
         )
+
         pipeline.save_pretrained(args.output_dir)
         logger.info(f"Saving model checkpoint to {args.output_dir}", ranks=[0])
 

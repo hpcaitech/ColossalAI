@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from colossalai.auto_parallel.tensor_shard.node_handler.output_handler import OuputHandler
+from colossalai.auto_parallel.tensor_shard.node_handler.output_handler import OutputHandler
 from colossalai.auto_parallel.tensor_shard.sharding_strategy import OperationData, OperationDataType, StrategiesVector
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.fx import ColoGraphModule, ColoTracer
@@ -39,10 +39,10 @@ def test_output_handler(output_option):
     output_strategies_vector = StrategiesVector(output_node)
 
     # build handler
-    otuput_handler = OuputHandler(node=output_node,
-                                  device_mesh=device_mesh,
-                                  strategies_vector=output_strategies_vector,
-                                  output_option=output_option)
+    otuput_handler = OutputHandler(node=output_node,
+                                   device_mesh=device_mesh,
+                                   strategies_vector=output_strategies_vector,
+                                   output_option=output_option)
 
     otuput_handler.register_strategy(compute_resharding_cost=False)
     # check operation data mapping
