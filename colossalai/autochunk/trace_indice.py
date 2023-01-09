@@ -10,7 +10,6 @@ class TraceIndice(object):
     def __init__(self, node_list) -> None:
         self.node_list = node_list
         self.indice_trace_list = self._init_indice_trace_list()
-        self.indice_trace_equal = []
         self.indice_view_list = {}
         self.indice_count = -1
 
@@ -485,18 +484,6 @@ class TraceIndice(object):
             "dim_to": dim_to,
         }
         self.indice_view_list[node] = view_dict
-
-    def _merge_equal_idx(self):
-        idx_equal = copy.deepcopy(self.indice_trace_equal)
-        idx_equal.reverse()
-        for idx in idx_equal:
-            merge_to = min(idx)
-            merge_from = max(idx)
-            for trace in self.indice_trace_list:
-                if merge_from in trace["indice"]:
-                    trace["indice"] = [
-                        merge_to if i == merge_from else i for i in trace["indice"]
-                    ]
 
     def trace_indice(self):
         for idx, node in enumerate(self.node_list):
