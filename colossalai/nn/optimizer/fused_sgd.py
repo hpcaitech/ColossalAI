@@ -10,7 +10,7 @@ from colossalai.utils import multi_tensor_applier
 class FusedSGD(Optimizer):
     r"""Implements stochastic gradient descent (optionally with momentum).
 
-    `FusedSGD` requires CUDA extensions which cen be built during installation or runtime.
+    `FusedSGD` requires CUDA extensions which can be built during installation or runtime.
 
     This version of fused SGD implements 2 fusions.
 

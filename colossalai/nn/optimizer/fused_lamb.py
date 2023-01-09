@@ -9,7 +9,7 @@ from colossalai.utils import multi_tensor_applier
 class FusedLAMB(torch.optim.Optimizer):
     """Implements LAMB algorithm.
 
-    `FusedLAMB` requires CUDA extensions which cen be built during installation or runtime.
+    `FusedLAMB` requires CUDA extensions which can be built during installation or runtime.
 
     This version of fused LAMB implements 2 fusions.
 

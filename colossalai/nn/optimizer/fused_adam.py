@@ -9,7 +9,7 @@ from colossalai.utils import multi_tensor_applier
 class FusedAdam(torch.optim.Optimizer):
     """Implements Adam algorithm.
 
-    `FusedAdam` requires CUDA extensions which cen be built during installation or runtime.
+    `FusedAdam` requires CUDA extensions which can be built during installation or runtime.
 
     This version of fused Adam implements 2 fusions.
 
