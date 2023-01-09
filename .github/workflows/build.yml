@@ -75,7 +75,7 @@ jobs:
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest tests
+          PYTHONPATH=$PWD pytest -n 2 tests
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
