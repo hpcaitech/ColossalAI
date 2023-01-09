@@ -115,4 +115,4 @@ def test_autochunk_codegen(msa_len, pair_len, max_memory):
 
 
 if __name__ == "__main__":
-    _test_autochunk_codegen(0, 32, 64, None)
+    _test_autochunk_codegen(0, 32, 64, 25)
