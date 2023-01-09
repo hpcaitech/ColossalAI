@@ -151,3 +151,6 @@ colossalai/version.py
 
 # ignore python interface defition file
 .pyi
+
+# ignore coverage test file
+converage.lcov
