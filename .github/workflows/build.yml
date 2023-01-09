@@ -87,10 +87,13 @@ jobs:
           # -p flag is required to preserve the file timestamp to avoid ninja rebuild
           cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
 
+      - name: Setup LCOV
+        uses: hrishikesh-kadam/setup-lcov@v1
+
       - name: Report code coverage
         uses: zgosalvez/github-actions-report-lcov@v1
         with:
-          coverage-files: $PWD/coverage.lcov
+          coverage-files: coverage.lcov
           minimum-coverage: 90
           artifact-name: code-coverage-report
           github-token: ${{ secrets.GITHUB_TOKEN }}
