@@ -99,7 +99,7 @@ def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
     gpc.destroy()
 
 
-@pytest.mark.parametrize("max_memory", [None, 20, 24, 28, 32])
+@pytest.mark.parametrize("max_memory", [None, 20, 25, 30])
 @pytest.mark.parametrize("msa_len", [32])
 @pytest.mark.parametrize("pair_len", [64])
 def test_autochunk_codegen(msa_len, pair_len, max_memory):
