@@ -270,6 +270,7 @@ def main():
 
         tp_pg = ProcessGroup(tp_degree=args.tp_degree)
         # Tensor Parallelism (TP)
+        # You should notice that v0.1.10 is not compatible with TP degree > 1
         tensor_parallelize(model, tp_pg)
 
         # build a Gemini model and a highly optimized cpu optimizer
@@ -278,6 +279,7 @@ def main():
 
         logger.info(get_mem_info(prefix='After init optim, '), ranks=[0])
     else:
+        assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
         model = model_builder(args.model_type)(checkpoint=True).cuda()
 
     if args.distplan.startswith("torch"):
