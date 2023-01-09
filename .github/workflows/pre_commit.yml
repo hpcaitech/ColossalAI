@@ -10,17 +10,27 @@ jobs:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
+
     - name: Find the changed files
       id: find-changed-files
       uses: tj-actions/changed-files@v35
       with:
         since_last_remote_commit: true
+
     - uses: actions/setup-python@v3
+
+    - name: Cache pre-commit hooks
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pre-commit
+        key: ${{ runner.os }}-pre-commit-hooks
+
     - name: Set up pre-commit
       run: |
         pip install pre-commit
         pre-commit install
-    - name: List changed files
+
+    - name: Run pre-commit on Changed Files
       run: |
         for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
           echo "======= running pre-commit on ${file} ======="
