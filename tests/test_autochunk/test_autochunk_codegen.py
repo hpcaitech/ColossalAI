@@ -18,9 +18,7 @@ def _test_fwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair):
     torch.cuda.reset_peak_memory_stats()
     now_mem = torch.cuda.memory_allocated() / 1024**2
     with torch.no_grad():
-        node1 = node.clone()
-        pair1 = pair.clone()
-        gm(node1, pair1)
+        gm(node.clone(), pair.clone())
     new_now_mem = torch.cuda.memory_allocated() / 1024**2
     new_max_mem = torch.cuda.max_memory_allocated() / 1024**2
     print(
