@@ -88,7 +88,7 @@ jobs:
           cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
 
       - name: Setup LCOV
-        uses: hrishikesh-kadam/setup-lcov@v1
+        uses: hrishikesh-kadam/setup-lcov@v1 # set up lcov for reporting
 
       - name: Report code coverage
         uses: zgosalvez/github-actions-report-lcov@v1
