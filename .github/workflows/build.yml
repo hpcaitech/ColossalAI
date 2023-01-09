@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: Find the changed files
         id: find-changed-files
         uses: tj-actions/changed-files@v35
@@ -76,7 +77,6 @@ jobs:
       - name: Unit Testing
         run: |
           PYTHONPATH=$PWD pytest --cov=. --cov-report lcov tests
-          ls -la
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
