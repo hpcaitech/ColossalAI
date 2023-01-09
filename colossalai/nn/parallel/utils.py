@@ -47,17 +47,16 @@ def _get_shallow_copy_model(model: nn.Module):
     """Get a shallow copy of the given model. Each submodule is different from the original submodule.
     But the new submodule and the old submodule share all attributes.
     """
-    name_to_module = dict()
+    old_to_new = dict()
     for name, module in _get_dfs_module_list(model):
         new_module = copy(module)
         new_module._modules = OrderedDict()
         for subname, submodule in module._modules.items():
             if submodule is None:
                 continue
-            full_name = name + ('.' if name else '') + subname
-            setattr(new_module, subname, name_to_module[full_name])
-        name_to_module[name] = new_module
-    return name_to_module['']
+            setattr(new_module, subname, old_to_new[submodule])
+        old_to_new[module] = new_module
+    return old_to_new[model]
 
 
 def get_static_torch_model(zero_ddp_model,
