@@ -1,8 +1,8 @@
 set -x
 # distplan in ["colossalai", "zero1", "zero2", "torch_ddp", "torch_zero"]
-export DISTPAN=${DISTPAN:-"colossalai"}
+export DISTPLAN=${DISTPLAN:-"colossalai"}
 
-# The following options only valid when DISTPAN="colossalai"
+# The following options only valid when DISTPLAN="colossalai"
 export GPUNUM=${GPUNUM:-1}
 export TPDEGREE=${TPDEGREE:-1}
 export PLACEMENT=${PLACEMENT:-"cpu"}
@@ -20,5 +20,5 @@ torchrun --standalone --nproc_per_node=${GPUNUM} ./train_gpt_demo.py \
 --batch_size=${BATCH_SIZE} \
 --placement=${PLACEMENT} \
 --shardinit=${USE_SHARD_INIT} \
---distplan=${DISTPAN} \
-2>&1 | tee ./gemini_logs/${MODEL_TYPE}_${DISTPAN}_gpu_${GPUNUM}_bs_${BATCH_SIZE}_tp_${TPDEGREE}_${PLACEMENT}.log
+--distplan=${DISTPLAN} \
+2>&1 | tee ./gemini_logs/${MODEL_TYPE}_${DISTPLAN}_gpu_${GPUNUM}_bs_${BATCH_SIZE}_tp_${TPDEGREE}_${PLACEMENT}.log
