@@ -58,3 +58,5 @@ jobs:
           echo "Testing ${dir} now"
           cd "${PWD}/examples/${dir}"
           bash test_ci.sh
+        env:
+          NCCL_SHM_DISABLE: 1

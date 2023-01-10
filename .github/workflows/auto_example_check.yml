@@ -76,6 +76,8 @@ jobs:
           example_dir=${{ matrix.directory }}
           cd "${PWD}/examples/${example_dir}"
           bash test_ci.sh
+        env:
+          NCCL_SHM_DISABLE: 1
 
   # This is for all files' weekly check. Specifically, this job is to find all the directories.
   matrix_preparation:
@@ -122,3 +124,5 @@ jobs:
           echo "Testing ${example_dir} now"
           cd "${PWD}/examples/${example_dir}"
           bash test_ci.sh
+        env:
+          NCCL_SHM_DISABLE: 1
