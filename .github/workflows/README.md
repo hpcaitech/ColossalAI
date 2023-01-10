@@ -33,7 +33,7 @@ In the section below, we will dive into the details of different workflows avail
 | `Pre-commit`                | `pre_commit.yml`               | This workflow runs pre-commit checks for code style consistency.                                                                                  |
 | `Report pre-commit failure` | `report_precommit_failure.yml` | This PR will put up a comment in the PR to explain the precommit failure and remedy. This is executed when `Pre-commit` is done                   |
 | `Report test coverage`      | `report_test_coverage.yml`     | This PR will put up a comment to report the test coverage results. This is executed when `Build` is completed.                                    |
-| `Test example               | `auto_example_check.yml`       | The example will be automatically tested if its files are changed in the PR                                                                       |
+| `Test example`              | `auto_example_check.yml`       | The example will be automatically tested if its files are changed in the PR                                                                       |
 
 ### Regular Checks
 
