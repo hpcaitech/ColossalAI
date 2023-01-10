@@ -18,7 +18,8 @@ if CODEGEN_AVAILABLE:
         inplace_methods,
         magic_methods,
     )
-    from torch.fx.node import Argument, Node, _get_qualified_name, _type_repr, map_arg
+
+from torch.fx.node import Argument, Node, _get_qualified_name, _type_repr, map_arg
 
 from .search_chunk import SearchChunk
 from .utils import delete_free_var_from_last_use, find_idx_by_name, get_node_shape
