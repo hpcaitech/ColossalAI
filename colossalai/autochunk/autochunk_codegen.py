@@ -585,9 +585,9 @@ if CODEGEN_AVAILABLE:
             code = "".join(body)
             code = "\n".join("    " + line for line in code.split("\n"))
             fn_code = f"""
-    {wrap_stmts}
+{wrap_stmts}
 
-    {prologue}
-    {code}"""
+{prologue}
+{code}"""
             # print(fn_code)
             return PythonCode(fn_code, globals_)

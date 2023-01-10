@@ -28,12 +28,7 @@ class EstimateMemory(object):
         return x
 
     def _get_output_node(self, n):
-        fwd_out = {
-            x.uuid: x
-            for x in n.meta["fwd_out"]
-            if isinstance(x, torch.Tensor) and hasattr(x, "uuid")
-        }
-        out_size = activation_size(fwd_out)
+        out_size = activation_size(n.meta["fwd_out"])
         out_node = [n.name] if out_size > 0 else []
         return out_size, out_node
 
