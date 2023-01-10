@@ -56,7 +56,7 @@ class Initializer_2D_Row(ProcessGroupInitializer):
             for j in range(self.summa_dim):
                 ranks = [i * self.tensor_parallel_size + j * self.summa_dim + k for k in range(self.summa_dim)]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
@@ -105,7 +105,7 @@ class Initializer_2D_Col(ProcessGroupInitializer):
             for j in range(self.summa_dim):
                 ranks = [i * self.tensor_parallel_size + j + k * self.summa_dim for k in range(self.summa_dim)]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
