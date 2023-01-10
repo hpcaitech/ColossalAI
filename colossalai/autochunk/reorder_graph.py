@@ -3,6 +3,10 @@ from .utils import find_idx_by_name
 
 
 class ReorderGraph(object):
+    """
+    Reorder node list and indice trace list
+    """
+
     def __init__(self, trace_indice: TraceIndice) -> None:
         self.trace_indice = trace_indice
         self.all_reorder_map = {
@@ -60,7 +64,9 @@ class ReorderGraph(object):
 
     def _reorder_idx_trace(self, reorder_map):
         # reorder list
-        new_idx_trace_list = [None for _ in range(len(self.trace_indice.indice_trace_list))]
+        new_idx_trace_list = [
+            None for _ in range(len(self.trace_indice.indice_trace_list))
+        ]
         for old_idx, new_idx in reorder_map.items():
             new_idx_trace_list[new_idx] = self.trace_indice.indice_trace_list[old_idx]
         self.trace_indice.indice_trace_list = new_idx_trace_list
