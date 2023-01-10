@@ -20,7 +20,7 @@ jobs:
     steps:
     - name: 📚 Checkout
       uses: actions/checkout@v3
-    - name: Set up matrix for inputs
+    - name: Set up matrix
       id: set-matrix
       env:
         check_dir: ${{ inputs.example_directory }}
@@ -49,9 +49,9 @@ jobs:
     steps:
       - name: 📚 Checkout
         uses: actions/checkout@v3
-      - name: Install the requirements
+      - name: Install Colossal-AI
         run: |
-          pip install colossalai
+          pip install -v .
       - name: Test the example
         run: |
           dir=${{ matrix.directory }}
