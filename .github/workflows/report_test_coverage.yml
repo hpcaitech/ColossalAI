@@ -1,17 +1,14 @@
-name: Auto Workflow Comment
+name: Report Test Coverage
 
 on:
   workflow_run:
-    workflows: [pre-commit]
+    workflows: [Build]
     types:
       - completed
 
 jobs:
-  # comment with a message on how to do pre-commit
-  # if the pre-commit check was not passed
-  report-precommit-failure:
+  report-test-coverage:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.name }} == "pre-commit" && ${{ github.event.workflow_run.conclusion == 'failure' }}
     steps:
       - name: 'Download artifact'
         uses: actions/github-script@v6
@@ -23,7 +20,7 @@ jobs:
                run_id: context.payload.workflow_run.id,
             });
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              return artifact.name == "pr_number"
+              return artifact.name == "report"
             })[0];
             let download = await github.rest.actions.downloadArtifact({
                owner: context.repo.owner,
@@ -32,10 +29,24 @@ jobs:
                archive_format: 'zip',
             });
             let fs = require('fs');
-            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/pr_number.zip`, Buffer.from(download.data));
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/report.zip`, Buffer.from(download.data));
 
       - name: 'Unzip artifact'
-        run: unzip pr_number.zip
+        run: |
+          unzip report.zip
+
+      - name: Code Coverage Report
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: coverage.xml
+          badge: true
+          fail_below_min: true
+          format: markdown
+          hide_branch_rate: false
+          hide_complexity: false
+          indicators: true
+          output: both
+          thresholds: '80 90'
 
       - name: 'Comment on PR'
         uses: actions/github-script@v6
@@ -48,17 +59,8 @@ jobs:
             let repo = context.repo.repo;
             let run_id = context.payload.workflow_run.id;
             let run_url = `https://github.com/${owner}/${repo}/actions/runs/${run_id}`
-            let body = `
-            Your pre-commit check failed, follow the steps to run pre-commit on your file for code style consistency.
+            let body = fs.readFileSync('./code-coverage-results.md', {encoding:'utf8', flag:'r'})
 
-            1. install pre-commit via "pip install pre-commit"
-            2. install pre-commit hooks via "pre-commit install"
-            3. run pre-commit on file with format error via "pre-commit run --files path" by replacing "path" with the actual file path
-            4. commit and push to your branch
-
-            View your job at ${run_url}.
-            Read our "CONTRIBUTING.md" for more reference to the code style.
-            `;
             await github.rest.issues.createComment({
               owner: owner,
               repo: repo,
