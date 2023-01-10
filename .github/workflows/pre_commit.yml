@@ -15,8 +15,6 @@ jobs:
     - name: Find the changed files
       id: find-changed-files
       uses: tj-actions/changed-files@v35
-      with:
-        since_last_remote_commit: true
 
     - name: List all changed files
       run: |
@@ -44,3 +42,16 @@ jobs:
           echo "======= running pre-commit on ${file} ======="
           pre-commit run --files $file
         done
+
+    - name: Save PR number
+      if: always()
+      env:
+        PR_NUMBER: ${{ github.event.number }}
+      run: |
+        mkdir -p ./pr
+        echo $PR_NUMBER > ./pr/pr_number
+    - uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: pr_number
+        path: pr/

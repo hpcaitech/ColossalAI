@@ -28,9 +28,6 @@ jobs:
       - name: Get all changed example files
         id: changed-files
         uses: tj-actions/changed-files@v35
-        # Using this can trigger action each time a PR is submitted.
-        with:
-          since_last_remote_commit: true
       - name: setup matrix
         id: setup-matrix
         run: |
