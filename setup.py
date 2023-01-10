@@ -144,13 +144,16 @@ if build_cuda_ext:
         print(f'===== Building Extension {name} =====')
         ext_modules.append(builder_cls().builder())
 
-if is_nightly:
+# always put not nightly branch as the if branch
+# otherwise github will treat colossalai-nightly as the project name
+# and it will mess up with the dependency graph insights
+if not is_nightly:
+    version = get_version()
+    package_name = 'colossalai'
+else:
     # use date as the nightly version
     version = datetime.today().strftime('%Y.%m.%d')
     package_name = 'colossalai-nightly'
-else:
-    version = get_version()
-    package_name = 'colossalai'
 
 setup(name=package_name,
       version=version,
