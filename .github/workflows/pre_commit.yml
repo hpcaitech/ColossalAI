@@ -1,0 +1,46 @@
+name: pre-commit
+
+on:
+  pull_request:
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: Find the changed files
+      id: find-changed-files
+      uses: tj-actions/changed-files@v35
+      with:
+        since_last_remote_commit: true
+
+    - name: List all changed files
+      run: |
+        for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
+          echo "$file was changed"
+        done
+
+    - uses: actions/setup-python@v3
+
+    - name: Cache pre-commit hooks
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pre-commit
+        key: ${{ runner.os }}-pre-commit-hooks
+
+    - name: Set up pre-commit
+      run: |
+        pip install pre-commit
+        pre-commit install
+
+    - name: Run pre-commit on Changed Files
+      id: precommit
+      run: |
+        for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
+          echo "======= running pre-commit on ${file} ======="
+          pre-commit run --files $file
+        done
