@@ -74,7 +74,7 @@ class Initializer_2p5D_ROW(ProcessGroupInitializer):
                         for i in range(self.tesseract_dim)
                     ]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -128,7 +128,7 @@ class Initializer_2p5D_Col(ProcessGroupInitializer):
                         for j in range(self.tesseract_dim)
                     ]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -182,7 +182,7 @@ class Initializer_2p5D_Dep(ProcessGroupInitializer):
                         for k in range(self.tesseract_dep)
                     ]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -237,7 +237,7 @@ class Initializer_2p5D_XZ(ProcessGroupInitializer):
                     for j in range(self.tesseract_dim)
                 ]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
