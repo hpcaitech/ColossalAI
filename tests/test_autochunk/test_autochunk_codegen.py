@@ -40,20 +40,16 @@ def _test_fwd(model: torch.nn.Module, gm: ColoGraphModule, node, pair):
         non_fx_out = model(node, pair)
         fx_out = gm(node, pair)
 
-    assert torch.allclose(
-        non_fx_out[0], fx_out[0], atol=1e-4
-    ), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
-        torch.abs(non_fx_out[0] - fx_out[0])
-    )
-    assert torch.allclose(
-        non_fx_out[1], fx_out[1], atol=1e-4
-    ), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
-        torch.abs(non_fx_out[1] - fx_out[1])
-    )
+    assert torch.allclose(non_fx_out[0], fx_out[0],
+                          atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
+                              torch.abs(non_fx_out[0] - fx_out[0]))
+    assert torch.allclose(non_fx_out[1], fx_out[1],
+                          atol=1e-4), "fx_out doesn't comply with original output, diff is %.2e" % torch.mean(
+                              torch.abs(non_fx_out[1] - fx_out[1]))
 
 
 def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
-    # launch colossalai to make sure we could execute colossalai.utils.checkpoint currectly
+    # launch colossalai
     colossalai.launch(
         config={},
         rank=rank,
@@ -76,18 +72,14 @@ def _test_autochunk_codegen(rank, msa_len, pair_len, max_memory):
             "pair": pair.to(torch.device("meta")),
         },
     )
-    gm_prop = torch.fx.symbolic_trace(model)  # must use symbolic_trace
+    gm_prop = torch.fx.symbolic_trace(model)    # must use symbolic_trace
     interp = MetaInfoProp(gm_prop)
-    interp.propagate(
-        MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0")
-    )
+    interp.propagate(MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0"))
 
     # now run it twice to get meta info in graph module, not necessary
     gm = torch.fx.GraphModule(model, graph)
     interp = MetaInfoProp(gm)
-    interp.propagate(
-        MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0")
-    )
+    interp.propagate(MetaTensor(node, fake_device="cuda:0"), MetaTensor(pair, fake_device="cuda:0"))
 
     codegen = AutoChunkCodeGen(gm_prop, max_memory=max_memory)
     graph.set_codegen(codegen)
