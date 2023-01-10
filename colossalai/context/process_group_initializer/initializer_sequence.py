@@ -45,7 +45,7 @@ class Initializer_Sequence_DP(ProcessGroupInitializer):
         for i in range(self.num_group):
             ranks = [i * self.dp_size + j for j in range(self.dp_size)]
             group = dist.new_group(ranks)
-            group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+            group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
             if self.rank in ranks:
                 local_rank = ranks.index(self.rank)
