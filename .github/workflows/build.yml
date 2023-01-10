@@ -75,7 +75,7 @@ jobs:
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest --cov=. --cov-report lcov tests
+          PYTHONPATH=$PWD pytest --cov=. --cov-report xml tests
         env:
           DATA: /data/scratch/cifar-10
           NCCL_SHM_DISABLE: 1
