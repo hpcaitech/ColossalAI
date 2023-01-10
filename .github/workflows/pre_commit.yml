@@ -18,6 +18,12 @@ jobs:
       with:
         since_last_remote_commit: true
 
+    - name: List all changed files
+      run: |
+        for file in ${{ steps.find-changed-files.outputs.all_changed_files }}; do
+          echo "$file was changed"
+        done
+
     - uses: actions/setup-python@v3
 
     - name: Cache pre-commit hooks
