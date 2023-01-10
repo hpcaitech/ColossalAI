@@ -62,7 +62,7 @@ class Initializer_3D_Input(ProcessGroupInitializer):
                 for k in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for j in range(self.depth)]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -113,7 +113,7 @@ class Initializer_3D_Weight(ProcessGroupInitializer):
                 for j in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for i in range(self.depth)]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -164,7 +164,7 @@ class Initializer_3D_Output(ProcessGroupInitializer):
                 for j in range(self.depth):
                     ranks = [h * self.depth**3 + i + self.depth * (j + self.depth * k) for k in range(self.depth)]
                     group = dist.new_group(ranks)
-                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                    group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                     if self.rank in ranks:
                         local_rank = ranks.index(self.rank)
@@ -217,7 +217,7 @@ class Initializer_3D_InputxWeight(ProcessGroupInitializer):
                     for i in range(self.depth)
                 ]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
@@ -270,7 +270,7 @@ class Initializer_3D_OutputxWeight(ProcessGroupInitializer):
                     for i in range(self.depth)
                 ]
                 group = dist.new_group(ranks)
-                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() != 'gloo' else group
+                group_cpu = dist.new_group(ranks, backend='gloo') if dist.get_backend() == 'gloo' else group
 
                 if self.rank in ranks:
                     local_rank = ranks.index(self.rank)
