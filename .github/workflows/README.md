@@ -12,7 +12,7 @@
     - [Manual Dispatch](#manual-dispatch)
       - [Release bdist wheel](#release-bdist-wheel)
       - [Dispatch Example Test](#dispatch-example-test)
-        - [Compatibility Test](#compatibility-test)
+      - [Compatibility Test](#compatibility-test)
     - [User Friendliness](#user-friendliness)
   - [Progress Log](#progress-log)
 
@@ -78,7 +78,7 @@ parameters:
 - `example_directory`: the example directory to test. Multiple directories are supported and must be separated by comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
 
 
-##### Compatibility Test
+#### Compatibility Test
 
 Parameters:
 - `torch version`:torch version to test against, multiple versions are supported but must be separated by comma. The default is value is all, which will test all available torch versions listed in this [repository](https://github.com/hpcaitech/public_assets/tree/main/colossalai/torch_build/torch_wheels).
