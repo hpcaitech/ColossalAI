@@ -5,9 +5,9 @@ def show_files(path, all_files):
     # Traverse all the folder/file in current directory
     file_list = os.listdir(path)
     # Determine the element is folder or file. If file, pass it into list, if folder, recurse.
-    for file in file_list:
+    for file_name in file_list:
         # Get the abs directory using os.path.join() and store into cur_path.
-        cur_path = os.path.join(path, file)
+        cur_path = os.path.join(path, file_name)
         # Determine whether folder
         if os.path.isdir(cur_path):
             show_files(cur_path, all_files)
@@ -26,9 +26,8 @@ def main():
     for file_loc in contents:
         split_loc = file_loc.split('/')
         # must have two sub-folder levels after examples folder, such as examples/images/vit is acceptable, examples/images/README.md is not, examples/requirements.txt is not.
-        if len(split_loc) - split_loc.index('examples') >= 3:
-            tmp_loc = split_loc[(split_loc.index('examples') + 1):(split_loc.index('examples') + 3)]
-            re_loc = join(tmp_loc, '/')
+        if len(split_loc) >= 4:
+            re_loc = '/'.join(split_loc[1:3])
             if re_loc not in all_loc:
                 all_loc.append(re_loc)
     print(all_loc)

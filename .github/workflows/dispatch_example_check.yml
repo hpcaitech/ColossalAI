@@ -8,7 +8,7 @@ on:
         required: true
 
 jobs:
-  manual_check_matrix_preparation:
+  matrix_preparation:
     if: |
         github.event.pull_request.draft == false &&
         github.base_ref == 'main' &&
@@ -16,31 +16,24 @@ jobs:
     name: Check the examples user want
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix-1.outputs.matrix }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
     - name: 📚 Checkout
       uses: actions/checkout@v3
-    - name: Get manual directories
-      id: set-matrix-1
+    - name: Set up matrix
+      id: set-matrix
       env:
         check_dir: ${{ inputs.example_directory }}
       run: |
-        all_mannual_check_dir=()
-        for cdi in $check_dir
-        do
-          all_mannual_check_dir+=("\"${cdi}\"")
-        done
-        man_loc=$( IFS=',' ; echo "${all_mannual_check_dir[*]}" )
-        res=`python .github/workflows/scripts/input_check_example.py --fileNameList $man_loc`
-        echo "${res} is file existance. 1 for all exist, -1 for at least one file not exist."
-        if [ res == -1 ];then
-           exit(1)
+        res=`python .github/workflows/scripts/example_checks/check_dispatch_inputs.py --fileNameList $check_dir`
+        if [ res == "failure" ];then
+          exit -1
         fi
-        man_loc="[${man_loc}]"
-        echo "$man_loc"
-        echo "::set-output name=matrix::{\"man_loc\":$(echo "$man_loc")}"
+        dirs="[${check_dir}]"
+        echo "Testing examples in $dirs"
+        echo "matrix={\"directory\":$(echo "$dirs")}" >> $GITHUB_OUTPUT
 
-  manual_check:
+  test_example:
     if: |
         github.event.pull_request.draft == false &&
         github.base_ref == 'main' &&
@@ -52,16 +45,19 @@ jobs:
       matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}
     container:
       image: hpcaitech/pytorch-cuda:1.12.0-11.3.0
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/
+    timeout-minutes: 10
     steps:
       - name: 📚 Checkout
         uses: actions/checkout@v3
-      - name: Install the requirements
+      - name: Install Colossal-AI
         run: |
-          pip install -r ./requirements/requirements.txt
-          pip install colossalai
-      - name: Traverse all files
+          pip install -v .
+      - name: Test the example
         run: |
-          dir=${{ matrix.man_loc }}
-          echo "${dir} is current directory"
+          dir=${{ matrix.directory }}
+          echo "Testing ${dir} now"
           cd "${PWD}/examples/${dir}"
           bash test_ci.sh
+        env:
+          NCCL_SHM_DISABLE: 1

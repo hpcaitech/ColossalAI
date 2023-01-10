@@ -98,9 +98,9 @@ def main():
     root = os.environ.get('DATA', '../data')
     if args.synthetic:
         # if we use synthetic dataset
-        # we train for 30 steps and eval for 10 steps per epoch
-        train_dataloader = DummyDataloader(length=30, batch_size=gpc.config.BATCH_SIZE)
-        test_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
+        # we train for 10 steps and eval for 5 steps per epoch
+        train_dataloader = DummyDataloader(length=10, batch_size=gpc.config.BATCH_SIZE)
+        test_dataloader = DummyDataloader(length=5, batch_size=gpc.config.BATCH_SIZE)
     else:
         train_dataloader, test_dataloader = build_cifar(gpc.config.BATCH_SIZE, root, pad_if_needed=True)
 

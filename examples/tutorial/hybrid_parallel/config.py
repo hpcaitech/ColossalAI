@@ -6,8 +6,8 @@ from colossalai.amp import AMP_TYPE
 BATCH_SIZE = 256
 LEARNING_RATE = 3e-3
 WEIGHT_DECAY = 0.3
-NUM_EPOCHS = 10
-WARMUP_EPOCHS = 3
+NUM_EPOCHS = 2
+WARMUP_EPOCHS = 1
 
 # model config
 IMG_SIZE = 224
