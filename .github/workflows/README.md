@@ -10,8 +10,8 @@
     - [Regular Checks](#regular-checks)
     - [Release](#release)
     - [Manual Dispatch](#manual-dispatch)
-        - [Release bdist wheel](#release-bdist-wheel)
-        - [Dispatch Example Test](#dispatch-example-test)
+      - [Release bdist wheel](#release-bdist-wheel)
+      - [Dispatch Example Test](#dispatch-example-test)
         - [Compatibility Test](#compatibility-test)
     - [User Friendliness](#user-friendliness)
   - [Progress Log](#progress-log)
@@ -65,14 +65,14 @@ In the section below, we will dive into the details of different workflows avail
 Refer to this [documentation](https://docs.github.com/en/actions/managing-workflow-runs/manually-running-a-workflow) on how to manually trigger a workflow.
 I will provide the details of each workflow below.
 
-##### Release bdist wheel
+#### Release bdist wheel
 
 Parameters:
 - `torch version`:torch version to test against, multiple versions are supported but must be separated by comma. The default is value is all, which will test all available torch versions listed in this [repository](https://github.com/hpcaitech/public_assets/tree/main/colossalai/torch_build/torch_wheels) which is regularly updated.
 - `cuda version`: cuda versions to test against, multiple versions are supported but must be separated by comma. The CUDA versions must be present in our [DockerHub repository](https://hub.docker.com/r/hpcaitech/cuda-conda).
 - `ref`: input the branch or tag name to build the wheel for this ref.
 
-##### Dispatch Example Test
+#### Dispatch Example Test
 
 parameters:
 - `example_directory`: the example directory to test. Multiple directories are supported and must be separated by comma. For example, language/gpt, images/vit. Simply input language or simply gpt does not work.
