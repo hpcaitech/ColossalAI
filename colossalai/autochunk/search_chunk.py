@@ -88,7 +88,7 @@ class SearchChunk(object):
         Args:
             active_node (List): active node status for every node
             peak_node (Node): peak memory node
-            chunk_regions (List): chunk region info
+            chunk_regions (List): chunk region infos
 
         Returns:
             chunk_region_start (int)
