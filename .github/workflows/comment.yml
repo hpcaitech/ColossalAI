@@ -1,0 +1,67 @@
+name: Auto Workflow Comment
+
+on:
+  workflow_run:
+    workflows: [pre-commit]
+    types:
+      - completed
+
+jobs:
+  # comment with a message on how to do pre-commit
+  # if the pre-commit check was not passed
+  report-precommit-failure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.name }} == "pre-commit" && ${{ github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - name: 'Download artifact'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: context.payload.workflow_run.id,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "pr_number"
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/pr_number.zip`, Buffer.from(download.data));
+
+      - name: 'Unzip artifact'
+        run: unzip pr_number.zip
+
+      - name: 'Comment on PR'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let fs = require('fs');
+            let issue_number = Number(fs.readFileSync('./pr_number'));
+            let owner = context.repo.owner;
+            let repo = context.repo.repo;
+            let run_id = context.payload.workflow_run.id;
+            let run_url = `https://github.com/${owner}/${repo}/actions/runs/${run_id}`
+            let body = `
+            Your pre-commit check failed, follow the steps to run pre-commit on your file for code style consistency.
+
+            1. install pre-commit via "pip install pre-commit"
+            2. install pre-commit hooks via "pre-commit install"
+            3. run pre-commit on file with format error via "pre-commit run --files path" by replacing "path" with the actual file path
+            4. commit and push to your branch
+
+            View your job at ${run_url}.
+            Read our "CONTRIBUTING.md" for more reference to the code style.
+            `;
+            await github.rest.issues.createComment({
+              owner: owner,
+              repo: repo,
+              issue_number: issue_number,
+              body: body
+            });
